@@ -1,0 +1,88 @@
+package okay
+
+import okay.Row.*
+
+/**
+ * docs/effects-and-continuations.md, VERBATIM: every example line as the page prints it, answer comment
+ * included, then asserted. The direct-style section is okay-direct's TestDocExamplesLevel1Direct.
+ */
+class TestDocExamplesLevel1 extends munit.FunSuite:
+
+  test("effects: perform, handle, run") {
+    val counter: Int ! State % Int =
+      for
+        n <- State.get[Int]
+        _ <- State.set(n + 1)
+      yield n * 10
+
+    val a = counter.handle(State(5)).run   // (6, 50)
+
+    val checked: Int ! State % Int + Throws % String =
+      for
+        n <- State.get[Int].plus[Throws % String]
+        r <- (if n > 3 then raise[String, Int]("too big") else pure(n)).plus[State % Int]
+      yield r
+
+    val b = checked.handle(State(5)).handle(Throws.either).run   // Left("too big")
+    val c = checked.handle(Throws.either).handle(State(1)).run   // (1, Right(1))
+    assertEquals(a, (6, 50))
+    assertEquals(b, Left("too big"))
+    assertEquals(c, (1, Right(1)))
+  }
+
+  test("perform: an operation as a program, either spelling") {
+    val asked: Int ! State % Int = perform(State.Get[Int, Int]())
+    val same: Int ! State % Int = State.Get[Int, Int]().perform
+    assertEquals(asked.handle(State(3)).run, (3, 3))
+    assertEquals(same.handle(State(3)).run, (3, 3))
+  }
+
+  test("continuations: shift and reset") {
+    val twice: Int ! Shift % Int =
+      shift[Int, Int, Pure](k => for a <- k(1); b <- k(10) yield a + b).map(_ * 2)
+
+    val d = twice.handle(Reset[Int]).run   // 22: k(1) is 2, k(10) is 20
+    val e = reset[Int, Pure](twice).run    // 22, the same: reset is a handler
+    assertEquals(d, 22)
+    assertEquals(e, 22)
+  }
+
+  test("continuations with effects") {
+    val both: Int ! Shift % Int + State % Int =
+      for
+        x <- shift[Int, Int, State % Int](k => for a <- k(1); b <- k(10) yield a + b)
+        s <- State.get[Int].plus[Shift % Int]
+        _ <- State.set(s + 1).plus[Shift % Int]
+      yield x * 2 + s
+
+    val f = both.handle(Reset[Int]).handle(State(5)).run   // (7, 33): the rest ran twice, the state through both
+    assertEquals(f, (7, 33))
+  }
+
+  test("an early exit, and two answer types in one program") {
+    val early: Int ! Shift % Int = shift0[Int, Int, Pure](_ => pure(42)).map(_ + 1)
+    val g = early.handle(Reset[Int]).run   // 42: the continuation was dropped
+
+    val crossing: String ! Shift % Int =
+      reset[String, Shift % Int](
+        for
+          a <- shift0[String, Int, Shift % Int](k => k(2).map(_ + "!"))
+          b <- shift0[Int, Int, Shift % String](k => k(a * 10).map(_ + 1))
+        yield "x" * b)
+
+    val h = crossing.map(_.length).handle(Reset[Int]).run   // 22: the Int capture crossed the String reset
+    assertEquals(g, 42)
+    assertEquals(h, 22)
+  }
+
+  test("through the typeclass") {
+    def program[M[_[+_], _]](using E: Effects[M]): M[State % Int, Int] =
+      E.reset[Int, State % Int](
+        E.shift[Int, Int, State % Int](k => k(1).flatMap(a => k(10).map(b => a + b))).flatMap(x =>
+          E.perform[Shift % Int + State % Int, Int](State.Get[Int, Int]()).map(s => x * 2 + s)))
+
+    val inFree = summon[Effects[Free]].run(summon[Effects[Free]].handle(program[Free], State(5)))      // (5, 32)
+    val inEager = summon[Effects[Eager]].run(summon[Effects[Eager]].handle(program[Eager], State(5)))  // (5, 32)
+    assertEquals(inFree, (5, 32))
+    assertEquals(inEager, (5, 32))
+  }

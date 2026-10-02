@@ -6,6 +6,11 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
 
 ## Start here
 
+- **[Effects and continuations, the whole API on one page](effects-and-continuations.md)**
+  — one type, `A ! F`, and six words: `pure`, `perform`, `shift`,
+  `reset`, `handle`, `run`, in the monadic and the direct style and
+  through `Effects[M]`. Start with this page if you use okay and do
+  not write effects of your own.
 - **[User guide](guide.md)** — the concepts, layer by layer: control
   → effects → streams → chunks → coroutines → concurrency → the text
   stack → the laziness contract that holds it together.

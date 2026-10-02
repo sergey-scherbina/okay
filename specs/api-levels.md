@@ -1,0 +1,52 @@
+# The three levels of the API
+
+Operator, 2026-10-02: "a single, coherent API and implementation for continuations, effects and handlers, so
+that users can write code with continuations and effects in the monadic and in the direct style, and all of
+it is simple and clear". Who sees what is decided here. How the continuation half was built is
+specs/shift-effect.md.
+
+## The levels
+
+1. **The user** uses ready effects and continuations and writes no effect of their own. The user sees one
+   type and six words, by default (top level in `okay`) and through the typeclass `Effects[M]`, in both
+   styles.
+2. **The effect author** declares a signature and writes its handler. This level sees `Cont` (a handler's
+   clause is a `Cont[X, B ! G, B ! G]`, and `Cont.shift`/`Cont.reset` are its capture and delimiter, with
+   answer-type modification), `Effects.handle(m)(ret)(clause)`, `!.relay`, `split`, `Delim`'s named prompts,
+   `Handling` (to make a handler a level-1 value) and `Shift.cont`/`Shift.embed`.
+3. **The library** is `Freer`, `Cont0`, `Delimited`, `Frames`/`Stack`, `StackSwitch`, `ContMacro` and the
+   `direct` macro.
+
+## Level 1, the whole of it
+
+| | default (top level) | through `Effects[M]` |
+|---|---|---|
+| a program | `A ! F`, rows `F + G` | `M[F, A]` |
+| a value | `pure(a)` | `E.pure(a)` |
+| an operation | ready ops; `perform(op)` / `op.perform` | `E.perform(op)` |
+| a capture | `shift`, `shift0` (`Shift % R` in the row) | `E.shift`, `E.shift0` |
+| a delimiter | `reset` = `handle(Reset[R])` | `E.reset` |
+| take an effect off | `p.handle(h)`: `State(s)`, `Reader(r)`, `Writer.log`, `Throws.either`, `Choose.all`, `Maybe.option`, `Reset[R]` | `E.handle(p, h)` |
+| the value | `p.run` | `E.run(p)` |
+| direct style | `direct { … }`, `.?` or auto-colouring | `direct` over `Effects.monad[M, F]` |
+
+The user page is docs/effects-and-continuations.md. Every example line on it is pinned by
+TestDocExamplesLevel1 and TestDocExamplesLevel1Direct.
+
+## Decisions
+
+- **A continuation is an effect** (specs/shift-effect.md): `Shift % R` in the row, `reset` its handler. Level
+  1 has no second type for continuations, and adding an effect to code that captures changes nothing but
+  the row.
+- **Level 1 takes the short names.** `shift`/`reset` were Cont's and are now `Cont.shift`/`Cont.reset`
+  (cont-shift-rename). Level 2's general `Effects.handle(m)(ret)(clause)` keeps its name as an overload of
+  level 1's `handle(m, h)`.
+- **One `handle`, its handlers values** (handle-handler-values). The effects' own runners (`State.run`,
+  `runEither`, …) stay beside it.
+- **`perform(op)` is `op.perform`**: an extension method is a function too, so the top level needs no second
+  definition (a second one is a double definition, E120). TestDocExamplesLevel1 calls it both ways.
+
+## Open
+
+- Every `shift` names `[R, A, F]`. They could come from the expected type, or in a block from its
+  `DirectCtx` (backlog shift-effect-level1).
