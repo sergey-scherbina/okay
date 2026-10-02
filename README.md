@@ -213,13 +213,13 @@ From the everyday to the rare; each name links to its own page, with examples. T
 - [`Prob`](docs/effects/prob.md) — probabilistic programming: weighted
   choice, `observe`, and exact inference as a multi-shot handler
   (Prob.scala).
-- [`Delim`](docs/continuations/10-prompts.md) — delimited control as an effect, multi-prompt in the shape
+- [`Shift`](docs/continuations/10-prompts.md) — delimited control as an effect, multi-prompt in the shape
   of Dybvig, Peyton Jones and Sabry (2007): a `Prompt` is a first-class
   tag carrying its delimiter's answer type, `push` installs one and
   `shift` captures up to a NAMED prompt, not the nearest. shift, control,
   shift0 and control0 are one operation with two flags. It is `Cont`'s
   shift/reset as an operation in a row, so it composes with the other
-  effects, and one machine owns the prompt stack (Delim.scala,
+  effects, and one machine owns the prompt stack (Shift.scala,
   [continuations book](docs/continuations/index.md)).
 - **[Several instances of one effect](docs/many-instances.md)** — `Tag.Of["small", State % Int]`
   names them in the row, for ANY signature; `tag` puts a finished
