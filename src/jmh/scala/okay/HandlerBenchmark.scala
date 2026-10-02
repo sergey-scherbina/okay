@@ -136,6 +136,17 @@ class HandlerBenchmark {
       (1 to M).foldLeft(0L.state[Long]): (m, _) =>
         m.flatMap(_ => State.get[Long].flatMap(s => State.set[Long](s + 1)))
 
+  /** handle-frames: a handler's run per CALL — 100 small `State.run`s, two operations each — prices what a
+   * handler costs to start (since handle-frames a `Delay` and a `Handled` before its loop), not per operation */
+  @Benchmark
+  def stateSmall(): Long =
+    var acc = 0L
+    var i = 0
+    while i < 100 do
+      acc += State.run(i.toLong)(State.get[Long].flatMap(s => State.set[Long](s + 1)))._1
+      i += 1
+    acc
+
   /** a plain answer-using body, `k(x + 1) + 1`, M levels: since
    * cont-stack-layer1-b walked by the runner (a `Call` and a pending
    * part per level) instead of a frame per level */
