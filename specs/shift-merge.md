@@ -1,6 +1,6 @@
 # shift-merge — Delim and Shift, one effect named `Shift`
 
-Status: stages 1, 2 and 4 done, 2026-10-02; stage 3 and the one guard next. Owner lane: `shift-merge`. Sprint
+Status: stages 1, 2 and 4 done, 2026-10-02; the one guard in progress (shift-merge-guard), stage 3 after it. Owner lane: `shift-merge`. Sprint
 cont-js-depth, the design conversation after stage 3a.
 
 ## Why
@@ -88,9 +88,22 @@ different keys mix in one `flatMap`. `Shift.dynamic(p)` names it.
       TestShiftPatterns pass with `exit`/`emit` from the ONE evidence; a
       static program widened with `Shift.dynamic` mixes with a capture to
       a prompt by value in one program (TestShift)
-- [ ] the machine guard: one evidence for "a machine already runs in F"
-      — NEXT LANE (today `OneMachine` and `Nesting` both stand, each
-      message saying `Shift`)
+- [ ] the machine guard: ONE evidence, `Shift.Machine[F]`, for "a machine
+      already runs in F" (lane shift-merge-guard; `OneMachine` and
+      `Nesting` both gone)
+- [ ] every machine-starting door (`run`, `delimited`, `collect`,
+      `collectUntil`, `resumable`, `drive`, `answer`, `replay`, the keyed
+      `reset`, `Stacked.run`/`delimited`) NESTS when a machine runs
+      outside: it pushes its delimiter on that machine instead of starting a
+      second — what `scope`/`collecting`/`pausing` do, now chosen by the
+      row, so the "SECOND machine" compile error is gone (TestBookOneMachine)
+- [ ] an ABSTRACT row is a compile error naming the fix, "take `using
+      Shift.Machine[F]`": the hole chapter 12 demonstrated (`NotGiven`
+      reading "unknown" as "absent", a generic helper swallowing the
+      obligation) is closed (TestBookOneMachine)
+- [ ] a row with a `Shift` AND an abstract part reads as nested (the
+      `Shift` is certain); a row of only concrete non-`Shift` parts reads
+      as outermost
 - [x] stage 2: the satellites' suites green; no `Delim` left in code
       (okay2, a separate Scala 2 build with its own `Delim`, untouched)
 - [x] the differential oracle and the machine's depth suite unchanged and
@@ -119,6 +132,22 @@ different keys mix in one `flatMap`. `Shift.dynamic(p)` names it.
   expands).
 - **The static `Shift.collect/emit/exit` of shift-patterns are the same
   names now**: one `collect`/`emit`/`exit` for every block.
+- **ONE GUARD, AND IT NESTS INSTEAD OF REFUSING** (shift-merge-guard,
+  operator "Начинай" on the plan "one evidence; it decides whether a block
+  starts its machine or stands on the running one"). `OneMachine`
+  (`NotGiven[Shift[?, Any] <:< F[Any]]`, a compile error at a `Shift`
+  row) and `Nesting` (a macro reading the row, the keyed `reset` nesting
+  on the outer machine) answered one question two ways. The macro's
+  answer is the one kept, for every door: the error existed only because
+  the dynamic doors could not nest, and they can — a nested door is its
+  `scope`-form (`scope`, `collecting`, `pausing`) with the row narrowed,
+  the same cast the keyed `reset` already made (`innerDyn`). What the
+  two never caught, the macro now refuses: an abstract row has no answer,
+  so it asks for the evidence as a parameter (pass the obligation on —
+  chapter 12's rule, enforced instead of advised). Refuted: keeping a
+  compile error for the dynamic doors "because the nested spelling is
+  explicit" — two spellings of one block, chosen by a row the compiler
+  can read, is the confusion this spec removes.
 - **Noted, not changed here:** a keyed `reset` counts its nested runs in a
   `ThreadLocal` room and switches stacks past it (`runReset`); the
   cont-stack rule says a room is a value, never a `ThreadLocal`.
