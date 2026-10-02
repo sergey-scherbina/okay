@@ -82,3 +82,22 @@ object ShiftFx:
   /** level 2: a whole `Cont` as one capture */
   def embed[A, R, F[+_]](api: ShiftApi)(c: Cont[A, R ! F, R ! F])(using Key[R]): A ! Shift % R + F =
     api.shift0[R, A, F](k => c / k)
+
+/**
+ * Direct style: `reset` over a `direct` block, and `shift` whose body is
+ * one. Inside a block `shift` is a mark and answers the value itself, as
+ * `tell` does; outside it is the program.
+ */
+object ShiftDirect:
+  import okay.Direct.*
+
+  inline def reset[R, F[+_]](api: ShiftApi)(inline block: DirectCtx[[A] =>> A ! Shift % R + F] ?=> R)
+                            (using Key[R], Distinct[Shift % R + F], Nesting[F]): R ! F =
+    api.reset[R, F](direct[[A] =>> A ! Shift % R + F](block))
+
+  transparent inline def shift[R, A, F[+_]](api: ShiftApi)
+                                           (inline f: (A => R ! Shift % R + F) => DirectCtx[[X] =>> X ! Shift % R + F] ?=> R)
+                                           (using Key[R]): Any =
+    scala.compiletime.summonFrom:
+      case _: DirectCtx[?] => api.shift[R, A, F](k => direct[[X] =>> X ! Shift % R + F](f(k))).reflect
+      case _ => api.shift[R, A, F](k => direct[[X] =>> X ! Shift % R + F](f(k)))

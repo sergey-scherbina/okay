@@ -184,5 +184,31 @@ abstract class TestShiftFx(api: ShiftApi) extends munit.FunSuite:
     assert(reached.nonEmpty)
   }
 
+  test("direct style: reset over a block, shift's body a block, shift answering the value") {
+    val q: Int ! S = ShiftDirect.reset[Int, S](api) {
+      val x: Int = ShiftDirect.shift[Int, Int, S](api)(k => k(1).? + k(10).?)
+      x * 2 + State.get[Int].?
+    }
+    // k(1): 2 + 5; k(10): 20 + 5
+    assertEquals(State.run(5)(q), (5, 32))
+  }
+
+  test("direct style: two shifts in sequence and one inside another's body") {
+    val p: Int ! P = ShiftDirect.reset[Int, P](api) {
+      val x: Int = ShiftDirect.shift[Int, Int, P](api)(k => k(1).? + k(10).?)
+      val y: Int = ShiftDirect.shift[Int, Int, P](api)(k => k(2).? + k(3).?)
+      x * y
+    }
+    assertEquals(!.run(p), 55)
+    val q: Int ! P = ShiftDirect.reset[Int, P](api) {
+      val x: Int = ShiftDirect.shift[Int, Int, P](api) { k =>
+        val y: Int = ShiftDirect.shift[Int, Int, P](api)(k2 => k2(k(5).?).? * 2)
+        y + 1
+      }
+      x * 3
+    }
+    assertEquals(!.run(q), 32)
+  }
+
 class TestShiftFxHandled extends TestShiftFx(ShiftFx.Handled)
 class TestShiftFxOnDelim extends TestShiftFx(ShiftFx.OnDelim)

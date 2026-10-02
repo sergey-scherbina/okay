@@ -85,6 +85,17 @@ one API, one suite over both:
 - [x] the JMH lanes: (a) vs (b) vs today's `Cont` and `Delim` on the
       same shape.
 
+- [x] round 2 (shift-effect-typed): Danvy-Filinski's `shift` (the body
+      under its reset, `R ! Shift % R + F`) beside `shift0`; two shifts in
+      sequence (55; 75 with State); a capture from inside another's body
+      to the same reset (32).
+- [x] answer types told apart: a compile-time key per answer type,
+      `Shift % Int + Shift % String` in one row, a capture crossing a
+      reset of another type (22); an abstract answer type refused.
+- [x] direct style for `reset` and `shift` (`ShiftDirect`): the block
+      under `reset` and the body of `shift` are `direct` blocks, and
+      inside a block `shift` answers the value itself.
+
 ## Decisions
 
 - **The body is `R ! F`.** Without `Shift % R` in the body's row, `shift`
@@ -98,6 +109,23 @@ one API, one suite over both:
 - **(b) shares ONE prompt** among all resets. The innermost installed
   one answers, as (a)'s handler does, and the row typing (Distinct)
   keeps a capture from reaching a `reset` of another answer type.
+
+- **A key per answer type, made at compile time** (`Key[R]`, a macro
+  in okay-direct's main, package-private): the normalised type, so an
+  alias and a union in either order give one key. `Shift`'s `TypeableK`
+  compares keys and is `ByValue`, so `Distinct` passes two answer types
+  in one row. An abstract `R` has no key and is asked for one, as a
+  `ClassTag` is. The macros sit in main only because zinc fails on a
+  macro expanded in the run that defines it ("Failed to find name
+  hashes").
+- **(b) nests on one machine when the type says so** (`Nesting[F]`, read
+  off the row): a `reset` whose row still holds a `Shift` only pushes its
+  prompt, and the outer `reset` runs the machine. A `reset` whose row has
+  none runs its own, so nested resets of the SAME type, each a complete
+  program, still start a machine each.
+- **Direct style needs no new macro.** `reset` wraps its block in
+  `direct`; `shift` is `transparent inline`, a mark inside a block
+  (`summonFrom` on `DirectCtx`, as `tell`) and the program outside.
 
 ## Results
 
@@ -133,6 +161,17 @@ does the same, and Delim's own rule is "one `Delim.run` per program"
 (`scope` is its nested form). On (b) it has a direct fix: a `reset`
 inside a running machine should push its prompt on that machine instead
 of starting a second one.
+
+**Round 2** (history.d `shift-effect-typed`):
+
+| lane | (a) handler | (b) Delim machine |
+|---|---|---|
+| `seq` with keys | 91.6 µs, 902 KB (1.05x) | 60.6 µs, 534 KB (1.11x: the prompt looked up by key per `shift`) |
+| `seqDF`, D-F `shift` | no number: a `reset` per capture nests a handler per capture | 75.3 µs, 638 KB (+104 B a capture: the re-pushed prompt) |
+
+Depth, D-F captures in sequence: (b) 100 000; (a) 1 000, overflows by
+10 000. Nested same-type resets: 3 000 on both in this run (10 000 in the
+first), so the ceiling moves with the JIT.
 
 **Recommendation:** (b). It matches Delim on the common shape and
 already has the single machine that removes the nesting limit. Open:
