@@ -2004,6 +2004,13 @@ lazy val okayRefine = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       "org.scalameta" %%% "munit" % "1.1.1" % Test,
     ),
   )
+  // JVM-only sources in src/*/scala-jvm, the repository's layout (not the plugin's hidden .jvm/src)
+  .jvmSettings(
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+  )
 
 /** Bayesian inference as effects (specs/okay-bayes.md): distributions
  * with densities, a model's named draws and observations as the `Model`
@@ -2025,6 +2032,13 @@ lazy val okayBayes = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   // standard sampler behind an import, names it; nobody depending on
   // okay-bayes gets it transitively
   .jvmConfigure(_.dependsOn(okayPy % "optional->compile;test->compile"))
+  // JVM-only sources in src/*/scala-jvm, the repository's layout (not the plugin's hidden .jvm/src)
+  .jvmSettings(
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+  )
 
 /** the document seam: get/put/delete by key with CAS as data,
  * declared-index queries, per-item atomicity — the one new seam of

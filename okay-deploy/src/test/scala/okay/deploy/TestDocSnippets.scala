@@ -33,10 +33,9 @@ class TestDocSnippets extends munit.FunSuite:
     "docs/python-and-r.md" -> Vector("okay-py/src/test", "okay-r/src/test"),
     "docs/foreign-facade.md" -> Vector("okay-foreign-cluster/src/test"),
     "docs/rust.md" -> Vector("okay-rust", "okay-py/src/test", "okay-rust/.jvm/src/test"),
-    // the book's chapter-1 suite reads its data from resources, JVM-only (okay-bayes)
-    "docs/modules/okay-bayes.md" -> Vector("okay-bayes/src/test", "okay-bayes/.jvm/src/test"),
-    // TestRouter blocks on runWith, so it lives in the JVM-only tree (refine-route)
-    "docs/modules/okay-refine.md" -> Vector("okay-refine/src/test", "okay-refine/.jvm/src/test", "okay-refine/src/main",
+    // the JVM-only suites (src/test/scala-jvm) are under src/test, which the walk enters
+    "docs/modules/okay-bayes.md" -> Vector("okay-bayes/src/test"),
+    "docs/modules/okay-refine.md" -> Vector("okay-refine/src/test", "okay-refine/src/main",
       "okay-spark/src/test"),
     "docs/go.md" -> Vector("okay-py/src/test", "okay-rust/kernels"),
     "docs/one-language.md" -> Vector("okay-py/src/test", "okay-rust/.jvm/src/test", "okay-r/src/test",
