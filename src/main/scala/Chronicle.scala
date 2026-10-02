@@ -61,6 +61,11 @@ object Chronicle:
 
   /** the handler: every recorded error, in order, and whether the
    * program finished; forwards the effects F */
+  /** the handler as a value: `p.handle(Chronicle.verdict)`, every problem collected beside the answer */
+  def verdict[E]: Handler[Chronicle % E, [A] =>> Verdict[E, A]] = new Handler[Chronicle % E, [A] =>> Verdict[E, A]]:
+    def run[A, F[+_]](p: A ! Chronicle % E + F)(using A <:< Any, Distinct[Chronicle % E + F], Handler.Nothing[F]): Verdict[E, A] ! F =
+      Chronicle.run(p)
+
   def run[E, A, F[+_]](p: A ! Chronicle % E + F)(using Distinct[Chronicle % E + F]): Verdict[E, A] ! F = {
     def verdict[B](errs: List[E], a: B): Verdict[E, B] =
       if errs.isEmpty then Clean(a) else Warned(a, errs.reverse.toVector)

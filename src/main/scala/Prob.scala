@@ -68,6 +68,10 @@ object Prob:
    * each invocation a FRESH continuation — the defining property
    * `Choose`'s own comment names, priced the same way here.
    */
+  /** the handler as a value: `p.handle(Prob.exact)`, the exact posterior by exhaustive multi-shot */
+  def exact: Handler[Dist, [A] =>> Map[A, Double]] = new Handler[Dist, [A] =>> Map[A, Double]]:
+    def run[A, F[+_]](p: A ! Dist + F)(using A <:< Any, Distinct[Dist + F], Handler.Nothing[F]): Map[A, Double] ! F = runExact(p)
+
   def runExact[A, F[+_]](p: A ! Dist + F): Map[A, Double] ! F =
     Effects[Free].handle[Dist, F](p)(a => pure[F, Map[A, Double]](Map(a -> 1.0))):
       [X] => (c: Dist[X]) => Cont.shift: k =>

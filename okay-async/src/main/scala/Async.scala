@@ -181,6 +181,10 @@ object Async {
   def await[A](register: (Either[Throwable, A] => Unit) => (() => Unit)): A ! Async =
     effect(Await(register))
 
+  /** the handler as a value: `p.handle(Async.blocking)` — each operation executed in place, an Await parked */
+  def blocking(using cb: CanBlock, w: Wait, p: Pause): Handler[Async, [A] =>> A] = new Handler[Async, [A] =>> A]:
+    def run[A, F[+_]](prog: A ! Async + F)(using A <:< Any, Distinct[Async + F], Handler.Nothing[F]): A ! F = Async.run(prog)
+
   /** handle by executing each operation in place, forwarding the
    * effects F; an Await parks (hence the evidence) */
   def run[A, F[+_]](prog: A ! Async + F)(using cb: CanBlock, w: Wait, p: Pause): A ! F =

@@ -31,6 +31,10 @@ object Fresh:
   /** a fresh number */
   inline def next: Long ! Fresh = Supply.next[Long]
 
+  /** the handler as a value: `p.handle(Fresh.counter)` — fresh numbers from 0 */
+  def counter: Handler[Fresh, [A] =>> A] = new Handler[Fresh, [A] =>> A]:
+    def run[A, F[+_]](p: A ! Fresh + F)(using A <:< Any, Distinct[Fresh + F], Handler.Nothing[F]): A ! F = Fresh.run(p)
+
   /** handle Fresh from 0, forwarding the effects F */
   def run[A, F[+_]](p: A ! Fresh + F)(using Distinct[Fresh + F]): A ! F =
     Supply.run(0L)(_ + 1)(p).map(_._2)
@@ -50,6 +54,11 @@ object Supply:
    * was captured with (single-shot-row priced a cell in 2026-09 and
    * refuted it).
    */
+  /** the handler as a value: `p.handle(Supply.from(first)(step))`, answering the next supply and `A` */
+  def from[S](first: S)(step: S => S): Handler[Supply % S, [A] =>> (S, A)] = new Handler[Supply % S, [A] =>> (S, A)]:
+    def run[A, F[+_]](p: A ! Supply % S + F)(using A <:< Any, Distinct[Supply % S + F], Handler.Nothing[F]): (S, A) ! F =
+      Supply.run(first)(step)(p)
+
   def run[S](first: S)(step: S => S)[A, F[+_]](p: A ! Supply % S + F)
             (using Distinct[Supply % S + F]): (S, A) ! F = {
     def _loop(s: S)(x: A ! Supply % S + F): (S, A) ! F = loop(s)(x)

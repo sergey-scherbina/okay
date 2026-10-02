@@ -123,6 +123,10 @@ object Once:
       case None | Some(Running) => (c + (h -> a), a)
       case Some(v) => (c, stored(v))
 
+  /** the handler as a value: `p.handle(Once.memo)` — each `once` runs at most once, its answer shared */
+  def memo: Handler[Once, [A] =>> A] = new Handler[Once, [A] =>> A]:
+    def run[A, F[+_]](p: A ! Once + F)(using A <:< Any, Distinct[Once + F], Handler.Nothing[F]): A ! F = Once.run(p)
+
   /**
    * the handler: a bespoke tail-recursive loop threading the cells,
    * like `State.handle` — a relay's ∀Y shape has nowhere to hold

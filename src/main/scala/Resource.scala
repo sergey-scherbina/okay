@@ -161,6 +161,10 @@ object Resource {
     !.run(run[A, Nothing](a)(using new Failing[Nothing]:
       def guard[X](e: Nothing, onFailure: () => Unit): Nothing = e))
 
+  /** the handler as a value: `p.handle(Resource.region)` — every acquisition released at the end, in reverse */
+  def region: Handler.Full[Resource, Any, [A] =>> A, Failing] = new Handler.Full[Resource, Any, [A] =>> A, Failing]:
+    def run[A, F[+_]](p: A ! Resource + F)(using A <:< Any, Distinct[Resource + F], Failing[F]): A ! F = Resource.run(p)
+
   def run[A, F[+_]](a: A ! Resource + F)(using failing: Failing[F]): A ! F = {
 
     def isFinal(e: Any): Boolean = e match
