@@ -152,8 +152,23 @@ sampler, the gradient from a source):
   - [x] the ch.3 mixture against the importance-sampling oracle
   - [x] Challenger against the grid, divergences counted and reported
   - [x] a discrete site is refused by name
-- 3b. Automatic differentiation: models over a differentiable `Real`
-  (reverse mode), their `Target` exact — the same `Nuts.sample`. Stage 4 — `Inference` as a facade (specs/own-or-standard.md):
+- 3b. Automatic differentiation (reverse mode; Griewank & Walther,
+  *Evaluating Derivatives*, 2008): `Real`, a number recorded on a tape —
+  arithmetic, exp, log, log1p, sqrt, pow, lgamma (digamma as its
+  derivative), log-sum-exp — and a backward sweep giving every input's
+  adjoint in one pass. A model written for it is a program over the `Grad`
+  effect: `param(name, prior)` answers a `Real` (moving unconstrained
+  through the prior's `Support`, the Jacobian on the tape), `observe` and
+  `score` add differentiable log weights. `Smooth.target(p)` is a `Target`
+  whose gradient costs ONE run of the program plus the sweep, against
+  finite differences' 2d + 1; `Smooth.nuts(p, ...)` is `Nuts.sample` on it.
+  - [ ] every operation's derivative against a central difference
+  - [ ] the same model written both ways (Challenger) has the same log
+        density at every point, and the AD gradient equals the finite one
+        to its truncation error
+  - [ ] conjugates through the three transforms, via `Smooth.nuts`
+  - [ ] the cost: at d = 100 a gradient by AD against one by differences,
+        measured (one run against 201) Stage 4 — `Inference` as a facade (specs/own-or-standard.md):
 ours by default, PyMC/Stan behind an import over an optional dependency.
 
 ## 4. Decisions
