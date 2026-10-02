@@ -1255,7 +1255,10 @@ lazy val okayScala2Probe = (project in file("scala2/okay-scala2/probe"))
 
 /** interop with fs2: Stream <-> Chunks, chunk for chunk (P3) */
 lazy val okayFs2 = (project in file("okay-fs2"))
-  .dependsOn(okay.jvm, okayStream.jvm, compare % "test->compile")
+  // okay-cats for the tests only: an fs2 stream compiled AT an okay
+  // program (specs/fs2-effectful.md)
+  .dependsOn(okay.jvm, okayStream.jvm, compare % "test->compile", okayCats % "test->compile",
+    okayTest.jvm % "test->compile")
   .settings(
     name := "okay-fs2",
     libraryDependencies ++= Seq(

@@ -42,6 +42,19 @@ Chunks.fold(Chunks.take(ch)(10))(using Fold.sum[Int])   // pulls only what it ta
 |---|---|---|
 | `Fs2Interop.toFs2` | `Chunks[A] => fs2.Stream[fs2.Pure, A]` | pure unfold, boundaries kept |
 | `Fs2Interop.fromFs2` | `(fs2.Stream[IO, A], capacity)(using IORuntime) => Chunks[A]` | bounded-queue hand-off, linear |
+| `Fs2Streams.toFs2` | `Source[W] => fs2.Stream[F, W]`, any `F: Async` | tells are elements; an interrupted stream cancels the pending `Await` |
+| `Fs2Streams.fromFs2` | `(fs2.Stream[IO, A], capacity)(using IORuntime) => Source[A]` | parks no thread; cancelling the okay side cancels the fs2 fiber |
+| `Fs2Streams.toPipe` | `Stage[I, O, Unit] => fs2.Pipe[F, I, O]` | pulls only what the stage asks for |
+| `Fs2Streams.through` | `Source[I] => fs2.Pipe[IO, I, O] => Source[O]` | an fs2 pipe in an okay pipeline |
+
+An fs2 stream also runs AT an okay program: `fs2.Stream[CatsEffect.Program, A]`
+(okay-cats) compiles with `evalMap`/`parEvalMap` over okay programs and
+no `IO` in its type:
+
+```scala
+.evalMap(i => CatsEffect.lift(okay.async(i * 2)))
+.parEvalMap(4)(i => CatsEffect.lift(okay.async(i + 1)))
+```
 
 ## Gotchas
 
@@ -52,3 +65,5 @@ Chunks.fold(Chunks.take(ch)(10))(using Fold.sum[Int])   // pulls only what it ta
   refuse).
 - `import okay.given` for `runWith` and the extensions, as in every
   satellite.
+- A fs2 `Pipe` does not become a pull-driven `Stage`: the pipe owns its
+  input stream. Use `Fs2Streams.through`, a pipe over a `Source`.
