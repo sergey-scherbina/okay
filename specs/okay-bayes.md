@@ -246,6 +246,30 @@ Stage 5 — the rest of the book, one lane per chapter:
   - [x] P(B beats A) stable between two independent runs to MC error, and
         the decision it supports printed beside the naive one
 
+Stage 6 — okay-bayes over okay's streams and Bulk (operator, 2026-10-02:
+"does our bayes work with our streams and Bulk?" — it did not):
+- STREAMS. `Online.filter(start, step, particles, seed)`: a particle
+  filter as a VALUE — particles of a state S, pushed one observation at a
+  time through a `step(s, o): S ! Model` (the bootstrap filter of Gordon,
+  Salmond & Smith 1993), reweighed, resampled under half ESS, the log
+  evidence accumulated. `filter.stage` is a `Stage[O, Particles[S], …]`
+  (`Stage.mapAccumulate`): a stream of observations in, a posterior per
+  observation out.
+  - [ ] a Gaussian random walk observed through a stream: the filtering
+        mean at EVERY step and the final log evidence against the Kalman
+        filter
+- BULK. `Bayes.observeBulk(rows)(logLik)` and
+  `Smooth.observeBulk(rows, params)(f)` over any `Bulk[D]` (Chunks in one
+  JVM, Spark, Flink): the log-likelihood is ONE `aggregate` per run of the
+  model — a commutative `Aggregator` summing per-row log densities, and
+  for AD per-row gradients (a small tape per row, the parameters' values
+  as its inputs), entered on the model's own tape as one linear node with
+  that value and gradient. NUTS pays one pass over the data per gradient.
+  - [ ] the same model over a Bulk and over a Vector: the same log density
+        and the same gradient at random points
+  - [ ] Normal mean and sd from 100 000 rows by AD NUTS over `Bulk[Chunks]`,
+        against the closed-form posterior (flat-ish priors, large n)
+
 ## 4. Decisions
 
 1. **A new module, not the core's `Prob`.** `Prob` is discrete and exact
