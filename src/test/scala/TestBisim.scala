@@ -31,7 +31,7 @@ class TestBisim extends munit.FunSuite:
     Bisim.check(p, q) match
       case Verdict.Differ(path, l, r) =>
         assertEquals(path, List("Get() -> 2"))
-        assertEquals((l, r), ("performed Set(2)", "performed Set(0)"))
+        assertEquals((l, r), ("performed Update(Put(2))", "performed Update(Put(0))"))
       case v => fail(s"expected Differ, got $v")
   }
 

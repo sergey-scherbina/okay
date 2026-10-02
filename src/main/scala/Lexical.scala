@@ -154,9 +154,9 @@ object Lexical:
 
     extension [S, G[+_]](i: Inst[okay.State % S, G])
       def get: S ! G = i.perform(okay.State.Get[S, S]())
-      def set(s: S): S ! G = i.perform(okay.State.Update[S, S](_ => (s, s)))
+      def set(s: S): S ! G = i.perform(okay.State.Update[S, S](okay.State.Put(s)))
       /** `modify` */
-      def modify(f: S => S): S ! G = i.perform(okay.State.Update[S, S](s => { val n = f(s); (n, n) }))
+      def modify(f: S => S): S ! G = i.perform(okay.State.Update[S, S](okay.State.Modified(f)))
       /** `set` as a statement */
       def put(s: S): Unit ! G = i.perform(okay.State.Update[S, Unit](_ => ((), s)))
 

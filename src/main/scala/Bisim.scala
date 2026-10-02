@@ -66,6 +66,8 @@ object Bisim:
       def apply[X](op: State[S, X]): List[X] = op match
         case State.Get() => samples.toList
         // an update answers what its function says from each sample
+        // a set does not read the state it replaces: one answer, not one per sample
+        case State.Update(State.Put(s)) => List(s)
         case State.Update(f) => samples.toList.map(s => f(s)._1)
 
     /** every `ask` answered by each sample in turn */

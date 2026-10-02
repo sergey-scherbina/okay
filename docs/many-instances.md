@@ -29,7 +29,7 @@ Look at `State`:
 ```scala
 enum State[S, +A]:
   case Get() extends State[S, S]
-  case Set(s: S) extends State[S, S]
+  case Update[S, B](f: S => (B, S)) extends State[S, B]
 ```
 
 `Get()` is a case with no fields. At run time it is one object of one

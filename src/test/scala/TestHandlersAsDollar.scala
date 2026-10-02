@@ -75,12 +75,13 @@ class TestHandlersAsDollar extends munit.FunSuite:
     assertEquals(!.run(Writer.run[String, (Int, Int), Pure](deep(1)(counter))), (List("a=1", "b=11"), (22, 12)))
   }
 
-  test("MUTANT: a deep Set clause that keeps the OLD state is refused, with the first differing tell") {
+  test("MUTANT: a deep Update clause that keeps the OLD state is refused, with the first differing tell") {
     type Ans = Int => (Int, Int) ! Delim + W
     val p = Delim.prompt[Ans]
     val op = [X] => (e: State[Int, X]) => (e match
       case State.Get() => Delim.shift0[Ans, Int, W](p)(k => okay.pure((s: Int) => k(s).flatMap(f => f(s))))
-      case State.Update(g) => Delim.shift0[Ans, X, W](p)(k => okay.pure((s: Int) => { val (b, s1) = g(s); k(b).flatMap(f => f(s1)) }))
+      // THE MUTANT: the new state is computed and dropped, the old one passed on
+      case State.Update(g) => Delim.shift0[Ans, X, W](p)(k => okay.pure((s: Int) => { val (b, _) = g(s); k(b).flatMap(f => f(s)) }))
     ): X ! Delim + W
     val ret: Int => Ans ! Delim + W = a => okay.pure((s: Int) => okay.pure((s, a)))
     val wrong = Delim.run[(Int, Int), W](Delim.dollar[Int, Ans, W](p)(ret)(rewrite(op)(counter)).flatMap(f => f(1)))

@@ -1048,7 +1048,6 @@ docs/theory/13-rows-without-unions.md	infix type +[F[+_], G[+_]] = [A] =>> F[A] 
 docs/tutorial.md	!.run(Delim.collectUntil[Int, Boolean, Boolean, Pure](using FoldUntil.exists[Int](_ > 2))(walk(tree)))  // true, after three leaves
 docs/tutorial.md	!.run(Delim.collectUntil[Int, Vector[Int], Vector[Int], Pure](using FoldUntil.take(2))(walk(tree)))    // Vector(1, 2) — the walk stops at its second leaf
 docs/tutorial.md	!.run(Delim.collect[Int, Pure](walk(tree)))                                                          // List(1, 2, 3, 4)
-docs/tutorial.md	!.run(Writer.run(digits))   // (Seq(4, 2, 0, 2), 1) — the digits told, the answer 1
 docs/tutorial.md	(base and providing[Principal](bob)) { api }    // answers for:Bob
 docs/tutorial.md	.map(_ * 2).filter(_ % 3 == 0).take(1000))(using Fold.sum[Int])
 docs/tutorial.md	.toLazyList)
@@ -1087,14 +1086,12 @@ docs/tutorial.md	Retrieve.symbols(repo.index, repo.corpus.sources),    // exact,
 docs/tutorial.md	Scan.all(bpe)("hello hell her").tokens.map(_.lexeme)
 docs/tutorial.md	Some("/**"), Set('"'), triple = true,
 docs/tutorial.md	SparkInterop.aggregate(rdd)(stats)
-docs/tutorial.md	State.run(0)(prog)   // (40, 42) — the final state and the answer
 docs/tutorial.md	Symbols.project(files)          // language per file, from the path
 docs/tutorial.md	Ui.key(k).modify(field => Ui.Column(Vector(field, Ui.Text(msg))))(t)
 docs/tutorial.md	Writer("bye")
 docs/tutorial.md	Writer(s"hello ${wire[Env].user}")   // a bare statement runs — do-notation
 docs/tutorial.md	Writer.run(through(events)(widen(combine(repo))))   // okay-demo/Combine.scala
 docs/tutorial.md	Yaml.read[Person]("name: ann\nage: 41\ntags:\n  - a\nboss:\n")
-docs/tutorial.md	_ <- State.set(x + 40)
 docs/tutorial.md	case "charge" => Durable.OnRepeat.WithKey   // retry carries the first key
 docs/tutorial.md	case None    => signal[Int](Damaged(raw))   // raise WITHOUT unwinding
 docs/tutorial.md	case _        => Durable.OnRepeat.Redo
@@ -1107,7 +1104,6 @@ docs/tutorial.md	cut.value      // Some(Answer(...)) — decoded mid-stream
 docs/tutorial.md	def emit[A](p: Prompt[List[A]])(a: A): Unit ! (Delim + Pure) =
 docs/tutorial.md	def loop(raws: List[String]): Vector[Int] ! Op = ...
 docs/tutorial.md	def nats: Long ! (Choose + Pure) = effect(Choose(LazyList.from(0).map(_.toLong)))
-docs/tutorial.md	def risky(n: Int): Int ! F =
 docs/tutorial.md	def traverseOf[F[_]](f: A => F[B]): S => F[T]      // Applicative[F]
 docs/tutorial.md	def validate(in: Map[String, String]): Validated[Errors, Signup] = direct:
 docs/tutorial.md	def withErrors(tree: Ui, errs: Errors): Ui =
@@ -1125,7 +1121,6 @@ docs/tutorial.md	given Answers[Model] = Handlers.scripted(Seq(Reply("hi", Nil)))
 docs/tutorial.md	given Answers[Model] = Provider.openAi(Transports.http(), key, "gpt-4o-mini")
 docs/tutorial.md	given Answers[Tool] = session.handler          // the only line that changes
 docs/tutorial.md	guard[[A] =>> A ! Choose](a*a + b*b == c*c).map(_ => (a, b, c)))))
-docs/tutorial.md	if n < 0 then effect(Throws("negative")) else effect(State.Update[Int, Int](_ => (n, n)))
 docs/tutorial.md	if n < 2 then n.toLong else fib(n - 1) + fib(n - 2)   // or !fib(n - 1) + !fib(n - 2)
 docs/tutorial.md	import okay.Direct.parallelBinds.given
 docs/tutorial.md	layout = Layout.Braces)
@@ -1141,7 +1136,6 @@ docs/tutorial.md	provide(ada, tracer)(api)                       // no token any
 docs/tutorial.md	re.tree == Parse.full(JsonLex.scan, JsonParse.instrs)(edited).tree  // exact
 docs/tutorial.md	retry(Retry.exponential(100).take(5))(fetch)   // the policy is a stream
 docs/tutorial.md	runChoice(triples)                       // (3,4,5), (5,12,13), (6,8,10), ...
-docs/tutorial.md	runEither(State.handle(0)(risky(5)))   // handle State, then Throws
 docs/tutorial.md	session, doc, edited, at, at + 3, at + 3)
 docs/tutorial.md	squares.take(3).toList                        // List(1, 4, 9); the body ran three steps
 docs/tutorial.md	sw.run(0)(step(0, 0))                    // ((state, log), answer)
@@ -1150,7 +1144,6 @@ docs/tutorial.md	traverse(fields)(checkEither)      // Left(first problem)
 docs/tutorial.md	traverse(fields)(checkValidated)   // Invalid(all of them)
 docs/tutorial.md	traverse(keys)(fetch)        // sequential, as ever
 docs/tutorial.md	type Errors = Vector[(String, String)]          // field key -> message
-docs/tutorial.md	type F = State % Int + Throws % String
 docs/tutorial.md	val (_, ctx) = Grounded.context(policy, retriever, budget = 6000, share = 0.6)
 docs/tutorial.md	val (mean, digest) = stats.run(data)        // one pass, both statistics
 docs/tutorial.md	val (state, ctx) = Handlers.context(Compact.window(4000)(Compact.chars))
@@ -1179,7 +1172,6 @@ docs/tutorial.md	val p = Person("ann", 41, List("a"), None)
 docs/tutorial.md	val plan = eachLine.traverseOf(priceLine)(order)
 docs/tutorial.md	val plan = traverse(keys)(k => Static.op(Get(k)))   // the same traverse
 docs/tutorial.md	val profile: Profile ! Async = direct:
-docs/tutorial.md	val prog: Int ! State % Int =
 docs/tutorial.md	val repo = RepoAgent.index(RepoAgent.load(File(".")))   // parse, don't regex
 docs/tutorial.md	val retriever = Retrieve.hybrid(Seq(
 docs/tutorial.md	val session = Client.connect(link, Mcp.Info("okay", "1")).runWith
@@ -1194,9 +1186,6 @@ docs/tutorial.md	val u = fetchUser(id).reflect     // neither mentions the other
 docs/tutorial.md	val y = !told("de")                    // runs here
 docs/tutorial.md	wire[Env].uid                        // the capability, inside the block
 docs/tutorial.md	x + x + y + !told("f")                 // log: de, abc, f
-docs/tutorial.md	x <- State.get[Int]
-docs/tutorial.md	y <- State.get[Int]
-docs/tutorial.md	yield y + 2
 docs/tutorial.md	}                                        // List(1, 2)
 docs/typepedia.md	= explicit(...)(p => route(using p))         explicit(summon[Http], ...)
 docs/typepedia.md	class Step(c: Ctx) { given ctx: Ctx = c }

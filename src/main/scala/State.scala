@@ -53,7 +53,19 @@ object State {
 
 
   /** replace the state */
-  inline def set[S](s: S): S ! State % S = effect(Update[S, S](_ => (s, s)))
+  inline def set[S](s: S): S ! State % S = effect(Update[S, S](Put(s)))
+
+  /** `set`'s transition, as DATA: two sets of one value are equal operations (Bisim compares them so), and it
+   * reads as `Update(Put(5))` where a lambda would print its address */
+  final case class Put[S](s: S) extends (S => (S, S)):
+    def apply(old: S): (S, S) = (s, s)
+    // Function1's own toString would win over the case class's
+    override def toString: String = s"Put($s)"
+
+  /** `modify`'s transition, as data: equal when its function is the same one */
+  final case class Modified[S](f: S => S) extends (S => (S, S)):
+    def apply(old: S): (S, S) = { val n = f(old); (n, n) }
+    override def toString: String = s"Modified($f)"
 
   /**
    * apply f to the state, as ONE operation (an `Update`). It means a get
@@ -69,7 +81,7 @@ object State {
    * `.map(_ => ())`, and one who wants the state would otherwise have
    * to ask for it again.
    */
-  inline def modify[S](f: S => S): S ! State % S = effect(Update[S, S](s => { val n = f(s); (n, n) }))
+  inline def modify[S](f: S => S): S ! State % S = effect(Update[S, S](Modified(f)))
 
   /**
    * a transition that ANSWERS something computed from the old state:
