@@ -1,1 +1,0 @@
-claude session_01FeSfUJ4Z4YBWrEERDnoghu, 2026-10-02, operator ask ("Продолжай" after okay2-level1-api): okay2 TailRecM + Effects.foldMap, and Handler.control without a capture on a tail resume (sprint.d/doing/okay2-effects-foldmap.md, okay2-handler-control-resume.md), one lane
