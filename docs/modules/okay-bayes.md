@@ -219,6 +219,19 @@ val (p1, diff) = AbTest.compare(a, b, 100000, Random(1))
 posterior of the lift (1.23 per visitor). `Variant.exact` gives the
 posterior mean and sd in closed form.
 
+**Vectors: `sampleN`.** A vector of parameters is that many named
+scalars — `sampleN("theta", d, 8)` draws `theta[0]` … `theta[7]` — so
+every sampler takes it as it is, and `post.vector("theta")` reads the
+draws back per element. Eight schools, the classic hierarchical model
+(Rubin 1981), with the between-school sd fixed so the answer is exact:
+
+```scala
+theta <- sampleN("theta", Normal(mu, tau), 8)
+_ <- observeAll(theta.indices)(j => Normal(theta(j), sigma(j)), y)
+```
+
+`Smooth.paramN` is the same for a model over `Grad`.
+
 **Reading the posterior.** `post.site("lambda_1")` is a site's chain,
 `post.draws` the program's values; `Summary` has the mean, sd, quantiles,
 the highest-density interval, the effective sample size (Geyer's initial
@@ -258,7 +271,7 @@ by `uv` through okay-py, samples the same model as a Live test.
 | | |
 |---|---|
 | `Normal, Exponential, Gamma(shape, rate), Beta, Uniform, Poisson, Bernoulli, Binomial, DiscreteUniform(lo, hi), Mixture(components)` | `logPdf`, `sample`, a symmetric `propose`, `coerce` (a trace value back as its own type) |
-| `sample(name, d)`, `observe(d, x)`, `observeAll(xs)(d, value)`, `factor(logW)` | the `Model` effect |
+| `sample(name, d)`, `sampleN(name, d, n)`, `observe(d, x)`, `observeAll(xs)(d, value)`, `observeEach`, `factor(logW)` | the `Model` effect |
 | `prior(p, rng)`, `weighted(p, n, rng)`, `metropolis(p, samples, burn, thin, chains, seed)` | handlers: a forward run, likelihood weighting, lightweight MH |
 | `adaptive(p, samples, burn, thin, chains, seed)` | MH with joint moves under a learnt covariance (Haario 2001) |
 | `Bandit(arms)`, `choose(rng)`, `observe(arm, won)`, `posterior(arm)`, `Bandit.play(b, pulls, rng)(pull)` | Thompson sampling over Bernoulli arms |
@@ -272,7 +285,7 @@ by `uv` through okay-py, samples the same model as a Live test.
 | `Decision.action(draws, lo, hi)(loss)`, `Decision.expectedLoss`; `Loss.squared / absolute / pinball(τ)` | the Bayes action |
 | `Dirichlet(alpha)` (`sample`, `logPdf`, `mean`, `covariance`); `AbTest.Variant`, `revenue`, `compare` | A/B testing by expected revenue |
 | `smc(p, particles, seed)`, `observeEach(xs)(d, value)` | sequential Monte Carlo: `Particles` with `expect`, `mean(site)`, `ess`, `logEvidence` |
-| `Posterior`: `draws`, `site(name)`, `rhat(name)`, `acceptance` | the posterior, typed |
+| `Posterior`: `draws`, `site(name)`, `vector(name)`, `rhat(name)`, `acceptance` | the posterior, typed |
 | `Summary.mean / sd / quantile / hdi / ess / rhat` | reading it |
 
 ## Literature

@@ -70,6 +70,12 @@ object Smooth:
 
   inline def param(name: String, prior: Prior): Real ! Grad = effect(Grad.Param(name, prior))
   inline def score(logWeight: Real): Unit ! Grad = effect(Grad.Score(logWeight))
+  /** `n` parameters `name[i]` under one prior — a vector as n named scalars */
+  def paramN(name: String, prior: Prior, n: Int): Vector[Real] ! Grad =
+    // recursion deferred into the program's flatMap, as Bayes.sampleN
+    def from(i: Int, acc: Vector[Real]): Vector[Real] ! Grad =
+      if i == n then okay.pure[Grad, Vector[Real]](acc) else param(s"$name[$i]", prior).flatMap(x => from(i + 1, acc :+ x))
+    from(0, Vector.empty)
   def observe[X](d: Density[X], x: X): Unit ! Grad = score(d.logPdf(x))
   /** every element in one score, each under the density `d` gives it */
   def observeAll[X, Y](xs: Iterable[X])(d: X => Density[Y], value: X => Y): Unit ! Grad =

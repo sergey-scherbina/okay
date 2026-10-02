@@ -1,6 +1,6 @@
 # okay-bayes — Bayesian inference as effects, without Python
 
-Status: stage 1 landed (2026-10-02); stage 2a (ch.2, adaptive Metropolis) 2b (SMC), 2c (ch.3), 2d (ch.6), 3a (NUTS), 3b (AD) and 4 (the sampler facade), 5a (ch.4), 5b (ch.5), 5c (ch.7) 2026-10-02; specification 2026-10-02 (operator ask: "Bayesian Methods for
+Status: stage 1 landed (2026-10-02); stage 2a (ch.2, adaptive Metropolis) 2b (SMC), 2c (ch.3), 2d (ch.6), 3a (NUTS), 3b (AD) and 4 (the sampler facade), 5a (ch.4), 5b (ch.5), 5c (ch.7), §6 vectors 2026-10-02; specification 2026-10-02 (operator ask: "Bayesian Methods for
 Hackers ... make okay-bayes so we can do without Python; is it very
 hard?"). Builds on the core's `Prob` effect (specs/prob-effect-hansei.md:
 discrete `dist`, boolean `observe`, exact enumeration, rejection).
@@ -448,8 +448,11 @@ from 0.10 to 2.37.
   n)`, `Posterior.vector(name)`. A distribution over vectors as ONE site
   (a Dirichlet, an LKJ correlation) would need a vector-valued trace and a
   simplex transform: not built, and nothing in the book needs it as a site.
-  - [ ] `sampleN` / `paramN` name the elements `name[i]` and answer them
+  - [x] `sampleN` / `paramN` name the elements `name[i]` and answer them
         in order; `Posterior.vector` reads them back per element
-  - [ ] eight schools (Rubin 1981) with τ fixed — jointly Gaussian, so the
+  - [x] eight schools (Rubin 1981) with τ fixed — jointly Gaussian, so the
         posterior of μ and of every θⱼ is exact — by `adaptive` and by
-        AD NUTS
+        AD NUTS. Measured (TestVector, JVM/JS/Native): μ 4.33 by adaptive,
+        4.27 by AD NUTS, exact 4.34; θ by adaptive 6.8 5.2 3.7 4.7 3.0 3.8
+        7.0 5.0 against the exact 6.7 5.1 3.7 4.8 3.1 3.8 7.1 4.9 —
+        every one within 4 standard errors, every sd within 10%

@@ -29,6 +29,13 @@ final case class Posterior[A](chains: Vector[Chain[A]]):
   def draws: Vector[A] = chains.flatMap(_.draws)
   def site(name: String): Vector[Double] = chains.flatMap(_.site(name))
   def rhat(name: String): Double = Summary.rhat(chains.map(_.site(name)))
+  /** a vector drawn by `sampleN` / `Smooth.paramN`: per element `name[i]`, in index order, its pooled draws */
+  def vector(name: String): Vector[Vector[Double]] =
+    val prefix = name + "["
+    val indices = chains.iterator.flatMap(_.sites.headOption.toList).flatMap(_.keysIterator)
+      .collect { case k if k.startsWith(prefix) && k.endsWith("]") => k.substring(prefix.length, k.length - 1).toIntOption }
+      .flatten.toVector.distinct.sorted
+    indices.map(i => site(s"$name[$i]"))
   def acceptance: Map[String, Double] =
     chains.flatMap(_.acceptance).groupMapReduce(_._1)(_._2)(_ + _).view.mapValues(_ / chains.length).toMap
 
@@ -49,6 +56,13 @@ final case class Particles[A](values: Vector[A], sites: Vector[Map[String, Doubl
 object Bayes:
   /** draw `name` from `d` */
   inline def sample[A](name: String, d: Distribution[A]): A ! Model = effect(Model.Sample(name, d))
+
+  /** `n` draws from `d`, each its own site `name[i]` — a vector as n named scalars, so every sampler takes it */
+  def sampleN[A](name: String, d: Distribution[A], n: Int): Vector[A] ! Model =
+    // recursion deferred into the program's flatMap: one step per element, trampolined by the handler loop
+    def from(i: Int, acc: Vector[A]): Vector[A] ! Model =
+      if i == n then okay.pure[Model, Vector[A]](acc) else sample(s"$name[$i]", d).flatMap(x => from(i + 1, acc :+ x))
+    from(0, Vector.empty)
 
   /** weigh the run by e^logWeight */
   inline def factor(logWeight: Double): Unit ! Model = effect(Model.Factor(logWeight))
