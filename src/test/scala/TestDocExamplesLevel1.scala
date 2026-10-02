@@ -98,6 +98,22 @@ class TestDocExamplesLevel1 extends munit.FunSuite:
     assertEquals(h, 22)
   }
 
+  test("the named patterns: exit, and a generator") {
+    import okay.Shift.{collect, emit, exit}
+    def firstOver(limit: Int, xs: List[Int]): Int ! Pure = reset {
+      !.foldM(xs)(0)((_, x) => if x > limit then exit[Int](x) else pure[Shift % Int, Int](x)).map(_ => -1)
+    }
+
+    val found = firstOver(10, List(3, 12, 40)).run   // 12: the rest is never looked at
+
+    def evens(n: Int)(using Shift.In.Aux[List[Int], Pure]): Unit ! Shift % List[Int] =
+      if n == 0 then pure(()) else (if n % 2 == 0 then emit(n) else pure[Shift % List[Int], Unit](())).flatMap(_ => evens(n - 1))
+
+    val listed = collect(evens(6)).run   // List(6, 4, 2)
+    assertEquals(found, 12)
+    assertEquals(listed, List(6, 4, 2))
+  }
+
   test("through the typeclass") {
     def program[M[_[+_], _]](using E: Effects[M]): M[State % Int, Int] =
       E.reset[Int, State % Int](

@@ -118,6 +118,29 @@ val h = crossing.map(_.length).handle(Reset[Int]).run   // 22: the Int capture c
 The answer type's key is made at compile time. A `reset` or `shift` over an abstract type `R` asks for a
 `Shift.Key[R]` parameter, as code over an abstract type asks for a `ClassTag`.
 
+## The named patterns
+
+The captures most programs want have names (`import okay.Shift.{collect, emit, exit}`). `exit(v)` leaves
+the nearest `reset` block with `v`:
+
+```scala
+def firstOver(limit: Int, xs: List[Int]): Int ! Pure = reset {
+  !.foldM(xs)(0)((_, x) => if x > limit then exit[Int](x) else pure[Shift % Int, Int](x)).map(_ => -1)
+}
+
+val found = firstOver(10, List(3, 12, 40)).run   // 12: the rest is never looked at
+```
+
+`collect { … }` runs a body and answers everything it `emit`ted, in order. It is a generator with no thread
+and no buffer:
+
+```scala
+def evens(n: Int)(using Shift.In.Aux[List[Int], Pure]): Unit ! Shift % List[Int] =
+  if n == 0 then pure(()) else (if n % 2 == 0 then emit(n) else pure[Shift % List[Int], Unit](())).flatMap(_ => evens(n - 1))
+
+val listed = collect(evens(6)).run   // List(6, 4, 2)
+```
+
 ## Direct style
 
 The same programs as plain code, with `okay-direct`'s `direct` block. A program marked with `.?` is its

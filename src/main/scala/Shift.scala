@@ -45,6 +45,23 @@ object Reset:
 
 object Shift:
 
+  // THE NAMED PATTERNS (shift-patterns): the captures most programs want, over `Shift % R`, so an early exit and a
+  // generator need no `Delim` in sight. In this object (`Shift.exit`, or `import Shift.*`): a top-level `collect`
+  // would clash with Stream's extension of the name.
+
+  /** leave the nearest `reset` block now, with its answer `v`: what follows is dropped */
+  def exit[A](using in: Shift.In)(v: in.R)(using at: At): A ! Shift % in.R + in.F =
+    okay.shift0[A](_ => pure(v))
+
+  /** a generator: run `body`, and answer everything it `emit`ted, in order */
+  def collect[W, F[+_]](body: Shift.In.Aux[List[W], F] ?=> Unit ! Shift % List[W] + F)
+                       (using Shift.Key[List[W]], Distinct[Shift % List[W] + F], Shift.Nesting[F]): List[W] ! F =
+    okay.reset[List[W], F](body.map(_ => Nil))
+
+  /** inside `collect`: hand `w` out, and go on */
+  def emit[W](w: W)(using in: Shift.In { type R = List[W] }, at: At): Unit ! Shift % List[W] + in.F =
+    okay.shift0[Unit](k => k(()).map(w :: _))
+
   /**
    * A `reset` that runs its own machine runs it INSIDE whatever forced it, and nested resets of one answer type
    * each start one: JVM depth grows with the nesting (3 000-10 000 deep, then StackOverflowError). So the runs
