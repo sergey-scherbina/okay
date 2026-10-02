@@ -189,6 +189,23 @@ a `Target` short of a Stan plugin, recorded, not built.
       other's output"
 - [x] `Samplers.byName`: the two names, and a third refused naming them
 
+Stage 5 — the rest of the book, one lane per chapter:
+- 5a. ch.4, the law of large numbers and RANKING: `Beta.cdf` and
+  `Beta.quantile` exact (the regularized incomplete beta by Lentz's
+  continued fraction, the quantile by safeguarded Newton), and `Rank` —
+  items ordered by the lower bound of their Beta posterior, not by their
+  raw ratio, the book's answer to "1 upvote of 1 beats 999 of 1000".
+  - [ ] `Beta.cdf` against closed forms (Beta(1, 1), Beta(a, 1) = xᵃ,
+        Beta(2, 2)) and symmetry; `quantile` its inverse to 1e-10
+  - [ ] the book's approximate lower bound against the exact quantile:
+        close for many votes, wrong by how much for few — measured
+  - [ ] the ranking: a small sample cannot outrank a large one with a
+        slightly lower ratio, and ties in ratio order by evidence
+  - [ ] the law of large numbers as the book shows it: the spread of a
+        mean of n draws falls as 1/√n
+- 5b. ch.5, loss functions and the Bayes action.
+- 5c. ch.7, A/B testing by expected revenue (Dirichlet).
+
 ## 4. Decisions
 
 1. **A new module, not the core's `Prob`.** `Prob` is discrete and exact
