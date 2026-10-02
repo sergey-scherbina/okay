@@ -1,1 +1,0 @@
-claude session_01EpHeM4HTPNHdPJjvCNaWHg, 2026-10-02, operator ask ("Да"): okay-bayes and okay-refine JVM-only sources from the hidden .jvm/src to src/*/scala-jvm, the repo layout; TestDocSnippets loses its .jvm workaround
