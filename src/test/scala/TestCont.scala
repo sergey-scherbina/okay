@@ -7,15 +7,15 @@ class TestCont extends munit.FunSuite {
       inline def ? : (A1, A2) = (t._1(), t._2())
 
     inline def delay[A, B](a: => A) =
-      shift((k: A => B) => () => k(a))
+      Cont.shift((k: A => B) => () => k(a))
 
-    val example1 = reset(for {
+    val example1 = Cont.reset(for {
       _ <- delay(println("Hello,"))
       _ <- delay(println("World!"))
       _ <- delay(println("Goodbye!"))
     } yield ())
 
-    val example2 = reset(for {
+    val example2 = Cont.reset(for {
       _ <- delay(println("1"))
       _ <- delay(println("2"))
       _ <- delay(println("3"))
@@ -29,7 +29,7 @@ class TestCont extends munit.FunSuite {
     val n = 1000000
     val m = (1 to n).foldLeft(Cont.Pure(0): Int /> Int): (m, _) =>
       m.flatMap(x => Cont.Pure(x + 1))
-    assertEquals(reset(m), n)
+    assertEquals(Cont.reset(m), n)
   }
 
   test("tagless Control: Cont and Func agree") {
@@ -57,7 +57,7 @@ class TestCont extends munit.FunSuite {
     assert(isBind(s.flatMap(succ)), "a bind on a leaf is a node")
     assert(isBind(s.flatMap(succ).flatMap(succ)), "and so is the next")
     assert(isBind(Cont.Pure(0).flatMap(succ)), "a Pure receiver is a node too")
-    assertEquals(reset(s.flatMap(succ).flatMap(succ)), 2)
+    assertEquals(Cont.reset(s.flatMap(succ).flatMap(succ)), 2)
   }
 
   test("a leading shift, then 1M binds, stack-safe") {
@@ -66,7 +66,7 @@ class TestCont extends munit.FunSuite {
     val n = 1000000
     val m = (1 to n).foldLeft(Cont.shiftLeaf[Int, Int, Int](k => k(0))): (m, _) =>
       m.flatMap(x => Cont.Pure(x + 1))
-    assertEquals(reset(m), n)
+    assertEquals(Cont.reset(m), n)
   }
 
   test("leaves joined by binds: every bind a node, the answer unchanged") {
@@ -78,14 +78,14 @@ class TestCont extends munit.FunSuite {
     val joined = leaf(1).flatMap(x => leaf(2).map(_ + x))
     assert(joined match { case Freer.Bind(a, _) => isBind(a) && (a match { case Freer.Bind(l, _) => isOp(l); case _ => false }); case _ => false },
            "joining is a node over the left leaf's node")
-    assertEquals(reset(joined), 6)
+    assertEquals(Cont.reset(joined), 6)
   }
 
   test("staged: one inline program, both carriers, no dispatch") {
     inline def prog[M[_, _, _]]: M[Int, Int, Int] =
       val C = Control[M]
       C.flatMap(C.pure(1))(x => C.shift((k: Int => Int) => k(x + 1) * 10))
-    assertEquals(reset(prog[Cont]), 20)
+    assertEquals(Cont.reset(prog[Cont]), 20)
     assertEquals(prog[Func](identity), 20)
   }
 
@@ -94,14 +94,14 @@ class TestCont extends munit.FunSuite {
       if n == 0 then Cont.Pure(true) else Cont.defer(() => isOdd(n - 1))(Cont.Pure)
     def isOdd(n: Int): Boolean /> Boolean =
       if n == 0 then Cont.Pure(false) else Cont.defer(() => isEven(n - 1))(Cont.Pure)
-    assert(reset(isEven(1000000)))
-    assert(!reset(isOdd(1000000)))
+    assert(Cont.reset(isEven(1000000)))
+    assert(!Cont.reset(isOdd(1000000)))
   }
 
   test("the diagonal of a ParaMonad is an ordinary Monad") {
     def sum[F[_] : Monad](a: F[Int], b: F[Int]): F[Int] =
       a.flatMap(x => b.map(x + _))
-    assertEquals(reset(sum[[A] =>> A /> Int](Cont.Pure(1), Cont.Pure(2))), 3)
+    assertEquals(Cont.reset(sum[[A] =>> A /> Int](Cont.Pure(1), Cont.Pure(2))), 3)
   }
 
 }

@@ -281,10 +281,10 @@ object State {
  */
 object PState {
   /** read the state, leaving its type unchanged */
-  inline def get[S, R]: Cont[S, S => R, S => R] = shift(k => getAt(k))
+  inline def get[S, R]: Cont[S, S => R, S => R] = Cont.shift(k => getAt(k))
 
   /** write a state of a possibly different type; the old state is the value */
-  inline def set[S, S2, R](s2: S2): Cont[S, S2 => R, S => R] = shift(k => setAt(k, s2))
+  inline def set[S, S2, R](s2: S2): Cont[S, S2 => R, S => R] = Cont.shift(k => setAt(k, s2))
 
   // The two bodies are GENERIC methods, not lambdas at the inline call
   // site (cont-stack-fastpath, 2026-09-27). Written inline, the lambda

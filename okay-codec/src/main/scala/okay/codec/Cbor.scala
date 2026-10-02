@@ -1,7 +1,7 @@
 package okay.codec
 
 import scala.collection.mutable.ArrayBuffer
-import okay.{Cont, reset, />}
+import okay.{Cont, />}
 
 /**
  * CBOR (RFC 8949) as the second algebra over the SAME Schema: what
@@ -293,7 +293,7 @@ object Cbor {
      * its signature.
      */
     def skipItem(): Either[String, Unit] =
-      if depth >= Codecs.NativeThreshold then reset(skipItemInsideC[Either[String, Unit]])
+      if depth >= Codecs.NativeThreshold then Cont.reset(skipItemInsideC[Either[String, Unit]])
       else skipItemNative()
 
     private def skipItemNative(): Either[String, Unit] =
@@ -369,7 +369,7 @@ object Cbor {
    * call, so the switch happens at whatever level actually crosses
    * it, not only at the top */
   private def get[A](in: In, s: Schema[A]): Either[String, A] =
-    if in.depth >= Codecs.NativeThreshold then reset(getC[A, Either[String, A]](in, s))
+    if in.depth >= Codecs.NativeThreshold then Cont.reset(getC[A, Either[String, A]](in, s))
     else getNative(in, s)
 
   private def getNative[A](in: In, s: Schema[A]): Either[String, A] = s match

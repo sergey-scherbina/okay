@@ -121,9 +121,9 @@ abstract class TestShiftFx(api: ShiftApi) extends munit.FunSuite:
 
   test("level 2: answer-type modification with an effect in the answer (printf with Writer)") {
     type W = Writer % String
-    def lift[X, Ans](m: X ! W): Cont[X, Ans ! W, Ans ! W] = okay.shift(k => m.flatMap(k))
+    def lift[X, Ans](m: X ! W): Cont[X, Ans ! W, Ans ! W] = okay.Cont.shift(k => m.flatMap(k))
     val int: Cont[String, String ! W, (Int => String ! W) ! W] =
-      okay.shift(k => pure((n: Int) => k(n.toString)))
+      okay.Cont.shift(k => pure((n: Int) => k(n.toString)))
     val fmt: Cont[String, String ! W, (Int => String ! W) ! W] =
       for
         s <- int

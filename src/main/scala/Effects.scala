@@ -133,7 +133,7 @@ trait Effects[M[_[+_], _]]:
   def handle[F[+_], G[+_]](using TypeableK[F])[A, B](m: M[F + G, A])
                           (ret: A => M[G, B])
                           (h: F !> M[G, B]): M[G, B] =
-    m.foldCont[M[G, B]]([X] => e => split[F, G](e)(e => h(e))(e => shift(k => perform(e).flatMap(k)))) / ret
+    m.foldCont[M[G, B]]([X] => e => split[F, G](e)(e => h(e))(e => Cont.shift(k => perform(e).flatMap(k)))) / ret
 
 /**
  * The freer monad is the initial (defunctionalized) encoding of Effects:
@@ -266,7 +266,7 @@ given Effects[Free] with
  */
 inline def convert[M[_[+_], _] : Effects,
   N[_[+_], _] : Effects as N, F[+_], A](m: M[F, A]): N[F, A] =
-  m.foldCont[N[F, A]]([X] => e => shift(k =>
+  m.foldCont[N[F, A]]([X] => e => Cont.shift(k =>
     N.perform(e).flatMap(k))) / (a => N.pure(a))
 
 /**

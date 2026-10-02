@@ -37,8 +37,8 @@ no bookkeeping, no switch, on any platform. A million of them run on a
 128 KB stack:
 
 ```scala
-val deep = (1 to 1_000_000).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => shift[Int, Int, Int](k => k(x + 1))))
-reset(deep) // 1000000 — no frame per level: the body is the value it passes
+val deep = (1 to 1_000_000).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => Cont.shift[Int, Int, Int](k => k(x + 1))))
+Cont.reset(deep) // 1000000 — no frame per level: the body is the value it passes
 ```
 
 **A body that uses the answer** — `k(x + 1) + 1`, `k(1) + k(10)`,
@@ -58,8 +58,8 @@ small thread, and on Scala.js, where there is no fresh stack to switch
 to.
 
 ```scala
-val used = (1 to 1_000_000).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => shift[Int, Int, Int](k => k(x + 1) + 1)))
-reset(used) // 2000000 — no frame per level either: the pending `+ 1`s live on the runner's own stack
+val used = (1 to 1_000_000).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => Cont.shift[Int, Int, Int](k => k(x + 1) + 1)))
+Cont.reset(used) // 2000000 — no frame per level either: the pending `+ 1`s live on the runner's own stack
 ```
 
 **A body the macro cannot read, or should not** — `k` handed to `map`
@@ -78,8 +78,8 @@ stay where they are until the answer comes back. Multi-shot bodies
 keep working across the switch.
 
 ```scala
-val opaque = (1 to 20_000).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => shift[Int, Int, Int](k => List(x + 1).map(k).sum)))
-reset(opaque) // 20000 — `k` handed to `map`: each level a frame; past the room the rest runs on a fresh stack
+val opaque = (1 to 20_000).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => Cont.shift[Int, Int, Int](k => List(x + 1).map(k).sum)))
+Cont.reset(opaque) // 20000 — `k` handed to `map`: each level a frame; past the room the rest runs on a fresh stack
 ```
 
 ## How much room, per platform

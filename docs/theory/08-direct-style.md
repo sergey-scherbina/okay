@@ -26,7 +26,7 @@ The construction is two lines, and answer-type modification (chapter
 
 ```scala
 // Cont.scala (Monadic), 401–409
-inline def reflect[B]: Cont[A, F[B], F[B]] = shift(k => m.flatMap(k))
+inline def reflect[B]: Cont[A, F[B], F[B]] = Cont.shift(k => m.flatMap(k))
 inline def reify[F[_], A, B](p: Cont[A, F[A], F[B]])(using M: Monad[F]): F[B] =
   p / (a => M.pure(a))
 ```

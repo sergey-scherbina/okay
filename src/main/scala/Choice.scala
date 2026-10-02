@@ -52,7 +52,7 @@ given [F[+_]]: MonadPlus[[A] =>> A ! Choose + F] with
 /** all the results of all the branches, forwarding the effects F */
 def runChoice[A, F[+_]](a: A ! Choose + F): Seq[A] ! F =
   Effects[Free].handle[Choose, F](a)(x => pure(Seq(x))):
-    [X] => c => shift: k =>
+    [X] => c => Cont.shift: k =>
       okay.!.foldM(c.as)(Seq.empty[A])((s, x) => k(x).map(s ++ _))
 
 /**
@@ -80,7 +80,7 @@ def runChoice[A, F[+_]](a: A ! Choose + F): Seq[A] ! F =
  */
 def runSeq[S[+X] <: Seq[X], A, F[+_]](p: A ! S + F)(using TypeableK[S]): Seq[A] ! F =
   Effects[Free].handle[S, F](p)(x => pure(Seq(x))):
-    [X] => (s: S[X]) => shift: k =>
+    [X] => (s: S[X]) => Cont.shift: k =>
       okay.!.foldM(s)(Seq.empty[A])((prev, x) => k(x).map(prev ++ _))
 
 /** the class IS the identity for a collection too: the element type

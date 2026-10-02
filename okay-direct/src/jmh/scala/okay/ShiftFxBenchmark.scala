@@ -33,7 +33,7 @@ class ShiftFxBenchmark {
 
   def contSeq(n: Int): Cont[Int, Int, Int] =
     if n == 0 then Cont.Pure(0)
-    else okay.shift[Int, Int, Int](k => k(1) + 0).flatMap(x => Cont.delay(() => contSeq(n - 1)).map(_ + x))
+    else okay.Cont.shift[Int, Int, Int](k => k(1) + 0).flatMap(x => Cont.delay(() => contSeq(n - 1)).map(_ + x))
 
   def delimSeq(p: Prompt[Int])(n: Int): Int ! Delim + P =
     if n == 0 then pure(0)
@@ -49,11 +49,11 @@ class ShiftFxBenchmark {
   @Benchmark def fxDelim_seq(): Int = !.run(ShiftFx.OnDelim.reset[Int, P](fxSeq(ShiftFx.OnDelim)(N)))
   @Benchmark def fxHandled_seqDF(): Int = !.run(ShiftFx.Handled.reset[Int, P](fxSeqDF(ShiftFx.Handled)(N)))
   @Benchmark def fxDelim_seqDF(): Int = !.run(ShiftFx.OnDelim.reset[Int, P](fxSeqDF(ShiftFx.OnDelim)(N)))
-  @Benchmark def cont_seq(): Int = okay.reset(contSeq(N))
+  @Benchmark def cont_seq(): Int = okay.Cont.reset(contSeq(N))
   @Benchmark def delim_seq(): Int = !.run(Delim.reset[Int, P](p => delimSeq(p)(N)))
 
   @Benchmark def fxHandled_twoShot(): Int = { var s = 0; var i = 0; while i < 100 do { s += !.run(fxTwo(ShiftFx.Handled)); i += 1 }; s }
   @Benchmark def fxDelim_twoShot(): Int = { var s = 0; var i = 0; while i < 100 do { s += !.run(fxTwo(ShiftFx.OnDelim)); i += 1 }; s }
-  @Benchmark def cont_twoShot(): Int = { var s = 0; var i = 0; while i < 100 do { s += okay.reset(okay.shift[Int, Int, Int](k => k(1) + k(10)).map(_ * 2)); i += 1 }; s }
+  @Benchmark def cont_twoShot(): Int = { var s = 0; var i = 0; while i < 100 do { s += okay.Cont.reset(okay.Cont.shift[Int, Int, Int](k => k(1) + k(10)).map(_ * 2)); i += 1 }; s }
   @Benchmark def delim_twoShot(): Int = { var s = 0; var i = 0; while i < 100 do { s += !.run(delimTwo); i += 1 }; s }
 }

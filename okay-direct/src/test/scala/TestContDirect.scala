@@ -20,7 +20,7 @@ class TestContDirect extends munit.FunSuite {
       val x: String = !shift[String](k => k("one") + " " + k("two"))
       "<" + x + ">"
     // the block after the capture ran TWICE, once per call of k
-    assertEquals(reset(c), "<one> <two>")
+    assertEquals(Cont.reset(c), "<one> <two>")
   }
 
   test("an import is a statement a direct block may contain") {
@@ -28,14 +28,14 @@ class TestContDirect extends munit.FunSuite {
       import okay.Cont.direct.*         // binds nothing, runs nothing
       val x: String = !shift[String](k => k("a") + k("b"))
       x + "!"
-    assertEquals(reset(c), "a!b!")
+    assertEquals(Cont.reset(c), "a!b!")
   }
 
   test("no capture: the block is an ordinary program") {
     val c: String /> String = direct[Str]:
       val a = "plain"
       a.toUpperCase
-    assertEquals(reset(c), "PLAIN")
+    assertEquals(Cont.reset(c), "PLAIN")
   }
 
   test("the answer type is the block's, so it need not be written") {
@@ -43,7 +43,7 @@ class TestContDirect extends munit.FunSuite {
     val c: Int /> Int = direct[[X] =>> Cont[X, Int, Int]]:
       val n: Int = !shift[Int](k => k(1) + k(2) + k(3))
       n * 10
-    assertEquals(reset(c), 60)
+    assertEquals(Cont.reset(c), 60)
   }
 
   test("an import in a direct block over a program row") {
@@ -65,7 +65,7 @@ class TestContDirect extends munit.FunSuite {
   test("the package-level shift still takes its three type arguments") {
     // the reason `direct.shift` is an import and not an overload:
     // this call shape — no type arguments — must keep resolving here
-    val c: Int /> Int = okay.shift[Int, Int, Int](k => k(1) + k(2))
-    assertEquals(reset(c), 3)
+    val c: Int /> Int = okay.Cont.shift[Int, Int, Int](k => k(1) + k(2))
+    assertEquals(Cont.reset(c), 3)
   }
 }

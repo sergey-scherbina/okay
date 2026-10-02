@@ -56,7 +56,7 @@ class TestHandleForward extends munit.FunSuite {
     // but produce(1) was already committed to the target program and
     // an abort cannot un-perform it. That asymmetry is the whole
     // argument for moving the forwarding arm, so it is asserted.
-    val (a, ops) = trace(handled([X] => (_: Claim[X]) => shift(_ => pure(-1))))
+    val (a, ops) = trace(handled([X] => (_: Claim[X]) => Cont.shift(_ => pure(-1))))
     assertEquals(a, -1)
     assertEquals(ops, List(1))
   }
@@ -64,7 +64,7 @@ class TestHandleForward extends munit.FunSuite {
   test("forwarding: a MULTI-SHOT handler forwards what follows it TWICE") {
     val h: Claim !> (Int ! Produce) =
       [X] => (c: Claim[X]) =>
-        shift[X, Int ! Produce, Int ! Produce]: k =>
+        Cont.shift[X, Int ! Produce, Int ! Produce]: k =>
           k(c.a).flatMap(x => k(c.a).map(y => x + y))
     val (a, ops) = trace(handled(h))
     // each run of the continuation performs produce(3) and answers

@@ -49,8 +49,8 @@ object ShiftFx:
     def reset[R, F[+_]](body: R ! Shift % R + F)(using key: Key[R], d: Distinct[Shift % R + F], n: Nesting[F]): R ! F =
       Effects[Free].handle[Shift % R, F](body)(pure(_)):
         [X] => s =>
-          if s.under then okay.shift[X, R ! F, R ! F](k => reset[R, F](callUnder[R, X, F](s, x => k(x).plus[Shift % R])))
-          else okay.shift[X, R ! F, R ! F](k => call(s, k))
+          if s.under then okay.Cont.shift[X, R ! F, R ! F](k => reset[R, F](callUnder[R, X, F](s, x => k(x).plus[Shift % R])))
+          else okay.Cont.shift[X, R ! F, R ! F](k => call(s, k))
 
   /** (b) on Delim's machine: a prompt per answer type, the innermost installed one answers */
   object OnDelim extends ShiftApi:
@@ -77,7 +77,7 @@ object ShiftFx:
 
   /** level 2: the same program as a `Cont` whose answers are programs: `c / k` is `reset(q >>= k)` */
   def cont[A, R, F[+_]](api: ShiftApi)(q: A ! Shift % R + F)(using Key[R], Distinct[Shift % R + F], Nesting[F]): Cont[A, R ! F, R ! F] =
-    okay.shift[A, R ! F, R ! F](k => api.reset[R, F](q.flatMap(a => k(a).plus[Shift % R])))
+    okay.Cont.shift[A, R ! F, R ! F](k => api.reset[R, F](q.flatMap(a => k(a).plus[Shift % R])))
 
   /** level 2: a whole `Cont` as one capture */
   def embed[A, R, F[+_]](api: ShiftApi)(c: Cont[A, R ! F, R ! F])(using Key[R]): A ! Shift % R + F =

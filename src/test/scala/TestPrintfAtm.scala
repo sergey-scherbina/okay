@@ -15,12 +15,12 @@ package okay
 class TestPrintfAtm extends munit.FunSuite:
 
   /** literal text: no argument, the answer type is unchanged (S -> S) */
-  def lit(s: String): Cont[Unit, String, String] = shift(k => s + k(()))
+  def lit(s: String): Cont[Unit, String, String] = Cont.shift(k => s + k(()))
 
   /** one hole: the answer type grows an arrow, T => (whatever it was) —
    * `hole` does not render T itself; whoever consumes the bound value
    * (typically the `lit` that follows) decides how */
-  def hole[T]: Cont[T, String, T => String] = shift(k => (t: T) => k(t))
+  def hole[T]: Cont[T, String, T => String] = Cont.shift(k => (t: T) => k(t))
 
   test("one hole: the format's answer type is Int => String, not String") {
     // "Score: " ++ show(hole) — bind's OWN result type keeps hole's R
@@ -51,8 +51,8 @@ class TestPrintfAtm extends munit.FunSuite:
     // solutions" on exactly this multi-hole case), which this
     // documentation illustration does not attempt to rebuild.
     val e = compileErrors("""
-      val h: okay.Cont[Int, String, Int => String] = okay.shift(k => (t: Int) => k(t))
-      h.flatMap((a: Int) => h.flatMap((b: Int) => okay.shift[Unit, String, String](k => "x" + k(()))))
+      val h: okay.Cont[Int, String, Int => String] = okay.Cont.shift(k => (t: Int) => k(t))
+      h.flatMap((a: Int) => h.flatMap((b: Int) => okay.Cont.shift[Unit, String, String](k => "x" + k(()))))
     """)
     assert(e.nonEmpty, "two holes composed by ordinary flatMap nesting, which the spec says should not typecheck")
   }

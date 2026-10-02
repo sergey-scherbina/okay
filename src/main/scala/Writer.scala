@@ -547,7 +547,7 @@ type Feed[W] = Unit ! Writer % W
  */
 given Put[Feed] with
   final override inline def put[W](w: W): Unit /> Feed[W] =
-    shift(k => Writer.tell(w).flatMap(_ => k(())))
+    Cont.shift(k => Writer.tell(w).flatMap(_ => k(())))
 
 /**
  * A writer program is a stream of its told values: the same

@@ -110,7 +110,7 @@ class MutualRecursionBenchmark {
   def okayFree(): Boolean = !.run(OkayFree.even(N))
 
   @Benchmark
-  def okayCont(): Boolean = reset(OkayCont.even(N))
+  def okayCont(): Boolean = Cont.reset(OkayCont.even(N))
 
   private val bigStack = java.util.concurrent.Executors.newSingleThreadExecutor { r =>
     val t = new Thread(null, r, "big-stack", 1L << 30)

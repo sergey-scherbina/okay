@@ -15,30 +15,30 @@ class TestContStack extends munit.FunSuite:
 
   test("shifts in a row whose bodies return k(v): the answer, on a small stack") {
     val m = (1 to n).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => Cont.shiftLeaf[Int, Int, Int](k => k(x + 1))))
-    assertEquals(SmallStack.run(2048)(reset(m)), n)
+    assertEquals(SmallStack.run(2048)(Cont.reset(m)), n)
   }
 
   test("shifts in a row whose bodies USE the answer: k(v) + 1") {
-    val m = (1 to n).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => shift[Int, Int, Int](k => k(x + 1) + 1)))
-    assertEquals(SmallStack.run(2048)(reset(m)), 2 * n)
+    val m = (1 to n).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => Cont.shift[Int, Int, Int](k => k(x + 1) + 1)))
+    assertEquals(SmallStack.run(2048)(Cont.reset(m)), 2 * n)
   }
 
   test("an absorbed leaf in a row: shift(...).flatMap(...) each time") {
     def step(x: Int): Int /> Int = Cont.shiftLeaf[Int, Int, Int](k => k(x + 1)).flatMap(y => Cont.Pure[Int, Int](y))
     val m = (1 to n).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(step))
-    assertEquals(SmallStack.run(2048)(reset(m)), n)
+    assertEquals(SmallStack.run(2048)(Cont.reset(m)), n)
   }
 
   test("multi-shot across the switch: k called twice at every level") {
     val d = 14
-    val m = (1 to d).foldLeft(Cont.Pure[Long, Long](0L): Long /> Long)((m, _) => m.flatMap(x => shift[Long, Long, Long](k => k(x + 1) + k(x + 1))))
-    assertEquals(SmallStack.run(2048)(reset(m)), (1L << d) * d)
+    val m = (1 to d).foldLeft(Cont.Pure[Long, Long](0L): Long /> Long)((m, _) => m.flatMap(x => Cont.shift[Long, Long, Long](k => k(x + 1) + k(x + 1))))
+    assertEquals(SmallStack.run(2048)(Cont.reset(m)), (1L << d) * d)
   }
 
   test("an exception thrown deep crosses every switch") {
     val m = (1 to n).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) =>
       m.flatMap(x => Cont.shiftLeaf[Int, Int, Int](k => if x == n / 2 then throw IllegalStateException("deep") else k(x + 1))))
-    val e = intercept[IllegalStateException](SmallStack.run(2048)(reset(m)))
+    val e = intercept[IllegalStateException](SmallStack.run(2048)(Cont.reset(m)))
     assertEquals(e.getMessage, "deep")
   }
 
@@ -56,13 +56,13 @@ class TestContStack extends munit.FunSuite:
     // the caller's room once, and the fresh 1 GB stack holds the rest
     // (cont-core-design: the stack is counted, never read — the exact
     // road that read it through FFM and granted more is gone)
-    val (answer, switches) = switchesDuring(SmallStack.run(2048)(reset(tail(600))))
+    val (answer, switches) = switchesDuring(SmallStack.run(2048)(Cont.reset(tail(600))))
     assertEquals(answer, 600)
     assert(switches >= 1 && switches <= 600 / 64 + 1, s"$switches switches")
   }
 
   test("a 256 KB thread still switches, and answers") {
-    val (answer, switches) = switchesDuring(SmallStack.run(256)(reset(tail(2000))))
+    val (answer, switches) = switchesDuring(SmallStack.run(256)(Cont.reset(tail(2000))))
     assertEquals(answer, 2000)
     assert(switches >= 1, "a 256 KB stack cannot hold 2000 levels, and it never switched")
   }

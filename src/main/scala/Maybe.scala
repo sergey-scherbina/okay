@@ -46,7 +46,7 @@ object Maybe:
     Effects[Free].handle[Maybe, F](p)(a => pure[F, Option[A]](Some(a))):
       [X] => m => m.value match
         case Some(x) => Cont.Pure(x)
-        case None => shift(_ => pure[F, Option[A]](None))
+        case None => Cont.shift(_ => pure[F, Option[A]](None))
 
   /**
    * SKIP INSTEAD OF STOP. `run` answers a whole program's absence;

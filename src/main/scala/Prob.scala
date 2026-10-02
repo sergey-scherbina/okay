@@ -70,7 +70,7 @@ object Prob:
    */
   def runExact[A, F[+_]](p: A ! Dist + F): Map[A, Double] ! F =
     Effects[Free].handle[Dist, F](p)(a => pure[F, Map[A, Double]](Map(a -> 1.0))):
-      [X] => (c: Dist[X]) => shift: k =>
+      [X] => (c: Dist[X]) => Cont.shift: k =>
         okay.!.foldM(c.choices)(Map.empty[A, Double]): (m, choice) =>
           val (x, w) = choice
           k(x).map(sub => merge(m, sub.view.mapValues(_ * w).toMap))

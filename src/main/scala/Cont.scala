@@ -21,8 +21,6 @@ transparent inline def Control[M[_, _, _]]: Control[M] =
 infix type />[A, R] = Cont[A, R, R]
 /** what `reset` can delimit */
 infix type ^[A, R] = Cont[A, A, R]
-inline def shift[A, S, R](inline f: (A => S) => R): Cont[A, S, R] = Cont.shift(f)
-inline def reset[A, R](c: A ^ R): R = c / identity
 /**
  * `(A => S) => R` as data: a freer tree whose indexes are the answer types; `/` runs it.
  * Free is Cont whose shift body the handler chooses.
@@ -43,6 +41,9 @@ object Cont:
    * (`lazyLeaf`), anything else gets a strict `k` (`shiftLeaf`).
    */
   inline def shift[A, S, R](inline f: (A => S) => R): Rep[A, S, R] = ${ ContMacro.shift('f) }
+
+  /** delimit and run: `c / identity` */
+  inline def reset[A, R](c: Rep[A, A, R]): R = run(c)(identity)
 
   /** an opaque body: run as it is, given a strict `k` (`Resumption`) */
   def shiftLeaf[A, S, R](f: (A => S) => R): Rep[A, S, R] =
@@ -194,7 +195,7 @@ object Cont:
                        (using inline ctx: DirectCtx[F])
                        (using a: AnswerOf[F])
                        (f: (A => a.R) => a.R): F[A] =
-      a(okay.shift[A, a.R, a.R](f))
+      a(Cont.shift[A, a.R, a.R](f))
 
   /** monadic reflection (Filinski, POPL 1994): any monad in direct style */
   object Monadic:

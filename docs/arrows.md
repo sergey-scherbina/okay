@@ -164,10 +164,10 @@ The identity is not:
 
 ```scala
 // exists: hand it the answer
-def idGiven[X, R, A](x: X): Zooming[X, R][A, A] = shift(k => a => k(x)(a))
+def idGiven[X, R, A](x: X): Zooming[X, R][A, A] = Cont.shift(k => a => k(x)(a))
 
 // does not: where would the X come from?
-def id[X, R, A]: Zooming[X, R][A, A] = shift(k => a => k(???)(a))
+def id[X, R, A]: Zooming[X, R][A, A] = Cont.shift(k => a => k(???)(a))
 ```
 
 The identity must compute an `X` while leaving the state alone, and

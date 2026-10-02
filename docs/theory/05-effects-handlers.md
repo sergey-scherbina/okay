@@ -266,7 +266,7 @@ The other half of `handle` shows what an *unhandled* operation looks
 like once lowered — this is the definition, in the `Effects` trait:
 
 ```scala
-split[F, G](e)(e => h(e))(e => shift(k => perform(e).flatMap(k)))
+split[F, G](e)(e => h(e))(e => Cont.shift(k => perform(e).flatMap(k)))
 ```
 
 Read aloud: not mine, so perform it again in the residual row and

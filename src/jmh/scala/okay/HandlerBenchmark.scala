@@ -102,7 +102,7 @@ class HandlerBenchmark {
   @nowarn("msg=cannot be checked at runtime")
   @Benchmark
   def handleCapture(): Int =
-    Effects[Free].handle[Ask, Produce](built)(pure(_))([X] => a => shift(k => k(a.a))).runWith
+    Effects[Free].handle[Ask, Produce](built)(pure(_))([X] => a => Cont.shift(k => k(a.a))).runWith
 
   /** the other road to the same node: `!.tailcall` between two
    * mutually recursive functions, N deep — every hop WAS a
@@ -141,7 +141,7 @@ class HandlerBenchmark {
    * part per level) instead of a frame per level */
   @Benchmark
   def contAnswer(): Int =
-    reset((1 to M).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => shift[Int, Int, Int](k => k(x + 1) + 1))))
+    Cont.reset((1 to M).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => Cont.shift[Int, Int, Int](k => k(x + 1) + 1))))
 
   @Benchmark
   def statePara(): (Long, Long) =

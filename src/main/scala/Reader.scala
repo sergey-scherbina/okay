@@ -213,8 +213,8 @@ object Reader {
     // method's match, not inside the `[X] => ...` lambda handle wants
     // (gadt-on-a-covariant-enum: the same trap SharedOnce.answer met)
     def answer[X](e: Reader[R, X], r2: R): Cont[X, Free[F, A], Free[F, A]] = e match
-      case Ask() => shift(k => k(r2))
-      case Asks(g) => shift(k => k(g(r2)))
+      case Ask() => Cont.shift(k => k(r2))
+      case Asks(g) => Cont.shift(k => k(g(r2)))
     ask[R].at[Reader % R + F].flatMap { r =>
       val r2 = f(r)
       (Effects[Free].handle[Reader % R, F](p)(a => pure[F, A](a)):

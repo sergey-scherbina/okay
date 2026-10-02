@@ -98,8 +98,8 @@ implementation, and rebuild it out of nothing but `shift`.
 The state monad, in full:
 
 ```scala
-def sGet[S, R]: Cont[S, S => R, S => R]           = shift(k => s => k(s)(s))
-def sSet[S, R](s2: S): Cont[Unit, S => R, S => R] = shift(k => _ => k(())(s2))
+def sGet[S, R]: Cont[S, S => R, S => R]           = Cont.shift(k => s => k(s)(s))
+def sSet[S, R](s2: S): Cont[Unit, S => R, S => R] = Cont.shift(k => _ => k(())(s2))
 def sRun[S, A](s: S)(m: Cont[A, S => (S, A), S => (S, A)]): (S, A) =
   (m / (a => (fin: S) => (fin, a)))(s)
 ```

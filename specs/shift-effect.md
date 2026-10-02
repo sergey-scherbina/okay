@@ -127,6 +127,12 @@ one API, one suite over both:
   `direct`; `shift` is `transparent inline`, a mark inside a block
   (`summonFrom` on `DirectCtx`, as `tell`) and the program outside.
 
+- **Level 1 takes the names** (operator, 2026-10-02, "Да. Да. Делай"):
+  `shift`/`reset` at the top level become `Shift % R`'s. Cont's move to
+  `Cont.shift`/`Cont.reset` (cont-shift-rename) with no change in
+  behaviour. Overloading was not an option: both take a lambda `k => …`,
+  and a lambda with no parameter types cannot pick an overload.
+
 ## Results
 
 Probe: `okay-direct/src/test/scala/ShiftFx.scala`,

@@ -39,7 +39,7 @@ infix type Loop[A, R] = Cont[A, R, A => R]
 extension [A](a: A)(using scala.util.NotGiven[A <:< NamedTuple.AnyNamedTuple])
   inline def apply[R](f: A Loop R): R = loop(f)(a)
 /** the argument of the current iteration: shift identity captures the loop context */
-inline def take[A, R]: A Loop R = shift(identity)
+inline def take[A, R]: A Loop R = Cont.shift(identity)
 
 /** the first n elements of a stream (lives here to overload with the
  * Loop take above — toplevel overloads must share a file) */
@@ -83,7 +83,7 @@ inline def generateLazy[A, B](a: A)(f: A => B)
 /** put captures the continuation in the lazy tail */
 given Put[LazyList] with
   final override inline def put[W](w: W): Unit /> LazyList[W] =
-    shift(w #:: _(()))
+    Cont.shift(w #:: _(()))
 
 /** the identity signature: an operation is the value it produces */
 type Produce[A] = Id[A]
@@ -136,7 +136,7 @@ def produced[A](e: Any): A = e.asInstanceOf[A]
  * a diagonal Producer answer would have given — no caller used it */
 given Put[Producer] with
   final override inline def put[W](w: W): Unit /> Producer[W] =
-    shift(k => produce(w).flatMap(_ => k(())))
+    Cont.shift(k => produce(w).flatMap(_ => k(())))
 
 object Producer {
 

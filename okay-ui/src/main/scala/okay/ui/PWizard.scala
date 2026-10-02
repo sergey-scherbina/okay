@@ -34,16 +34,16 @@ object PWizard {
   /** show a view of the state-so-far; the event is the value, the
    * state passes through unchanged */
   def ask[S, R](view: S => Ui): Step[Event, S, S, R] =
-    shift(k => s => Machine.Showing(view(s), e => k(e)(s)))
+    Cont.shift(k => s => Machine.Showing(view(s), e => k(e)(s)))
 
   /** grow (or reshape) the state — PState.set with the old state in
    * hand; the type records the transition */
   def mod[S, S2, R](f: S => S2): Step[Unit, S, S2, R] =
-    shift(k => s => k(())(f(s)))
+    Cont.shift(k => s => k(())(f(s)))
 
   /** read the state-so-far, PState.get verbatim */
   def get[S, R]: Step[S, S, S, R] =
-    shift(k => s => k(s)(s))
+    Cont.shift(k => s => k(s)(s))
 
   /**
    * The recurring composite: show a view, fold the event into a new
@@ -51,7 +51,7 @@ object PWizard {
    * four lines, the typed twin of Form.ask's retry-by-recursion).
    */
   def step[S, S2, R](view: S => Ui)(fold: (S, Event) => Option[S2]): Step[Unit, S, S2, R] =
-    shift { k => s =>
+    Cont.shift { k => s =>
       def loop(s: S): Machine[R] =
         Machine.Showing(view(s), e => fold(s, e) match
           case Some(s2) => k(())(s2)

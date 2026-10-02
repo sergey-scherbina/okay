@@ -62,8 +62,8 @@ DIFFERENT type than its own continuation returns, and here that
 difference is "one more expected argument":
 
 ```scala
-def lit(s: String): Cont[Unit, String, String] = shift(k => s + k(()))
-def hole[T]: Cont[T, String, T => String] = shift(k => (t: T) => k(t))
+def lit(s: String): Cont[Unit, String, String] = Cont.shift(k => s + k(()))
+def hole[T]: Cont[T, String, T => String] = Cont.shift(k => (t: T) => k(t))
 
 val fmt: Cont[Unit, String, Int => String] = hole[Int].flatMap(n => lit(s"Score: $n"))
 val asFunction: Int => String = fmt / (_ => "")

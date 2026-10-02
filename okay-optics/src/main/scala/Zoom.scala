@@ -68,7 +68,7 @@ extension (ps: PState.type)
     // representation `Optic.compiled` exists for exactly this: to hand
     // an optic's two halves to something that is not a profunctor
     val pair = p.compiled
-    shift(k => (s1: S1) => pair.look(s1) match
+    Cont.shift(k => (s1: S1) => pair.look(s1) match
       case Right(a1) => (m / (x => (a2: A2) => k(Some(x))(pair.put(s1, a2))))(a1)
       // the case is not there: the program never runs, the state is
       // already the `S2` the prism found, and the answer says so
@@ -90,14 +90,14 @@ extension (ps: PState.type)
  */
 private[okay] class ZoomStrong[X, R] extends Optic.Strong[PState.Zooming[X, R]]:
   def dimap[A, B, C, D](p: Cont[X, B => R, A => R])(f: C => A, g: B => D): Cont[X, D => R, C => R] =
-    shift(k => (c: C) => (p / (x => (b: B) => k(x)(g(b))))(f(c)))
+    Cont.shift(k => (c: C) => (p / (x => (b: B) => k(x)(g(b))))(f(c)))
 
   def first[A, B, C](p: Cont[X, B => R, A => R]): Cont[X, ((B, C)) => R, ((A, C)) => R] =
-    shift(k => (ac: (A, C)) => (p / (x => (b: B) => k(x)((b, ac._2))))(ac._1))
+    Cont.shift(k => (ac: (A, C)) => (p / (x => (b: B) => k(x)((b, ac._2))))(ac._1))
 
   override def lens[S1, S2, A1, A2](get: S1 => A1, set: (S1, A2) => S2)
                                    (p: Cont[X, A2 => R, A1 => R]): Cont[X, S2 => R, S1 => R] =
-    shift(k => (s1: S1) => (p / (x => (a2: A2) => k(x)(set(s1, a2))))(get(s1)))
+    Cont.shift(k => (s1: S1) => (p / (x => (a2: A2) => k(x)(set(s1, a2))))(get(s1)))
 
 /**
  * The zooming carrier's `Strong`, TOP-LEVEL so that `import

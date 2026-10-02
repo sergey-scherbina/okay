@@ -123,8 +123,8 @@ class TestDelimExamples extends munit.FunSuite {
   //      plain monad cannot say it.
 
   test("answer-type modification: the answer changes type along the way") {
-    val r: String = reset[Int, String](
-      shift[Int, Int, String](k => s"answer: ${k(20) + 2}").map(_ + 20))
+    val r: String = Cont.reset[Int, String](
+      Cont.shift[Int, Int, String](k => s"answer: ${k(20) + 2}").map(_ + 20))
     assertEquals(r, "answer: 42")
   }
 
@@ -174,9 +174,9 @@ class TestDelimExamples extends munit.FunSuite {
   //      example 5 threads by hand is what the continuation is.
 
   object Fmt:
-    def lit[T](s: String): Cont[String, T, T] = shift(k => k(s))
-    def str[T]: Cont[String, T, String => T] = shift(k => (x: String) => k(x))
-    def int[T]: Cont[String, T, Int => T] = shift(k => (n: Int) => k(n.toString))
+    def lit[T](s: String): Cont[String, T, T] = Cont.shift(k => k(s))
+    def str[T]: Cont[String, T, String => T] = Cont.shift(k => (x: String) => k(x))
+    def int[T]: Cont[String, T, Int => T] = Cont.shift(k => (n: Int) => k(n.toString))
 
   test("printf via shift/reset: the format is a for-comprehension") {
     import Fmt.*
@@ -184,7 +184,7 @@ class TestDelimExamples extends munit.FunSuite {
 
     // NOTHING is annotated inside: the expected type on `reset` carries
     // the whole chain of answer types through the generators
-    val greeting: Out = reset[String, Out]:
+    val greeting: Out = Cont.reset[String, Out]:
       for
         x <- lit("Hello, ")
         y <- str
@@ -197,7 +197,7 @@ class TestDelimExamples extends munit.FunSuite {
     // the order of the directives is the order of the arguments, and
     // the types say so: swap them and it does not compile
     assert(compileErrors("""
-      val g: String => Int => String = okay.reset[String, String => Int => String](
+      val g: String => Int => String = okay.Cont.reset[String, String => Int => String](
         for { x <- Fmt.int; y <- Fmt.str } yield x + y)
     """).nonEmpty, "the directives were accepted in the wrong order")
   }

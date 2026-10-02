@@ -1,6 +1,6 @@
 package okay.codec
 
-import okay.{Cont, reset, />}
+import okay.{Cont, />}
 
 /**
  * The STRICT JSON reader: characters straight into a `Schema`, no
@@ -103,7 +103,7 @@ object JsonStrict {
      * Cont; an Option or iso step between two containers is bounded by
      * the schema, which must cross a product or sum to recurse */
     def get[A](sc: Schema[A]): Either[String, A] =
-      if open >= Codecs.NativeThreshold then reset(getC[A, Either[String, A]](sc))
+      if open >= Codecs.NativeThreshold then Cont.reset(getC[A, Either[String, A]](sc))
       else getNative(sc)
 
     private def getNative[A](sc: Schema[A]): Either[String, A] = sc match

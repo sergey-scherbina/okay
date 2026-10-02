@@ -32,11 +32,11 @@ sentence.
 ## What this is in Okay: `Cont`
 
 ```scala
-// Cont.scala:39 — capture the current continuation
-// (Danvy–Filinski, with answer-type modification)
-inline def shift[A, S, R](f: (A => S) => R): Cont[A, S, R] = Cont.Shift(f)
-// Cont.scala:41 — delimit: run with the identity continuation
-inline def reset[A, R](c: A ^ R): R = c / identity
+// Cont.scala, object Cont — capture the current continuation
+// (Danvy–Filinski, with answer-type modification): Cont.shift
+inline def shift[A, S, R](inline f: (A => S) => R): Rep[A, S, R] = ${ ContMacro.shift('f) }
+// delimit: run with the identity continuation: Cont.reset
+inline def reset[A, R](c: Rep[A, A, R]): R = run(c)(identity)
 ```
 
 `Cont[A, S, R]` *means* `(A => S) => R` — chapter 3 explains the three
@@ -145,7 +145,7 @@ val c: String /> String = direct[Str]:
   val x: String = !shift[String](k => k("one") + " " + k("two"))
   "<" + x + ">"
 
-reset(c)    // "<one> <two>" — the rest of the block ran once per k
+Cont.reset(c)    // "<one> <two>" — the rest of the block ran once per k
 ```
 
 Two things are worth naming.
@@ -226,11 +226,11 @@ MOVES the answer type — `str` turns "the delimiter answers `T`" into
 it can be a `for`-comprehension with nothing annotated inside it:
 
 ```scala
-def lit[T](s: String): Cont[String, T, T] = shift(k => k(s))
-def str[T]: Cont[String, T, String => T] = shift(k => (x: String) => k(x))
-def int[T]: Cont[String, T, Int => T] = shift(k => (n: Int) => k(n.toString))
+def lit[T](s: String): Cont[String, T, T] = Cont.shift(k => k(s))
+def str[T]: Cont[String, T, String => T] = Cont.shift(k => (x: String) => k(x))
+def int[T]: Cont[String, T, Int => T] = Cont.shift(k => (n: Int) => k(n.toString))
 
-val greeting: String => Int => String = reset[String, Out]:
+val greeting: String => Int => String = Cont.reset[String, Out]:
   for
     x <- lit("Hello, ")
     y <- str

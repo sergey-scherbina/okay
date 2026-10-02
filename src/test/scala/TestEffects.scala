@@ -70,7 +70,7 @@ class TestEffects extends munit.FunSuite {
     val E = summon[Effects[Free]]
     def run(b: Boolean): Int =
       E.handle[Throws % String, Produce](calc(b))(a => pure(a)):
-        [X] => _ => shift(_ => pure(-1))
+        [X] => _ => Cont.shift(_ => pure(-1))
       .runWith
 
     assertEquals(run(false), 5)

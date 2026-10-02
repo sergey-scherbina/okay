@@ -1,6 +1,6 @@
 package okay.ui
 
-import okay.{!, Pure, Cont, reset, />}
+import okay.{!, Pure, Cont, />}
 import okay.given
 import okay.codec.{Codecs, Json, Schema}
 import scala.annotation.tailrec
@@ -426,7 +426,7 @@ object Form {
     editAtAt(s, value, path, ev, 0)
 
   private def editAtAt(s: Schema[?], value: Json, path: List[Seg], ev: Edit, open: Int): Json =
-    if open >= Codecs.NativeThreshold then reset(editAtC[Json](s, value, path, ev, open))
+    if open >= Codecs.NativeThreshold then Cont.reset(editAtC[Json](s, value, path, ev, open))
     else editAtNative(s, value, path, ev, open)
 
   private def editAtNative(s: Schema[?], value: Json, path: List[Seg], ev: Edit, open: Int): Json =
