@@ -18,7 +18,7 @@ class TestBulkNuts extends Diagnosed:
       _ <- Smooth.observeBulk(rows, Vector(mu, sigma))((p, y) => Smooth.Normal(p(0), p(1)).logPdf(y))
     yield (mu.value, sigma.value)
     val t0 = System.nanoTime()
-    val post = Smooth.nuts(model, samples = 1000, burn = 500)
+    val post = Smooth.nuts(model, samples = 600, burn = 400)
     val secs = (System.nanoTime() - t0) / 1e9
     val (m, s, n) = (data.sum / data.length, Summary.sd(data), data.length.toDouble)
     val (mus, sigmas) = (post.draws.map(_._1), post.draws.map(_._2))

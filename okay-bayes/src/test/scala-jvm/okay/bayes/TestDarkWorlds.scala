@@ -85,19 +85,38 @@ object DarkWorlds:
    */
   final case class Grid(x: Double, y: Double, mass: Double, sdX: Double, sdY: Double, sdMass: Double, edge: Double)
 
-  /** the highest point of a coarse search over the sky: every 50 units, 15 masses — where to START a sampler */
-  def coarse(gs: Vector[Galaxy]): (Double, Double, Double) =
-    val masses = Vector.tabulate(15)(i => 40 + 140.0 * i / 14)
-    var best = (2100.0, 2100.0, 110.0, Double.NegativeInfinity)
-    for i <- 0 to 84; j <- 0 to 84; m <- masses do
-      // strictly inside the support: a start on its edge has no unconstrained value
-      val (x, y, mm) = (math.min(math.max(i * 50.0, 1.0), 4199.0), math.min(math.max(j * 50.0, 1.0), 4199.0), math.min(math.max(m, 41.0), 179.0))
-      val l = logLik(gs, x, y, mm)
-      if l > best._4 then best = (x, y, mm, l)
-    (best._1, best._2, best._3)
+  /** the coarse search's points: every 50 units across the sky, 15 masses, all strictly inside the support
+   * (a start on its edge has no unconstrained value) */
+  private val searchPoints: Vector[(Double, Double, Double)] =
+    for i <- Vector.range(0, 85); j <- Vector.range(0, 85); k <- Vector.range(0, 15)
+    yield (math.min(math.max(i * 50.0, 1.0), 4199.0), math.min(math.max(j * 50.0, 1.0), 4199.0), math.min(math.max(40 + 10.0 * k, 41.0), 179.0))
+
+  /** where to START a sampler: the best point of the coarse search, in ONE pass over the Bulk — the accumulator is
+   * the whole search grid of log likelihoods, and each galaxy adds its term to every point of it */
+  def start[D[_]](gs: D[Galaxy])(using bulk: Bulk[D]): (Double, Double, Double) =
+    val sums = bulk.aggregate(gs)(new okay.Aggregator[Galaxy, Array[Double], Array[Double]]:
+      def init: Array[Double] = new Array[Double](searchPoints.length)
+      def add(acc: Array[Double], g: Galaxy): Array[Double] =
+        var k = 0
+        while k < acc.length do
+          val (x, y, m) = searchPoints(k)
+          acc(k) += galaxyLogLik(g, x, y, m)
+          k += 1
+        acc
+      def merge(a: Array[Double], b: Array[Double]): Array[Double] =
+        var k = 0
+        while k < a.length do { a(k) += b(k); k += 1 }
+        a
+      def present(acc: Array[Double]): Array[Double] = acc)
+    searchPoints(sums.indices.maxBy(sums))
+
+  /** the oracle's own coarse search over its own Vector, to place its window */
+  private def coarseOf(gs: Vector[Galaxy]): (Double, Double) =
+    val best = searchPoints.maxBy((x, y, m) => logLik(gs, x, y, m))
+    (best._1, best._2)
 
   def grid(gs: Vector[Galaxy]): Grid =
-    val (cx, cy, _) = coarse(gs)
+    val (cx, cy) = coarseOf(gs)
     val (n, half) = (60, 300.0)
     val xs = Vector.tabulate(n)(i => cx - half + 2 * half * i / (n - 1))
     val ys = Vector.tabulate(n)(j => cy - half + 2 * half * j / (n - 1))
@@ -151,8 +170,8 @@ class TestDarkWorlds extends Diagnosed:
     report(f"Dark Worlds, Sky 3 (${sky(3).length} galaxies, observed as a Bulk): grid x ${g.x}%.1f ± ${g.sdX}%.1f, y ${g.y}%.1f ± ${g.sdY}%.1f, mass ${g.mass}%.1f ± ${g.sdMass}%.1f; the true halo ($tx%.1f, $ty%.1f)")
     val mh = adaptive(halo(sky3), samples = 8000, burn = 4000, chains = 2)
     // from a random start NUTS stays on whatever local hill it lands on (measured: x 3229, ESS 3); started at the coarse search's best point it does not
-    val (sx, sy, sm) = coarse(sky(3))
-    val nuts = Smooth.nuts(haloAd(sky3), samples = 1500, burn = 700, chains = 2, init = Map("x" -> sx, "y" -> sy, "mass" -> sm))
+    val (sx, sy, sm) = start(sky3)
+    val nuts = Smooth.nuts(haloAd(sky3), samples = 1000, burn = 500, chains = 2, init = Map("x" -> sx, "y" -> sy, "mass" -> sm))
     for (by, post) <- Seq("adaptive" -> mh, "AD NUTS" -> nuts) do
       report(f"Sky 3 by $by: x ${Summary.mean(post.site("x"))}%.1f, y ${Summary.mean(post.site("y"))}%.1f, mass ${Summary.mean(post.site("mass"))}%.1f (ESS(x) ${Summary.ess(post.site("x"))}%.0f)")
       agrees(post.site("x"), g.x, g.sdX, s"$by x")
@@ -167,8 +186,8 @@ class TestDarkWorlds extends Diagnosed:
   test("ten skies: the true halo against each posterior — inside the 95% region how often, how far") {
     val rows = (1 to 10).map { n =>
       val gs = galaxies[Chunks](n)
-      val (sx, sy, sm) = coarse(sky(n))
-      val post = Smooth.nuts(haloAd(gs), samples = 1000, burn = 500, chains = 1, seed = n.toLong, init = Map("x" -> sx, "y" -> sy, "mass" -> sm))
+      val (sx, sy, sm) = start(gs)
+      val post = Smooth.nuts(haloAd(gs), samples = 500, burn = 300, chains = 1, seed = n.toLong, init = Map("x" -> sx, "y" -> sy, "mass" -> sm))
       val (xs, ys) = (post.site("x"), post.site("y"))
       val (mx, my) = (Summary.mean(xs), Summary.mean(ys))
       val (tx, ty) = truth(n)

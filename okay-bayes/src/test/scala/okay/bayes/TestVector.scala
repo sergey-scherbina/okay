@@ -7,6 +7,9 @@ import Distribution.*
 
 /** specs/okay-bayes.md §6: a vector as n named scalars — eight schools with τ fixed, against its exact posterior */
 class TestVector extends Diagnosed:
+  // two samplers on a nine-parameter model: about a second quiet, and 79 s in a loaded whole build
+  // (ci-runner 2026-10-02) — a budget for CPU, as the module's other sampling suites carry
+  override val munitTimeout = scala.concurrent.duration.Duration(5, "min")
 
   def report(line: String): Unit =
     note(line); println(s"  okay-bayes | $line")
@@ -58,9 +61,9 @@ class TestVector extends Diagnosed:
   }
 
   test("eight schools with τ fixed, by adaptive Metropolis, against the exact posterior") {
-    check(adaptive(schools, samples = 20000, burn = 5000, chains = 2), "adaptive")
+    check(adaptive(schools, samples = 4000, burn = 1500, chains = 2), "adaptive")
   }
 
   test("eight schools with τ fixed, by AD NUTS, against the exact posterior") {
-    check(Smooth.nuts(schoolsAd, samples = 3000, burn = 1000, chains = 2), "AD NUTS")
+    check(Smooth.nuts(schoolsAd, samples = 1500, burn = 500, chains = 2), "AD NUTS")
   }

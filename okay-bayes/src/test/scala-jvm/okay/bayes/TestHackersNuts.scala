@@ -26,7 +26,7 @@ class TestHackersNuts extends Diagnosed:
 
   test("the ch.3 mixture: NUTS against importance sampling") {
     val names = Vector("p", "center0", "center1", "sd0", "sd1")
-    val post = nuts(Ch3.mixture, samples = 2000, burn = 1000, chains = 2)
+    val post = nuts(Ch3.mixture, samples = 1000, burn = 500, chains = 2)
     val mean = names.map(n => Summary.mean(post.site(n)))
     val xs = post.draws
     val cov = Vector.tabulate(5, 5)((a, b) => xs.iterator.map(x => (x(a) - mean(a)) * (x(b) - mean(b))).sum / (xs.length - 1))

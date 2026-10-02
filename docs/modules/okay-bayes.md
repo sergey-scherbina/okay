@@ -77,7 +77,7 @@ so the model samples five parameters, not 300 assignments:
 def clusters(p: Double, c0: Double, c1: Double, s0: Double, s1: Double): Mixture[Double] =
 Mixture(Vector(p -> Normal(c0, s0), (1 - p) -> Normal(c1, s1)))
 _ <- observeAll(data)(_ => clusters(p, c0, c1, s0, s1), identity)
-lazy val post = adaptive(mixture, samples = 25000, burn = 10000, chains = 4)
+lazy val post = adaptive(mixture, samples = 10000, burn = 5000, chains = 4)
 ```
 
 The posterior (centres 120.2 and 199.6, sds 30.2 and 22.8, p 0.376) agrees
@@ -249,7 +249,7 @@ local hills, and NUTS from a random start stays on the one it lands on.
 Start it at a coarse search's best point:
 
 ```scala
-val nuts = Smooth.nuts(haloAd(sky3), samples = 1500, burn = 700, chains = 2, init = Map("x" -> sx, "y" -> sy, "mass" -> sm))
+val nuts = Smooth.nuts(haloAd(sky3), samples = 1000, burn = 500, chains = 2, init = Map("x" -> sx, "y" -> sy, "mass" -> sm))
 ```
 
 **Streams and Bulk.** A filter over a stream is a value: `Online.filter(start,

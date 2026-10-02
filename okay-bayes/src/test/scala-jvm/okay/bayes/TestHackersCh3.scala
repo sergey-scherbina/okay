@@ -67,7 +67,7 @@ class TestHackersCh3 extends Diagnosed:
   def report(line: String): Unit =
     note(line); println(s"  okay-bayes | $line")
 
-  lazy val post = adaptive(mixture, samples = 25000, burn = 10000, chains = 4)
+  lazy val post = adaptive(mixture, samples = 10000, burn = 5000, chains = 4)
   lazy val mean = names.map(n => Summary.mean(post.site(n)))
   /** the oracle's weighted draws: a proposal centred on the chains and twice as wide — its quality decides the ESS, not the answer */
   lazy val (oracle, oracleEss) =

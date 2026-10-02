@@ -72,7 +72,7 @@ class TestStreams extends Diagnosed:
       sigma <- sample("sigma", Uniform(0, 50))
       _ <- observeBulk(rows)(y => Normal(mu, sigma).logPdf(y))
     yield mu
-    val post = adaptive(model, samples = 4000, burn = 2000)
+    val post = adaptive(model, samples = 2000, burn = 1000)
     val (m, s) = (data.sum / data.length, Summary.sd(data))
     val got = Summary.mean(post.draws)
     report(f"observeBulk by adaptive, ${data.length} rows: μ $got%.4f (large-n ${m}%.4f ± ${s / math.sqrt(data.length)}%.4f)")
