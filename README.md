@@ -1,4 +1,4 @@
-# Okay! Extensible effects for Scala 3.
+# Okay! Extensible effects for Scala.
 
 There's one thing nearly every effect library does the same way, and I think it's the wrong way.
 
