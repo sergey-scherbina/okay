@@ -1,6 +1,6 @@
 # okay-bayes — Bayesian inference as effects, without Python
 
-Status: stage 1 landed (2026-10-02); stage 2a (ch.2, adaptive Metropolis) 2b (SMC), 2c (ch.3), 2d (ch.6), 3a (NUTS) and 3b (AD) 2026-10-02; specification 2026-10-02 (operator ask: "Bayesian Methods for
+Status: stage 1 landed (2026-10-02); stage 2a (ch.2, adaptive Metropolis) 2b (SMC), 2c (ch.3), 2d (ch.6), 3a (NUTS), 3b (AD) and 4 (the sampler facade) 2026-10-02; specification 2026-10-02 (operator ask: "Bayesian Methods for
 Hackers ... make okay-bayes so we can do without Python; is it very
 hard?"). Builds on the core's `Prob` effect (specs/prob-effect-hansei.md:
 discrete `dist`, boolean `observe`, exact enumeration, rejection).
@@ -182,12 +182,12 @@ so a caller's code changes by an import only. `Samplers.byName("okay" |
 "pymc")` for a config value; `PyMC.missing` names okay-py when it is
 absent. Stan needs its own model language and a C++ toolchain: no road from
 a `Target` short of a Stan plugin, recorded, not built.
-- [ ] the default is ours: `nuts` with no import is `Sampler.Okay`
-- [ ] PyMC behind the import samples OUR target and agrees with the closed
+- [x] the default is ours: `nuts` with no import is `Sampler.Okay`
+- [x] PyMC behind the import samples OUR target and agrees with the closed
       form (a conjugate) and with the grid (Challenger, over `Grad`) —
       the two samplers proven on one target, the facade's "reads the
       other's output"
-- [ ] `Samplers.byName`: the two names, and a third refused naming them
+- [x] `Samplers.byName`: the two names, and a third refused naming them
 
 ## 4. Decisions
 
@@ -254,9 +254,13 @@ acceptance after tuning 0.39.
 PyMC's NUTS on the book's model AS WRITTEN is wrong here: every one of
 5000 draws divergent, answer α -8.27, β -0.26 (the wrong sign). Its model
 is right — PyMC's own logp is -19.1 at the grid's mean against -439.5 at
-its answer, and its gradient matches a finite difference to 1e-6. The
-geometry is what fails: on raw temperature α and β are almost collinear.
-The same posterior through a linear change of variables (standardised
+its answer, and its gradient matches a finite difference to 1e-6. This
+paragraph first blamed the geometry (on raw temperature α and β are almost
+collinear); stage 4 REFUTED that: PyMC's own NUTS, handed okay's target for
+the same model on the same raw temperatures, samples it with no divergence
+and agrees with the grid. The sampler and the geometry are fine; what fails
+is PyMC's model graph for the book's model, here (pytensor's pure-Python
+backend, `cxx=`, is the one difference left untested). The same posterior through a linear change of variables (standardised
 temperature; constant Jacobian; the book's priors kept as a Potential)
 samples with no divergence and agrees with the grid, and that is the
 oracle the Live test runs. okay-bayes needs no reparametrisation: the
@@ -352,6 +356,19 @@ The cost, one gradient at d = 100 (best of 7):
 
 Found on the way: the digamma series started at x = 6 was good to 9e-12
 only; started at 10 it is good to the double.
+
+Stage 4 (2026-10-02), TestNuts / TestSamplers (default gate) and
+TestPyMCSampler (Live): with `import okay.bayes.PyMC.given`, the same
+`Smooth.nuts` calls run PyMC 6.3.2's NUTS on okay's target —
+
+| PyMC on okay's target | exact | PyMC |
+|---|---|---|
+| Beta–Bernoulli mean, sd | 0.6765, 0.0791 | 0.6780, 0.0764 (ESS 817) |
+| Challenger E[β], sd(β), p31 (grid) | 0.2693, 0.1163, 0.9874 | 0.2788, 0.1138, 0.9932 (ESS 238) |
+
+zero divergences both. The second row is the finding that refutes stage
+2a's geometry explanation (corrected there): the same NUTS on the same
+raw-temperature posterior is fine when the density is okay's.
 
 ## 6. Open questions
 

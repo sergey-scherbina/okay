@@ -63,3 +63,8 @@ class TestNuts extends Diagnosed:
     val e = intercept[IllegalArgumentException](nuts(m, samples = 10, burn = 10))
     assert(e.getMessage.contains("'k' is discrete"), e.getMessage)
   }
+
+  test("the sampler is a facade, and with no import it is ours") {
+    assert(summon[Sampler] eq Sampler.Okay)
+    assertEquals(summon[Sampler].name, "okay")
+  }

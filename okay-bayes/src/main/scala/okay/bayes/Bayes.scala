@@ -240,9 +240,10 @@ object Bayes:
    * a structure that changes with a draw are refused by name: they need
    * `metropolis`. The acceptance map carries "(nuts accept)",
    * "(divergent)" (the share of draws whose trajectory diverged) and
-   * "(tree depth)".
+   * "(tree depth)". The sampler is the `Sampler` in scope — ours unless an
+   * import names another (`okay.bayes.PyMC.given`).
    */
-  def nuts[A](p: A ! Model, samples: Int, burn: Int = 1000, chains: Int = 1, seed: Long = 42L, delta: Double = 0.8): Posterior[A] =
+  def nuts[A](p: A ! Model, samples: Int, burn: Int = 1000, chains: Int = 1, seed: Long = 42L, delta: Double = 0.8)(using sampler: Sampler): Posterior[A] =
     val first = pass(p, Map.empty, new Random(seed))
     val names = first.trace.keys.toVector.sorted
     val supports = names.map(n => n -> first.trace(n).dist.support).toMap
@@ -270,7 +271,7 @@ object Bayes:
         case _ => Distribution.NegInf
     }
     Posterior(Vector.tabulate(chains) { c =>
-      val ch = Nuts.sample(target, samples, burn, seed + c, delta)
+      val ch = sampler.run(target, samples, burn, seed + c, delta)
       val runs = ch.draws.map(u => at(u.toArray).get._1)
       Chain(runs.map(_.value), runs.map(_.trace.view.mapValues(_.numeric).toMap),
         Map("(nuts accept)" -> ch.acceptance, "(divergent)" -> ch.divergences.toDouble / math.max(1, samples), "(tree depth)" -> ch.meanDepth))

@@ -17,3 +17,7 @@ on all 5000 draws and answers β ≈ -0.26 (the wrong sign), though its logp
 and gradient are right; α and β are almost collinear on raw temperature.
 The Live oracle (TestHackersPyMC) samples the same posterior through a
 linear change of variables and agrees with the grid (β 0.2701, p31 0.9874).
+
+Corrected by okay-bayes-sampler: the collinearity is NOT the cause. PyMC's
+NUTS handed okay's density for the same raw-temperature model samples it
+with no divergence; the fault is in PyMC's own model graph here.

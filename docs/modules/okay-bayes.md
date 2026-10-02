@@ -63,7 +63,10 @@ val post = adaptive(challenger, samples = 60000, burn = 20000, chains = 2)
 Same budget, effective sample size of β: 151 with `metropolis`, 6879 with
 `adaptive`. PyMC's NUTS, given the book's model exactly as written, diverges
 on every draw here and answers β with the wrong sign; it agrees only after
-temperature is standardised by hand. `adaptive` needs no such rewrite.
+temperature is standardised by hand — yet handed okay's density for the
+same model (`import okay.bayes.PyMC.given`, below) it samples cleanly, so
+the fault is in PyMC's model graph, not the geometry. `adaptive` needs no
+rewrite.
 
 **Mixtures: `Mixture`.** Chapter 3's 300 points come from two clusters, and
 which point belongs to which is unknown. `Mixture(Vector(w1 -> d1, w2 ->
@@ -118,6 +121,20 @@ val post = Smooth.nuts(challenger, samples = 4000, burn = 2000, chains = 2)
 `Smooth.target(p)` is the same `Target` `nuts` uses, so the sampler is the
 same one. At 100 parameters one gradient costs 0.13 ms against 4.9 ms by
 differences on the JVM, and 0.59 ms against 112 ms on Native.
+
+**The sampler is a choice.** `nuts` runs on the `Sampler` in scope: ours
+by default, PyMC's own NUTS after one import (JVM, with okay-py on the
+classpath). PyMC cannot read a Scala program, so it is handed the
+program's `Target` — a black-box log density and gradient it calls back
+into — and the call sites stay as they are:
+
+```scala
+import PyMC.given
+val post = Smooth.nuts(bb, samples = 2000, burn = 1000)
+```
+
+That is how ours is checked against the reference on one and the same
+density. `Samplers.byName("okay" | "pymc")` picks one from a config value.
 
 **Evidence: `smc`.** Sequential Monte Carlo runs many copies of the program
 side by side, each SUSPENDED at its next `observe`; at every observation the
@@ -207,6 +224,7 @@ by `uv` through okay-py, samples the same model as a Live test.
 | `Real`, `Tape`, `Real.exp / log / log1p / sqrt / pow / softplus / sigmoid / lgamma / logSumExp` | reverse-mode AD |
 | `Smooth.param(name, prior)`, `observe`, `observeAll`, `score`; `Smooth.Normal, HalfNormal, Exponential, Gamma, Beta, Uniform, Bernoulli, BernoulliLogit, Poisson, Mixture` | a model over `Grad`, differentiable densities |
 | `Smooth.target(p)`, `Smooth.nuts(p, samples, burn, chains, seed, delta)` | its exact-gradient `Target`, and NUTS on it |
+| `Sampler`, `Sampler.Okay` (default), `PyMC.given` (JVM, optional okay-py), `Samplers.byName` | which NUTS runs `nuts` |
 | `smc(p, particles, seed)`, `observeEach(xs)(d, value)` | sequential Monte Carlo: `Particles` with `expect`, `mean(site)`, `ess`, `logEvidence` |
 | `Posterior`: `draws`, `site(name)`, `rhat(name)`, `acceptance` | the posterior, typed |
 | `Summary.mean / sd / quantile / hdi / ess / rhat` | reading it |

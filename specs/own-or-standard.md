@@ -54,6 +54,7 @@ and now the norm:
 | `okay.compress.Compression` | `Compression.Okay` (`Lz4Frame`, `Zstd`, `Snappy`) | `Aircompressor.given` (io.airlift:aircompressor 2.0.3, optional) | JVM (ours everywhere) |
 | `okay.parquet.ParquetCodec` | `OkayParquet` | `ParquetJava.given` (parquet-hadoop 1.16.0 + hadoop-client-api, optional) | JVM (ours everywhere) |
 | `okay.lake.AvroReader` | `OkayAvro` | `ApacheAvro.given` (org.apache.avro:avro 1.12.1, optional) | JVM |
+| `okay.bayes.Sampler` | `Sampler.Okay` (`Nuts.sample`) | `PyMC.given` (PyMC's NUTS through okay-py, optional) | JVM (ours everywhere) |
 | `okay.crypto.Keccak` | `Keccak.Okay` (`Keccak256`) | `BouncyCastleKeccak.given` (bcprov 1.78.1, optional) | JVM (ours on JVM and JS) |
 
 Consumers made transparent with them: okay-arrow's compressed bodies

@@ -49,8 +49,9 @@ class TestHackersPyMC extends Diagnosed:
         d = np.asarray(damage, dtype=int)
         # The book's model, written as it is NUTS diverges on every draw here
         # (PyMC 6.3.2: alpha -8.3, beta -0.26, 5000 of 5000 divergent) though
-        # its own logp and gradient are right: on raw temperature alpha and
-        # beta are almost collinear. The same posterior through a linear
+        # its own logp and gradient are right. Not the geometry: PyMC's NUTS
+        # on okay's density for the same raw-temperature model has no
+        # divergence (TestPyMCSampler). The same posterior through a linear
         # change of variables (standardised temperature, constant Jacobian,
         # the book's priors kept as a Potential) samples with no divergence.
         m0, s0 = t.mean(), t.std()

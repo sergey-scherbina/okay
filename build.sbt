@@ -2020,7 +2020,10 @@ lazy val okayBayes = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       "org.scalameta" %%% "munit" % "1.1.1" % Test,
     ),
   )
-  .jvmConfigure(_.dependsOn(okayPy % "test->compile"))
+  // okay-py OPTIONAL (specs/own-or-standard.md): only `okay.bayes.PyMC`, the
+  // standard sampler behind an import, names it; nobody depending on
+  // okay-bayes gets it transitively
+  .jvmConfigure(_.dependsOn(okayPy % "optional->compile;test->compile"))
 
 /** the document seam: get/put/delete by key with CAS as data,
  * declared-index queries, per-item atomicity — the one new seam of

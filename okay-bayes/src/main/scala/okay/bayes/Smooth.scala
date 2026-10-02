@@ -130,11 +130,11 @@ object Smooth:
   /** the program's parameter names, in the order the program draws them */
   def names[A](p: A ! Grad): Vector[String] = run(p, _ => Real.const(0.0)).names
 
-  /** `Nuts.sample` on `target(p)`: the program's values and each parameter's draws */
-  def nuts[A](p: A ! Grad, samples: Int, burn: Int = 1000, chains: Int = 1, seed: Long = 42L, delta: Double = 0.8): Posterior[A] =
+  /** the `Sampler` in scope (ours unless an import says otherwise) on `target(p)`: the program's values and each parameter's draws */
+  def nuts[A](p: A ! Grad, samples: Int, burn: Int = 1000, chains: Int = 1, seed: Long = 42L, delta: Double = 0.8)(using sampler: Sampler): Posterior[A] =
     val t = target(p)
     Posterior(Vector.tabulate(chains) { c =>
-      val ch = Nuts.sample(t, samples, burn, seed + c, delta)
+      val ch = sampler.run(t, samples, burn, seed + c, delta)
       val runs = ch.draws.map(u => run(p, k => Real.const(u(k))))
       Chain(runs.map(_.value), runs.map(r => r.names.zip(r.params.map(_.value)).toMap),
         Map("(nuts accept)" -> ch.acceptance, "(divergent)" -> ch.divergences.toDouble / math.max(1, samples), "(tree depth)" -> ch.meanDepth))
