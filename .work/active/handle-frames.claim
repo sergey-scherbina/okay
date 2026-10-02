@@ -1,1 +1,0 @@
-claude session_01YRJ5EcKY1FwNaufrBB3ArS, 2026-10-02, operator ask ("Берись сейчас"): a handler run inside a machine becomes a frame of that machine (Own's trick for handlers), so reset/handler/reset nesting takes no host stack
