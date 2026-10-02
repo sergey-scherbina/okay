@@ -1,0 +1,1 @@
+2026-10-02	7752bb182	9.90	HandlerBenchmark.contAnswer us/op (capture: nearest via found)	35.252	35.184	1.002	core-simplify: cut/nearest share one inline helper; arms alternated B A B A, -f 2 -wi 3 -i 5 each, jmh-lane quiet throughout; B 35.460/35.044, A 35.247/35.120; parity

@@ -306,16 +306,8 @@ object Frames:
       case d: Dollar[F, C, S0, T2, ?, Z] if (d.p eq Cont0.boundary[Any, Any]) && !sh.p.isInstanceOf[Cont0.Handling[?]] =>
         throw NoPrompt(sh.at, sh.p.label, installed(all))
       case d: Dollar[F, C, S0, T2, y2, Z] =>
-        if sh.p eq d.p then
-          val same = identical(sh.p, d.p)
-          val y = same.answer.flip
-          val i = same.index.flip
-          val k = y.liftCo[[a] =>> Stack[F, X, I, T, a]](
-            i.liftCo[[t] =>> Stack[F, X, t, T, y2]](Rev.link(Rev.SnocDollar(rev, d.p, d.ret), noStack[F, y2, T2])))
-          Next[Y, I, I, Y](sh.f(k), noFrames[F, Y, I],
-            y.liftCo[[a] =>> Stack[F, a, S0, I, Z]](i.liftCo[[t] =>> Stack[F, y2, S0, t, Z]](d.below)))
-        else
-          cut(sh, all, d.below, Rev.SnocDollar(rev, d.p, d.ret))
+        if sh.p eq d.p then found(sh, d.p, Rev.link(Rev.SnocDollar(rev, d.p, d.ret), noStack[F, y2, T2]), d.below)
+        else cut(sh, all, d.below, Rev.SnocDollar(rev, d.p, d.ret))
 
     /** the nearest handler frame on the stack that takes `op`, or null */
     @tailrec def handlerFor(op: Any, st: Stack[F, ?, ?, ?, ?]): Cont0.Handling[?] | Null = st match
@@ -356,13 +348,21 @@ object Frames:
     inline def nearest[Y0, I0, X, T, S1, Y, y2](sh: Cont0.Shift0[F, Y0, I0, T, R, X], fs: Frames[F, X, S1, T, Y],
                                          p: Cont0.Delimiter[y2, S1], ret: Y => Freer[G, S1, S1, y2],
                                          below: Stack[F, y2, S0, S1, Z]): Next[?, ?, ?, ?] =
+      found(sh, p, runOf(fs, Dollar[F, Y, S1, S1, y2, y2](p, ret, noStack[F, y2, S1])), below)
+
+    /**
+     * A capture that found its delimiter `p`, in both of its roads (`nearest`, the general `cut`): `k` — the
+     * stack up to and including `p` — and the stack `below` it, both at `p`'s own indexes, re-typed at the
+     * shift's by the generative-prompt claim (one object, one type), and the body run with `k` in that place.
+     * Inline, as `nearest` is: this is the code both had written out, once.
+     */
+    inline def found[Y0, I0, X, T, y2, i2](sh: Cont0.Shift0[F, Y0, I0, T, R, X], p: Cont0.Delimiter[y2, i2],
+                                           k: Stack[F, X, i2, T, y2], below: Stack[F, y2, S0, i2, Z]): Next[?, ?, ?, ?] =
       val same = identical(sh.p, p)
       val y = same.answer.flip
       val i = same.index.flip
-      val k = y.liftCo[[a] =>> Stack[F, X, I0, T, a]](i.liftCo[[t] =>> Stack[F, X, t, T, y2]](
-        runOf(fs, Dollar[F, Y, S1, S1, y2, y2](p, ret, noStack[F, y2, S1]))))
-      Next[Y0, I0, I0, Y0](sh.f(k), noFrames[F, Y0, I0],
-        y.liftCo[[a] =>> Stack[F, a, S0, I0, Z]](i.liftCo[[t] =>> Stack[F, y2, S0, t, Z]](below)))
+      Next[Y0, I0, I0, Y0](sh.f(y.liftCo[[a] =>> Stack[F, X, I0, T, a]](i.liftCo[[t] =>> Stack[F, X, t, T, y2]](k))),
+        noFrames[F, Y0, I0], y.liftCo[[a] =>> Stack[F, a, S0, I0, Z]](i.liftCo[[t] =>> Stack[F, y2, S0, t, Z]](below)))
 
     /** a resumption: `k`'s head segment into the register, the rest of `k` over the live stack */
     def resume[A, T, S2, Y, S1, W](focus: Freer[G, T, R, A], k: Stack[F, A, S2, T, Y],

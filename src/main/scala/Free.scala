@@ -32,12 +32,8 @@ import scala.annotation.tailrec
  * runner (`Shift.at`, `pinned`) and spelt the leaf `(X => Nothing) =>
  * Any` to fit an unindexed tree.
  *
- * Left-nested binds are rebalanced by tail-recursive rotations in
- * `resume` — which also answers the "reflection without remorse"
- * concern (van der Ploeg–Kiselyov 2014): stepping a program one
- * operation at a time measures within ~8% of running it in bulk here
- * (HandlerBenchmark), so the type-aligned queue of that paper is not
- * needed.
+ * Left-nested binds are rebalanced by the rotation in `resume`, whose
+ * doc says why that is enough.
  */
 enum Freer[G[_, _, +_], S, R, +A] {
   /**
@@ -116,8 +112,8 @@ enum Freer[G[_, _, +_], S, R, +A] {
   inline def map[B](f: A => B): Freer[G, S, R, B] = Bind(this, Freer.Mapped[G, S, A, B](f))
 
   /**
-   * THE rotation, and the only one on this side of the library:
-   * normalize to a head form — `Return(a)`, `Inject(e)` or
+   * THE rotation (and `resumeRun` below, the same rotation stopping at
+   * a machine run): normalize to a head form — `Return(a)`, `Inject(e)` or
    * `Bind(Inject(e), k)`, and on an indexed row `Diag(e)` or
    * `Bind(Diag(e), k)` likewise — in constant stack. Written ONCE, for every
    * signature and every index: nothing here casts.
@@ -161,7 +157,9 @@ enum Freer[G[_, _, +_], S, R, +A] {
   /**
    * `resume` that STOPS at a run — a `Delay` whose thunk is a `Frames.Pending` (a machine run, a handler) — and
    * answers it, alone or under its `Bind`, instead of forcing it (handle-frames): a loop that can hand itself
-   * to the machine walks with this, so a run nested in it never runs inside it.
+   * to the machine walks with this, so a run nested in it never runs inside it. The same rotation as `resume`,
+   * kept a method of its own so that `resume` carries no `Pending` test and stays under the inlining
+   * threshold the next comment measures.
    */
   // ONE test for `Bind`, its head matched once: the four `Bind` cases of `resume` written flat measured 345
   // bytes, past HotSpot's FreqInlineSize (325) that `resume`'s 322 sit under — the loops lost its inlining, 1.32x
@@ -361,7 +359,7 @@ object Free {
 
   /** `Freer.defer` at the effect tree's indexes */
   def defer[F[+_], A, B](thunk: () => Free[F, A])(f: A => Free[F, B]): Free[F, B] =
-    Freer.Bind(Freer.Delay(thunk), f)
+    Freer.defer(thunk)(f)
 
   /** `Freer.delay` at the effect tree's indexes */
   def delay[F[+_], A](thunk: () => Free[F, A]): Free[F, A] = Freer.Delay(thunk)
