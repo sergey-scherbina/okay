@@ -24,7 +24,9 @@ operation the machine does not answer (an operation of the program's
 own signature, or a capture to a delimiter `m` does not hold, which
 leaves for the run outside), with the rest of `m` as its continuation.
 `run(m)` is `runHead` under a boundary, where such a capture is
-`NoPrompt`. The machine's loop itself is closed: `Cont`'s strict `k`,
+`NoPrompt`. `runHeadAt(k)(a)` is the same door entered from a captured
+`k`: `runHead(k(a))` without building `k(a)`, which is how a strict `k`
+resumes. The machine's loop itself is closed: `Cont`'s strict `k`,
 `Shift`'s nested runs and `Stacked` all enter through `runHead` (or its
 lazy form, the machine's `owned`), so the reference implementation —
 whose `runHead` is the program itself — checks exactly the door every
