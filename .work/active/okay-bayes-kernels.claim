@@ -1,1 +1,0 @@
-claude session_01EpHeM4HTPNHdPJjvCNaWHg, 2026-10-02, operator ask ("Да" to kernels + resample-move): okay-bayes stage 7 — Markov kernels as combinators (site, joint, nuts block, >>>, mixture), Bayes.sample(p, kernel); then resample-move SMC (sprint.d/doing/okay-bayes.md)
