@@ -211,7 +211,7 @@ is already fastest for its case. The examples use `Accounts`, an effect shaped l
 **1. Answer each operation**, and the program goes on:
 
 ```scala
-val live: Handler[Accounts, [A] =>> A] = Handler.answer[Accounts] {
+val live: Handler[Accounts, [A] =>> A] = Handler.answer {
   case Find(id) => db.get(id)
   case Save(id, name) => db.put(id, name)
 }
@@ -221,7 +221,7 @@ val live: Handler[Accounts, [A] =>> A] = Handler.answer[Accounts] {
 carries the last state:
 
 ```scala
-val store = Handler.state[Accounts, Map[Long, String]](Map(7L -> "ada")) {
+val store = Handler[Accounts].state(Map(7L -> "ada")) {
   case (m, Find(id)) => (m, m.get(id))
   case (m, Save(id, name)) => (m.updated(id, name), m.get(id))
 }
@@ -232,7 +232,7 @@ val renamed = rename(7, "grace").handle(store).run   // (Map(7 -> grace), Some(a
 must hold:
 
 ```scala
-val stored = Handler.into[Accounts, State % Map[Long, String]] {
+val stored = Handler[Accounts].into[State % Map[Long, String]] {
   case Find(id) => State.get[Map[Long, String]].map(_.get(id))
   case Save(id, name) => State.update[Map[Long, String], Option[String]](m => (m.get(id), m.updated(id, name)))
 }
@@ -256,8 +256,12 @@ seen at an abstract `Answer`. Only the operation's own data can produce one: `ca
 and `case Asks(g) => "oops"` is refused. One shape is beyond the cases: an operation whose answer is the
 type one of its own fields has, like `State`'s `Set(s: S)`. Each case must give its own type to the
 answer, and only a polymorphic function can do that. The macro names the operation and points to `.poly`.
-Forms 1 to 3 take a polymorphic function in place of the cases, `.poly { [X] => (e: Accounts[X]) => … }`,
-which the compiler checks with no macro.
+In form 1 the effect is read off the cases: `Find` and `Save` are `Accounts`'s, so `Handler.answer { … }`
+needs no `[Accounts]`. Forms 2 and 3 name it. If form 2 read the effect off its cases, the pair's second
+would be an `Any`, and the compiler's exhaustiveness check over the tuple would warn. An effect with parameters besides its answer (`Reader % Int`) cannot be read off `Ask()` and is
+named: `Handler[Reader % Int].answer { … }`, `Handler[Accounts].into[State % M] { … }`. With the effect named,
+forms 1 to 3 also take a polymorphic function in place of the cases,
+`Handler[Accounts].answer.poly { [X] => (e: Accounts[X]) => … }`, which the compiler checks with no macro.
 
 Measured against the built-ins they re-express (specs/handler-forms.md): `answer` is at parity with
 `Reader(r)`, `state` is 1.04x of `State(s)`, `control` is 1.26x of `Maybe.option`. The cases cost what the

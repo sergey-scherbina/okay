@@ -66,6 +66,16 @@ An `Answers[F]` becomes form 1 with `Handler.from(answers)`.
   clause's answer is `Cont.Pure(x)`; any other use fills the captured `k` before it runs.
 - **`state` is inline**: the clause expands into its call site's loop, so the JIT drops the pair it answers.
 
+- **The effect read off the cases** (handler-infer, the operator: "p.handle(Handler.answer { case Find(id)
+  => … })"). `Handler.answer { case … }` with no `[F]` is a transparent macro. Each pattern names a
+  constructor, the sealed parent they share is the effect, and the result is typed `Handler[F, …]`. The
+  cases are typed against `Any` (no `F` to type them against yet), so an effect with parameters besides its
+  answer (`Reader % Int`: `Ask()` does not say `Int`) is refused by name and NAMED instead. That spelling is
+  now `Handler[F].answer { … }` / `.state(s0)` / `.into[G]`, with `.poly` beside each. One name could not
+  hold both `answer[F]` and `answer(cases)`: Scala calls that overload ambiguous. `state` keeps its effect
+  named. Read off its cases, the pair's second would be an `Any`, and the compiler's exhaustiveness check
+  over `(S, Any)` warns, which `@unchecked` on the component does not reach.
+
 ## Results
 
 JMH (history.d `handler-forms`, one lane at a time, quiet box):

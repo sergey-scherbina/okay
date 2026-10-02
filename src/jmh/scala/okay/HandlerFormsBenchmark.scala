@@ -33,13 +33,13 @@ class HandlerFormsBenchmark {
     if n == 0 then pure(0) else effect[Maybe, Int](Maybe(Some(1))).flatMap(x => !.tailcall(somes(n - 1)).map(_ + x))
 
   // `.poly`: Asks answers a type its pattern binds, which the case form refuses
-  val readerForm = Handler.answer[Reader % Int].poly { [X] => (e: Reader[Int, X]) => e match
+  val readerForm = Handler[Reader % Int].answer.poly { [X] => (e: Reader[Int, X]) => e match
     case Reader.Ask() => 1
     case Reader.Asks(g) => g(1)
   }
 
   // `.poly`: Update answers a type its pattern binds, which the case form refuses
-  val stateForm = Handler.state[State % Int, Int](0).poly { [X] => (s: Int, e: State[Int, X]) => e match
+  val stateForm = Handler[State % Int].state[Int](0).poly { [X] => (s: Int, e: State[Int, X]) => e match
     case State.Get() => (s, s)
     case State.Set(n) => (n, n)
     case State.Modify(g) => { val n = g(s); (n, n) }
@@ -54,19 +54,19 @@ class HandlerFormsBenchmark {
   def ticks(n: Int): Int ! FormTick =
     if n == 0 then pure(0) else effect[FormTick, Int](FormTick.Next()).flatMap(x => !.tailcall(ticks(n - 1)).map(_ + x))
 
-  val tickCases = Handler.answer[FormTick] {
+  val tickCases = Handler[FormTick].answer {
     case FormTick.Next() => 1
     case FormTick.Peek() => 0
   }
-  val tickPoly = Handler.answer[FormTick].poly { [X] => (e: FormTick[X]) => e match
+  val tickPoly = Handler[FormTick].answer.poly { [X] => (e: FormTick[X]) => e match
     case FormTick.Next() => 1
     case FormTick.Peek() => 0
   }
-  val countCases = Handler.state[FormTick, Int](0) {
+  val countCases = Handler[FormTick].state[Int](0) {
     case (n, FormTick.Next()) => (n + 1, n)
     case (n, FormTick.Peek()) => (n, n)
   }
-  val countPoly = Handler.state[FormTick, Int](0).poly { [X] => (n: Int, e: FormTick[X]) => e match
+  val countPoly = Handler[FormTick].state[Int](0).poly { [X] => (n: Int, e: FormTick[X]) => e match
     case FormTick.Next() => (n + 1, n)
     case FormTick.Peek() => (n, n)
   }

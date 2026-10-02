@@ -29,9 +29,25 @@ object Handler:
 
   /**
    * 1 · answer each operation with a value, and the program goes on (`!.relay`):
-   * `Handler.answer[Users] { case Find(id) => … }`, or `.poly { [X] => (e: Users[X]) => … }`
+   * `Handler.answer { case Find(id) => … }`, or with the effect named `Handler[Users].answer { … }` / `.answer.poly`
    */
-  def answer[F[+_]]: Answering[F] = new Answering[F]
+  /** `Handler[Reader % Int].answer { … }`: the forms with the effect named, for one the cases cannot name */
+  def apply[F[+_]]: For[F] = new For[F]
+
+  final class For[F[+_]] private[Handler] ():
+    /** 1 · answer each operation: `{ case … }` or `.poly { [X] => … }` */
+    def answer: Answering[F] = new Answering[F]
+    /** 2 · a state threaded through: `{ case (s, op) => (s', answer) }` or `.poly` */
+    def state[S](init: S): Stating[F, S] = new Stating[F, S](init)
+    /** 3 · each operation a program in `G`: `{ case … }` or `.poly` */
+    def into[G[+_]]: Into[F, G] = new Into[F, G]
+
+  /** the effect read off the cases: `Handler.answer { case Find(id) => … }` */
+  transparent inline def answer(inline cases: Any => Any): Any = ${ inferImpl('cases, 0) }
+
+  /** the inferred form's handler, its cases checked by `inferImpl` (THE CAST it licenses) */
+  def answerErased[F[+_]](cases: Any => Any)(using TypeableK[F]): Handler[F, [A] =>> A] =
+    answerOf[F]([X] => (e: F[X]) => cases(e).asInstanceOf[X])
 
   final class Answering[F[+_]] private[Handler] ():
     /** cases, each checked at compile time against its operation's answer type */
@@ -51,10 +67,10 @@ object Handler:
 
   /**
    * 2 · a state threaded through the operations: `(s, op) => (s', answer)`, the result carrying the last state:
-   * `Handler.state[Users, Int](0) { case (n, Find(id)) => … }`, or `.poly { [X] => (n: Int, e: Users[X]) => … }`
+   * `Handler[Users].state(0) { case (n, Find(id)) => … }`, or `.poly { [X] => (n: Int, e: Users[X]) => … }`. The
+   * effect is named: read off the cases it would leave the pair's second an `Any`, which the compiler's own
+   * exhaustiveness check over the tuple cannot see covered
    */
-  def state[F[+_], S](init: S): Stating[F, S] = new Stating[F, S](init)
-
   final class Stating[F[+_], S] private[Handler] (val init: S):
     /** cases, each checked at compile time: the second of the pair answers the operation's type */
     inline def apply(inline cases: (S, F[Answer]) => Any)(using TypeableK[F]): Handler[F, [A] =>> (S, A)] =
@@ -85,9 +101,8 @@ object Handler:
 
   /**
    * 3 · each operation a program in the effects `G`, which the rest of the row must hold (`!.translate`):
-   * `Handler.into[Users, State % M] { case Find(id) => … }`, or `.poly { [X] => (e: Users[X]) => … }`
+   * `Handler[Users].into[State % M] { case Find(id) => … }`, or `.poly { [X] => (e: Users[X]) => … }`
    */
-  def into[F[+_], G[+_]]: Into[F, G] = new Into[F, G]
 
   final class Into[F[+_], G[+_]] private[Handler] ():
     /** cases, each checked at compile time: the program's value answers the operation's type */
@@ -150,14 +165,77 @@ object Handler:
   /** `kind`: 0 the body is the answer, 1 the pair's second is, 2 the program's value is */
   def checkImpl[F[+_]: Type, S: Type, C: Type](cases: Expr[C], kind: Int)(using q: Quotes): Expr[C] =
     import q.reflect.*
-    val effect = TypeRepr.of[F].appliedTo(TypeRepr.of[Any]).dealias.typeSymbol
+    checkCore(cases.asTerm, TypeRepr.of[F], TypeRepr.of[S], kind)
+    cases
+
+  /** the effect the cases name: the sealed parent every pattern's constructor shares, unary in its answer */
+  def effectOf(using q: Quotes)(cases: q.reflect.Term, kind: Int): q.reflect.TypeRepr =
+    import q.reflect.*
+    val cds = caseDefsOf(cases)
+    def ctorOf(p: Tree): Option[Symbol] = p match
+      case q.reflect.Bind(_, inner) => ctorOf(inner)
+      case TypedOrTest(inner, tpt) => ctorOf(inner).orElse(Some(tpt.tpe.typeSymbol))
+      case Unapply(fun, _, _) => Some(fun.symbol.owner.companionClass).filter(_.exists)
+      case t: Term if t.tpe.termSymbol.exists => Some(t.tpe.termSymbol.moduleClass).filter(_.exists)
+      case _ => None
+    def op(p: Tree): Tree = if kind != 1 then p else p match
+      case Unapply(_, _, List(_, o)) => o
+      case q.reflect.Bind(_, inner) => op(inner)
+      case other => other
+    val ctors = cds.flatMap(cd => ctorOf(op(cd.pattern)))
+    if ctors.isEmpty then
+      report.errorAndAbort("no case names an operation, so the effect cannot be read off them: name it: Handler[F].answer { … }", cases.pos)
+    def parents(c: Symbol): List[Symbol] =
+      c.typeRef.baseClasses.filter(b => b != c && (b.flags.is(Flags.Sealed) || b.flags.is(Flags.Enum)) && b.isClassDef)
+    val shared = parents(ctors.head).filter(b => ctors.forall(c => parents(c).contains(b)))
+    shared.headOption match
+      case None =>
+        report.errorAndAbort(s"these cases name operations of no one effect (${ctors.map(_.name).distinct.mkString(", ")}): name it: Handler[F].answer { … }", cases.pos)
+      case Some(e) =>
+        val tps = e.declaredTypes.filter(_.isTypeParam)
+        if tps.length != 1 then
+          report.errorAndAbort(s"${e.name} has parameters besides its answer, which its operations do not say: " +
+            s"name it: Handler[${e.name} % …].answer { … }", cases.pos)
+        e.typeRef
+
+  def inferImpl(cases: Expr[Any => Any], kind: Int)(using q: Quotes): Expr[Any] =
+    import q.reflect.*
+    val f = effectOf(cases.asTerm, kind)
+    checkCore(cases.asTerm, f, TypeRepr.of[Unit], kind)
+    val typeable = Implicits.search(Symbol.requiredClass("okay.TypeableK").typeRef.appliedTo(f)) match
+      case ok: ImplicitSearchSuccess => ok.tree
+      case no: ImplicitSearchFailure => report.errorAndAbort(no.explanation)
+    val handler = Symbol.requiredModule("okay.Handler")
+    val erased = handler.methodMember("answerErased").head
+    Apply(Apply(TypeApply(Select(Ref(handler), erased), List(Inferred(f))), List(cases.asTerm)), List(typeable)).asExpr
+
+  /** the cases of a `{ case … }` lambda */
+  def caseDefsOf(using q: Quotes)(cases: q.reflect.Term): List[q.reflect.CaseDef] =
+    import q.reflect.*
+    def strip(t: Term): Term = t match
+      case Inlined(_, Nil, e) => strip(e)
+      case Block(Nil, e) => strip(e)
+      case Typed(e, _) => strip(e)
+      // the compiler's own adaptation of the lambda to `F[Answer] => …`
+      case TypeApply(Select(e, "$asInstanceOf$"), _) => strip(e)
+      case other => other
+    strip(cases) match
+      case Block(List(DefDef(_, _, _, Some(body))), _: Closure) => strip(body) match
+        case Match(_, cds) => cds
+        case other => report.errorAndAbort("write the handler as cases: `{ case Op(…) => … }`", other.pos)
+      case other => report.errorAndAbort("write the handler as cases: `{ case Op(…) => … }`", other.pos)
+
+  /** the check itself, for an effect given as a type constructor */
+  def checkCore(using q: Quotes)(cases: q.reflect.Term, effectType: q.reflect.TypeRepr, stateType: q.reflect.TypeRepr, kind: Int): Unit =
+    import q.reflect.*
+    val effect = effectType.appliedTo(TypeRepr.of[Any]).dealias.typeSymbol
     val pair = TypeRepr.of[(Any, Any)].typeSymbol
     val program = TypeRepr.of[Free[scala.Nothing, Any]].typeSymbol
     def last(t: TypeRepr, of: Symbol): Option[TypeRepr] = t.widen.dealias.baseType(of) match
       case AppliedType(_, args) if args.nonEmpty => Some(args.last)
       case _ => None
     // the effect's own parameters, at the answer the cases see (`Env % Int` -> Env[Int, Answer])
-    val effectArgs: List[TypeRepr] = TypeRepr.of[F].appliedTo(TypeRepr.of[Answer]).dealias match
+    val effectArgs: List[TypeRepr] = effectType.appliedTo(TypeRepr.of[Answer]).dealias match
       case AppliedType(_, as) => as
       case _ => Nil
     val answer = TypeRepr.of[Answer]
@@ -217,25 +295,14 @@ object Handler:
       case 0 => rhs.tpe.widen
       case 1 => rhs.tpe.widen.dealias.baseType(pair) match
         case AppliedType(_, List(s, a)) =>
-          if !(s <:< TypeRepr.of[S]) then
-            report.error(s"a case answers (state, answer): its state is ${s.show(using Printer.TypeReprShortCode)}, not ${TypeRepr.of[S].show(using Printer.TypeReprShortCode)}", rhs.pos)
+          if !(s <:< stateType) then
+            report.error(s"a case answers (state, answer): its state is ${s.show(using Printer.TypeReprShortCode)}, not ${stateType.show(using Printer.TypeReprShortCode)}", rhs.pos)
           a
         case _ =>
           report.error("a case answers (state, answer)", rhs.pos)
           TypeRepr.of[scala.Nothing]
       case _ => last(rhs.tpe, program).getOrElse(rhs.tpe.widen)
-    def strip(t: Term): Term = t match
-      case Inlined(_, Nil, e) => strip(e)
-      case Block(Nil, e) => strip(e)
-      case Typed(e, _) => strip(e)
-      // the compiler's own adaptation of the lambda to `F[Answer] => …`
-      case TypeApply(Select(e, "$asInstanceOf$"), _) => strip(e)
-      case other => other
-    val caseDefs: List[CaseDef] = strip(cases.asTerm) match
-      case Block(List(DefDef(_, _, _, Some(body))), _: Closure) => strip(body) match
-        case Match(_, cds) => cds
-        case other => report.errorAndAbort("write the handler as cases: `{ case Op(…) => … }`", other.pos)
-      case other => report.errorAndAbort("write the handler as cases: `{ case Op(…) => … }`", other.pos)
+    val caseDefs: List[CaseDef] = caseDefsOf(cases)
     // EXHAUSTIVE, as an error and not the compiler's warning: every operation of the effect has a case with no
     // guard, or a `case _` stands last
     val all = effect.children
@@ -244,7 +311,7 @@ object Handler:
     val named = covered.flatMap(ctor).toSet
     val missing = all.filterNot(c => named.contains(c) || named.contains(c.companionModule))
     if !wildcard && all.nonEmpty && missing.nonEmpty then
-      report.error(s"not every operation of ${effect.name} is handled: ${missing.map(_.name).mkString(", ")}", cases.asTerm.pos)
+      report.error(s"not every operation of ${effect.name} is handled: ${missing.map(_.name).mkString(", ")}", cases.pos)
     def check(cd: CaseDef): Unit =
       val op = ctor(opPattern(cd.pattern))
       val name = op.map(_.name).getOrElse(opPattern(cd.pattern).show)
@@ -268,7 +335,6 @@ object Handler:
               if !(got <:< TypeRepr.of[scala.Nothing]) then
                 report.error("a case that names no operation cannot know what to answer: only a `throw` may stand here", cd.rhs.pos)
     caseDefs.foreach(check)
-    cases
 
 /** apart from `Handler`, so that inside the macro too `Answer` is abstract and not `Any` */
 object HandlerAnswer:
