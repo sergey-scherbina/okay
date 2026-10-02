@@ -84,6 +84,14 @@ An `Answers[F]` becomes form 1 with `Handler.from(answers)`.
   `Handler.answer { … }`) is gone again: it cannot share the name with `Handler.answer[F]`, and the
   operator prefers the effect named ("явно указываем эффект который хотим обработать").
 
+- **Seen per effect** (handler-shape): see `Handler.Seen`. `F[Any]` for an effect whose only hard operations
+  answer their own field's type, `F[Answer]` otherwise. The macro skips the tied refusal at `Any`.
+- **The built-ins are the forms** (builtins-through-forms): `Reader(r)` is `answerOf` and `State(s)` is
+  `stateOf`, with one implementation each. Kept at 1.04x by the operator's call.
+- **Several handlers at once** (handle-many): explicit evidence per step, because a `transparent inline` body is
+  typed at its definition, where the row is abstract.
+- **control's resume** (control-resume-node): the first call's node defers to the Resume object, -24 B.
+
 ## Results
 
 JMH (history.d `handler-forms`, one lane at a time, quiet box):

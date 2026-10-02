@@ -27,7 +27,8 @@ specs/shift-effect.md.
 | an operation | ready ops; `perform(op)` / `op.perform` | `E.perform(op)` |
 | a capture | `shift[A]`, `shift0[A]` inside `reset { … }`; `shift[R, A, F]` elsewhere (`Shift % R` in the row) | `E.shift`, `E.shift0` |
 | a delimiter | `reset` = `handle(Reset[R])` | `E.reset` |
-| take an effect off | `p.handle(h)`: `State(s)`, `Reader(r)`, `Writer.log`, `Throws.either`, `Choose.all`, `Maybe.option`, `Reset[R]` | `E.handle(p, h)` |
+| take an effect off | `p.handle(h)`, `p.handle(h1, h2)`: `State(s)`, `Reader(r)`, `Writer.log`, `Throws.either`, `Choose.all`, `Maybe.option`, `Once.memo`, `Resource.region`, `Fresh.counter`, `Supply.from`, `Prob.exact`, `Chronicle.verdict`, `Async.blocking`, `Reset[R]` | `E.handle(p, h)` |
+| named patterns | `Shift.exit(v)`, `Shift.collect { … Shift.emit(w) … }` | — |
 | the value | `p.run` | `E.run(p)` |
 | direct style | `direct { … }`, `.?` or auto-colouring | `direct` over `Effects.monad[M, F]` |
 
