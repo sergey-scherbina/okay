@@ -173,7 +173,10 @@ waker then reads the queue — at least one side sees the other.
   `Source.merge`'s release also CLOSES its sides' channels (in `Merge.Ready`,
   all three joins; in `Merge.Shared` the chunked joins' shared channel
   through `Source.releasing`, and the ELEMENT join through a scope
-  ENTERED in front and never exited — `releasing`'s trailing `flatMap`
+  ENTERED in front and exited by the drain's own last step
+  (`Channel.drainedThen`, since merge-shared-scope-gc-release: "never
+  exited" left the scope held by nothing, and a collection mid-run
+  released it) — `releasing`'s trailing `flatMap`
   would be a Bind over the whole element program, a rotation per
   element, while a scope the drive releases at the program's end costs
   one Bind in front; at a normal end the channel is closed already and
@@ -531,7 +534,7 @@ merge. `Wait` and `Pause` move DOWN to okay-async, where the runners
 live (the `PlatformPause` seam with them; okay-async gains a
 `scala-js` source dir). Two runners, two rules:
 
-- the BLOCKING runner (`Async.run`, the `Handler[Async]` under
+- the BLOCKING runner (`Async.run`, the `Answers[Async]` under
   `runWith`, `toLazyList`): its thread is its own, so an Await with a
   poll is asked by the given `Wait` on it and parks only when the wait
   gave up (`Async.pollThenBlock`);
@@ -689,6 +692,9 @@ same build, arms alternating by `-Dokay.scheduler`, 5 rounds:
 Both roads pay it, so it is the scheduler and not the ring. Filed as
 backlog `adaptive-chunked-merge-cost` (okay-core) beside
 `scheduler-flip-remeasure`, whose lanes did not include a chunked merge.
+FIXED the same day (specs/adaptive-chunked-merge-cost.md): the second
+feed waited a monitor tick; `Scheduler.forkLong` brought `okayChunked`
+on the default to 185 us against Loom's 197-229.
 
 **Elementwise, on `Wait.Ladder`:** under loom 83.1 / 64.3 / 60.8 at cap
 64 / 256 / 1024 against the frozen spin-100 reading 84.8 / 68.3 / 63.0 —

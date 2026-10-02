@@ -18,7 +18,7 @@ class TestRModule extends munit.FunSuite {
   override def munitIgnore: Boolean = TestR.rscript.isEmpty
 
   private lazy val r = RSubprocess.start(rscript = TestR.rscript.get, modules = Seq(scoring))
-  private given okay.Handler[REval] = r.handler
+  private given okay.Answers[REval] = r.handler
   override def afterAll(): Unit = if TestR.rscript.nonEmpty then r.close()
 
   final case class XY(x: Vector[Double], y: Vector[Double]) derives okay.codec.Schema

@@ -6,71 +6,72 @@ import scala.language.implicitConversions
 /**
  * THE BOOK'S CHAPTER 12, COMPILED (docs/continuations/12-one-machine.md).
  *
- * The rule, the guard that enforces it, and -- the part a chapter
- * about a safety feature must not leave out -- the case the guard
- * does NOT catch, asserted here so the page can state it as fact.
+ * The rule — one machine per program — and the evidence that keeps it
+ * (`Shift.Machine[F]`, shift-merge-guard): a door that would start a
+ * second machine at a row where one already runs NESTS on it instead,
+ * and a row the compiler cannot read asks for the evidence.
  */
 class TestBookOneMachine extends munit.FunSuite {
 
-  type Row = Delim + Pure
+  type Row = Shift % ? + Pure
 
-  // ---- the mistake that reads like ordinary code
+  // ---- the shape that used to be the mistake
 
-  test("a second machine is refused, and the message says what to write instead") {
-    val e = compileErrors("""
-      okay.Delim.delimited[Int, okay.Delim + okay.Pure](okay.pure(1))""")
-    assert(e.nonEmpty, "a second machine compiled")
-    assert(e.contains("SECOND machine"), s"wrong reason: $e")
-    assert(e.contains("scope"), s"the message does not offer the fix: $e")
+  test("a door at a row where a machine runs nests on it: a capture crosses it") {
+    val p = Shift.prompt[String]
+    val inner: Int ! Row = Shift.delimited[Int, Row](Shift.abort[String, Int, Row](p)("escaped"))
+    val prog: String ! Row = Shift.push[String, Pure](p)(inner.map(_.toString))
+    assertEquals(!.run(Shift.run[String, Pure](prog)), "escaped")
   }
 
-  test("the nested spelling is the one that works") {
-    val r = Delim.delimited[String, Pure]:
+  test("the nested spelling still works, and means the same") {
+    val r = Shift.delimited[String, Pure]:
       direct:
-        val n = !Delim.scope[Int, Pure]:
+        val n = !Shift.scope[Int, Pure]:
           direct:
-            !Delim.exit(3)
+            !Shift.exit(3)
             0
         s"n=$n"
     assertEquals(!.run(r), "n=3")
   }
 
-  // ---- THE HOLE: an abstract row is not caught
-
-  /**
-   * A generic helper that does NOT pass the obligation on. Inside its
-   * body `F` is abstract, so `NotGiven[Delim[Any] <:< F[Any]]`
-   * succeeds -- the compiler cannot prove a Delim is in an unknown
-   * row, and NotGiven reads "unknown" as "absent" -- and the guard is
-   * manufactured HERE instead of being demanded from the caller.
-   *
-   * (The first draft of this test wrote `(using Delim.OneMachine[F])`
-   * and the guard CAUGHT it: with the obligation propagated, a caller
-   * at a concrete Delim row cannot satisfy it. That is the guard
-   * working, and it is why the hole needs this exact shape.)
-   */
-  def runAnything[A, F[+_]](p: A ! Delim + F): A ! F =
-    Delim.run(p)
-
-  test("an ABSTRACT row compiles and still fails at run time") {
-    // instantiated at a row that already has Delim, this is the very
-    // mistake the guard exists to refuse -- and it got through
-    val inner: Int ! (Delim + (Delim + Pure)) =
-      Delim.push(Delim.prompt[Int])(okay.pure(1))
-    val outer: Int ! Delim + Pure = runAnything[Int, Delim + Pure](inner)
-    // it does not throw here, because this program never captures --
-    // the guard's hole is that nothing STOPS it, not that it always
-    // breaks
-    assertEquals(!.run(Delim.run[Int, Pure](outer)), 1)
+  test("collect inside a delimited block: one machine, both delimiters on it") {
+    val r = Shift.delimited[List[Int], Pure]:
+      Shift.collect[Int, Row](Shift.emit(1).flatMap(_ => Shift.emit(2)))
+    assertEquals(!.run(r), List(1, 2))
   }
 
-  test("and with a capture in it, the hole becomes a NoPrompt at run time") {
-    val p = Delim.prompt[Int]
-    val inner: Int ! (Delim + (Delim + Pure)) =
-      Delim.push(p)(Delim.abort[Int, Int, Delim + Pure](p)(7))
-    val outer: Int ! Delim + Pure = runAnything[Int, Delim + Pure](inner)
-    // the inner machine claimed the outer machine's operation
-    val got = try !.run(Delim.run[Int, Pure](outer)) catch case _: NoPrompt => -1
-    assert(got == 7 || got == -1, s"unexpected $got")
+  // ---- the evidence, read off the row
+
+  test("Shift.Machine reads the row: a Shift of any key means a machine runs") {
+    assert(summon[Shift.Machine[Shift % ? + Pure]].inner)
+    assert(summon[Shift.Machine[Shift % Int + Pure]].inner)
+    assert(summon[Shift.Machine[State % Int + Shift % String]].inner)
+    assert(!summon[Shift.Machine[Pure]].inner)
+    assert(!summon[Shift.Machine[State % Int + Pure]].inner)
+  }
+
+  // ---- THE HOLE, CLOSED: an abstract row is not guessed
+
+  test("an ABSTRACT row is refused, and the message says to pass the evidence on") {
+    val e = compileErrors("""
+      def runAnything[A, F[+_]](p: A ! Shift % ? + F): A ! F =
+        Shift.run(p)""")
+    assert(e.nonEmpty, "an abstract row was guessed")
+    assert(e.contains("using Shift.Machine[F]"), s"the message does not name the fix: $e")
+  }
+
+  /** the helper passes the obligation on, so its caller — where the row is known — answers */
+  def runAnything[A, F[+_]](p: A ! Shift % ? + F)(using Shift.Machine[F]): A ! F =
+    Shift.run(p)
+
+  test("a helper passing it on runs its own machine at a plain row and nests at a Shift row") {
+    val p = Shift.prompt[Int]
+    // outermost: the helper's machine answers the capture
+    assertEquals(!.run(runAnything[Int, Pure](Shift.push(p)(Shift.abort[Int, Int, Pure](p)(7)))), 7)
+    // inside a machine: the capture to the OUTER prompt crosses the helper, which used to be a NoPrompt
+    val inner: Int ! (Shift % ? + Row) = Shift.abort[Int, Int, Row](p)(7)
+    val outer: Int ! Row = Shift.push[Int, Pure](p)(runAnything[Int, Row](inner).map(_ + 100))
+    assertEquals(!.run(Shift.run[Int, Pure](outer)), 7)
   }
 }

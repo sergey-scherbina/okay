@@ -21,16 +21,16 @@ Chapter 6's directory walk, with `emit` replaced by `pause`:
 
 ```scala
 def walk(e: Entry, prefix: String = "")
-        (using Delim.Asking[String, Unit, Unit, Row]): Unit ! Row =
+        (using Shift.Asking[String, Unit, Unit, Row]): Unit ! Row =
   direct:
     e match
-      case Entry.File(n, _) => !Delim.pause(s"$prefix$n")
+      case Entry.File(n, _) => !Shift.pause(s"$prefix$n")
       case Entry.Dir(n, es) =>
         val here = if n == "/" then "/" else s"$prefix$n/"
         for child <- es do !walk(child, here)
 ```
 
-`Delim.Asking[Q, A, R, Row]` reads: *this program asks questions of
+`Shift.Asking[Q, A, R, Row]` reads: *this program asks questions of
 type `Q`, expects answers of type `A`, eventually produces an `R`.*
 Here it asks with a path (`String`), needs nothing back (`Unit`), and
 produces nothing (`Unit`) — a pure producer.
@@ -38,7 +38,7 @@ produces nothing (`Unit`) — a pure producer.
 Starting it gives you a value:
 
 ```scala
-var p = !.run(Delim.resumable[String, Unit, Unit, Pure](walk(tree)))
+var p = !.run(Shift.resumable[String, Unit, Unit, Pure](walk(tree)))
 ```
 
 `p` is not a running walk. Nothing is running. It is a **`Paused`** —
@@ -49,9 +49,9 @@ the walk from this point on.
 
 ```scala
 p match
-  case Delim.Paused.Ask(q, _, _) if got.size < n =>
+  case Shift.Paused.Ask(q, _, _) if got.size < n =>
     got = got :+ q
-    p = !.run(Delim.answer(p, Nil)(()))._1     // hand back an answer, get the next stop
+    p = !.run(Shift.answer(p, Nil)(()))._1     // hand back an answer, get the next stop
   case _ => going = false
 ```
 
@@ -70,10 +70,10 @@ no thread, no queue, and no buffer of everything.
 
 > **A practical trap, met while writing this chapter.** `Ask` carries
 > a `rest` function, and calling it directly does not typecheck the
-> way you expect: it returns a *program in the `Delim` row*, not a
+> way you expect: it returns a *program in the `Shift` row*, not a
 > finished value — it has to be run by the machine that owns the
-> prompt. `Delim.answer(p, journal)(a)` is the door for stepping by
-> hand, and `Delim.drive(p)(oracle)` for running to the end. Reach for
+> prompt. `Shift.answer(p, journal)(a)` is the door for stepping by
+> hand, and `Shift.drive(p)(oracle)` for running to the end. Reach for
 > `rest` only when you are building a driver of your own.
 
 ## Two producers, in step, with no thread
@@ -82,10 +82,10 @@ This is the one a callback simply cannot do:
 
 ```scala
 (a, b) match
-  case (Delim.Paused.Ask(qa, _, _), Delim.Paused.Ask(qb, _, _)) =>
+  case (Shift.Paused.Ask(qa, _, _), Shift.Paused.Ask(qb, _, _)) =>
     pairs = pairs :+ (qa, qb)
-    a = !.run(Delim.answer(a, Nil)(()))._1
-    b = !.run(Delim.answer(b, Nil)(()))._1
+    a = !.run(Shift.answer(a, Nil)(()))._1
+    b = !.run(Shift.answer(b, Nil)(()))._1
 ```
 
 Two independent recursive walks, advanced alternately, zipped. With
@@ -99,11 +99,11 @@ The claim deserves its own test, because it is the one that surprises
 people:
 
 ```scala
-val start = !.run(Delim.resumable[String, String, String, Pure](booking))
+val start = !.run(Shift.resumable[String, String, String, Pure](booking))
 
-assertEquals(!.run(Delim.drive(start)(answering(List("Kyiv", "3")))), "Kyiv/3")
+assertEquals(!.run(Shift.drive(start)(answering(List("Kyiv", "3")))), "Kyiv/3")
 // the SAME start, answered again, differently
-assertEquals(!.run(Delim.drive(start)(answering(List("Lviv", "2")))), "Lviv/2")
+assertEquals(!.run(Shift.drive(start)(answering(List("Lviv", "2")))), "Lviv/2")
 ```
 
 `start` was not used up by being resumed. It is an ordinary immutable
@@ -128,9 +128,9 @@ test harness. The program reads as straight-line code; the questions
 and answers are data:
 
 ```scala
-def booking(using Delim.Asking[String, String, String, Row]): String ! Row = direct:
-  val city   = !Delim.pause("Which city?")
-  val nights = !Delim.pause(s"How many nights in $city?")
+def booking(using Shift.Asking[String, String, String, Row]): String ! Row = direct:
+  val city   = !Shift.pause("Which city?")
+  val nights = !Shift.pause(s"How many nights in $city?")
   s"$city/$nights"
 ```
 
@@ -173,17 +173,17 @@ feature.
 
 ```scala
 // the program: it asks, and reads as straight-line code
-def prog(using Delim.Asking[Q, A, R, Row]): R ! Row = direct:
-  val x = !Delim.pause(question)
+def prog(using Shift.Asking[Q, A, R, Row]): R ! Row = direct:
+  val x = !Shift.pause(question)
   ...
 
 // start it: nothing runs yet
-val p = !.run(Delim.resumable[Q, A, R, F](prog))
+val p = !.run(Shift.resumable[Q, A, R, F](prog))
 
 // step it by hand...
-val (next, _) = !.run(Delim.answer(p, Nil)(answer))
+val (next, _) = !.run(Shift.answer(p, Nil)(answer))
 // ...or run it to the end with an oracle
-val result = !.run(Delim.drive(p)(q => okay.pure(answerFor(q))))
+val result = !.run(Shift.drive(p)(q => okay.pure(answerFor(q))))
 ```
 
 ---

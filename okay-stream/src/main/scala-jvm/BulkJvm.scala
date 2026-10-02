@@ -12,3 +12,12 @@ import scala.jdk.CollectionConverters.*
 given localBulk: Bulk[Chunks] = Bulk.local(
   path => Files.lines(Path.of(path), UTF_8).iterator().asScala,
   path => { val f = Path.of(path); if Files.isRegularFile(f) then Some(Files.size(f)) else None })
+
+/** `localBulk`, parallel in this process (bulk-local-parallel): the same
+ * files, `parallelism` fibres of the given scheduler for the splits, the
+ * aggregations and the joins */
+def parallelBulk(parallelism: Int = Runtime.getRuntime.availableProcessors())(using Scheduler): Bulk[Chunks] =
+  BulkParallel(parallelism,
+    path => Files.lines(Path.of(path), UTF_8).iterator().asScala,
+    path => { val f = Path.of(path); if Files.isRegularFile(f) then Some(Files.size(f)) else None })
+

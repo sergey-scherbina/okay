@@ -1,6 +1,6 @@
 package okay.demo
 
-import okay.{Handler, given}
+import okay.{Answers, given}
 import okay.agent.ToolCall
 import okay.rag.*
 
@@ -76,7 +76,7 @@ class TestRepoAgent extends munit.FunSuite {
     assert(n > 0, "the vector store is empty — nothing was embedded")
 
     // and a semantic query returns something, with provenance intact
-    given Handler[Embed] = Vectors.hashingHandler()
+    given Answers[Embed] = Vectors.hashingHandler()
     val hits = Retrieve.handled(Retrieve.vector(repo.vectors))
       .retrieve("split a document into passages", 3).runWith
     assert(hits.nonEmpty, "the vector side returned nothing")

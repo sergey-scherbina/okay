@@ -1,6 +1,6 @@
 package okay.foreign
 
-import okay.Handler
+import okay.Answers
 
 /**
  * Workers behind ONE handler: the ONE pool (`Pool`, foreign-one-pool) with
@@ -49,7 +49,7 @@ final class PyWorkers private (val pool: Pool[ForeignWorker]):
     t.isInstanceOf[IllegalStateException] && Option(t.getMessage).exists(_.contains("DEAD"))
 
   /** the same shape as one worker's handler — programs cannot tell */
-  def handler: Handler[ForeignEval] = new:
+  def handler: Answers[ForeignEval] = new:
     def handle[A](e: ForeignEval[A]): A = e match
       case ForeignEval.Continue(run, k, a) =>
         val (w, lease) = Option(runs.get(run)).getOrElse(

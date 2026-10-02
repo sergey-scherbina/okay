@@ -50,7 +50,7 @@ class TestHaskellProgram extends munit.FunSuite {
     val dir = java.nio.file.Files.createTempDirectory("okay-hs")
     java.nio.file.Files.writeString(dir.resolve("Main.hs"), TestHaskellProgram.main): Unit
     ForeignWorker.speaking(Seq(HaskellWorker.build(dir).toString))
-  private given okay.Handler[ForeignEval] = w.handler
+  private given okay.Answers[ForeignEval] = w.handler
   override def afterAll(): Unit = if ghc then w.close()
 
   private val choose = Foreign.callback[Vector[Long], Long]("choose")(xs => effect[Choose, Long](Choose(xs)))

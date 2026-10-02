@@ -151,7 +151,7 @@ Stage 2 — migrate, one module per lane, `Chunks` LAST:
       not a new combinator: `Chunks[A]` is PURE, so what `Chunks.fold`/
       `foldLeft` need is the PURE writer stream's own hand-specialized
       `iterator` (Writer.scala, the twin of `Stream[Producer, Pure]`'s
-      in Generate.scala; `Handler[Pure]` only — no `CanBlock`, no
+      in Generate.scala; `Answers[Pure]` only — no `CanBlock`, no
       `TypeableK`, every platform). `Chunks.fold`'s own loop over it,
       in an ordinary method: 2.63 vs 2.53 us/op, 3 rounds, +2.5 KB/op
       (one `Say` per chunk). The "2x" of stage 0 was `Writer.fold`'s
@@ -488,7 +488,7 @@ OWN `iterator` override (they currently fall back to the generic
 `Iterator.unfold(s)(uncons(_).runWith)`), and run `Chunks.foldLeft`'s
 own tiny per-chunk loop against THAT instead of routing through
 `Writer.foldWith`. The obstacle is the API contract, not the walk
-itself: `.iterator` needs a `Handler[G]` and runs EAGERLY, where
+itself: `.iterator` needs a `Answers[G]` and runs EAGERLY, where
 `foldWriter` currently returns `(S, Unit) ! G` — a suspended PROGRAM,
 composable with `flatMap` before anything runs. Making `foldWriter`
 eager would be a real, visible API change, not a drop-in performance
@@ -550,7 +550,7 @@ and all three files live in cross-platform shared source
 `okay-http`'s `Acceptance.scala`) that also builds for JS, where
 `src/main/scala-js/Platform.scala` says outright: "There is no
 `CanBlock` on JS, so a blocking join is a compile error." JS has no
-`Handler[Async]` at all — it drives `Async` programs through a
+`Answers[Async]` at all — it drives `Async` programs through a
 completely different, callback-based `Scheduler`/`Fiber` mechanism
 (`Async.PromiseDrive`), not the blocking one `foldWriter`'s `async {
 ... }` wrapper depends on. `foldWriter` in its CURRENT form is
@@ -571,9 +571,9 @@ hand-specialized, mutable-state `iterator` override for
 Generate.scala byte for byte in shape (a `var cur`/`ready`/`ended`/`elem`
 state machine, `@tailrec advance()`). The one real difference is how a
 forwarded `G`-operation is answered: not by building and running
-another program, but by `Handler[G].handle(g)` — the COMONADIC,
-single-operation interpretation every `Handler` already provides
-(`Handler[Async]`'s own `case Run(f) => f()` / `case Await(reg) =>
+another program, but by `Answers[G].handle(g)` — the COMONADIC,
+single-operation interpretation every `Answers` already provides
+(`Answers[Async]`'s own `case Run(f) => f()` / `case Await(reg) =>
 cb.block(reg)...`). This eliminates the `Option`+`Either`+`Free`-node
 allocation the DEFAULT `Iterator.unfold(s)(uncons(_).runWith)` still
 paid once per chunk.
@@ -655,10 +655,10 @@ be used at any of its three call sites" — JS has no `CanBlock`; "okay-
 cluster needs a combinator library that does not exist"). Both stalls
 had the same root: the fold prerequisite was chased on the G-EFFECTFUL
 carrier (`Unit ! (Writer % Chunk[A] + G)`), whose eager walk needs a
-`Handler[G]`, while `Chunks[A]` — and every one of the three call sites,
+`Answers[G]`, while `Chunks[A]` — and every one of the three call sites,
 `Bulk.scala:106`, `Pipeline.scala:92`, `Acceptance.scala:29`, all
 `Chunks.fold` on a `Chunks[A]` — is PURE. `Chunks.fold`/`foldLeft` walk
-`Stream[Producer, Pure].iterator` under `Handler[Pure]`, which every
+`Stream[Producer, Pure].iterator` under `Answers[Pure]`, which every
 platform has. The pure writer instance `Stream[[W] =>> A ! Writer % W,
 Pure]` (Writer.scala) was the ONLY stream instance in the library with
 no `iterator` override — the default `Iterator.unfold` paid an

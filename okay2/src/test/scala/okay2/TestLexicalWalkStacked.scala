@@ -1,6 +1,6 @@
 package okay2
 
-import Delim.Stacked
+import Shift.Stacked
 import Layered._
 
 /**
@@ -35,7 +35,7 @@ class TestLexicalWalk extends munit.FunSuite {
     assertEquals(told(walked), told(State.handleAt[Int, Int, W](1)(t.counterRow)))
   }
 
-  test("walk on the pure row: exhausted and !.run, no Delim anywhere") {
+  test("walk on the pure row: exhausted and !.run, no Shift[Any] anywhere") {
     assertEquals(!.run(done[(Int, Int), P](Lexical.State.walk[Int, Int, P](5)(s => s.get.flatMap(v => s.set(v * 3))))), (15, 15))
   }
 
@@ -57,41 +57,41 @@ class TestLexicalWalk extends munit.FunSuite {
   }
 
   test("multi-shot ACROSS the walk (the prompt outside): each branch resumes the walk at its captured state — deep's answer") {
-    val p0 = Delim.prompt[List[(Int, Int)]]
-    def pick(s: Lexical.State.Inst[Int, SI + Delim + P]): Int ! (SI + Delim + P) =
+    val p0 = Shift.prompt[List[(Int, Int)]]
+    def pick(s: Lexical.State.Inst[Int, SI + Shift[Any] + P]): Int ! (SI + Shift[Any] + P) =
       for {
-        x <- Delim.shift[List[(Int, Int)], Int, SI + P](p0)(k => k(1).flatMap(a => k(2).flatMap(b => k(3).map(c => a ++ b ++ c))))
+        x <- Shift.shift[List[(Int, Int)], Int, SI + P](p0)(k => k(1).flatMap(a => k(2).flatMap(b => k(3).map(c => a ++ b ++ c))))
         v <- s.get
         _ <- s.set(v + x)
       } yield v
-    val r = !.run(done[List[(Int, Int)], P](Delim.run[List[(Int, Int)], SI + P](
-      Delim.push[List[(Int, Int)], SI + P](p0)(Lexical.State.walk[Int, Int, Delim + P](0)(pick).map(List(_))))))
+    val r = !.run(done[List[(Int, Int)], P](Shift.run[List[(Int, Int)], SI + P](
+      Shift.push[List[(Int, Int)], SI + P](p0)(Lexical.State.walk[Int, Int, Shift[Any] + P](0)(pick).map(List(_))))))
     assertEquals(r, List((1, 0), (2, 0), (3, 0)))
   }
 
   test("multi-shot INSIDE the walk with the machine INSIDE it: the walk threads the state through the branches — deep's answer") {
-    val p0 = Delim.prompt[List[Int]]
-    def pick(s: Lexical.State.Inst[Int, SI + P]): List[Int] ! (Delim + SI + P) =
+    val p0 = Shift.prompt[List[Int]]
+    def pick(s: Lexical.State.Inst[Int, SI + P]): List[Int] ! (Shift[Any] + SI + P) =
       for {
-        x <- Delim.shift[List[Int], Int, SI + P](p0)(k => k(1).flatMap(a => k(2).flatMap(b => k(3).map(c => a ++ b ++ c))))
-        v <- s.get.plus[Delim]
-        _ <- s.set(v + x).plus[Delim]
+        x <- Shift.shift[List[Int], Int, SI + P](p0)(k => k(1).flatMap(a => k(2).flatMap(b => k(3).map(c => a ++ b ++ c))))
+        v <- s.get.plus[Shift[Any]]
+        _ <- s.set(v + x).plus[Shift[Any]]
       } yield List(v)
     val r = !.run(done[(Int, List[Int]), P](Lexical.State.walk[Int, List[Int], P](0)(s =>
-      Delim.run[List[Int], SI + P](Delim.push[List[Int], SI + P](p0)(pick(s))))))
+      Shift.run[List[Int], SI + P](Shift.push[List[Int], SI + P](p0)(pick(s))))))
     assertEquals(r, (6, List(0, 1, 3)))
   }
 
   test("multi-shot INSIDE the walk with the machine OUTSIDE it: the operation inside the delimiter escapes, loudly") {
-    val p0 = Delim.prompt[List[Int]]
-    def pick(s: Lexical.State.Inst[Int, SI + Delim + P]): List[Int] ! (SI + Delim + P) =
+    val p0 = Shift.prompt[List[Int]]
+    def pick(s: Lexical.State.Inst[Int, SI + Shift[Any] + P]): List[Int] ! (SI + Shift[Any] + P) =
       for {
-        x <- Delim.shift[List[Int], Int, SI + P](p0)(k => k(1).flatMap(a => k(2).flatMap(b => k(3).map(c => a ++ b ++ c))))
+        x <- Shift.shift[List[Int], Int, SI + P](p0)(k => k(1).flatMap(a => k(2).flatMap(b => k(3).map(c => a ++ b ++ c))))
         v <- s.get
         _ <- s.set(v + x)
       } yield List(v)
-    val e = intercept[IllegalStateException](!.run(done[(Int, List[Int]), P](Delim.run[(Int, List[Int]), SI + P](
-      Lexical.State.walk[Int, List[Int], Delim + P](0)(s => Delim.push[List[Int], SI + P](p0)(pick(s)))))))
+    val e = intercept[IllegalStateException](!.run(done[(Int, List[Int]), P](Shift.run[(Int, List[Int]), SI + P](
+      Lexical.State.walk[Int, List[Int], Shift[Any] + P](0)(s => Shift.push[List[Int], SI + P](p0)(pick(s)))))))
     assert(e.getMessage.contains("survived"), e.getMessage)
   }
 }
@@ -120,11 +120,11 @@ class TestLexicalStacked extends munit.FunSuite {
 
   test("a stacked instance used AFTER its installation returned does not compile") {
     val e = compileErrors("""
-      okay2.Delim.Stacked.delimited[(Int, Int), okay2.Pure] { root =>
-        var leaked: okay2.Lexical.Stacked.State.Tail[Int, Int, okay2.Pure, okay2.Delim.Stacked.Cons[root.p.type, okay2.Delim.Stacked.Empty]] = null
+      okay2.Shift.Stacked.delimited[(Int, Int), okay2.Pure] { root =>
+        var leaked: okay2.Lexical.Stacked.State.Tail[Int, Int, okay2.Pure, okay2.Shift.Stacked.Cons[root.p.type, okay2.Shift.Stacked.Empty]] = null
         okay2.Lexical.Stacked.State.tail[Int, okay2.Pure](root.stack)(0) { a =>
           leaked = a
-          okay2.pure[okay2.Delim + okay2.Pure, Int](1)
+          okay2.pure[okay2.Shift[Any] + okay2.Pure, Int](1)
         }.flatMap(_ => leaked.get(root.stack).map(v => (v, v)))
       }""")
     assert(e.contains("is not on the prompt stack"), s"compiled, or not our message: $e")
@@ -168,11 +168,11 @@ class TestLayeredStacked extends munit.FunSuite {
 
   test("stacked: a layer used AFTER its reify returned does not compile") {
     val e = compileErrors("""
-      okay2.Delim.Stacked.delimited[Option[Int], okay2.Pure] { root =>
-        var leaked: okay2.Delim.Stacked.In[Option[Int], okay2.Delim.Stacked.Cons[root.p.type, okay2.Delim.Stacked.Empty]] = null
+      okay2.Shift.Stacked.delimited[Option[Int], okay2.Pure] { root =>
+        var leaked: okay2.Shift.Stacked.In[Option[Int], okay2.Shift.Stacked.Cons[root.p.type, okay2.Shift.Stacked.Empty]] = null
         okay2.Layered.Stacked.reify[Option, Int, okay2.Pure](root.stack) { opt =>
           leaked = opt
-          okay2.pure[okay2.Delim + okay2.Pure, Int](1)
+          okay2.pure[okay2.Shift[Any] + okay2.Pure, Int](1)
         }.flatMap(_ => okay2.Layered.ReflectOps(Option(2)).reflectAt[okay2.Pure](root.stack, leaked).map(Option(_)))
       }""")
     assert(e.contains("is not on the prompt stack"), s"compiled, or not our message: $e")

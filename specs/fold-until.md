@@ -67,12 +67,12 @@ are `OfBoolean`.
 One consumer per carrier, each beside the `fold` it mirrors:
 
 ```scala
-Stream.foldUntil[S[_], F[+_], A, B, R](s: S[A])(using FoldUntil[A, B, R])(using Stream[S, F], Handler[F]): R
+Stream.foldUntil[S[_], F[+_], A, B, R](s: S[A])(using FoldUntil[A, B, R])(using Stream[S, F], Answers[F]): R
 Chunks.foldUntil[A, S, R](p: Chunks[A])(using FoldUntil[A, S, R]): R
 Writer.foldUntil[W, S, A, R, F[+_]](a: A ! Writer % W + F)(using TypeableK[Writer % W], FoldUntil[W, S, R]): R ! F
 extension [A](s: Source[A]) def runFoldUntil[S, R](using FoldUntil[A, S, R]): R ! Async
 extension [W, A](a: A ! Writer % W) def foldUntil[S, R](using FoldUntil[W, S, R]): R   // fold-until-docs
-extension [W, A, G[+_]](a: A ! Writer % W + G)(using TypeableK[G], Handler[G]) def foldUntil[S, R](using FoldUntil[W, S, R]): R   // producer-fold-until
+extension [W, A, G[+_]](a: A ! Writer % W + G)(using TypeableK[G], Answers[G]) def foldUntil[S, R](using FoldUntil[W, S, R]): R   // producer-fold-until
 Producer.foldUntil[W, S, R, A, G[+_] : TypeableK](p: A ! Produce + G)(using FoldUntil[W, S, R]): R ! G   // producer-fold-until
 ```
 
@@ -131,7 +131,7 @@ Stage 1:
       carrier.
 - [x] `Writer.foldUntil` performs a forwarded `F` operation that
       precedes the stop and does NOT perform one that follows it
-      (counted through a `Handler`).
+      (counted through a `Answers`).
 - [x] `Writer.foldUntil` is tail-recursive across tells: a source of
       100 000 elements with the stop never firing folds on the
       default stack.
@@ -141,8 +141,8 @@ Stage 1:
       `take(0)`, and folds 100 000 productions on the default stack
       (producer-fold-until).
 - [x] the effectful writer program's `.foldUntil(using fo)` is
-      `Writer.foldUntil` run by the `Handler[G]` in scope, so a
-      `Source` under a `Handler[Async]` folds with one `using` like
+      `Writer.foldUntil` run by the `Answers[G]` in scope, so a
+      `Source` under a `Answers[Async]` folds with one `using` like
       the pure one (producer-fold-until).
 
 Stages 3–4 — `Stage.transduceUntil`, `Take.foldUntil`, `Foldable.foldUntil`:
@@ -307,9 +307,9 @@ and the effectful writer program's `.foldUntil(using fo)`
 (`TestFoldUntilStreams` +1). The latter needed a SEPARATE extension
 block: an explicit `(using fo)` at a call site is matched against the
 extension's own using clause when it has one, so on the block that
-carries `(using TypeableK[G], Handler[G])` the call failed to type —
+carries `(using TypeableK[G], Answers[G])` the call failed to type —
 and `TypeableK[G]` was unused by the new method besides (E198). The
-block with no extension-level clause and `Handler[G]` in the method's
+block with no extension-level clause and `Answers[G]` in the method's
 own clause after the fold is the shape that reads as the pure one.
 
 Stages 3–4 (2026-09-22, fold-until-stages-3-4): `Stage.transduceUntil`

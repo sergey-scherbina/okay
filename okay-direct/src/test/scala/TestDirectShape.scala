@@ -16,8 +16,6 @@ class TestDirectShape extends munit.FunSuite {
   var st = 0
   def onState[X](e: State[Int, X]): X = e match
     case State.Get() => st
-    case State.Set(v) => st = v; v
-    case State.Modify(f) => st = f(st); st
     case State.Update(f) => val (b, v) = f(st); st = v; b
   def onWriter[X](e: Writer[String, X]): X = e match
     case Writer.Say(_) => ()

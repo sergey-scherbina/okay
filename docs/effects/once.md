@@ -11,6 +11,7 @@ effect rather than a hidden cache.
 | | |
 |---|---|
 | `Once.once(p)` | `p`, to run at most once; the first demand runs it |
+| `p.handle(Once.memo)` | handle it |
 | `Once.run(p)` | handle it: the memo cells live in the handler |
 
 Once is counted per VALUE: `Once.once(p)` evaluated twice makes two
@@ -24,7 +25,7 @@ var runs = 0
 val expensive: Int ! Once = Once.once[Int, Pure] { runs += 1; pure(21) }
 val both: Int ! Once = expensive.flatMap(a => expensive.map(b => a + b))
 
-val answer = !.run(Once.run(both))   // 42, and runs is 1
+val answer = both.handle(Once.memo).run   // 42, and runs is 1
 ```
 
 ## Under a search

@@ -1,6 +1,6 @@
 package okay.foreign
 
-import okay.Handler
+import okay.Answers
 import okay.codec.Json
 
 /**
@@ -120,7 +120,7 @@ final class ForeignWorker private (session: WireSession,
     t.start()
 
   /** the comonadic handler — one operation, one exchange */
-  def handler: Handler[ForeignEval] = new:
+  def handler: Answers[ForeignEval] = new:
     def handle[A](e: ForeignEval[A]): A = e match
       case ForeignEval.Call(fn, args, held) => timed:
         // THE call (foreign-one-held): a name, or a held object's method or

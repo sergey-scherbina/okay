@@ -56,7 +56,7 @@ class TestTag extends munit.FunSuite {
   test("a tagged effect can also be handled by its own comonadic handler") {
     enum Beep[+A] derives Effect:
       case Boop() extends Beep[Int]
-    val h: Handler[Beep] = new:
+    val h: Answers[Beep] = new:
       def handle[A](e: Beep[A]): A = e match { case Beep.Boop() => 42 }
     val p: Int ! Tag.Of["x", Beep] = Tag.one["x", Beep](Beep.Boop())
     assertEquals(p.runWith(using Tag.handler["x", Beep](h)), 42)
@@ -121,13 +121,13 @@ class TestTag extends munit.FunSuite {
         y <- Tag.one["same", Buzz](Buzz.Bzz()).at[A + B]
       yield (x, y)
 
-    val hb: Handler[Beep] = new:
+    val hb: Answers[Beep] = new:
       def handle[X](e: Beep[X]): X = e match { case Beep.Boop() => 42 }
-    val hz: Handler[Buzz] = new:
+    val hz: Answers[Buzz] = new:
       def handle[X](e: Buzz[X]): X = e match { case Buzz.Bzz() => "ada" }
 
     assertEquals(
-      p.runWith(using Handler.union[A, B](
+      p.runWith(using Answers.union[A, B](
         using summon[okay.Effect[A]], Tag.handler["same", Beep](hb),
         Tag.handler["same", Buzz](hz))),
       (42, "ada"))

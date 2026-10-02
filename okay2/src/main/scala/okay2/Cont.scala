@@ -74,6 +74,9 @@ sealed abstract class ContModule {
   /** apply to a continuation, as the function (A => S) => R it means */
   def run[A, S, R](c: Rep[A, S, R])(k: A => S): R
 
+  /** delimit: run the computation with the identity continuation */
+  final def reset[A, R](c: Rep[A, A, R]): R = run(c)(identity)
+
   /** is this program already an ANSWER? A handler that does not
    * capture builds exactly `Pure`, and a caller that can go on from
    * the answer with a tail call then needs no trampoline node at all

@@ -12,7 +12,7 @@ object Op {
 
 class TestEffects extends munit.FunSuite {
 
-  test("runWith: a program over one signature, by its Handler") {
+  test("runWith: a program over one signature, by its Answers") {
     val p: Int ! Produce = produce(1).flatMap(x => produce(x + 1).map(y => x + y))
     assertEquals(p.runWith, 3)
     assertEquals(p.peek, 1) // the tree can be stepped
@@ -52,7 +52,7 @@ class TestEffects extends munit.FunSuite {
     def run(b: Boolean): Int =
       !.handle[Throws[String], Produce](calc(b))(a => pure(a))(new Interpr[Throws[String], Int ! Produce] {
         def apply[X](e: Throws.Op[String, X]): Cont[X, Int ! Produce, Int ! Produce] =
-          shift[X, Int ! Produce, Int ! Produce](_ => pure(-1))
+          Cont.shift[X, Int ! Produce, Int ! Produce](_ => pure(-1))
       }).runWith
 
     assertEquals(run(false), 5)
@@ -68,7 +68,7 @@ class TestEffects extends munit.FunSuite {
     val both: List[Int] ! Produce =
       !.handle[Op, Produce](p)(a => pure(List(a)))(new Interpr[Op, List[Int] ! Produce] {
         def apply[X](e: Op.Val[X]): Cont[X, List[Int] ! Produce, List[Int] ! Produce] =
-          shift[X, List[Int] ! Produce, List[Int] ! Produce](k => k(e.a).flatMap(a => k(e.a).map(b => a ++ b)))
+          Cont.shift[X, List[Int] ! Produce, List[Int] ! Produce](k => k(e.a).flatMap(a => k(e.a).map(b => a ++ b)))
       })
     assertEquals(both.runWith, List(11, 11))
   }
@@ -139,10 +139,10 @@ class TestEffects extends munit.FunSuite {
     assertEquals(ws, Seq("before", "after"))
   }
 
-  test("Handler.union: a row run by one handler per effect") {
+  test("Answers.union: a row run by one handler per effect") {
     type Row = Op + Produce
-    implicit val opH: Handler[Op] = new Handler[Op] { def handle[A](a: Op.Val[A]): A = a.a }
-    implicit val rowH: Handler[Row] = Handler.union[Op, Produce]
+    implicit val opH: Answers[Op] = new Answers[Op] { def handle[A](a: Op.Val[A]): A = a.a }
+    implicit val rowH: Answers[Row] = Answers.union[Op, Produce]
     val p: Int ! Row = Op.op(1).at[Row].flatMap(x => produce(x + 1).at[Row])
     assertEquals(p.runWith, 2)
     // recording is a decorator over the real handler

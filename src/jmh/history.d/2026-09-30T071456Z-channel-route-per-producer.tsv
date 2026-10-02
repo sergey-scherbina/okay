@@ -1,0 +1,4 @@
+2026-09-30	4236a7e6d	jmh-lane-quiet	channel-route-per-producer: MergeCapBenchmark cap=64 default vs loom (routes + the fork handoff back)	62.9	80.8	0.778	us/op means, 2 alternating rounds -f 2 (64.2/61.7 vs 80.7/80.8); 1.12x without the handoff
+2026-09-30	4236a7e6d	jmh-lane-quiet	channel-route-per-producer: MergeCapBenchmark cap=7 default vs loom	91.1	310.8	0.293	us/op means (92.1/90.2 vs 308.8/312.8)
+2026-09-30	4236a7e6d	jmh-lane-quiet	channel-route-per-producer: ZipCapBenchmark cap=7 / 64 default vs loom	1400	2343	0.598	us/op means (1393.9/1406.9 vs 2383.8/2303.0); cap 64 370.1 vs 753.6 (0.49)
+2026-09-30	4236a7e6d	jmh-lane-quiet	channel-route-per-producer: ChunkFlushBenchmark.okayChunked k=16 default vs loom	180.2	196.2	0.918	us/op means (178.2/182.3 vs 196.5/195.9); okayChunkedShared 197.0 vs 199.6

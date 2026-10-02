@@ -1,6 +1,6 @@
 package okay.deploy
 
-import okay.{Fact, Handler, Module, Monoid, Static, moduleAs}
+import okay.{Fact, Answers, Module, Monoid, Static, moduleAs}
 import okay.given
 import scala.quoted.*
 import scala.annotation.tailrec
@@ -75,7 +75,7 @@ object Needs:
    * `moduleAs`'s by-name argument runs; the leaves are read now.
    */
   def provisioned[A, R <: A](spine: Static[Provision, R])(release: R => Unit)
-                            (using place: Handler[Provision]): Module[[X] =>> A ?=> X] =
+                            (using place: Answers[Provision]): Module[[X] =>> A ?=> X] =
     moduleAs[A, R](spine.toFree.runWith(using place))(release)
       .needs(spine.leaves.map(_.need)*)
 

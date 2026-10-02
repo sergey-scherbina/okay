@@ -1,6 +1,6 @@
 package okay.demo
 
-import okay.{+, Async, Handler, given}
+import okay.{+, Async, Answers, given}
 import okay.agent.*
 import okay.codec.Schema
 import okay.llm.Transports
@@ -61,13 +61,13 @@ object RepoAgent {
    * the same segments: the symbol index (exact, no vectors), the
    * keyword index (BM25), and the vector store. The embedder here is
    * the deterministic hashing one, so this demo needs no embedding
-   * service to run — swapping in a real `Handler[Embed]` is the only
+   * service to run — swapping in a real `Answers[Embed]` is the only
    * change, and nothing else moves.
    */
   def index(sources: Seq[Source], budget: Int = 600): Repo =
     val segments = sources.flatMap(s => Ingest.segment(s, budget)(_.length))
     val store = MemoryStore()
-    given Handler[Embed] = Vectors.hashingHandler()
+    given Answers[Embed] = Vectors.hashingHandler()
     val _ = Ingest.run(store, sources, budget)(_.length).runWith
     Repo(Corpus.of(sources), Symbols.project(sources),
       Keyword.index(segments), store, sources)
@@ -130,16 +130,16 @@ object RepoAgent {
   def ask(repo: Repo, question: String,
           url: String, model: String, key: String = "none",
           budget: Int = 6000)
-         (using Handler[Async]): (String, Seq[Turn]) =
+         (using Answers[Async]): (String, Seq[Turn]) =
     // what the model saw, not what the conversation held: the two
     // differ precisely because retrieval joins at recall time
     val seen = scala.collection.mutable.Buffer[Seq[Turn]]()
     // all three sides, fused by reciprocal rank: exact symbols, BM25,
     // and semantic. The vector side is `handled` because grounded
-    // recall runs inside a comonadic Handler[Context] where nothing
+    // recall runs inside a comonadic Answers[Context] where nothing
     // may suspend — which is fine for a pure embedder and is exactly
     // the seam that would send a network-backed one to the tool row.
-    given Handler[Embed] = Vectors.hashingHandler()
+    given Answers[Embed] = Vectors.hashingHandler()
     val retriever = Retrieve.hybrid[okay.Pure](Seq(
       Retrieve.symbols(repo.index, repo.corpus.sources),
       Retrieve.keyword(repo.keyword),
@@ -152,13 +152,13 @@ object RepoAgent {
       budget = budget, share = 0.6, k = 4,
       onRecall = v => seen += v)(Compact.chars)
 
-    given Handler[Model] = provider
-    given Handler[Tool] = Handlers.tools(tools(repo))
-    given Handler[Context] = ctx
-    given rowMA: Handler[Model + Async] = okay.Handler.union[Model, Async]
-    given rowCMA: Handler[Context + (Model + Async)] =
-      okay.Handler.union[Context, Model + Async]
-    given rowAll: Handler[Agent] = okay.Handler.union[Tool, Context + (Model + Async)]
+    given Answers[Model] = provider
+    given Answers[Tool] = Handlers.tools(tools(repo))
+    given Answers[Context] = ctx
+    given rowMA: Answers[Model + Async] = okay.Answers.union[Model, Async]
+    given rowCMA: Answers[Context + (Model + Async)] =
+      okay.Answers.union[Context, Model + Async]
+    given rowAll: Answers[Agent] = okay.Answers.union[Tool, Context + (Model + Async)]
 
     val prog = Agent.remember(Turn.System(
       "You answer questions about a codebase. Relevant source is " +

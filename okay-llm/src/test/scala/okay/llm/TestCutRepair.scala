@@ -28,7 +28,7 @@ class TestCutRepair extends munit.FunSuite {
   def screenedRun(src: Counted, policy: (Any, Vector[String]) => Decision)
   : (Vector[String], Either[Violation, String]) =
     collect(Cut.guard[String] {
-      Condition.run[Unit, Writer % String + (Delim + Async)](policy)(
+      Condition.run[Unit, Writer % String + (Shift % ? + Async)](policy)(
         screened[String](src.source)((i, t) =>
           if t == "BAD" then Some(Violation("no-bad", i, t)) else None))
         .map(_ => "done")

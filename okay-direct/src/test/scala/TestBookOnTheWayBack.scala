@@ -18,10 +18,10 @@ class TestBookOnTheWayBack extends munit.FunSuite {
   // ---- chapter 1's timing problem, on both paths
 
   def handle(fail: Boolean, clock: () => Long): Outcome ! Pure =
-    Delim.delimited[Outcome, Pure]:
+    Shift.delimited[Outcome, Pure]:
       direct:
         val started = clock()
-        !Delim.onReturn(o => o.copy(took = clock() - started))
+        !Shift.onReturn(o => o.copy(took = clock() - started))
         if fail then Outcome(500, -1) else Outcome(200, -1)
 
   test("the hook sees the value coming back, on either path") {
@@ -35,9 +35,9 @@ class TestBookOnTheWayBack extends munit.FunSuite {
   }
 
   test("it runs LAST, on whatever the block produced") {
-    val r = !.run(Delim.delimited[Int, Pure]:
+    val r = !.run(Shift.delimited[Int, Pure]:
       direct:
-        !Delim.onReturn(n => n * 10)
+        !Shift.onReturn(n => n * 10)
         1 + 2)
     assertEquals(r, 30)
   }
@@ -45,10 +45,10 @@ class TestBookOnTheWayBack extends munit.FunSuite {
   // ---- QUESTION ONE: does it run when the block leaves early?
 
   test("an early exit still passes through the hook") {
-    val r = !.run(Delim.delimited[Int, Pure]:
+    val r = !.run(Shift.delimited[Int, Pure]:
       direct:
-        !Delim.onReturn(n => n + 100)
-        !Delim.exit(7)
+        !Shift.onReturn(n => n + 100)
+        !Shift.exit(7)
         1)
     assertEquals(r, 107, "the hook did not see an early exit's value")
   }
@@ -58,9 +58,9 @@ class TestBookOnTheWayBack extends munit.FunSuite {
   test("a THROWN exception does not pass through the hook") {
     var hookRan = false
     val thrown = intercept[RuntimeException](
-      !.run(Delim.delimited[Int, Pure]:
+      !.run(Shift.delimited[Int, Pure]:
         direct:
-          !Delim.onReturn(n => { hookRan = true; n })
+          !Shift.onReturn(n => { hookRan = true; n })
           throw new RuntimeException("boom")))
     assertEquals(thrown.getMessage, "boom")
     assert(!hookRan,
@@ -70,10 +70,10 @@ class TestBookOnTheWayBack extends munit.FunSuite {
   // ---- two hooks nest: the inner one is applied first
 
   test("two hooks: the one registered last is applied first") {
-    val r = !.run(Delim.delimited[String, Pure]:
+    val r = !.run(Shift.delimited[String, Pure]:
       direct:
-        !Delim.onReturn(s => s"outer($s)")
-        !Delim.onReturn(s => s"inner($s)")
+        !Shift.onReturn(s => s"outer($s)")
+        !Shift.onReturn(s => s"inner($s)")
         "x")
     assertEquals(r, "outer(inner(x))")
   }
@@ -81,9 +81,9 @@ class TestBookOnTheWayBack extends munit.FunSuite {
   // ---- the compensation shape, which is what people reach for it for
 
   def charge(amount: Int, ok: Boolean): String ! Pure =
-    Delim.delimited[String, Pure]:
+    Shift.delimited[String, Pure]:
       direct:
-        !Delim.onReturn(s => if s.startsWith("failed") then s"$s; refunded $amount" else s)
+        !Shift.onReturn(s => if s.startsWith("failed") then s"$s; refunded $amount" else s)
         if ok then s"charged $amount" else "failed: card declined"
 
   test("a compensation folded into the answer, registered from the middle") {

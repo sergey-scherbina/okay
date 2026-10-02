@@ -37,7 +37,7 @@ class TestPyHandles extends munit.FunSuite {
   override def afterAll(): Unit = if TestPy.python.nonEmpty then w.close()
 
   test("a seeded Random held in Python: its state lives there between calls") {
-    given okay.Handler[PyEval] = w.handler
+    given okay.Answers[PyEval] = w.handler
     val rng = Py.hold("random:Random")(42L).runWith.toOption.get
     assertEquals(rng.pyType, "random.Random")
     val draws = (1 to 2).map(_ => rng.call[Double]("random")().runWith)
@@ -46,7 +46,7 @@ class TestPyHandles extends munit.FunSuite {
   }
 
   test("an object's methods, its attribute, the object as an argument, and a held method result") {
-    given okay.Handler[PyEval] = w.handler
+    given okay.Answers[PyEval] = w.handler
     val acc = Py.hold("okayh:acc")().runWith.toOption.get
     assertEquals(acc.call[Long]("add")(5L).runWith, Right(5L))
     assertEquals(acc.call[Long]("add")(3L).runWith, Right(8L))
@@ -58,7 +58,7 @@ class TestPyHandles extends munit.FunSuite {
   }
 
   test("a released ref is refused by name") {
-    given okay.Handler[PyEval] = w.handler
+    given okay.Answers[PyEval] = w.handler
     val acc = Py.hold("okayh:acc")().runWith.toOption.get
     acc.release.runWith
     val after = acc.call[Long]("add")(1L).runWith
@@ -93,7 +93,7 @@ class TestPyHandles extends munit.FunSuite {
   test("a pool of ONE: a held object's calls reach its worker, and plain calls still get through") {
     val pool = PyWorkers.start(1, TestPy.python.get, Map("PYTHONPATH" -> dir.toString))
     try
-      given okay.Handler[PyEval] = pool.handler
+      given okay.Answers[PyEval] = pool.handler
       val acc = Py.hold("okayh:acc")().runWith.toOption.get
       assertEquals(acc.call[Long]("add")(2L).runWith, Right(2L))
       assertEquals(Py.fn[Double]("math:sqrt")(16.0).runWith, Right(4.0))
@@ -108,7 +108,7 @@ class TestPyHandles extends munit.FunSuite {
   test("a pool of two: refs are renamed pool-wide and each reaches its own worker") {
     val pool = PyWorkers.start(2, TestPy.python.get, Map("PYTHONPATH" -> dir.toString))
     try
-      given okay.Handler[PyEval] = pool.handler
+      given okay.Answers[PyEval] = pool.handler
       val a = Py.hold("okayh:acc")().runWith.toOption.get
       val b = Py.hold("okayh:acc")().runWith.toOption.get
       assertNotEquals(a.id, b.id)

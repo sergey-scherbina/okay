@@ -1,6 +1,6 @@
 package okay.rust
 
-import okay.{Handler, given}
+import okay.{Answers, given}
 
 /** one Argon2id case and its bytes, as BouncyCastle (the JVM) computes them */
 final case class Golden(password: String, salt: String, m: Int, t: Int, p: Int, n: Int, hex: String)
@@ -14,7 +14,7 @@ final case class Golden(password: String, salt: String, m: Int, t: Int, p: Int, 
 abstract class PasswordHashGoldenSuite extends munit.FunSuite:
 
   /** what computes Argon2id on this platform */
-  def handler: Handler[PasswordHash]
+  def handler: Answers[PasswordHash]
 
   val golden: Vector[Golden] = Vector(
     Golden("", "saltsalt", 8, 1, 1, 16, "b7ffc76d23b515687c3164bb8386cbe9"),

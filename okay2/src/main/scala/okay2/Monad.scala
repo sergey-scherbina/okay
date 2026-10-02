@@ -1,6 +1,6 @@
 package okay2
 
-import scala.annotation.implicitNotFound
+import scala.annotation.{implicitNotFound, tailrec}
 
 /**
  * THE MONAD CLASSES of the Scala 3 core's Monad.scala, in Scala 2.13
@@ -118,6 +118,79 @@ trait Monad[F[_]] extends Selective[F] {
 
 object Monad {
   def apply[F[_]](implicit M: Monad[F]): Monad[F] = M
+}
+
+/**
+ * A stack-safe loop: run `f` from `a`, go on from a `Left`, answer a `Right`. The Scala 3 core's `TailRecM`
+ * (specs/eager-carrier-depth.md), PROVIDED BY THE CARRIER, NEVER DERIVED FROM `flatMap`: an eager carrier's
+ * `flatMap` calls its continuation before it returns, and may need that continuation's result to build its own,
+ * so no wrapper turns `flatMap` recursion into a loop without the carrier's help (Freeman, "Stack Safety for
+ * Free", 2015). A monad without an instance has no `tailRecM`: a compile error, never an overflow.
+ */
+@implicitNotFound("no TailRecM[${F}]: a stack-safe loop is the carrier's to provide (specs/eager-carrier-depth.md).\nA carrier whose flatMap does not call its continuation before returning may say so: implicit val t: TailRecM[${F}] = TailRecM.deferring\nAn eager one writes its own loop.")
+trait TailRecM[F[_]] {
+  def tailRecM[A, B](a: A)(f: A => F[Either[A, B]]): F[B]
+}
+
+object TailRecM {
+  def apply[F[_]](implicit R: TailRecM[F]): TailRecM[F] = R
+
+  /**
+   * The `flatMap` recursion, for a carrier whose `flatMap` does NOT call its continuation before returning:
+   * the recursive call is a value the carrier's own run loop will reach, so no host frame is held across
+   * iterations. An explicit claim, made at the instance and checked there by a depth test; wrong for `Option`.
+   */
+  def deferring[F[_]](implicit M: Monad[F]): TailRecM[F] = new TailRecM[F] {
+    def tailRecM[A, B](a: A)(f: A => F[Either[A, B]]): F[B] =
+      M.flatMap(f(a)) {
+        case Left(next) => tailRecM(next)(f)
+        case Right(b) => M.pure(b)
+      }
+  }
+
+  /** a while loop: a `None` stops it */
+  implicit val option: TailRecM[Option] = new TailRecM[Option] {
+    def tailRecM[A, B](a: A)(f: A => Option[Either[A, B]]): Option[B] = {
+      @tailrec def loop(s: A): Option[B] = f(s) match {
+        case None => None
+        case Some(Left(next)) => loop(next)
+        case Some(Right(b)) => Some(b)
+      }
+      loop(a)
+    }
+  }
+
+  /** a while loop: a `Left` error stops it */
+  implicit def either[E]: TailRecM[({ type L[X] = Either[E, X] })#L] = new TailRecM[({ type L[X] = Either[E, X] })#L] {
+    def tailRecM[A, B](a: A)(f: A => Either[E, Either[A, B]]): Either[E, B] = {
+      @tailrec def loop(s: A): Either[E, B] = f(s) match {
+        case Left(e) => Left(e)
+        case Right(Left(next)) => loop(next)
+        case Right(Right(b)) => Right(b)
+      }
+      loop(a)
+    }
+  }
+
+  /**
+   * Depth-first over every branch, LAZILY: an explicit stack of the branches still to expand, and a tail loop
+   * that expands until the next `Right` and emits it with the rest suspended. A run of `Left`s costs no frames.
+   */
+  implicit val lazyList: TailRecM[LazyList] = new TailRecM[LazyList] {
+    def tailRecM[A, B](a: A)(f: A => LazyList[Either[A, B]]): LazyList[B] = {
+      @tailrec def next(stack: List[LazyList[Either[A, B]]]): LazyList[B] = stack match {
+        case Nil => LazyList.empty
+        case head :: rest =>
+          if (head.isEmpty) next(rest)
+          else head.head match {
+            case Right(b) => b #:: go(head.tail :: rest)
+            case Left(s) => next(f(s) :: head.tail :: rest)
+          }
+      }
+      def go(stack: List[LazyList[Either[A, B]]]): LazyList[B] = LazyList.empty #::: next(stack)
+      go(f(a) :: Nil)
+    }
+  }
 }
 
 /** choice with a neutral element */

@@ -8,11 +8,11 @@ import okay.rag.*
  * Grounded recall where retrieval must WAIT — on both platforms, from
  * one source, and JS is the half that matters.
  *
- * `Grounded.context` builds a `Handler[Context]`, which is
+ * `Grounded.context` builds a `Answers[Context]`, which is
  * `Context ==> Id`. An operation interpreted into `Id` must produce a
  * value, so it must finish; on the JVM it can at least park a thread
  * to get there, and on JS there is nothing to park. That is the same
- * finding `TestAgentCross` records for `Handler[Model]`, met again
+ * finding `TestAgentCross` records for `Answers[Model]`, met again
  * one layer along — and the same answer: do not HANDLE the effect,
  * interpret it into a row and let the driver finish the job.
  *

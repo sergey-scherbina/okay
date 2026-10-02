@@ -1,0 +1,5 @@
+2026-09-29	c84918580	jmh-lane-quiet	resume-late-small-ring-cost: ZipCapBenchmark cap=7, resumeLate fork vs forkLong (one build, -Dokay.resumeLate)	1383	3709	0.373	us/op means, 2 rounds -f 2 (1359.7/1406.6 vs 3574.0/3844.8); inline 483, loom 2396
+2026-09-29	c84918580	jmh-lane-quiet	resume-late-small-ring-cost: ZipCapBenchmark cap=64, fork vs forkLong	370	2558	0.145	us/op means (360.4/379.6 vs 2501.6/2615.2); inline 472, loom 793
+2026-09-29	c84918580	jmh-lane-quiet	resume-late-small-ring-cost: MergeCapBenchmark cap=7, fork vs forkLong	92.5	271.0	0.341	us/op means (91.9/93.0 vs 267.7/274.3); inline 129.7, loom 311.6
+2026-09-29	c84918580	jmh-lane-quiet	resume-late-small-ring-cost: MergeCapBenchmark cap=64, fork vs forkLong	60.8	73.6	0.826	us/op means (60.9/60.8 vs 73.3/73.9); inline 91.3, loom 82.2
+2026-09-29	c84918580	jmh-lane-quiet	resume-late-small-ring-cost: the one loss, ZipCapBenchmark cap=7, fork vs inline	1383	483	2.863	us/op means; a tiny-ring zip's consumer running the producer costs less than any handoff; not special-cased (the drive cannot see a ring's size)

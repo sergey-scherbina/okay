@@ -1,6 +1,6 @@
 package okay.scala2
 
-import okay.{!, +, At, Delim, Wf}
+import okay.{%, !, +, At, Shift, Wf}
 import okay.given
 import Rows.coerce
 
@@ -11,7 +11,7 @@ import Rows.coerce
  * directly: `Wf.Step` (Done / Asking / Waiting), `Wf.Wait`, `Wf.SysA`,
  * `Wf.Runtime` (a trait Scala 2 can implement, and `Wf.Runtime.scripted`).
  * What Scala 2 cannot use is the program: a durable body is a context
- * function over `Wf.Asks`, whose doors answer `A ! (Delim + F)` and need
+ * function over `Wf.Asks`, whose doors answer `A ! (Shift % ? + F)` and need
  * the evidence that exists only while the driver runs the body.
  *
  * So a Scala 2 workflow is an ordinary program, `Eff[Workflow[Q, A], R]`,
@@ -101,11 +101,11 @@ object Workflows {
 
   /** the program as okay's engine runs it: each operation becomes the
    * door it stands for */
-  private def body[Q, A, R](wf: Eff[Workflow[Q, A], R]): Wf.Asks[Q, A, R, okay.Pure] ?=> R ! (Delim + okay.Pure) = {
+  private def body[Q, A, R](wf: Eff[Workflow[Q, A], R]): Wf.Asks[Q, A, R, okay.Pure] ?=> R ! (Shift % ? + okay.Pure) = {
     val w = summon[Wf.Asks[Q, A, R, okay.Pure]]
     given At = At("okay.scala2.Workflow")
     type F[X] = WfOp[Q, A, X]
-    okay.!.translate[R, F, Delim + okay.Pure](coerce(wf.program))(
+    okay.!.translate[R, F, Shift % ? + okay.Pure](coerce(wf.program))(
       [X] => (o: F[X]) => (o match {
         case WfOp.Pause(q) => w.pause(q)
         case WfOp.Now() => w.now
@@ -116,6 +116,6 @@ object Workflows {
         case WfOp.Signal(n) => w.awaitSignal(n)
         case WfOp.Child(id) => w.awaitChild(id)
         case WfOp.Cancelled() => w.cancelled
-      }): X ! (Delim + okay.Pure))
+      }): X ! (Shift % ? + okay.Pure))
   }
 }

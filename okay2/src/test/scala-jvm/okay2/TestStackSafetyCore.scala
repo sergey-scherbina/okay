@@ -18,15 +18,15 @@ class TestStackSafetyCore extends munit.FunSuite {
 
   type P = Pure
 
-  test("Delim: a shift to a prompt under thousands of other delimiters cuts the chain as a loop") {
+  test("Shift[Any]: a shift to a prompt under thousands of other delimiters cuts the chain as a loop") {
     val n = 20000
     // built inside out by a loop, so only the machine can be what overflows
-    def nest(outer: Prompt[Int]): Int ! (Delim + P) = {
-      var prog: Int ! (Delim + P) = Delim.shift[Int, Int, P](outer)(k => k(1).map(_ + 1))
-      for (_ <- 1 to n) prog = Delim.push[Int, P](Delim.prompt[Int])(prog)
+    def nest(outer: Prompt[Int]): Int ! (Shift[Any] + P) = {
+      var prog: Int ! (Shift[Any] + P) = Shift.shift[Int, Int, P](outer)(k => k(1).map(_ + 1))
+      for (_ <- 1 to n) prog = Shift.push[Int, P](Shift.prompt[Int])(prog)
       prog
     }
-    assertEquals(SmallStack.run()(!.run(Delim.reset[Int, P](p => nest(p)))), 2)
+    assertEquals(SmallStack.run()(!.run(Shift.reset[Int, P](p => nest(p)))), 2)
   }
 
   private val S = implicitly[Selective[({ type L[A] = Static[Fetch, A] })#L]]

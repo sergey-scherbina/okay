@@ -82,12 +82,12 @@ class TestReadmes extends munit.FunSuite {
   }
 
   /** the readme's `run`: one handler per effect, the row assembled flat */
-  def run[A](prog: A ! Agent)(model: okay.Handler[Model], tool: okay.Handler[Tool],
-                              ctx: okay.Handler[Context]): A =
-    given okay.Handler[Model] = model
-    given okay.Handler[Tool] = tool
-    given okay.Handler[Context] = ctx
-    given rowAll: okay.Handler[Agent] = okay.Handler.flat[Agent]
+  def run[A](prog: A ! Agent)(model: okay.Answers[Model], tool: okay.Answers[Tool],
+                              ctx: okay.Answers[Context]): A =
+    given okay.Answers[Model] = model
+    given okay.Answers[Tool] = tool
+    given okay.Answers[Context] = ctx
+    given rowAll: okay.Answers[Agent] = okay.Answers.flat[Agent]
     prog.runWith
 
   // ── okay-http/README.md ────────────────────────────────────────

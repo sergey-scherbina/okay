@@ -42,9 +42,9 @@ Four properties, each pinned:
 ## Multi-shot pays for itself
 
 ```scala
-case Delim.Paused.Ask(_, resume, _) =>
-  Delim.run(resume("first world")).flatMap { a =>
-    Delim.run(resume("second world")).map { b => (a.finished, b.finished) }
+case Shift.Paused.Ask(_, resume, _) =>
+  Shift.run(resume("first world")).flatMap { a =>
+    Shift.run(resume("second world")).map { b => (a.finished, b.finished) }
   }
 // (Some("FIRST WORLD"), Some("SECOND WORLD"))
 ```
@@ -65,11 +65,11 @@ in one production use.
 
 ## The deletion, which is the other half
 
-This file was written before `Delim` had named patterns, so it carried
+This file was written before `Shift` had named patterns, so it carried
 its own `Stepping` enum — a `Paused(call, resume)` beside a `Done(a)` —
 and its own driver.
 
-That is `Delim.Paused` and `Delim.drive`, exactly. **A stepping run is
+That is `Shift.Paused` and `Shift.drive`, exactly. **A stepping run is
 a dialogue whose questions are tool calls and whose answers are their
 results.** Saying so deleted half the file.
 
@@ -87,11 +87,11 @@ it cost one sentence and left one driver instead of two, `Paused` and
 This is the part worth copying, more than the feature.
 
 The backlog entry that asked for this rewrite said the stepper would
-gain `Delim.replay` — **a session that survives the process** — for
+gain `Shift.replay` — **a session that survives the process** — for
 free, since it was becoming a dialogue anyway. It is a reasonable
 inference and it is wrong, and the type system says why:
 
-> `replay` requires `Replayable[Delim + Rest]`, and `Rest` is
+> `replay` requires `Replayable[Shift % ? + Rest]`, and `Rest` is
 > `Context + (Model + Async)`.
 
 Re-running a stepping session would **ask the model again**. A stepping

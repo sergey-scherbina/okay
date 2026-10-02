@@ -13,7 +13,7 @@ class TestUnwrapMark extends munit.FunSuite {
 
   test("the glyph is the direct mark again, and the spellings agree") {
     val log = collection.mutable.Buffer.empty[String]
-    given Handler[Reader % Int] = new:
+    given Answers[Reader % Int] = new:
       def handle[A](e: Reader[Int, A]): A = e match
         case Reader.Ask() => log += "ask"; 21
         case Reader.Asks(f) => log += "ask"; f(21)

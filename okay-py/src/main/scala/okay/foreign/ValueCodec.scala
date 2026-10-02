@@ -1,6 +1,6 @@
 package okay.foreign
 
-import okay.{!, +, effect, pure, Cont, reset, />}
+import okay.{!, +, effect, pure, Cont, />}
 import okay.codec.Codecs
 import okay.Row.plus
 import okay.codec.Schema
@@ -42,7 +42,7 @@ object ValueCodec {
   // so depth costs heap, not native stack (stack-safety-py-r).
 
   private def enc[X](s: Schema[X], x: X, depth: Int): Value =
-    if depth >= Codecs.NativeThreshold then reset(encC[X, Value](s, x))
+    if depth >= Codecs.NativeThreshold then Cont.reset(encC[X, Value](s, x))
     else encNative(s, x, depth)
 
   /** a sum's case as its dict, the case named in `type` */
@@ -139,7 +139,7 @@ object ValueCodec {
     case other => other.toString
 
   private def dec[X](s: Schema[X], v: Value, at: At, depth: Int): Either[String, X] =
-    if depth >= Codecs.NativeThreshold then reset(decC[X, Either[String, X]](s, v, at))
+    if depth >= Codecs.NativeThreshold then Cont.reset(decC[X, Either[String, X]](s, v, at))
     else decNative(s, v, at, depth)
 
   /** the leaves, shared by both roads: a scalar has no children, so this

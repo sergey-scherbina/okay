@@ -63,6 +63,11 @@ private final class BoolSlot:
  * park, `unblocked()` after it, on the owner thread, in pairs.
  */
 private[okay] final class ManagedWorker(val hooks: ManagedWorker.Hooks, name: String) extends Thread(hooks, name):
+  /** the drive whose slice runs on this worker, if any — `DriveTask.running`
+   * for our own threads, as a plain field: only this thread reads or
+   * writes it, and a ThreadLocal's lookup on every slice of every fiber
+   * was a third of what the slice hooks cost (spawnjoin-rise-bisect) */
+  var drive: Schedulers.DriveTask[?] | Null = null
   // here rather than at the construction site: a worker makes its thread
   // in its own constructor, and the init checker (rightly) flags handing
   // a thread that holds the half-built worker to an external method there
@@ -303,6 +308,7 @@ object Schedulers {
       f.whenComplete((v, e) => k(if e == null then Right(v) else Left(unwrap(e))))
       ()
     def cancel(): Unit = interrupt()
+    def answered: Boolean = f.isDone
     // TRIED AND REFUTED (close-the-gaps, 2026-09-06): overriding
     // joinEither to park on `f.get()` directly instead of through
     // onComplete -> Slot -> park. Alternating A/B, three rounds,
@@ -557,6 +563,12 @@ object Schedulers {
       /** true from the moment the worker decides to park until it runs
        * again: what a submitter reads to wake it */
       @volatile var parked = false
+      /** claimed by a `forkLong` that is waking this worker, cleared by
+       * the worker once awake: `parked` stays true until the worker
+       * RUNS, so two wakes in a row read the same sleeper, and a merge
+       * forking two feeds woke one worker twice
+       * (specs/adaptive-chunked-merge-cost.md) */
+      val waking = java.util.concurrent.atomic.AtomicBoolean(false)
       var ran = 0L   // diagnostics only: plain, so the hot path has no fence
       var stolen = 0L
       val thread: Thread = ManagedWorker(this, s"okay-own-${Owned.this.id}-$id")   // a daemon
@@ -651,6 +663,7 @@ object Schedulers {
             val _ = awake.decrementAndGet()
             if size == 0 && submissions.isEmpty && !stopped then java.util.concurrent.locks.LockSupport.park(this)
             parked = false
+            waking.set(false)
             val _ = awake.incrementAndGet()
             // a worker woke: the monitor parks when nobody is awake, so
             // it may be asleep. Off the per-task path — once per park.
@@ -908,7 +921,7 @@ object Schedulers {
         java.util.concurrent.TimeUnit.MILLISECONDS)
 
     def fork[A](prog: () => A ! Async): Fiber[A] =
-      val t = DriveTask[A](prog)
+      val t = DriveTask[A](prog, this)
       val mine = current.get
       if mine != null then mine.pushLocal(t)   // the owner's own end: no CAS, no signal
       else
@@ -918,6 +931,31 @@ object Schedulers {
         // has grown past what one worker should be left with
         if awake.get == 0 || submissionsSize.get > wakeAbove then { val _ = activateNext() }
       t
+
+    /** a fiber the caller declares long (a channel's feed): forked as
+     * `fork` does, then ONE parked worker woken, if there is one, to take
+     * it — the thief of the forking worker's deque or of the submission
+     * queue. Without it the second feed of a merge forked from outside
+     * waits for the monitor to see it at the queue's head a whole tick
+     * (100-200 us), which a ~200 us merge pays in full
+     * (specs/adaptive-chunked-merge-cost.md). `fork` gains nothing. */
+    override def forkLong[A](prog: () => A ! Async): Fiber[A] =
+      val t = fork(prog)
+      val _ = activateUnclaimed()
+      t
+
+    /** wake one parked worker no other `forkLong` is already waking */
+    private def activateUnclaimed(): Boolean =
+      val alive = live.get
+      var i = 0
+      while i < alive do
+        val w = workers(i)
+        if w.parked && w.waking.compareAndSet(false, true) then
+          val _ = activations.incrementAndGet()
+          java.util.concurrent.locks.LockSupport.unpark(w.thread)
+          return true
+        i += 1
+      false
 
     private[okay] def fromSubmissions(): DriveTask[?] | Null =
       val t = submissions.poll()
@@ -1032,7 +1070,7 @@ object Schedulers {
    * answer lands in, and the Fiber a caller holds. The cell is
    * `null` (running, nobody waiting), a `Waiters` stack, or the
    * answer; the answer is written once. */
-  private[okay] final class DriveTask[A](prog: () => A ! Async)
+  private[okay] final class DriveTask[A](prog: () => A ! Async, home: Scheduler | Null = null)
       extends java.util.concurrent.ForkJoinTask[Unit] with Async.Drive[A] with Fiber[A]:
     private val cell = java.util.concurrent.atomic.AtomicReference[Waiters[A] | Either[Throwable, A] | Null](null)
 
@@ -1042,6 +1080,39 @@ object Schedulers {
       true
     def getRawResult(): Unit = ()
     def setRawResult(v: Unit): Unit = ()
+
+    /** a late answer from one of OUR workers runs the fiber in place, as
+     * every callback drive does; one from any other thread — the caller's
+     * own consumer, a foreign callback — goes back to the fiber's home
+     * scheduler, so that thread returns to its own work instead of doing
+     * this fiber's. Measured: a consumer outside the pool freeing slots
+     * of a 64-slot ring spent 31% of its time running the producers
+     * (specs/adaptive-elementwise-small-ring.md). Plain `fork`, NOT
+     * `forkLong`: a resume from a small ring comes every few elements,
+     * and waking a sleeper each time (an unpark) made a 7-slot zip 2.7x
+     * slower than `fork`, which wakes only when nobody is awake
+     * (resume-late-small-ring-cost).
+     *
+     * SAFE FOR ORDER because the library's feeds name their route: a
+     * partitioned channel used to know a producer by its thread, and a
+     * producer moved by this handoff wrote its next run into another
+     * part (resume-late-withdraw, TestMergeOrder red). Since
+     * channel-route-per-producer a feed claims its part once and a
+     * resume anywhere writes to it */
+    override protected def resumeLate[X](x: X, k: X => A ! Async): Unit =
+      val h = home
+      val me = Thread.currentThread()
+      // NOT inline when this thread is running ANOTHER fiber right now
+      // (ready-merge-side-starves, 2026-09-30): a producer's `offer` woke
+      // this consumer, and resumed here the consumer ran on the producer's
+      // stack — a merge whose other side is always ready never parked
+      // again, so the producer under it never ran again and a fold waiting
+      // for its side waited for ever. Sent home instead; from a worker
+      // that is `pushLocal`, no CAS and no wake, the cheap road
+      // (resume-late-small-ring-cost). A callback on a worker between
+      // fibers still resumes in place.
+      if h == null || (me.isInstanceOf[ManagedWorker] && DriveTask.current(me) == null) then resumeHere(x, k)
+      else { val _ = h.fork(() => async(resumeHere(x, k))) }
 
     protected def succeed(a: A): Unit = done(Right(a))
     protected def fail(e: Throwable): Unit = done(Left(e))
@@ -1061,6 +1132,11 @@ object Schedulers {
         case r: Either[Throwable, A] @unchecked => k(r) // the cell only ever holds this task's own answer
         case w: Waiters[A] @unchecked => if !cell.compareAndSet(w, Waiters(k, w)) then onComplete(k)
         case null => if !cell.compareAndSet(null, Waiters(k, null)) then onComplete(k)
+
+    /** answered: the cell holds an Either once, and only then */
+    def answered: Boolean = cell.get match
+      case _: Either[?, ?] => true
+      case _ => false
 
     /** cancel ANSWERS the fiber, as every other member does: a
      * `join()` on a cancelled fiber must return rather than wait for
@@ -1096,34 +1172,51 @@ object Schedulers {
 
     override protected def sliceStarted(): AnyRef | Null =
       val me = Thread.currentThread()
-      val outer = DriveTask.running.get
+      val outer = DriveTask.current(me)
       if outer != null then outer.suspend(me)
-      DriveTask.running.set(this)
+      DriveTask.setCurrent(me, this)
       runner = me
       outer
 
+    /**
+     * THE HANDSHAKE WITH `cancel`, without the monitor on the way out
+     * (spawnjoin-rise-bisect: a monitor enter and exit on every slice of
+     * every fiber cost `own` spawn/join most of 1.7x). `cancel` writes
+     * `stopped` and THEN reads `runner`, under its monitor; a slice
+     * leaving writes `runner = null` and THEN reads `stopped`. Both are
+     * volatile, so they cannot both miss: either `cancel` read null and
+     * sends nothing, or the slice sees the cancel — and then waits out
+     * `cancel`'s critical section (an empty `synchronized`) before taking
+     * the interrupt back, so an interrupt sent to `me` is never left on
+     * a pooled worker. A slice never cancelled touches no monitor.
+     */
+    private def leave(me: Thread): Unit =
+      if runner eq me then
+        runner = null
+        if cancelled then
+          synchronized { () }
+          val _ = Thread.interrupted()
+
     override protected def sliceEnded(token: AnyRef | Null): Unit =
       val me = Thread.currentThread()
-      synchronized { if runner eq me then runner = null }
       // our cancel's interrupt is ours to take back, not the thread's
-      if cancelled then { val _ = Thread.interrupted() }
+      leave(me)
       token match
         case outer: DriveTask[?] =>
-          DriveTask.running.set(outer)
+          DriveTask.setCurrent(me, outer)
           outer.resume(me)
-        case _ => DriveTask.running.set(null)
+        case _ => DriveTask.setCurrent(me, null)
 
     /** a nested slice starts on `me`: this drive's code is not running.
      * An interrupt our cancel already sent is taken back here, so the
      * nested code does not meet it, and `resume` sends it again */
-    private def suspend(me: Thread): Unit = synchronized:
-      if runner eq me then
-        runner = null
-        if cancelled then { val _ = Thread.interrupted() }
+    private def suspend(me: Thread): Unit = leave(me)
 
     /** the nested slice is over: this drive's code runs on `me` again,
      * and a cancel that landed meanwhile is delivered now */
-    private def resume(me: Thread): Unit = synchronized:
+    private def resume(me: Thread): Unit =
+      // the same handshake the other way: `runner` written, then `stopped`
+      // read — a cancel that read null is seen here and delivered by us
       if runner == null then
         runner = me
         if cancelled then me.interrupt()
@@ -1131,6 +1224,14 @@ object Schedulers {
   private[okay] object DriveTask:
     /** the drive whose slice is running on this thread, if any */
     val running: ThreadLocal[DriveTask[?] | Null] = new ThreadLocal[DriveTask[?] | Null]
+    /** the drive running on `t` (the current thread): a field on our own
+     * workers, the ThreadLocal on any other thread */
+    def current(t: Thread): DriveTask[?] | Null = t match
+      case w: ManagedWorker => w.drive
+      case _ => running.get
+    def setCurrent(t: Thread, d: DriveTask[?] | Null): Unit = t match
+      case w: ManagedWorker => w.drive = d
+      case _ => running.set(d)
 
   /** one honest platform thread per fiber: heavy, but works anywhere */
   val threads: Scheduler = new:

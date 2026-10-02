@@ -2,7 +2,7 @@ package okay
 
 import org.openjdk.jmh.annotations.*
 import java.util.concurrent.TimeUnit
-import okay.Delim.{push, reset, shift}
+import okay.Shift.{push, reset, shift}
 
 /**
  * CAPTURE DEPTH (delim-machine-allocs, 2026-09-27): what a capture
@@ -44,7 +44,7 @@ class DelimDepthBenchmark {
   @Param(Array("bind", "push"))
   var shape: String = ""
 
-  type Row = Delim + Pure
+  type Row = Shift % ? + Pure
 
   /** k called `shots` times in sequence, the answers summed */
   def callK(k: Unit => Int ! Row, n: Int, acc: Int): Int ! Row =
@@ -71,7 +71,7 @@ class DelimDepthBenchmark {
 
   @Benchmark
   def delimCaptureDepth(): Int =
-    val q = Delim.prompt[Int]
+    val q = Shift.prompt[Int]
     !.run(reset[Int, Pure] { p =>
       if shape == "bind" then binds(p, depth) else pushes(p, q, depth)
     })

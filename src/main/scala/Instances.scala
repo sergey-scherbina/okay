@@ -109,7 +109,7 @@ object Instances:
    * `Refs` cell each, a connection per tenant. What it does not do is
    * thread state for you; that is `only` plus the effect's own runner.
    */
-  def handler[F[+_]](pick: Handle => Handler[F]): Handler[Of[F]] = new:
+  def handler[F[+_]](pick: Handle => Answers[F]): Answers[Of[F]] = new:
     def handle[A](e: Instances[F, A]): A = pick(e.at).handle(e.op)
 
   /**
@@ -140,11 +140,11 @@ object Instances:
 
   /** an instance's operation reached `exhausted`: nothing answered it.
    * Either `only` never stripped that handle, or a `Lexical.walk`
-   * instance was used outside its installation, or inside a `Delim`
+   * instance was used outside its installation, or inside a `Shift`
    * delimiter's body, which a walk does not enter */
   final class Survived(val at: Handle)
     extends IllegalStateException(
-      s"an operation of $at survived: that instance was never stripped by `only`, or, for a `Lexical.walk` instance, it was performed outside its installation or inside a `Delim` delimiter's body, which a walk does not enter (docs/many-instances.md)")
+      s"an operation of $at survived: that instance was never stripped by `only`, or, for a `Lexical.walk` instance, it was performed outside its installation or inside a `Shift` delimiter's body, which a walk does not enter (docs/many-instances.md)")
 
 /**
  * ANY effect, under a key — so a row may hold several instances of
@@ -204,7 +204,7 @@ object Instances:
  * the instances, so the compiler knows how many there are and nothing
  * casts. `Refs` is the dynamic counterpart for state made at run
  * time, at the price of a heap and one cast. The third is the one
- * `Delim` already offers — a fresh PROMPT per handler installation,
+ * `Shift` already offers — a fresh PROMPT per handler installation,
  * which gives an instance an identity that no type has to name and no
  * key has to be invented for; it is the most scoped of the three, and
  * the most invasive, since the program carries the prompt. Use a key
@@ -243,5 +243,5 @@ object Tag:
     !.interpret[A, Of[K, F], F, G](p)([X] => (e: Tag[K, F, X]) => effect[F + G, X](e.op))
 
   /** a comonadic handler for one key, out of the effect's own */
-  def handler[K, F[+_]](h: Handler[F]): Handler[Of[K, F]] = new:
+  def handler[K, F[+_]](h: Answers[F]): Answers[Of[K, F]] = new:
     def handle[A](e: Tag[K, F, A]): A = h.handle(e.op)

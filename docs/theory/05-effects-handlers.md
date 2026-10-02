@@ -162,7 +162,7 @@ signature to a carrier:
 
 | shape | meaning | limits |
 |---|---|---|
-| `F ==> Id` — `Handler[F]` | comonadic: every operation is *answered on the spot* | cannot suspend — "Id is exactly where a suspension cannot go", so no I/O on a platform with no thread to park |
+| `F ==> Id` — `Answers[F]` | comonadic: every operation is *answered on the spot* | cannot suspend — "Id is exactly where a suspension cannot go", so no I/O on a platform with no thread to park |
 | `F ==> ([X] =>> X ! G)` — `!.translate` | tail-resumptive: answer with *more program* in another row | one walk, no `Cont`; cannot abort or resume twice |
 | `F !> S = F ==> ([X] =>> X /> S)` | Cont-valued: the operation receives its delimited continuation | full Plotkin–Pretnar power — abort, multi-shot — at the price of going through `Cont` |
 
@@ -171,10 +171,10 @@ the general handler Filinski's theorem promises; the other two are the
 fast degenerate points where the continuation is used exactly once and
 immediately, and Okay makes them separate constructs *because they cost
 less* — `translate` forwards `G` in a single tail-recursive walk, and
-`Handler[F]` is what `runWith` consumes. Choosing the weakest shape
+`Answers[F]` is what `runWith` consumes. Choosing the weakest shape
 that suffices is the library's standing advice, and the platform
 constraint enforces it once: on JS there is no `CanBlock`, so a
-comonadic `Handler[Async]` does not exist there *by type*, and code
+comonadic `Answers[Async]` does not exist there *by type*, and code
 must peel to `Async.runAsync` instead (`cross-platform-async.md`).
 
 ## Lowering: how a program becomes its meaning
@@ -266,7 +266,7 @@ The other half of `handle` shows what an *unhandled* operation looks
 like once lowered — this is the definition, in the `Effects` trait:
 
 ```scala
-split[F, G](e)(e => h(e))(e => shift(k => perform(e).flatMap(k)))
+split[F, G](e)(e => h(e))(e => Cont.shift(k => perform(e).flatMap(k)))
 ```
 
 Read aloud: not mine, so perform it again in the residual row and
@@ -299,13 +299,13 @@ a capturing handler now costs what an answering one costs.
 
 ```scala
 /** the same answer as the foldCont definition, in one pass instead of two */
-override def runWith(using Handler[F]): A = runFree(m)
+override def runWith(using Answers[F]): A = runFree(m)
 ```
 
 `runFree` (`Effects.scala:524`) is a three-case tail-recursive loop
 over `resume`'s normal form that walks the tree and answers each
 operation on the spot. It is allowed to exist because a
-comonadic `Handler[F]` uses each continuation exactly once and
+comonadic `Answers[F]` uses each continuation exactly once and
 immediately: there is nothing for a reified continuation to buy, so
 building one is pure overhead, and the tree can be consumed in one pass
 instead of being rebuilt as `Cont` and then run. The comment states the

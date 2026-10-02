@@ -17,7 +17,7 @@ import scala.collection.immutable.ArraySeq
  * (2026-09-19): the identity signature put the chunk in the ANSWER
  * position, so `pure(c)` type-checked as a chunk and emitted nothing.
  * On the writer carrier a chunk is `Writer.tell(c)` — a `Say` node the
- * walk matches, `Handler[Pure]` only — and the stream instance is
+ * walk matches, `Answers[Pure]` only — and the stream instance is
  * `Stream[[W] =>> Unit ! Writer % W, Pure]` (Writer.scala), whose
  * hand-specialized `iterator` measured at parity with the producer
  * walk (specs/producer-to-writer-carrier.md, Results).
@@ -383,7 +383,7 @@ object Chunks {
   /**
    * `fold` for a G-effectful chunked writer stream, dispatched on a
    * `Fold` instance the way `Chunks.fold` is — JVM and Native only:
-   * it walks `writerStreamIn`'s eager `iterator` under `Handler[Async]`
+   * it walks `writerStreamIn`'s eager `iterator` under `Answers[Async]`
    * (needs `CanBlock`, which JS does not have) and wraps the walk in
    * `async { ... }`, so the answer is still a suspended program. The
    * eager walk is the point: it gives the per-chunk loop its own small
@@ -459,6 +459,30 @@ object Chunks {
         Writer.tell(buf.chunk).flatMap(_ => go(ca, ia + n, ra, cb, ib + n, rb))
 
     go(emptyChunk, 0, pa, emptyChunk, 0, pb)
+
+  /**
+   * The sort-merge join by key of two chunk streams NON-DECREASING in
+   * key (specs/stream-join.md): the right run of equal keys held, the
+   * left side streamed against it, one output chunk per left chunk.
+   * Inner: every pair sharing a key. A key out of order on either side
+   * fails the join, naming both keys. `SortMerge` is the machine.
+   */
+  def joinSorted[K: Ordering, A, B](l: Chunks[(K, A)], r: Chunks[(K, B)]): Chunks[(K, (A, B))] =
+    SortMerge.chunks(l, r)(() => SortMerge.inner)
+
+  /** sorted by `key`, the input held one run of `budget` elements at a
+   * time and the runs spilled (`ExternalSort`, chunks-external-sort) */
+  def sortBy[A, K](p: Chunks[A], budget: Int = 1_000_000)(key: A => K)
+                  (using Ordering[K], RunCodec[A], Spill): Chunks[A] =
+    ExternalSort.sortBy(p, budget)(key)
+
+  /** `joinSorted`, every left row kept: `None` where the right side has no such key */
+  def leftJoinSorted[K: Ordering, A, B](l: Chunks[(K, A)], r: Chunks[(K, B)]): Chunks[(K, (A, Option[B]))] =
+    SortMerge.chunks(l, r)(() => SortMerge.left)
+
+  /** `joinSorted`, every row of either side kept: `None` on the side that lacks the key */
+  def fullJoinSorted[K: Ordering, A, B](l: Chunks[(K, A)], r: Chunks[(K, B)]): Chunks[(K, (Option[A], Option[B]))] =
+    SortMerge.chunks(l, r)(() => SortMerge.full)
 
   /**
    * Normalize chunk sizes (the content unchanged, the tail shorter):

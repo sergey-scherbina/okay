@@ -2,7 +2,7 @@ package okay.rust
 
 import java.nio.file.{Files, Path}
 import java.lang.foreign.{FunctionDescriptor, ValueLayout}
-import okay.{!, Handler, given}
+import okay.{!, Answers, given}
 import org.bouncycastle.crypto.generators.Argon2BytesGenerator
 import org.bouncycastle.crypto.params.Argon2Parameters
 
@@ -31,12 +31,12 @@ class TestPasswordHash extends munit.FunSuite {
   import TestPasswordHash.*
 
   test("a program asks PasswordHash for Argon2id; the handler decides what computes it") {
-    given Handler[PasswordHash] = PasswordHash.using(op => Right(op.salt.reverse))
+    given Answers[PasswordHash] = PasswordHash.using(op => Right(op.salt.reverse))
     assertEquals(stored("pw", "ab").runWith, Right("6261"))
   }
 
   test("under the JVM implementation, the program answers Argon2id itself") {
-    given Handler[PasswordHash] = PasswordHash.using(bouncy)
+    given Answers[PasswordHash] = PasswordHash.using(bouncy)
     assertEquals(stored("pw", "saltsalt").runWith.map(_.length), Right(64))
   }
 }
@@ -62,7 +62,7 @@ class TestPasswordHashRust extends munit.FunSuite {
     NativeLib.load(target.resolve("release").resolve(NativeLib.fileName("okay_argon2")))
   override def afterAll(): Unit = if has("cargo", "--version") then lib.close()
 
-  private def rust: Handler[PasswordHash] = PasswordHash.rust(lib).fold(why => fail(why), identity)
+  private def rust: Answers[PasswordHash] = PasswordHash.rust(lib).fold(why => fail(why), identity)
 
   test("THE LAW: the Rust kernel's bytes are BouncyCastle's bytes") {
     val cases = for

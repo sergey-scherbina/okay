@@ -160,6 +160,15 @@ given ctxMonad[E]: Monad[[X] =>> E ?=> X] with
   extension [A](fa: E ?=> A)
     def flatMap[B](f: A => E ?=> B): E ?=> B = f(fa)
 
+/** the context monad is EAGER — `flatMap` applies `f` at once — so its
+ * loop is a loop under the context (specs/eager-carrier-depth.md) */
+given ctxTailRecM[E]: TailRecM[[X] =>> E ?=> X] with
+  def tailRecM[A, B](a: A)(f: A => E ?=> Either[A, B]): E ?=> B =
+    @scala.annotation.tailrec def loop(s: A)(using E): B = f(s) match
+      case Left(next) => loop(next)
+      case Right(b) => b
+    loop(a)
+
 /**
  * A KIND of fact a module may declare about itself (module-facts):
  * whoever READS the fact defines the key, and HOW TWO DECLARATIONS

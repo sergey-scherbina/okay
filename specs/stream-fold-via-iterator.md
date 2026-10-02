@@ -30,7 +30,7 @@ carried forward.
 ## Interface
 
 Unchanged. `Stream.fold[S, F, A, B](s)(using Fold[A, B])(using
-Stream[S, F], Handler[F]): B`, and the six postfix consumers keep
+Stream[S, F], Answers[F]): B`, and the six postfix consumers keep
 their signatures and answers. `Foldable[Producer]` (Generate.scala),
 which is `Stream.fold`, follows.
 
@@ -76,7 +76,7 @@ same name.
   shape is known; six consumers times six instances is the
   alternative. Rejected: dispatching on `S` inside `fold` (the instance
   already did).
-- **No `Handler[F]` change** — `iterator` needs the same handler
+- **No `Answers[F]` change** — `iterator` needs the same handler
   `uncons(_).runWith` needed; on JS a `Source` still cannot be
   iterated (no `CanBlock`), exactly as it could not be folded before.
 

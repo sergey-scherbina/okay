@@ -55,7 +55,7 @@ object Query:
     case True
 
   /** a predicate over rows of A */
-  final class Where[A] private[sql] (val pred: Pred):
+  final class Where[A] private[sql] (val pred: Pred) extends Serializable:
     infix def and(that: Where[A]): Where[A] = Where(Pred.And(pred, that.pred))
     infix def or(that: Where[A]): Where[A] = Where(Pred.Or(pred, that.pred))
     def unary_! : Where[A] = Where(Pred.Not(pred))

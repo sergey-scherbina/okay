@@ -6,6 +6,15 @@ bounded by a written limit. This spec covers `Cont`, the one place in
 both cores where that rule meets a design that uses the stack by
 definition.
 
+SINCE 2026-10-01 (cont-on-frames-probe, specs/freer-kont.md): the
+runner this spec built — `step`, the `Reentry` chain, Layer 1 B's
+`Pending` stack — is gone; Cont runs on the segmented frame machine.
+Layer 1 A (the macro's tail bodies as values) and Layer 1 B's transform
+are kept, a transformed body now a program over a lazy `k` the machine
+pushes; Layers 2/3 (rooms, the stack reading, `StackSwitch`) are kept for
+the strict `k`, the room and gauge in the run's root delimiter. The text
+below is the record of the runner it describes.
+
 ## Overview
 
 `Cont` is DIRECT style. A shift's body receives its continuation as an

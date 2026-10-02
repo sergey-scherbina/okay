@@ -21,7 +21,7 @@ class TestTsFacade extends munit.FunSuite {
     Files.writeString(d.resolve("model.ts"), TestTsOneShape.declarations): Unit
     d
   private lazy val w = TsWorker.start(dir, modules = Seq("facadets"))
-  private given okay.Handler[ForeignEval] = w.handler
+  private given okay.Answers[ForeignEval] = w.handler
   override def afterAll(): Unit = if ready then w.close()
 
   private def golden: String =

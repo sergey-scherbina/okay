@@ -23,7 +23,7 @@ class TestReflect extends munit.FunSuite {
   given TypeableK[Op] = typeableK(classOf[Op[?]])
 
   val said = scala.collection.mutable.Buffer[String]()
-  given Handler[Op] with
+  given Answers[Op] with
     def handle[A](o: Op[A]): A = o match
       case Op.Get() => 7
       case Op.Say(s) => said += s; ()

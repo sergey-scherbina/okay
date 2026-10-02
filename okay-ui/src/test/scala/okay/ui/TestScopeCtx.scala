@@ -35,16 +35,16 @@ class TestScopeCtx extends munit.FunSuite {
   /**
    * WHAT THE MOVE BOUGHT (delim-doors-are-prompted, 2026-09-18): the
    * mistake it prevents is not exotic. A caller who has no scope at
-   * all could summon `Delim.prompt[String]` — one line — hand it as
+   * all could summon `Shift.prompt[String]` — one line — hand it as
    * the given, and `exit` would COMPILE and then die at runtime with
-   * `NoPrompt`. The evidence cannot be made outside `Delim`, so the
+   * `NoPrompt`. The evidence cannot be made outside `Shift`, so the
    * same program is now refused by the compiler.
    */
   test("an exit with a forged prompt does not compile — and a real scope still does") {
     val forged = compileErrors("""
       import okay.*
       import okay.ui.*
-      given okay.Prompt[String] = okay.Delim.prompt[String]
+      given okay.Prompt[String] = okay.Shift.prompt[String]
       val p: String ! Scope.Row = Scope.exit[String, String]("nowhere")
     """)
     assert(forged.nonEmpty, "a forged prompt still compiles")
@@ -59,7 +59,7 @@ class TestScopeCtx extends munit.FunSuite {
     // the bound name is the EVIDENCE now (delim-doors-are-prompted):
     // a `Prompt` is one line to make and proves nothing, so binding
     // one here would have proved nothing either
-    val prog: String ! Dialog = Scope.bounded[String]: (outer: okay.Delim.Prompted[String]) ?=>
+    val prog: String ! Dialog = Scope.bounded[String]: (outer: okay.Shift.Prompted[String]) ?=>
       Scope.mark[String]:
         Scope.exit[String, String]("straight-out")(using outer)
       .map(inner => s"NEVER:$inner")

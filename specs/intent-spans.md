@@ -53,7 +53,7 @@ Two lessons came out of that measurement and both are built in here:
       encode(text): Encoded(tokens, pooled)          ONE forward pass, both readings of it
       embed: String => Embedding                     the pooled vector — the production embedding
       tokens: Tokens                                 the token vectors with their characters
-      handler: Handler[Embed]                        okay-rag's effect, as Langchain4jEmbed offers it
+      handler: Answers[Embed]                        okay-rag's effect, as Langchain4jEmbed offers it
 
 `Spans` is pure — vectors in, spans out — and crosses to JS. The
 encoder is JVM only and lives in its own module, `okay-onnx`,

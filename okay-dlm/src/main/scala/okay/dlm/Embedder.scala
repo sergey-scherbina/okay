@@ -26,6 +26,12 @@ trait Embedder:
   def name: String
   def dim: Int
   def apply(text: String): Embedding
+  /** WHICH NUMBERS the name stands for (specs/dlm-learning.md §11): a
+   * hash of a model's tensors, or of an algorithm and its parameters.
+   * The name says what a caller MEANT to run; this says what it ran —
+   * an int8 file and an fp32 file of one model share a name and not a
+   * number. "" when the caller cannot know, as for a remote API. */
+  def fingerprint: String = ""
 
 object Embedder:
 
@@ -42,15 +48,20 @@ object Embedder:
    */
   given ours: Embedder = hashing()
 
-  def hashing(dim: Int = 256): Embedder = of(s"hashing-$dim", dim, Vectors.hashing(dim))
+  /** ours has a fingerprint of its own: the algorithm, its version and
+   * its width — nothing on disk to hash, and nothing that differs by CPU */
+  def hashing(dim: Int = 256): Embedder =
+    of(s"hashing-$dim", dim, Vectors.hashing(dim), fingerprint = s"okay.rag.Vectors.hashing/1/$dim")
 
   /** any encoder a caller already has — an ONNX session's `embed`, a
-   * client's call — under the name its artifacts will carry */
-  def of(name: String, dim: Int, f: String => Embedding): Embedder =
-    val n = name; val d = dim
+   * client's call — under the name its artifacts will carry, and the
+   * fingerprint of what it runs when the caller knows one */
+  def of(name: String, dim: Int, f: String => Embedding, fingerprint: String = ""): Embedder =
+    val n = name; val d = dim; val fp = fingerprint
     new Embedder:
       val name = n
       val dim = d
+      override val fingerprint = fp
       def apply(text: String): Embedding = f(text)
 
   /**

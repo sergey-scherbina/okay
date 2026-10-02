@@ -35,7 +35,7 @@ setting, and SHALLOW handlers and control0 likewise. In that
 correspondence `$` is the handler's RETURN CLAUSE, and `shift0` is
 performing an operation. okay's handlers are continuations already
 (`F !> S`), so `$` is the missing piece that relates `Delim` and
-`Handler` inside one machine. `Bisim.check` (specs/handler-equivalence-
+`Answers` inside one machine. `Bisim.check` (specs/handler-equivalence-
 oracle.md) is the tool that checks the relation.
 
 ## Literature, read (2026-09-24)

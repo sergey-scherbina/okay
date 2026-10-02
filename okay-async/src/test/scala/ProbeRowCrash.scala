@@ -18,8 +18,8 @@ import scala.util.NotGiven
  *
  * It has decided three designs in this repository in one day:
  *
- *   delim-safety      `NotGiven[In[Delim, F]]` could not be used, so
- *                     the guard is `NotGiven[Delim[Any] <:< F[Any]]`
+ *   delim-safety      `NotGiven[In[Shift % ?, F]]` could not be used, so
+ *                     the guard is `NotGiven[Shift[?, Any] <:< F[Any]]`
  *   dialogue-replay   `Replayable` is `F[Any] <:< Safe` for the same
  *                     reason, after the inductive form was refuted
  *   workflow-activity `In[F, G]` for the driver's row crashed, so the
@@ -47,8 +47,8 @@ import scala.util.NotGiven
  *
  * THE RULE THAT FALLS OUT, and it is the practical one: an obligation
  * over a row is CARRIED AS A PARAMETER, never searched for at an
- * abstract row. `Delim.answer`, `replay` and `drive` all take their
- * `OneMachine` rather than summoning it, and that is why the core
+ * abstract row. `Shift.answer`, `replay` and `drive` all take their
+ * `Machine` rather than summoning it, and that is why the core
  * compiles at all.
  */
 object ProbeRowCrash:

@@ -35,11 +35,11 @@ class TestContSemigroupoid extends munit.FunSuite {
   /** run one typestate program then the next — the semigroupoid's compose */
   private def andThenP[X, R, A, B, C](f: PState.Zooming[X, R][A, B],
                                       g: PState.Zooming[X, R][B, C]): PState.Zooming[X, R][A, C] =
-    shift(k => (a: A) => (f / (x => (b: B) => (g / (_ => (c: C) => k(x)(c)))(b)))(a))
+    Cont.shift(k => (a: A) => (f / (x => (b: B) => (g / (_ => (c: C) => k(x)(c)))(b)))(a))
 
   /** the identity, WITH the answer handed in — the only way it exists */
   private def idGiven[X, R, A](x: X): PState.Zooming[X, R][A, A] =
-    shift(k => (a: A) => k(x)(a))
+    Cont.shift(k => (a: A) => k(x)(a))
 
   test("compose: two typestate programs, in order, with the state threaded") {
     // R is what the RUN answers — `(final state, value)` — so it is

@@ -1,0 +1,6 @@
+2026-09-29	c3e26a09a	jmh-lane-quiet	spawnjoin-rise-bisect: confirm, OwnMonitorBenchmark.spawnJoinSeq monitor=100us, master vs 104f5f360, same session	104.2	83.8	1.243	us/op means, 3 alternating rounds -f 2 (master 104.2/108.8/99.6, 104f5f360 82.4/84.6/84.3)
+2026-09-29	c3e26a09a	jmh-lane-quiet	spawnjoin-rise-bisect: bisect's first bad cda0a94b5 vs its parent f2d0a98a7	111.1	63.8	1.741	us/op, one jmh-lane run -f 2 each (git bisect run, < 92 good / > 96 bad)
+2026-09-29	c3e26a09a	jmh-lane-quiet	spawnjoin-rise-bisect: step 1, the running drive as a worker field, lane vs master	96.6	112.4	0.859	us/op means, 2 alternating rounds (95.3/97.8 vs 111.2/113.5)
+2026-09-29	c3e26a09a	jmh-lane-quiet	spawnjoin-rise-bisect: step 2, + the volatile handshake (no monitor on the way out), lane vs master	75.6	109.7	0.689	us/op means, 2 rounds (71.2/80.0 vs 109.2/110.3)
+2026-09-29	c3e26a09a	jmh-lane-quiet	spawnjoin-rise-bisect: AS LANDED (+ late answers resumed without a Bind), lane vs master	64.4	110.6	0.582	us/op medians, 3 rotating rounds (64.2/64.6/64.4 vs 110.6/105.6/111.6)
+2026-09-29	c3e26a09a	jmh-lane-quiet	spawnjoin-rise-bisect: AS LANDED, lane vs f2d0a98a7 (before the regression), same session	64.4	64.2	1.003	us/op medians (lane 64.2/64.6/64.4, pre 68.9/62.8/64.2): paid back in full

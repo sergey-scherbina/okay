@@ -17,7 +17,7 @@ Cont tree is materialized between the program and its answer.
   as `Interp[F, Cont, S]` (the same type as before, verbatim).
 - `Effects` trait gains: abstract
   `foldIn[C[_, _, _], S](h: Interp[F, C, S])(using Control[C]): C[A, S, S]`,
-  derived `runIn[C[_, _, _]](using Handler[F], Control[C]): A`, and the
+  derived `runIn[C[_, _, _]](using Answers[F], Control[C]): A`, and the
   comonadic adapter `handlerIn[C, F, S]`.
 - `transparent inline def stagedEffects[M[_[+_], _]]: Effects[M]` — the
   staging entry, as `staged` is for Control.

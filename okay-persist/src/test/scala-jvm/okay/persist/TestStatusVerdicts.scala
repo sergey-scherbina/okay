@@ -1,7 +1,7 @@
 package okay.persist
 
 import munit.FunSuite
-import okay.{!, +, Async, CanBlock, Delim, Pure, Wf}
+import okay.{%, !, +, Async, CanBlock, Shift, Pure, Wf}
 import okay.given_CanBlock
 import okay.given_Scheduler
 import okay.Direct.*
@@ -66,12 +66,12 @@ class TestStatusVerdicts extends FunSuite {
     val t = store.topic("runs")
     val ix = Statuses.over(store)
 
-    def v1(using w: Wf.Asks[String, String, String, Pure]): String ! Delim + Pure =
+    def v1(using w: Wf.Asks[String, String, String, Pure]): String ! Shift % ? + Pure =
       direct:
         val a = !w.pause("1?")
         !w.sleep(60_000L)
         s"ok $a"
-    def v1prime(using w: Wf.Asks[String, String, String, Pure]): String ! Delim + Pure =
+    def v1prime(using w: Wf.Asks[String, String, String, Pure]): String ! Shift % ? + Pure =
       direct:
         val a = !w.pause("1?")
         if a == "old" then throw new IllegalStateException("cannot read v1 data")

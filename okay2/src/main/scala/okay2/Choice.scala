@@ -1,5 +1,7 @@
 package okay2
 
+import scala.annotation.unused
+
 
 import Free.{Return, Inject, Bind}
 import scala.annotation.tailrec
@@ -55,6 +57,12 @@ object Choose {
    * as a step */
   def guard(p: Boolean): Unit ! Choose = if (p) pure[Choose, Unit](()) else fail[Unit]
 
+  /** the handler as a value, level 1: `p.handle(Choose.all)` answers every branch's result, in order */
+  val all: Handler[Choose, Seq] = new Handler.Full[Choose, Any, Seq, Handler.Nothing] {
+    def run[A, F <: Row](p: Free[Choose with F, A])(implicit @unused ev: A <:< Any, @unused d: Distinct[Choose with F], @unused n: Handler.Nothing[F]): Seq[A] ! F =
+      runChoiceAt[A, F](p)
+  }
+
   /** all the results of all the branches, for a program whose row
    * mentions `Choose` anywhere */
   def runChoice[A, R <: Row](a: Free[Choose with R, A]): Seq[A] ! R =
@@ -68,7 +76,7 @@ object Choose {
     Effects.handle[Choose, F](a)(x => pure[F, Seq[A]](Seq(x)))(
       new Interpr[Choose, Seq[A] ! F] {
         def apply[X](c: Op[X]): Cont[X, Seq[A] ! F, Seq[A] ! F] =
-          shift[X, Seq[A] ! F, Seq[A] ! F] { k =>
+          Cont.shift[X, Seq[A] ! F, Seq[A] ! F] { k =>
             c.as.foldLeft(pure[F, Seq[A]](Seq.empty))((acc, x) => acc.flatMap(s => k(x).map(s ++ _)))
           }
       })(implicitly, Distinct.unchecked)

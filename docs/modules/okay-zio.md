@@ -14,7 +14,8 @@ waits for it as ONE `Async.await`: the callback runner parks no thread,
 `runWith` parks as for any Await, and cancelling the okay side interrupts
 the ZIO fiber (its finalizers run; a late result resumes nothing).
 Neither side simulates the other's runtime; each waits its own native
-way. `p.asZIO` and `z.asOkay` are the same two doors as extensions.
+way. `p.asZIO` and `z.asOkay` are the same two doors as extensions
+(`asOkay` is okay's own since interop-compose: `import okay.asOkay`).
 
 **The whole `ZIO[R, E, A]`.** `Task` crosses with `fromZIO`/`toZIO`; a
 ZIO with an environment and a typed error crosses with
@@ -161,3 +162,5 @@ and closes it at release, so it composes with `and`; `fromEnvironment`
 lifts a built `ZEnvironment` as a `Providing`. One capability per
 conversion: their environment is typed by Tags per member, ours by a
 context-function chain, and each side composes in its own words.
+
+Type classes both ways (okay's ladder over this library's types): [the class ladder](../interop-classes.md).

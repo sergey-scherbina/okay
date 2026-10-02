@@ -1,0 +1,6 @@
+2026-09-30	a00d066a8	jmh-lane-quiet	scheduler-flip-remeasure: AdversarialBenchmark.forkJoin10k_okay work=100 shape=4x4 (outside) default vs loom	2102	3111	0.676	us/op means, 2 alternating rounds -f 2 (1988.5/2215.4 vs 3074.1/3148.7); 0.65 on 2026-09-28
+2026-09-30	a00d066a8	jmh-lane-quiet	scheduler-flip-remeasure: AdversarialBenchmark.forkJoin10k_okayInside work=100 shape=4x4 default vs loom	3140	3249	0.967	us/op means (3220.6/3060.0 vs 3266.3/3231.5); 0.98 on 2026-09-28
+2026-09-30	a00d066a8	jmh-lane-quiet	scheduler-flip-remeasure: AdversarialBenchmark.cancel1k_okay default vs loom	716	1017	0.704	us/op means over its 4 param rows x 2 rounds (the params do not enter it); 0.68 on 2026-09-28
+2026-09-30	a00d066a8	jmh-lane-quiet	scheduler-flip-remeasure: AsyncBenchmark.okaySpawn (100 outside) default vs loom	10.61	19.31	0.550	us/op means (10.62/10.61 vs 19.38/19.24); 0.97 on 2026-09-28 — the per-slice price paid back (spawnjoin-rise-bisect)
+2026-09-30	a00d066a8	jmh-lane-quiet	scheduler-flip-remeasure: AsyncBenchmark.okaySpawnInside (100 inside) default vs loom	16.92	31.32	0.540	us/op means (16.87/16.96 vs 31.87/30.78); 0.51 on 2026-09-28
+2026-09-30	a00d066a8	jmh-lane-quiet	scheduler-flip-remeasure: DirectParallelBenchmark.parallel8 default vs loom	7.01	10.18	0.689	us/op means (6.91/7.12 vs 10.15/10.20); 0.67 on 2026-09-28

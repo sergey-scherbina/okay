@@ -103,6 +103,15 @@ enum Flow[A]:
                               agg: Aggregator[A, Acc, O],
                               seeded: Boolean, finish: Finish) extends Flow[Pane[K, O]]
 
+  /** THE ENGINE'S JOIN (specs/streams-seam.md, lane 2): both sides
+   * exchanged by key hash into `buckets`, each bucket joined by `how` —
+   * the hash join, the sort-merge join of key-ordered sides, or the
+   * event-time windowed join — on the reducer that owns it. The one
+   * binary node; its inputs are sources and local stages (a keyed input
+   * needs an exchange of its own first, and is refused by name) */
+  case Join[K, A, B](l: Flow[(K, A)], r: Flow[(K, B)], buckets: Int, how: JoinHow[K, A, B])
+    extends Flow[(K, (A, B))]
+
   def map[B](f: A => B): Flow[B] =
     Flow.Local(this, "map", (c: Chunks[A]) => Chunks.map(c)(f))
 
@@ -137,7 +146,25 @@ enum Flow[A]:
                         (agg: Aggregator[A, Acc, O]): Flow[Pane[K, O]] =
     Flow.Windowed(this, size, slide, lateness, key, at, agg, seeded, finish)
 
+/** how a bucket of a `Flow.Join` is joined */
+enum JoinHow[K, A, B]:
+  /** every pair sharing a key: the right side of the bucket hashed, the left streamed */
+  case Hash[K, A, B]() extends JoinHow[K, A, B]
+  /** both sides non-decreasing in key (checked): `SortMerge`, nothing held beyond a run */
+  case Sorted[K, A, B](ord: Ordering[K]) extends JoinHow[K, A, B]
+  /** the interval join in event time: each side fed in its time order, `WindowJoin` */
+  case Within[K, A, B](within: Long, lateness: Long, atL: A => Long, atR: B => Long) extends JoinHow[K, A, B]
+
 object Flow {
+  extension [K, A](l: Flow[(K, A)])
+    /** the co-partitioned hash join, `buckets` reducers */
+    def join[B](r: Flow[(K, B)], buckets: Int): Flow[(K, (A, B))] = Flow.Join(l, r, buckets, JoinHow.Hash())
+    def joinSorted[B](r: Flow[(K, B)], buckets: Int)(using ord: Ordering[K]): Flow[(K, (A, B))] =
+      Flow.Join(l, r, buckets, JoinHow.Sorted(ord))
+    def joinWithin[B](r: Flow[(K, B)], buckets: Int, within: Long, lateness: Long)
+                     (atL: A => Long, atR: B => Long): Flow[(K, (A, B))] =
+      Flow.Join(l, r, buckets, JoinHow.Within(within, lateness, atL, atR))
+
 
   /** a source already cut into partitions */
   def of[A](parts: Vector[() => Chunks[A]]): Flow[A] =

@@ -200,7 +200,7 @@ object Produce {
   implicit val effect: Effect[Produce] = Effect.of[Produce]
 
   /** each operation answers with its own value */
-  implicit val handler: Handler[Produce] = new Handler[Produce] {
+  implicit val handler: Answers[Produce] = new Answers[Produce] {
     def handle[A](a: Emit[A]): A = a.a
   }
 
@@ -217,15 +217,15 @@ would test for one class only. Nothing asks for one — a row has no
 a row's `#Op`: `Inject` holds it as `Any`, and the typed view comes
 from `Split`, at one signature, after its class test.
 
-A comonadic `Handler` answers each operation with a value, and
+A comonadic `Answers` answers each operation with a value, and
 `runWith` runs the program by it; a row is run by one handler per
-effect, assembled by `Handler.union`; and every handler is a recording
+effect, assembled by `Answers.union`; and every handler is a recording
 one for free, because the operations are already data:
 
 ```scala
     type Row = Op + Produce
-    implicit val opH: Handler[Op] = new Handler[Op] { def handle[A](a: Op.Val[A]): A = a.a }
-    implicit val rowH: Handler[Row] = Handler.union[Op, Produce]
+    implicit val opH: Answers[Op] = new Answers[Op] { def handle[A](a: Op.Val[A]): A = a.a }
+    implicit val rowH: Answers[Row] = Answers.union[Op, Produce]
     val p: Int ! Row = Op.op(1).at[Row].flatMap(x => produce(x + 1).at[Row])
     assertEquals(p.runWith, 2)
     // recording is a decorator over the real handler
@@ -239,11 +239,11 @@ signatures apart by their class, so in `Ask[Int] + Ask[String]` the
 String ask would reach the Int handler and die of a ClassCastException
 at the first wrong answer. `Distinct[F + G]` refuses such a row at
 compile time, and everything that splits a parameterised signature out
-of a row asks for it: `Handler.union`, `Into.union`, `IntoZ.union`, the
+of a row asks for it: `Answers.union`, `Into.union`, `IntoZ.union`, the
 handlers of `State`, `Reader`, `Writer` and `Throws` (with
 `recover`/`orElse`), the kernels `relay`, `translate`, `interpret` and
 `handle`, and `toFs2`/`toZStream`. A signature with no type parameter —
-`Delim`, `Once`, `Resource`, `Choose`, `Async` — cannot occur twice
+`Shift[Any]`, `Once`, `Resource`, `Choose`, `Async` — cannot occur twice
 with different types, so its handlers need no check. The same part
 written twice, distinct classes and an abstract part in generic code
 all pass:
@@ -338,6 +338,77 @@ test does it:
     assertEquals(State.index(LazyList.from(1).take(n))._1, n.toLong)
 ```
 
+### A handler as a value: `p.handle(h)`
+
+The same program, handled by VALUES (level 1, specs/api-levels.md, as
+the Scala 3 core spells it): `State(s)`, `Reader(r)`,
+`Throws.either[E]`, `Throws.option`, `Choose.all`, `Writer.log[W]`,
+`Once.memo`, `Resource.region`, `Reset[R]`. Each takes its effect off
+the row, in any order, one or several at a call, and `run` finishes a
+program with nothing left:
+
+```scala
+  val counter: Int ! (State[Int] + Reader[Int]) =
+    for {
+      r <- Reader.ask[Int].plus[State[Int]]
+      s <- State.get[Int].plus[Reader[Int]]
+      _ <- State.set(s + r).plus[Reader[Int]]
+    } yield s * 10
+    assertEquals(counter.handle(State(1)).handle(Reader(5)).run, (6, 10))
+    assertEquals(counter.handle(Reader(5)).handle(State(1)).run, (6, 10))
+    assertEquals(counter.handle(Reader(5), State(1)).run, (6, 10))
+```
+
+The rest of the row is what the type says:
+
+```scala
+    val half: (Int, Int) ! Reader[Int] = counter.handle(State(1))
+```
+
+Scala 2 cannot take an effect off an intersection by inference: asked
+for `Free[E with F, A]` at a known `E`, scalac solves `F` as the whole
+row. So `handle` is a small whitebox macro (`HandleMacro`): it reads the
+row's members, takes the handler's effect off, and expands to
+`h.run[A, Rest](p)`, typed as any call is. A handler whose effect the
+row does not hold is a compile error, "does not hold".
+
+Your own effect gets a handler value from one of four forms, by power,
+with `Handler[F]` naming the effect once (an inference helper; each
+form has one implementation): `answer`, the default, `state(s0)`,
+`into[G]` (the rest of the row holding `G`) and `control[O]` (a
+`Handler.Ret[O]` and a `Handler.Control[F, O]`, which gets the rest of
+the program as `k`; a clause that returns `k(x)` as its answer is a tail
+resume, answered with no capture, as in the Scala 3 core). The first
+three take `{ case … }`, each case checked by a macro against what its
+constructor declares:
+
+```scala
+    val live: Handler[Accounts, Handler.Id] = Handler[Accounts] {
+      case Find(id) => db.get(id)
+      case Save(id, name) => db.put(id, name)
+    }
+    val store = Handler[Accounts].state(Map(7L -> "ada")) {
+      case (m, Find(id)) => (m, m.get(id))
+      case (m, Save(id, name)) => (m.updated(id, name), m.get(id))
+    }
+    assertEquals(rename(7, "grace").handle(store).run, (Map(7L -> "grace"), Some("ada")))
+```
+
+`Find extends Op[Option[String]]`, so `case Find(id) => id.toString` is
+a compile error, "Find answers Option[String], but this case gives
+String"; a missing constructor is scalac's own exhaustiveness error; a
+`case _` may only throw. Scala 2 refuses a constructor pattern against
+an opaque answer type, so the cases are typed at `F#Op[Any]`, where an
+answer its CALLER chooses (State's `Update[S, B]`) or the operation's
+own field ties (`Emit[A](a: A)`) cannot be checked: such a case is
+refused by name, pointing at `.poly`, which takes the clause as a trait
+(`Answers[F]`, `Handler.StateClause[F, S]`, `Interpret[F, G]`) typed by
+the compiler with no macro. An answer per operation, the old
+`Handler[F]`, is `Answers[F]` (renamed in okay2-level1-api, as in the
+Scala 3 core); and `State` is two operations, `Get` and `Update`, with
+`set` and `modify` building an `Update` — so `modify` costs what `set`
+does, 112 B a level against the 240 of a get and a set (ProbeRowCost).
+
 ## 5. Failure
 
 `Throws[E]` fails with any E; `runEither` reifies it, `runOption` the
@@ -372,15 +443,15 @@ and a 1M-deep chain is safe:
 
 ```scala
     val c: Cont[Int, String, String] =
-      shift[Int, String, String](k => k(20) + "!").flatMap(x => Cont.Pure[Int, String](x * 2))
+      Cont.shift[Int, String, String](k => k(20) + "!").flatMap(x => Cont.Pure[Int, String](x * 2))
     assertEquals(c / (x => s"got $x"), "got 40!")
 ```
 
 ```scala
-    val abort: Int /> Int = shift[Int, Int, Int](_ => -1)
-    assertEquals(reset(abort.flatMap(x => Cont.Pure[Int, Int](x + 1))), -1)
-    val twice: Int /> Int = shift[Int, Int, Int](k => k(1) + k(10))
-    assertEquals(reset(twice.flatMap(x => Cont.Pure[Int, Int](x * 2))), 22)
+    val abort: Int /> Int = Cont.shift[Int, Int, Int](_ => -1)
+    assertEquals(Cont.reset(abort.flatMap(x => Cont.Pure[Int, Int](x + 1))), -1)
+    val twice: Int /> Int = Cont.shift[Int, Int, Int](k => k(1) + k(10))
+    assertEquals(Cont.reset(twice.flatMap(x => Cont.Pure[Int, Int](x * 2))), 22)
 ```
 
 Type-changing state rides on it — the state's TYPE moves through the
@@ -402,6 +473,30 @@ The runner's own copy of the rotation is licensed by a law: it agrees
 with `Func`, the closure encoding that never rotates, on the answer
 and on the order the effects happened in, over twelve bind-tree shapes
 (TestFree).
+
+### A continuation as an effect: `Shift[R]`
+
+`Cont` is level 2. At level 1 a capture is an EFFECT in the row,
+`Shift[R]`, and `reset` is its handler, on the one machine
+(specs/shift-effect.md, the Scala 3 core's `Shift % R`). The answer type
+is the prompt: `Shift.Key[R]` is made at compile time, one per type, and
+a `reset` nested in a row that still holds a capture pushes its prompt
+on the machine outside it (`Shift.Machine`, the one guard):
+
+```scala
+    val p: Int ! Shift[Int] = shift[Int, Int, P](k => for { a <- k(1); b <- k(10) } yield a + b).map(_ * 2)
+    assertEquals(!.run(reset[Int, P](p)), 22)
+```
+
+Scala 2 has no context functions, so there is no short `shift[A]`
+inside a `reset { }` block: a capture names its answer, value and row.
+The named patterns live in `object Shift`:
+
+```scala
+    val e: Int ! Shift[Int] = Shift.exit[Int, Int, P](7).map(_ + 1000)
+    assertEquals(!.run(reset[Int, P](e)), 7)
+    assertEquals(!.run(Shift.gather[Int, P](g)), List(1, 2, 3))
+```
 
 ## 7. Interpreting one effect into others
 
@@ -439,15 +534,15 @@ okay passes one, okay2 passes an anonymous class with the same method:
 
 | okay (Scala 3) | okay2 (Scala 2) | what it may do |
 |---|---|---|
-| `new Handler[F] { def handle[A](a: F[A]): A }` | `new Handler[F] { def handle[A](a: F.Op[A]): A }` | answer with a value |
+| `new Answers[F] { def handle[A](a: F[A]): A }` | `new Answers[F] { def handle[A](a: F.Op[A]): A }` | answer with a value |
 | `!.relay(p)(ret)([X, Y] => e => …)` | `!.relay(p)(ret)(new Relay[F] { def apply[X, Y](e) = … })` | resume exactly once |
-| `Effects[Free].handle[F, G](p)(ret)([X] => e => shift(…))` | `!.handle[F, G](p)(ret)(new Interpr[F, S] { def apply[X](e) = shift(…) })` | abort, resume many times |
+| `Effects[Free].handle[F, G](p)(ret)([X] => e => Cont.shift(…))` | `!.handle[F, G](p)(ret)(new Interpr[F, S] { def apply[X](e) = Cont.shift(…) })` | abort, resume many times |
 | `!.translate(p)([X] => e => …)` | `!.translate(p)(new Interpret[F, G] { def apply[X](e) = … })` | answer with more program |
 
 ```scala
       !.handle[Throws[String], Produce](calc(b))(a => pure(a))(new Interpr[Throws[String], Int ! Produce] {
         def apply[X](e: Throws.Op[String, X]): Cont[X, Int ! Produce, Int ! Produce] =
-          shift[X, Int ! Produce, Int ! Produce](_ => pure(-1))
+          Cont.shift[X, Int ! Produce, Int ! Produce](_ => pure(-1))
       }).runWith
 ```
 
@@ -480,11 +575,11 @@ Each of these was measured before it was decided (specs/okay2.md):
   its row.
 - **Never read an operation at a row's `#Op`**: an intersection's is its
   last parent's, and reading at it is a `ClassCastException` (measured).
-  `Inject` holds the operation as `Any`; `Handler.Of[F]` and
+  `Inject` holds the operation as `Any`; `Answers.Of[F]` and
   `Into.Of[F, M]` are the typed forms, for ONE signature.
 - **Row-generic parameters are spelled with `Free`**, not `!`/`+`:
   scalac 2 does not look through an alias to solve a row variable.
-- **Union handlers and `Into`s are explicit** (`Handler.union`,
+- **Union handlers and `Into`s are explicit** (`Answers.union`,
   `Into.union`): an implicit rule over `F + G` matches every type and
   diverges. For the same reason `Replayable` — the one inductive check
   over a row — is derived by a small macro that reads the row's parts.
@@ -509,6 +604,13 @@ Each of these was measured before it was decided (specs/okay2.md):
 - **Handlers are traits**, since Scala 2 has no polymorphic function
   types: `Interpr[F, S]` (the Cont-valued `F !> S`), `Interpret[F, G]`
   (translate's), `Relay[F]` (relay's).
+- **`p.handle(h)` is a macro** (okay2-level1-api): the only place the
+  rest of a row is computed rather than inferred, because an implicit
+  search over an intersection solves the rest as the whole row. A
+  handler value's own `run` takes `Free[E with F, A]` with `F` named.
+- **A tagless `perform` reaches one signature**: `(F + G)#Op` is `G`'s,
+  so code over `M: Effects` performs at a single effect's row, and a
+  program in several is built as a tree and `Effects.reflect`ed.
 - **`Distinct` is a blackbox macro** (stage 10), as `Replayable` is:
   an inductive implicit over an intersection diverges. It reads the
   same identities as the Scala 3 one — class, `Tag` key, `Instances`,
@@ -985,14 +1087,30 @@ run twice replays:
     assertEquals(hits, 1)
 ```
 
-**Delim** is multi-prompt delimited control as an effect: a prompt is
-a typed tag, `push` installs it, `shift` captures up to the NAMED
-prompt and hands the rest of the program over as a value — to invoke
-twice, to drop, to keep:
+**Shift[Any]**, the dynamic form of the one `Shift` effect, is
+multi-prompt delimited control: a prompt is a typed tag made at run
+time, `push` installs it, `shift` captures up to the NAMED prompt and
+hands the rest of the program over as a value — to invoke twice, to
+drop, to keep. It was okay2's own effect `Delim` until
+okay2-shift-merge, the twin of the Scala 3 core's shift-merge: ONE
+effect `Shift[K]` keyed three ways — by the answer type (`Shift[R]`,
+§6), by a prompt value (`Shift[Any]`, the core's `Shift % ?`, the
+operator's "Shift % Any"), every door a member of `object Shift`, ONE
+machine guard over any key, and `Shift.dynamic` to widen a static
+program into the dynamic row. The guard is `Shift.Machine[F]`, read off
+the row by a macro (okay2-shift-merge-guard, the core's
+shift-merge-guard): every door that runs a machine (`run`, `delimited`,
+`collect`, `collectUntil`, `resumable`, `drive`, `answer`, `replay`, the
+keyed `reset`) NESTS on a machine already running in its row — what
+`scope`, `collecting` and `pausing` spell by hand — instead of a
+compile error, and a row with an abstract part and no `Shift` is a
+compile error naming the fix: take `(implicit m: Shift.Machine[F])`. The static generator is `Shift.gather`
+here, not `collect`: an overload beside the dynamic `collect` would
+cost that one's lambda its parameter type in Scala 2.
 
 ```scala
-    val r = !.run(Delim.reset[Int, P] { p =>
-      Delim.shift[Int, Int, P](p) { k =>
+    val r = !.run(Shift.reset[Int, P] { p =>
+      Shift.shift[Int, Int, P](p) { k =>
         k(1).flatMap(a => k(2).map(b => a + b))
       }.map(_ * 10)
     })
@@ -1003,7 +1121,7 @@ twice, to drop, to keep:
     val prog: Int ! Row =
       push[Int, P](outer) {
         push[Int, P](inner) {
-          Delim.shift[Int, Int, P](outer)(_ => pure[Row, Int](99))
+          Shift.shift[Int, Int, P](outer)(_ => pure[Row, Int](99))
         }.map { x => innerFinished = true; x + 1 }
       }.map(_ + 1000)
 ```
@@ -1015,23 +1133,23 @@ apart from any prompt and runs only where a delimiter is in force.
 Scala 2 has no context functions, so the evidence is passed first:
 
 ```scala
-    def banner(in: Delim.Prompted.Aux[Int, W]): Int ! (Delim + W) =
-      Writer.tell("hello").at[Delim + W].flatMap(_ => Delim.shift[Int, Int](in)(k => k(5)).map(_ + 1))
-    assertEquals(!.run(Writer.run(Delim.delimited[Int, W](banner))), (Seq("hello"), 6))
+    def banner(in: Shift.Prompted.Aux[Int, W]): Int ! (Shift[Any] + W) =
+      Writer.tell("hello").at[Shift[Any] + W].flatMap(_ => Shift.shift[Int, Int](in)(k => k(5)).map(_ + 1))
+    assertEquals(!.run(Writer.run(Shift.delimited[Int, W](banner))), (Seq("hello"), 6))
 ```
 
 The four patterns are names over that door. `collect`/`emit` reads a
 push producer as a pull — the walk stays a walk:
 
 ```scala
-  def walk(t: Tree)(e: Delim.Emitting.Aux[Int, P]): Unit ! R = t match {
-    case Leaf(a) => Delim.emit(e)(a)
+  def walk(t: Tree)(e: Shift.Emitting.Aux[Int, P]): Unit ! R = t match {
+    case Leaf(a) => Shift.emit(e)(a)
     case Node(l, r) => walk(l)(e).flatMap(_ => walk(r)(e))
   }
 ```
 
 ```scala
-    assertEquals(!.run(Delim.collect[Int, P](walk(t))), List(1, 2, 3))
+    assertEquals(!.run(Shift.collect[Int, P](walk(t))), List(1, 2, 3))
 ```
 
 `pause`/`resumable` stops in the middle and hands the rest back as a
@@ -1040,20 +1158,20 @@ exactly when the row is `Replayable` (a `Writer` in it is refused at
 compile time):
 
 ```scala
-  def booking(s: Delim.Asking.Aux[String, String, String, P]): String ! R = for {
-    city <- Delim.pause(s)("Which city?")
-    nights <- Delim.pause(s)(s"How many nights in $city?")
-    pay <- Delim.pause(s)(s"Pay ${nights.toInt * 90} for $city?")
+  def booking(s: Shift.Asking.Aux[String, String, String, P]): String ! R = for {
+    city <- Shift.pause(s)("Which city?")
+    nights <- Shift.pause(s)(s"How many nights in $city?")
+    pay <- Shift.pause(s)(s"Pay ${nights.toInt * 90} for $city?")
   } yield if (pay == "yes") s"Booked $city for $nights nights" else "Cancelled"
 ```
 
 ```scala
-    val start = !.run(Delim.resumable[String, String, String, P](booking))
+    val start = !.run(Shift.resumable[String, String, String, P](booking))
     assertEquals(start.asking, Some("Which city?"))
 ```
 
 ```scala
-    val back = !.run(Delim.replay[String, String, String, P](booking)(j2))
+    val back = !.run(Shift.replay[String, String, String, P](booking)(j2))
     assertEquals(back.asking, Some("Pay 270 for Kyiv?"))
 ```
 
@@ -1067,7 +1185,7 @@ macro at the call site. A lexical `At` overrides it:
     assert(door.startsWith("TestDelim.scala:"), door)
 ```
 
-The prompt stack can also be a TYPE. `Delim.Stacked` hands the body a
+The prompt stack can also be a TYPE. `Shift.Stacked` hands the body a
 stack value whose doors ask for evidence that the prompt is on it, so
 a shift with no reset, a shift to a foreign prompt of the same answer
 type, and a shift to a prompt whose reset has returned are compile
@@ -1326,6 +1444,30 @@ instances are bounded type parameters and resolve at any concrete row:
 An `if` filters the generator right before it, so that generator's row
 is the one that must carry `Choose` — `.plus[Choose]` puts it there.
 
+A stack-safe loop is `TailRecM[F]`, and it is the CARRIER's, never
+derived from `flatMap` (specs/eager-carrier-depth.md, the Scala 3 core's
+design): an eager carrier's `flatMap` calls its continuation before it
+returns, so a loop through it holds a frame per iteration. `Option`,
+`Either`, `LazyList` and programs have their own loops; a monad without
+one has no `tailRecM`, a compile error that names `TailRecM`.
+`TailRecM.deferring` is the `flatMap` recursion, for a carrier that
+says its `flatMap` defers:
+
+```scala
+    assertEquals(TailRecM[Option].tailRecM(0)(countTo[Option](n)(Some(_))), Some(n))
+    assertEquals(TailRecM[LazyList].tailRecM(0)(countTo[LazyList](n)(LazyList(_))).toList, List(n))
+```
+
+`foldMap` folds a program into any `Monad` G, each operation translated
+by a `Static.To[F, G]`, and it IS G's `tailRecM`, as cats' `Free.foldMap`
+is: a million operations, left-nested or not, on a 128 KB thread and on
+Scala.js:
+
+```scala
+    val left: Int ! Produce = (1 to n).foldLeft(pure[Produce, Int](0))((m, _) => m.flatMap(x => produce(x + 1)))
+    assertEquals(Effects.free.foldMap(left)(asOption), Some(n))
+```
+
 ## 17. Several instances of one signature
 
 A split tests one signature and takes the rest by exclusion, and a
@@ -1333,7 +1475,7 @@ parameterised signature's test is its CLASS: `State[Int] +
 State[String]` is two types to the row and one to the split, and
 `Distinct` refuses it (§8). Give each instance an identity the split
 can see — the same three ways the Scala 3 core has
-(docs/many-instances.md), plus Delim's prompts:
+(docs/many-instances.md), plus `Shift[Any]`'s prompts:
 
 | | named at compile time | made at run time |
 |---|---|---|
@@ -1517,6 +1659,21 @@ The price is kyo's too: building an eager program runs its pure part, so
 a self-referential one diverges before it is run, and a value that is
 itself a `Free` would be read as a program.
 
+`Effects` has the Scala 3 core's shape: besides the fold it carries
+`foldMap` (§16), `handle(m)(ret)(h)` and level 1 (`shift`, `shift0`,
+`reset`, `handle(m, h)`, `run`), each defined once through the tree, with
+`Effects[Free]` overriding them by the functions themselves.
+`Effects.reify` and `Effects.reflect` are the two ends of the round trip
+between any two encodings (`Effects.convert`); they live in
+`object Effects`, because at the package level Scala 2 would let them
+shadow `Layered.reify` in a file that imports it:
+
+```scala
+    val eager: Eager[S, Int] = Effects.reflect[Eager.Rep, S, Int](tree)
+    val back: Int ! S = Effects.reify[Eager.Rep, S, Int](eager)
+    assertEquals(back.handle(State(0)).run, tree.handle(State(0)).run)
+```
+
 ## 24. A map whose type lists its entries
 
 `HMap` is the static heterogeneous map: the map's TYPE lists its
@@ -1612,7 +1769,7 @@ program does if it runs to the end, so an abort inside a block that
 promises a transition drops the transition.
 
 Atkey, "Parameterised notions of computation" (§16) is the shape. Not
-ported: Scala 3's `Delim.Stacked` over `Prog` — its body needs a
+ported: Scala 3's `Shift.Stacked` over `Prog` — its body needs a
 dependent function type (stage 7).
 
 ## 27. Sketches, clocks and ids
@@ -1955,11 +2112,11 @@ Three things the Scala 3 core took from Biernacki's line of work
 (APLAS 2012, POPL 2018/2020, FSCD 2019), ported here with the same
 tests (specs/okay2.md stages 46-48).
 
-**`Delim.dollar(p)(ret)(body)`** is λ$'s delimiter: run the body, and
+**`Shift.dollar(p)(ret)(body)`** is λ$'s delimiter: run the body, and
 when it returns leave through `ret`. It is not `push(body).flatMap(ret)`:
 a `shift0` captures the delimiter TOGETHER with `ret`, so a capture that
 drops `k` never runs `ret` and one that resumes twice runs it twice.
-`push` is `dollar` with the unit as `ret`. `Delim.dollarResumed` is the
+`push` is `dollar` with the unit as `ret`. `Shift.dollarResumed` is the
 same delimiter told each time the machine enters it, which is what a
 handler keeping its state in a cell needs to refuse a second run.
 
@@ -1968,7 +2125,7 @@ it through the instance value — two `State[Int]` in one program are two
 names, and an operation addressed to the outer one passes through the
 inner untouched. Every strategy is a name: `deep` (shift0 under a
 dollar), `shallow` (control0 under a push), `tail` (a cell, guarded),
-`tailPure` (no `Delim` in the row: a walk), `walk` (over `Instances`).
+`tailPure` (no `Shift[Any]` in the row: a walk), `walk` (over `Instances`).
 `Lexical.State` has every one with typed `get`/`set`/`put`:
 
 ```scala
@@ -2083,7 +2240,7 @@ compare values.
   and why no Functor is needed.
 - R. Kent Dybvig, Simon Peyton Jones and Amr Sabry, "A monadic
   framework for delimited continuations" (JFP 2007) — the
-  multi-prompt design `Delim` follows: prompts as first-class tags,
+  multi-prompt design `Shift[Any]` follows: prompts as first-class tags,
   `push` and `shift` as operations of one machine.
 - Oleg Kiselyov, Chung-chieh Shan, Daniel Friedman and Amr Sabry,
   "Backtracking, Interleaving, and Terminating Monad Transformers"
@@ -2140,3 +2297,134 @@ compare values.
 - docs/theory/ and specs/freer-base.md, specs/scala2-facade.md — the
   Scala 3 core's own account of the same machine, and the facade this
   module is the other road beside.
+
+## 31. Reading a document nobody told you about: patterns with a verdict
+
+`okay2-refine` is okay-refine (docs/modules/okay-refine.md) for the Scala
+2 core. A pattern is a value of type `Refine[A, B]`: from what is known
+to what is learnt, or a refusal that says why. A step is a prism given
+as its two halves — `read` partial, `write` total — a path is `andThen`,
+a choice is `<|>`, and a choice runs EVERY alternative: the answer is a
+`Verdict`, never a bare value, with the path of names that took the
+input and every sibling that declined in its own words.
+
+```scala
+  val even: Refine[Int, Int] =
+    Refine.step[Int, Int]("even")(n => if (n % 2 == 0) Right(n) else Left(s"$n is odd"))(identity)
+    assertEquals((int andThen even).run("42"), Verdict.Took(42, Path("int", "even"), Vector.empty))
+    assertEquals((small <|> big).run(4), Verdict.Took(4, Path("small"), Vector(Refusal(Path("big"), "4 is not big"))))
+    assertEquals(choice.run(11), Verdict.Declined(Vector(
+      Refusal(Path("even"), "11 is odd"), Refusal(Path("small"), "11 is not small"), Refusal(Path("big"), "11 is not big"))))
+```
+
+Because every step writes back, a path reads AND writes, and a derived
+`Schema` is a pattern (`Refine.schema`): bytes → format → value →
+instrument is one path, and what it writes back is JSON whatever it read
+— a conversion, for free:
+
+```scala
+    val instrument: Refine[Array[Byte], Product] =
+      Format.detect andThen Format.value andThen (swap.widen[Product] <|> forward.widen[Product])
+    val back = instrument.write(Forward("f1", 500.0, 101.5)).map(new String(_, UTF_8))
+    assertEquals(back, Right("""{"id":"f1","notional":500,"forwardPrice":101.5}"""))
+```
+
+`Format.detect` is `json <|> xml` over the codec's own lossless trees —
+YAML and CBOR join it when okay2-codec reads them, as one more
+alternative each. A pattern is also a search (`search`: `Took` the
+answer, `Unclear` a choice point, `Declined` an empty one), so
+`runChoice` lists the readings.
+
+Every pattern is an extractor in a plain `match` too (`unapply`;
+okay's "Patterns in a match"): `case trade(swap((ccy, n))) if ccy ==
+"EUR" =>`.
+
+`RefineLaws.check(pattern, inputs, values, expect)` checks any pattern's
+laws on any samples, as in okay (docs/modules/okay-refine.md, "Checking a
+pattern's laws").
+
+The algebra is okay's (docs/modules/okay-refine.md, "The algebra";
+`Refine.path(steps: _*)` and `Refine.json.at(names: _*)` included):
+`>>>` and `or` are second names for `andThen` and `<|>`; `orElse` is a
+fallback that consults the second pattern only when the first declines;
+`Refine.id` and `>>>` make a category (`implicit val Refine.category`,
+okay2-optics' `Optic.Category`), `Refine.empty` is the unit of `or` and
+of `orElse`; `***`, `+++` and `and` are the products, `and` reading a
+record from one input and writing it back through `Refine.Merge`:
+
+```scala
+    val money = (field("amount") >>> num) and (field("currency") >>> str)
+    assertEquals(money.write((5.0, "EUR")).map(Json.print), Right("""{"amount":5,"currency":"EUR"}"""))
+```
+
+Into programs and streams: `orRaise` raises the whole verdict through
+`Throws`, and `verdicts` / `taken` are okay2-stream `Stage`s — `taken`
+answers what it did not take:
+
+```scala
+    val (values, missed) = !.run(Writer.run(into(inputs)(choice.taken)))
+    assertEquals(missed, Refine.Missed(declined = 2, unclear = 1))
+```
+
+Routing is okay's too (docs/modules/okay-refine.md, "Routing"): a
+`Router` is a pattern and a routing table read like a `match`, and `run`
+sends every document of a `Source` to the channel of its kind, closing
+every channel once at the end:
+
+```scala
+    val routed = go(Router(any)
+      .route[Swap](swaps)
+      .route { case c: Cds if c.ccy == "EUR" => c }(eurCds)
+      .otherwise(rejected)
+    val u = go(Router(any).route { case d @ (_: Swap | _: Cds) => d }(rates).route[Fx](rest).run(Source(docs: _*)))
+```
+
+Scala 2 has no union types, so `route[X]` tests the class of `X` (a
+`ClassTag`, exact for a class or a case); several kinds into one stream
+are a pattern with alternatives, as above. An `Unclear` document is
+never routed, and nothing is dropped silently.
+
+And the table as a value, run on any `Bulk` — one JVM or okay2-spark's
+`SparkBulk` — is `Routes` (docs/modules/okay-refine.md, "Routes"): lanes
+are typed handles declared in an `object`, `split` recognises every
+document once, and `run` binds the same lanes to channels:
+
+```scala
+  object Kinds extends Routes(fromBytes) {
+    val swaps = route[Swap]
+    val rates = route("rates") { case d @ (_: Fx | _: Cds) => d }
+    val out = Kinds.split(Documents.files[Chunks](folder()))
+    val s = { implicit val B: Bulk[Rows] = onSpark; Kinds.split(Documents.files[Rows](folder)) }
+    val r = go(Kinds.run(src)(Kinds.swaps ~> swapsCh, Kinds.rejected ~> dead))
+```
+
+`split` takes any carrier with a `Routable` — the typeclass of what can
+be routed: a `Vector`, any `Bulk` collection (`Chunks`, okay2-spark's
+`Rows`), a `Source` stream — so the table is one and the call is one;
+each lane comes back as the carrier's own kind, and for a stream
+`counts` is the program that fills the lanes' channels:
+
+```scala
+    val v = Kinds.split(inputs)
+    val c = Kinds.split(B.of(inputs))
+    val s = Kinds.split(Source(inputs: _*))
+    assertEquals(swapsS, swapsV)
+```
+
+As in okay: a stream's lane is read once (a second run is refused by
+name), a Vector's lanes are grouped once, and `out.release()` lets a
+`Bulk`'s tagging go (`Bulk.uncache`; on Spark, `unpersist`).
+
+Unlike Scala 3, Scala 2 sees `Chunks[A]` through its alias as the
+generic `D[A]`, so there is no separate `Chunks` instance (a second one
+was ambiguous). okay2's `Bulk` has no `read(path, Format)`, so `Documents.files[D](dir)`
+spreads the listing with `of` and reads each file in a `flatMap` — what
+okay's `Bulk.read` does inside. TestSparkRoutes (okay2-spark) runs 400
+documents on Spark `local[4]` and in one JVM and asserts every lane, the
+rejects and the counts agree.
+
+What is different from Scala 3: dispatch is the trait's own methods
+rather than a match over the tree, because Scala 2 does not refine a
+generic case class's existential type across a match (`case AndThen(f,
+s)` cannot connect `f`'s output to `s`'s input). Same tests, same
+verdicts.

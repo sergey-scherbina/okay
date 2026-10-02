@@ -163,13 +163,333 @@ verdict shape — here. What a swap IS — in the domain's repository.
 The test of the boundary: a file that mentions no term of the domain
 belongs here.
 
+## The algebra: glyphs, classes, effects, streams
+
+**Two names each, and one new combinator.** `>>>` is `andThen`; `or` is
+`<|>` — every alternative runs, two takers are `Unclear`. `orElse` is NOT
+another name for `<|>`: it keeps the meaning Scala gives the word in
+Option, Either and PartialFunction — the second pattern is consulted only
+when the first DECLINES, so it can never make the answer `Unclear`, and
+the refusal that sent the read to the fallback stays in the verdict:
+
+```scala
+assert((even or small).run(4).isInstanceOf[Verdict.Unclear[?]])
+assertEquals((even orElse counting).run(4), Verdict.Took(4, Path("even"), Vector.empty))
+assertEquals((even orElse counting).run(7), Verdict.Took(7, Path("small"), Vector(Refusal(Path("even"), "7 is odd"))))
+```
+
+**What a pattern IS an instance of**, each law run by
+`TestRefineAlgebra` on Took, Unclear and Declined inputs:
+
+- a **category** — `Refine.id` (which adds no name to the path, so
+  `id >>> r` answers exactly what `r` does) and `>>>`, associative;
+  `given Refine.category` is okay-optics' `Optic.Category`;
+- a **monoid under `or`**, and another **under `orElse`**, both with
+  `Refine.empty` (declines everything, writes nothing) as the unit;
+- an **invariant functor** — `map(name)(to, from)` is `imap`: a pattern
+  can only learn a new type it can also write back;
+- **monoidal, two ways** — `***` runs two patterns on the halves of a
+  pair, `+++` on the two sides of an `Either`; and `and` reads a RECORD
+  from one input and writes it back by merging the two skeletons
+  (`Refine.Merge`, given for `Json`) — Rendel and Ostermann's
+  `ProductFunctor`, for trees:
+
+```scala
+val money = (field("amount") >>> num) and (field("currency") >>> str)
+assertEquals(money.run(j), Verdict.Took((5.0, "EUR"), Path("amount", "number", "currency", "string"), Vector.empty))
+assertEquals(money.write((5.0, "EUR")).map(Json.print), Right("""{"amount":5,"currency":"EUR"}"""))
+```
+
+**The category's fold, named.** `Refine.path(a, b, c)` is `a >>> b >>> c`
+for steps that keep one type, and `Refine.path()` is `id`;
+`Refine.json.at(…)` is its commonest case, a descent through fields,
+each a step of the verdict's path:
+
+```scala
+same(Refine.path(even, double, half), even >>> double >>> half, ints, ints)
+assertEquals(at("a", "b").write(Json.JStr("x")).map(Json.print), Right("""{"a":{"b":"x"}}"""))
+```
+
+**What it cannot be, and why** — each is the way back refusing:
+
+- not a `Functor`, `Applicative` or `Monad`: `B` is the read's OUTPUT and
+  the write's INPUT, so a plain `B => C` has no way back; `pure(b)` has no
+  input to write `b` into; and a `flatMap` choosing the next pattern from
+  the value read leaves the write not knowing which pattern to write
+  through;
+- not a `Profunctor` (so not `Strong`/`Choice` in the optics sense): `A`
+  is the read's input and the write's output — the same invariance on the
+  other side;
+- not an `Arrow` or `ArrowChoice`: `arr(f)` would need a way back for an
+  arbitrary function. A pattern is a PARTIAL ISOMORPHISM — a category with
+  products and sums, and no `arr`;
+- `or` is not commutative: the readings and refusals come back in the
+  order written, though whether the answer is `Unclear` does not depend on
+  it.
+
+The read half on its own IS a Kleisli arrow — of the `Verdict` monad
+(readings with a log of refusals) — which is why `>>>` is associative.
+
+**Effects.** A read is pure on purpose: a read that performed effects
+could not be written back or replayed. A pattern enters a program three
+ways — `run` inside it (a value), `orRaise` (the value, or the whole
+non-`Took` verdict through `Throws`, handed back by `runEither`), and
+`search` (a `Choose` program: `Unclear` is a choice point, `Declined` an
+empty one):
+
+```scala
+val both = for a <- int.orRaise("4"); b <- int.orRaise("five") yield a + b
+assertEquals(readings("4"), Seq(4, 4))
+```
+
+**Streams.** `verdicts` is a `Stage` with one verdict per input and
+nothing dropped; `taken` emits only the values and ANSWERS what it did
+not take, so a stream that read nine of ten documents cannot pass for one
+that read ten:
+
+```scala
+assertEquals(values, Seq(7, 200))
+assertEquals(missed, Refine.Missed(declined = 2, unclear = 1))
+```
+
+## Checking a pattern's laws: RefineLaws
+
+Every pattern promises the same things, and a domain repository's
+patterns should be held to them as this module's are. `RefineLaws.check`
+runs them on any pattern and any samples and answers a `Report` — no test
+framework named, so a munit test, a ScalaTest one or a CLI over a corpus
+asserts `report.ok` and prints the report when it is not:
+
+- READ, WRITE, READ: every input the pattern takes writes back, and what
+  it wrote reads back to the SAME value (not the same bytes: a path
+  through `Format.value` writes JSON whatever it read — the same VALUE is
+  what makes a path a conversion);
+- WRITE, READ: every sample value writes and reads back to itself;
+- nothing throws — a read declines in words, a write refuses with `Left`;
+- the same input reads the same verdict twice.
+
+`Expect.Corpus` adds the corpus method's rule: every input not taken —
+declined, with its refusals, or `Unclear`, with its readings — is a
+finding. ISDA's two FpML examples, through every level:
+
+```scala
+val r = RefineLaws.checkNamed(fromBytes,
+Seq("ird-ex01" -> fpml.Samples.vanillaSwap.getBytes(UTF_8), "fx-ex03" -> fpml.Samples.fxForward.getBytes(UTF_8)),
+expect = Expect.Corpus)
+assert(r.ok, r)
+```
+
+and a write that loses what it read is found, by the sample it broke on:
+
+```scala
+case Vector(Finding.ReadBackDiffers("input #2", "5", "0")) => ()
+```
+
+## Patterns in a `match`
+
+Every pattern is an EXTRACTOR: a case of a plain Scala `match`, a nested
+pattern a path, a guard a guard — recognition written in the language's
+own construct:
+
+```scala
+case trade(swap((ccy, n))) if ccy == "EUR" => s"eur swap of ${n.toLong}"   // a Double prints "5.0" on the JVM, "5" on JS
+case trade(fxForward(pair)) => s"fx $pair"
+```
+
+A case matches when the pattern TAKES the input. `Unclear` and
+`Declined` match no case, so a `match` never takes one reading of an
+ambiguous document by accident. What a `match` cannot say is why a case
+did not match — `run` says that. Each case runs its pattern, so the cheap
+cases go first.
+
+## Dispatch: the routing table as a `match`
+
+`Dispatch` makes the routing table the user's own Scala `match` over what
+the pattern recognised (specs/refine-dispatch.md). A lane is declared
+with a path for a name and a type for its values; a case delivers with
+`lane(x)` — which compiles only when `x` has the lane's type — or says
+`unrouted(why)`; a sub-table is an ordinary method:
+
+```scala
+object Desk extends Dispatch(any):
+val eurSwaps = lane[Swap]("rates/swaps/eur")
+def table(i: Instrument): To = i match
+case r: Rate => rates(r)
+case f: Fx => fxs(f)
+case p: Payment => unrouted(s"payment ${p.id} has no positive amount")
+def rates(r: Rate): To = r match
+case s: Swap if s.ccy == "EUR" => eurSwaps(s)
+case c: Cds => credit(c.name)              // a lane may carry a projection, typed by the lane
+```
+
+Over a `sealed` document type the COMPILER checks the table: a forgotten
+case is "match may not be exhaustive. It would fail on pattern case:
+Cds(_, _)" — a warning, and okay builds with no warnings, so a table that
+forgets a kind of document does not build. The same table runs over
+every `Routable` carrier (`Desk.split(docs)`: a Vector, Chunks, Spark,
+Flink's `FlinkBulk`, a `Source`), lane names roll up by path, and a table
+that throws for one document rejects that document, named, while the
+rest is routed:
+
+```scala
+assertEquals(counts.under("rates"), 4)
+assert(rj.contains(("pay:p1,100", "the table threw RuntimeException: payments are not wired yet (p1)")), rj)
+```
+
+The cases may be the patterns themselves (`case trade(swap((ccy, n))) if
+ccy == "EUR" => eur(n)`), recognising and routing in one `match`. A
+lane's type must be checkable at run time — a class, a case, a union of
+them — because its values come back out of a carrier that holds every
+lane: `lane[(String, Double)]` is warned unchecked (E092) and does not
+build.
+
+Overriding `table(b, by)` routes on the verdict's PATH — the same `Swap`
+read from FpML or from CDM to different lanes. The path names the steps
+that took the input, not a `map`'s name.
+
+## Routing: one stream in, a stream per kind out
+
+A `Router` is a value — a pattern and a routing table, read top to
+bottom like a `match` — and `run` sends every document of a `Source` to
+the channel of its kind:
+
+```scala
+val routed = Router(any)
+.route[Swap](swaps)
+.route[Fx](fxs)
+.route { case c: Cds if c.ccy == "EUR" => c }(eurCds)
+.otherwise(rejected)
+.run(Source(docs*)).runWith
+assertEquals(routed, Router.Routed(Vector("Swap" -> 2, "Fx" -> 2, "case #3" -> 1), rejected = 2))
+```
+
+- `route[X](channel)` takes every recognised value of type `X` — a class,
+  a case, or a union: `route[Swap | Cds](rates)` takes exactly swaps and
+  CDSs. The test is the compiler's `TypeTest`; a `ClassTag` would have
+  been the union's least upper bound and taken every sibling as well
+  (found by the first run of TestRouter).
+- `route { case … }(channel)` routes by pattern matching — a guard, a
+  union of cases, a projection to another type.
+- `byName("fxForward")(channel)` routes by the pattern that TOOK the
+  document, for kinds that share a value type.
+- `tap(channel)` gets a copy of everything recognised; `routeAs(name,
+  channel)` names a route for the `Routed` count.
+- `otherwise(channel)` gets every `Rejected(input, verdict, why)`: a
+  document that declined, one that was `Unclear` (never routed — the
+  pattern could not decide what it is), and a recognised value no rule
+  fits ("no route for …"). Without an `otherwise` they are still counted.
+
+The first rule that fits wins, as in a `match`: the TABLE is the
+author's, written in order. The RECOGNITION is not — that is still the
+pattern's `Verdict`, and an `Unclear` document is rejected, not routed by
+whichever rule comes first. When the input ends, `run` closes every
+channel it was given, once each (two rules may share one); when the
+input fails, it fails them with the same error, so no consumer waits for
+a stream that will not come. The capacity of the channels is the
+backpressure policy: a bounded one slows the router, and every route
+with it.
+
+`decide(a)` says where one document would go without running anything,
+and `r.routed(key)` is the synchronous twin — one `Stage`, each element
+tagged with its key, the rest `Left` with why:
+
+```scala
+assertEquals(r.decide("fx:f1,EURUSD"), Right("Fx"))
+assertEquals(out.collect { case Right((k, _)) => k }, Seq("Swap", "Fx", "Cds", "Cds", "Swap", "Fx"))
+```
+
+## Routes: one table, any platform
+
+`Router` binds each rule to a channel as it is written. `Routes` keeps
+the TABLE apart from where its results go: a table is an `object` whose
+LANES are typed handles, declared like the cases of a `match`, and the
+same table runs over any `Bulk` — `Chunks` in one JVM, `SparkBulk` on a
+cluster — or into channels:
+
+```scala
+object Kinds extends Routes(fromBytes):
+val swaps = route[Swap]
+val rates = route[Fx | Cds]
+val usdSwaps = route("usdSwaps") { case s: Swap if s.ccy == "USD" => s }
+```
+
+`split` runs the table over ANY CARRIER that has a `Routable` — the
+typeclass of what can be routed: a `Vector`, any `Bulk` collection
+(`Chunks` in one JVM, `SparkBulk`'s rows on a cluster), a `Source`
+stream. It asks exactly what routing needs — every input tagged once,
+each lane's values handed out as the carrier's own kind, the counts — so
+the table is written once and one call routes every carrier:
+
+```scala
+val v = Kinds.split(inputs)
+val c = Kinds.split(localBulk.of(inputs))
+val s = Kinds.split(Source(inputs*))
+assertEquals(all(c(Kinds.swaps)), swapsV)
+assertEquals(swapsS, swapsV)
+assertEquals(routed, v.counts)
+```
+
+Over a `Bulk`, each document is recognised once and CACHED; a lane is a
+filter on an `Int`, and the counts are one aggregate. `Documents.files`
+reads a directory as (name, bytes), one split per file, wherever the
+split lands. On Spark it is the same call — TestSparkRoutes runs 400
+documents through `local[4]` and one JVM and asserts they agree:
+
+```scala
+val s = { given Bulk[Rows] = onSpark; Kinds.split(onSpark.read(folder, Documents.files)) }
+assertEquals(s.counts, l.counts)
+```
+
+Over a `Source`, read once, every lane is a channel and `counts` is the
+PROGRAM that reads, tags and sends; unbounded lanes (the default) let it
+run first, and `Routable.stream(capacity)` bounds them, when the readers
+must run beside it:
+
+```scala
+val s = Kinds.split(Source(inputs*))(using Routable.stream(capacity = 4))
+Async.par(s.counts, s(Kinds.swaps).runCollect),
+```
+
+What `out(lane)` does, per carrier: the input was tagged ONCE, by
+`split` (a Vector: at once; a `Bulk`: at the first action, then cached;
+a `Source`: while `counts` runs), and a lane only takes its share of that
+tagging and types it — the pattern is never run again. A Vector's lanes
+are grouped on first use, so a lane is a lookup. A `Bulk`'s tagging stays
+pinned (on Spark, persisted) until `out.release()`. A STREAM's lane is a
+channel with one reader, so it is read ONCE; a second run is refused by
+name rather than left to split the channel's elements between two
+readers:
+
+```scala
+val again = intercept[IllegalStateException](lane.runCollect.runWith)
+s.release()
+```
+
+A new carrier — a Kafka topic, a Flink stream — is one more
+`Routable` instance (`fan`, `select`, `done`), and no table changes. The
+typeclass is on the carrier VALUE, `Routable[Source[A]]`, not on a type
+constructor, so an alias (`Source`, `Chunks`) or an opaque type
+(`SparkBulk.Rows`) is found by the type as written.
+
+Into channels, a lane binds with `~>`; a lane left unbound rejects its
+values as "not bound here", so a partial binding drops nothing:
+
+```scala
+val r = Kinds.run(src)(Kinds.swaps ~> swapsCh, Kinds.rejected ~> dead).runWith
+```
+
+A pattern is `Serializable` (so is a `Merge`, and a lane — a `TypeTest`
+is too, so `route[Fx | Cds]`'s exact test travels to an executor);
+declare the table as an `object`, which an executor re-creates by
+reference instead of copying.
+
 ## API reference
 
 | | |
 |---|---|
 | `Refine.step(name)(read)(write)` | a pattern: `A => Either[String, B]` and `B => A` |
 | `r andThen s` | a path; the verdict's path is both names |
-| `r <|> s`, `Refine.first(a, b, …)` | a choice; every alternative runs |
+| `r <\|> s`, `Refine.first(a, b, …)` | a choice; every alternative runs |
 | `r.map(name)(to, from)` | an iso on what is learnt |
 | `r.widen[C]` | into a sum; `write` accepts this branch's case only |
 | `r.run(a): Verdict[B]` | `Took` / `Unclear` / `Declined`, each with its `Refusal`s |
@@ -177,13 +497,40 @@ belongs here.
 | `Refine.Step(…).prism` | the step as an optics `Prism`, for the laws |
 | `Refine.schema[A](name)` | a derived `Schema[A]` as a `Refine[Json, A]`: decode declines in the codec's words, encode writes |
 | `r.search(a): B ! Choose` | the pattern as a search: Took one answer, Unclear a choice point, Declined an empty one |
+| `r >>> s`, `r or s` | `andThen` and `<\|>` by other names |
+| `case pattern(x) =>` | every pattern is an extractor (`unapply`): takes, or matches no case |
+| `object T extends Dispatch(r)`: `lane[X](path)`, `def table(b) = b match …`, `unrouted(why)` | the routing table as a `match`: typed lanes, exhaustiveness, sub-tables; `split` over any `Routable` |
+| `Routed.under(prefix)` | a subtree's count, lanes named by path |
+| `RefineLaws.check(r, inputs, values, expect)`, `.checkNamed` | the laws of any pattern on any samples: a `Report` of `Finding`s |
+| `Refine.path(steps*)`, `Refine.json.at(names*)` | the fold of `>>>` over same-typed steps (`id` when empty); a descent through fields |
+| `r orElse s` | a fallback: `s` only when `r` declines; never `Unclear` from `s` |
+| `Refine.id`, `Refine.empty` | the category's unit (no name in the path); the unit of `or` and `orElse` |
+| `r *** s`, `r +++ s` | on the halves of a pair; on the sides of an `Either` |
+| `r and s` | a record: both over one input, written back through `Refine.Merge` |
+| `r.orRaise(a): B ! Throws % Verdict[B]` | the read as an effect |
+| `r.verdicts`, `r.taken` | `Stage`s: every verdict; the values, answering `Missed(declined, unclear)` |
+| `Router(r).route[X](c)`, `.route { case … }(c)`, `.byName(n)(c)`, `.tap(c)`, `.otherwise(c)`, `.run(source)` | routing: a stream per kind; `Routed` counts; every channel closed (or failed) at the end |
+| `r.routed(key)` | the synchronous twin: one `Stage` of `Either[Rejected, (K, B)]` |
+| `object T extends Routes(r)`: `route[X]`, `route(name){ case … }`, `byName`, `routeAs` | a routing table as a value; lanes are typed handles |
+| `T.split(c)`: `out(lane)`, `out.rejected`, `out.counts` | the table over any `Routable` carrier: Vector, Bulk (Chunks, SparkBulk), Source |
+| `Routable[C]`: `fan`, `select`, `done`; `Routable.stream(capacity)` | what can be routed; a new carrier is one instance |
+| `out.release()` | let go of the tagging (Spark: unpersist); a stream lane reads once |
+| `T.run(source)(lane ~> c, T.rejected ~> c)` | the same table into channels |
+| `Documents.files` (JVM) | a directory of whole files as a `Bulk.Format` |
 | `Format.value` | `Refine[Doc, Json]`: JSON, YAML and XML (`Xml.value`: elements as objects, `@attr`, repeats as arrays) project to a value, CBOR declines; writes JSON — for XML text, `Xml.fromValue` on the written value |
 | `Refine.json.field(name)`, `.str`, `.num`, `.each(name)` | the steps a document-level pattern is written in; a path of them names itself in the verdict |
-| `Format.detect` | `Refine[Array[Byte], Doc]`: `cbor <|> (text andThen (json <|> xml <|> yaml))` |
+| `Format.detect` | `Refine[Array[Byte], Doc]`: `cbor <\|> (text andThen (json <\|> xml <\|> yaml))` |
 | `Doc.Json / Xml / Yaml / Cbor` | the detected document, as the dialect's own tree (or the bytes) |
 
 ## Gotchas
 
+- **A dialect declines by its first character before it parses.** JSON
+  needs `{` or `[`, XML `<`, the block YAML dialect anything but `{`, `[`,
+  `<?`, `<!` — necessary conditions, so the verdicts are the ones the full
+  parse would give, only sooner: every alternative runs on every
+  document, and before this each declining dialect read the whole file
+  (60% of detection on okay-fin's corpora). Text before an XML root
+  element is declined (`begins with 'h', not <`): it is not well-formed.
 - **A bare scalar is no document.** `hello` and `42` are declined by
   every text format: a level whose answer is "a string" has learnt
   nothing about what to ask next. Write the step if you want scalars.
@@ -228,6 +575,12 @@ belongs here.
 - Hutton, Meijer, *Monadic Parser Combinators* (1996) — parsers as
   values composed by choice and sequence, the shape this borrows for a
   grammar that is not fixed in advance.
+- Rendel, Ostermann, *Invertible Syntax Descriptions: Unifying Parsing
+  and Pretty Printing* (Haskell Symposium 2010) — partial isomorphisms,
+  and why a reader-writer pair is an invariant functor with products and
+  choice rather than an applicative: `map`, `and`, `or` here.
+- Hughes, *Generalising Monads to Arrows* (SCP 2000) — the `>>>` glyph,
+  and the `arr` a pattern cannot have.
 - ISDA, *FpML* (Financial products Markup Language) and *Common Domain
   Model* — the two public corpora the private domain modules read; this
   module's format level is what they stand on.

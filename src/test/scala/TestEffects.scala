@@ -70,7 +70,7 @@ class TestEffects extends munit.FunSuite {
     val E = summon[Effects[Free]]
     def run(b: Boolean): Int =
       E.handle[Throws % String, Produce](calc(b))(a => pure(a)):
-        [X] => _ => shift(_ => pure(-1))
+        [X] => _ => Cont.shift(_ => pure(-1))
       .runWith
 
     assertEquals(run(false), 5)
@@ -107,7 +107,7 @@ class TestEffects extends munit.FunSuite {
 
 
   test("translate: a handler valued in ANOTHER ROW, not in a value") {
-    // Handler[F] is F ==> Id, and Id is where a suspension cannot go.
+    // Answers[F] is F ==> Id, and Id is where a suspension cannot go.
     // translate takes the general form — F ==> ([X] =>> X ! G) — so an
     // operation may answer with more computation.
     type Row = Reader % Int + (Writer % String + okay.Pure)

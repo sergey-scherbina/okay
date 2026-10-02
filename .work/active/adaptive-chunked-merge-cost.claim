@@ -1,1 +1,0 @@
-claude session_01YRJ5EcKY1FwNaufrBB3ArS, 2026-09-29, operator ask ("да" to taking adaptive-chunked-merge-cost): find where the adaptive default loses 1.5-1.9x on the chunked merge, profile both arms, fix or document (sprint.d/doing/adaptive-chunked-merge-cost.md)

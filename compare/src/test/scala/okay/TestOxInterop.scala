@@ -9,14 +9,14 @@ import scala.language.implicitConversions
  */
 class TestOxInterop extends munit.FunSuite {
 
-  type R = Delim + Pure
+  type R = Shift % ? + Pure
 
   // ── 1. an okay PROGRAM run inside an Ox scope ─────────────────
   test("1. okay program inside an Ox supervised scope") {
     import ox.*
     val out = supervised {
-      val a = !.run(Delim.collect[Int, Pure](direct:
-        !Delim.emit(1); !Delim.emit(2)))
+      val a = !.run(Shift.collect[Int, Pure](direct:
+        !Shift.emit(1); !Shift.emit(2)))
       val b = fork(40).join()
       (a, b)
     }
@@ -39,10 +39,10 @@ class TestOxInterop extends munit.FunSuite {
     import ox.*
     var forks = 0
     val out = supervised {
-      !.run(Delim.collect[Int, Pure](direct:
-        !Delim.emit(1)
+      !.run(Shift.collect[Int, Pure](direct:
+        !Shift.emit(1)
         val f = fork { forks += 1; 2 }
-        !Delim.emit(f.join())))
+        !Shift.emit(f.join())))
     }
     assertEquals(out, List(1, 2))
     assertEquals(forks, 1, "the fork ran a number of times the test did not expect")
@@ -55,9 +55,9 @@ class TestOxInterop extends munit.FunSuite {
     var joins = 0
     val out = scala.util.Try {
       supervised {
-        !.run(Delim.delimited[Int, Pure]:
+        !.run(Shift.delimited[Int, Pure]:
           direct:
-            val x = !Delim.shift[Int, Int, Pure](k => direct { !k(1) + !k(10) })
+            val x = !Shift.shift[Int, Int, Pure](k => direct { !k(1) + !k(10) })
             val f = fork { forks += 1; x }
             joins += 1
             f.join())

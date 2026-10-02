@@ -10,6 +10,7 @@ reads "computes R, with an E to read".
 |---|---|
 | `Reader.ask[E]` | the environment |
 | `Reader.read[E, T]` | one part of it, found by type (`Has[E, T]`: a tuple member or a case-class field) |
+| `p.handle(Reader(e))` | handle it: give the program its environment |
 | `Reader.run(e)(p)` | handle it: give the program its environment |
 | `Reader.local(f)(p)` | run `p` under a changed environment, the outer one untouched |
 | `Reader.lift(cf)` / `unlift(p)` | to and from a context function `E ?=> A` |
@@ -24,9 +25,9 @@ parameter.
 val greet: String ! Reader % String =
   Reader.ask[String].map(name => s"hello, $name")
 
-val hello = !.run(Reader.run("ada")(greet))   // "hello, ada"
+val hello = greet.handle(Reader("ada")).run   // "hello, ada"
 
-val shout = !.run(Reader.run("ada")(Reader.local[String, String, Pure](_.toUpperCase)(greet)))   // "hello, ADA"
+val shout = Reader.local[String, String, Pure](_.toUpperCase)(greet).handle(Reader("ada")).run   // "hello, ADA"
 ```
 
 ## When to use it

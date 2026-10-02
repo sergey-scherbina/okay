@@ -22,7 +22,7 @@ import scala.annotation.implicitNotFound
  *
  * WHAT IS IN, AND WHY EACH: `State` and `Reader` are re-threaded from
  * the same answers, so a replay produces the same values; `Throws`
- * raises the same error at the same place; `Delim` is the machine
+ * raises the same error at the same place; `Shift` is the machine
  * doing the replaying. Absent, deliberately: `Async` and anything
  * reaching outside (replay performs it again), `Writer` (replay tells
  * it again — measured), `Resource` (replay acquires again), `Uid`
@@ -35,8 +35,8 @@ import scala.annotation.implicitNotFound
  * `[A] =>> F[A] | G[A]`, and matching a concrete row against it asks
  * the compiler to invert a union into halves; it leaves both
  * unsolved and reports every instance as ambiguous for both. What
- * works is the same trick that closed the second-machine hole in
- * `Delim.OneMachine`: state the property as SUBTYPING with the
+ * works is the trick the old second-machine guard (`OneMachine`, now
+ * `Shift.Machine`) used: state the property as SUBTYPING with the
  * concrete row on the LEFT. `A | B <: C | D` decomposes the left
  * side, which the compiler does happily — and it keeps the whole
  * question out of `orDominator`, where `Row.In` over an abstract
@@ -45,19 +45,19 @@ import scala.annotation.implicitNotFound
  * The consequence worth knowing: an ABSTRACT row is not proved and
  * not refuted, it PROPAGATES — a helper written over `F[+_]` takes
  * the obligation and hands it to its caller, where the row is
- * usually concrete. That is the same behaviour `OneMachine` has and
- * the same reason.
+ * usually concrete. `Shift.Machine` asks for the same at an abstract
+ * row, for the same reason.
  */
 @implicitNotFound("""this row holds an effect that REPLAY WOULD PERFORM AGAIN, so the program is not a pure function of its journal and a restart would not land where the first run stood.
 Everything a durable program is told by the outside world must enter through `pause`, whose answers the journal remembers.
-Replayable: Pure, State, Reader, Throws, Delim.  NOT replayable: Async, Writer, Resource, Uid, anything that reaches outside.
+Replayable: Pure, State, Reader, Throws, Shift.  NOT replayable: Async, Writer, Resource, Uid, anything that reaches outside.
 If you mean to replay a program that breaks this on purpose (a test of the limit, a migration), say so: `Replayable.unchecked`.""")
 sealed trait Replayable[F[+_]]
 
 object Replayable:
 
   /** the operations a replay may re-run without anybody noticing */
-  type Safe = Delim[Any] | State[?, Any] | Reader[?, Any] | Throws[?, Any]
+  type Safe = Shift[?, Any] | State[?, Any] | Reader[?, Any] | Throws[?, Any]
 
   private val ev: Replayable[Nothing] = new Replayable[Nothing] {}
   private def of[F[+_]]: Replayable[F] = ev.asInstanceOf[Replayable[F]]

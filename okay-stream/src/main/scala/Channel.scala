@@ -151,6 +151,26 @@ trait Channel[A] {
       () => cancelSend(cb)
     }
 
+  /**
+   * A PRODUCER'S OWN ROUTE (channel-route-per-producer): a partitioned
+   * channel keeps each producer's order by giving it a part, and knows a
+   * producer by its THREAD. A fiber is not a thread on a pool scheduler —
+   * it is resumed wherever it was woken — so a feed that must keep its
+   * order claims a route once and sends on it. -1: this channel has no
+   * routes, and `offerFrom`/`sendFrom` are `offer`/`send`.
+   */
+  private[okay] def claimRoute(): Int = -1
+  private[okay] def offerFrom(@annotation.unused route: Int, a: A): Boolean = offer(a)
+  private[okay] def sendAsyncFrom(@annotation.unused route: Int, a: A)(k: Accepted): Unit = sendAsync(a)(k)
+  /** `send` on a claimed route */
+  private[okay] def sendFrom(route: Int, a: A): Boolean ! Async =
+    if route < 0 then send(a)
+    else Async.await { k =>
+      val cb: Accepted = b => k(Right(b))
+      sendAsyncFrom(route, a)(cb)
+      () => cancelSend(cb)
+    }
+
   /** receive as a program: suspends while the channel is empty and
    * open; None once closed and drained, the producer's failure
    * (through the error channel) if one ended it */
@@ -511,7 +531,16 @@ extension [A](c: Channel[A])
    * Nothing is delayed for a batch: `receiveMany` takes only what is
    * already buffered and parks for a single element when nothing is.
    */
-  def drained: Source[A] =
+  def drained: Source[A] = drainedThen(okay.pure(()))
+
+  /** `drained`, running `last` where the channel ends instead of
+   * nothing. A join that entered a cancel scope passes its EXIT here,
+   * which is also what keeps the scope reachable while the join runs:
+   * the loop names `last`, so every continuation holds it. Without it a
+   * collection mid-run released the scope through its collector door and
+   * closed the channel under running producers
+   * (merge-shared-scope-gc-release) */
+  private[okay] def drainedThen(last: Source[A]): Source[A] =
     // A HAND LOOP over the batch, not `Writer.of(Drain(c))`
     // (merge-cap256-gap, 2026-09-26): the generic road built, per
     // element, the `Stream[Drain]` observation — a `Some`, a tuple, a
@@ -529,7 +558,7 @@ extension [A](c: Channel[A])
     val now: () => (Either[Throwable, Chunk[A]] | Null) = () => c.receiveManyNow(Drain.Batch)
     def pull: Source[A] =
       okay.effect[R, Chunk[A]](Async.Await[Chunk[A]](reg, now)).flatMap: got =>
-        if got.isEmpty then okay.pure(()) else tellFrom(got, 0)
+        if got.isEmpty then last else tellFrom(got, 0)
     def tellFrom(got: Chunk[A], i: Int): Source[A] =
       okay.effect[R, Unit](Writer(got(i))).flatMap: _ =>
         if i + 1 < got.length then tellFrom(got, i + 1) else pull
@@ -734,6 +763,32 @@ object Channel {
    * the growing buffer already held once it had grown
    * (growing-part-sizing). Below two it is the rendezvous either way.
    */
+  /**
+   * A FEED'S VIEW of a partitioned channel: its sends go to the route
+   * it claimed, whatever thread each one runs on
+   * (channel-route-per-producer). Everything else is the channel's own.
+   * Handed to a feed or a flusher — which only send — never to a
+   * consumer; `routed` answers the channel itself where there is no
+   * route to keep.
+   */
+  private final class Routed[A](c: Channel[A], route: Int) extends Channel[A]:
+    def sendAsync(a: A)(k: Accepted): Unit = c.sendAsyncFrom(route, a)(k)
+    def offer(a: A): Boolean = c.offerFrom(route, a)
+    def receiveAsync(k: End => Unit): Unit = c.receiveAsync(k)
+    def close(): Unit = c.close()
+    def fail(e: Throwable): Unit = c.fail(e)
+    def failed: Option[Throwable] = c.failed
+    def isClosed: Boolean = c.isClosed
+    private[okay] def finished: Boolean = c.finished
+    private[okay] def cancelSend(cb: Accepted): Unit = c.cancelSend(cb)
+    private[okay] def cancelReceive(k: End => Unit): Unit = c.cancelReceive(k)
+
+  /** `c` for one producer that keeps its own order: a route claimed
+   * now, or `c` itself when the channel has none */
+  private[okay] def routed[A](c: Channel[A]): Channel[A] =
+    val r = c.claimRoute()
+    if r < 0 then c else Routed(c, r)
+
   private[okay] def forProducers[A](n: Int, capacity: Int): Channel[A] =
     if KnownKind == "growing" || capacity < 2 then Channel[A](capacity)
     else if n <= 1 then
@@ -745,7 +800,7 @@ object Channel {
   /** unfold a stream into the channel as an Async program; stops
    * early if the channel refuses (closed under the producer) */
   private def feed[A, U[_], H[+_]](c: Channel[A], u: U[A])
-                                  (using St: Stream[U, H], HH: Handler[H]): Unit ! Async =
+                                  (using St: Stream[U, H], HH: Answers[H]): Unit ! Async =
     // the linear view, for the same reason as `feedBatched` above
     val it = St.iterator(u)
     // OFFER FIRST, as `sendBlocking` does, and for the same reason: the
@@ -822,7 +877,7 @@ object Channel {
    * that asymmetry, built.
    */
   private def feedBatched[A, U[_], H[+_]](c: Channel[Chunk[A]], u: U[A], size: Int)
-                                         (using St: Stream[U, H], HH: Handler[H]): Unit ! Async =
+                                         (using St: Stream[U, H], HH: Answers[H]): Unit ! Async =
     // THE LINEAR VIEW, not a recursion through uncons. Feeding a
     // channel is a consume-once walk, and `Stream.iterator` is
     // exactly that view -- its default IS `uncons(_).runWith`, so an
@@ -853,7 +908,7 @@ object Channel {
 
   private def feedChunked[A, U[_], H[+_]](c: Channel[Chunk[A]], u: U[A], size: Int,
                                           buf: TRef[ChunkBuffer[A]])
-                                         (using St: Stream[U, H], HH: Handler[H]): Unit ! Async =
+                                         (using St: Stream[U, H], HH: Answers[H]): Unit ! Async =
     def take(full: Boolean): Option[Chunk[A]] = takeChunk(buf, size, full)
     def go(x: U[A]): Unit ! Async =
       async(St.uncons(x).runWith).flatMap:
@@ -975,9 +1030,13 @@ object Channel {
      * its timer actually fires, measured only 1.14x. A shorter window
      * costing less is the inversion that identified this.
      */
-    def flusher(buf: TRef[ChunkBuffer[A]], done: AtomicInteger): Fiber[Unit] | Null =
-      flusherFor(c, buf, size, within, done)
-    def watch(f: Fiber[Unit], mine: AtomicInteger, buf: TRef[ChunkBuffer[A]], fl: => (Fiber[Unit] | Null)): Unit =
+    // one route per SIDE, shared by its feed and its flusher, so a side
+    // is one FIFO whoever pushes (channel-route-per-producer)
+    val (cs, ct) = (routed(c), routed(c))
+    def flusher(side: Channel[Chunk[A]], buf: TRef[ChunkBuffer[A]], done: AtomicInteger): Fiber[Unit] | Null =
+      flusherFor(side, buf, size, within, done)
+    def watch(f: Fiber[Unit], mine: AtomicInteger, side: Channel[Chunk[A]], buf: TRef[ChunkBuffer[A]],
+              fl: => (Fiber[Unit] | Null)): Unit =
       f.onComplete { r =>
         mine.set(0)
         // this source is finished and has already flushed its own
@@ -989,17 +1048,17 @@ object Channel {
         r match
           case Right(_) => ended()
           // a FAILED feed's partial chunk was told: out before the failure
-          case Left(e) => failAfterTail(c, buf, size, e)(ended())
+          case Left(e) => failAfterTail(side, buf, size, e)(ended())
       }
     val (bs, bt) = (TRef.bare(ChunkBuffer[A](Vector.empty)), TRef.bare(ChunkBuffer[A](Vector.empty)))
     val (ds, dt) = (AtomicInteger(1), AtomicInteger(1))
     // `flusher` is started BEFORE its `watch` is armed but referred to
     // by name, so a feed that finishes instantly still cancels the
     // flusher rather than racing past a `null`
-    lazy val fs: Fiber[Unit] | Null = flusher(bs, ds)
-    lazy val ft: Fiber[Unit] | Null = flusher(bt, dt)
-    watch(sch.fork(() => feedS(c, bs)), ds, bs, fs); val _ = fs
-    watch(sch.fork(() => feedT(c, bt)), dt, bt, ft); val _ = ft
+    lazy val fs: Fiber[Unit] | Null = flusher(cs, bs, ds)
+    lazy val ft: Fiber[Unit] | Null = flusher(ct, bt, dt)
+    watch(sch.forkLong(() => feedS(cs, bs)), ds, cs, bs, fs); val _ = fs
+    watch(sch.forkLong(() => feedT(ct, bt)), dt, ct, bt, ft); val _ = ft
     c
 
   /** the timed flusher of one chunking feed: sleeps `within` and TAKES
@@ -1037,17 +1096,20 @@ object Channel {
                             (using sch: Scheduler, timer: Timer): Channel[Chunk[A]] =
     val c = forProducers[Chunk[A]](if within.isDefined then 2 else 1, capacity)
     val buf = TRef.bare(ChunkBuffer[A](Vector.empty))
+    // the feed and its flusher are two senders of ONE side: one route,
+    // so the side is one FIFO whoever pushes (channel-route-per-producer)
+    val side = if within.isDefined then routed(c) else c
     val done = AtomicInteger(1)
     // referred to by name before it is forced, as in `chunkedMerge`: a
     // feed that finishes at once still cancels the flusher
-    lazy val fl: Fiber[Unit] | Null = flusherFor(c, buf, size, within, done)
-    sch.fork(() => feed(c, buf)).onComplete { r =>
+    lazy val fl: Fiber[Unit] | Null = flusherFor(side, buf, size, within, done)
+    sch.forkLong(() => feed(side, buf)).onComplete { r =>
       done.set(0)
       val t = fl
       if t != null then t.nn.cancel()
       r match
         case Right(_) => c.close()
-        case Left(e) => failAfterTail(c, buf, size, e)(c.close())
+        case Left(e) => failAfterTail(side, buf, size, e)(c.close())
     }
     val _ = fl
     c
@@ -1071,7 +1133,7 @@ object Channel {
 
   /** a chunked side over an ordinary stream (`feedChunked`) */
   private[okay] def chunkedSideOf[A, S[_], F[+_]](s: S[A], capacity: Int, size: Int, within: Option[Long])
-                                                 (using Stream[S, F], Handler[F])
+                                                 (using Stream[S, F], Answers[F])
                                                  (using Scheduler, Timer): Channel[Chunk[A]] =
     chunkedSide(capacity, size, within)((c, buf) => feedChunked(c, s, size, buf))
 
@@ -1085,8 +1147,8 @@ object Channel {
    * routing measured 11% dearer (see `feedFlushing`) */
   def mergeChunked[A, S[_], F[+_], T[_], G[+_]](s: S[A], t: T[A], capacity: Int, size: Int,
                                                 within: Option[Long])
-                                               (using Stream[S, F], Handler[F],
-                                                Stream[T, G], Handler[G])
+                                               (using Stream[S, F], Answers[F],
+                                                Stream[T, G], Answers[G])
                                                (using Scheduler, Timer): Channel[Chunk[A]] =
     chunkedMerge(capacity, size, within)(
       (c, buf) => feedChunked(c, s, size, buf), (c, buf) => feedChunked(c, t, size, buf))
@@ -1099,7 +1161,7 @@ object Channel {
    * a source that fails is recorded (fail) and the other still feeds.
    */
   def merge[A, S[_], F[+_], T[_], G[+_]](s: S[A], t: T[A], capacity: Int = Int.MaxValue)
-                                        (using Stream[S, F], Handler[F], Stream[T, G], Handler[G])
+                                        (using Stream[S, F], Answers[F], Stream[T, G], Answers[G])
                                         (using sch: Scheduler): Channel[A] =
     val c = forProducers[A](2, capacity)
     val alive = AtomicInteger(2)
@@ -1107,8 +1169,11 @@ object Channel {
       r.left.foreach(c.fail)
       if alive.decrementAndGet() == 0 then c.close()
     }
-    watch(sch.fork(() => feed(c, s)))
-    watch(sch.fork(() => feed(c, t)))
+    // a route per side, claimed here: each side's order is its part's,
+    // wherever its fiber is resumed (channel-route-per-producer)
+    val (cs, ct) = (routed(c), routed(c))
+    watch(sch.fork(() => feed(cs, s)))
+    watch(sch.fork(() => feed(ct, t)))
     c
 
   /**
@@ -1129,18 +1194,22 @@ object Channel {
    * or `.drained.unchunked` for elements again at the far end.
    */
   def bufferChunked[A, S[_], F[+_]](capacity: Int, size: Int = Source.ChunkSize)(s: S[A])
-                                   (using Stream[S, F], Handler[F])
+                                   (using Stream[S, F], Answers[F])
                                    (using sch: Scheduler): Channel[Chunk[A]] =
     val c = forProducers[Chunk[A]](1, capacity)
-    sch.fork(() => feedBatched(c, s, size)).onComplete { r =>
+    sch.forkLong(() => feedBatched(c, s, size)).onComplete { r =>
       r.left.foreach(c.fail)
       c.close()
     }
     c
 
   def buffer[A, S[_], F[+_]](capacity: Int)(s: S[A])
-                            (using Stream[S, F], Handler[F])(using sch: Scheduler): Channel[A] =
+                            (using Stream[S, F], Answers[F])(using sch: Scheduler): Channel[A] =
     val c = forProducers[A](1, capacity)
+    // `fork`, not `forkLong`: the elementwise feed on `adaptive` read
+    // 1.25x Loom at capacity 64 with `forkLong` against 1.16x without —
+    // a small ring blocks both spread feeds at once, and a callback
+    // drive's resume costs more than Loom's (adaptive-chunked-merge-cost)
     sch.fork(() => feed(c, s)).onComplete { r =>
       r.left.foreach(c.fail)
       c.close()

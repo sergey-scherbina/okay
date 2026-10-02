@@ -16,7 +16,7 @@ import scala.language.implicitConversions
 class TestProcDirect extends munit.FunSuite:
 
   type P = okay.Pure
-  type Row = Delim + P
+  type Row = Shift % ? + P
   type Sig = Wf.Asked[String, String]
 
   // the doors, as OPERATIONS: what a block marks is a question of the

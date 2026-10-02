@@ -331,12 +331,12 @@ object Optic {
      * optic run at this carrier */
     implicit def zooming[X, R]: Strong[PState.Zooming[X, R]#L] = new Strong[PState.Zooming[X, R]#L] {
       def dimap[A, B, C, D](p: Cont[X, B => R, A => R])(f: C => A, g: B => D): Cont[X, D => R, C => R] =
-        shift[X, D => R, C => R](k => (c: C) => (p / ((x: X) => (b: B) => k(x)(g(b))))(f(c)))
+        Cont.shift[X, D => R, C => R](k => (c: C) => (p / ((x: X) => (b: B) => k(x)(g(b))))(f(c)))
       def first[A, B, C](p: Cont[X, B => R, A => R]): Cont[X, ((B, C)) => R, ((A, C)) => R] =
-        shift[X, ((B, C)) => R, ((A, C)) => R](k => (ac: (A, C)) => (p / ((x: X) => (b: B) => k(x)((b, ac._2))))(ac._1))
+        Cont.shift[X, ((B, C)) => R, ((A, C)) => R](k => (ac: (A, C)) => (p / ((x: X) => (b: B) => k(x)((b, ac._2))))(ac._1))
       // no tuple per zoom: the body `zoom` had before this instance existed
       override def lens[S1, S2, A1, A2](get: S1 => A1, set: (S1, A2) => S2)(p: Cont[X, A2 => R, A1 => R]): Cont[X, S2 => R, S1 => R] =
-        shift[X, S2 => R, S1 => R](k => (s1: S1) => (p / ((x: X) => (a2: A2) => k(x)(set(s1, a2))))(get(s1)))
+        Cont.shift[X, S2 => R, S1 => R](k => (s1: S1) => (p / ((x: X) => (a2: A2) => k(x)(set(s1, a2))))(get(s1)))
     }
   }
 
@@ -547,7 +547,7 @@ object Optic {
      * answer becomes `Option[X]` */
     def zoomCase[S1, S2, A1, A2, X, R](p: Prism[S1, S2, A1, A2])(m: Cont[X, A2 => R, A1 => R]): Cont[Option[X], S2 => R, S1 => R] = {
       val pair = p.compiled
-      shift[Option[X], S2 => R, S1 => R](k => (s1: S1) => pair.look(s1) match {
+      Cont.shift[Option[X], S2 => R, S1 => R](k => (s1: S1) => pair.look(s1) match {
         case Right(a1) => (m / ((x: X) => (a2: A2) => k(Some(x))(pair.put(s1, a2))))(a1)
         case Left(s2) => k(None)(s2)
       })

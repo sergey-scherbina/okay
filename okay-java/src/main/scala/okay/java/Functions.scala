@@ -55,7 +55,7 @@ object Functions {
   def supply[A](s: Supplier[A]): A ! Async = async(s.get())
 
   /** and back: a program becomes a Supplier that runs it on `get` */
-  def jsupply[A](p: A ! Async)(using okay.Handler[Async]): Supplier[A] =
+  def jsupply[A](p: A ! Async)(using okay.Answers[Async]): Supplier[A] =
     () => p.runWith
 
   /**

@@ -10,7 +10,7 @@ import Free.{Return, Inject, Bind}
  * asked element is computed. The observation is EFFECTFUL: uncons
  * answers in the row F, so a stream may perform work to produce its
  * next element; a pure stream takes F = Pure. Consumption needs a
- * Handler[F] in scope — for Pure it always is.
+ * Answers[F] in scope — for Pure it always is.
  */
 trait Stream[S[_], F <: Row] {
   /** the next element and the rest (or None at the end), inside F */
@@ -18,7 +18,7 @@ trait Stream[S[_], F <: Row] {
 
   /** the linear view; an instance may specialize it to skip the
    * per-element Option and tuple of uncons */
-  def iterator[A](s: S[A])(implicit H: Handler[F]): Iterator[A] =
+  def iterator[A](s: S[A])(implicit H: Answers[F]): Iterator[A] =
     Iterator.unfold(s)(x => Effects.runFree(uncons(x)))
 }
 
@@ -27,7 +27,7 @@ object Stream {
   implicit val lazyList: Stream[LazyList, Pure] = new Stream[LazyList, Pure] {
     def uncons[A](s: LazyList[A]): Option[(A, LazyList[A])] ! Pure =
       pure(if (s.isEmpty) None else Some((s.head, s.tail)))
-    override def iterator[A](s: LazyList[A])(implicit H: Handler[Pure]): Iterator[A] = s.iterator
+    override def iterator[A](s: LazyList[A])(implicit H: Answers[Pure]): Iterator[A] = s.iterator
   }
 
   /** a List is a (finite, strict, pure) stream */
@@ -36,13 +36,13 @@ object Stream {
       case a :: t => Some((a, t))
       case Nil => None
     })
-    override def iterator[A](s: List[A])(implicit H: Handler[Pure]): Iterator[A] = s.iterator
+    override def iterator[A](s: List[A])(implicit H: Answers[Pure]): Iterator[A] = s.iterator
   }
 
   implicit val vector: Stream[Vector, Pure] = new Stream[Vector, Pure] {
     def uncons[A](s: Vector[A]): Option[(A, Vector[A])] ! Pure =
       pure(if (s.isEmpty) None else Some((s.head, s.tail)))
-    override def iterator[A](s: Vector[A])(implicit H: Handler[Pure]): Iterator[A] = s.iterator
+    override def iterator[A](s: Vector[A])(implicit H: Answers[Pure]): Iterator[A] = s.iterator
   }
 
   /**
@@ -56,7 +56,7 @@ object Stream {
   def feedStream[A]: Stream[({ type L[W] = A ! Writer[W] })#L, Pure] = new Stream[({ type L[W] = A ! Writer[W] })#L, Pure] {
     def uncons[W](s: Free[Writer[W], A]): Option[(W, A ! Writer[W])] ! Pure = pure(Writer.uncons(s).toOption)
 
-    override def iterator[W](s: Free[Writer[W], A])(implicit H: Handler[Pure]): Iterator[W] = new Iterator[W] {
+    override def iterator[W](s: Free[Writer[W], A])(implicit H: Answers[Pure]): Iterator[W] = new Iterator[W] {
       private var cur: A ! Writer[W] = s
       private var ready = false
       private var ended = false
@@ -90,14 +90,14 @@ object Stream {
    * A writer program performing ARBITRARY effects G is a stream in G:
    * the same observation, the G-operations met on the way carried
    * into the answer; the linear view answers a forwarded G-operation
-   * directly by the Handler.
+   * directly by the Answers.
    */
   def writerStreamIn[A, G <: Row]: Stream[({ type L[W] = A ! (Writer[W] + G) })#L, G] =
     new Stream[({ type L[W] = A ! (Writer[W] + G) })#L, G] {
       def uncons[W](s: Free[Writer[W] with G, A]): Option[(W, A ! (Writer[W] + G))] ! G =
         Writer.unconsIn[W, A, G](s).map(_.toOption)
 
-      override def iterator[W](s: Free[Writer[W] with G, A])(implicit H: Handler[G]): Iterator[W] = new Iterator[W] {
+      override def iterator[W](s: Free[Writer[W] with G, A])(implicit H: Answers[G]): Iterator[W] = new Iterator[W] {
         private[this] val Mine = Split.at[Writer[W]]
         private var cur: A ! (Writer[W] + G) = s
         private var ready = false
@@ -128,12 +128,12 @@ object Stream {
 
   /** transform each element (on a program carrier the postfix .map
    * belongs to the monad, so the element-wise one keeps this name) */
-  def map[S[_], F <: Row, A, B](s: S[A])(f: A => B)(implicit St: Stream[S, F], H: Handler[F]): LazyList[B] =
+  def map[S[_], F <: Row, A, B](s: S[A])(f: A => B)(implicit St: Stream[S, F], H: Answers[F]): LazyList[B] =
     LazyList.unfold(s)(x => Effects.runFree(St.uncons(x))).map(f)
 
   /** a stream for each element, concatenated (any carriers) */
   def flatMap[S[_], T[_], F <: Row, G <: Row, A, B](s: S[A])(f: A => T[B])
-      (implicit St: Stream[S, F], H: Handler[F], Tt: Stream[T, G], HG: Handler[G]): LazyList[B] =
+      (implicit St: Stream[S, F], H: Answers[F], Tt: Stream[T, G], HG: Answers[G]): LazyList[B] =
     LazyList.unfold(s)(x => Effects.runFree(St.uncons(x))).flatMap(a => LazyList.unfold(f(a))(y => Effects.runFree(Tt.uncons(y))))
 
   /**
@@ -141,7 +141,7 @@ object Stream {
    * the accumulator as the Scala 3 core does: the four primitive
    * shapes keep it unboxed across the loop.
    */
-  def fold[S[_], F <: Row, A, B](s: S[A])(fo: Fold[A, B])(implicit St: Stream[S, F], H: Handler[F]): B = fo match {
+  def fold[S[_], F <: Row, A, B](s: S[A])(fo: Fold[A, B])(implicit St: Stream[S, F], H: Answers[F]): B = fo match {
     case l: Fold.OfLong[A @unchecked] =>
       val it = St.iterator(s); var b = l.initLong
       while (it.hasNext) b = l.addLong(b, it.next())
@@ -166,7 +166,7 @@ object Stream {
 
   /** `fold` with a stop: the iterator is asked for an element only
    * while the state has not seen enough */
-  def foldUntil[S[_], F <: Row, A, B, R](s: S[A])(fo: FoldUntil[A, B, R])(implicit St: Stream[S, F], H: Handler[F]): R = {
+  def foldUntil[S[_], F <: Row, A, B, R](s: S[A])(fo: FoldUntil[A, B, R])(implicit St: Stream[S, F], H: Answers[F]): R = {
     val it = St.iterator(s)
     fo match {
       case l: FoldUntil.OfLong[A @unchecked, R @unchecked] =>
@@ -195,7 +195,7 @@ object Stream {
   /** the standard combinators, over any Stream: every one observes by
    * uncons and lands in the final coalgebra (LazyList), so
    * transformation is lazy, memoized, and uniform across carriers */
-  implicit final class StreamOps[S[_], F <: Row, A](private val s: S[A])(implicit St: Stream[S, F], H: Handler[F]) {
+  implicit final class StreamOps[S[_], F <: Row, A](private val s: S[A])(implicit St: Stream[S, F], H: Answers[F]) {
     /** the next element and the rest, or None at the end (F is handled here) */
     def uncons: Option[(A, S[A])] = Effects.runFree(St.uncons(s))
     /** the anamorphism into the final coalgebra: unfold into a LazyList, on demand and memoized */
@@ -210,10 +210,10 @@ object Stream {
     def dropWhile(p: A => Boolean): LazyList[A] = toLazyList.dropWhile(p)
     def zipWithIndex: LazyList[(A, Int)] = toLazyList.zipWithIndex
     /** pair up with another stream (any carrier), until either ends */
-    def zip[T[_], G <: Row, B](that: T[B])(implicit Tt: Stream[T, G], HG: Handler[G]): LazyList[(A, B)] =
+    def zip[T[_], G <: Row, B](that: T[B])(implicit Tt: Stream[T, G], HG: Answers[G]): LazyList[(A, B)] =
       toLazyList.zip(LazyList.unfold(that)(y => Effects.runFree(Tt.uncons(y))))
     /** this stream, then that one (any carrier) */
-    def ++[T[_], G <: Row](that: T[A])(implicit Tt: Stream[T, G], HG: Handler[G]): LazyList[A] =
+    def ++[T[_], G <: Row](that: T[A])(implicit Tt: Stream[T, G], HG: Answers[G]): LazyList[A] =
       toLazyList #::: LazyList.unfold(that)(y => Effects.runFree(Tt.uncons(y)))
     def foldLeft[B](z: B)(op: (B, A) => B): B = St.iterator(s).foldLeft(z)(op)
     def foreach(f: A => Unit): Unit = St.iterator(s).foreach(f)
@@ -244,12 +244,12 @@ object Stream {
     def foldUntil[S, R](fo: FoldUntil[W, S, R]): R = Effects.run(Writer.foldUntilAt[W, S, A, R, Pure](a.plus[Pure])(fo))
   }
 
-  /** the effectful writer program's observations: each pull runs its G by the Handler */
+  /** the effectful writer program's observations: each pull runs its G by the Answers */
   implicit final class FeedInOps[W, A, G <: Row](private val a: Free[Writer[W] with G, A]) extends AnyVal {
-    def uncons(implicit H: Handler[G]): Option[(W, A ! (Writer[W] + G))] = Effects.runFree(Writer.unconsIn[W, A, G](a)).toOption
-    def toLazyList(implicit H: Handler[G]): LazyList[W] = LazyList.unfold(a)(x => Effects.runFree(Writer.unconsIn[W, A, G](x)).toOption)
-    def iterator(implicit H: Handler[G]): Iterator[W] = writerStreamIn[A, G].iterator(a)
-    def foldUntil[S, R](fo: FoldUntil[W, S, R])(implicit H: Handler[G]): R = Effects.runFree(Writer.foldUntilAt[W, S, A, R, G](a)(fo))
+    def uncons(implicit H: Answers[G]): Option[(W, A ! (Writer[W] + G))] = Effects.runFree(Writer.unconsIn[W, A, G](a)).toOption
+    def toLazyList(implicit H: Answers[G]): LazyList[W] = LazyList.unfold(a)(x => Effects.runFree(Writer.unconsIn[W, A, G](x)).toOption)
+    def iterator(implicit H: Answers[G]): Iterator[W] = writerStreamIn[A, G].iterator(a)
+    def foldUntil[S, R](fo: FoldUntil[W, S, R])(implicit H: Answers[G]): R = Effects.runFree(Writer.foldUntilAt[W, S, A, R, G](a)(fo))
   }
 }
 

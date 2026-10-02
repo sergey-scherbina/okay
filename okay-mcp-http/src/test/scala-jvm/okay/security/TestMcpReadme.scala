@@ -46,8 +46,8 @@ class TestMcpReadme extends munit.FunSuite {
     val _ : okay.http.Request => okay.http.Response ! Async = McpHttp.route(serving)
   }
 
-  test("the handler swap: a local table and a session are the same Handler[Tool]") {
-    val local: Handler[Tool] = Handlers.tools(table)
+  test("the handler swap: a local table and a session are the same Answers[Tool]") {
+    val local: Answers[Tool] = Handlers.tools(table)
     // `session.handler` is the other one; a session needs a live link,
     // so what is pinned here is that the local side has the type the
     // readme claims and a program cannot tell them apart

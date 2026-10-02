@@ -117,7 +117,7 @@ class TestInstances extends munit.FunSuite:
 
     // an Effect IS a TypeableK, so the union's split is the row's own
     assertEquals(
-      p.runWith(using Handler.union[Instances.Of[Store], Instances.Of[Reader % Int]](
+      p.runWith(using Answers.union[Instances.Of[Store], Instances.Of[Reader % Int]](
         using summon[okay.Effect[Instances.Of[Store]]], hs, hr)),
       ("ada", 7))
   }

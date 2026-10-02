@@ -1,7 +1,7 @@
 package okay.persist
 
 import munit.FunSuite
-import okay.{!, +, Delim, Pure, Wf}
+import okay.{%, !, +, Shift, Pure, Wf}
 import okay.Direct.*
 import okay.codec.Schema
 import scala.language.implicitConversions
@@ -17,12 +17,12 @@ import scala.language.implicitConversions
  */
 class TestRetire extends FunSuite {
 
-  type Row = Delim + Pure
+  type Row = Shift % ? + Pure
 
-  def three(using Delim.Asking[String, String, String, Row]): String ! Row = direct:
-    val a = !Delim.pause("1?")
-    val b = !Delim.pause("2?")
-    val c = !Delim.pause("3?")
+  def three(using Shift.Asking[String, String, String, Row]): String ! Row = direct:
+    val a = !Shift.pause("1?")
+    val b = !Shift.pause("2?")
+    val c = !Shift.pause("3?")
     s"$a$b$c"
 
   def dialogue(t: Topic, id: String, program: String = "three/1") =
@@ -85,7 +85,7 @@ class TestRetire extends FunSuite {
   given Schema[Wf.SysA] = Schema.derived
   given Wf.Runtime = Wf.Runtime.scripted(millis = 1L, id = "id", dice = 0.5)
 
-  def v2(using w: Wf.Asks[String, String, String, Pure]): String ! Delim + Pure =
+  def v2(using w: Wf.Asks[String, String, String, Pure]): String ! Shift % ? + Pure =
     direct:
       val city = !w.pause("city?")
       val promo = !w.patch("promo")

@@ -2519,3 +2519,142 @@ the Overview. What follows from it, and was done the same day
   door's `A` cannot come from the lambda), every expected value matched
   on the first run that compiled; the whole okay2 gate GREEN before
   landing.
+
+## Stage 49 — okay2-level1-api: level 1 in Scala 2 (2026-10-02)
+
+Operator: "Делай okay2" — the Scala 3 core's level-1 API (specs/api-levels.md,
+shift-effect.md, handler-forms.md), then "А можем в окей2 класс Effects
+сделать таким же как в okay?" — the trait, member for member.
+
+- **`Cont.shift`/`Cont.reset`**: the package-level `shift`/`reset` were
+  Cont's; they are `Cont`'s members now and the top-level names belong to
+  `Shift[R]`, as in the core. Seventeen files moved by the compiler.
+- **`Shift[R]`** (Shift.scala): a Row whose operations are Delim's;
+  `shift`/`shift0`/`reset` at the package level (trait `Shifts`), `Shift.Key`
+  by a blackbox macro (one key per normalized type, an intersection in any
+  order one key; an abstract type aborts), `Shift.Nesting` by implicit
+  priority (a row `<:` `Shift.Any` or `Delim` is inner; abstract is not),
+  the per-thread room and `StackSwitch.fresh` for nested resets,
+  `exit`/`collect`/`emit`, `cont`/`embed`. No short `shift[A]`: Scala 2 has
+  no context functions. TestShift has the core's values; 100 000 nested
+  resets and 100 000 captures pass.
+- **`Handler[F]` is `Answers[F]`**; `Handler[E, O]` is the package alias of
+  `Handler.Full[E, Any, O, Handler.Nothing]`, the value. Answer shapes are
+  projections (`Handler.Pair[S]#L`, `Or[E]#L`, `Const[R]#L`, `Holds[G]#L`).
+- **`p.handle(h[, h2[, h3]])` is a whitebox macro** (HandleMacro). MEASURED
+  reason: Scala 2 solves the rest `F` of `Free[E with F, A]` from an
+  implicit search as the whole row, so nothing but a macro takes `E` off.
+  It flattens the row, removes the handler's effect, refuses one the row
+  does not hold ("does not hold"), and expands to `h.run[A, Rest](p)` —
+  the program, not its wrapper, so nothing is allocated.
+- **Forms**: `answer` (`Answers[F]`), `state` (`StateClause`), `into[G]`
+  (`Interpret`, needs `R <:< G`), `control[O]` (`Ret` + `Control`);
+  `Handler[F]` is the inference helper. Ready values: `State(s)`,
+  `Reader(r)`, `Throws.either`/`option`, `Choose.all`, `Writer.log`,
+  `Once.memo`, `Resource.region` (needs `Failing`), `Reset[R]`.
+- **State is `Get` + `Update(f)`** (`Put`/`Modified` transitions as data),
+  for parity with state-get-update; `modify` and `update` are one operation.
+- **`Effects` in the core's shape**: `handle(m)(ret)(h)` in the trait
+  (`Free`: `handleWith`), level 1 in the trait with defaults through the
+  tree and `Free`'s own as overrides, `Effects.convert`/`reify`/`reflect`
+  (in `object Effects`: at the package level they shadow `Layered.reify`
+  under a wildcard import), `foldCont` on the syntax. TestReflect: round
+  trip, 100 000 operations, every default agrees with `Free`.
+- **Left** (okay2/backlog.d): `foldMap` + `TailRecM`, the `control` form's
+  tail resume, the case-form macro, the `modify` measurement.
+
+## Stage 50 — okay2-effects-foldmap: TailRecM, foldMap, control's tail resume (2026-10-02)
+
+Operator: "Продолжай", after stage 49 — its two follow-ups that close the
+`Effects` parity and the `control` form's price.
+
+- **`TailRecM[F]` from the carrier** (Monad.scala), the core's
+  eager-carrier-depth design: `Option`, `Either[E, *]`, `LazyList` (an
+  explicit stack, lazily) and programs (`!.loop`, in Free's companion);
+  `TailRecM.deferring` for a carrier whose `flatMap` defers, its recursion a
+  DEFERRED row in the inventory, checked on a 128 KB thread. No generic
+  given: `TailRecM[List]` is a compile error naming `TailRecM`.
+- **`Effects.foldMap`** is G's `tailRecM` over one resume a step; `Free`'s
+  instance skips the `reify`. A million operations, left-nested and
+  non-tail, on a 128 KB JVM thread and on Scala.js and Native
+  (TestStackSafeLoops, TestStackSafeLoopsSmall).
+- **`Handler.control`'s `Resume`**: a clause that returns `k(x)` as its
+  answer is answered `Cont.Pure`, no capture; the first call's `Delay` is
+  the object itself. MEASURED (HandlerFormsBenchmark, 1 000 tail-resumed
+  asks, alternating, quiet box): 36.25/36.29 us against 46.54/48.42 for the
+  capture it replaced (0.75-0.78x, -72 B an operation), 1.11x
+  `!.handle` with `Cont.Pure` (32.56, +48 B: the Resume and its Delay),
+  which reads at parity with `Reader(7)` (33.02). history.d
+  `okay2-control-resume`.
+- **`scripts/jmh-lane.sh` from a sub-build**: it sourced `bench-window.sh`
+  through a relative `$0` after its `cd` to the root, so `cd okay2 && sh
+  ../scripts/jmh-lane.sh …` died at once, and it would have run sbt at the
+  root, which has no okay2 project. It sources through `$here` and runs sbt
+  in the caller's directory when that has its own `build.sbt` (selftest 15,
+  red first).
+
+## Stage 51 — okay2-handler-case-form, and modify's price (2026-10-02)
+
+Operator: "Продолжай" — the last two okay2 follow-ups of stage 49.
+
+- **The case forms** (specs/handler-forms.md, "In okay2"): `Handler[F] {
+  case … }` and `.answer`/`.state(s0)`/`.into[G]` with `{ case … }`, checked
+  by `HandlerCases` against each constructor's declared answer; `.poly`
+  takes the clause traits. Typed at `F#Op[Any]` because scalac 2 refuses a
+  constructor pattern against an opaque answer (measured), so a
+  caller-chosen or field-tied answer is refused by name. The expansion goes
+  to `Handler.Cases`, where the one cast the check licenses lives. The
+  four refusals are compileErrors tests; exhaustiveness is scalac's.
+- **`modify` is one operation, measured** (ProbeRowCost twin, exact bytes,
+  N = 100 000): 112 B a level against 240 for get-then-set (0.47x), at
+  `set`'s 112; `get` 80, a bare tailcall 40. The core reads 96 for both
+  (history.d `okay2-state-modify-op`).
+
+## Stage 52 — okay2-shift-merge: Delim folded into Shift (2026-10-02)
+
+Operator: picked "okay2: shift-merge's twin" — specs/shift-merge.md's stages
+1, 2 and 4 in the Scala 2.13 twin.
+
+- **One effect `Shift[K]`**: `Shift[R]` keyed by the answer type (stage 49),
+  `Shift[Any]` keyed by a prompt value at run time — okay2's `Delim` until
+  now, the core's `Shift % ?`, the operator's "Shift % Any". `Delim` is gone,
+  not aliased: 606 uses in 22 files moved (`Delim.x` → `Shift.x`, the type →
+  `Shift[Any]`), Delim.scala `git mv`'d to Shift.scala and the static form's
+  members merged into the one `object Shift`. The key macro refuses `Any`,
+  the dynamic key.
+- **One machine guard** over any key: `NoMachine[F]` (was `NoDelim`) asks
+  `F <:< Shift.AnyKey`, as the core's `OneMachine` reads `Shift[?, Any]`; a
+  row holding `Shift[Int]` cannot start a second machine (compileErrors).
+  `Nesting` stays beside it, as in the core until shift-merge-guard.
+- **`Shift.dynamic`** widens a static program into `Shift[Any]` (a written
+  coercion; one claim function), and the core's test passes: a keyed
+  capture and an exit from a dynamic scope in one program, 12.
+- **Names that differ, measured:** the static generator is `Shift.gather`,
+  not `collect`. An overload beside the dynamic `collect(body: Emitting =>
+  …)` cost every lambda and eta-expanded method passed to it its parameter
+  type ("missing parameter type", TestDelim's three call sites). `exit` and
+  `emit` overload cleanly (their alternatives differ in type-argument count
+  and in the first parameter's type).
+- **Left for the twin of shift-merge-guard** (the core's next lane): the one
+  evidence for both guards, and `Stacked` read as `Shift[p.type]`.
+
+## Stage 53 — okay2-shift-merge-guard: one machine guard, and it nests (2026-10-02)
+
+Operator: "продолжай" — the core's shift-merge-guard (83a0b7084) in the twin.
+
+- **ONE evidence, `Shift.Machine[F]`**: `OneMachine` (a refusal through the
+  `NoMachine` ambiguity trick) and `Nesting` (the keyed `reset`'s answer, by
+  implicit priority) are gone. A blackbox macro reads the row — its members
+  flattened by a worklist — `inner` when one is a `Shift` of any key.
+- **Every machine-starting door nests**: `Shift.run` is `inner(prog)` when a
+  machine runs outside, so `delimited`, `collect`, `collectUntil`,
+  `resumable`, `drive`, `answer`, `replay`, `Stacked.delimited` and the keyed
+  `reset` all stand on the running machine. TestDelim's "second machine is a
+  COMPILE error" now asserts the same shape nests and answers.
+- **An abstract row asks for the evidence**: a part that is not a class and
+  no `Shift` is "cannot be read here … take `(implicit m:
+  Shift.Machine[F])`" — the hole the old priority fallback had (an abstract
+  `F` read as outermost) closed, as in the core. Main code compiled without
+  the macro expanding in its own run: every door passes the evidence on.
+- **Left**: stage 3, `Stacked` read as `Shift[p.type]` (the core's
+  shift-stacked-key, queued there).

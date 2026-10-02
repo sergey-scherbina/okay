@@ -57,7 +57,7 @@ class TestEncoder extends munit.FunSuite {
 
   test("okay-rag's effect answers the same vectors as the plain function") {
     withEncoder { enc =>
-      given okay.Handler[okay.rag.Embed] = enc.handler
+      given okay.Answers[okay.rag.Embed] = enc.handler
       import okay.given
       val via = okay.rag.embed(Seq("окей")).runWith
       assertEquals(via.head, enc.embed("окей"))

@@ -11,6 +11,7 @@ aborted.
 |---|---|
 | `Resource.acquire(make)(release)` | acquire, and register its release |
 | `Resource.scoped(p)` | run a program, then release everything it acquired |
+| `p.handle(Resource.region)` | handle it, forwarding the program's other effects |
 | `Resource.run(p)` | the same, forwarding the program's other effects |
 | `Resource.open(p)` | run it and hand back the answer and a `close` |
 | `bracket(acquire)(release)(use)` | the classic three-part form, over any row |

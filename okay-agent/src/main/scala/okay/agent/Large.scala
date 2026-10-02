@@ -1,6 +1,6 @@
 package okay.agent
 
-import okay.Handler
+import okay.Answers
 import okay.codec.Schema
 import scala.collection.mutable
 
@@ -49,8 +49,8 @@ object Large {
    * `window` characters, the handle, and the total size — enough for
    * the model to decide whether it needs more.
    */
-  def projecting(inner: Handler[Tool], store: Store,
-                 limit: Int = 1000, window: Int = 300): Handler[Tool] = new:
+  def projecting(inner: Answers[Tool], store: Store,
+                 limit: Int = 1000, window: Int = 300): Answers[Tool] = new:
     def handle[A](e: Tool[A]): A = e match
       case Tool.Call(c) if c.name == ExpandTool =>
         (ToolSpec.args[Expand](c) match

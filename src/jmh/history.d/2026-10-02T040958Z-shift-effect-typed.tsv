@@ -1,0 +1,4 @@
+2026-10-02	e3bcac131	quiet	ShiftFxBenchmark.seq N=1000	fxDelim 60.62us 534163B	fxDelim 54.77us 534144B (shift-effect-probe)	1.11	(b) with keys: a prompt looked up per shift by its key (TrieMap); the bytes unchanged
+2026-10-02	e3bcac131	quiet	ShiftFxBenchmark.seq N=1000	fxHandled 91.59us 901857B	fxHandled 86.87us 893801B (shift-effect-probe)	1.05	(a) with keys: the key in each Shift node (+8 B a capture), a string compare per split
+2026-10-02	e3bcac131	quiet	ShiftFxBenchmark.seqDF N=1000	fxDelim 75.29us 638164B	fxDelim seq 60.62us 534163B	1.24	Danvy-Filinski's shift on (b): the body under a re-pushed prompt, +104 B a capture
+2026-10-02	e3bcac131	quiet	ShiftFxBenchmark.seqDF N=1000	fxHandled no result	-	-	(a) gave no number: a reset per capture nests one handler per capture (the depth test overflows past 1 000)

@@ -30,7 +30,9 @@
  *   answer type under a `Bind` and cannot at a bare `Inject`.
  * - No `inline`: the hot paths are ordinary methods for the JIT.
  */
-package object okay2 extends Provides with Monads {
+import scala.language.implicitConversions
+
+package object okay2 extends Provides with Monads with Shifts {
 
   /** a computation of A performing the operations of the row R: A ! R.
    * Scala 2 gives every infix TYPE operator one precedence, left-
@@ -56,6 +58,12 @@ package object okay2 extends Provides with Monads {
    * below it, so `A ! Pure` is a program in any row, and `run` accepts
    * only it */
   type Pure = Row
+
+  /** the level-1 handler value: takes `E` off any program's row, answering `O[A]` (Handler.scala) */
+  type Handler[E <: Row, O[_]] = Handler.Full[E, Any, O, Handler.Nothing]
+
+  /** `p.handle(h)` on every program: the macro on `Handles` computes the rest of the row */
+  implicit def handles[R, A](p: Free[R, A]): Handles[R, A] = new Handles[R, A](p)
 
   /** no error: a `Throws[Safe]` program always holds a value (the Scala
    * 3 core's top-level alias) */
@@ -89,10 +97,8 @@ package object okay2 extends Provides with Monads {
   /** what reset can delimit: the value and its inner answer coincide */
   type ^[A, R] = Cont[A, A, R]
 
-  /** capture the current continuation (Danvy–Filinski, with answer-type modification) */
-  def shift[A, S, R](f: (A => S) => R): Cont[A, S, R] = Cont.shift(f)
-  /** delimit: run the computation with the identity continuation */
-  def reset[A, R](c: A ^ R): R = Cont.run(c)(identity)
+  // Cont's capture and delimiter are `Cont.shift` / `Cont.reset` (cont-shift-rename's twin): the top-level
+  // names belong to level 1's `Shift[R]` (specs/api-levels.md)
 
   /** the function encoding: the reference implementation of Control,
    * fast, fused, NOT stack-safe */
@@ -112,7 +118,7 @@ package object okay2 extends Provides with Monads {
    * inverse, never recomputed. A Monoid-only element type is refused at
    * compile time: there is no un-seeing without an inverse.
    */
-  def sliding[S[_], F <: Row, A](s: S[A])(n: Int)(implicit G: Group[A], St: Stream[S, F], H: Handler[F]): LazyList[A] = {
+  def sliding[S[_], F <: Row, A](s: S[A])(n: Int)(implicit G: Group[A], St: Stream[S, F], H: Answers[F]): LazyList[A] = {
     def go(q: Vector[A], acc: A, rest: LazyList[A]): LazyList[A] = rest match {
       case a #:: t =>
         val grown = G.combine(acc, a)
@@ -155,7 +161,11 @@ package object okay2 extends Provides with Monads {
   implicit final class EffectsSyntax[M[_, _], F <: Row, A](private val m: M[F, A]) extends AnyVal {
     def flatMap[B](f: A => M[F, B])(implicit E: Effects[M]): M[F, B] = E.flatMap(m)(f)
     def map[B](f: A => B)(implicit E: Effects[M]): M[F, B] = E.map(m)(f)
-    def runWith(implicit E: Effects[M], H: Handler[F]): A = E.runWith(m)
+    def runWith(implicit E: Effects[M], H: Answers[F]): A = E.runWith(m)
+    /** `foldMap` into `Cont`: the program's fold, each operation answered by `h` as a continuation */
+    def foldCont[S](h: F !> S)(implicit E: Effects[M]): A /> S = E.foldCont(m)(h)
+    /** the program folded into any `Monad` G through G's own loop */
+    def foldMap[G[_]](nt: Static.To[F, G])(implicit E: Effects[M], G: Monad[G], R: TailRecM[G]): G[A] = E.foldMap(m)(nt)
   }
 
   /** a Loop: the body of an open-recursive function A => R whose
@@ -192,14 +202,14 @@ package object okay2 extends Provides with Monads {
   def runChoice[A, R <: Row](a: Free[Choose with R, A]): Seq[A] ! R = Choose.runChoice[A, R](a)
 
   /**
-   * Bracket over any Handler-able row F: acquire, use, release — the
+   * Bracket over any Answers-able row F: acquire, use, release — the
    * use-program runs to completion inside one suspension, so no outer
    * handler can skip or repeat the release; a fiber's cancellation is
    * an interrupt exception, and the finally sees it. For a release
    * scoped to a whole program of arbitrary effects, use the `Resource`
    * effect instead.
    */
-  def bracket[R, A, F <: Row](acquire: => R)(release: R => Unit)(use: R => A ! F)(implicit H: Handler[F]): A ! F =
+  def bracket[R, A, F <: Row](acquire: => R)(release: R => Unit)(use: R => A ! F)(implicit H: Answers[F]): A ! F =
     pure[F, Unit](()).flatMap { _ =>
       val r = acquire
       try pure[F, A](use(r).runWith)
@@ -224,18 +234,21 @@ package object okay2 extends Provides with Monads {
     /** add G to whatever row this program already has — the identity */
     def plus[G <: Row]: A ! (R + G) = p
 
-    /** run every operation by a comonadic Handler */
-    def runWith(implicit H: Handler[R]): A = Effects.runFree(p)
+    /** run every operation by a comonadic Answers */
+    def runWith(implicit H: Answers[R]): A = Effects.runFree(p)
+
+    /** a program with no effect left, to its value: `p.handle(State(0)).run` */
+    def run(implicit pure: Free[R, A] <:< Free[Pure, A]): A = Effects.run(pure(p))
 
     /** THE rotation: normalize to a head form — `Return`, `Inject`, or
      * `Bind(Inject, k)` — in constant stack */
     def resume: A ! R = Free.resume(p)
 
-    /** step through the next n operations by the Handler */
-    def next(steps: Long = 1)(implicit H: Handler[R]): A ! R = Effects.next(p, steps)
+    /** step through the next n operations by the Answers */
+    def next(steps: Long = 1)(implicit H: Answers[R]): A ! R = Effects.next(p, steps)
 
     /** peek the nearest answer: the value, or the first operation handled */
-    def peek(implicit H: Handler[R]): Any = Effects.peek(p)
+    def peek(implicit H: Answers[R]): Any = Effects.peek(p)
 
     /** a bind across rows: the continuation may answer in ANOTHER row,
      * and the result is the union of the two */
@@ -289,10 +302,10 @@ package object okay2 extends Provides with Monads {
     def /(k: A => S): R = Cont.run(c)(k)
   }
 
-  implicit final class HandlerOps[F <: Row](private val h: Handler[F]) extends AnyVal {
+  implicit final class HandlerOps[F <: Row](private val h: Answers[F]) extends AnyVal {
     /** every handler can be a recording one: the operations are
      * already data, so recording is a decorator */
-    def tracing(log: Any => Unit): Handler[F] = new Handler[F] {
+    def tracing(log: Any => Unit): Answers[F] = new Answers[F] {
       def handle[A](a: In[A]): A = handleOp[A](a)
       override def handleOp[A](op: Any): A = { log(op); h.handleOp[A](op) }
     }

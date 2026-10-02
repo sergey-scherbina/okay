@@ -1,6 +1,6 @@
 package okay.agent
 
-import okay.{!, +, Handler, given}
+import okay.{!, +, Answers, given}
 import okay.codec.Json
 import okay.lex.{Bpe, Scan}
 import okay.llm.{Anthropic, OpenAi, Transport}
@@ -64,7 +64,7 @@ object Provider {
              url: String = OpenAi.chatUrl,
              maxTokens: Option[Int] = Some(1024),
              count: String => Int = _.length / 4)
-            (using okay.Handler[okay.Async]): Handler[Model] = new:
+            (using okay.Answers[okay.Async]): Answers[Model] = new:
     def handle[A](e: Model[A]): A = e match
       case Model.Complete(context, tools) =>
         val body = OpenAi.request(model,
@@ -128,7 +128,7 @@ object Provider {
                 url: String = Anthropic.messagesUrl,
                 maxTokens: Int = 1024,
                 count: String => Int = _.length / 4)
-               (using okay.Handler[okay.Async]): Handler[Model] = new:
+               (using okay.Answers[okay.Async]): Answers[Model] = new:
     def handle[A](e: Model[A]): A = e match
       case Model.Complete(context, tools) =>
         val (system, messages) = anthropicMessages(context)
@@ -143,7 +143,7 @@ object Provider {
   // ------------------------------------------------------------------
   // the portable form
   //
-  // A `Handler[Model]` must ANSWER with a value, so it has to run the
+  // A `Answers[Model]` must ANSWER with a value, so it has to run the
   // request to completion inside itself — which needs a thread that
   // can park, and JS has none. The portable shape therefore is not a
   // handler but a RELAY: the Model operations are translated into
@@ -157,7 +157,7 @@ object Provider {
                                       (prog: A ! Model + F): A ! okay.Async + F =
     // the handler as a NATURAL TRANSFORMATION into another row: a
     // Model operation answers with a PROGRAM in Async, which is what
-    // Handler[Model] = Model ==> Id could not express — Id has
+    // Answers[Model] = Model ==> Id could not express — Id has
     // nowhere to put the suspension
     // a row is a union, so (Model + F) + Async IS Model + (Async + F):
     // the ascription is the compiler's own equality, not a cast

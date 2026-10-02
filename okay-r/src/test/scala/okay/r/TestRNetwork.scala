@@ -43,7 +43,7 @@ class TestRNetwork extends munit.FunSuite {
       assertEquals(r.wire, "json/zlib")
       assertEquals(r.handler.handle(REval.Call("sqrt", Vector(RValue.Vec(Vector(RValue.F64(9)))))),
         Right(RValue.Vec(Vector(RValue.F64(3)))))
-      given okay.Handler[REval] = r.handler
+      given okay.Answers[REval] = r.handler
       val pairs = R.program[Double]("rep::pairs").calling(R.callbacks(choose))()
       assertEquals(runChoice(pairs.program).runWith.toList, List(Right(11.0), Right(21.0), Right(12.0), Right(22.0)))
       pairs.forget.runWith
@@ -54,7 +54,7 @@ class TestRNetwork extends munit.FunSuite {
     given WireAuth = WireAuth.secret(secret.getBytes)
     val r = RSubprocess.connect("127.0.0.1", guarded._1)
     try
-      given okay.Handler[REval] = r.handler
+      given okay.Answers[REval] = r.handler
       val price = R.callback[String, Double]("price_of")(sku => Reader.ask[Map[String, Double]].map(_(sku)))
       val run = R.program[Double]("progs::priced").calling(R.callbacks(price))("tea", 3.0)
       assertEquals(Reader.run(Map("tea" -> 4.0))(run.program).runWith, Right(12.0))
@@ -72,7 +72,7 @@ class TestRNetwork extends munit.FunSuite {
 
   test("a timeout over TCP RECONNECTS to a fresh R, and a multi-shot program is replayed onto it") {
     val r = RSubprocess.connect("127.0.0.1", plain._1, timeoutMillis = Some(3000L))
-    given okay.Handler[REval] = r.handler
+    given okay.Answers[REval] = r.handler
     var replaced = false
     val chooseLate = R.callback[Vector[Double], Double]("choose") { xs =>
       if !replaced && xs == Vector(10.0, 20.0) then

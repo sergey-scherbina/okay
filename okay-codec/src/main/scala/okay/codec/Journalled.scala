@@ -1,6 +1,6 @@
 package okay.codec
 
-import okay.Handler
+import okay.Answers
 
 /**
  * What a journal needs of an operation in order to record it
@@ -72,7 +72,7 @@ trait Journalled[Op[_]]:
    * row needs it, and `effect(Tool.Call(c)): String ! Agent` stops
    * type-checking without it.)
    */
-  def perform[A](op: Op[A], inner: Handler[Op]): (A, String)
+  def perform[A](op: Op[A], inner: Answers[Op]): (A, String)
 
   /** the answer, back out of the journal. Given the operation, so a
    * GADT can refine `A` — and String <: A is the easy direction. */

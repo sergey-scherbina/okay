@@ -15,3 +15,5 @@
       today. Literature: Materzok & Biernacki ICFP 2011 (the rule),
       PPDP 2021 (the reduction theory). Source: specs/shift0-dollar.md
       Decisions (shift0-dollar-close, 2026-09-25).
+      NOTE (cont-core-design, 2026-10-01): `control0` left the library
+      altogether, so only the shift0 half of this item remains.

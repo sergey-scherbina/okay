@@ -19,6 +19,12 @@ object Reader {
   /** the environment */
   def ask[R]: R ! Reader[R] = Free.inject[Reader[R], R](Ask())
 
+  /** the handler as a value, level 1: `p.handle(Reader(r))` */
+  def apply[R](r: R): Handler[Reader[R], Handler.Id] = new Handler.Full[Reader[R], Any, Handler.Id, Handler.Nothing] {
+    def run[A, F <: Row](p: Free[Reader[R] with F, A])(implicit @unused ev: A <:< Any, @unused d: Distinct[Reader[R] with F], @unused n: Handler.Nothing[F]): A ! F =
+      runAt[R, A, F](r)(p)
+  }
+
   /** answer every ask with r, forwarding the rest of the row */
   def run[R, A, Rw <: Row](r: R)(a: Free[Reader[R] with Rw, A])(implicit @unused d: Distinct[Reader[R] with Rw]): A ! Rw =
     runAt[R, A, Rw](r)(a)

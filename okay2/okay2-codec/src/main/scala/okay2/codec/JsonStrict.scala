@@ -1,6 +1,6 @@
 package okay2.codec
 
-import okay2.{Cont, reset, />}
+import okay2.{Cont, />}
 
 /**
  * The STRICT JSON reader (okay-codec's JsonStrict.scala): characters
@@ -47,7 +47,7 @@ object JsonStrict {
      * Cont; an Option or iso step between two containers is bounded by
      * the schema, which must cross a product or sum to recurse */
     def get[A](sc: Schema[A]): Either[String, A] =
-      if (open >= Codecs.NativeThreshold) reset(getC[A, Either[String, A]](sc))
+      if (open >= Codecs.NativeThreshold) Cont.reset(getC[A, Either[String, A]](sc))
       else getNative(sc)
 
     private def one(x: String): Either[String, Char] =

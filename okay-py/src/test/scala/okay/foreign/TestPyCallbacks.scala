@@ -48,7 +48,7 @@ class TestPyCallbacks extends munit.FunSuite {
     val dir = java.nio.file.Files.createTempDirectory("okay-py-cb")
     java.nio.file.Files.writeString(dir.resolve("okaycb.py"), TestPyCallbacks.module): Unit
     PySubprocess.start(TestPy.python.get, Map("PYTHONPATH" -> dir.toString))
-  private given okay.Handler[PyEval] = w.handler
+  private given okay.Answers[PyEval] = w.handler
   override def afterAll(): Unit = if TestPy.python.nonEmpty then w.close()
 
   private val inc = Py.callback[Long, Long]("inc")(x => State.modify[Int](_ + 1).map(_ => x + 1))

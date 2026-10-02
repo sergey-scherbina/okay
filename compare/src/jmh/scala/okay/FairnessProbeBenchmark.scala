@@ -103,7 +103,7 @@ class FairnessProbeBenchmark {
   /** okay's lane from CompareBenchmark, same run, for the tie */
   @Benchmark
   def chain_okayCont(): Int =
-    reset((1 to N).foldLeft(Cont.Pure(0): Int /> Int)((m, _) => m.flatMap(x => Cont.Pure(x + 1))))
+    Cont.reset((1 to N).foldLeft(Cont.Pure(0): Int /> Int)((m, _) => m.flatMap(x => Cont.Pure(x + 1))))
 
   // ── 3. the queue consumer: Ref.update per element is not what a ───
   //    zio user writes to sum a stream, and it is not what okay's

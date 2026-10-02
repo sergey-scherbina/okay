@@ -10,7 +10,7 @@ package okay2
  * Brachthäuser, Boruch-Gruszecki & Odersky (2020) observe that native
  * multi-prompt control is enough: each `reify` installs its own
  * delimiter and hands out a capability, and a `reflect` through it
- * captures up to the right delimiter, past any inner ones. `Delim` is
+ * captures up to the right delimiter, past any inner ones. `Shift[Any]` is
  * multi-prompt, so a layer is a prompt and `Reflect` names it.
  *
  * `Layer[M]`, not a monad: the captured continuation is a PROGRAM that
@@ -68,12 +68,12 @@ object Layered {
   /**
    * A layer: install a delimiter answering `M[R]`, run the body with the
    * capability, and wrap its value in `M`. INSTALLS ONLY, so layers
-   * nest; the machine is run by whoever runs `Delim` outside the
-   * outermost one (`Delim.run`).
+   * nest; the machine is run by whoever runs `Shift[Any]` outside the
+   * outermost one (`Shift.run`).
    */
-  def reify[M[_], R, F <: Row](body: Reflect[M, R] => R ! (Delim + F))(implicit L: Layer[M], at: At): M[R] ! (Delim + F) = {
-    val p = Delim.prompt[M[R]]
-    Delim.dollar[R, M[R], F](p)(r => okay2.pure[Delim + F, M[R]](L.pure(r)))(body(new Reflect[M, R](p, L)))
+  def reify[M[_], R, F <: Row](body: Reflect[M, R] => R ! (Shift[Any] + F))(implicit L: Layer[M], at: At): M[R] ! (Shift[Any] + F) = {
+    val p = Shift.prompt[M[R]]
+    Shift.dollar[R, M[R], F](p)(r => okay2.pure[Shift[Any] + F, M[R]](L.pure(r)))(body(new Reflect[M, R](p, L)))
   }
 
   /** μ: the layer's value as a plain value, for the rest of the block up
@@ -81,8 +81,8 @@ object Layered {
    * `Some(2).reflect(opt)` looks for a `Reflect[Some, R]` and finds none:
    * write `Option(2)`, or ascribe. */
   implicit class ReflectOps[M[_], X](private val m: M[X]) extends AnyVal {
-    def reflect[R, F <: Row](r: Reflect[M, R])(implicit at: At): X ! (Delim + F) =
-      Delim.shift0[M[R], X, F](r.prompt)(k => r.layer.bind[X, R, Delim + F](m)(k))
+    def reflect[R, F <: Row](r: Reflect[M, R])(implicit at: At): X ! (Shift[Any] + F) =
+      Shift.shift0[M[R], X, F](r.prompt)(k => r.layer.bind[X, R, Shift[Any] + F](m)(k))
 
     /** μ, stacked: `m.reflectAt[F](st, layer)`, a `shift0` to the layer,
      * which must be on the stack in force (`st`) — a layer kept past its
@@ -92,9 +92,9 @@ object Layered {
   }
 
   final class ReflectAt[M[_], X, F <: Row] private[Layered] (m: M[X]) {
-    def apply[R, S2 <: Delim.Stacked.Stk, S <: Delim.Stacked.Stk](st: Delim.Stacked.Stack[S2], layer: Delim.Stacked.In[M[R], S])
-             (implicit ev: Delim.Stacked.Has[S2, layer.p.type], L: Layer[M], at: At): X ! (Delim + F) =
-      st.shift0[M[R], X, F](layer.p)(ev, at).apply(_ => k => L.bind[X, R, Delim + F](m)(k))
+    def apply[R, S2 <: Shift.Stacked.Stk, S <: Shift.Stacked.Stk](st: Shift.Stacked.Stack[S2], layer: Shift.Stacked.In[M[R], S])
+             (implicit ev: Shift.Stacked.Has[S2, layer.p.type], L: Layer[M], at: At): X ! (Shift[Any] + F) =
+      st.shift0[M[R], X, F](layer.p)(ev, at).apply(_ => k => L.bind[X, R, Shift[Any] + F](m)(k))
   }
 
   /**
@@ -108,11 +108,11 @@ object Layered {
    * from `st`.
    */
   object Stacked {
-    import Delim.Stacked.{In, Stack, Stk}
+    import Shift.Stacked.{In, Stack, Stk}
 
     final class Reify[M[_], R, F <: Row] private[Layered] () {
-      def apply[S <: Stk](st: Stack[S])(body: In[M[R], S] => R ! (Delim + F))(implicit L: Layer[M], at: At): M[R] ! (Delim + F) =
-        st.dollar[R, M[R], F](r => okay2.pure[Delim + F, M[R]](L.pure(r)))(body)
+      def apply[S <: Stk](st: Stack[S])(body: In[M[R], S] => R ! (Shift[Any] + F))(implicit L: Layer[M], at: At): M[R] ! (Shift[Any] + F) =
+        st.dollar[R, M[R], F](r => okay2.pure[Shift[Any] + F, M[R]](L.pure(r)))(body)
     }
     def reify[M[_], R, F <: Row]: Reify[M, R, F] = new Reify[M, R, F]()
   }

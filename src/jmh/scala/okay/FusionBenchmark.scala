@@ -64,7 +64,7 @@ class FusionBenchmark {
     if i >= N then C.pure(acc)
     else (i % 3) match
       case 0 => C.flatMap(h(State.Get()))(x => rightCtrl(h)(i + 1, acc + x))
-      case 1 => C.flatMap(h(State.Set(i)))(x => rightCtrl(h)(i + 1, acc + x))
+      case 1 => C.flatMap(h(State.Update[Int, Int](_ => (i, i))))(x => rightCtrl(h)(i + 1, acc + x))
       case _ => C.flatMap(h(Writer.Say("w")))(_ => rightCtrl(h)(i + 1, acc + 1))
 
   @Benchmark
@@ -112,13 +112,13 @@ class FusionBenchmark {
   inline def block10[C[_, _, _]](inline h: Interpr[SW, C, R], C: Control[C])(i: Int, acc: Int)
                                 (inline next: Int => C[Int, R, R]): C[Int, R, R] =
     C.flatMap(h(State.Get()))(a =>
-    C.flatMap(h(State.Set(i)))(_ =>
+    C.flatMap(h(State.Update[Int, Int](_ => (i, i))))(_ =>
     C.flatMap(h(Writer.Say("w")))(_ =>
     C.flatMap(h(State.Get()))(b =>
-    C.flatMap(h(State.Set(i + 1)))(_ =>
+    C.flatMap(h(State.Update[Int, Int](_ => (i + 1, i + 1))))(_ =>
     C.flatMap(h(Writer.Say("w")))(_ =>
     C.flatMap(h(State.Get()))(c =>
-    C.flatMap(h(State.Set(i + 2)))(_ =>
+    C.flatMap(h(State.Update[Int, Int](_ => (i + 2, i + 2))))(_ =>
     C.flatMap(h(Writer.Say("w")))(_ =>
     C.flatMap(h(State.Get()))(d => next(acc + a + b + c + d)))))))))))
 
@@ -183,7 +183,7 @@ class FusionBenchmark {
     val C = Control[Func]
     inline e match
       case State.Get() => C.shift[X, R, R](k => st => k(st._1)(st))
-      case State.Set(s2) => C.shift[X, R, R](k => st => k(s2)((s2, st._2)))
+      case State.Update(g) => C.shift[X, R, R](k => st => { val (b, s2) = g(st._1); k(b)((s2, st._2)) })
       case Writer.Say(v) => C.shift[X, R, R](k => st => k(())((st._1, st._2 :+ v)))
 
   // `stageSW` applied to the operation TERM at each mark — what the
@@ -197,13 +197,13 @@ class FusionBenchmark {
     else
       val C = Control[Func]
       C.flatMap(stageSW(State.Get()))(a =>
-      C.flatMap(stageSW(State.Set(i)))(_ =>
+      C.flatMap(stageSW(State.Update[Int, Int](_ => (i, i))))(_ =>
       C.flatMap(stageSW(Writer.Say("w")))(_ =>
       C.flatMap(stageSW(State.Get()))(b =>
-      C.flatMap(stageSW(State.Set(i + 1)))(_ =>
+      C.flatMap(stageSW(State.Update[Int, Int](_ => (i + 1, i + 1))))(_ =>
       C.flatMap(stageSW(Writer.Say("w")))(_ =>
       C.flatMap(stageSW(State.Get()))(c =>
-      C.flatMap(stageSW(State.Set(i + 2)))(_ =>
+      C.flatMap(stageSW(State.Update[Int, Int](_ => (i + 2, i + 2))))(_ =>
       C.flatMap(stageSW(Writer.Say("w")))(_ =>
       C.flatMap(stageSW(State.Get()))(d => blockFuncInlineMatch(i + 1, acc + a + b + c + d)))))))))))
 

@@ -51,7 +51,7 @@ type Source[W] = Unit ! Writer % W + Async
  */
 given Put[Source] with
   final override inline def put[W](w: W): Unit /> Source[W] =
-    shift(k => !.widen[Unit, Writer % W, Async](Writer.tell(w)).flatMap(_ => k(())))
+    Cont.shift(k => !.widen[Unit, Writer % W, Async](Writer.tell(w)).flatMap(_ => k(())))
 
 object Source {
   /**
@@ -310,18 +310,27 @@ object Source {
     okay.pure[R, Unit](()).flatMap: _ =>
       val cl = Channel.buffer[A, Source, Async](capacity)(s)
       val cr = Channel.buffer[B, Source, Async](capacity)(t)
-      // entered in front and never exited, as `Merge.Shared.elements`:
-      // an exit after the loop would be a Bind over the whole element
-      // program, a rotation per pair. The drive releases it when the
-      // program ends, early or not; at a normal end both channels are
-      // closed already and `closing` counts nothing
+      // entered in front, EXITED where the zip ends (one Exit a run, in
+      // the end branches — not a Bind after the loop, a rotation per
+      // pair). The exit is also what keeps the scope REACHABLE while the
+      // program runs: `go` names it, so every continuation of the loop
+      // holds it. Entered and never named again, it was held by nothing
+      // on a plain `runWith` (no drive, no fiber handler), and a
+      // collection mid-run released it through its collector door —
+      // the backstop for an ABANDONED program — closing both sides: the
+      // zip ended early and silently (source-zip-lost-pairs). An early
+      // stop never reaches the exit; the drive, a fiber's handler or,
+      // abandoned, the collector releases it then
       val scope = Async.CancelScope(Merge.closing(cl, cr))
+      def end(other: Channel[?]): Unit ! R =
+        other.close()
+        okay.effect[R, Unit](Async.Run(Async.Exit(scope)))
       def go: Unit ! R =
         receive(cl).flatMap:
-          case None => cr.close(); okay.pure(())
+          case None => end(cr)
           case Some(a) =>
             receive(cr).flatMap:
-              case None => cl.close(); okay.pure(())
+              case None => end(cl)
               case Some(b) => okay.effect[R, Unit](Writer((a, b))).flatMap(_ => go)
       okay.effect[R, Unit](Async.Run(Async.Enter(scope))).flatMap(_ => go)
 
@@ -330,6 +339,52 @@ object Source {
   def zipWith[A, B, C](s: Source[A], t: Source[B], capacity: Int = 64)(f: (A, B) => C)
                       (using Scheduler, CanBlock, Wait, Pause): Source[C] =
     Writer.map[(A, B), C, Unit, Async](zip(s, t, capacity))(f.tupled)
+
+  /**
+   * The sort-merge join by key of two live sources NON-DECREASING in
+   * key (specs/stream-join.md), in `zip`'s shape: a fiber per side,
+   * `capacity` elements buffered a side, the merge on the consumer's
+   * thread, the right run of equal keys held and nothing beyond it.
+   * Inner: every pair sharing a key; it ends when EITHER side ends and
+   * closes the other. A key out of order fails the join after the pairs
+   * before it. `SortMerge` is the machine.
+   */
+  def joinSorted[K: Ordering, A, B](l: Source[(K, A)], r: Source[(K, B)], capacity: Int = 64)
+                                   (using Scheduler, CanBlock, Wait, Pause): Source[(K, (A, B))] =
+    SortMerge.source(l, r, capacity)(() => SortMerge.inner)
+
+  /** `joinSorted`, every left row kept (`None` where the right has no
+   * such key); ends when the left side ends */
+  def leftJoinSorted[K: Ordering, A, B](l: Source[(K, A)], r: Source[(K, B)], capacity: Int = 64)
+                                       (using Scheduler, CanBlock, Wait, Pause): Source[(K, (A, Option[B]))] =
+    SortMerge.source(l, r, capacity)(() => SortMerge.left)
+
+  /** `joinSorted`, every row of either side kept (`None` on the side
+   * that lacks the key); ends when both sides have */
+  def fullJoinSorted[K: Ordering, A, B](l: Source[(K, A)], r: Source[(K, B)], capacity: Int = 64)
+                                       (using Scheduler, CanBlock, Wait, Pause): Source[(K, (Option[A], Option[B]))] =
+    SortMerge.source(l, r, capacity)(() => SortMerge.full)
+
+  /**
+   * The event-time WINDOWED join by key of two unbounded, UNORDERED
+   * sources (specs/stream-join.md, stage 2; `WindowJoin` is the
+   * machine): a row matches on arrival every row of the other side
+   * with its key within `within` of its event time (`atL`/`atR`), is
+   * held until the joint watermark — the smaller side's greatest event
+   * time minus `lateness` — passes its reach, and a row behind that
+   * watermark is dropped and counted, never joined. The two sides are
+   * `either`-merged, each side's end marked, and the merge's release
+   * law is the join's: an early stop releases both sides.
+   */
+  def joinWithin[K, A, B](l: Source[(K, A)], r: Source[(K, B)], within: Long, lateness: Long, capacity: Int = 64)
+                         (atL: A => Long, atR: B => Long)
+                         (using Scheduler, CanBlock, Timer, Merge, Wait, Pause): Source[(K, (A, B))] =
+    type Ev = WindowJoin.Event[K, A, B]
+    def ended[X](s: Source[X]): Source[Option[X]] =
+      Writer.map[X, Option[X], Unit, Async](s)(x => Some(x))
+        .flatMap(_ => okay.effect[Writer % Option[X] + Async, Unit](Writer(None)))
+    through(ended(l).either(ended(r), capacity))(
+      !.widen[Unit, Take % Ev + Writer % (K, (A, B)), Async](WindowJoin.stage[K, A, B](within, lateness)(atL, atR)))
 
   /** what `merge(chunked = true)` batches by. Not a parameter: the
    * size barely moves the number (16 against 64 measured ~10% apart

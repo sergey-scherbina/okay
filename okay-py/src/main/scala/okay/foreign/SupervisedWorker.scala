@@ -1,6 +1,6 @@
 package okay.foreign
 
-import okay.Handler
+import okay.Answers
 import scala.annotation.tailrec
 
 /**
@@ -11,7 +11,7 @@ import scala.annotation.tailrec
  *
  * {{{
  * val w = ForeignWorker.supervised(ForeignWorker.connect("10.0.0.5", 7000))
- * given Handler[ForeignEval] = w.handler
+ * given Answers[ForeignEval] = w.handler
  * }}}
  *
  * What survives, and why:
@@ -243,7 +243,7 @@ final class SupervisedWorker private[foreign] (open: () => ForeignWorker):
   // ---- the handler -------------------------------------------------------
 
 
-  def handler: Handler[ForeignEval] = new:
+  def handler: Answers[ForeignEval] = new:
     def handle[A](e: ForeignEval[A]): A = e match
       case ForeignEval.Call(fn, args, held) =>
         use(w => for

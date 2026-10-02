@@ -198,7 +198,7 @@ plugins.
 - **The handler.** `PasswordHash.wasm(lib)` is the effect's third handler:
 
 ```scala
-  private def wasm: Handler[PasswordHash] = PasswordHash.wasm(lib)
+  private def wasm: Answers[PasswordHash] = PasswordHash.wasm(lib)
 ```
 
 - **The law holds here too.** Under Chicory the kernel gives

@@ -41,13 +41,19 @@ signature `F` of a freer tree the type constructor "a function of the
 continuation":
 
 ```scala
-// Cont.scala — the leaf, as the tree stores it: the shift body itself
-private[okay] type Shift = [S, R, X] =>> (X => S) => R
-// Cont.scala — the representation: the freer tree at that signature
-opaque type Rep[A, S, R] = Freer[Shift, S, R, A]
+// Cont.scala — the representation: the freer tree at Cont0's row
+opaque type Rep[A, S, R] = Freer[Sig, S, R, A]
 ```
 
-and `Cont` **is** `Freer[Shift, S, R, A]`, the same enum `Free[F, A]`
+(Until 2026-10-01 the signature was `Shift = [S, R, X] =>> (X => S) =>
+R`, the shift body itself as the leaf, run by a runner of Cont's own.
+Since cont-on-frames it is `Sig = Cont0.Row[NoEffect]`: a leaf is a
+`Shift0` to the run's root delimiter, and Cont runs on the same frame
+machine as `Shift` — chapter 2's `shift0`/`$` calculus, one prompt per
+run. What follows holds of both: the leaf is a function of the
+continuation either way.)
+
+and `Cont` **is** `Freer[Sig, S, R, A]`, the same enum `Free[F, A]`
 is (`Freer[Lift[F], Unit, Unit, A]`). There is nothing to convert
 between them, because there is nothing between them. `Cont.Pure` is
 `Free.Return` (`Cont.scala:151`); `Cont.shift(f)` is `Free.Inject`
@@ -76,12 +82,13 @@ one enum is `Freer[G, S, R, A]`: `Return(a)` is a `Freer[G, R, R, A]`,
 a leaf `Inject(a: G[S, R, A])`, and `Bind(a: Freer[G, T, R, A], f: A
 => Freer[G, S, T, B])` is a `Freer[G, S, R, B]` — a left side answering
 `T => R` joined to a continuation answering `S => T`, which is answer-
-type modification written on the node. `Cont` is that enum at `Shift
-= [S, R, X] =>> (X => S) => R`: the leaf is the shift body at its own
-type, and the runner is typed by the GADT end to end — `Return` says
-`S <: R`, so `k(a): S` is an `R`; the leaf under a `Bind(Inject(s), f)`
-is a `(X => T) => R` and `f` is the `X => Cont[B, S, T]` it needs. No
-cast on the tree. `Free[F, A]` is the same enum at `Lift[F]`, a
+type modification written on the node. `Cont` was that enum at `Shift
+= [S, R, X] =>> (X => S) => R` until 2026-10-01: the leaf the shift body
+at its own type, and its own runner typed by the GADT end to end. Since
+cont-on-frames it is that enum at Cont0's row, run by the frame machine;
+the facade's `Rep[A, S, R]` keeps the answer types and makes one claim
+at its boundary, because the machine's join index cannot carry an escape
+type (specs/freer-kont.md). `Free[F, A]` is the same enum at `Lift[F]`, a
 signature that ignores the two indexes, with both fixed at `Unit`.
 
 It was not always so, and the two refusals on the way are why the

@@ -12,7 +12,7 @@ package okay
  *
  * A type of its own rather than a road every `Stream` carrier takes
  * silently: `s.foreach(f)` on a carrier already means "run it through
- * the Handler here" (Stream.scala), and one spelling must not mean
+ * the Answers here" (Stream.scala), and one spelling must not mean
  * two things depending on where it stands.
  */
 trait Pull[A, G[+_]]:

@@ -139,9 +139,9 @@ class TestMonad extends munit.FunSuite {
   test("ParaMonad: Control is one, and its diagonal is a Monad") {
     val P = ParaMonad[Cont.Rep]
     val c: Cont[Int, Int, Int] = P.flatMap[Int, Int, Int, Int, Int](P.pure[Int, Int](20))(x => P.pure[Int, Int](x + 1))
-    assertEquals(reset(P.map[Int, Int, Int, Int](c)(_ * 2)), 42)
+    assertEquals(Cont.reset(P.map[Int, Int, Int, Int](c)(_ * 2)), 42)
     val D = ParaMonad.diagonal[Cont.Rep, Int]
-    assertEquals(reset(D.flatMap(D.pure(1))(x => D.pure(x + 1))), 2)
+    assertEquals(Cont.reset(D.flatMap(D.pure(1))(x => D.pure(x + 1))), 2)
   }
 
   test("Comonad[Id] is found by asking for it, and only then") {

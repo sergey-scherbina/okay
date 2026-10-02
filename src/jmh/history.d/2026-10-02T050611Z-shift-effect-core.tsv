@@ -1,0 +1,3 @@
+2026-10-02	258ea6619	quiet	ShiftBenchmark.seq N=1000	shift0 56.13us 534153B	delim 55.02us 534185B	1.02	Shift % R in the core: the interned key's prompt, one map read per shift (the probe's TrieMap read 1.11x)
+2026-10-02	258ea6619	quiet	ShiftBenchmark.seqDF N=1000	shift 69.13us 638155B	shift0 56.13us 534153B	1.23	Danvy-Filinski's shift: the body under a re-pushed prompt, +104 B a capture
+2026-10-02	258ea6619	quiet	ShiftBenchmark.twoShot 100 resets	shift0 10.26us 75200B	-	-	a machine started per reset (the probe's (b) 9.53, its (a) 7.29)

@@ -54,7 +54,7 @@ ones that refuted earlier claims of mine — are in
 lane, with what each number cost and what it does not support.
 
 Cross-built JVM + JS; the test suites are JVM-only, since several
-summon a `Handler[Async]` that needs a `CanBlock` JS does not have.
+summon a `Answers[Async]` that needs a `CanBlock` JS does not have.
 
 ## The slot descriptor, for a caller who wants to review it
 

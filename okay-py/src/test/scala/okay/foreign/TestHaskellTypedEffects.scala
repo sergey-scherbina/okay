@@ -40,7 +40,7 @@ class TestHaskellTypedEffects extends munit.FunSuite {
     dir
 
   private lazy val w = ForeignWorker.speaking(Seq(HaskellWorker.build(project(main)).toString))
-  private given okay.Handler[ForeignEval] = w.handler
+  private given okay.Answers[ForeignEval] = w.handler
   override def afterAll(): Unit = if ghc then w.close()
 
   test("the effect's Haskell module is written from the Scala callbacks") {

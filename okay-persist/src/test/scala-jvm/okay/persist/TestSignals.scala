@@ -1,7 +1,7 @@
 package okay.persist
 
 import munit.FunSuite
-import okay.{!, +, Async, CanBlock, Delim, Pure, Wf}
+import okay.{%, !, +, Async, CanBlock, Shift, Pure, Wf}
 import okay.given_CanBlock
 import okay.Direct.*
 import okay.codec.Schema
@@ -39,7 +39,7 @@ class TestSignals extends FunSuite {
     !.run(Async.run[A, Pure](p))
 
 
-  def approval(using w: Wf.Asks[String, String, String, Pure]): String ! Delim + Pure =
+  def approval(using w: Wf.Asks[String, String, String, Pure]): String ! Shift % ? + Pure =
     direct:
       val what = !w.pause("what?")
       val by = !w.awaitSignal("approved")

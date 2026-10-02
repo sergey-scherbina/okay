@@ -11,9 +11,9 @@
 `k` is an ordinary value. Nothing stops you calling it more than once:
 
 ```scala
-Delim.delimited[List[Int], Pure]:
+Shift.delimited[List[Int], Pure]:
   direct:
-    val x = !Delim.shift[Int](k => k(1).flatMap(a => k(2).map(b => a ++ b)))
+    val x = !Shift.shift[Int](k => k(1).flatMap(a => k(2).map(b => a ++ b)))
     List(x * 10)
 // List(10, 20)
 ```
@@ -32,8 +32,8 @@ why chapter 3 put "call it twice" in the table beside "don't call it".
 the cross product appears with no backtracking machinery anywhere:
 
 ```scala
-val n = !Delim.shift[Int](k => k(1).flatMap(a => k(2).map(b => a ++ b)))
-val s = !Delim.shift[String](k => k("a").flatMap(a => k("b").map(b => a ++ b)))
+val n = !Shift.shift[Int](k => k(1).flatMap(a => k(2).map(b => a ++ b)))
+val s = !Shift.shift[String](k => k("a").flatMap(a => k("b").map(b => a ++ b)))
 List((n, s))
 // List((1,"a"), (1,"b"), (2,"a"), (2,"b"))
 ```
@@ -60,7 +60,7 @@ bugs.
 ### One · Effects in the captured part run once per call
 
 ```scala
-val x = !Delim.shift[Int](k => k(1).flatMap(a => k(2).map(b => a ++ b)))
+val x = !Shift.shift[Int](k => k(1).flatMap(a => k(2).map(b => a ++ b)))
 log = log :+ s"ran with $x"        // IN the continuation
 List(x)
 // log == List("ran with 1", "ran with 2")
@@ -79,7 +79,7 @@ that too:
 
 ```scala
 opened += 1                        // NOT in the continuation
-val x = !Delim.shift[Int](k => ...)
+val x = !Shift.shift[Int](k => ...)
 // opened == 1
 ```
 
@@ -89,7 +89,7 @@ it, once. Below it, once per resumption.
 ### Two · A `var` below the line is written by every branch
 
 ```scala
-val x = !Delim.shift[Int](k => k(1).flatMap(a => k(2).map(b => a ++ b)))
+val x = !Shift.shift[Int](k => k(1).flatMap(a => k(2).map(b => a ++ b)))
 last = x
 // last == 2
 ```
@@ -109,7 +109,7 @@ Calling `k` **zero** times is the early exit of chapter 5, and nothing
 below the line runs at all:
 
 ```scala
-val _ = !Delim.shift[Int](_ => okay.pure(99))   // k dropped
+val _ = !Shift.shift[Int](_ => okay.pure(99))   // k dropped
 ran = true                                       // never happens
 // 99
 ```

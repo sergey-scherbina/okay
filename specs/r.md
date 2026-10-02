@@ -19,7 +19,7 @@ THROWS — that is the whole protocol, the okay-cluster precedent).
 **Corrected while building it (2026-09-07):** this paragraph also
 claimed an R step is journalable by `Durable`, and that is NOT true
 as written — for R or for Python, where the same sentence had been
-copied. `Durable.tools` wraps a `Handler[Tool]`, and `Tool.Call`
+copied. `Durable.tools` wraps a `Answers[Tool]`, and `Tool.Call`
 carries a `ToolCall` (a name and JSON arguments); there is no generic
 "journal any operation type". An `REval` handled by `RSubprocess` is
 therefore not journalled by anything today. (Made true on 2026-09-23

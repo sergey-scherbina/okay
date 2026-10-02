@@ -41,11 +41,11 @@ the system is small by construction:
 
 - `signal` is an *operation* (`Condition.scala:54`) — resumption is
   not new machinery, it is what every operation already does;
-- a *restart* is a prompt in the Delim discipline (chapter 2):
+- a *restart* is a prompt in the Shift discipline (chapter 2):
   `within` installs a named frame (`Condition.scala:62`), and
   invoking it is an abort to that frame with a value — the machine
   (`Condition.scala:76`) owns the frame stack and the menu exactly
-  as `Delim.run` owns its prompts;
+  as `Shift.run` owns its prompts;
 - the *policy* is the handler at the boundary
   (`Condition.run(policy)(prog)`), receiving the condition and the
   menu, answering `Resume`/`Invoke`/`Fail`.
@@ -54,7 +54,7 @@ The typing honesty is stated in the file header rather than hidden:
 the operation payloads are programs in the same row, which a
 single-parameter signature cannot express, so they are erased at the
 operation and re-typed inside the one machine that owns the frames —
-the same sealed-invariant discipline as `Delim` and `Writer`.
+the same sealed-invariant discipline as `Shift` and `Writer`.
 
 ## Direct style completes the picture
 

@@ -140,7 +140,7 @@ object Vectors {
     normalize(embedding(v))
 
   /** the effect handler for it: no network, no model, reproducible */
-  def hashingHandler(dim: Int = 64): okay.Handler[Embed] = new:
+  def hashingHandler(dim: Int = 64): okay.Answers[Embed] = new:
     private val f = hashing(dim)
     def handle[A](e: Embed[A]): A = e match
       case Embed.Of(texts) => texts.map(f)

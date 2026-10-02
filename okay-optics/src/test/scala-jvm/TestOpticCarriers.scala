@@ -94,7 +94,7 @@ class TestOpticCarriers extends munit.FunSuite {
     assertEquals(spine.leaves, Vector(Prices.Of("pen"), Prices.Of("ink"), Prices.Of("pad")))
 
     // and then run the same value the ordinary way
-    given Handler[Prices] with
+    given Answers[Prices] with
       def handle[A](e: Prices[A]): A = e match
         case Prices.Of(sku) => sku.length
     assertEquals(spine.toFree.runWith,

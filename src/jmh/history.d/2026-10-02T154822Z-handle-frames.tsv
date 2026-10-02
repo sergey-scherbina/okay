@@ -1,0 +1,4 @@
+2026-10-02	b7fc796f8	quiet	HandlerBenchmark.handlePrebuilt us/op	156.3/157.6	124.7/128.3	1.24	handle-frames REFUTED: one rotation lambda for resume and resumeRun changed nothing; the cost was the upgrade arm's bytes in the loop
+2026-10-02	b7fc796f8	quiet	HandlerBenchmark.handlePrebuilt us/op	124.5/120.3	124.2/127.8	0.97	handle-frames: upgrade arm in its own method (as last/capture); variant C (Effects.scala at base) 124.2/127.8 is the ref
+2026-10-02	b7fc796f8	quiet	HandlerBenchmark.stateEffect us/op	18.48/18.39	18.48/18.52	1.00	handle-frames: stateOf loop on resumeRun (282 B, under FreqInlineSize)
+2026-10-02	b7fc796f8	quiet	HandlerBenchmark.stateSmall us/op	1.305/1.291	1.091/1.144	1.18	handle-frames: 100 small State.run; one Run object + Delay a run (was 1.55x with Handled + two closures, 1.69x before resumeRun was shrunk)

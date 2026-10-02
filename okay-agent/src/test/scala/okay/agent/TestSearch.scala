@@ -1,6 +1,6 @@
 package okay.agent
 
-import okay.{!, +, Choose, Handler, effect, guard, pure, runChoice}
+import okay.{!, +, Choose, Answers, effect, guard, pure, runChoice}
 import okay.given
 
 /**
@@ -11,7 +11,7 @@ import okay.given
 class TestSearch extends munit.FunSuite {
 
   /** a model whose replies cycle, so N samples differ */
-  def cycling(replies: Seq[String]): Handler[Model] = new:
+  def cycling(replies: Seq[String]): Answers[Model] = new:
     private var i = 0
     def handle[A](e: Model[A]): A = e match
       case Model.Complete(_, _) =>
@@ -35,8 +35,8 @@ class TestSearch extends munit.FunSuite {
    * the multi-shot Choose handler explores resumes from THAT state,
    * not from a sibling's.
    */
-  def perBranch[A](prog: Row[A])(model: Handler[Model]): Seq[A] =
-    given Handler[Model] = model
+  def perBranch[A](prog: Row[A])(model: Answers[Model]): Seq[A] =
+    given Answers[Model] = model
     val threaded: A ! Choose + Model =
       Memory.run[Vector[Turn], A, Choose + Model](Compact.all)(prog)
     runChoice[A, Model](threaded).runWith
@@ -78,7 +78,7 @@ class TestSearch extends munit.FunSuite {
 
   test("handled the other way round, the transcript is SHARED") {
     // Memory OUTSIDE the search: one conversation records every branch
-    given Handler[Model] = cycling(Seq("a", "b"))
+    given Answers[Model] = cycling(Seq("a", "b"))
     val prog: Row[Int] =
       Search.samples[String, Rest](2)(complete).flatMap { s =>
         effect[Choose + Rest, Unit](Context.Remember(Turn.Assistant(s))).flatMap(_ =>
@@ -93,7 +93,7 @@ class TestSearch extends munit.FunSuite {
   }
 
   test("majority vote over samples is a plain fold over the answers") {
-    given Handler[Model] = cycling(Seq("7", "7", "8"))
+    given Answers[Model] = cycling(Seq("7", "7", "8"))
     val answers: Seq[String] ! Model + Context =
       Search.all[String, Rest](3)(complete)(_ => true)
     val got = Memory.run[Vector[Turn], Seq[String], Model](Compact.all)(

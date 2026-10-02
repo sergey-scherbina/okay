@@ -179,6 +179,43 @@ wakes sleeping workers too, and the same eight run at once, as on Loom.
 Short fibers from outside leave the head moving and stay with the
 workers already awake.
 
+**A fork that says it is long** (2026-09-29). The monitor needs a
+whole look to see a waiting task, and it can only see it twice in a
+row: 100-200 µs. For a 70 ms fiber that is nothing. A chunked
+`merge` of two 2 000-element streams is over in ~200 µs, and its second
+feed waited that long every time: 351 µs on `adaptive` against Loom's
+201. The merge knows what the scheduler cannot, that its feeds run for
+the stream's whole life, so it forks them with
+`Scheduler.forkLong(prog)`. On `own`/`adaptive` that is `fork` plus
+one sleeping worker woken at once (one no other `forkLong` is already
+waking); on every other scheduler it is `fork`. The chunked merge now
+reads 185 µs against Loom's 197-229, and `fork` itself is unchanged
+(sequential spawn/join 112.4 against 112.8, same session — a number that
+was itself 1.7x too high that day, from the per-slice cancel hooks, and
+is 64 µs again since spawnjoin-rise-bisect). Use it for
+your own long-lived producers; a short fiber forked with it only wakes
+a worker for nothing. The elementwise `buffer` keeps `fork`: with a
+64-slot ring the spread feeds block each other, and it measured 1.25x
+Loom with `forkLong` against 1.13x without
+([specs/adaptive-chunked-merge-cost.md](../specs/adaptive-chunked-merge-cost.md)).
+
+**Who runs a fiber that was woken** (2026-09-29/30). A fiber parked in
+an `Await` resumes on whoever answers it. When that is the caller's own
+consumer, it runs the producer's code instead of its own — 31% of a
+consumer's time in a 64-slot merge, 1.12x Loom. On `own`/`adaptive` a
+late answer from a thread that is not one of the scheduler's workers
+now sends the fiber home with `fork`; a worker's answer still runs it in
+place. The first try broke a promise and was withdrawn for a day:
+`Channel.merge` keeps each side's order because a partitioned buffer
+gives each producer a part, and it knew a producer by its THREAD, so a
+feed moved by the handoff wrote its next run into another part. The
+library's feeds now claim their part once and carry it
+(`Channel.routed`), so their order does not depend on where they run —
+and the handoff is back: the 64-slot merge 62.9 µs against Loom's
+80.8, `zip` at capacity 64 370 against 753. Your own senders into a
+partitioned channel still route by thread, as documented
+([specs/channel-route-per-producer.md](../specs/channel-route-per-producer.md)).
+
 ## What `own` costs you, and what `adaptive` buys back
 
 A worker is a real thread, and a fiber that BLOCKS inside one holds

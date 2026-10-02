@@ -22,27 +22,48 @@ object State {
   sealed trait Op[S, +A]
   /** read the current state */
   final case class Get[S]() extends Op[S, S]
-  /** replace the state, answering with the new one */
-  final case class Set[S](s: S) extends Op[S, S]
+  /** transition the state, answering from the OLD one: `f` gives the answer and the new state. Every write is
+   * this (state-get-update, the Scala 3 core's twin): `set` and `modify` build one, so the signature is two
+   * operations */
+  final case class Update[S, B](f: S => (B, S)) extends Op[S, B]
+
+  /** `set`'s transition, as DATA: two sets of one value are equal operations, and it reads as `Update(Put(5))`
+   * where a lambda would print its address */
+  final case class Put[S](s: S) extends (S => (S, S)) {
+    def apply(old: S): (S, S) = (s, s)
+    // Function1's own toString would win over the case class's
+    override def toString: String = s"Put($s)"
+  }
+
+  /** `modify`'s transition, as data: equal when its function is the same one */
+  final case class Modified[S](f: S => S) extends (S => (S, S)) {
+    def apply(old: S): (S, S) = { val n = f(old); (n, n) }
+    override def toString: String = s"Modified($f)"
+  }
 
   implicit def effect[S]: Effect[State[S]] = Effect.of[State[S]]
 
   /** the current state */
   def get[S]: S ! State[S] = Free.inject[State[S], S](Get())
 
-  /** replace the state */
-  def set[S](s: S): S ! State[S] = Free.inject[State[S], S](Set(s))
+  /** replace the state, answering with the new one */
+  def set[S](s: S): S ! State[S] = Free.inject[State[S], S](Update[S, S](Put(s)))
 
-  /** apply f to the state; answers the NEW state, as both operations do */
-  def modify[S](f: S => S): S ! State[S] = get[S].flatMap(s => set(f(s)))
+  /** apply f to the state, as ONE operation; answers the NEW state */
+  def modify[S](f: S => S): S ! State[S] = Free.inject[State[S], S](Update[S, S](Modified(f)))
 
-  /** a transition that ANSWERS something computed from the old state */
-  def update[S, B](f: S => (B, S)): B ! State[S] =
-    get[S].flatMap { s => val (b, next) = f(s); set(next).map(_ => b) }
+  /** a transition that ANSWERS something computed from the old state, as one operation */
+  def update[S, B](f: S => (B, S)): B ! State[S] = Free.inject[State[S], B](Update(f))
 
   /** both states — what it was and what it is */
   def swap[S](f: S => S): (S, S) ! State[S] =
     update[S, (S, S)](s => { val next = f(s); ((s, next), next) })
+
+  /** the handler as a value, level 1: `p.handle(State(0))` answers `(final state, value)` */
+  def apply[S](s: S): Handler[State[S], Handler.Pair[S]#L] = new Handler.Full[State[S], Any, Handler.Pair[S]#L, Handler.Nothing] {
+    def run[A, F <: Row](p: Free[State[S] with F, A])(implicit @unused ev: A <:< Any, @unused d: Distinct[State[S] with F], @unused n: Handler.Nothing[F]): (S, A) ! F =
+      handleAt[S, A, F](s)(p)
+  }
 
   /** run from an initial state to (final state, value) */
   def run[S, A](s: S)(a: Free[State[S], A]): (S, A) = Effects.run(handleAt[S, A, Pure](s)(a.plus[Pure]))
@@ -73,7 +94,7 @@ object State {
       case Inject(e) => loop(s)(Bind(Inject[State[S] + F, A](e), (x: A) => Return[State[S] + F, A](x)))
       case Bind(Inject(Mine(op)), k) => op match {
         case Get() => loop(s)(k(s))
-        case Set(s2) => loop(s2)(k(s2))
+        case Update(f) => val (b, s2) = f(s); loop(s2)(k(b))
       }
       case Bind(Inject(e), k) => Inject[F, Any](e).flatMap(x => _loop(s)(k(x)))
       case other => throw new IllegalStateException("resume left a non-head form: " + other)
@@ -84,8 +105,8 @@ object State {
 
   /**
    * A program over a PART of the state, run over the whole: every `Get`
-   * becomes a read of the whole through `look`, every `Set` a read, a
-   * `put` and a write; the rest of the row passes through untouched.
+   * becomes a read of the whole through `look`, every `Update` one update
+   * of the whole through `look` and `put`; the rest of the row passes through untouched.
    * Two functions rather than a lens, as in the Scala 3 core, where this
    * is what keeps the core free of optics: okay2-optics gives back the
    * lens spelling (`State.zoom(lens)(prog)`).
@@ -96,7 +117,8 @@ object State {
   /** `zoomWith` at its own shape, the rest of the row named */
   def zoomAt[S, A, X, F <: Row](look: S => A, put: A => S => S)(p: Free[State[A] with F, X]): Free[State[S] with F, X] = {
     def readPart: Free[State[S] with F, A] = get[S].map(look)
-    def writePart(a: A): Free[State[S] with F, A] = get[S].flatMap(s => set(put(a)(s))).map(_ => a)
+    def updatePart[B](f: A => (B, A)): Free[State[S] with F, B] =
+      update[S, B] { s => val (b, a) = f(look(s)); (b, put(a)(s)) }
     val Mine = Split.at[State[A]]
 
     // a call from inside flatMap cannot be a jump; `again` takes it, so the walk
@@ -108,7 +130,7 @@ object State {
       case Inject(e) => loop(Bind(Inject[State[A] + F, X](e), (v: X) => Return[State[A] + F, X](v)))
       case Bind(Inject(Mine(op)), k) => op match {
         case Get() => readPart.flatMap(a => again(k(a)))
-        case Set(a) => writePart(a).flatMap(v => again(k(v)))
+        case Update(f) => updatePart(f).flatMap(v => again(k(v)))
       }
       case Bind(Inject(e), k) => Inject[F, Any](e).flatMap(v => again(k(v)))
       case other => throw new IllegalStateException("resume left a non-head form: " + other)
@@ -135,10 +157,10 @@ object State {
  */
 object PState {
   /** read the state, leaving its type unchanged */
-  def get[S, R]: Cont[S, S => R, S => R] = shift[S, S => R, S => R](k => s => k(s)(s))
+  def get[S, R]: Cont[S, S => R, S => R] = Cont.shift[S, S => R, S => R](k => s => k(s)(s))
 
   /** write a state of a possibly different type; the old state is the value */
-  def set[S, S2, R](s2: S2): Cont[S, S2 => R, S => R] = shift[S, S2 => R, S => R](k => s => k(s)(s2))
+  def set[S, S2, R](s2: S2): Cont[S, S2 => R, S => R] = Cont.shift[S, S2 => R, S => R](k => s => k(s)(s2))
 
   /** a typestate transition read as a two-parameter carrier in its
    * state, `L[A, B] = Cont[X, B => R, A => R]` — what okay2-optics

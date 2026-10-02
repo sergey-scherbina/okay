@@ -1,7 +1,7 @@
 package okay.persist
 
 import munit.FunSuite
-import okay.{!, +, Delim, Pure}
+import okay.{%, !, +, Shift, Pure}
 import okay.Direct.*
 import scala.annotation.unused
 import scala.language.implicitConversions
@@ -20,7 +20,7 @@ import scala.language.implicitConversions
  */
 class TestBookCheckpoints extends FunSuite {
 
-  type Row = Delim + Pure
+  type Row = Shift % ? + Pure
 
   /** counts records read, like TestDialogue's own helper */
   final class Counting(under: Topic) extends Topic:
@@ -43,11 +43,11 @@ class TestBookCheckpoints extends FunSuite {
   /** a counter the PROGRAM touches, so it counts executions, not reads */
   var steps = 0
 
-  def counted(n: Int)(using Delim.Asking[Int, Int, Int, Row]): Int ! Row = direct:
+  def counted(n: Int)(using Shift.Asking[Int, Int, Int, Row]): Int ! Row = direct:
     if n == 0 then 0
     else
       steps += 1
-      (!Delim.pause(n)) + (!counted(n - 1))
+      (!Shift.pause(n)) + (!counted(n - 1))
 
   def oracle(q: Int, @unused a: Dialogue.Attempt): Int ! Pure = okay.pure(q * 2)
 

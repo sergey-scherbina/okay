@@ -26,7 +26,7 @@ class TestPyModule extends munit.FunSuite {
   override def munitIgnore: Boolean = TestPy.python.isEmpty
 
   private lazy val w = PySubprocess.start(TestPy.python.get, modules = Seq(scoring))
-  private given okay.Handler[PyEval] = w.handler
+  private given okay.Answers[PyEval] = w.handler
   override def afterAll(): Unit = if TestPy.python.nonEmpty then w.close()
 
   test("a module written beside the Scala: its function, its class held, a callback from it") {
@@ -41,7 +41,7 @@ class TestPyModule extends munit.FunSuite {
   test("a pool ships the module to every worker") {
     val pool = PyWorkers.start(2, TestPy.python.get, modules = Seq(scoring))
     try
-      given okay.Handler[PyEval] = pool.handler
+      given okay.Answers[PyEval] = pool.handler
       for _ <- 1 to 4 do
         assertEquals(scoring.fn[Double]("mean")(Vector(2.0, 4.0)).runWith, Right(3.0))
     finally pool.close()

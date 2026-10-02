@@ -10,7 +10,7 @@ package okay
 class TestUidReplayable extends munit.FunSuite {
 
   test("Uid is refused: a fresh id is not a replay") {
-    val e = compileErrors("summon[okay.Replayable[okay.Delim + okay.Uid]]")
+    val e = compileErrors("summon[okay.Replayable[okay.Shift % ? + okay.Uid]]")
     assert(e.nonEmpty, "a Uid row was accepted as replayable")
   }
 }

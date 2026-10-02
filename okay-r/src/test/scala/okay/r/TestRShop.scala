@@ -23,7 +23,7 @@ class TestRShop extends munit.FunSuite {
   override def munitIgnore: Boolean = TestR.rscript.isEmpty
 
   private lazy val r = RSubprocess.start(rscript = TestR.rscript.get, modules = Seq(shop))
-  private given okay.Handler[REval] = r.handler
+  private given okay.Answers[REval] = r.handler
   override def afterAll(): Unit = if TestR.rscript.nonEmpty then r.close()
 
   test("R asks okay by name; okay answers from its Reader") {

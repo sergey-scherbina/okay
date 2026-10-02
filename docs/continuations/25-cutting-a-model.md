@@ -27,13 +27,13 @@ A validator stands **in** the token stream and, on a violation, aborts
 to a **named prompt** installed over the generation:
 
 ```scala
-def guarded[A](gen: Prompt[Either[Violation, A]] => A ! (Writer % String + (Delim + Async)))
+def guarded[A](gen: Prompt[Either[Violation, A]] => A ! (Writer % String + (Shift % ? + Async)))
     : Either[Violation, A] ! Writer % String + Async =
-  val p = Delim.prompt[Either[Violation, A]]
-  Delim.run(Delim.push(p)(gen(p).map(Right(_))))
+  val p = Shift.prompt[Either[Violation, A]]
+  Shift.run(Shift.push(p)(gen(p).map(Right(_))))
 
 def cut[A, X](p: Prompt[Either[Violation, A]])(v: Violation): X ! ... =
-  Delim.abort[Either[Violation, A], X, Writer % String + Async](p)(Left(v))
+  Shift.abort[Either[Violation, A], X, Writer % String + Async](p)(Left(v))
 ```
 
 Three things worth noticing in that small amount of code:
@@ -47,7 +47,7 @@ to be caught.
 because it never returns: it is chapter 5's `exit`, named and typed.
 The validator can be called in the middle of an expression.
 
-**`Delim.abort` drops the continuation.** No pipeline stage between the
+**`Shift.abort` drops the continuation.** No pipeline stage between the
 validator and the boundary learns that anything happened. There is no
 `Option` threading on the stages between, and no poisoned partial
 output flows further.
@@ -75,7 +75,7 @@ the half that matters is not.
 The right half: a passing stream never captures, and the push really
 is nothing — a thousand pushes cost 28.4 µs, so one is about 0.03 µs.
 
-The wrong half: entering `Delim + Async` puts **every operation of the
+The wrong half: entering `Shift % ? + Async` puts **every operation of the
 body** through the delimited-control machine, and the body is
 per-token.
 

@@ -7,7 +7,7 @@ import scala.reflect.macros.blackbox
 /**
  * THE DISCIPLINE, AS A TYPE. A paused dialogue outlives its process
  * because the ANSWERS are written down and the place is re-derived by
- * running the program again over them (`Delim.replay`). That is exact
+ * running the program again over them (`Shift.replay`). That is exact
  * under one sentence:
  *
  *     EVERYTHING THE OUTSIDE WORLD TELLS THE PROGRAM
@@ -16,7 +16,7 @@ import scala.reflect.macros.blackbox
  * `Replayable[F]` is the sentence as a constraint: the row of a program
  * you intend to replay may only hold effects whose re-execution nobody
  * can observe. `State` and `Reader` are re-threaded from the same
- * answers, `Throws` raises the same error at the same place, `Delim` is
+ * answers, `Throws` raises the same error at the same place, `Shift[Any]` is
  * the machine doing the replaying. Absent, deliberately: `Async` and
  * anything reaching outside, `Writer` (replay tells it again —
  * measured, TestDelimPersist), `Resource` (replay acquires again),
@@ -31,7 +31,7 @@ import scala.reflect.macros.blackbox
  * every one is on the list below: a whitelist, as before, so a user's
  * own effect that reaches outside is refused too.
  */
-@implicitNotFound("this row holds an effect that REPLAY WOULD PERFORM AGAIN, so the program is not a pure function of its journal and a restart would not land where the first run stood.\nEverything a durable program is told by the outside world must enter through `pause`, whose answers the journal remembers.\nReplayable: Pure, State, Reader, Throws, Delim.  NOT replayable: Async, Writer, Resource, Once, anything that reaches outside.\nIf you mean to replay a program that breaks this on purpose (a test of the limit, a migration), say so: `Replayable.unchecked`.")
+@implicitNotFound("this row holds an effect that REPLAY WOULD PERFORM AGAIN, so the program is not a pure function of its journal and a restart would not land where the first run stood.\nEverything a durable program is told by the outside world must enter through `pause`, whose answers the journal remembers.\nReplayable: Pure, State, Reader, Throws, Shift.  NOT replayable: Async, Writer, Resource, Once, anything that reaches outside.\nIf you mean to replay a program that breaks this on purpose (a test of the limit, a migration), say so: `Replayable.unchecked`.")
 sealed trait Replayable[F <: Row]
 
 object Replayable {
@@ -53,7 +53,7 @@ object Replayable {
 object ReplayableMacro {
   /** the signatures replay may run again unobserved — and `Row`, which
    * is `Pure`, the empty requirement */
-  private val allowed = Set("okay2.State", "okay2.Reader", "okay2.Throws", "okay2.Delim", "okay2.Row")
+  private val allowed = Set("okay2.State", "okay2.Reader", "okay2.Throws", "okay2.Shift", "okay2.Row")
 
   def derive[F: c.WeakTypeTag](c: blackbox.Context): c.Tree = {
     import c.universe._
@@ -67,7 +67,7 @@ object ReplayableMacro {
       c.abort(c.enclosingPosition,
         "this row holds an effect that REPLAY WOULD PERFORM AGAIN: " + bad.mkString(", ") +
           ".\nEverything a durable program is told by the outside world must enter through `pause`, whose answers the journal remembers." +
-          "\nReplayable: Pure, State, Reader, Throws, Delim.  NOT replayable: Async, Writer, Resource, Once, anything that reaches outside." +
+          "\nReplayable: Pure, State, Reader, Throws, Shift.  NOT replayable: Async, Writer, Resource, Once, anything that reaches outside." +
           "\nIf you mean to replay a program that breaks this on purpose (a test of the limit, a migration), say so: `Replayable.unchecked`.")
     q"_root_.okay2.Replayable.of[$row]"
   }

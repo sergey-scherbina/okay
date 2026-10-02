@@ -6,6 +6,15 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
 
 ## Start here
 
+- **[What okay is: the contract in three parts](contract.md)**: the
+  kernel `Effects[M]`, the static `Applicative`/`Selective` ladder, and
+  the vocabulary of effects, rows and handlers. Everything else is
+  syntax over these or a library written with them.
+- **[Effects and continuations, the whole API on one page](effects-and-continuations.md)**
+  — one type, `A ! F`, and six words: `pure`, `perform`, `shift`,
+  `reset`, `handle`, `run`, in the monadic and the direct style and
+  through `Effects[M]`. Start with this page if you use okay and do
+  not write effects of your own.
 - **[User guide](guide.md)** — the concepts, layer by layer: control
   → effects → streams → chunks → coroutines → concurrency → the text
   stack → the laziness contract that holds it together.
@@ -19,7 +28,7 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   [Chronicle](effects/chronicle.md), [Resource](effects/resource.md),
   [Async](effects/async.md), [Supply and Fresh](effects/supply.md),
   [Once](effects/once.md), [Choice and Logic](effects/choice.md),
-  [Gen](effects/gen.md), [Prob](effects/prob.md), and Delim in
+  [Gen](effects/gen.md), [Prob](effects/prob.md), and Shift in
   [the continuations book](continuations/10-prompts.md).
 - **[Your own effect](your-own-effect.md)** — one worked effect from
   the enum to four interpretations of the same program: `derives
@@ -36,6 +45,10 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   okay effects, ZIO written in okay's direct style, a `Future`, a ZIO or
   an `IO` marked inside an okay block, cancellation both ways, blocking
   or callback, and your own effect type with one `ForeignEffect` given.
+- **[The class ladder across cats, ZIO and kyo](interop-classes.md)** —
+  okay's `Functor`/`Applicative`/`Selective`/`Monad` over their types,
+  cats' classes over ours (`Validated` accumulates under cats'
+  `traverse`, `Par` is cats' `Parallel`), and the two generic bridges.
 - **[Building a chat application](building-a-chat-app.md)** — from an
   EMPTY DIRECTORY to a running streaming chat, outside this
   repository: how to depend on a library that is not published yet
@@ -77,7 +90,7 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   in the target monad; the pure stream layer (chunks, stages,
   pipelines, windows); the Async effect and the JVM platform under it
   (Loom, the schedulers, supervised scopes); channels and sources
-  (merge by readiness, buffer); Resource, Once, multi-prompt Delim
+  (merge by readiness, buffer); Resource, Once, multi-prompt Shift
   with the evidence doors, replayable dialogues and the prompt stack
   as a type, Choose/Logic, SharedOnce, provide/Module;
   generators with fused chains;
@@ -138,19 +151,29 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   numbers, what it must not be asked to do, and the production systems
   in this repository that are built from nothing else. Self-contained;
   it repeats what it needs.
+- **[Typestate](typestate.md)** — effects with the state's TYPE on the
+  tree: the two readings of the program's indexes, a type-changing
+  state as data run by a tail-recursive handler (`PState.Threaded`),
+  a protocol beside ordinary effects (the indexed row, `Unary`), and
+  okay-sql's transaction with the connection typed by the index
+  (`Tx.Data`). The theory is [theory/3](theory/03-parameterised.md).
 - **[Continuations in practice](continuations-in-practice.md)** — the
   four shapes that earn a capture in ordinary code (`exit`, `collect`
   / `emit`, `resumable` / `pause`, `onReturn`), each beside the way it
   is usually written, the rule for when to reach for an effect
   instead, and the cases where a capture makes code worse. The theory
   is [theory/2](theory/02-continuations.md).
+- **[Delimited: the machine as an interface](delimited.md)** — the
+  four primitives every control operator is built from (`delimiter`,
+  `dollar`, `shift0`, `resume`), Dybvig, Peyton Jones and Sabry's
+  framework in λ$'s variant; writing against the trait; resuming a
+  continuation with a computation, not just a value.
 - **[Cont and the stack](cont-stack.md)** — what nests and what does
   not: a body that only calls `k` last is the value it passes (no
   frame, decided at compile time); one that uses the answer is a frame
-  a level, counted, read exactly where the platform allows, and past
-  the room continued on a parked worker's stack. The per-platform
-  table, `--enable-native-access` as the one flag that matters for
-  deep programs, the knobs, the written bounds, the measured costs.
+  a level, counted, and past the room continued on a parked worker's
+  stack. The per-platform table, the knobs, the written bounds, the
+  measured costs.
 - **[Reading a blockchain](cardano.md)** — Cardano from a relay to
   typed tables with no node, no API key and no Spark: follow the chain
   to confirmed blocks (rollbacks said, never papered over), explode each
@@ -209,7 +232,7 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
 - **[Several instances of one effect](many-instances.md)** — two
   counters in one row: why a bare row holds one of each signature, and
   the three routes that lift it (a key with `Tag`, a cell with `Refs`,
-  a fresh `Delim` prompt), with what each costs.
+  a fresh `Shift` prompt), with what each costs.
 - **[Are these two programs the same program?](equivalence.md)** —
   `Bisim.check` walks two programs in lockstep over sampled answers and
   either proves a difference (with its path) or reports how many paths
@@ -245,6 +268,10 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   table, WHY the Okay number is what it is, why the competitors'
   numbers differ, and where the honest limits are. Raw history with
   protocols and refuted experiments: [history.tsv](../src/jmh/history.tsv).
+- **[One job, written once, run everywhere](one-job-everywhere.md)** —
+  the Wrocław timetable's joins as one `Tables` program, run unchanged on
+  one JVM, four fibres, our cluster engine, Spark and Flink, with the cost
+  of each.
 - **[The Wrocław streams benchmark](wroclaw-streams-benchmark.md)** —
   okay against Flink, Spark, java.util.stream, fs2, zio-streams and
   kyo on one real streaming job: event time, watermarks, keyed
@@ -304,6 +331,7 @@ API reference, gotchas.
 | [`okay-crdt`](modules/okay-crdt.md) | state that merges without a coordinator: the three laws as a runnable check, then GCounter, PNCounter, GSet, OrSet and an Hlc-stamped LwwRegister |
 | [`okay-parse`](modules/okay-parse.md) | total lossless parsing; incremental reparse with reference reuse |
 | [`okay-codec`](modules/okay-codec.md) | the Schema algebra; JSON, CBOR and Markdown dialects |
+| [`okay-bayes`](modules/okay-bayes.md) | Bayesian inference without Python: a model as a program of named draws and observations, Metropolis–Hastings and likelihood weighting as handlers, posterior summaries; measured against *Bayesian Methods for Hackers* and PyMC |
 | [`okay-refine`](modules/okay-refine.md) | reading anything out of anything: patterns as prisms in a typed hierarchy, verdicts that say which took and which declined; the format level (cbor/json/xml/yaml) first |
 | [`okay-llm`](modules/okay-llm.md) | language models as streams; two protocols over one seam; structured output that cuts generation |
 | [`okay-agent`](modules/okay-agent.md) | agents as programs: tools as operations, context as a fold, search as Logic |
@@ -325,7 +353,7 @@ API reference, gotchas.
 | [`okay-ui-gtk`](modules/okay-ui-gtk.md) | GTK 4 on Scala Native over the same Backend seam; aggregated only where pkg-config finds gtk4; one live backend per process, patches marshalled through g_idle_add |
 | [`okay-desktop`](modules/okay-desktop.md) | the app's own window for an installed product: its pages in the system's web engine, its menus as data, a Save dialog for downloads, the system browser for outside links, one copy running; JavaFX provided |
 | [`okay-telegram`](modules/okay-telegram.md) | the Telegram Bot API over okay-http as values: a call answers `Either[Refused, Json]`, an update is one total enum, long polling one loop, `Chats` the performer for okay-ui's chat host, Stars payments |
-| [`okay-mcp`](modules/okay-mcp.md) | the Model Context Protocol, both ends: a server is a `Handler[Tool]`, our tools are a server, and the protocol is a pure Stage |
+| [`okay-mcp`](modules/okay-mcp.md) | the Model Context Protocol, both ends: a server is a `Answers[Tool]`, our tools are a server, and the protocol is a pure Stage |
 | [`okay-mcp-http`](modules/okay-mcp-http.md) | MCP over okay-http's wires: a socket IS a `Link` (`WsLink`, `NioLink`), streamable HTTP (`McpHttp`) and its OAuth door (`McpAuth`) |
 | [`okay-persist`](modules/okay-persist.md) | the durable log: one primitive, staged — segments and recovery, offsets, compaction, replication's core, Sql/Kafka store engines, the Doctor |
 | [`okay-ops`](modules/okay-ops.md) | health, stats and Prometheus over the persist log's own values: /healthz, /readyz, /stats, /metrics — no SDK, the manifest is the Kubernetes integration |
@@ -353,8 +381,8 @@ API reference, gotchas.
 | [`okay-foreign-workflow`](modules/okay-foreign-workflow.md) | foreign calls as the ACTIVITIES of okay's durable workflows, in do-notation: journalled, crash-resumed, the function's failure remembered and the wire's retried |
 | [`okay-foreign-cluster`](modules/okay-foreign-cluster.md) | the MAP of a cluster job in Python or R: a `Flow` stage whose chunks cross to a pooled interpreter as one Arrow frame each, the reduce staying the JVM `Wire` |
 | [`okay-script`](modules/okay-script.md) | markdown files as Scala source: fenced blocks through the real Scala 3 compiler in-process, errors pointing at the original `.md` line |
-| [`okay-langchain4j`](modules/okay-langchain4j.md) | their ChatModel as a `Handler[Model]` — their provider breadth behind our effect |
-| [`okay-langchain4j-embed`](modules/okay-langchain4j-embed.md) | their EmbeddingModel as `String => Embedding` and as okay-rag's `Handler[Embed]` |
+| [`okay-langchain4j`](modules/okay-langchain4j.md) | their ChatModel as a `Answers[Model]` — their provider breadth behind our effect |
+| [`okay-langchain4j-embed`](modules/okay-langchain4j-embed.md) | their EmbeddingModel as `String => Embedding` and as okay-rag's `Answers[Embed]` |
 | [`okay-onnx`](modules/okay-onnx.md) | the direct ONNX session: the pooled vector AND the token vectors with their characters, from one forward pass — the door `okay.intent.Spans` reads through |
 | [`okay-demo-e2e-browser`](modules/okay-demo-e2e-browser.md) | one chat round through a real headless browser — the fetch/ReadableStream glue a JVM test cannot reach |
 | [`okay-security-argon2`](modules/okay-security-argon2.md) | the one satellite that buys a dependency: Argon2id in the PHC form, RFC-vector-pinned |

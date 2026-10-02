@@ -14,7 +14,7 @@ class TestContStackNative extends munit.FunSuite {
   }
 
   private def tail(n: Int): Int /> Int =
-    (1 to n).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => shift[Int, Int, Int](k => k(x + 1))))
+    (1 to n).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => Cont.shift[Int, Int, Int](k => k(x + 1))))
 
   test("a stackalloc address lies inside the bounds the runtime reports (the ThreadInfo layout guard)") {
     val (top, floor, sp) = StackSwitch.probe()
@@ -24,14 +24,14 @@ class TestContStackNative extends munit.FunSuite {
 
   test("20 000 tail shifts on a 2 MB thread: the answer, switching only when the stack is really out") {
     val before = StackSwitch.switches.get()
-    assertEquals(onThread(2048)(reset(tail(20000))), 20000)
+    assertEquals(onThread(2048)(Cont.reset(tail(20000))), 20000)
     val switches = StackSwitch.switches.get() - before
     assert(switches >= 1 && switches < 100, s"$switches switches")
   }
 
   test("a 128 KB thread switches and answers") {
     val before = StackSwitch.switches.get()
-    assertEquals(onThread(128)(reset(tail(2000))), 2000)
+    assertEquals(onThread(128)(Cont.reset(tail(2000))), 2000)
     assert(StackSwitch.switches.get() - before >= 1)
   }
 }

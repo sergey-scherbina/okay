@@ -1,0 +1,2 @@
+2026-10-02	18b447623	-	HandleMachineBenchmark.machineCapture round1 (vs foldCapture)	306.479	175.712	1.74	handle-on-machine probe: Effects.handle translated onto Delim (handler a prompt, F op a shift0, G forwarded), REFUTED as written; bytes 3398330 vs 1958097 (1.74x); alternated, quiet box
+2026-10-02	18b447623	-	HandleMachineBenchmark.machineCapture round2 (vs foldCapture)	305.573	176.502	1.73	same, second alternation; bytes 3398330 vs 1958097

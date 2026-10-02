@@ -175,11 +175,15 @@ object Reader {
   def unlift[E, A, F[+_]](p: A ! Reader % E + F)(using Distinct[Reader % E + F]): E ?=> A ! F = run[E, A, F](summon[E])(p)
 
   /** answer every Ask with r, forwarding the effects F */
+  /** the handler as a value: `p.handle(Reader(r))` answers `A` */
+  // ONE implementation (builtins-through-forms): Reader's handler IS the author's form 1, over `relay`
+  def apply[R](r: R): Handler[Reader % R, [A] =>> A] =
+    Handler.answerOf[Reader % R]([X] => (e: Reader[R, X]) => e match
+      case Ask() => r
+      case Asks(f) => f(r))
+
   def run[R, A, F[+_]](r: R)(a: A ! Reader % R + F)(using Distinct[Reader % R + F]): A ! F =
-    relay[A, A, Reader % R, F](a)(pure(_)):
-      [X, Y] => e => e match
-        case Ask() => Cont.Pure(r)
-        case Asks(f) => Cont.Pure(f(r))
+    Reader(r).run(a)
 
   /**
    * SCOPED override: `p`'s own asks answer `f(r)`, `r` the AMBIENT
@@ -191,7 +195,7 @@ object Reader {
    * Built on `Effects.handle`, the same tool `Throws.recover` uses:
    * peel this ONE signature's own operations, forward everything
    * else unchanged. That forwarding is why `local` composes
-   * correctly through a `Delim` capture made and re-invoked from
+   * correctly through a `Shift` capture made and re-invoked from
    * INSIDE `p` — `handle`'s forwarding arm wraps a forwarded
    * operation's continuation with the SAME handling loop again, and
    * that wrapping is baked into the tree it returns, not a pass that
@@ -213,8 +217,8 @@ object Reader {
     // method's match, not inside the `[X] => ...` lambda handle wants
     // (gadt-on-a-covariant-enum: the same trap SharedOnce.answer met)
     def answer[X](e: Reader[R, X], r2: R): Cont[X, Free[F, A], Free[F, A]] = e match
-      case Ask() => shift(k => k(r2))
-      case Asks(g) => shift(k => k(g(r2)))
+      case Ask() => Cont.shift(k => k(r2))
+      case Asks(g) => Cont.shift(k => k(g(r2)))
     ask[R].at[Reader % R + F].flatMap { r =>
       val r2 = f(r)
       (Effects[Free].handle[Reader % R, F](p)(a => pure[F, A](a)):

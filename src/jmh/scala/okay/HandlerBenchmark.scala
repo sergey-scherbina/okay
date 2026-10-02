@@ -4,7 +4,7 @@ import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 
 import !.*
-import scala.annotation.nowarn
+import scala.annotation.{nowarn, tailrec}
 
 /** an operation carrying its own answer, for handler benchmarks */
 // `derives Effect`: since f9417643 (2026-09-08) every signature declares
@@ -27,10 +27,6 @@ case class Ask[+A](a: A) derives Effect
 @Measurement(iterations = 5, time = 1, timeUnit = TimeUnit.SECONDS)
 @Fork(2)
 class HandlerBenchmark {
-
-  /** the cont-stack road this fork runs, printed once (ContStackRoad) */
-  @Setup(Level.Trial)
-  def road(): Unit = ContStackRoad.announce()
 
   final val N = 10000
 
@@ -106,7 +102,7 @@ class HandlerBenchmark {
   @nowarn("msg=cannot be checked at runtime")
   @Benchmark
   def handleCapture(): Int =
-    Effects[Free].handle[Ask, Produce](built)(pure(_))([X] => a => shift(k => k(a.a))).runWith
+    Effects[Free].handle[Ask, Produce](built)(pure(_))([X] => a => Cont.shift(k => k(a.a))).runWith
 
   /** the other road to the same node: `!.tailcall` between two
    * mutually recursive functions, N deep — every hop WAS a
@@ -140,16 +136,88 @@ class HandlerBenchmark {
       (1 to M).foldLeft(0L.state[Long]): (m, _) =>
         m.flatMap(_ => State.get[Long].flatMap(s => State.set[Long](s + 1)))
 
+  /** handle-frames: a handler's run per CALL — 100 small `State.run`s, two operations each — prices what a
+   * handler costs to start (since handle-frames a `Delay` and a `Handled` before its loop), not per operation */
+  @Benchmark
+  def stateSmall(): Long =
+    var acc = 0L
+    var i = 0
+    while i < 100 do
+      acc += State.run(i.toLong)(State.get[Long].flatMap(s => State.set[Long](s + 1)))._1
+      i += 1
+    acc
+
   /** a plain answer-using body, `k(x + 1) + 1`, M levels: since
    * cont-stack-layer1-b walked by the runner (a `Call` and a pending
    * part per level) instead of a frame per level */
   @Benchmark
   def contAnswer(): Int =
-    reset((1 to M).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => shift[Int, Int, Int](k => k(x + 1) + 1))))
+    Cont.reset((1 to M).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => Cont.shift[Int, Int, Int](k => k(x + 1) + 1))))
 
   @Benchmark
   def statePara(): (Long, Long) =
     PState.run(0L):
       (1 to M).foldLeft(PState.get[Long, (Long, Long)]): (m, _) =>
         m.flatMap(_ => PState.get.flatMap(s => PState.set(s + 1)))
+
+  /** the SAME M-step workload as `statePara`, the state moved by the
+   * indexed DATA signature and threaded by the tail-recursive loop
+   * (pstate-threaded): typestate at `stateEffect`'s cost, or not */
+  @Benchmark
+  def stateThreaded(): (Long, Long) =
+    PState.Threaded.run(
+      (1 to M).foldLeft(PState.Threaded.get[Long]): (m, _) =>
+        m.flatMap(_ => PState.Threaded.get[Long].flatMap(s => PState.Threaded.put[Long, Long](s + 1))))(0L)
+
+  // ------------------------------------------------------------------
+  // splitI AGAINST split ON A FORWARDING HANDLER (indexed-effects-measure-2,
+  // the row's deferred question, specs/indexed-effects.md stage 3). The
+  // SAME M-step get/set workload with every 10th step an `Ask` the state
+  // handler does not own: `stateForward` is `State.handle` over the unary
+  // row `State % Long + Ask`, forwarding through `split`; `stateIndexedForward`
+  // is `State.handleIndexed` over the indexed row `Unary[Ask] +~
+  // Unary[State[Long, *]]`, forwarding through `splitI`. Both residues are
+  // an `Ask` tree run by the same tail loop, so the pair prices the two
+  // helpers and the two handlers' loops and nothing else. Both programs
+  // are VALUES built once (a program is a value; `relayPrebuilt`'s rule).
+
+  type FRow = State % Long + Ask
+  val forwardProg: Long ! FRow =
+    (1 to M).foldLeft(effect[FRow, Long](State.Get[Long, Long]())): (m, i) =>
+      m.flatMap(_ => effect[FRow, Long](State.Get[Long, Long]()).flatMap(s => effect[FRow, Long](State.Update[Long, Long](_ => (s + 1, s + 1)))))
+       .flatMap(s => if i % 10 == 0 then effect[FRow, Long](Ask(s)) else pure[FRow, Long](s))
+
+  type IRow = Unary[Ask] +~ Unary[State[Long, *]]
+  // a match-typed member erases to no class `derived` could read: the
+  // constant-class test written by hand (TypeableI's note)
+  given TypeableI[Unary[Ask]] = new TypeableI[Unary[Ask]] { def test(x: Any): Boolean = x.isInstanceOf[Ask[?]] }
+  val indexedForwardProg: Freer[IRow, Unit, Unit, Long] =
+    (1 to M).foldLeft(Indexed.unary[IRow, Unit, Long](State.Get[Long, Long]())): (m, i) =>
+      m.flatMap(_ => Indexed.unary[IRow, Unit, Long](State.Get[Long, Long]()).flatMap(s => Indexed.unary[IRow, Unit, Long](State.Update[Long, Long](_ => (s + 1, s + 1)))))
+       .flatMap(s => if i % 10 == 0 then Indexed.unary[IRow, Unit, Long](Ask(s)) else Indexed.pure[IRow, Unit, Long](s))
+
+  /** the residue's runner, over the tree's own nodes: a forwarded `Ask`
+   * is an `Inject` (the unary handler re-emits it so) or a `Diag` (the
+   * indexed handler forwards a diagonal operation as it came), and
+   * `Ask(a)` answers `a` in place. `Free.Bind` pins the bind's middle
+   * index to `Unit` (Free.scala: the tree's constant claim), which the
+   * enum's own extractor leaves existential; a `Diag` inside it says the
+   * same by its type. */
+  @tailrec private def askLoop[A](x: A ! Ask): A = (x.resume: @unchecked) match
+    case Free.Return(a) => a
+    case Free.Inject(g) => g.a
+    case Freer.Diag(g) => g.a
+    case Free.Bind(Free.Inject(g), k) => askLoop(k(g.a))
+    case Free.Bind(Freer.Diag(g), k) => askLoop(k(g.a))
+
+  @Benchmark
+  def stateForward(): (Long, Long) = askLoop(State.handle(0L)(forwardProg))
+
+  /** the residue of `handleIndexed` at every index `Unit` IS an `Ask`
+   * tree (`Unary[Ask][Unit, Unit, X]` reduces to `Ask[X]`, `Lift[Ask]`'s
+   * shape); the cast names the two spellings of one runtime tree, and is
+   * the one this lane adds — the handler has none */
+  @Benchmark
+  def stateIndexedForward(): (Long, Long) =
+    askLoop(State.handleIndexed(0L)(indexedForwardProg).asInstanceOf[(Long, Long) ! Ask])
 }

@@ -443,7 +443,7 @@ force, all already practiced, none previously written down:
   three designs here in one day (delim-safety's guard, `Replayable`'s
   encoding, the workflow driver's row), so it is written down once:
   - take the witness as a PARAMETER and pass it along, the way
-    `Delim.answer`/`replay`/`drive` take their `OneMachine`. A
+    `Shift.answer`/`replay`/`drive` take their `Shift.Machine`. A
     parameter is never searched for.
   - where a witness must be summoned, use SUBTYPING rather than
     membership: `Row.Sub[F, G]` (`F[Any] <:< G[Any]`), or

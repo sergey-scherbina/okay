@@ -33,7 +33,7 @@ class TestPySource extends munit.FunSuite:
   override def afterAll(): Unit = if TestPy.python.nonEmpty then w.close()
 
   /** the worker's handler, counting each chunk asked for and each release */
-  private final class Counting extends okay.Handler[ForeignEval]:
+  private final class Counting extends okay.Answers[ForeignEval]:
     var chunks = 0
     var released = 0
     var held: Option[Handle] = None

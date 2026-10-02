@@ -1,0 +1,1 @@
+2026-10-01	475cb8742	1-15	flink-typed-road: one-job page job (GTFS three joins + count) on FlinkBulk MiniCluster 4, new defaults vs the first cut	8513	29802	0.29	ms best of 3; ProbeFlinkRoads best of 2: first cut 21805 (warm), csv in task 17820, +object reuse 16211, +keyed-state join 16294, +STREAMING 8801, STREAMING p1 7546, BATCH p1 20977; 1,158,821 rows every road

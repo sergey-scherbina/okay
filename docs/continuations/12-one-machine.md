@@ -1,9 +1,8 @@
 # 12 · One machine, one prompt stack
 
-> Compiled in `src/test/scala/TestBookOneMachine.scala`, including two
-> tests that demonstrate the **hole** in the safety guard this chapter
-> is about. A chapter about a safety feature that does not say what it
-> misses is an advertisement.
+> Compiled in `okay-direct/src/test/scala/TestBookOneMachine.scala`,
+> including the shape this chapter used to call a **hole** in the
+> guard — and the test that shows it is closed.
 
 ---
 
@@ -12,134 +11,144 @@
 > **A machine owns one prompt stack.** A delimiter installed by one
 > machine cannot be reached from another.
 
-"Machine" is the interpreter that runs captures. It is started by
-`delimited`, `collect` and `resumable`; it is *not* started by `scope`,
-`collecting` and `pausing`, which install a boundary on whichever
-machine is already running.
+"Machine" is the interpreter that runs captures. A program has one.
+`scope`, `collecting` and `pausing` install a boundary on whichever
+machine is already running. `delimited`, `collect` and `resumable` do
+the same when a machine is already running, and start one when none
+is. What decides between the two is the row, and the compiler reads it.
 
-Chapter 9 gave that as a rule to follow. This chapter is why it exists
-and what enforces it.
-
-## The mistake that reads like ordinary code
+## The shape that reads like ordinary code
 
 Here is the sentence somebody wants to write: *a producer that pauses
 for an answer*. Naturally:
 
 ```scala
-Delim.resumable[Q, A, R, F]:        // I want to pause...
+Shift.resumable[Q, A, R, F]:        // I want to pause...
   ...
-    Delim.collect[Int, F]:          // ...and also collect
+    Shift.collect[Int, F]:          // ...and also collect
       ...
 ```
 
-Two machines, one nested in the other. Every part of it is a
-combinator the book has already taught. It reads correctly.
+Every part of it is a combinator the book has already taught, and it
+reads correctly. The history of this shape is the history of this
+chapter:
 
-It is wrong, and before the guard existed it **compiled and threw
-`NoPrompt` at run time** — which is the worst possible arrangement,
-because the mistake is in a shape people naturally write and the
-failure arrives in production.
+1. It **compiled and threw `NoPrompt` at run time.** The inner
+   `collect` started a second machine; walking the program, that machine
+   met the `pause` aimed at the OUTER prompt, claimed it (it is a
+   `Shift` operation, and this is a `Shift` machine), looked for the
+   prompt on its own stack and did not find it.
+2. It became a **compile error** naming the fix: write `collecting`,
+   which installs a boundary and leaves the machine alone.
+3. Today it **works**. A row is a union, so the inner block's row says
+   `Shift` is already there, which means a machine is running. The door
+   reads that and pushes its delimiter on the running machine, which is
+   exactly what `collecting` does. One machine, two delimiters, and the
+   `pause` crosses the `collect` as it should.
 
-**Why it breaks.** A row is a union, so the inner `Delim` is the *same
-`Delim` by class* as the outer one. The inner machine, walking the
-program, meets a capture aimed at the OUTER machine's prompt and
-claims it: it is a `Delim` operation and this is a `Delim` machine.
-Then it looks for that prompt on its own stack, does not find it, and
-raises `NoPrompt`.
-
-## The guard
-
-The three machine-starting combinators ask for a witness:
-
-```scala
-def run[R, F[+_]](prog: R ! (Delim + F))(using OneMachine[F]): R ! F
-```
-
-and `OneMachine[F]` exists only when `F` does not already contain
-`Delim`. So the nested spelling fails to compile, with a message that
-names the fix:
-
-```
-this row already contains Delim, so this would start a SECOND machine,
-and a capture cannot cross from one machine's prompt stack to another's.
-Use the nested form, which installs a delimiter on the machine already running:
-  delimited -> scope,   collect -> collecting,   resumable -> pausing
-```
-
-The suite asserts both halves — that it is refused, and that the
-message offers `scope` — because an error message that does not say
-what to do instead is only half a guard.
-
-## Why the witness is spelled the way it is
-
-A detail worth one paragraph, because it is a real constraint and not
-a style choice.
-
-The natural spelling is "prove `Delim` is not a member of `F`", using
-a membership witness (`NotGiven[In[Delim, F]]`). That does not work:
-proving membership in an *abstract* row makes the compiler unfold the
-row into a union and try to join its alternatives, and dotty crashes —
-`AssertionError: Failure to join alternatives`. It crashed at this
-library's own call sites, so the core did not compile.
-
-The spelling that works is subtyping: `NotGiven[Delim[Any] <:< F[Any]]`.
-A union on the *right* of a `<:<` needs no join, because subtyping
-*into* a union is the easy direction.
-
-So a guard in this book is shaped partly by a compiler bug. That is
-ordinary, and worth saying out loud: the reason a piece of library
-code looks unusual is often a constraint you cannot see from the call
-site.
-
-## What the guard does NOT catch
-
-Here is the hole, and the suite demonstrates it rather than describing
-it.
+The suite pins the third, with the nested `delimited` and an `abort`
+aimed past it:
 
 ```scala
-def runAnything[A, F[+_]](p: A ! Delim + F): A ! F =
-  Delim.run(p)
+val p = Shift.prompt[String]
+val inner: Int ! Row = Shift.delimited[Int, Row](Shift.abort[String, Int, Row](p)("escaped"))
+val prog: String ! Row = Shift.push[String, Pure](p)(inner.map(_.toString))
+assertEquals(!.run(Shift.run[String, Pure](prog)), "escaped")
 ```
 
-This compiles. Inside the body `F` is abstract, so
-`Delim[Any] <:< F[Any]` cannot be proved — and `NotGiven` reads
-**"cannot be proved" as "false"**. The witness is manufactured inside
-the helper, and the obligation never reaches the caller. Instantiate it
-at a row that already contains `Delim` and you have the exact mistake
-the guard exists to refuse, at run time again.
+`Row` is `Shift % ? + Pure`. The inner `delimited` is written at a row
+that already holds `Shift`, so it stands on the outer machine and the
+capture to `p` crosses it.
 
-> **The first draft of this test wrote the helper with
-> `(using Delim.OneMachine[F])`, and the guard CAUGHT it** — with the
-> obligation propagated, a caller at a concrete `Delim` row cannot
-> satisfy it and the code does not compile. That failure is the guard
-> working, and it is why the hole needs this exact shape: a helper
-> that swallows the obligation instead of passing it on.
+## The evidence
 
-**So the rule for generic code is one line: pass the obligation on.**
-If your helper starts a machine, take `using OneMachine[F]` and let
-your caller prove it. A `using` clause here is not ceremony; it is the
-difference between a guard that protects your callers and a guard you
-have quietly disabled for them.
+Every door that runs a machine takes one piece of evidence:
 
-This is also the general shape of the limitation, and it is worth
-recognising elsewhere: **`NotGiven` is not a proof of absence, it is a
-failure to find.** Under an abstract type it always succeeds, so any
-guard built on it is a guard against the shape people write, not a
-theorem.
+```scala
+def run[R, F[+_]](prog: R ! Shift % ? + F)(using m: Machine[F]): R ! F =
+```
 
-## What would make it a theorem
+`Shift.Machine[F]` answers one question: *does a machine already run in
+`F`?* The answer is yes when `F` holds a `Shift` of any key: a keyed
+`Shift % R`, a dynamic `Shift % ?`, or both. It is read off the row at
+compile time, and the door acts on it. Outermost, it runs its own
+machine. Inside one, it pushes on that one.
 
-Region types, the `runST` trick: give the machine a scope tag that
-cannot escape, so the type system tracks which machine a prompt
-belongs to. It is designed and costed in this repository's
-`specs/delim-safety.md`, and deliberately not built — it would put a
-type parameter on every signature that carries evidence, including the
-inline doors whose whole design is that a call site writes as few type
-arguments as possible.
+```scala
+assert(summon[Shift.Machine[Shift % ? + Pure]].inner)
+assert(summon[Shift.Machine[Shift % Int + Pure]].inner)
+assert(!summon[Shift.Machine[Pure]].inner)
+```
 
-That is a legitimate trade, and stating it is the point: the guard
-catches the mistake people actually make, it misses a shape you now
-know to look for, and the cost of closing that gap is known.
+The keyed `reset` (a delimiter named by its answer type,
+[continuations in practice](../continuations-in-practice.md)) takes the same evidence and decides the
+same way. That is why a `reset` written inside another `reset` has
+always nested on one machine.
+
+## The hole, and why it is closed
+
+An earlier version of this chapter had a section titled *What the guard
+does NOT catch*:
+
+```scala
+def runAnything[A, F[+_]](p: A ! Shift % ? + F): A ! F =
+  Shift.run(p)
+```
+
+Inside the body `F` is abstract. The old guard was a `NotGiven`
+(`NotGiven[Shift[?, Any] <:< F[Any]]`), and `NotGiven` reads
+**"cannot be proved" as "false"**. So the helper manufactured the
+evidence itself, and a caller at a `Shift` row got a second machine and
+a `NoPrompt` at run time. The chapter's advice was to pass the
+obligation on. Advice is not a check, and the check that replaced the
+`NotGiven` found a library helper in this repository (okay-persist's
+`Dialogue`) that had swallowed it.
+
+Now an abstract row is not guessed. It is a compile error, and the
+error says what to write:
+
+```
+whether a machine already runs in the row F cannot be read here:
+F[scala.Any] is abstract, and it may hold a Shift.
+Pass the obligation on to the caller, who knows the row: take `(using Shift.Machine[F])`
+```
+
+Written that way, the helper works at both kinds of row:
+
+```scala
+def runAnything[A, F[+_]](p: A ! Shift % ? + F)(using Shift.Machine[F]): A ! F =
+  Shift.run(p)
+```
+
+At `Pure` it runs its own machine. At `Shift % ? + Pure` it nests, and
+a capture to a prompt its caller installed crosses it. That is the
+shape that used to be a `NoPrompt`.
+
+A row with an abstract part AND a `Shift` (`Shift % ? + F`) is read as
+nested, because the `Shift` is certain. Only a row where nothing
+answers the question is refused.
+
+## What is left of `NoPrompt`
+
+A capture still names its prompt by value, so it can still miss. What
+remains are the prompts that are genuinely gone or never installed:
+
+- a prompt kept past its block, or a continuation resumed after its
+  block returned;
+- a capture to a prompt no block installed;
+- a program run by hand by a machine other than the one holding the
+  prompt.
+- a block typed at a row that says no machine runs (`delimited[Int,
+  Pure]` written inside another block): the door believes the row and
+  starts its own machine, and a capture through it to the outer
+  boundary misses. Inside a block, write the block's row (chapter 9).
+
+The keyed forms (`reset`/`shift` by answer type) and the statically
+stacked prompts (`Shift.Stacked`, both in
+[continuations in practice](../continuations-in-practice.md)) make these a
+compile error as well. The dynamic `Shift % ?` form is the one that
+trades that check for prompts as values. Its type says so: `NoPrompt`
+is possible exactly where the key is `?`.
 
 ---
 

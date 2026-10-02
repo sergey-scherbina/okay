@@ -2,10 +2,10 @@ package okay
 
 import org.openjdk.jmh.annotations.*
 import java.util.concurrent.TimeUnit
-import okay.Delim.{push, reset, shift}
+import okay.Shift.{push, reset, shift}
 
 /**
- * The price of universality. `Delim` lets a user define effects in
+ * The price of universality. `Shift` lets a user define effects in
  * their own code — a generator is a prompt and a shift — and the
  * question this lane answers is what that costs against the effect
  * the library ships for the same job.
@@ -33,9 +33,9 @@ class DelimBenchmark {
       else Writer.tell(i).flatMap(_ => go(i + 1))
     !.run(Writer.run[Int, Unit, Pure](go(0)))._1.length
 
-  // ---- the same thing defined in user code, over Delim
+  // ---- the same thing defined in user code, over Shift
 
-  type Row = Delim + Pure
+  type Row = Shift % ? + Pure
 
   def emit(p: Prompt[List[Int]])(a: Int): Unit ! Row =
     shift[List[Int], Unit, Pure](p)(k => k(()).map(a :: _))
@@ -53,10 +53,10 @@ class DelimBenchmark {
 
   @Benchmark
   def delimPushOnly(): Int =
-    !.run(Delim.run[Int, Pure] {
+    !.run(Shift.run[Int, Pure] {
       def go(i: Int): Int ! Row =
         if i >= N then pure(i)
-        else push[Int, Pure](Delim.prompt[Int])(pure(i)).flatMap(_ => go(i + 1))
+        else push[Int, Pure](Shift.prompt[Int])(pure(i)).flatMap(_ => go(i + 1))
       go(0)
     })
 
@@ -69,47 +69,47 @@ class DelimBenchmark {
   // when the body captures nothing, which is the price being asked.
 
   def dollarMacro[R](p: Prompt[R])(v: R => R ! Row)(e: R ! Row): R ! Row =
-    push[R, Pure](p)(e.flatMap(x => Delim.shift0[R, R, Pure](p)(_ => v(x))))
+    push[R, Pure](p)(e.flatMap(x => Shift.shift0[R, R, Pure](p)(_ => v(x))))
 
   @Benchmark
   def delimDollarOnly(): Int =
-    !.run(Delim.run[Int, Pure] {
+    !.run(Shift.run[Int, Pure] {
       def go(i: Int): Int ! Row =
         if i >= N then pure(i)
-        else Delim.dollar[Int, Int, Pure](Delim.prompt[Int])(x => pure(x + 1))(pure(i)).flatMap(_ => go(i + 1))
+        else Shift.dollar[Int, Int, Pure](Shift.prompt[Int])(x => pure(x + 1))(pure(i)).flatMap(_ => go(i + 1))
       go(0)
     })
 
   @Benchmark
   def delimMacroOnly(): Int =
-    !.run(Delim.run[Int, Pure] {
+    !.run(Shift.run[Int, Pure] {
       def go(i: Int): Int ! Row =
         if i >= N then pure(i)
-        else dollarMacro[Int](Delim.prompt[Int])(x => pure(x + 1))(pure(i)).flatMap(_ => go(i + 1))
+        else dollarMacro[Int](Shift.prompt[Int])(x => pure(x + 1))(pure(i)).flatMap(_ => go(i + 1))
       go(0)
     })
 
   @Benchmark
   def delimDollarResume(): Int =
-    !.run(Delim.run[Int, Pure] {
+    !.run(Shift.run[Int, Pure] {
       def go(i: Int): Int ! Row =
         if i >= N then pure(i)
         else
-          val p = Delim.prompt[Int]
-          Delim.dollar[Int, Int, Pure](p)(x => pure(x + 1))(
-            Delim.shift0[Int, Int, Pure](p)(k => k(i))).flatMap(_ => go(i + 1))
+          val p = Shift.prompt[Int]
+          Shift.dollar[Int, Int, Pure](p)(x => pure(x + 1))(
+            Shift.shift0[Int, Int, Pure](p)(k => k(i))).flatMap(_ => go(i + 1))
       go(0)
     })
 
   @Benchmark
   def delimMacroResume(): Int =
-    !.run(Delim.run[Int, Pure] {
+    !.run(Shift.run[Int, Pure] {
       def go(i: Int): Int ! Row =
         if i >= N then pure(i)
         else
-          val p = Delim.prompt[Int]
+          val p = Shift.prompt[Int]
           dollarMacro[Int](p)(x => pure(x + 1))(
-            Delim.shift0[Int, Int, Pure](p)(k => k(i))).flatMap(_ => go(i + 1))
+            Shift.shift0[Int, Int, Pure](p)(k => k(i))).flatMap(_ => go(i + 1))
       go(0)
     })
 
@@ -126,23 +126,23 @@ class DelimBenchmark {
 
   @Benchmark
   def layeredViaDollar(): Int =
-    val p = Delim.prompt[List[Int]]
-    !.run(Delim.run[List[Int], Pure](
-      Delim.dollar[Int, List[Int], Pure](p)(r => pure(List(r)))(
-        Delim.shift0[List[Int], Int, Pure](p)(k => listBind(layerXs)(k)).map(_ + 1)))).length
+    val p = Shift.prompt[List[Int]]
+    !.run(Shift.run[List[Int], Pure](
+      Shift.dollar[Int, List[Int], Pure](p)(r => pure(List(r)))(
+        Shift.shift0[List[Int], Int, Pure](p)(k => listBind(layerXs)(k)).map(_ + 1)))).length
 
   @Benchmark
   def layeredViaPush(): Int =
-    val p = Delim.prompt[List[Int]]
-    !.run(Delim.run[List[Int], Pure](
+    val p = Shift.prompt[List[Int]]
+    !.run(Shift.run[List[Int], Pure](
       push[List[Int], Pure](p)(
-        Delim.shift0[List[Int], Int, Pure](p)(k => listBind(layerXs)(k)).map(_ + 1).map(r => List(r))))).length
+        Shift.shift0[List[Int], Int, Pure](p)(k => listBind(layerXs)(k)).map(_ + 1).map(r => List(r))))).length
 
   // ---- handlers AS delimited control (specs/shift0-dollar.md stage 3,
-  // FSCD 2019): the State handler three ways over the same N get/set
+  // FSCD 2019): the State handler two ways over the same N get/set
   // pairs. `stateHandle` is the library's loop; `stateDeep` is ret $ body
-  // with every operation a shift0; `stateShallow` is control0 with the
-  // handler re-installed around k. The construction is TestHandlersAsDollar's,
+  // with every operation a shift0 (`stateShallow`, control0, left with
+  // control0: cont-core-design). The construction is TestHandlersAsDollar's,
   // copied, with the residual row Pure.
 
   type SRow = okay.State % Int
@@ -164,29 +164,13 @@ class DelimBenchmark {
   @Benchmark
   def stateDeep(): Int =
     type Ans = Int => (Int, Int) ! Row
-    val p = Delim.prompt[Ans]
+    val p = Shift.prompt[Ans]
     val op = [X] => (e: okay.State[Int, X]) => (e match
-      case okay.State.Get() => Delim.shift0[Ans, Int, Pure](p)(k => pure((s: Int) => k(s).flatMap(f => f(s))))
-      case okay.State.Set(s1) => Delim.shift0[Ans, Int, Pure](p)(k => pure((_: Int) => k(s1).flatMap(f => f(s1))))
-      // State.Modify since effect-row-recursion-cost; stateProg performs none
-      case okay.State.Modify(f1) => Delim.shift0[Ans, Int, Pure](p)(k => pure((s: Int) => { val s1 = f1(s); k(s1).flatMap(f => f(s1)) }))
-      case okay.State.Update(f1) => Delim.shift0[Ans, X, Pure](p)(k => pure((s: Int) => { val (b, s1) = f1(s); k(b).flatMap(f => f(s1)) }))
+      case okay.State.Get() => Shift.shift0[Ans, Int, Pure](p)(k => pure((s: Int) => k(s).flatMap(f => f(s))))
+      case okay.State.Update(f1) => Shift.shift0[Ans, X, Pure](p)(k => pure((s: Int) => { val (b, s1) = f1(s); k(b).flatMap(f => f(s1)) }))
     ): X ! Row
     val ret: Int => Ans ! Row = a => pure((s: Int) => pure((s, a)))
-    !.run(Delim.run[(Int, Int), Pure](Delim.dollar[Int, Ans, Pure](p)(ret)(rewriteState(op)(stateProg(N))).flatMap(f => f(0))))._2
-
-  @Benchmark
-  def stateShallow(): Int =
-    type Ans = Int => (Int, Int) ! Row
-    val p = Delim.prompt[Ans]
-    val op = [X] => (e: okay.State[Int, X]) => (e match
-      case okay.State.Get() => Delim.control0[Ans, Int, Pure](p)(k => pure((s: Int) => push[Ans, Pure](p)(k(s)).flatMap(f => f(s))))
-      case okay.State.Set(s1) => Delim.control0[Ans, Int, Pure](p)(k => pure((_: Int) => push[Ans, Pure](p)(k(s1)).flatMap(f => f(s1))))
-      case okay.State.Modify(f1) => Delim.control0[Ans, Int, Pure](p)(k => pure((s: Int) => { val s1 = f1(s); push[Ans, Pure](p)(k(s1)).flatMap(f => f(s1)) }))
-      case okay.State.Update(f1) => Delim.control0[Ans, X, Pure](p)(k => pure((s: Int) => { val (b, s1) = f1(s); push[Ans, Pure](p)(k(b)).flatMap(f => f(s1)) }))
-    ): X ! Row
-    val body = rewriteState(op)(stateProg(N)).map(a => (s: Int) => pure[Row, (Int, Int)]((s, a)))
-    !.run(Delim.run[(Int, Int), Pure](push[Ans, Pure](p)(body).flatMap(f => f(0))))._2
+    !.run(Shift.run[(Int, Int), Pure](Shift.dollar[Int, Ans, Pure](p)(ret)(rewriteState(op)(stateProg(N))).flatMap(f => f(0))))._2
 
   // ---- handler INSTANCES (specs/lexical-instances.md): the same N get/set
   // pairs as stateHandle, through one `Lexical` instance, by strategy.
@@ -197,22 +181,22 @@ class DelimBenchmark {
     import Lexical.State.{get, set}
     if n == 0 then s.get else s.get.flatMap(v => s.set(v + 1)).flatMap(_ => lexSpin(s, n - 1))
 
-  /** tail on a row with Delim: the guard, and the machine */
+  /** tail on a row with Shift: the guard, and the machine */
   @Benchmark
   def stateLexTail(): Int =
-    !.run(Delim.run[(Int, Int), Pure](Lexical.State.tail[Int, Int, Row](0)(s => lexSpin(s, N))))._2
+    !.run(Shift.run[(Int, Int), Pure](Lexical.State.tail[Int, Int, Row](0)(s => lexSpin(s, N))))._2
 
-  /** tail on a row WITHOUT Delim: no guard, no machine (lexical-tail-allocs) */
+  /** tail on a row WITHOUT Shift: no guard, no machine (lexical-tail-allocs) */
   @Benchmark
   def stateLexTailPure(): Int =
     !.run(Lexical.State.tail[Int, Int, Pure](0)(s => lexSpin(s, N)))._2
 
   /** DIAGNOSTIC (lexical-tail-allocs): the unguarded program, but run
-   * through the Delim machine, to split runner from guard */
+   * through the Shift machine, to split runner from guard */
   @Benchmark
   def stateLexTailPureInMachine(): Int =
     import okay.Row.up
-    !.run(Delim.run[(Int, Int), Pure](Lexical.State.tail[Int, Int, Pure](0)(s => lexSpin(s, N)).up[Row]))._2
+    !.run(Shift.run[(Int, Int), Pure](Lexical.State.tail[Int, Int, Pure](0)(s => lexSpin(s, N)).up[Row]))._2
 
   /** the optional `walk` strategy (lexical-tagged-walk): inert tagged
    * operations, the installation walks its body like a row handler */
@@ -222,7 +206,7 @@ class DelimBenchmark {
 
   @Benchmark
   def stateLexDeep(): Int =
-    !.run(Delim.run[(Int, Int), Pure](Lexical.State.deep[Int, Int, Row](0)(s => lexSpin(s, N))))._2
+    !.run(Shift.run[(Int, Int), Pure](Lexical.State.deep[Int, Int, Row](0)(s => lexSpin(s, N))))._2
 
   // ---- ONE push, then ordinary work INSIDE the machine
   //
@@ -237,14 +221,14 @@ class DelimBenchmark {
 
   @Benchmark
   def writerTellUnderDelim(): Int =
-    type R = Writer % Int + Delim
+    type R = Writer % Int + Shift % ?
     def go(i: Int): Unit ! R =
       if i >= N then pure(())
       else effect[R, Unit](Writer(i)).flatMap(_ => go(i + 1))
     !.run(Writer.run[Int, Unit, Pure](
-      Delim.run[Unit, Writer % Int](
-        push[Unit, Writer % Int](Delim.prompt[Unit])(
-          !.widen[Unit, Writer % Int + Delim, Pure](go(0))))))._1.length
+      Shift.run[Unit, Writer % Int](
+        push[Unit, Writer % Int](Shift.prompt[Unit])(
+          !.widen[Unit, Writer % Int + Shift % ?, Pure](go(0))))))._1.length
 
   // ---- the floor
 

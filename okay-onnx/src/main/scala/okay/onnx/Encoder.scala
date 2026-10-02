@@ -2,7 +2,7 @@ package okay.onnx
 
 import ai.djl.huggingface.tokenizers.HuggingFaceTokenizer
 import ai.onnxruntime.{OnnxJavaType, OnnxTensor, OrtEnvironment, OrtSession, TensorInfo}
-import okay.Handler
+import okay.Answers
 import okay.rag.{Embed, Embedding, Token, Tokens, Vectors, embedding}
 import java.nio.file.Path
 import scala.jdk.CollectionConverters.*
@@ -90,7 +90,7 @@ final class Encoder(modelDir: Path, mostTokens: Int = Encoder.mostTokens) extend
   def tokens: Tokens = text => encode(text).tokens
 
   /** okay-rag's effect, one call per text as `Langchain4jEmbed.handler` */
-  def handler: Handler[Embed] = new:
+  def handler: Answers[Embed] = new:
     def handle[A](e: Embed[A]): A = e match
       case Embed.Of(texts) => texts.map(embed)
 

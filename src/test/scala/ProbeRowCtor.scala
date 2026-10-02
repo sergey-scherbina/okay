@@ -6,7 +6,7 @@ object ProbeRowCtor:
 
   // the proposed shape, next to the existing State.get[S]
   inline def getIn[S, F[+_]]: S ! State % S + F = effect(State.Get())
-  inline def setIn[S, F[+_]](s: S): S ! State % S + F = effect(State.Set(s))
+  inline def setIn[S, F[+_]](s: S): S ! State % S + F = effect(State.Update[S, S](_ => (s, s)))
   inline def tellIn[W, F[+_]](w: W): Unit ! Writer % W + F = effect(Writer(w))
 
   // 1. does the empty row collapse? (State % S + Pure =:= State % S)

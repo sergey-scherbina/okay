@@ -8,7 +8,7 @@ Three different `?` reach a value in this library today, and on
 | where | signature | means |
 |---|---|---|
 | `Throws.scala` | `extension [A, E <: Unsafe](a: A throws E) inline def ? : A` | the value, or the error **thrown** |
-| `Effects.scala` | `extension … def ? : Handler[F] ?=> ?` (inside `object !`) | **peek** the nearest answer, running operations through a `Handler` |
+| `Effects.scala` | `extension … def ? : Answers[F] ?=> ?` (inside `object !`) | **peek** the nearest answer, running operations through a `Answers` |
 | `Direct.scala` | retired | **bind** the program into the enclosing block |
 
 `Direct` retired its `.?` on purpose and says so in its own comment —
@@ -60,7 +60,7 @@ object throws:
 
 // Effects.scala — the peek gets a word, and gives up the glyph
 extension [A, F[+_]](self: A ! F)
-  def peek: Handler[F] ?=> ?          // was `?`
+  def peek: Answers[F] ?=> ?          // was `?`
 
 // Direct.scala — the mark takes the glyph back
 extension [F[_], A](m: F[A])
@@ -179,7 +179,7 @@ shape traded for another.
 Three tests, all pointing the same way. The peek is used fourteen
 times and not once outside the core's own tests and benchmarks, while
 the mark is written by every user of direct style. The peek's name says nothing
-about what it does (it runs operations through a `Handler` — a
+about what it does (it runs operations through a `Answers` — a
 `.peek` that *performs effects* deserves the word that warns you);
 the mark's `.?` is the shape users arrive with, from Rust and from
 this repository's own stale spec. And the peek's job is inspection,
@@ -187,11 +187,11 @@ which is exactly the kind of thing that should be spelled out.
 
 **Why not teach the macro to recognise the peek as a mark.** It was
 considered and refused. Inside a `direct` block over `Async` a
-`Handler[Async]` is in scope, so `m.?` would type-check as the peek
+`Answers[Async]` is in scope, so `m.?` would type-check as the peek
 and the macro could rewrite that application into a bind — one glyph,
-no renames. It fails for any row with no `Handler` in scope, which is
+no renames. It fails for any row with no `Answers` in scope, which is
 most of them, and the failure would be a confusing type error about a
-missing `Handler` in a block that never wanted one. A feature that
+missing `Answers` in a block that never wanted one. A feature that
 works only when an unrelated given happens to be in scope is worse
 than a rename.
 

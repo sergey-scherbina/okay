@@ -15,14 +15,23 @@ given zioMonad[R, E]: okay.Monad[[A] =>> ZIO[R, E, A]] with
   extension [A](a: ZIO[R, E, A])
     def flatMap[B](f: A => ZIO[R, E, B]): ZIO[R, E, B] = a.flatMap(f)
 
+/** ZIO's `flatMap` builds a ZIO and calls nothing — its run loop
+ * reaches the continuation — so the `flatMap` recursion is its loop
+ * (specs/eager-carrier-depth.md) */
+given zioTailRecM[R, E]: okay.TailRecM[[A] =>> ZIO[R, E, A]] = okay.TailRecM.deferring
+
 extension [A](p: => A ! Async)
   /** the okay program as a Task — [[ZioInterop.toZIO]], right for any
    * program, a blocking `Async.Run` included */
   def asZIO: Task[A] = ZioInterop.toZIO(p)
 
-extension [A](z: Task[A])
-  /** the Task as an okay program — [[ZioInterop.fromZIO]] */
-  def asOkay: A ! Async = ZioInterop.fromZIO(z)
+/** a Task crosses into okay as one `Async` operation — [[ZioInterop.fromZIO]];
+ * `z.asOkay` (okay's own extension, specs/interop-compose.md) finds it */
+given zioToOkay[A]: okay.ToOkay[Task[A], A] = z => ZioInterop.fromZIO(z)
+
+extension [A, B](f: A => B ! Async)
+  /** the okay function as a ZIO one (specs/interop-compose.md) */
+  def asZIO: A => Task[B] = a => ZioInterop.toZIO(f(a))
 
 /**
  * ZIO values marked inside a `direct` block over an okay program

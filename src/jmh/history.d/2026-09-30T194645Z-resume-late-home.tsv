@@ -1,0 +1,1 @@
+2026-09-30	298f0d022	jmh-lane-quiet	ready-merge-side-starves: MergeCapBenchmark cap=64 default, resumeLate home from inside a fiber vs inline (the 2026-09-30 row)	63.5	62.9	1.01	us/op, ±2.3; cap 256 63.4, cap 1024 61.8; ZipCapBenchmark cap 7 1443 ±86 vs 1400 (1.03), cap 64 351 ±19 vs 370 (0.95)

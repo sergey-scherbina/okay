@@ -1,0 +1,1 @@
+2026-10-01	c6f8cb7ba	9-17	one-job-everywhere: Wrocław GTFS three joins + count (OneJob.departures), BulkParallel(4) vs localBulk	365	508	0.72	ms best of 3, 1,158,821 rows every platform; engine FlowBulk(4) 558 (1.10), Spark local[4] 1647 (3.24), Flink MiniCluster 4 29802 (58.7, generic Kryo records through coGroup windows); load 9-17 on a shared box

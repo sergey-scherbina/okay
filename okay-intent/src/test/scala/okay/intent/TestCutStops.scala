@@ -1,7 +1,7 @@
 package okay.intent
 
 import okay.given
-import okay.{!, %, +, Async, Handler, Writer}
+import okay.{!, %, +, Async, Answers, Writer}
 import okay.codec.Schema
 import okay.llm.Structured
 
@@ -42,7 +42,7 @@ class TestCutStops extends munit.FunSuite {
     val emitted = new java.util.concurrent.atomic.AtomicInteger(0)
 
     val cut = Structured.cut[Reading[Meeting]](counted(pieces, emitted))(
-      using mReading, summon[Handler[Async]])
+      using mReading, summon[Answers[Async]])
 
     assertEquals(cut.value, Some(value), "the value did not decode")
     assert(cut.stopped, "the walk ran to the end of the stream")
@@ -57,7 +57,7 @@ class TestCutStops extends munit.FunSuite {
     val emitted = new java.util.concurrent.atomic.AtomicInteger(0)
     val pieces = List("prose, no json here", " and more of it", " and more")
     val cut = Structured.cut[Reading[Meeting]](counted(pieces, emitted))(
-      using mReading, summon[Handler[Async]])
+      using mReading, summon[Answers[Async]])
     assertEquals(cut.value, None)
     assert(!cut.stopped, "nothing completed, so nothing should have been declared complete")
     assertEquals(emitted.get(), pieces.length)

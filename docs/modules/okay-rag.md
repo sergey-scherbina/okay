@@ -153,8 +153,8 @@ Split.windows(doc, bpe, budget = 512, overlap = 64)   // the classic shape, exac
 | `Similarity` | `(Embedding, Embedding) => Float` | how near two embeddings are |
 | `Vectors.cosine` / `dot` / `euclidean` | the three usual metrics | `dot` for providers that return unit vectors; `euclidean` is negated so larger is better |
 | `MemoryStore(similarity)` | defaults to `cosine` | the metric is the caller's choice |
-| `Retrieve.handled` | `Retriever[F] => Handler[F] ?=> Retriever[Pure]` | discharge a retriever's row, for the comonadic context handler |
-| `Grounded.context` | `… => Handler[Context]` | comonadic grounding; needs `Retriever[Pure]` |
+| `Retrieve.handled` | `Retriever[F] => Answers[F] ?=> Retriever[Pure]` | discharge a retriever's row, for the comonadic context handler |
+| `Grounded.context` | `… => Answers[Context]` | comonadic grounding; needs `Retriever[Pure]` |
 | `Grounded.translating` | `… => Context ==> ([X] =>> X ! F)` | grounding that may SUSPEND; pair with `!.translate` |
 
 ## Gotchas
@@ -212,7 +212,7 @@ opened — reparse by damage, keep the vectors of segments whose text
 did not change, delete the stale spans.
 
 ```scala
-given Handler[Embed] = Vectors.hashingHandler()      // or a provider
+given Answers[Embed] = Vectors.hashingHandler()      // or a provider
 val store = MemoryStore()
 Ingest.run(store, files)(_.length).runWith           // split, embed, upsert
 Retrieve.vector(store).retrieve("multiply numbers", 3)
@@ -227,7 +227,7 @@ much retrieval may take. The agent never asks for code — it has it —
 and the explicit search tool remains for when it wants to steer.
 
 `Grounded.context` takes a `Retriever[Pure]`, and that is a real
-constraint: the `Handler[Context]` it builds is COMONADIC — it is
+constraint: the `Answers[Context]` it builds is COMONADIC — it is
 `Context ==> Id`, and `Id` is exactly where a suspension cannot go.
 An operation interpreted into `Id` must produce a value, so it must
 finish. `Retrieve.handled` discharges a retriever's own row against a
@@ -235,7 +235,7 @@ pure handler, which is how the vector side joins symbols and BM25
 there when the embedder is in-process:
 
 ```scala
-given Handler[Embed] = Vectors.hashingHandler()      // or any pure one
+given Answers[Embed] = Vectors.hashingHandler()      // or any pure one
 Retrieve.hybrid[Pure](Seq(
   Retrieve.symbols(index, sources),                  // exact
   Retrieve.keyword(postings),                        // BM25
@@ -282,7 +282,7 @@ Deliberately little.
 
 | | form | why |
 |---|---|---|
-| `Embed` | an **effect** in a row, discharged by a `Handler[Embed]` | embedding is a capability of the environment; the handler is the only part resolved as a given |
+| `Embed` | an **effect** in a row, discharged by a `Answers[Embed]` | embedding is a capability of the environment; the handler is the only part resolved as a given |
 | `VectorStore[F]` | a **trait passed by value**, parameterised by its row | a program holds SEVERAL stores — a code index, a docs index, a scratch one |
 | `Retriever[F]` | the same | likewise, and they are combined by `hybrid`/`fair`, which needs them as values |
 | `Similarity` | a **function** with a default | a normalized index scored by dot product can sit beside an unnormalized one scored by cosine |
@@ -291,7 +291,7 @@ Deliberately little.
 The reason none of the first four is a typeclass is the same reason
 each time: a typeclass asserts CANONICITY, one instance per type. All
 of these are things a program legitimately has more than one of, so
-given resolution would be fought rather than used. `Handler` is a
+given resolution would be fought rather than used. `Answers` is a
 typeclass because a row IS canonical at the point it is discharged —
 there is exactly one interpretation of `Embed` in force.
 

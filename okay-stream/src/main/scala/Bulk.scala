@@ -66,8 +66,23 @@ trait Bulk[D[_]]:
   /** the equi-join: every pair of left and right rows sharing a key */
   def join[K, A, B](l: D[(K, A)], r: D[(K, B)]): D[(K, (A, B))]
 
+  /** the equi-join of two sides SORTED by key under `ord`, merged
+   * (join-strategy-auto). A DEFAULT: any correct join answers the same
+   * pairs, so an instance with no merge road hashes */
+  def joinSorted[K, A, B](l: D[(K, A)], r: D[(K, B)])(using @scala.annotation.unused ord: Ordering[K]): D[(K, (A, B))] = join(l, r)
+
+  /** sorted by key. A DEFAULT, through the local world, in memory; an
+   * instance with a native sort answers natively */
+  def sortByKey[K, A](d: D[(K, A)])(using ord: Ordering[K]): D[(K, A)] =
+    of(toChunks(d).elements.toVector.sortBy(_._1))
+
   /** materialise, because what follows reads this more than once */
   def cache[A](d: D[A]): D[A]
+
+  /** let go of what `cache` holds, when nothing will read it again — a
+   * DEFAULT that does nothing (one JVM's cache is an ordinary value the
+   * collector takes); a platform that pins it (Spark's persist) frees it */
+  def uncache[A](d: D[A]): Unit = ()
 
   /** the P1 contract: (init, add, merge) the platform's way, presented */
   def aggregate[A, Acc, Out](d: D[A])(agg: Aggregator[A, Acc, Out]): Out
@@ -125,6 +140,9 @@ object Bulk:
       Chunks.fromIterator(l.elements.flatMap: (k, a) =>
         right.get(k).iterator.flatMap(_.iterator.map(b => (k, (a, b)))))
 
+    /** merged, a run held: `Chunks.joinSorted` */
+    override def joinSorted[K, A, B](l: Chunks[(K, A)], r: Chunks[(K, B)])(using ord: Ordering[K]): Chunks[(K, (A, B))] =
+      Chunks.joinSorted(l, r)
     def cache[A](d: Chunks[A]): Chunks[A] = of(d.elements.toVector)
     def aggregate[A, Acc, Out](d: Chunks[A])(agg: Aggregator[A, Acc, Out]): Out =
       agg.present(Chunks.fold(d)(using agg.fold))

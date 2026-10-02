@@ -28,7 +28,7 @@ class TestLowering extends munit.FunSuite {
 
   private val said = scala.collection.mutable.Buffer[String]()
   private var gets = 0
-  given Handler[Op] with
+  given Answers[Op] with
     def handle[A](o: Op[A]): A = o match
       case Op.Get() => gets += 1; gets
       case Op.Say(s) => said += s; ()

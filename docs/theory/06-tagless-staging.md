@@ -19,15 +19,10 @@ point Okay leans on: when the carrier is statically known, the
 abstraction can be made to cost nothing.
 
 Okay's `Control` trait (chapter 2) is exactly this shape, and
-`Cont.scala:19–27` names the maneuver:
+`Cont.scala` names the maneuver:
 
 ```scala
-/** Staging via final tagless (Carette–Kiselyov–Shan, the partial
- * evaluation half): in an `inline def` program, `val C = Control[M]`
- * summons the instance at its precise type, so the instance's inline
- * operations resolve statically and the tagless dispatch evaporates
- * at compile time — at the Func carrier the program partially
- * evaluates to plain nested closures. */
+/** summons the instance at its precise type, so its inline operations resolve statically (Carette-Kiselyov-Shan staging) */
 transparent inline def Control[M[_, _, _]]: Control[M] = summonInline[Control[M]]
 ```
 

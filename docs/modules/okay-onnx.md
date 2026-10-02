@@ -25,7 +25,7 @@ vectors it had (measured at cosine 1.0000 by okay-chat).
 **As what the tiers take.** `encoder.embed: String => Embedding` is
 the plain function okay-intent's classifiers name as their
 dependency; `encoder.tokens: Tokens` is the seam `okay.intent.Spans`
-reads through; `encoder.handler: Handler[Embed]` is okay-rag's
+reads through; `encoder.handler: Answers[Embed]` is okay-rag's
 effect, exactly as `Langchain4jEmbed.handler` offers it.
 
 **What the token vectors are for.** The slot layer — which words of a

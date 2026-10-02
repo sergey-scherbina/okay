@@ -53,6 +53,16 @@ same material with the measurements attached.
   resumes that `Bind`. In `object !` beside `tailcall`, not top-level:
   Generate.scala's Cont fixpoint is called as `loop(f)(a)`, the same
   two-list shape. okay-ui's `Toolkit` dialogs are its first callers.
+- **`TailRecM[F]`** — the same loop for a monad that is not a program:
+  `M.tailRecM(a)(f)` or the class. PROVIDED BY THE CARRIER, never
+  derived from `flatMap` (specs/eager-carrier-depth.md): `Option`,
+  `Either`, `LazyList`, the context monad and programs have one in core;
+  `IO`, `Eval`, any cats `Monad`, ZIO, ZStream and kyo in the interop
+  modules. An eager `flatMap` calls its continuation before returning,
+  so no wrapper can loop for it; a monad with no instance has no
+  `tailRecM` at all. `TailRecM.deferring` is the `flatMap` recursion,
+  for a carrier whose `flatMap` defers. Each instance holds a million
+  iterations on a 128 KB thread; core's also on Scala.js and Native.
 - **`Module[F]`** (specs/di.md, [the guide](di.md)) — a description of
   what to build, not a built thing: `module[Db](open)(close)` acquires
   in a `Resource` region, `Module.value` needs no building,
@@ -94,18 +104,18 @@ same material with the measurements attached.
 - **`!.translate`** — a handler valued in ANOTHER ROW:
   `F ==> ([X] =>> X ! G)`, so an operation answers with a PROGRAM
   rather than a value. This is the general shape the other two are
-  ends of — `Handler[F]` is `F ==> Id` (and `Id` is exactly where a
+  ends of — `Answers[F]` is `F ==> Id` (and `Id` is exactly where a
   suspension cannot go, which is why a comonadic handler cannot do
   I/O where nothing may park), `F !> S` is the Cont-valued handler
   `Effects.handle` takes (abort and multi-shot, through Cont), and
   `translate` is the tail-resumptive middle: one walk, no Cont, the
   rest of the row forwarded. `Free.run(f: F ==> M)` is the same idea
   when the row is handled entirely.
-- **`Handler[F]`** — the comonadic (per-operation) handler;
-  `runWith` runs with it. **`Handler.flat[R]`** composes one handler
+- **`Answers[F]`** — the comonadic (per-operation) handler;
+  `runWith` runs with it. **`Answers.flat[R]`** composes one handler
   per effect into a row handler as ONE dispatch expression (a macro
   over the row's members; 1.24x over the nested form at position 4 of
-  a four-row, handler-fusion-flat); **`Handler.union[F, G]`** is the
+  a four-row, handler-fusion-flat); **`Answers.union[F, G]`** is the
   two-member combinator it generalises, kept for a row built one
   member at a time. Both are explicit, not givens: a given over a
   union type lambda crashes the 3.7.1 type comparer. **`TypeableK[F]`** — the runtime test that
@@ -215,13 +225,15 @@ same material with the measurements attached.
   recover the type anyway; [existentials.md](existentials.md) records
   each, what the compiler said, and the bytecode.
 - **`State % S`** — bespoke tailrec handler; **`PState`** — the
-  type-changing (typestate) variant on the paramonad, ~1.7x the
-  price — no longer only an exhibit: `Stage.phased`/`phased3`
+  type-changing (typestate) variant on the paramonad, 1.79x the
+  price through the shift road and 1.07x through `PState.Threaded`,
+  the same protocol as data run by the tailrec loop (pstate-threaded,
+  2026-09-30) — no longer only an exhibit: `Stage.phased`/`phased3`
   execute their phase switches through it, and the typed
   transaction region (sql-typestate) is its second consumer.
 - **`Blocking[A]`** — `CanBlock ?=> A`: parks-a-thread as a
   first-class value; forced only where the capability is given.
-- **`Prompt[R]`** — a delimiter's identity AND answer type (Delim);
+- **`Prompt[R]`** — a delimiter's identity AND answer type (Shift);
   ambient in the capability forms (`Scope.mark/exit/bounded`,
   `Cut.guard/violation`) — nested using-params resolve to the
   NEAREST scope, verified.
@@ -243,15 +255,15 @@ same material with the measurements attached.
   `interleave` (fair or), `fairBind`/`>>-` (fair bind), `observe(n)`
   (first n of an infinite search). A library over the effect, not a
   new effect. See specs/backtracking.md.
-- **`Delim`** — delimited control AS AN EFFECT, multi-prompt **The typed door** is `Delim.Prompted[R]`
+- **`Shift`** — delimited control AS AN EFFECT, multi-prompt **The typed door** is `Shift.Prompted[R]`
   (delim-prompted): evidence that a delimiter is installed, made only
-  by `Delim.delimited` (or `Delim.scope`, its nested half), so a
+  by `Shift.delimited` (or `Shift.scope`, its nested half), so a
   capture through the evidence-taking `shift` cannot name a prompt
   that is not on the stack — of the machine that installed it: ONE
-  `Delim.run` per program, and the nested forms (`scope`,
+  `Shift.run` per program, and the nested forms (`scope`,
   `collecting`, `pausing`) put a delimiter on the machine already
   running instead of starting a second one (delim-nesting).
-  `Delim.collectUntil(using fo: FoldUntil[A, S, R])(body): R ! F`
+  `Shift.collectUntil(using fo: FoldUntil[A, S, R])(body): R ! F`
   (collect-early-stop) runs the same producer `collect` runs and stops
   it where `done` first holds — the state passed on the way DOWN as
   the prompt's answer-function, the rest of the producer never run;
@@ -263,7 +275,7 @@ same material with the measurements attached.
   from the block, and `A` stays because a mark gives its argument no
   expected type — `NoPrompt` moved to compile time
   for that path. A portable function reads `Prompted[Int] ?=> Int !
-  (Delim + W)`: written apart, stored, passed, and callable only where
+  (Shift % ? + W)`: written apart, stored, passed, and callable only where
   a `delimited` put the evidence in scope. The obligation is NOT a row
   member: rows are unions and `Free` is invariant in them, so a body
   that does not capture to the prompt being installed could not be
@@ -274,8 +286,8 @@ same material with the measurements attached.
   carrying the delimiter's answer type, `push` installs one (an
   OPERATION, not a handler — one machine must own the whole prompt
   stack, or a capture cannot cross an intervening delimiter), and
-  `shift`/`shift0`/`control`/`control0` capture up to a NAMED prompt.
-  The tags are what let several answer types share one row. `Delim.run`
+  `shift`/`shift0` capture up to a NAMED prompt.
+  The tags are what let several answer types share one row. `Shift.run`
   is the machine; the captured continuation is turned back into a
   PROGRAM, so it is an ordinary value and multi-shot is free. With it
   a user can define new effects (a generator is a prompt and a shift)
@@ -328,8 +340,9 @@ same material with the measurements attached.
 
 - **`Functor` → `Applicative` → `Selective` → `Monad`**, plus
   **`Alternative` → `MonadPlus`** and **`Comonad`** (the basis of
-  per-operation handlers: `given [F: Comonad]: Handler[F]`).
-  `ParaMonad` founds the Cont layer; every diagonal is a `Monad`.
+  per-operation handlers: `given [F: Comonad]: Answers[F]`).
+  `ParaMonad` founds the Cont layer; every diagonal is a `Monad`, and
+  the tree `Freer` is the instance for every signature (`Freer.Para`).
 - The GENERIC combinators the classes exist for — written once, they
   run over programs, LazyList, Choose searches: **`traverse`** /
   **`sequence`** / **`replicateA`** (Applicative), **`guard`**
@@ -527,7 +540,7 @@ same material with the measurements attached.
 ## Streams and consumption
 
 - **`Stream[S[_], F[+_]]`** — codata: `uncons: Option[(A, S[A])] ! F`.
-  Consumers need `Handler[F]` (free for `Pure`; Async pulls park).
+  Consumers need `Answers[F]` (free for `Pure`; Async pulls park).
   `toLazyList` (memoized bridge), `iterator` (linear, fused;
   specialized per instance). Combinators (`filter/take/zip/++/...`)
   land in LazyList; `Stream.map/flatMap/fold` are spelled explicitly —
@@ -571,7 +584,7 @@ same material with the measurements attached.
   `Writer.foldUntil` (answers `R` alone — an early stop never sees the
   program's answer), `Source.runFoldUntil`, `Producer.foldUntil` (the
   `Produce + G` road, same early `pure`), `.foldUntil(using fo)` on
-  a writer program — pure, or effectful with the `Handler[G]` in scope —
+  a writer program — pure, or effectful with the `Answers[G]` in scope —
   `xs.foldUntilTo` on any `Foldable` (`Foldable.foldUntil` is on the
   trait; an `Iterator` is left after the satisfying element), and
   `Take.foldUntil(using fo): R ! Take % W`, the fold as an iteratee
@@ -816,7 +829,7 @@ same material with the measurements attached.
 - **`Similarity`** (okay-rag) — a function, not a typeclass, and the
   general rule for this layer: a typeclass asserts canonicity, and a
   program holds several stores, several retrievers and possibly two
-  metrics. `Handler` is a typeclass precisely because a row IS
+  metrics. `Answers` is a typeclass precisely because a row IS
   canonical where it is discharged.
 - **`Language`** (okay-rag) — a language as DATA: comments, strings,
   the words that introduce a definition, and `Layout.Braces` or
@@ -837,7 +850,7 @@ same material with the measurements attached.
   recovery decision is per operation (`Redo`, `WithKey`, `Reconcile`,
   `Escalate`, `Fail`); `replaying` re-runs an incident offline.
 - **`Provider`** (okay-agent) — `openAi` and `anthropic` are both
-  `Handler[Model]`; `relay`/`openAiRelay` are the PORTABLE form,
+  `Answers[Model]`; `relay`/`openAiRelay` are the PORTABLE form,
   since a comonadic handler cannot do I/O where nothing may park.
 - **`Chunks.ofChars`** — a string as chunks without boxing (a
   primitive `Array[Char]`); see the benchmark note about what it did
@@ -864,7 +877,7 @@ blanket suppression; the categories and what each turned out to be:
   it is named and `TestRowIdentity` demonstrates it — and it binds the
   BARE row only: [several instances of one
   effect](many-instances.md) are had by key (`Tag`), by cell (`Refs`)
-  or by prompt (`Delim`).
+  or by prompt (`Shift`).
 - **100 "match may not be exhaustive" → 0.** All one claim: `resume`
   normalizes two of `Free`'s cases away, so a three-case match is
   correct and the type cannot say so. Written `(x.resume: @unchecked)`
@@ -878,7 +891,7 @@ blanket suppression; the categories and what each turned out to be:
   mattered for publishing: an `inline` method reaching a privately
   captured given makes the compiler synthesize an accessor whose name
   is unstable across compiler versions, so a downstream JAR could
-  break on a mere recompile. `DiagonalMonad` and `ComonadHandler` are
+  break on a mere recompile. `DiagonalMonad` and `ComonadAnswers` are
   named classes with a public member instead — the `inline` is kept.
 - **178 unused imports → 0**, mechanically.
 - Two lints are filtered in build.sbt with the reason written there:
@@ -917,7 +930,7 @@ and nothing else in the library casts for that reason:
   and holds the union's two casts; `<|>` is `split` at
   `Left`/`Right` (either-via-split), the `Either` form for drains and
   tests. `split` is what every walker in this library uses (`State.handle`,
-  `Writer.foldWith`, `relay`, `Effects.handle`, `Handler.union`,
+  `Writer.foldWith`, `relay`, `Effects.handle`, `Answers.union`,
   `Resource.run` in the core, and the stream walkers in okay-stream;
   split-without-either,
   2026-09-09, measured to the byte in specs/handler-fusion.md). In a
@@ -1069,7 +1082,7 @@ is [modules/okay-scala2.md](modules/okay-scala2.md).
   is a phantom capability trait, and its companion holds the operations
   and the handler. `X.run(...)` removes `X` from the row and leaves the
   rest.
-- **`Op[+A]`, `Effect[F]`, `Handler[F, R, B]`** — a Scala 2 user's own
+- **`Op[+A]`, `Effect[F]`, `Answers[F, R, B]`** — a Scala 2 user's own
   effect. The operations extend `Op`, and `object KV extends
   Effect[KV]` stands in for `derives Effect`; the capability is
   `Effect[KV]`. A handler receives each operation and its continuation.
@@ -1198,11 +1211,11 @@ once tested, and this list exists to not repeat that.
   one above is not).
 - **A method expecting `R ! F + G` does not recover that shape from
   an argument already typed as the EXPANDED union
-  `[A] =>> F[A] | G[A]`.** `Delim.Stacked`'s own `reset`/`delimited`
+  `[A] =>> F[A] | G[A]`.** `Shift.Stacked`'s own `reset`/`delimited`
   needed `push[R, F](...)`/`run[R, F](...)` with explicit type
   arguments for exactly this reason — the argument's type, once
-  Scala has expanded `Delim + F` into the type lambda, is no longer
-  syntactically `Delim + F` for a LATER call's inference to match
+  Scala has expanded `Shift % ? + F` into the type lambda, is no longer
+  syntactically `Shift % ? + F` for a LATER call's inference to match
   against.
 - **`Effects[Free].handle[F, G](...)`/`!.translate[A, F, G]` want
   their type arguments spelled**, not inferred from the value
@@ -1256,16 +1269,16 @@ silently uses the stale context; there is no error.
 ## The row-typeclass recipe: a typeclass over `F + G` (row-typeclass-recipe)
 
 A typeclass indexed by a ROW — `Failing[F]` is the worked example, and
-`Handler` is the older one — cannot be derived the obvious way, and the
+`Answers` is the older one — cannot be derived the obvious way, and the
 reasons are measured rather than argued:
 
 - **An unanchored `given [F[+_], G[+_]]: TC[F + G]` does not work.**
   dotty selects it and then cannot pin `F`: splitting needs
   `TypeableK[F]`, and against a free `F` that query is ambiguous
-  (`TypeableK[Vector]` and `TypeableK[Op]` both match). `Handler`
+  (`TypeableK[Vector]` and `TypeableK[Op]` both match). `Answers`
   meets the same wall one step earlier and worse — an implicit row
-  given enters scope for EVERY `Handler` query and crashes the 3.7.1
-  type comparer — which is why `Handler.union[F, G]` is called BY
+  given enters scope for EVERY `Answers` query and crashes the 3.7.1
+  type comparer — which is why `Answers.union[F, G]` is called BY
   NAME at a concrete call site and never given implicitly.
 - **Anchor the instance on the CONCRETE effect instead.**
   `given [G]: TC[Async + G]` and `given [F]: TC[F + Async]` pin

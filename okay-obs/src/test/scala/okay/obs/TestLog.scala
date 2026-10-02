@@ -18,11 +18,11 @@ class TestLog extends munit.FunSuite:
   val clock: () => Long = () => now
 
   /** run a logging program under a handler, answering its value */
-  def run[A](prog: A ! Says)(using Handler[Says]): A = prog.runWith
+  def run[A](prog: A ! Says)(using Answers[Says]): A = prog.runWith
 
   test("the program says a level, a message and fields — and nothing else") {
     val (h, lines) = collecting(clock = clock)
-    given Handler[Says] = h
+    given Answers[Says] = h
     val answer = run(
       info("order placed", "id" -> "o1", "total" -> "10")
         .flatMap(_ => debug("cache warm"))
@@ -38,7 +38,7 @@ class TestLog extends munit.FunSuite:
 
   test("a line is written WHEN IT IS TOLD, not when the program ends") {
     val (h, lines) = collecting(clock = clock)
-    given Handler[Says] = h
+    given Answers[Says] = h
     val boom = intercept[RuntimeException](
       run(info("before the fall").flatMap(_ => okay.pure[Says, Unit](throw RuntimeException("fell")))))
     assertEquals(boom.getMessage, "fell")
@@ -47,7 +47,7 @@ class TestLog extends munit.FunSuite:
 
   test("the level filter drops what is below it and keeps the rest") {
     val (h, lines) = collecting(min = Level.Warn, clock = clock)
-    given Handler[Says] = h
+    given Answers[Says] = h
     run(debug("no").flatMap(_ => info("no")).flatMap(_ => warn("yes")).flatMap(_ => error("yes")))
     assertEquals(lines().map(_.message), Vector("yes", "yes"))
     assert(Level.Error.atLeast(Level.Debug) && !Level.Debug.atLeast(Level.Error))
@@ -55,7 +55,7 @@ class TestLog extends munit.FunSuite:
 
   test("failure carries the throwable's class and message as fields, and is an error line") {
     val (h, lines) = collecting(clock = clock)
-    given Handler[Says] = h
+    given Answers[Says] = h
     run(failure("could not ship", IllegalStateException("no stock"), "order" -> "o1"))
     val l = lines().head
     assertEquals(l.level, Level.Error)
@@ -69,7 +69,7 @@ class TestLog extends munit.FunSuite:
     val store = MemoryStore()
     val tracer = Tracer(store.topic("traces"), clock = clock)
     val (h, lines) = collecting(tracer = Some(tracer), clock = clock)
-    given Handler[Says] = h
+    given Answers[Says] = h
 
     // the inbound edge, then a child region — a domain program in the
     // middle that knows nothing about either
@@ -102,7 +102,7 @@ class TestLog extends munit.FunSuite:
     val store = MemoryStore()
     val tracer = Tracer(store.topic("traces"), sample = Sample.Never, clock = clock)
     val (h, lines) = collecting(tracer = Some(tracer), clock = clock)
-    given Handler[Says] = h
+    given Answers[Says] = h
     tracer.root("GET /health") { run(info("probed")) }
     assertEquals(lines().map(l => (l.message, l.traceId)), Vector(("probed", None)))
   }
@@ -111,7 +111,7 @@ class TestLog extends munit.FunSuite:
 
   test("console: one JSON object per line, the ids at the top level, a reserved field name kept but prefixed") {
     var out = Vector.empty[String]
-    given Handler[Says] = console(out = s => out :+= s, clock = clock, logger = "orders")
+    given Answers[Says] = console(out = s => out :+= s, clock = clock, logger = "orders")
     run(info("placed", "id" -> "o1", "message" -> "shadowing on purpose"))
     val line = out.head
     assertEquals(line,
@@ -126,7 +126,7 @@ class TestLog extends munit.FunSuite:
 
   test("console: a message with quotes and newlines stays one line and one object") {
     var out = Vector.empty[String]
-    given Handler[Says] = console(out = s => out :+= s, clock = clock)
+    given Answers[Says] = console(out = s => out :+= s, clock = clock)
     run(info("he said \"no\"\nand left"))
     assertEquals(out.size, 1)
     assert(!out.head.drop(1).contains("\n"), out.head)
@@ -139,7 +139,7 @@ class TestLog extends munit.FunSuite:
     val store = MemoryStore()
     val tracer = Tracer(store.topic("traces"), clock = clock)
     val logs = store.topic("logs")
-    given Handler[Says] = topic(logs, tracer = Some(tracer), clock = clock, logger = "orders")
+    given Answers[Says] = topic(logs, tracer = Some(tracer), clock = clock, logger = "orders")
     tracer.root("POST /orders") {
       run(info("received").flatMap(_ => error("failed", "why" -> "no stock")))
     }

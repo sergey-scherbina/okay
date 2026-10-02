@@ -200,3 +200,7 @@
       process (137 after "Accept timed out", TestArrowNesting, Errors 3)
       in the affected-set gate of release-all-finalizers (Resource.scala
       touched, so every dependent ran, 7668 tests). Recorded per the ledger.
+      2026-09-30, okayOutboxNative, GREEN on the rerun alone: lost its
+      test process in the affected-set gate of freer-consumed-index
+      (Free.scala touched, so every dependent ran, 8235 tests, beside
+      the CI runner's own family gate). Recorded per the ledger.

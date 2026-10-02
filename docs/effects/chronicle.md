@@ -13,6 +13,7 @@ RECORDS an error and continues, and stops only where it cannot go on.
 | `Chronicle.halt` | stop here |
 | `Chronicle.confess(e)` | record `e` and stop |
 | `Chronicle.all(xs)(f)` | run `f` over every element, keeping every error |
+| `p.handle(Chronicle.verdict)` | handle it: a `Verdict` |
 | `Chronicle.run(p)` | handle it: a `Verdict` |
 
 The `Verdict` is `Clean(answer)` when nothing was recorded,
@@ -26,10 +27,10 @@ def host(s: String): String ! Chronicle % String =
   if s.contains("_") then Chronicle.dictate(s"'$s' has an underscore").map(_ => s)
   else pure(s)
 
-val clean  = !.run(Chronicle.run(host("db")))      // Clean(db)
-val warned = !.run(Chronicle.run(host("my_db")))   // Warned(my_db, Vector('my_db' has an underscore))
+val clean  = host("db").handle(Chronicle.verdict).run      // Clean(db)
+val warned = host("my_db").handle(Chronicle.verdict).run   // Warned(my_db, Vector('my_db' has an underscore))
 
-val failed = !.run(Chronicle.run(Chronicle.confess[String, String]("no host")))   // Failed(Vector(no host))
+val failed = Chronicle.confess[String, String]("no host").handle(Chronicle.verdict).run   // Failed(Vector(no host))
 ```
 
 The name and the operations come from Haskell's `these` package. The

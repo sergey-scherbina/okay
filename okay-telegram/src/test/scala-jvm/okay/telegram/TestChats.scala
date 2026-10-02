@@ -46,7 +46,7 @@ class TestChats extends munit.FunSuite:
     def until(what: => Boolean, ms: Int = 5000): Unit =
       val end = System.currentTimeMillis + ms
       while !what && System.currentTimeMillis < end do Thread.sleep(10)
-      assert(what, s"waited ${ms}ms: ${api.calls.map(_._1).toList}")
+      assert(what, s"waited ${ms}ms: ${api.snapshot.map(_._1).toList}")
     assert(!chats.awaiting(5), "nothing asked yet")
     go(chats.hear(Update.Message(1, 5, 42, 9, "hi")))
     until(api.of("sendMessage").nonEmpty)
@@ -75,7 +75,7 @@ class TestChats extends munit.FunSuite:
     def until(what: => Boolean, ms: Int = 5000): Unit =
       val end = System.currentTimeMillis + ms
       while !what && System.currentTimeMillis < end do Thread.sleep(10)
-      assert(what, s"waited ${ms}ms: ${api.calls.map(_._1).toList}")
+      assert(what, s"waited ${ms}ms: ${api.snapshot.map(_._1).toList}")
     // the first message from chat 5 opens its application, which draws frame 1
     go(chats.hear(Update.Message(1, 5, 42, 9, "hi")))
     until(api.of("sendMessage").nonEmpty)

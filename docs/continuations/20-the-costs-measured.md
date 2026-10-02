@@ -119,7 +119,7 @@ benchmarks sat right beside the claim.
 
 And the claim was wrong.
 
-`Cut` does not install a prompt and then leave. It enters `Delim +
+`Cut` does not install a prompt and then leave. It enters `Shift % ? +
 Async`, which puts **every operation of the body** through the machine.
 Neither `delimPushOnly` (N pushes) nor `delimGenerator` (N captures)
 measures that shape. The lane that does had to be written:

@@ -1,6 +1,6 @@
 package okay.agent
 
-import okay.{!, +, Async, Handler}
+import okay.{!, +, Async, Answers}
 import okay.given
 import okay.codec.Json
 
@@ -11,15 +11,15 @@ import okay.codec.Json
  */
 class TestLarge extends munit.FunSuite {
 
-  def run[A](prog: A ! Agent)(model: Handler[Model], tool: Handler[Tool],
-                              ctx: Handler[Context]): A =
-    given Handler[Model] = model
-    given Handler[Tool] = tool
-    given Handler[Context] = ctx
-    given rowMA: Handler[Model + Async] = okay.Handler.union[Model, Async]
-    given rowCMA: Handler[Context + (Model + Async)] =
-      okay.Handler.union[Context, Model + Async]
-    given rowAll: Handler[Agent] = okay.Handler.union[Tool, Context + (Model + Async)]
+  def run[A](prog: A ! Agent)(model: Answers[Model], tool: Answers[Tool],
+                              ctx: Answers[Context]): A =
+    given Answers[Model] = model
+    given Answers[Tool] = tool
+    given Answers[Context] = ctx
+    given rowMA: Answers[Model + Async] = okay.Answers.union[Model, Async]
+    given rowCMA: Answers[Context + (Model + Async)] =
+      okay.Answers.union[Context, Model + Async]
+    given rowAll: Answers[Agent] = okay.Answers.union[Tool, Context + (Model + Async)]
     prog.runWith
 
   val big = (1 to 500).map(i => s"line $i of a very long file").mkString("\n")

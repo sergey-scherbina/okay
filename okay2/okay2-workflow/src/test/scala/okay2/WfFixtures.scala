@@ -3,7 +3,7 @@ package okay2
 /** the fixtures the workflow suites share, at the top level */
 object WfFixtures {
   type P = Pure
-  type Rw = Delim + P
+  type Rw = Shift[Any] + P
 
   /** a drive that was expected to finish */
   def done[Q, R](s: Wf.Step[Q, R]): R = s match {

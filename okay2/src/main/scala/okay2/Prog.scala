@@ -29,7 +29,7 @@ package okay2
  * Scala 2 spelling: an abstract type in a module, `Rep`, which is Scala
  * 2's opaque type — as `Cont` and `Eager` are here. The row comes FIRST,
  * as in `Free[R, A]`; Scala 3 writes `Prog[F, A, S, R]` with the same
- * order. Not ported: `Delim.Stacked` over `Prog`, which needs a dependent
+ * order. Not ported: `Shift.Stacked` over `Prog`, which needs a dependent
  * function type for its body (specs/okay2.md, stage 7).
  */
 sealed abstract class ProgModule {

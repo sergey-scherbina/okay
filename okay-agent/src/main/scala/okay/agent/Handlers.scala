@@ -1,6 +1,6 @@
 package okay.agent
 
-import okay.{!, +, Aggregator, Handler}
+import okay.{!, +, Aggregator, Answers}
 import okay.lex.Scan
 import okay.lex.Bpe
 
@@ -37,9 +37,9 @@ object Handlers {
     /** the whole history the policy kept, uncompacted by present */
     def state: S = acc
 
-  def context[S](policy: Aggregator[Turn, S, Seq[Turn]]): (ContextState[S], Handler[Context]) =
+  def context[S](policy: Aggregator[Turn, S, Seq[Turn]]): (ContextState[S], Answers[Context]) =
     val st = ContextState(policy)
-    (st, new Handler[Context]:
+    (st, new Answers[Context]:
       def handle[A](e: Context[A]): A = e match
         case Context.Remember(t) => st.remember(t)
         case Context.Recall() => st.recall
@@ -50,7 +50,7 @@ object Handlers {
 
   /** execute tools from a table; an unknown tool is an ANSWER, not a
    * fault — the model must be able to recover from its own mistake */
-  def tools(table: Map[String, ToolCall => String]): Handler[Tool] = new:
+  def tools(table: Map[String, ToolCall => String]): Answers[Tool] = new:
     def handle[A](e: Tool[A]): A = e match
       case Tool.Call(c) => table.get(c.name) match
         case Some(f) =>
@@ -61,7 +61,7 @@ object Handlers {
   /** approve every call through a gate first (human in the loop, a
    * sandbox, a rate limiter — the same shape) */
   def gated(table: Map[String, ToolCall => String])
-           (approve: ToolCall => Boolean): Handler[Tool] = new:
+           (approve: ToolCall => Boolean): Answers[Tool] = new:
     private val inner = tools(table)
     def handle[A](e: Tool[A]): A = e match
       case Tool.Call(c) =>
@@ -69,8 +69,8 @@ object Handlers {
         else "denied"
 
   /** record every call, then delegate — replay is the same table */
-  def recording(inner: Handler[Tool])(log: scala.collection.mutable.Buffer[ToolCall])
-  : Handler[Tool] = new:
+  def recording(inner: Answers[Tool])(log: scala.collection.mutable.Buffer[ToolCall])
+  : Answers[Tool] = new:
     def handle[A](e: Tool[A]): A = e match
       case Tool.Call(c) => log += c; inner.handle(e)
 
@@ -120,7 +120,7 @@ object Handlers {
    * provider handler has (okay-llm's Anthropic client plugs in here).
    */
   def scripted(replies: Seq[Reply], count: String => Int = _.length / 4)
-  : Handler[Model] = new:
+  : Answers[Model] = new:
     private var rest = replies.toList
     def handle[A](e: Model[A]): A = e match
       case Model.Complete(_, _) => rest match
@@ -130,7 +130,7 @@ object Handlers {
 
   /** a model that sees the context — for asserting WHAT was sent */
   def observing(replies: Seq[Reply], seen: scala.collection.mutable.Buffer[Seq[Turn]],
-                count: String => Int = _.length / 4): Handler[Model] = new:
+                count: String => Int = _.length / 4): Answers[Model] = new:
     private val inner = scripted(replies, count)
     def handle[A](e: Model[A]): A = e match
       case c @ Model.Complete(ctx, _) => seen += ctx; inner.handle(c)

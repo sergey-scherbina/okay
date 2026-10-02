@@ -109,7 +109,7 @@ class TestDirectApplicative extends munit.FunSuite {
 
   test("a carrier that HAS a monad is untouched: the program road still binds") {
     // the same shape at a row, which has a Monad — emission unchanged
-    given Handler[Reader % Int] = new:
+    given Answers[Reader % Int] = new:
       def handle[A](e: Reader[Int, A]): A = e match
         case Reader.Ask() => 21
         case Reader.Asks(f) => f(21)

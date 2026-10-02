@@ -15,7 +15,7 @@ import scala.language.implicitConversions
 class TestBookWorkflows extends munit.FunSuite {
 
   type P = okay.Pure
-  type Row = Delim + P
+  type Row = Shift % ? + P
 
   given Wf.Runtime = Wf.Runtime.scripted(millis = 1_700_000_000_000L,
                                          id = "bk-1", dice = 0.25)

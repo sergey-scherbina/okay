@@ -1,7 +1,7 @@
 package okay.intent
 
 import okay.given
-import okay.{Async, Handler, Writer}
+import okay.{Async, Answers, Writer}
 import okay.codec.Schema
 import okay.llm.{OpenAi, Structured, Transports}
 
@@ -68,7 +68,7 @@ class TestClassifyTokens extends munit.FunSuite {
 
   test("live: what the early stop saves, in tokens") {
     assume(reachable, s"no OpenAI-compatible endpoint at $url")
-    given Handler[Async] = summon[Handler[Async]]
+    given Answers[Async] = summon[Answers[Async]]
 
     // twenty messages is a mean, not a census: each one costs two
     // streamed completions and the box is shared
@@ -84,7 +84,7 @@ class TestClassifyTokens extends munit.FunSuite {
     for (message, _) <- sample do
       val b = body(message)
       val c = Structured.cut[Reading[Meeting]](
-        OpenAi.stream(Transports.http(), key, b, url))(using mReading, summon[Handler[Async]])
+        OpenAi.stream(Transports.http(), key, b, url))(using mReading, summon[Answers[Async]])
       val (full, fullChars) = drain(b)
       cutTotal += c.tokens
       fullTotal += full
@@ -95,7 +95,7 @@ class TestClassifyTokens extends munit.FunSuite {
       // and the same message asked in a way that invites prose
       val cb = chattyBody(message)
       val cc = Structured.cut[Reading[Meeting]](
-        OpenAi.stream(Transports.http(), key, cb, url))(using mReading, summon[Handler[Async]])
+        OpenAi.stream(Transports.http(), key, cb, url))(using mReading, summon[Answers[Async]])
       val (cfull, cfullChars) = drain(cb)
       chattyCut += cc.tokens
       chattyFull += cfull

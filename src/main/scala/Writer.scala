@@ -179,6 +179,12 @@ object Writer {
   }
 
   /** collect everything told, in order, forwarding the effects F */
+  /** the handler as a value: `p.handle(Writer.log)` answers what was told, in order, and `A` */
+  def log[W](using t: TypeableK[Writer % W]): Handler[Writer % W, [A] =>> (Seq[W], A)] =
+    new Handler[Writer % W, [A] =>> (Seq[W], A)]:
+      def run[A, F[+_]](p: A ! Writer % W + F)(using A <:< Any, Distinct[Writer % W + F], Handler.Nothing[F]): (Seq[W], A) ! F =
+        Writer.run(p)
+
   def run[W, A, F[+_]](a: A ! Writer % W + F)(using Distinct[Writer % W + F])
                       (using TypeableK[Writer % W]): (Seq[W], A) ! F =
     // a List built by prepending and reversed ONCE at the end, not a
@@ -426,7 +432,7 @@ object Writer {
    * answer (deferred, not run). Any structured effect handler (State,
    * Reader, Throws, ...) forwards the telling, so it can be run over
    * the program FIRST — handlers are stream transformers — and the
-   * Handler-able residue (Async, say) is what the consumer pays at
+   * Answers-able residue (Async, say) is what the consumer pays at
    * each pull. G is split from the told values by its runtime class.
    */
   def uncons[W, A, G[+_] : TypeableK](a: A ! Writer % W + G)(using TypeableK[Writer % W])
@@ -547,7 +553,7 @@ type Feed[W] = Unit ! Writer % W
  */
 given Put[Feed] with
   final override inline def put[W](w: W): Unit /> Feed[W] =
-    shift(k => Writer.tell(w).flatMap(_ => k(())))
+    Cont.shift(k => Writer.tell(w).flatMap(_ => k(())))
 
 /**
  * A writer program is a stream of its told values: the same
@@ -570,11 +576,11 @@ given feedStream[A]: Stream[[W] =>> A ! Writer % W, Pure] = new:
    * three once per element — which on a chunked stream is once per
    * CHUNK, and was the whole of the ~2x stage 0 measured on
    * `Chunks.fold` (producer-to-writer-carrier, `## Results`). Needs
-   * only `Handler[Pure]`, which every platform has — nothing here
+   * only `Answers[Pure]`, which every platform has — nothing here
    * blocks, so nothing here needs `CanBlock`, unlike `writerStreamIn`'s
    * G-forwarding twin below.
    */
-  override def iterator[W](s: A ! Writer % W)(using Handler[Pure]): Iterator[W] =
+  override def iterator[W](s: A ! Writer % W)(using Answers[Pure]): Iterator[W] =
     import !.*
     import scala.annotation.tailrec
     new Iterator[W]:
@@ -627,12 +633,12 @@ given writerStreamIn[A, G[+_] : TypeableK]: Stream[[W] =>> A ! Writer % W + G, G
    * what was left over after `producer-writer-carrier-foldwriter-eager`
    * fixed the per-ELEMENT boxing (see Chunks.scala's `foldWriter` doc
    * and [[escape-analysis-box-elimination-boundary]]). A forwarded
-   * `G`-operation is answered directly by `Handler[G].handle` — a
-   * COMONADIC, single-operation interpretation (`Handler[Async]`'s own
+   * `G`-operation is answered directly by `Answers[G].handle` — a
+   * COMONADIC, single-operation interpretation (`Answers[Async]`'s own
    * `case Run(f) => f()` / `case Await(reg) => cb.block(reg)...`),
    * not a program built and run.
    */
-  override def iterator[W](s: A ! Writer % W + G)(using H: Handler[G]): Iterator[W] =
+  override def iterator[W](s: A ! Writer % W + G)(using H: Answers[G]): Iterator[W] =
     import !.*
     import scala.annotation.tailrec
     new Iterator[W]:

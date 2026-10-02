@@ -54,22 +54,25 @@ version instead.
 
 ```scala
 def within[R, F[+_]](limit: Int)(orElse: => R)
-                    (body: Budget[R] ?=> R ! Delim + F)
-                    (using Delim.OneMachine[F], At): R ! F =
-  val p = Delim.prompt[R]
-  Delim.run(Delim.push(p)(body(using new Budget(AtomicInteger(limit), () => orElse, p))))
+                    (body: Budget[R] ?=> R ! Shift % ? + F)
+                    (using Shift.Machine[F], At): R ! F =
+  val p = Shift.prompt[R]
+  Shift.run(Shift.push(p)(body(using new Budget(AtomicInteger(limit), () => orElse, p))))
 ```
 
-This is the only place that mentions `Delim.run`, and it takes
-`OneMachine[F]` — chapter 12's rule, applied: *a library that starts a
-machine passes the obligation on to its caller.*
+This is the only place that mentions `Shift.run`, and it takes
+`Machine[F]` — chapter 12's rule, applied: *a library that starts a
+machine passes the obligation on to its caller*, who knows whether a
+machine already runs (then `within` nests on it) or not (then it runs
+its own). Without the `using`, the row is abstract here and the
+compiler asks for it.
 
 **The operation** — the only thing users write:
 
 ```scala
-def spend[F[+_]](n: Int)(using b: Budget[?], at: At): Unit ! Delim + F =
+def spend[F[+_]](n: Int)(using b: Budget[?], at: At): Unit ! Shift % ? + F =
   if b.left.addAndGet(-n) >= 0 then okay.pure(())
-  else Delim.abort[b.Res, Unit, F](b.prompt)(b.orElse())
+  else Shift.abort[b.Res, Unit, F](b.prompt)(b.orElse())
 ```
 
 Spend and carry on, or leave the block with the fallback. `b.Res` is
@@ -134,7 +137,7 @@ Worth listing, because this is the actual return on the work:
 - They cannot **aim at the wrong boundary**: there is only one, and
   they never name it.
 - They cannot **start a second machine** by accident: `within` is the
-  only door, and it holds `OneMachine`.
+  only door, and its `Machine` makes it nest inside a running one.
 - They cannot **leave the prompt behind and use it later** — chapter
   10's open edge — because they never hold it.
 - They cannot **forget to install the boundary**: without a
@@ -147,10 +150,10 @@ is the entire argument for putting them there.
 
 Two, so nobody copies the example and wonders.
 
-`spend[Pure](30)` names the row. The doors in `Delim` itself do
-better — `!Delim.exit(value)` needs no type argument at all — by
+`spend[Pure](30)` names the row. The doors in `Shift` itself do
+better — `!Shift.exit(value)` needs no type argument at all — by
 taking the direct block's own colouring as evidence
-(`DirectCtx[F]` and `Reader.RowOf[F]`, both visible in `Delim.exit`'s
+(`DirectCtx[F]` and `Reader.RowOf[F]`, both visible in `Shift.exit`'s
 signature). It costs an inline definition and some plumbing, and it is
 what you do when an operation graduates from useful to used
 constantly.
@@ -162,17 +165,18 @@ parameters to the fallback, and none of which change the shape.
 
 ## The general recipe
 
+<!-- not-a-test: the shape, with `...` where each library puts its own parts -->
 ```scala
 // 1. evidence: what the block hands its body, with the answer type as a member
 final class Cap[R] private (state, fallback, prompt: Prompt[R]):
   type Res = R
 
-// 2. the boundary: the ONLY place that runs a machine, passing OneMachine on
-def within[R, F[+_]](...)(body: Cap[R] ?=> R ! (Delim + F))
-                    (using Delim.OneMachine[F], At): R ! F
+// 2. the boundary: the ONLY place that runs a machine, passing Machine on
+def within[R, F[+_]](...)(body: Cap[R] ?=> R ! (Shift % ? + F))
+                    (using Shift.Machine[F], At): R ! F
 
 // 3. the operations: named in the user's vocabulary, hiding the capture
-def op[F[+_]](...)(using c: Cap[?], at: At): A ! (Delim + F)
+def op[F[+_]](...)(using c: Cap[?], at: At): A ! (Shift % ? + F)
 ```
 
 Chapter 15 applies exactly this recipe to the oldest problem in the

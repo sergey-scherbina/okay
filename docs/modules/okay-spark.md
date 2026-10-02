@@ -39,8 +39,45 @@ this instance or on the local `Chunks` one unchanged. The instance is
 an opaque `RDD[Any]` — Spark stores objects anyway — so no `ClassTag`
 is asked per intermediate type; the price is one documented cast at the
 element boundary and a boxed element where Spark boxes it too. It is
-the RDD level, not Catalyst: the Wrocław GTFS join reads 18 s here
-against 7 s through DataFrames, and 4 s in one JVM through `Chunks`.
+the RDD level, not Catalyst, and on the Wrocław GTFS job that costs
+little: the three joins (1.16M stop times against trips, routes and
+calendar, counted) read 708 ms here against 536 ms as a hand-written
+DataFrame and 803 ms in one JVM through `Chunks` (MeasureGtfsFrames,
+2026-09-30, best of three alternating rounds). The "18 s against 7 s"
+this page used to quote was `cache` under Java serialization
+(TestWroclawStages), not the RDD level.
+
+**Documents, recognised and routed** (refine-bulk). okay-refine's `Routes`
+is written against `Bulk`, so a routing table of document patterns runs
+on `SparkBulk` unchanged: `Documents.files` spreads a directory one file
+per split, the pattern runs on the executors, each document is
+recognised once and cached, and every lane is a filter over that
+(TestSparkRoutes: 400 documents, the same lanes, rejects and counts as in
+one JVM). See docs/modules/okay-refine.md, "Routes".
+
+**DataFrames in a program, and operators Catalyst can see** (streams-seam,
+lane 5; [specs/streams-seam.md](../../specs/streams-seam.md)). `Structured`
+(okay-sql) adds two operators a platform can read, beside the opaque
+`where(p)` and `join` of `Tables`: `matching(w)` with a `Query.Where` built
+from field names checked against `Schema[A]`, and `joinOn(r)(lf, rf)` with
+a `Query.Field` on each side. On any platform they run through
+`Structured.viaTables`. On Spark, `SparkFrames` brings a DataFrame into the
+program (`load[A](df)`, or `read[A](path, "parquet")` pruned to A's fields),
+hands a table back (`frame[A](t)`), and keeps a DataFrame-born table in
+Catalyst for as long as it meets only structural operators: the predicate
+becomes a `Column` (on Parquet a pushed filter at the reader), the join a
+DataFrame join. The first opaque step leaves Catalyst, and the same
+operators then answer through the RDD with the same result.
+
+```scala
+val w = (route === "r1" or route === "r3") and (tram === true)
+val got = frames.run(for
+  t <- frames.load[Trip](SparkSchema.dataFrame(spark, trips)).plus[Tables + Structured]
+  m <- t.matching(w).plus[Tables + State % Tables.Heap[SparkBulk.Rows]]
+  df <- frames.frame[Trip](m).plus[Tables + Structured]
+  rows <- m.collect.plus[Structured + State % Tables.Heap[SparkBulk.Rows]]
+yield (rows.elements.toVector.sortBy(_.id), df.queryExecution.analyzed.toString))
+```
 
 **ADTs as DataFrames.** `SparkSchema` turns an okay `Schema[A]` into a
 Spark `StructType` and rows — the Catalyst side, where Spark's own

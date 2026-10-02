@@ -1,6 +1,6 @@
 package okay
 
-import okay.{Cont, reset, />}
+import okay.{Cont, />}
 import okay.codec.{Base64, Codecs, Json, Schema}
 
 /**
@@ -18,7 +18,7 @@ object LegacyJsonEncode:
     sb.toString
 
   private def encodeInto[A](s: Schema[A], a: A, sb: StringBuilder, open: Int): Unit =
-    if open >= Codecs.NativeThreshold then reset(encodeIntoC[A, Unit](s, a, sb, open))
+    if open >= Codecs.NativeThreshold then Cont.reset(encodeIntoC[A, Unit](s, a, sb, open))
     else encodeIntoNative(s, a, sb, open)
 
   private def encodeIntoNative[A](s: Schema[A], a: A, sb: StringBuilder, open: Int): Unit = s match
@@ -117,7 +117,7 @@ object LegacyCborPut:
     out.toArray
 
   private def putAt[A](out: Out, s: Schema[A], a: A, open: Int): Unit =
-    if open >= Codecs.NativeThreshold then reset(putC[A, Unit](out, s, a, open))
+    if open >= Codecs.NativeThreshold then Cont.reset(putC[A, Unit](out, s, a, open))
     else putNative(out, s, a, open)
 
   private def putNative[A](out: Out, s: Schema[A], a: A, open: Int): Unit = s match

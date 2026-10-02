@@ -245,7 +245,7 @@ question the tree could not answer by reading:
   once. Cleanup written as a line of ordinary Scala after the capture
   point does NOT run: it was in the continuation that was dropped.
 - **`bracket` cannot be written in a `Delim` row at all** — it needs
-  `Handler[F]` and there is none for `Delim`. The dangerous mix (a
+  `Answers[F]` and there is none for `Delim`. The dangerous mix (a
   body run to completion inside one suspension, under a machine that
   may re-enter it) is a compile error rather than a caveat.
 - **`try/finally` around a mark is a compile error** (direct's own

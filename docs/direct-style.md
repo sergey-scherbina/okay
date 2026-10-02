@@ -68,17 +68,13 @@ monad with answer-type modification — types the construction
 object Monadic:
 
   extension [F[_] : Monad, A](m: F[A])
-    /** μ: the monadic value as a direct value — one definition, both
-     * spellings: `m.reflect` and `reflect(m)` (an extension is a
-     * method; the prefix form is its desugared call) */
+    /** the monadic value as a direct value */
     inline def reflect[B]: Cont[A, F[B], F[B]] =
       shift(k => m.flatMap(k))
-    /** the symbolic μ — the same glyph as Direct's mark and as
-     * `Throws.?` (specs/unwrap-glyph.md): the value, the context deals
-     * with what was around it */
+    /** the symbolic `reflect` */
     inline def ?[B]: Cont[A, F[B], F[B]] = reflect[B]
 
-  /** the delimiter: a direct-style block back into its monad */
+  /** back into the monad */
   inline def reify[F[_], A, B](p: Cont[A, F[A], F[B]])(using M: Monad[F]): F[B] =
     p / (a => M.pure(a))
 ```
@@ -147,7 +143,7 @@ Boruch-Gruszecki and Odersky (*Representing Monads with
 Capabilities*, 2020) point out that multi-prompt delimited control is
 all this needs: each `reify` installs its own delimiter and hands the
 body a capability, and `reflect` through that capability captures up
-to the right delimiter, past any inner ones. `Delim` is multi-prompt,
+to the right delimiter, past any inner ones. `Shift` is multi-prompt,
 so `Layered` is short (specs/layered-reflection.md):
 
 ```scala
@@ -205,8 +201,8 @@ val x = List(1, 2, 3).?
 val y = (if x == 2 then None else Some(x * 10)).?
 ```
 
-A layer's reflect is a `Delim` capture, so the block's row must have
-`Delim`. Outside every layer the mark is refused as before. `Lexical`
+A layer's reflect is a `Shift` capture, so the block's row must have
+`Shift`. Outside every layer the mark is refused as before. `Lexical`
 instances need nothing new in a block: their operations are programs, so
 `s.get.?` works, and `s.put(v).?` is the statement form of `set`.
 
@@ -300,7 +296,7 @@ its position and its workaround in the message:
   nested def's, and sound for the same reason — binding the marks
   inside changes neither the lambda's type nor where it is evaluated.
   That is what lets a continuation handler read as ordinary code:
-  `Delim.shift(p) { k => "deciding".tell; if ok then k(n) else pure(-1) }`
+  `Shift.shift(p) { k => "deciding".tell; if ok then k(n) else pure(-1) }`
   with no inner block.
 - a mark **under a by-name argument** — hoisting it would change
   when (whether) it evaluates.

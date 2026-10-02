@@ -127,11 +127,16 @@ class TestScopedEffects extends munit.FunSuite:
       ("touched", 11), "State forwarded through local untouched")
   }
 
-  test("A SECOND, MORE FUNDAMENTAL LIMIT — local does NOT reach inside an OPAQUE payload like Delim.push's body") {
+  test("THE OPAQUE-PAYLOAD LIMIT, LIFTED ON THE MACHINE — local reaches inside Shift.push's body when it runs as a frame") {
+    // handle-frames (specs/handle-frames.md): the history below is what
+    // the FOLD does and still does; since handlers became values a
+    // machine runs as frames, `local` here runs on the machine that
+    // runs the push — its frame is on the stack under the body, and
+    // the body's asks find it. The fold answered 5; the frame 23.
     // the FIRST guess for this test claimed local composes through a
     // captured continuation's OWN re-invocations; measured, it does
     // not, and the reason is more basic than the multi-shot story:
-    // `Delim.push(p)(body)` builds `Inject(Push(p, body))`, and
+    // `Shift.push(p)(body)` builds `Inject(Push(p, body))`, and
     // `body` is a PAYLOAD FIELD of that operation — not the Bind's
     // own attached continuation function. `Effects.handle`'s
     // forwarding arm re-wraps a Bind's OWN continuation (which is
@@ -142,21 +147,21 @@ class TestScopedEffects extends munit.FunSuite:
     // It has no way to reach INTO a value carried as DATA inside
     // another effect's own operation, because `Effects.handle` is
     // generic over G and treats a G-operation as opaque, exactly as
-    // it must to forward ANY effect without knowing its shape. Delim
+    // it must to forward ANY effect without knowing its shape. Shift
     // is exactly the effect whose whole design puts programs (`body`,
     // the shift's own `f`) inside operation payloads — the one shape
     // a Bind-based generic handler cannot see through.
-    val prompt = Delim.prompt[Int]
+    val prompt = Shift.prompt[Int]
     type F = Reader % Int + okay.Pure
-    val body: Int ! Delim + F =
-      Delim.shift[Int, Int, F](prompt)(k => k(1).flatMap(a => k(2).map(b => a + b)))
-        .flatMap(n => Reader.ask[Int].at[Delim + F].map(_ + n))
-    val localized = Reader.local[Int, Int, Delim + okay.Pure](_ * 10)(
-      Delim.push(prompt)(body).at[Reader % Int + (Delim + okay.Pure)])
+    val body: Int ! Shift % ? + F =
+      Shift.shift[Int, Int, F](prompt)(k => k(1).flatMap(a => k(2).map(b => a + b)))
+        .flatMap(n => Reader.ask[Int].at[Shift % ? + F].map(_ + n))
+    val localized = Reader.local[Int, Int, Shift % ? + okay.Pure](_ * 10)(
+      Shift.push(prompt)(body).at[Reader % Int + (Shift % ? + okay.Pure)])
     val driven: Int ! F =
-      Delim.run[Int, F](localized.at[Delim + F])(using Delim.OneMachine.fresh[F])
-    assertEquals(!.run(Reader.run[Int, Int, okay.Pure](1)(driven)), 5,
-      "the *10 never reached body's asks at all: k(1)=1+1=2, k(2)=1+2=3, 2+3=5 — the TRUE ambient, unaffected by local")
+      Shift.run[Int, F](localized.at[Shift % ? + F])
+    assertEquals(!.run(Reader.run[Int, Int, okay.Pure](1)(driven)), 23,
+      "local's frame answers the body's asks: 1 * 10 = 10; k(1) = 10 + 1 = 11, k(2) = 10 + 2 = 12, 11 + 12 = 23")
   }
 
   test("THE DOCUMENTED TRAP: a Reader program VALUE carries no memory of where it was built") {
@@ -165,7 +170,7 @@ class TestScopedEffects extends munit.FunSuite:
     // closure with no lexical memory of any scope. Whoever hands it
     // to `local` decides what its asks answer, not wherever the value
     // was first written down. This is the whole mechanism behind the
-    // Delim case too, demonstrated here without Delim's machinery.
+    // Shift case too, demonstrated here without Shift's machinery.
     val k: Int ! Reader % Int = Reader.ask[Int] // built with NO local in sight
     val underLocal = Reader.local[Int, Int, okay.Pure](_ * 10)(k.at[Reader % Int + okay.Pure])
     assertEquals(!.run(Reader.run[Int, Int, okay.Pure](1)(underLocal)), 10,

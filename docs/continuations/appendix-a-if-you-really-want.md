@@ -21,7 +21,7 @@ The reason a monadic program cannot be written down is one line of
 `Free`:
 
 ```scala
-case Bind[G[_, +_, +_], S, T, R, A, B](a: Freer[G, T, R, A],
+case Bind[G[_, _, +_], S, T, R, A, B](a: Freer[G, T, R, A],
                                       f: A => Freer[G, S, T, B]) extends Freer[G, S, R, B]
 ```
 
@@ -191,7 +191,7 @@ cases:
 ```scala
 case Pure(a: A)                                   // a value
 case Inject(a: F[A])                              // one operation
-case Bind[G[_, +_, +_], S, T, R, A, B](a: Freer[G, T, R, A],
+case Bind[G[_, _, +_], S, T, R, A, B](a: Freer[G, T, R, A],
                                       f: A => Freer[G, S, T, B]) extends Freer[G, S, R, B]
 case Delay(thunk: () => Free[F, A])               // ...and a thunk
 ```
@@ -212,20 +212,27 @@ The reflex is to blame delimited control, and it is wrong. In this
 implementation a captured continuation is **already a data structure**:
 
 ```scala
-private enum Segs[F[+_], A, Z]:
-  case Done[F[+_], Z]()
-  case K[F[+_], X, Y, Z](f: X => Y ! (Delim + F), rest: Segs[F, Y, Z])
-  case Mark[F[+_], X, Z](p: Prompt[X], rest: Segs[F, X, Z])
+enum Frames[F[_, _, +_], A, S, T, Z]:
+  case End[F[_, _, +_], A, S]() extends Frames[F, A, S, S, A]
+  case Frame[F[_, _, +_], A, S, S2, T, Y, Z](f: A => Freer[Cont0.Row[F], S2, T, Y],
+
+enum Stack[F[_, _, +_], A, S, T, Z] extends (A => Freer[Cont0.Row[F], S, T, Z]):
+  case Done[F[_, _, +_], A, S]() extends Stack[F, A, S, S, A]
+  case Run[F[_, _, +_], A, S, S2, T, Y, Z](frames: Frames[F, A, S2, T, Y],
+  case Dollar[F[_, _, +_], A, S, T, Y, Z](p: Cont0.Delimiter[Y, T], ret: A => Freer[Cont0.Row[F], T, T, Y],
 ```
 
-A list of frames. You can walk it, count the frames, and see which
-prompts are installed — `Mark` is a delimiter, sitting in the
-continuation as an ordinary node. A continuation here is **more**
+Lists of frames, split at the delimiters: a `Frames` is one segment, a
+`Stack` is the segments and the delimiters between them, and the
+`Stack` is what a captured continuation is. You can walk it, count the
+frames, and see which prompts are installed — `Dollar` is a delimiter
+(a plain `reset` is `pure $ ·`), sitting in the continuation as an
+ordinary node. A continuation here is **more**
 inspectable than a native stack, not less, and that is exactly why it
 is multi-shot (chapter 13).
 
-The opacity is `K`'s `f`. An ordinary host function — the same one
-`Bind` was already carrying before `Delim` existed.
+The opacity is `Frame`'s `f`. An ordinary host function — the same one
+`Bind` was already carrying before `Shift` existed.
 
 > **The problem was never continuations. It is `flatMap`.** Captures
 > only made it visible.
@@ -370,7 +377,7 @@ generation fails. Seconds per restore, and a compiler on the
 production classpath.
 
 **Symbols still resolve against a classpath.** The term refers to
-`okay.Delim.pause` and to your own definitions by name. It is not a
+`okay.Shift.pause` and to your own definitions by name. It is not a
 self-contained blob — though note that **replay is in exactly the same
 position**, so this is not a cost *relative to replay*. It is a cost
 relative to the fantasy of a program in a bottle.
@@ -771,7 +778,7 @@ serialisability is a property of the heap at one instant.
 
 **Four — the checkpoint does not remove the term problem.**
 
-To continue you must know *where* to continue. `Segs` hands you the
+To continue you must know *where* to continue. `Frames` hands you the
 frames as data, and `Mark` even shows the installed prompts — but each
 `K` frame still carries a host function. Saving the state relocates the
 problem; it does not dissolve it. Everything earlier in this appendix

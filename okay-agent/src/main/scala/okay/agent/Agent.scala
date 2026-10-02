@@ -1,6 +1,6 @@
 package okay.agent
 
-import okay.{!, +, Async, Handler, effect, pure}
+import okay.{!, +, Async, Answers, effect, pure}
 import okay.codec.Json
 
 /**
@@ -63,7 +63,7 @@ object Tool:
             Json.JObj(fs.filterNot(_._1 == Durable.KeyField) :+ (Durable.KeyField, Json.JStr(key)))
           case _ => Json.JObj(Vector((Durable.KeyField, Json.JStr(key))))
         Tool.Call(c.copy(args = args))
-    def perform[A](op: Tool[A], inner: Handler[Tool]): (A, String) = op match
+    def perform[A](op: Tool[A], inner: Answers[Tool]): (A, String) = op match
       case Tool.Call(c) =>
         // rebuilt here, so the call is a `Tool[String]` and its answer
         // is a `String` — the point of `perform` existing at all

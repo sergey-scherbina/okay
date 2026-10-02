@@ -91,6 +91,15 @@ class TestZoom extends munit.FunSuite {
     assertEquals(after.tag, "t")
   }
 
+  test("PState.Threaded.zoom: the same type-changing lens on the threaded road, no nested run") {
+    final case class Box[A](item: A, tag: String)
+    val item: Lens[Box[String], Box[Int], String, Int] =
+      Lens(_.item, (b, i) => Box(i, b.tag))
+    val parse: PState.Threaded[Int, Int, String] =
+      PState.Threaded.get[String].flatMap(s => PState.Threaded.put[String, Int](s.length).map(_ => s.length))
+    assertEquals(PState.Threaded.run(PState.Threaded.zoom(item)(parse))(Box("hello", "t")), (Box(5, "t"), 5))
+  }
+
   test("PState.zoom: misusing the state's new type does not compile") {
     val e = compileErrors("""
       final case class Box[A](item: A, tag: String)

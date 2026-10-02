@@ -278,6 +278,20 @@ object Chunks {
     go(emptyChunk, 0, pa, emptyChunk, 0, pb)
   }
 
+  /** the sort-merge join by key of two chunk streams NON-DECREASING in
+   * key (specs/stream-join.md): the right run held, the left streamed,
+   * one output chunk per left chunk; inner. `SortMerge` is the machine */
+  def joinSorted[K: Ordering, A, B](l: Chunks[(K, A)], r: Chunks[(K, B)]): Chunks[(K, (A, B))] =
+    SortMerge.chunks(l, r)(() => SortMerge.inner[K, A, B])
+
+  /** `joinSorted`, every left row kept: `None` where the right side has no such key */
+  def leftJoinSorted[K: Ordering, A, B](l: Chunks[(K, A)], r: Chunks[(K, B)]): Chunks[(K, (A, Option[B]))] =
+    SortMerge.chunks(l, r)(() => SortMerge.left[K, A, B])
+
+  /** `joinSorted`, every row of either side kept: `None` on the side that lacks the key */
+  def fullJoinSorted[K: Ordering, A, B](l: Chunks[(K, A)], r: Chunks[(K, B)]): Chunks[(K, (Option[A], Option[B]))] =
+    SortMerge.chunks(l, r)(() => SortMerge.full[K, A, B])
+
   /** normalize chunk sizes (the content unchanged, the tail shorter) */
   def rechunk[A](p: Chunks[A])(size: Int = 64): Chunks[A] = rechunkWith(p)(ChunkBuf.factory[A](size))(size)
 

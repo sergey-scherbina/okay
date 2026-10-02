@@ -12,7 +12,7 @@ chain is stack-safe. `shift` captures the continuation, `reset`
 delimits it. `Control[M[_,_,_]]` is the final-tagless interface;
 `Cont` (data, stack-safe) and `Func` (the raw function encoding) are
 its instances. You rarely touch this layer directly — it is what
-handlers are made of. When you DO want it, the door is `Delim`
+handlers are made of. When you DO want it, the door is `Shift`
 (multi-prompt delimited control as an effect): cancellable Dialog
 scopes (`Scope`), the streaming cut (`Cut`), the agent stepper and
 the sim scheduler are its shipped consumers — and the prompts can
@@ -33,9 +33,13 @@ A handler interprets operations into continuations — `F !> S` is
 literally a natural transformation into `Cont`, and `Cont` is this
 same freer tree at the signature "a function of the continuation"
 ([theory ch. 11](theory/11-one-tree.md)): a program and its meaning
-are made of the same nodes. Three ways to run:
+are made of the same nodes. For a USER the whole of it is `p.handle(h)`
+with a ready handler value (`State(s)`, `Throws.either`, `Reader(r)`, …)
+and `p.run` at the end ([effects-and-continuations.md](effects-and-continuations.md));
+an effect AUTHOR writes `Handler[F] { case … }` or one of its forms
+([your-own-effect.md](your-own-effect.md)). Underneath, three ways to run:
 
-- `runWith` — a per-operation `Handler[F]` (comonadic: each operation
+- `runWith` — a per-operation `Answers[F]` (comonadic: each operation
   answers with a value);
 - `!.relay` — tail-resumptive handling: the answer-polymorphic handler
   must resume exactly once, so the loop is tail-recursive; the fastest
@@ -82,10 +86,10 @@ streaming — see below), `State` (+ the type-changing `PState`),
 multi-shot), `Async` (Loom-style, below), `Resource` (the region:
 releases run at the scope's end, in reverse, surviving handled aborts).
 
-The floor of the library is available as an effect too: **`Delim`**
+The floor of the library is available as an effect too: **`Shift`**
 is multi-prompt delimited control — `Prompt[R]` tags a delimiter and
 carries its answer type, `push` installs one, and
-`shift`/`shift0`/`control`/`control0` capture the continuation up to
+`shift`/`shift0` capture the continuation up to
 a NAMED prompt (so a capture can cross an intervening delimiter,
 which nested handlers cannot express). The captured continuation
 comes back as a PROGRAM, hence multi-shot for free. This is the door
@@ -363,7 +367,7 @@ nesting `local(f2)(local(f1)(p))` composes INSIDE-OUT (`f1(f2(r))`,
 not the mtl-style `f2(f1(r))` a first guess assumes) because `local`'s
 own bookkeeping ask is an ordinary `ask`, reachable by an enclosing
 `local` exactly like a user's; and `local`/`recover` cannot reach
-inside another effect's OPAQUE operation payload (a `Delim.push`'s
+inside another effect's OPAQUE operation payload (a `Shift.push`'s
 `body`, chiefly) — a plainer, more basic limit than Kiselyov, Shan &
 Sabry's "Delimited dynamic binding" (ICFP 2006), which is about a
 narrower case one level past this one. specs/scoped-effects-laws.md
@@ -387,10 +391,10 @@ cheaper. Likewise prefer `State.modify(f)` to a `get` then a `set`: it
 is ONE operation (since effect-row-recursion-cost, 2026-09-26), where
 the pair is two operations, two forwards, and a closure between them.
 
-**Handling.** `runWith(using h)` for a per-operation `Handler[F]`;
+**Handling.** `runWith(using h)` for a per-operation `Answers[F]`;
 `h.tracing(log)` makes any handler a recording one, since the
 operations are already data; `!.translate` interprets each operation
-into a PROGRAM in another row (a `Handler` answers with a value, so it
+into a PROGRAM in another row (a `Answers` answers with a value, so it
 cannot itself tell or get), and `!.interpret` is the same with the
 widening done for you, for when the target row is BIGGER than the
 source's:
@@ -459,7 +463,7 @@ there.
 Where the instances are MADE rather than named, `Refs` is the
 counterpart — cells created at run time, one row member however many,
 identity by cell, at the price of a heap and one stated cast. And the
-third route is the one `Delim` already has: a fresh prompt per handler
+third route is the one `Shift` already has: a fresh prompt per handler
 installation, scoped dynamically, with the program carrying the
 prompt.
 
@@ -592,7 +596,7 @@ that no consumer pays a `Left` per element. One instance runs on every
 carrier: `Stream.foldUntil` (any `Stream`), `xs.foldUntilTo` (any
 `Foldable` — a `List`, an `Iterator` left positioned after the stop, a
 `Producer`), `program.foldUntil` (a writer program — pure, or
-effectful with its `Handler` in scope), `Chunks.foldUntil`,
+effectful with its `Answers` in scope), `Chunks.foldUntil`,
 `Take.foldUntil` (the fold as an iteratee, §5), and `Writer.foldUntil`,
 `Producer.foldUntil`, `Source.runFoldUntil` (the effectful ones,
 answering `R ! F`):
@@ -765,41 +769,40 @@ the primitive, because of the five stages written here NONE are
 one-output-per-input: conditional emission has to say "nothing here"
 with an `Option` that `transduce` never allocates.
 
-**Typestate on a program: `Prog`.** `PState` puts a state's TYPE in a
-continuation's answer; `Prog[F, A, S, R]` puts one on any program — the
-same `Free` tree behind an opaque facade with two phantom indexes, "`S`
-before, `R` after", so that `flatMap` joins a step ending at `R` only to
-one starting at `R`. Nothing is allocated and nothing is matched:
-`Prog.diag(p)` enters at any index, `p.free` leaves at the diagonal
-(a move left open has no way out), and a protocol is written as smart
-constructors that call `Prog.transition` once each and keep it
-private. okay-sql's transaction is the first, over any `Sql`:
+**Typestate on a program: the indexed signature.** `PState` puts a
+state's TYPE in a continuation's answer; an indexed signature puts one
+on any program's operations — `Freer[G, S, R, A]` is the same tree with
+two indexes, "`R` before, `S` after", carried along every `flatMap`, so
+that a step ending at `R` joins only one starting at `R`. The
+transitions are said ONCE, on the signature's cases, and the handler
+holds the state typed by the index: nothing is claimed at a call site,
+and nothing is erased. okay-sql's transaction is written this way, over
+any `Sql`:
 
 ```scala
-val tx = Tx(db)
-val n = Tx.run(
-  tx.begin().flatMap { g =>
-    tx.update("insert into t values (1)").flatMap(_ => tx.commit()).map(_ => g.granted)
-  }).runWith
+import Tx.{begin, commit, update, async, interpret}
+val n = interpret(
+  begin().flatMap { g =>
+    update[Tx.Open]("insert into t values (1)").flatMap(_ => commit()).map(_ => g.granted)
+  })(db).runWith
 ```
 
-`tx.begin().flatMap(_ => tx.begin())` does not compile — the
+`begin().flatMap(_ => begin())` does not compile — the
 `IllegalStateException("nested transaction")` that `PgSql.begin` throws
-is unrepresentable — nor does `Tx.run(tx.commit())`, nor a program that
-ends inside a transaction, nor `tx.begin().free`. The same facade puts
-`Delim`'s prompt stack in the type, so a `shift` to a prompt that is
-not installed is a compile error rather than `NoPrompt`
-([continuations in practice](continuations-in-practice.md#the-stack-in-the-type)).
-One trap: write `import okay.Prog.{flatMap, map}` where you sequence
-`Prog`s. Found only through the facade's companion, `flatMap` does not
-infer the next step's index (`Required: Prog.Rep[Async, B, R, T]` with
-`B` and `T` uninstantiated); imported, it does. (This was once blamed
-on a package-level `Comonad[Id]` capturing `.map` — that instance now
-lives in `Comonad`'s companion, and the import is still needed.)
+is unrepresentable — nor does `interpret(commit())`, nor a program that
+ends inside a transaction. The connection the handler holds is `Conn[S]`
+with the same index, so closing an idle one or opening an open one does
+not type INSIDE the handler either. The same tree puts `Shift`'s prompt
+stack in the type, so a `shift` to a prompt that is not installed is a
+compile error rather than `NoPrompt`
+([continuations in practice](continuations-in-practice.md#the-stack-in-the-type)),
+and [typestate](typestate.md) is the page for the two readings of the
+index and when to take which.
 
 > Atkey, *Parameterised notions of computation*, JFP 19(3–4), 2009,
 > [doi:10.1017/S095679680900728X](https://doi.org/10.1017/S095679680900728X)
-> — the parameterised monad `PState` and `Prog` are two instances of.
+> — the parameterised monad `PState` and the indexed `Freer` are two
+> instances of.
 
 A stage whose STEP may end it is `Stage.transduceUntil(z)(step, end)`
 (specs/fold-until.md, stage 3): the step answers `Left(next)` to go on
@@ -930,7 +933,8 @@ JS the SAME programs run through the event loop by
 error, not a frozen loop. `Fiber` is onComplete/cancel everywhere
 plus `joinAsync` (the effect-world join — itself an Await, good on
 every platform); the parking `join`/`joinEither` exist only under the
-evidence. `Scheduler` takes the PROGRAM — which is exactly what lets
+evidence; `f.isDone` answers, without waiting, whether the fiber has
+its answer yet — for a watchdog or a test, never for a wait. `Scheduler` takes the PROGRAM — which is exactly what lets
 the event loop be a scheduler (`Schedulers.adaptive` by default on a
 JVM with Loom and `Schedulers.loom` a `given` away, a watched `own` on
 JDK 17-20, one OS thread per fiber on Native; the cats-effect and ZIO runtimes plug in as
@@ -1102,6 +1106,64 @@ survivor. Ours closes it, drops what it had buffered, and counts the
 release where a test can read it. It is spelled `Source.zip(s, t)`, not
 `s zip t`, because the core's lazy `zip` on any stream already owns the
 top-level name in package `okay`.
+
+`Source.joinSorted` is zip that SKIPS: the join by key of two live
+streams that are already non-decreasing in key (specs/stream-join.md).
+It has zip's shape — a fiber per side, a buffer per side, the merge on
+the consumer's thread, both sides closed at the end — and the
+sort-merge join's arithmetic (Blasgen & Eswaran 1977): one cursor a
+side advancing the smaller key, a run of equal keys on the right held
+while the left streams against it, and nothing held beyond that run.
+So it joins two UNBOUNDED streams in bounded memory, which is what no
+hash join can do — `Bulk.join` (specs/bulk.md) holds its right side
+whole, and that is the join for a table, not for a feed. `left` keeps
+every left row with `None` where the right has no such key; `full`
+keeps every row of either side. A key out of order on either side
+fails the join naming both keys, after the pairs told before it —
+a join that silently misplaced rows would be a wrong answer that
+looks like a small one.
+
+```scala
+val orders = Source.of(List((1, "book"), (2, "pen"), (2, "ink"), (4, "lamp")))   // by customer
+val names = Source.of(List((1, "Ann"), (2, "Bob"), (3, "Cid")))
+val j = Source.joinSorted(orders, names)
+assertEquals(j.runCollect.runWith, Vector((1, ("book", "Ann")), (2, ("pen", "Bob")), (2, ("ink", "Bob"))))
+val all = Source.leftJoinSorted(orders, names)
+assertEquals(all.runCollect.runWith.last, (4, ("lamp", None)))
+val c = Chunks.joinSorted(Chunks.fromIterator(Iterator((1, "a"), (3, "c"))), Chunks.fromIterator(Iterator((3, "x"))))
+assertEquals(c.elements.toList, List((3, ("c", "x"))))
+```
+
+The same three on `Chunks` step once per left chunk and tell that
+chunk's pairs as one chunk.
+
+`Source.joinWithin` is the join for streams that are NOT ordered by
+key — clicks and purchases, each in its own arrival order — and it is
+Flink's interval join and Kafka Streams' KStream-KStream join in one:
+a row matches, on arrival, every row of the other side with its key
+whose EVENT time is within `within` of its own, is held for the rows
+still to come, and leaves once the watermark has passed its reach. The
+watermark is `Windows`' (the greatest event time seen minus
+`lateness`), taken over the SMALLER of the two sides, Flink's rule for
+a two-input operator — so a side racing ahead cannot make the other
+side's rows late, and the interleaving of two live sides changes no
+pair. A row behind the watermark is dropped and counted (`dropped`),
+never joined; `held` is the live state. Nothing reads a clock, which is
+why a test of it is a list. The symmetric hash join (Wilschut & Apers
+1991) is this machine without the eviction.
+
+```scala
+val clicks = Source.of(List(("u1", (0L, "home")), ("u2", (3L, "cart")), ("u1", (30L, "pay"))))   // (user, (time, page))
+val buys = Source.of(List(("u1", (8L, 9.99)), ("u2", (50L, 4.50))))
+val paid = Source.joinWithin(clicks, buys, within = 10L, lateness = 0L)(_._1, _._1)
+assertEquals(paid.runCollect.runWith, Vector(("u1", ((0L, "home"), (8L, 9.99)))))
+```
+
+The two sides are `either`-merged with each side's end marked, and the
+join is a `Stage` over that merge (`WindowJoin.stage`), so the merge's
+release law is the join's, and a join that can produce nothing more —
+a side ended and every row that could still have reached it gone —
+returns and releases the other side.
 
 `source merge source` IS that composition since
 source-merge-via-ready: each side buffered onto a fiber of its own,

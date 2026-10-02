@@ -55,7 +55,7 @@ class TestObs extends munit.FunSuite {
 
   test("the tracing handler wraps ANY handler without its knowledge") {
     enum Box[A] { case Get(k: String) extends Box[String] }
-    val plain = new okay.Handler[Box]:
+    val plain = new okay.Answers[Box]:
       def handle[A](e: Box[A]): A = e match
         case Box.Get(k) => s"value-of-$k"
     val (t, spans) = tracer()

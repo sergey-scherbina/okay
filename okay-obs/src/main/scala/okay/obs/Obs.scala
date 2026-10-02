@@ -129,9 +129,9 @@ final class Tracer private (record: Span => Unit, sample: Sample, clock: () => L
    * never interpreted */
   def outboundState: Option[String] = state
 
-  /** wrap any Handler: one child span per operation, the operation
+  /** wrap any Answers: one child span per operation, the operation
    * named by the caller — composition, not instrumentation */
-  def traced[F[_]](inner: okay.Handler[F], name: [X] => F[X] => String): okay.Handler[F] = new:
+  def traced[F[_]](inner: okay.Answers[F], name: [X] => F[X] => String): okay.Answers[F] = new:
     def handle[A](e: F[A]): A = span(name(e))(inner.handle(e))
 
   private def run[A](name: String, traceId: String, parentId: Option[String],

@@ -62,8 +62,8 @@ DIFFERENT type than its own continuation returns, and here that
 difference is "one more expected argument":
 
 ```scala
-def lit(s: String): Cont[Unit, String, String] = shift(k => s + k(()))
-def hole[T]: Cont[T, String, T => String] = shift(k => (t: T) => k(t))
+def lit(s: String): Cont[Unit, String, String] = Cont.shift(k => s + k(()))
+def hole[T]: Cont[T, String, T => String] = Cont.shift(k => (t: T) => k(t))
 
 val fmt: Cont[Unit, String, Int => String] = hole[Int].flatMap(n => lit(s"Score: $n"))
 val asFunction: Int => String = fmt / (_ => "")
@@ -104,28 +104,35 @@ protocol's stages become index transitions and skipping a stage fails
 to compile.
 
 The price was measured rather than assumed: the typestate variant
-costs about 1.7x the plain `State` handler (`docs/benchmarks.md`), so
-Okay keeps both — `State % S` for the common case where the type never
-changes, `PState` where the protocol is the point — and since
+through the shift road costs 1.79x the plain `State` handler
+(HandlerBenchmark, 2026-09-30; 1.29x and ~1.7x at earlier readings),
+so Okay keeps both — `State % S` for the common case where the type
+never changes, `PState` where the protocol is the point — and since
 stage-phased it is no longer only an exhibit: `Stage.phased`
 (Pipe.scala) executes its per-input phase switch as a PState run,
-the type change S1 -> Either[S1, S2] doing streaming work. This is the
-recurring house pattern: the more general theory is present, and the
-specialized fast path exists *because a benchmark said so*, not
-instead of the theory.
+the type change S1 -> Either[S1, S2] doing streaming work. Since the
+tree's indexes became invariant (the same day, see below) the protocol
+also runs as DATA: `PState.Threaded` is `Get`/`Put` as an indexed
+signature threaded by a tail-recursive loop with the type moving, and
+it measures 1.07x the plain handler — the typed protocol at the
+untyped one's cost, which is what the invariance decision bought.
+This is the recurring house pattern: the more general theory is
+present, and the specialized fast path exists *because a benchmark
+said so*, not instead of the theory.
 
 A THIRD instance carries the same index without touching `Cont` at
-all: `Prog[F, A, S, R]` (freer-base stage 2, specs/freer-base.md) is
-an opaque facade over the ordinary `Free[F, A]` tree with the SAME
-two phantom indices, checking a protocol written as smart
-constructors (`okay-sql`'s `Tx.begin: Idle -> Open`) at compile time
-for zero bytes and zero time — because the tree underneath carries no
-index at all, only the facade's TYPE does. Where `PState` earns its
-index by construction (`shift`'s own typing enforces it, even under
-an abort), `Prog`'s index is a claim its author makes once, in one
-named function (`Prog.transition`), and the compiler checks only what
-is BUILT FROM smart constructors that call it — the same trade every
-phantom-typed protocol makes, stated rather than glossed over.
+all: the indexed SIGNATURE (specs/indexed-effects.md). `Freer[G, S,
+R, A]` is the tree `Cont` is built from, and its two indexes are open
+to any signature `G[S, R, X]` — `okay-sql`'s `TxOp` puts `Begin:
+Idle -> Open` and `Commit: Open -> Idle` on its cases, the tree
+carries them along every bind, and the handler holds the connection
+at the type the index says (`Conn[S]`). Where `PState` earns its
+index through `shift`'s own typing, this road earns it through the
+constructor's: nothing is claimed at a call site, nothing is erased,
+and a program that types is well-bracketed. (An earlier `Prog`
+facade — the same index as a phantom claim over the untyped tree,
+sealed by one named `transition` — was the first cut, and is gone:
+the data road checks the same protocol with the nodes themselves.)
 
 ## Why a paramonad at the foundation
 
@@ -138,9 +145,28 @@ paramonad at the bottom out of necessity, and Atkey's diagonal theorem
 is the ramp back down to the ordinary monads everything else is
 written in. One trait (`ParaMonad`), one theorem (the diagonal), THREE
 instances (`Cont`'s answer-type modification, `PState`'s typestate,
-`Prog`'s phantom protocol on `Free`) — the chapter is short because
+the indexed signature's protocol on `Freer`) — the chapter is short because
 the design followed the paper closely enough that there is little
 else to say.
+
+Since 2026-09-30 the tree itself is the instance: `Freer[G, S, R, A]`
+(Free.scala), the one base under `Cont` and `Free`, is a `ParaMonad`
+for every signature `G` — `Return` on the diagonal, `Bind` composing
+the indexes — as `Freer.Para[G]`, the same tree read value-first. So
+an EFFECT may carry the indexes in its own signature, and there is
+exactly one way to read them on this base: as answer types, the way
+`PState` reads them. A `Get`/`Put` enum indexed `S => Z` is `PState`
+as data, its handler an indexed natural transformation into shift
+bodies, and Cont's runner runs it typed by the GADT. The other
+reading — McBride's, the index a state the handler CONSUMES, `R`
+before and `S` after, threaded by a `State.handle`-shaped loop with
+the type moving — types as well, since the same day's decision made
+the indexes INVARIANT: the two readings want opposite variances on
+both indexes, and invariance is what both can live with (the base was
+covariant in `R` for one reader, the tail-shift macro, which now pays
+one evidence-justified cast instead). `TestFreerPara` holds both;
+specs/freer-base.md ("Freer as the ParaMonad", "McBride's reading")
+has the argument.
 
 
 **The production consumer.** The two-state degenerate form of this

@@ -3,7 +3,10 @@
 > Instances inward, conversions outward, nothing more — and the
 > ecosystem's own law suites proving the instances.
 
-Depends on: `okay` (JVM), cats-free, cats-effect.
+Depends on: `okay`, cats-free 2.13, cats-effect 3.7. Cross-built: JVM,
+Scala.js and Scala Native. The doors that PARK a thread (`toIO`, `asIO`,
+`scheduler`) ask `Answers[Async]`, which exists on the JVM and Native
+only; on JS use `toIOAsync`, `fromIO` and `CatsEffect.toIO`.
 
 ## Guide
 
@@ -87,8 +90,10 @@ Async.par(async(1), async(2)).runWith          // fibers on cats-effect
 - `import okay.given` is required in every satellite for the
   extension methods of Okay's package-level givens (`runWith` above
   all); `import okay.cats.given` brings the instances.
-- A row containing `Throws` has no `Handler` — `runEither` before
+- A row containing `Throws` has no `Answers` — `runEither` before
   `runWith`.
 - discipline-munit 2.0.0 is inline-incompatible with munit 1.1 —
   the law suites unfold `RuleSet.all.properties` into plain
   munit-scalacheck properties instead.
+
+Type classes both ways (okay's ladder over this library's types, cats' over ours): [the class ladder](../interop-classes.md).

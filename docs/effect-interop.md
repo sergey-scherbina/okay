@@ -25,19 +25,71 @@ named at the end.
 
 | from | to | door | waits by | a cancel on the far side |
 |---|---|---|---|---|
-| `Task[A]` | `A ! Async` | `ZioInterop.fromZIO`, `z.asOkay` | callback | cancelling okay interrupts the fiber |
+| `Task[A]` | `A ! Async` | `ZioInterop.fromZIO`, `z.asOkay` (okay's) | callback | cancelling okay interrupts the fiber |
 | `ZIO[R, E, A]` | `A ! ZioRow[R, E]` | `ZioInterop.fromZIOTyped` | callback | the same |
 | `A ! Async` | `Task[A]` | `ZioInterop.toZIO`, `p.asZIO` | ZIO's blocking pool | — (runs to completion) |
 | `A ! Async` | `Task[A]` | `ZioInterop.toZIOAsync` | callback | interrupting ZIO cancels the okay drive |
 | `A ! ZioRow[R, E]` | `ZIO[R, E, A]` | `ZioInterop.toZIOTyped` | ZIO's blocking pool | — |
-| `IO[A]` | `A ! Async` | `CatsInterop.fromIO` | callback | cancelling okay cancels the IO |
-| `A ! Async` | `IO[A]` | `CatsInterop.toIO` | cats' blocking pool | — |
+| `IO[A]` | `A ! Async` | `CatsInterop.fromIO`, `io.asOkay` | callback | cancelling okay cancels the IO |
+| `A ! Async` | `IO[A]` | `CatsInterop.toIO`, `p.asIO` | cats' blocking pool | — |
 | `A ! Async` | `IO[A]` | `CatsInterop.toIOAsync` | callback | cancelling the IO cancels the okay drive |
-| `Future[A]` | `A ! Async` | a mark in a `direct` block | callback | — (a Future cannot be cancelled) |
+| `A < S` (kyo) | `A ! Async` | `KyoInterop.fromKyoAsync`, `k.asOkay` | kyo's run, blocking | — |
+| `A ! Async` | `A < IO` (kyo) | `KyoInterop.toKyo`, `p.asKyo` | kyo's IO | — |
+| `Future[A]` | `A ! Async` | a mark in a `direct` block, `f.asOkay` | callback | — (a Future cannot be cancelled) |
 | any `M[A]` | `A ! G` | your `ForeignEffect[M]` | yours | yours |
 
 Two doors run the okay program on a BLOCKING pool on purpose — see
 "Blocking or callback" below.
+
+## One expression across libraries
+
+Functions written with cats, ZIO, kyo and okay compose in one chain, and
+an okay function is called from inside each library's own code
+(specs/interop-compose.md). One function from each:
+
+```scala
+val parse: String => IO[Int] = s => IO(s.trim.toInt)                          // cats
+val double: Int => Task[Int] = i => ZIO.succeed(i * 2)                        // ZIO
+val inc: Int => Int < (Abort[Nothing] & _root_.kyo.Async) = i => _root_.kyo.IO(i + 1) // kyo
+val show: Int => String ! Async = i => async(s"<$i>")                         // okay
+```
+
+`asOkay` is okay's own extension (`import okay.asOkay`), one name for
+every library: each interop module adds a `ToOkay` instance behind its
+given import, chosen by the value's whole type, so kyo's `A < S` is found
+as easily as `IO[A]`. On a function it gives an `A => B ! Async`, and
+okay's `>=>` chains those:
+
+```scala
+val all: String => String ! Async = parse.asOkay >=> double.asOkay >=> inc.asOkay >=> show
+```
+
+The same four in one `direct` block. An IO and a ZIO are marked
+directly. A kyo value crosses with `asOkay` first, because the mark
+needs the `M[_]` shape and kyo puts the value first:
+
+```scala
+val p: String ! Async = direct {
+val a = IO(10).?
+val b = ZIO.succeed(10).?
+val c = inc(20).asOkay.?
+show(a + b + c).?
+}
+```
+
+Going the other way, `asIO`, `asZIO` and `asKyo` turn an okay program
+or an okay function into the other library's value, so its own
+for-comprehension calls okay:
+
+```scala
+x <- parse("20")
+y <- show(x).asIO
+z <- IO(41).flatMap(show.asIO)
+```
+
+Everything crosses as `A ! Async`. Handle any other effect in an okay
+row first (`Reader.run`, `runEither`). A typed `ZIO[R, E, A]` crosses
+by the `direct` mark, as a `ZioRow` (below).
 
 ## ZIO
 
@@ -304,5 +356,7 @@ so okay fibers, `par`, `merge` and supervision run on it. See
 - cats-effect: [the `Async` type class](https://typelevel.org/cats-effect/docs/typeclasses/async)
   (`IO.async` and its finalizer).
 - In this repository: [direct style](direct-style.md) ("Foreign
-  effects"), and the specs `zio-async-bridge`, `zio-direct-cancel`,
-  `zio-typed-row`, `direct-foreign-mark`, `cats-io-async`.
+  effects"), [the class ladder across cats, ZIO and kyo](interop-classes.md),
+  and the specs `zio-async-bridge`, `zio-direct-cancel`,
+  `zio-typed-row`, `direct-foreign-mark`, `cats-io-async`,
+  `interop-compose`.

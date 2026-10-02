@@ -7,7 +7,7 @@ import Free.{Return, Inject, Bind}
  * THE PRODUCER: an operation that IS its answer — okay's
  * `type Produce[A] = Id[A]`. `produce(a)` hands `a` out and answers it,
  * so a program is a stream of the values it produces, read by a fold,
- * stepped by `uncons`, or run by a Handler (`Producer.log` prints each).
+ * stepped by `uncons`, or run by a Answers (`Producer.log` prints each).
  * A row needs a class to split on, so the value rides in `Emit`.
  */
 sealed trait Produce extends Row { type Op[+A] = Produce.Emit[A] }
@@ -18,7 +18,7 @@ object Produce {
   implicit val effect: Effect[Produce] = Effect.of[Produce]
 
   /** each operation answers with its own value */
-  implicit val handler: Handler[Produce] = new Handler[Produce] {
+  implicit val handler: Answers[Produce] = new Answers[Produce] {
     def handle[A](a: Emit[A]): A = a.a
   }
 
@@ -111,8 +111,8 @@ object Producer {
     loop(p)
   }
 
-  /** a Handler that prints every production and answers it */
-  def log(prefix: String = "", suffix: String = "\n"): Handler[Produce] = new Handler[Produce] {
+  /** a Answers that prints every production and answers it */
+  def log(prefix: String = "", suffix: String = "\n"): Answers[Produce] = new Answers[Produce] {
     def handle[A](a: Produce.Emit[A]): A = { print(prefix + a.a + suffix); a.a }
   }
 }
@@ -124,7 +124,7 @@ object Producer {
  * `LazyList` materialises the stream by laziness (the continuation is
  * captured in the `#::` tail, no effect runtime at all), and `Producer`
  * by effects (each put is an operation, stepped by `uncons` or run by a
- * Handler).
+ * Answers).
  *
  * A `Loop[A, R]` is `Cont[A, R, A => R]`: the body of an open-recursive
  * function A => R whose continuation is the recursive call itself.
@@ -135,18 +135,18 @@ trait Put[S[_]] {
 
 object Put {
   implicit val lazyList: Put[LazyList] = new Put[LazyList] {
-    def put[W](w: W): Unit /> LazyList[W] = shift[Unit, LazyList[W], LazyList[W]](k => w #:: k(()))
+    def put[W](w: W): Unit /> LazyList[W] = Cont.shift[Unit, LazyList[W], LazyList[W]](k => w #:: k(()))
   }
 
   implicit val producer: Put[Producer] = new Put[Producer] {
     def put[W](w: W): Unit /> Producer[W] =
-      shift[Unit, Producer[W], Producer[W]](k => Produce.produce(w).flatMap(_ => k(())))
+      Cont.shift[Unit, Producer[W], Producer[W]](k => Produce.produce(w).flatMap(_ => k(())))
   }
 }
 
 object Generate {
   /** the input of the current iteration */
-  def take[A, R]: Loop[A, R] = shift[A, R, A => R](identity)
+  def take[A, R]: Loop[A, R] = Cont.shift[A, R, A => R](identity)
 
   /** tie the knot: the body's continuation is the next iteration */
   def loop[A, R](f: Loop[A, R]): A => R = {

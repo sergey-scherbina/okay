@@ -10,7 +10,7 @@ package okay.demoeff
  * file, from a Map, from State and Writer, and (with `.tracing`) into
  * a log. The program between them is byte-identical.
  *
- * The handlers here issue plain JDBC deliberately: a `Handler` must
+ * The handlers here issue plain JDBC deliberately: a `Answers` must
  * ANSWER with a value, so anything effectful inside it has to be run
  * at that point. When you want the query itself to stay an effect —
  * streamed, transacted, typed by a Schema — that is okay-jdbc's Sql
@@ -116,7 +116,7 @@ object UsersDemo:
     finally ps.close()
 
   /** the real world: a SQLite file */
-  def live(c: Connection): Handler[Users] = new:
+  def live(c: Connection): Answers[Users] = new:
     def handle[A](e: Users[A]): A = e match
       case Users.Find(id) => selectName(c, id)
       case Users.Save(id, name) =>
@@ -190,7 +190,7 @@ object UsersDemo:
    * so "what did this ask for, and in what order" is a decorator, not
    * a second handler that might drift from the first.
    */
-  final class InMemory[S](init: S)(using St: Store[S]) extends Handler[Users]:
+  final class InMemory[S](init: S)(using St: Store[S]) extends Answers[Users]:
     private var s = init
     def state: S = s
     def handle[A](e: Users[A]): A = e match
@@ -204,7 +204,7 @@ object UsersDemo:
    * The test world WITHOUT mutable state: the same operations
    * interpreted into OTHER EFFECTS rather than into values.
    *
-   * A `Handler` answers with a value, so it cannot tell or get — but
+   * A `Answers` answers with a value, so it cannot tell or get — but
    * `translate` interprets each operation into a PROGRAM in the
    * target row, and there State and Writer are ordinary members. The
    * store becomes `State % Map`, the log becomes `Writer % String`,

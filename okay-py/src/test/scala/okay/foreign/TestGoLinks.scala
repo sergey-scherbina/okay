@@ -142,7 +142,7 @@ class TestGoTcpSupervised extends munit.FunSuite:
     val (port, first) = GoWorkerBinary.listen()
     var server = first
     val w = ForeignWorker.supervised(ForeignWorker.connect("127.0.0.1", port))
-    given okay.Handler[ForeignEval] = w.handler
+    given okay.Answers[ForeignEval] = w.handler
     var restarted = false
     val choose = Foreign.callback[Vector[Long], Long]("choose") { xs =>
       if !restarted && xs == Vector(10L, 20L) then

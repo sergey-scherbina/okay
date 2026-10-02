@@ -18,7 +18,7 @@ import okay.!.*
  * never pays. Resumption itself is not new machinery — it is what
  * every effect operation already does (the handler answers, the
  * continuation continues); what this file adds is the RESTART
- * frame, in the Delim discipline: an operation's payload is a
+ * frame, in the Shift discipline: an operation's payload is a
  * program in the same row, erased at the operation and re-typed
  * inside the one machine that owns the frames and the menu.
  */
@@ -36,7 +36,7 @@ object Condition {
      * policy's untyped Resume (a ClassTag test), so the machine hands
      * the continuation an A without claiming anything */
     case Signal[A](condition: Any, accept: Any => A) extends Op[A]
-    /** the payload is a program in the same row — the Delim
+    /** the payload is a program in the same row — the Shift
      * discipline: erased here (the row's other half F is not the
      * operation's to name), re-typed inside the machine, which is
      * the one claim this file makes. `accept` checks a policy Invoke's
@@ -240,6 +240,6 @@ object Condition {
    * c's answer type — `case c: HowMany.type => resume(c)(41)` */
   def resume[A](@scala.annotation.unused c: Of[A])(v: A): Decision = Decision.Resume(v)
 
-  /** the Delim/Resource precedent: splitting a row on Op is a
+  /** the Shift/Resource precedent: splitting a row on Op is a
    * total test — one class carries the whole signature */
 }

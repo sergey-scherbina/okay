@@ -77,7 +77,7 @@ class TestFail extends munit.FunSuite {
     def rename(id: Long): String ! Users + Abort =
       for case Some(old) <- find(id).plus[Abort] yield old
 
-    val handler: Handler[Users] = new:
+    val handler: Answers[Users] = new:
       def handle[A](e: Users[A]): A = e match
         case Users.Find(7L) => Some("ada")
         case Users.Find(_)  => None

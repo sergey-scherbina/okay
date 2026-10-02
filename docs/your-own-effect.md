@@ -139,11 +139,11 @@ handler per call, so wrap the smallest piece that can fail.
 
 ## 5. Handlers
 
-A `Handler[F]` answers each operation with a value. Production talks
+A `Answers[F]` answers each operation with a value. Production talks
 to SQLite in plain JDBC:
 
 ```scala
-def live(c: Connection): Handler[Users] = new:
+def live(c: Connection): Answers[Users] = new:
   def handle[A](e: Users[A]): A = e match
     case Users.Find(id) => selectName(c, id)
     case Users.Save(id, name) =>
@@ -189,7 +189,7 @@ mutation in it — a handler must answer with a value, so something has
 to remember:
 
 ```scala
-final class InMemory[S](init: S)(using St: Store[S]) extends Handler[Users]:
+final class InMemory[S](init: S)(using St: Store[S]) extends Answers[Users]:
   private var s = init
   def state: S = s
   def handle[A](e: Users[A]): A = e match
@@ -199,6 +199,74 @@ final class InMemory[S](init: S)(using St: Store[S]) extends Handler[Users]:
       s = next
       was
 ```
+
+### A handler as a value: four forms
+
+An `Answers[Users]` is run with `runWith`, so it must answer the whole row. The constructors on `Handler`
+make a VALUE that takes ONE effect off any program's row, whatever else is in the row, the same way the
+built-in effects do (`p.handle(State(5))`). They are ordered by power. Each form sits on the machinery that
+is already fastest for its case. The examples use `Accounts`, an effect shaped like `Users`
+(`Find`, `Save`), from the test that pins them.
+
+**1. Answer each operation**, and the program goes on:
+
+```scala
+val live: Handler[Accounts, [A] =>> A] = Handler[Accounts] {
+  case Find(id) => db.get(id)
+  case Save(id, name) => db.put(id, name)
+}
+```
+
+**2. Thread a state** through the operations: each case answers `(state', answer)`, and the result
+carries the last state:
+
+```scala
+val store = Handler[Accounts].state(Map(7L -> "ada")) {
+  case (m, Find(id)) => (m, m.get(id))
+  case (m, Save(id, name)) => (m.updated(id, name), m.get(id))
+}
+val renamed = rename(7, "grace").handle(store).run   // (Map(7 -> grace), Some(ada))
+```
+
+**3. Interpret into other effects**: each operation becomes a program in `G`, which the rest of the row
+must hold:
+
+```scala
+val stored = Handler[Accounts].into[State % Map[Long, String]] {
+  case Find(id) => State.get[Map[Long, String]].map(_.get(id))
+  case Save(id, name) => State.update[Map[Long, String], Option[String]](m => (m.get(id), m.updated(id, name)))
+}
+```
+
+**4. Hold the continuation**: call `resume` once, twice or not at all. This is Maybe written by hand:
+
+```scala
+val asMaybe = Handler[Maybe].control[Option]([A] => (a: A) => Some(a)):
+  [X, A, G[+_]] => (e: Maybe[X], resume: X => Option[A] ! G) => e.value match
+    case Some(x) => resume(x)
+    case None => pure[G, Option[A]](None)
+```
+
+**The cases are checked at compile time.** A case answering the wrong type is an error that names the
+operation ("Find answers Option[String], but this case gives Int"). So is a missing operation ("not every
+operation of Accounts is handled: Save") and a `case _` that answers anything but a `throw`.
+
+An operation whose answer its CALLER chooses (`Reader`'s `Asks[R, A](f: R => A)`, `State`'s `Update`) is
+seen at an abstract `Answer`. Only the operation's own data can produce one: `case Asks(g) => g(40)` passes,
+and `case Asks(g) => "oops"` is refused. One shape is beyond the cases: an operation whose answer is the
+type one of its own fields has, like `State`'s `Set(s: S)`. Each case must give its own type to the
+answer, and only a polymorphic function can do that. The macro names the operation and points to `.poly`.
+The effect is named first, `Handler[Accounts]`, because it is the effect the handler takes off, and form
+1 is what `Handler[Accounts] { … }` means. The others name the effect the same way:
+`Handler[Accounts].state(s0) { … }` and `Handler[Accounts].into[State % M] { … }`. Each also takes a
+polymorphic function in place of the cases, which the compiler checks with no macro:
+`Handler[Accounts].answer.poly { [X] => (e: Accounts[X]) => … }`. `Handler[Accounts]` is only a helper for
+type inference. Each form has one implementation, `Handler.answer[F]`, `Handler.state[F, S](s0)`,
+`Handler.into[F, G]` and `Handler.control[F, O](ret)`, and the helper calls it with the types filled in.
+
+Measured against the built-ins they re-express (specs/handler-forms.md): `answer` is at parity with
+`Reader(r)`, `state` is 1.04x of `State(s)`, `control` is 1.26x of `Maybe.option`. The cases cost what the
+polymorphic form costs.
 
 ## 6. Recording is a decorator
 
@@ -323,7 +391,7 @@ states there are, and the handler's heap is keyed by identity, so one
 cast turns a slot back into its type. Use a key when the instances can
 be named, cells when they are made. A third route exists for the case
 where they must be nested and separated dynamically — a fresh prompt
-per handler installation, which `Delim`'s multi-prompt control already
+per handler installation, which `Shift`'s multi-prompt control already
 supports.
 
 ## 9. What bites
@@ -349,7 +417,7 @@ told. `Tag` and `Refs` above are the general fixes, and
 the three routes — key, cell or prompt — fits which shape of problem,
 and what each costs.
 
-**A `Handler` cannot get or tell.** If your interpretation needs other
+**A `Answers` cannot get or tell.** If your interpretation needs other
 effects, it is an interpreter (`!.interpret`), not a handler.
 
 **Covariance is per case.** A case that declares its own type
@@ -392,7 +460,7 @@ final case class Put(key: String, value: String) extends KV[Unit]
 object KV extends Effect[KV]
 ```
 
-- **Handlers.** A handler is a `Handler[KV, R, B]` that gets each
+- **Handlers.** A handler is a `Answers[KV, R, B]` that gets each
   operation together with its continuation, and it has the full
   power of section 5's handlers: resume, abort, or resume more than
   once.

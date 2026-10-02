@@ -68,10 +68,15 @@ Two mechanisms implement them:
   1024) with 12-14% fewer bytes; on the chunked join 1.03x, at parity;
   on the flushing join 1.05x under Loom over five alternating rounds,
   and 0.88x on the `adaptive` default, where the ring is the faster
-  road (merge-flush-on-ring-gap, 2026-09-29). Those rows were taken
-  under Loom; on the `adaptive` default a chunked merge is 1.5-1.9x
-  slower on both roads, an open item (backlog
-  `adaptive-chunked-merge-cost`).
+  road (merge-flush-on-ring-gap, 2026-09-29). On the `adaptive`
+  default a chunked merge was 1.5-1.9x slower than on Loom, on both
+  roads, until its feeds were forked with `Scheduler.forkLong`: now
+  185 us against Loom's 197-229 (adaptive-chunked-merge-cost,
+  [schedulers.md](schedulers.md)). The elementwise join at capacity 64
+  reads 62.9 us against Loom's 80.8 on `adaptive`: a producer woken by
+  the consumer goes home instead of running on it, and each feed writes
+  to the part it claimed, so per-side order holds wherever it runs
+  (channel-route-per-producer).
 - `Merge.Shared` — one queue both producers feed (`Channel.merge`,
   `Channel.mergeChunked`, `Channel.mergeFlushing`). The road before
   the ring, kept as a door by choice. Its consumer never catches up,

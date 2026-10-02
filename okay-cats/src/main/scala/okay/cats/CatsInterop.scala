@@ -60,16 +60,20 @@ object CatsInterop {
    * blocks. Bring it into scope to run okay fibers, parMap, merge and
    * supervision on the cats-effect runtime.
    */
-  def scheduler(using rt: IORuntime): okay.Scheduler = new:
+  def scheduler(using rt: IORuntime, parks: okay.Answers[Async]): okay.Scheduler = new:
     def fork[A](prog: () => A ! okay.Async): okay.Fiber[A] =
       val (fut, cancelIO) = IO.blocking(prog().runWith).unsafeToFutureCancelable()
       new okay.Fiber[A]:
         def onComplete(k: Either[Throwable, A] => Unit): Unit =
           fut.onComplete(t => k(t.toEither))(using scala.concurrent.ExecutionContext.parasitic)
         def cancel(): Unit = { val _ = cancelIO() }
+        def answered: Boolean = fut.isCompleted
 
-  /** run an okay Async program as an IO (it may park — IO.blocking) */
-  def toIO[A](p: => A ! Async): IO[A] = IO.blocking(p.runWith)
+  /** run an okay Async program as an IO (it may park — IO.blocking).
+   * `Answers[Async]` is the evidence that this platform can park: given
+   * on the JVM and Native (`import okay.given`), absent on JS, where
+   * [[toIOAsync]] is the door */
+  def toIO[A](p: => A ! Async)(using okay.Answers[Async]): IO[A] = IO.blocking(p.runWith)
 
   /** Run a callback-driven okay Async program as an IO without parking a
    * thread while an Await is pending (specs/cats-io-async.md); cancelling
@@ -97,6 +101,16 @@ object CatsInterop {
       done.onComplete(t => k(t.toEither))(using scala.concurrent.ExecutionContext.parasitic)
       () => { val _ = cancel() }
     }
+
+  /** okay's accumulating `Validated` as cats' (specs/interop-classes.md) */
+  def toCatsValidated[E, A](v: okay.Validated[E, A]): _root_.cats.data.Validated[E, A] = v match
+    case okay.Validated.Valid(a) => _root_.cats.data.Validated.Valid(a)
+    case okay.Validated.Invalid(e) => _root_.cats.data.Validated.Invalid(e)
+
+  /** cats' `Validated` as okay's */
+  def fromCatsValidated[E, A](v: _root_.cats.data.Validated[E, A]): okay.Validated[E, A] = v match
+    case _root_.cats.data.Validated.Valid(a) => okay.Validated.Valid(a)
+    case _root_.cats.data.Validated.Invalid(e) => okay.Validated.Invalid(e)
 
   /** an okay Free program as a cats free monad, operation for operation */
   def toCats[F[+_], A](p: A ! F): _root_.cats.free.Free[F, A] =

@@ -59,7 +59,7 @@ class TestTsOneShape extends munit.FunSuite {
     java.nio.file.Files.writeString(d.resolve("shop.ts"), shop): Unit
     d
   private lazy val w = TsWorker.start(dir, modules = Seq("shop"))
-  private given okay.Handler[PyEval] = w.handler
+  private given okay.Answers[PyEval] = w.handler
   override def afterAll(): Unit = if node then w.close()
 
   test("what the worker receives IS the JSON an okay HTTP endpoint would send") {

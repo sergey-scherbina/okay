@@ -51,7 +51,7 @@ object Nav {
    * The Scope pattern one level up, with the mechanism the stack
    * itself dictates: screens are REIFIED frames, so the boundary is
    * a stack marker and the exit is a drop — no captured
-   * continuation, hence no Delim (recorded in specs/ui.md; a prompt
+   * continuation, hence no Shift (recorded in specs/ui.md; a prompt
    * here would pay for capture the data structure already performs).
    */
   def boundary[A](k: Key[A], s: Screen)(done: A => Nav): Screen =

@@ -62,6 +62,12 @@ object Free {
     override def fmap[A, B](a: Free[R, A], f: A => B): Free[R, B] = a.map(f)
   }
 
+  /** a program's loop is `!.loop`: the recursion sits in a `Bind` the interpreter resumes, never on the
+   * caller's stack (specs/eager-carrier-depth.md) */
+  implicit def tailRecM[R <: Row]: TailRecM[({ type L[A] = Free[R, A] })#L] = new TailRecM[({ type L[A] = Free[R, A] })#L] {
+    def tailRecM[A, B](a: A)(f: A => Free[R, Either[A, B]]): Free[R, B] = Effects.loop[A, B, R](a)(f)
+  }
+
   /** an operation as a tree */
   def inject[R <: Row, A](a: R#Op[A]): Free[R, A] = Inject[R, A](a)
 

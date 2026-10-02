@@ -35,11 +35,11 @@ A prompt delimits a cancellable sub-flow:
 
 ```scala
 def push[A](body: okay.Prompt[A] => A ! Row): A ! Row =
-  val p = Delim.prompt[A]
-  Delim.push(p)(body(p))
+  val p = Shift.prompt[A]
+  Shift.push(p)(body(p))
 
 def cancel[A, R](p: okay.Prompt[R])(value: R): A ! Row =
-  Delim.abort[R, A, Dialog](p)(value)
+  Shift.abort[R, A, Dialog](p)(value)
 ```
 
 Inside the scope, **no step threads an `Option`**. `cancel` aborts to
@@ -60,7 +60,7 @@ test("Dialog itself is untouched: a plain scenario still runs beside the scoped 
 ```
 
 The first is the feature. The third is the adoption doctrine — this is
-an option, not a migration: a scenario may run in the `Delim + Dialog`
+an option, not a migration: a scenario may run in the `Shift % ? + Dialog`
 row, and nothing in `Dialog` changed. A plain scenario still runs
 beside a scoped one, which is what makes it possible to try this on one
 flow.
@@ -77,17 +77,19 @@ are first-class and typed, so the target is named (chapter 10), and
 
 One rule, and it is the whole of chapter 12 in a sentence:
 
-> `push` installs scopes; **one** `run` erases the `Delim` row at the
+> `push` installs scopes; **one** `run` erases the `Shift` row at the
 > top.
 
 Nested `run`s would be separate machines, and a prompt lives in the
-machine that pushed it. Get this wrong and the failure is `NoPrompt` at
-runtime — or, since chapter 21's `OneMachine`, a compile error instead.
+machine that pushed it. Since chapter 21's `Shift.Machine` a nested
+`run` reads its row and installs on the machine outside instead, so the
+remaining way to get it wrong is a row that says no machine runs when
+one does: the failure is then `NoPrompt` at run time.
 
 ## What it cost
 
 Chapter 25 measured it: a guard of this shape roughly **doubles** the
-cost of whatever runs inside it, because entering `Delim + Dialog` puts
+cost of whatever runs inside it, because entering `Shift % ? + Dialog` puts
 every operation of the body through the machine.
 
 For a wizard that is nothing. The body is four screens and a human

@@ -28,6 +28,12 @@ import okay.Row.{In, at}
  */
 case class Throws[E, +A](e: E) extends Final derives Effect
 
+object Throws:
+  /** the handler as a value: `p.handle(Throws.either)` answers `Either[E, A]` */
+  def either[E]: Handler[Throws % E, [A] =>> Either[E, A]] = new Handler[Throws % E, [A] =>> Either[E, A]]:
+    def run[A, F[+_]](p: A ! Throws % E + F)(using A <:< Any, Distinct[Throws % E + F], Handler.Nothing[F]): Either[E, A] ! F =
+      runEither(p)
+
 /** perform the failure */
 inline def raise[E, A](e: E): A ! Throws % E = effect(Throws(e))
 
@@ -36,7 +42,7 @@ inline def runEither[A, F[+_], E](a: A ! Throws % E + F)(using Distinct[Throws %
   // `B` pinned: with `Free[F, +A]` the first lambda alone would infer
   // it as `Right[E, A]` (free-answer-variance, 2026-09-23)
   Effects[Free].handle[Throws % E, F](a)(a => pure[F, Either[E, A]](Right(a))):
-    [X] => e => shift(_ => pure[F, Either[E, A]](Left(e.e)))
+    [X] => e => Cont.shift(_ => pure[F, Either[E, A]](Left(e.e)))
 
 /** handle Throws into the throws union (an Either already is one) */
 inline def runThrows[A, F[+_], E <: Unsafe](a: A ! Throws % E + F)(using Distinct[Throws % E + F]): (A throws E) ! F =
@@ -80,7 +86,7 @@ extension [E, A](e: Either[E, A])
 /** handle Throws by actually throwing: the JVM is the handler */
 inline def runUnsafe[A, F[+_], E <: Unsafe](a: A ! Throws % E + F)(using Distinct[Throws % E + F]): A ! F =
   Effects[Free].handle[Throws % E, F](a)(a => pure(a)):
-    [X] => e => shift(_ => throw e.e)
+    [X] => e => Cont.shift(_ => throw e.e)
 
 /**
  * RECOVERY, in the row rather than around it: run the alternative
@@ -237,6 +243,33 @@ object throws {
       case e: (E @unchecked) => e
       case x: (A @unchecked) => f(x)
     inline def map[B](f: A => B): B throws E = flatMap(a => f(a))
+
+  // in the companion, not at the package level: a top-level `handle` here took the name from every
+  // program's `p.handle(h)` (level 1, handle-handler-values)
+  extension [A, E <: Unsafe](a: A throws E)
+    /** normalize to Either */
+    inline def ?? : Either[E | Unsafe, A] = wrap
+    def wrap: Either[E | Unsafe, A] = a match {
+      // by class, and complete by the union's construction — see flatMap
+      case e: (Either[E, A] @unchecked) => e
+      case e: (Try[A] @unchecked) => e.toEither
+      case e: (E @unchecked) => Left(e)
+      case x: (A @unchecked) => Right(x)
+    }
+
+    inline def handle(f: E | Unsafe => A): A = wrap match {
+      case Left(e) => f(e)
+      case Right(x) => x
+    }
+
+    @scala.throws[Unsafe]("unwrap unsafe")
+    def unwrap: A = a match {
+      // by class, and complete by the union's construction — see flatMap
+      case e: (Either[E, A] @unchecked) => e.fold(throw _, identity)
+      case e: (Try[A] @unchecked) => e.get
+      case e: (E @unchecked) => throw e
+      case x: (A @unchecked) => x
+    }
 }
 
 /** evaluate, catching a thrown E as is and any other Throwable as a Failure */
@@ -244,31 +277,6 @@ inline def unsafe[A, E <: Unsafe : Typeable](a: => A throws E): A throws E =
   try a catch {
     case e: E => e
     case e => Failure(e)
-  }
-
-extension [A, E <: Unsafe](a: A throws E)
-  /** normalize to Either */
-  inline def ?? : Either[E | Unsafe, A] = wrap
-  def wrap: Either[E | Unsafe, A] = a match {
-    // by class, and complete by the union's construction — see flatMap
-    case e: (Either[E, A] @unchecked) => e
-    case e: (Try[A] @unchecked) => e.toEither
-    case e: (E @unchecked) => Left(e)
-    case x: (A @unchecked) => Right(x)
-  }
-
-  inline def handle(f: E | Unsafe => A): A = wrap match {
-    case Left(e) => f(e)
-    case Right(x) => x
-  }
-
-  @scala.throws[Unsafe]("unwrap unsafe")
-  def unwrap: A = a match {
-    // by class, and complete by the union's construction — see flatMap
-    case e: (Either[E, A] @unchecked) => e.fold(throw _, identity)
-    case e: (Try[A] @unchecked) => e.get
-    case e: (E @unchecked) => throw e
-    case x: (A @unchecked) => x
   }
 
 /** by class only: the payload `e: E` is erased in the type, so a row

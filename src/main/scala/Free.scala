@@ -39,31 +39,63 @@ import scala.annotation.tailrec
  * (HandlerBenchmark), so the type-aligned queue of that paper is not
  * needed.
  */
-enum Freer[G[_, +_, +_], S, +R, +A] {
+enum Freer[G[_, _, +_], S, R, +A] {
   /**
-   * The variances, and why `R` has one and `S` does not: a `Cont` means
-   * `(A => S) => R`, covariant in `A` and `R`, contravariant in `S`.
-   * `+A` the effect tree always had. `+R` is what lets a tail-shaped
-   * shift body `k => k(v)`, typed `(A => S) => R` with `S <: R` at its
-   * site, become the `Return(v): Cont[A, S, S]` the macro emits
-   * (`Cont.tailShift`), and it costs the runner nothing: matching
-   * `Return` on a `Freer[G, A, S, R]` now says `S <: R`, and `k(a): S`
-   * is an `R`. `S` stays invariant: contravariance would let a
-   * continuation of the wrong answer type into a bind by upcast, and
-   * specs/freer-base.md's "Variance is out" was about exactly that
-   * hole; here it is closed on one side and open on the other by the
-   * function type's own arithmetic.
+   * THE INDEXES ARE INVARIANT, and that is the decision that lets the
+   * tree serve TWO readings (freer-consumed-index, 2026-09-30, the
+   * operator's: "делаем S и R инвариантными"). Read as a continuation,
+   * `(A => S) => R`, `R` is produced and would be covariant; read as a
+   * state transition, `R => (S, A)`, `R` is consumed and would be
+   * contravariant — the two readings want OPPOSITE variances on both
+   * indexes, and invariance is what both can live with. `+A` the
+   * effect tree always had and keeps. Until this decision the base was
+   * `+R`, for one reader: `Cont.tailShift`/`tailPure`'s `liftCo` of a
+   * `Return(v): Cont[A, S, S]` into the `Cont[A, S, R]` a tail-shaped
+   * shift body is owed. That is now one cast there, justified by the
+   * `S <:< R` the macro summons at the site. What invariance buys: a
+   * handler that CONSUMES its index — a type-changing state threaded
+   * by `State.handle`'s loop, a held resource typed by the index — is
+   * typed by the GADT (`Return` gives `S = R`, an operation gives its
+   * state's type to the continuation), where `+R` gave only `S <: R`
+   * and refused every arm that reads the state (TestFreerPara pins
+   * both directions; specs/freer-base.md "McBride's reading").
    */
   /** a finished computation: the inner answer IS the outer one */
-  case Return[G[_, +_, +_], R, A](a: A) extends Freer[G, R, R, A]
+  case Return[G[_, _, +_], R, A](a: A) extends Freer[G, R, R, A]
 
   /** a single operation of the signature: for an effect, `F[A]`; for
    * `Cont`, the shift body `(A => S) => R` itself */
-  case Inject[G[_, +_, +_], S, R, A](a: G[S, R, A]) extends Freer[G, S, R, A]
+  case Inject[G[_, _, +_], S, R, A](a: G[S, R, A]) extends Freer[G, S, R, A]
+
+  /**
+   * A DIAGONAL OPERATION: one that moves no index, and says so ON THE
+   * NODE (freer-diag-leaf, 2026-09-30). `Inject` holds an operation at
+   * the indexes the signature gives it; for a unary effect lifted into
+   * an indexed row (`[S, R, X] =>> PSt[S, R, X] | State[Int, X]`) the
+   * signature gives it ANY indexes, and a handler's loop over a mixed
+   * row cannot use that: matching `Bind(Inject(op), k)` makes the
+   * middle index an existential `T`, and the program the handler
+   * continues with sits at `T` where the loop owes one at `R`. A
+   * `Diag` matched under a `Bind` gives `T = R` by the GADT, so the
+   * continuation IS at `R`: a unary effect enters an indexed row bare,
+   * through `Freer.diag`, with no wrapper allocated per operation and
+   * no extractor cast — the two roads TestFreerPara's row probe had
+   * before this case existed.
+   *
+   * NEVER built by the erased effect tree or by `Cont`: `Free`'s doors
+   * at `Unit` build `Inject` (the 112 `Bind(Inject(e), k)` sites across
+   * the family do not move, and at `Unit` the two nodes mean the same),
+   * and `Cont`'s companion builds `Shift0` leaves as `Inject`. Their loops
+   * say so with `@unchecked` rather than a dead arm in the hottest
+   * loop of the library. The discipline is a door's, as `Free.Bind`'s
+   * constant claim is: a unary operation enters an INDEXED row through
+   * `diag`, and a handler of one matches `Diag`.
+   */
+  case Diag[G[_, _, +_], R, A](a: G[R, R, A]) extends Freer[G, R, R, A]
 
   /** sequencing: run a, then feed its value to the plain-function
    * continuation f; the answer types meet at `T` */
-  case Bind[G[_, +_, +_], S, T, R, A, B](a: Freer[G, T, R, A],
+  case Bind[G[_, _, +_], S, T, R, A, B](a: Freer[G, T, R, A],
                                         f: A => Freer[G, S, T, B]) extends Freer[G, S, R, B]
 
   /** a deferred subprogram: forced by the interpreter's loop and
@@ -73,7 +105,7 @@ enum Freer[G[_, +_, +_], S, +R, +A] {
    * `step`), and hiding a case whose smart constructor is public would
    * stop nobody from building one — only from matching it, which is
    * the half an interpreter needs. */
-  case Delay[G[_, +_, +_], S, R, A](thunk: () => Freer[G, S, R, A]) extends Freer[G, S, R, A]
+  case Delay[G[_, _, +_], S, R, A](thunk: () => Freer[G, S, R, A]) extends Freer[G, S, R, A]
 
   /** sequencing is a data node: nothing runs until an interpreter walks the tree */
   inline def flatMap[B, S2](f: A => Freer[G, S2, S, B]): Freer[G, S2, R, B] = Bind(this, f)
@@ -86,7 +118,8 @@ enum Freer[G[_, +_, +_], S, +R, +A] {
   /**
    * THE rotation, and the only one on this side of the library:
    * normalize to a head form — `Return(a)`, `Inject(e)` or
-   * `Bind(Inject(e), k)` — in constant stack. Written ONCE, for every
+   * `Bind(Inject(e), k)`, and on an indexed row `Diag(e)` or
+   * `Bind(Diag(e), k)` likewise — in constant stack. Written ONCE, for every
    * signature and every index: nothing here casts.
    *
    * Sound by the monad associativity law, and linear-time amortized
@@ -124,6 +157,22 @@ enum Freer[G[_, +_, +_], S, +R, +A] {
     case Delay(t) => t().resume
     case Bind(Delay(t), g) => Bind(t(), g).resume
     case a => a
+
+  /**
+   * `resume` that STOPS at a run — a `Delay` whose thunk is a `Frames.Pending` (a machine run, a handler) — and
+   * answers it, alone or under its `Bind`, instead of forcing it (handle-frames): a loop that can hand itself
+   * to the machine walks with this, so a run nested in it never runs inside it.
+   */
+  // ONE test for `Bind`, its head matched once: the four `Bind` cases of `resume` written flat measured 345
+  // bytes, past HotSpot's FreqInlineSize (325) that `resume`'s 322 sit under — the loops lost its inlining, 1.32x
+  @tailrec final def resumeRun: Freer[G, S, R, A] = this match
+    case Bind(h, g) => h match
+      case Bind(a, f) => Bind(a, f(_).flatMap(g)).resumeRun
+      case Return(a) => g(a).resumeRun
+      case Delay(t) => if t.isInstanceOf[Frames.Pending[?, ?, ?, ?, ?]] then this else Bind(t(), g).resumeRun
+      case _ => this
+    case Delay(t) => if t.isInstanceOf[Frames.Pending[?, ?, ?, ?, ?]] then this else t().resumeRun
+    case a => a
 }
 
 object Freer {
@@ -150,7 +199,7 @@ object Freer {
    * is applied, so nothing else sees the difference.
    */
   sealed trait Lifted[F[+_]]:
-    type L[S, +R, +X] = F[X]
+    type L[S, R, +X] = F[X]
 
   /**
    * A CONTINUATION THAT ONLY MAPS, left by `map` (one-bind-hot-steps,
@@ -163,26 +212,31 @@ object Freer {
    *
    * Only a builder that CALLS NOTHING BUT ITS OWN NEXT STEP may do that.
    * `Freer.flatMap` itself must not: its continuation is anybody's, and
-   * calling it directly chained Delim's composed continuations 20 000
+   * calling it directly chained Shift's composed continuations 20 000
    * deep (map-fusion, refuted).
    */
-  final class Mapped[G[_, +_, +_], S, X, A](val f: X => A) extends (X => Freer[G, S, S, A]):
+  final class Mapped[G[_, _, +_], S, X, A](val f: X => A) extends (X => Freer[G, S, S, A]):
     def apply(x: X): Freer[G, S, S, A] = Return(f(x))
 
   /** a bind whose LEFT side is deferred: the thunk is not forced at
    * construction, only when an interpreter's own loop (`fold`,
-   * `runFree`, `resume`, `Cont.step`) reaches this node — which is
+   * `runFree`, `resume`, `Delimited.runHead`) reaches this node — which is
    * what lets two mutually-recursive functions returning `A ! F` call
    * each other in tail position without nesting a JVM stack frame per
    * call (`!.tailcall` is the sugar; `Cont.defer` is the same door on
    * the Cont side). */
-  def defer[G[_, +_, +_], S, T, R, A, B](thunk: () => Freer[G, T, R, A])(f: A => Freer[G, S, T, B]): Freer[G, S, R, B] =
+  def defer[G[_, _, +_], S, T, R, A, B](thunk: () => Freer[G, T, R, A])(f: A => Freer[G, S, T, B]): Freer[G, S, R, B] =
     // `Bind(Delay(t), f)`, not a node of its own: a `Defer(t, f)` case
     // used to hold the pair, and the runner handled it exactly as it
     // handles this shape — one node more here at construction, two
     // cases fewer in every loop that walks the tree (defer-eff-removal,
     // with the codec trampoline lane as the price it was measured on)
     Bind(Delay(thunk), f)
+
+  /** a unary operation into an INDEXED row, on the diagonal by its
+   * node — see `Diag`. The effect tree at `Unit` does not use this door;
+   * `Free.inject` builds `Inject` there, and the two coincide. */
+  def diag[G[_, _, +_], R, A](a: G[R, R, A]): Freer[G, R, R, A] = Diag(a)
 
   /** a deferred call with NOTHING to do afterwards — `!.tailcall`'s
    * node. Not `defer(thunk)(pure)`, and the difference is the whole
@@ -192,7 +246,34 @@ object Freer {
    * a closure and a `Bind` per bind, then a chain of `Bind(Return(a),
    * g)` of the same length at the end. `Delay` has no continuation to
    * push. */
-  def delay[G[_, +_, +_], S, R, A](thunk: () => Freer[G, S, R, A]): Freer[G, S, R, A] = Delay(thunk)
+  def delay[G[_, _, +_], S, R, A](thunk: () => Freer[G, S, R, A]): Freer[G, S, R, A] = Delay(thunk)
+
+  // level 1 (specs/shift-effect.md): in the companion, so `p.handle` and `p.run` need no import
+  extension [A, G[+_]](p: A ! G)
+    /** take the handler's effect off the row: `F`, the rest of the row, is what remains */
+    def handle[E[+_], I, O[_], N[_[+_]], F[+_]](h: Handler.Full[E, I, O, N])
+                                               (using row: (A ! G) =:= (A ! E + F), ok: A <:< I, d: Distinct[E + F], n: N[F]): O[A] ! F =
+      h.run[A, F](row(p))
+
+    /** two handlers, innermost first: `p.handle(State(5), Throws.either)` is `p.handle(State(5)).handle(Throws.either)` */
+    def handle[Ef1[+_], I1, O1[_], N1[_[+_]], F1[+_], Ef2[+_], I2, O2[_], N2[_[+_]], F2[+_]](
+        h1: Handler.Full[Ef1, I1, O1, N1], h2: Handler.Full[Ef2, I2, O2, N2])
+        (using r1: (A ! G) =:= (A ! Ef1 + F1), ok1: A <:< I1, d1: Distinct[Ef1 + F1], n1: N1[F1],
+               r2: (O1[A] ! F1) =:= (O1[A] ! Ef2 + F2), ok2: O1[A] <:< I2, d2: Distinct[Ef2 + F2], n2: N2[F2]): O2[O1[A]] ! F2 =
+      h2.run[O1[A], F2](r2(h1.run[A, F1](r1(p))))
+
+    /** three handlers, innermost first */
+    def handle[Ef1[+_], I1, O1[_], N1[_[+_]], F1[+_], Ef2[+_], I2, O2[_], N2[_[+_]], F2[+_], Ef3[+_], I3, O3[_], N3[_[+_]], F3[+_]](
+        h1: Handler.Full[Ef1, I1, O1, N1], h2: Handler.Full[Ef2, I2, O2, N2], h3: Handler.Full[Ef3, I3, O3, N3])
+        (using r1: (A ! G) =:= (A ! Ef1 + F1), ok1: A <:< I1, d1: Distinct[Ef1 + F1], n1: N1[F1],
+               r2: (O1[A] ! F1) =:= (O1[A] ! Ef2 + F2), ok2: O1[A] <:< I2, d2: Distinct[Ef2 + F2], n2: N2[F2],
+               r3: (O2[O1[A]] ! F2) =:= (O2[O1[A]] ! Ef3 + F3), ok3: O2[O1[A]] <:< I3, d3: Distinct[Ef3 + F3], n3: N3[F3])
+        : O3[O2[O1[A]]] ! F3 =
+      h3.run[O2[O1[A]], F3](r3(h2.run[O1[A], F2](r2(h1.run[A, F1](r1(p))))))
+
+  extension [A](p: A ! Pure)
+    /** a program with no effect left, run to its value */
+    inline def run: A = p.runWith
 
   /**
    * A program value as its answer, INSIDE a `direct` block: the
@@ -225,6 +306,40 @@ object Freer {
     override inline def pure[A](a: A): Free[F, A] = Return(a)
     extension [A](a: Free[F, A])
       override inline def flatMap[B](f: A => Free[F, B]): Free[F, B] = a.flatMap(f)
+
+  /** a program's loop is `!.loop`: the recursion sits in a `Bind` the
+   * interpreter resumes, never on the caller's stack
+   * (specs/eager-carrier-depth.md) */
+  given [F[+_]]: TailRecM[Free[F, *]] with
+    def tailRecM[A, B](a: A)(f: A => Free[F, Either[A, B]]): Free[F, B] = Effects.loop(a)(f)
+
+  /**
+   * The tree in `ParaMonad`'s order — value first, then the indexes
+   * (freer-paramonad, 2026-09-30). `Freer` keeps `A` LAST for inference
+   * (the header says why); `ParaMonad[M[_, _, _]]` reads `M[A, S, R]`,
+   * so the instance is on this lambda, and a program written against
+   * an abstract `ParaMonad[M]` runs at `Freer.Para[G]` for any `G`.
+   */
+  type Para[G[_, _, +_]] = [A, S, R] =>> Freer[G, S, R, A]
+
+  /**
+   * Freer IS Atkey's parameterised monad, for every signature: `Return`
+   * on the diagonal, `Bind` composing the indexes end to end — the
+   * instance only says so. `Control[Cont]` (Cont.scala) is the same
+   * structure at the `Shift` signature with absorption on top, and
+   * `Cont` is opaque, so the two never meet in a search.
+   *
+   * PREFIX `Bind`, not `m.flatMap(f)`: extension syntax inside an
+   * override resolves to the override being defined (the self-recursion
+   * `Cont.bind`'s comment records). `map` is overridden so the node is
+   * the `Mapped` one `!.foldM` can read back, not the default's
+   * `flatMap` into a `pure`.
+   */
+  given [G[_, _, +_]]: ParaMonad[Para[G]] with
+    override def pure[A, R](a: A): Freer[G, R, R, A] = Return(a)
+    extension [A, S, R](m: Freer[G, S, R, A])
+      override def flatMap[B, S2](f: A => Freer[G, S2, S, B]): Freer[G, S2, R, B] = Bind(m, f)
+      override def map[B](f: A => B): Freer[G, S, R, B] = Bind(m, Mapped[G, S, A, B](f))
 }
 
 /**
@@ -278,15 +393,15 @@ object Free {
    */
   object Return:
     def apply[F[+_], A](a: A): Free[F, A] = Freer.Return(a)
-    def unapply[G[_, +_, +_], R, A](r: Freer.Return[G, R, A]): Freer.Return[G, R, A] = r
+    def unapply[G[_, _, +_], R, A](r: Freer.Return[G, R, A]): Freer.Return[G, R, A] = r
 
   object Inject:
     def apply[F[+_], A](a: F[A]): Free[F, A] = Freer.Inject[Lift[F], Unit, Unit, A](a)
-    def unapply[G[_, +_, +_], S, R, A](i: Freer.Inject[G, S, R, A]): Freer.Inject[G, S, R, A] = i
+    def unapply[G[_, _, +_], S, R, A](i: Freer.Inject[G, S, R, A]): Freer.Inject[G, S, R, A] = i
 
   object Delay:
     def apply[F[+_], A](thunk: () => Free[F, A]): Free[F, A] = Freer.Delay(thunk)
-    def unapply[G[_, +_, +_], S, R, A](d: Freer.Delay[G, S, R, A]): Freer.Delay[G, S, R, A] = d
+    def unapply[G[_, _, +_], S, R, A](d: Freer.Delay[G, S, R, A]): Freer.Delay[G, S, R, A] = d
 
   /**
    * THE ONE CAST of the effect side, and the argument for it.
@@ -312,6 +427,6 @@ object Free {
    */
   object Bind:
     def apply[F[+_], A, B](a: Free[F, A], f: A => Free[F, B]): Free[F, B] = Freer.Bind(a, f)
-    def unapply[G[_, +_, +_], T, R, X, A](b: Freer.Bind[G, Unit, T, R, X, A]): Freer.Bind[G, Unit, Unit, R, X, A] =
+    def unapply[G[_, _, +_], T, R, X, A](b: Freer.Bind[G, Unit, T, R, X, A]): Freer.Bind[G, Unit, Unit, R, X, A] =
       b.asInstanceOf[Freer.Bind[G, Unit, Unit, R, X, A]]
 }

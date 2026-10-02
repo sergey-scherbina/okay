@@ -140,9 +140,11 @@ Stage 1 — the vocabulary and the format level:
       (TestFormat; the XML one without a declaration — see the gap below)
 - [x] a bare scalar (`hello`) is `Declined` with three reasons; a
       damaged JSON (`{"a":`) is declined by json with the tree's own
-      error message, not a generic one — and so is `hello` itself
-      ("unexpected 'hello' at Span(0,0,0,5)"); a bare `42`, a valid
-      JSON value, is "not a JSON object or array"
+      error message, not a generic one; `hello` and `42` are declined
+      by their first character before any parse ("begins with 'h', not
+      { or [" — format-cheap-decline, 2026-09-29; before it, `hello` read
+      "unexpected 'hello' at Span(0,0,0,5)" and `42` "not a JSON object
+      or array")
 - [x] bytes that are not UTF-8 decline `text` with the offset, and the
       verdict shows `cbor` was tried too
 - [x] a document two formats both take is `Unclear` and names both —
@@ -232,6 +234,124 @@ Stage 3 — lessons:
   hand-written `match`: the reader sees what was considered.
   specs/dlm.md's `Support` made the same call for utterances.
 
+- **refine-algebra (2026-09-30, operator ask).** `>>>` and `or` are
+  second names for `andThen` and `<|>`. `orElse` was asked for as a third
+  name of `<|>` and was given its Scala meaning instead, on the operator's
+  choice: in Option, Either, PartialFunction and Try it is first-wins, and
+  a `<|>` spelled `orElse` would teach exactly the silent first-wins this
+  module removes. So `orElse` is a new combinator — the fallback runs only
+  when the first declines — and `or` is `<|>`'s word. Classes that hold,
+  with their laws tested: Category (`id` with no path name), two monoids
+  (`or`, `orElse`; unit `empty`), invariant functor (`map`), monoidal
+  products `***` / `+++`, and `and` over a `Merge`. Refuted, each because
+  the way back refuses: Functor/Applicative/Monad (B is in and out),
+  Profunctor (A is in and out), Arrow (`arr` needs an inverse). Effects:
+  `orRaise` (Throws) beside `search` (Choose); an effectful READ refused
+  — it could be neither written back nor replayed. Streams: `verdicts`,
+  `taken` (which answers `Missed`, so dropping is never silent).
+  Ported to okay2-refine the same day (okay2-refine-algebra): the same
+  ten law tests hold on JVM, JS and Native; okay2-refine now depends on
+  okay2-stream for the Stages.
+
+- **refine-route (2026-09-30, operator ask: "each kind of document to its
+  own stream, convenient and idiomatic").** A `Router` is a pattern plus a
+  routing table read like a `match`: `route[X]` by type (a `TypeTest` —
+  a union's `ClassTag` is its least upper bound, and the first cut took
+  `Fx` into a `Swap | Cds` route: TestRouter's first run), `route {
+  case … }` by pattern, `byName` by the pattern that took the document,
+  `tap`, `otherwise`. First rule wins in the TABLE (the author's order);
+  the RECOGNITION stays the pattern's verdict, so `Unclear` is rejected,
+  never routed. Nothing is dropped silently (counted without an
+  `otherwise`); every channel is closed once at the end, failed on an
+  input failure. Refuted: a heterogeneous `Stage` with one output per
+  route (Stage has one output type; the typed routes need channels), and
+  a `route[X]` on `ClassTag`. Ported to okay2-refine the same day
+  (okay2-refine-route): Scala 2 has no unions, so there `route[X]` on a
+  `ClassTag` IS exact for a class; several kinds into one stream are a
+  pattern with alternatives; TestRouter (8) on the JVM.
+
+- **refine-bulk (2026-09-30, operator ask: refine and route documents in
+  Spark, "prettier, more convenient, more efficient").** `Router` could
+  not go to Spark (channels and fibers are one process), so the TABLE
+  was separated from its sinks: `Routes` is an `object` whose lanes are
+  typed handles; `split` runs it over any `Bulk` — one recognition per
+  document, cached as (lane, value), lanes as Int filters, counts as one
+  `Aggregator` — and `run` binds lanes to channels with `~>`. No Spark
+  code: TestSparkRoutes asserts `SparkBulk` and one JVM agree on 400
+  documents. `Refine` and `Merge` became `Serializable`; a lane's test is a
+  `TypeTest`, which is. `route[X]` takes its name as given evidence
+  (`TypeName.Named`) — an `inline` route reaching a protected method is an
+  unstable accessor (E192). Refuted: per-lane re-recognition (a pattern
+  per lane per document), and a Spark-specific writer — `Bulk` already
+  is the seam.
+  Ported to okay2-refine the same day (okay2-refine-bulk): `route[X]` on a
+  `ClassTag`; `Binding` a plain class (a case class inside the table is an
+  unchecked outer reference under -Xlint); `Documents.files[D](dir)` since
+  okay2's `Bulk` has no `read(path, Format)`; TestSparkRoutes in okay2-spark
+  agrees with one JVM on 400 documents.
+
+- **refine-routable (2026-09-30, operator ask: "a typeclass for everything
+  that can be routed through refining, so the routing table is one and
+  the same").** `Routable[C]`: what routing needs from a carrier — `fan`
+  (every input tagged once; a lane per index; the rejects; the counts),
+  `select` (a lane's values as the lane types them), `done` (the counts'
+  shape). Instances: `Vector`, any `Bulk` (Chunks by name — the generic
+  `D[A]` cannot see through the alias; SparkBulk's opaque `Rows` found
+  as written), `Source` (a channel per lane; `counts` IS the driving
+  program; `Routable.stream(capacity)` bounds the lanes). `Routes.split`
+  takes any of them and replaces the Bulk-only split; the answer's lane
+  and count shapes come from `Routable.Aux`. The typeclass is on the
+  carrier VALUE, not a type constructor: higher-kinded unification
+  through an alias fails (found in refine-bulk, `Chunks` needing
+  `split[Chunks]`). Proved: one table over a Vector, Chunks and a Source
+  answers the same lanes, rejects and counts; a bounded stream (capacity
+  4, 300 documents) with the readers beside the driver loses nothing;
+  SparkBulk still agrees with one JVM.
+  Ported to okay2-refine the same day (okay2-refine-routable): `Aux` with
+  higher-kinded refinements works in 2.13; Scala 2 unifies `Chunks[A]`
+  through its alias with the generic `D[A]`, so a `Chunks` instance there
+  is AMBIGUOUS and was dropped — the one difference.
+
+- **refine-split-lifecycle (2026-09-30, operator ask).** What `out(lane)`
+  costs and holds, made explicit in both cores: a STREAM lane is read once
+  — two runs were two readers of one channel, splitting its elements
+  silently — and a second run is now refused by name; `Bulk.uncache`
+  (default no-op, `SparkBulk` unpersists) and `Split.release()` let the
+  persisted tagging go; a Vector's lanes are grouped once (a lane was a
+  full pass per call). Refuted: memoizing a lane's `Source` — a `Source`
+  is a program, and running the same value twice is still two readers.
+
+- **refine-path (2026-10-01, operator ask: "steps.foldLeft(id)(_ >>> _)
+  as a combinator").** `Refine.path(steps*)` — the category's fold, for
+  steps of one type; `path()` is `id`, and no name is added to the
+  verdict. Named `path`, the word the module already uses for `>>>`;
+  `joinAll` was the suggestion, declined because `join` is taken twice in
+  okay (`Bulk.join`, monadic join). `Refine.json.at(names*)` is its
+  commonest case. In okay and okay2.
+
+- **refine-laws (2026-10-01, operator ask).** `RefineLaws.check` /
+  `checkNamed`: read→write→read to the same VALUE (not bytes — a
+  conversion path writes JSON whatever it read), write→read for sample
+  values, nothing throws, determinism; `Expect.Corpus` adds every
+  not-taken input (declined with refusals, unclear with readings) — the
+  corpus method's "declined must be 0". In main code, framework-free (the
+  every-dependency-behind-an-abstraction rule): it answers a `Report`,
+  the caller's framework asserts. TestRefineLaws holds the checker to
+  finding each way of breaking a pattern — a lossy write, a refused
+  write, a throw in read and in write, a drifting read — and passing
+  ISDA's two FpML examples. In okay and okay2.
+
+- **refine-match (2026-10-01, operator ask: "unify pattern matching and
+  refining — without a macro for now").** `Refine.unapply`: every pattern
+  an extractor of a plain `match`, nested patterns a path; `Unclear` and
+  `Declined` match no case. In okay and okay2. Found: a `Dispatch` lane of
+  a tuple type is an unchecked `TypeTest` (E092) — a lane's type must be
+  checkable at run time; the warning makes the gate refuse it. The macro
+  that turns a match's CASES into named refine steps (verdicts per case,
+  write through the extractor, `Unclear` across overlapping cases) is
+  backlog refine-cases-macro; lanes AS refine, folding Routes, Dispatch
+  and Router into one "refine to a lane", is backlog refine-lanes-as-refine.
+
 ## 5. Results
 
 Stage 1 (2026-09-29, lane okay-refine), found by the first run of
@@ -257,6 +377,16 @@ TestFormat — three things the dialects said that a sniff would not have:
   streaming tokenizer in step with the scanner (the random-input oracle
   caught the one divergence, `<?>`: the closing `?` must not be the
   opening one). TestFormat's pinned test flipped to `Took(text/xml)`.
+- **A necessary condition before a total parser (format-cheap-decline,
+  2026-09-29).** Every alternative runs on every document, and a total
+  parser reads another dialect's document to its end before its tree
+  says "damage": measured in okay-fin, 60% of detection went to dialects
+  that then declined. Each dialect now asks its first character first
+  (JSON `{`/`[`, XML `<`, block YAML not `{`, `[`, `<?`, `<!`). The
+  conditions are necessary, so no verdict moves except one on purpose:
+  text before an XML root is declined, as XML itself says. The
+  parser's-own-words rule below still holds for a document that passes
+  the gate and is damaged inside.
 - **The parser's own words are better than ours.** `hello` is declined
   by json as "unexpected 'hello' at Span(0,0,0,5)" — the tree's error
   leaf — where the first test expected a generic "not a JSON object or
@@ -282,6 +412,18 @@ run of the real documents — the four things found were all on the way:
   so `Xml.elements(tree, "swapStream")` would not match — `Xml.value`
   takes the name from the token's spelling instead, and the patterns
   are written over the value, never the tree.
+
+okay2 (2026-09-30, lane okay2-refine): the module ported to the Scala 2
+core as `okay2/okay2-refine` — `Refine`/`Verdict`/`Path`/`Refusal`,
+`Format` over JSON and XML (the two dialects okay2-codec has; YAML and
+CBOR join `detect` as one more alternative each when it reads them),
+`Refine.schema`, `Refine.json`, `search`. One shape difference: `run` and
+`write` are the trait's own methods per case (`runAt`, `writeBack`),
+because Scala 2 cannot connect `AndThen`'s existential `X` across a
+match. The three suites ported hold; found on the way that a derived
+Schema over XML declines a numeric element ("expected SDouble, got
+JStr") — XML text is text, and a document-level pattern reads numbers
+with `json.num`, which okay-fin's patterns already do.
 
 ## 6. Open questions
 

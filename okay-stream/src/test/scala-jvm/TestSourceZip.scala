@@ -40,6 +40,34 @@ class TestSourceZip extends munit.FunSuite with okay.testkit.Munit.Diagnosed {
     assertEquals(out.map(_._1), Vector.range(0L, n))
   }
 
+  test("a collection mid-run does not end the zip: the scope is reachable while the program runs") {
+    // source-zip-lost-pairs: the zip's cancel scope was entered and held
+    // by nothing — on a plain `runWith` no drive or fiber handler keeps
+    // it — so a collection in the middle of a run found it unreachable,
+    // and its collector door (the Cleaner, the backstop for an ABANDONED
+    // program) closed both sides: 1600 pairs of 2000, no error, in the
+    // ci-runner's whole build, and 14-26 rounds in 400 alone. Here a
+    // thread beside the rounds collects without pause, so a scope that
+    // is collectable is collected
+    val stop = java.util.concurrent.atomic.AtomicBoolean(false)
+    val gc = Thread.ofPlatform().daemon().start(() => while !stop.get do { System.gc(); Thread.sleep(1) })
+    try
+      // enough rounds for the consumer's loop to be compiled: the
+      // interpreter keeps a dead local that holds the scope, the
+      // compiled loop does not (alone the rounds went bad from ~800)
+      val n = 200L
+      for r <- 1 to 3000 do
+        val before = Source.mergeReleases.get
+        val out = pairs(Source.zip(Source.range(0, n), Source.of(LazyList.range(0L, n)), capacity = 7))
+        val released = Source.mergeReleases.get - before
+        if out.size != n.toInt || released != 0 then note(s"round $r: ${out.size} pairs, $released release(s)")
+        assertEquals(out.size, n.toInt, s"round $r: the zip ended early — its scope was released mid-run")
+        assertEquals(released, 0L, s"round $r: a zip that ran to its end released its sides")
+    finally
+      stop.set(true)
+      gc.join()
+  }
+
   test("zipWith folds the pair as it is told") {
     val s = Source.zipWith(Source.of(List(1, 2, 3)), Source.of(List(10, 20, 30)))(_ + _)
     assertEquals(s.runCollect.runWith, Vector(11, 22, 33))

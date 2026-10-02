@@ -117,7 +117,7 @@ is the catch.
 
 - **`All` before pairs** — chosen because fifteen row combinations
   hand-written is the boilerplate the operator asked to avoid ("the
-  way Handler.flat does it"), and the measurement is the honest
+  way Answers.flat does it"), and the measurement is the honest
   answer to whether the boilerplate buys anything. Rejected for now:
   the compositional stager (see Overview: abstract members do not
   inline, and the layout is one decision, not four).

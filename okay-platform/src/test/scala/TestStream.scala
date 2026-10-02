@@ -108,7 +108,7 @@ class TestStream extends munit.FunSuite {
       if n == 0 then pure(())
       else effect[F, Int](State.Get()).flatMap: s =>
         effect[F, Unit](Writer(s"n$n+$s")).flatMap: _ =>
-          effect[F, Int](State.Set(s + n)).flatMap(_ => emits(n - 1))
+          effect[F, Int](State.Update[Int, Int](_ => (s + n, s + n))).flatMap(_ => emits(n - 1))
     val residue: (Int, Unit) ! Writer % String + Async =
       State.handle[Int](0)(emits(3))
     assertEquals(residue.toLazyList.toList, List("n3+0", "n2+3", "n1+5"))

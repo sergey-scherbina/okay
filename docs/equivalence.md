@@ -34,7 +34,7 @@ val q = State.get[Int].flatMap(s => State.set(if s == 2 then 0 else s))
 Bisim.check(p, q) match
   case Verdict.Differ(path, l, r) =>
     assertEquals(path, List("Get() -> 2"))
-    assertEquals((l, r), ("performed Set(2)", "performed Set(0)"))
+    assertEquals((l, r), ("performed Update(Put(2))", "performed Update(Put(0))"))
 ```
 
 The two verdicts carry different weight:
@@ -145,7 +145,7 @@ same(Bisim.check(State.handle[Int](7)(twice), State.handle[Int](7)(once)), "unde
 ```
 
 Operations are compared with `==`, so an operation that carries a
-function (a `Delim` shift) cannot be compared yet.
+function (a `Shift` shift) cannot be compared yet.
 
 ## References
 

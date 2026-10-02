@@ -156,7 +156,7 @@ deleted.
       - `Effects.reflect` is TRAMPOLINED by its target's `flatMap`:
         20 000 operations into `Eager` passed on master.
       - `sliding` is lazy.
-      - `Distinct`, `Handler` and `Provide` are quoted macros (Stage 7).
+      - `Distinct`, `Answers` and `Provide` are quoted macros (Stage 7).
 - [x] Stage 1b — okay2 core (stack-safety-okay2-core, 2026-09-25):
       the same three as okay, in Scala 2, each RED first on a 128 KB
       stack (`src/test/scala-jvm/okay2/TestStackSafetyCore`):
@@ -441,7 +441,7 @@ deleted.
       retries; and `Classify.example` unfolded a recursive intent type for
       ever — a product or sum met again is an empty object (`seen`). The
       rest carry their bounds: the actor tree, the row-type derivations
-      (`Handler`, `Provide`, `Distinct`, `Replayable`), the Mealy
+      (`Answers`, `Provide`, `Distinct`, `Replayable`), the Mealy
       combinators, a Flow, a route trie keyed by segment count (a request
       path walks a route's own length), a source tree on disk (PATH_MAX),
       a Cardano datum (maxTxSize, one byte per level), the developer's

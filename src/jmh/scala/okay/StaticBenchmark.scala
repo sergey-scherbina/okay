@@ -41,7 +41,7 @@ class StaticBenchmark {
 
   import Fetch.*
 
-  given Handler[Fetch] with
+  given Answers[Fetch] with
     def handle[A](e: Fetch[A]): A = e match
       case Get(k) => k
 

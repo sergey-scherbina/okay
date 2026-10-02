@@ -98,8 +98,8 @@ implementation, and rebuild it out of nothing but `shift`.
 The state monad, in full:
 
 ```scala
-def sGet[S, R]: Cont[S, S => R, S => R]           = shift(k => s => k(s)(s))
-def sSet[S, R](s2: S): Cont[Unit, S => R, S => R] = shift(k => _ => k(())(s2))
+def sGet[S, R]: Cont[S, S => R, S => R]           = Cont.shift(k => s => k(s)(s))
+def sSet[S, R](s2: S): Cont[Unit, S => R, S => R] = Cont.shift(k => _ => k(())(s2))
 def sRun[S, A](s: S)(m: Cont[A, S => (S, A), S => (S, A)]): (S, A) =
   (m / (a => (fin: S) => (fin, a)))(s)
 ```
@@ -225,9 +225,10 @@ not what the composition means. If the monad's `flatMap` is wrong, the
 direct block is wrong in exactly the same way — and the chapter's test
 asserts the agreement rather than assuming it.
 
-It also does not make everything a monad. Chapter 11's four captures
-include `control`/`control0`, which are not monadic operators at all,
-and chapter 13's multi-shot answers a question monads answer badly.
+It also does not make everything a monad. The dynamic captures
+`control`/`control0` (chapter 11, and why the library dropped them)
+are not monadic operators at all, and chapter 13's multi-shot answers
+a question monads answer badly.
 Filinski's result is a lower bound on what delimited control can do,
 not a ceiling.
 

@@ -155,7 +155,7 @@ object Console extends Effect[Console]
   with no declaration beyond the object. `handle(e)(ret)(h)` removes
   it and leaves the rest of the row; `run(e)(ret)(h)` handles the LAST
   effect and answers (see Results for why both exist).
-- `Handler[F, R, B]` — `apply[X](op: F[X], k: X => Eff[R, B])`: the
+- `Answers[F, R, B]` — `apply[X](op: F[X], k: X => Eff[R, B])`: the
   operation AND its continuation. Resuming once is an ordinary effect;
   resuming never is abort; resuming twice is nondeterminism.
 - A SECOND CAST, `narrow`, from `Op[X]` to `F[X]`. It is right because
@@ -724,7 +724,7 @@ here, `!.run`/`runWith` in okay2 — `!` is a Scala 3 top-level value a
 2.13 compiler cannot see); `State.run` (the facade's means "handle",
 okay's and okay2's mean "run to a value" — renaming either breaks its
 users); the empty row (`Any` here, `Pure` in okay2); a user's own effect
-(`object Console extends Effect[Console]` with one `Handler[F, R, B]`
+(`object Console extends Effect[Console]` with one `Answers[F, R, B]`
 here, a `Row` with an `Op` member and okay's handler shapes in okay2);
 the aliases (declared by the user here, shipped by okay2).
 
@@ -778,7 +778,7 @@ THE RENAMES, each to okay's name and okay2's type-argument order:
 What remains different, and why it stays: the BUILD (the TASTy reader
 and the two standard libraries — the reason this road exists) and a
 user's OWN effect (`object Console extends Effect[Console]` with one
-`Handler[F, R, B]` here; a `Row` with an `Op` member and okay's handler
+`Answers[F, R, B]` here; a `Row` with an `Op` member and okay's handler
 shapes on okay2 — the facade's form is the simpler one for a Scala 2
 user and okay2 mirrors okay; converging would move one of them away
 from what it is for). `Fiber`/`Channel`/`Source` keep the facade's
@@ -856,7 +856,7 @@ shapes (a `Source` is a class here and a program alias on okay2, and
   okay; (2) the Scala 3 source spells the rows with `&`, because
   `with` as a type operator warns in 3.9, and scalac 2.13 reads `&`
   as its own `with`.
-- STAGE 3 (2026-09-23). `Op`, `Effect[F]`, `Handler[F, R, B]` in
+- STAGE 3 (2026-09-23). `Op`, `Effect[F]`, `Answers[F, R, B]` in
   okay.scala2. The 2.13 probe grows to 22 tests, green under
   `-Xlint -Werror`: a resumptive effect beside State, a multi-shot one,
   an aborting one, two user effects in one row, and two `compileErrors`
@@ -1031,7 +1031,7 @@ shapes (a `Source` is a class here and a program alias on okay2, and
   in a facade SIGNATURE fails at the Scala 2 call site ("can't find type
   required by method memory ...: okay.Pure") — a top-level alias is
   invisible even inside a type argument — so the store lives in a
-  `VectorIndex` with a body holder; and `Handler.union[Embed, Async]`
+  `VectorIndex` with a body holder; and `Answers.union[Embed, Async]`
   does not compile (`Embed` has no `TypeableK`), `union[Async, Embed]`
   does (the tested side is the one with the instance). The Async-store
   variants built on that were REMOVED before landing: the only async
@@ -1086,7 +1086,7 @@ shapes (a `Source` is a class here and a program alias on okay2, and
   a Live test runs it: `Rag.pgvector(db, table, dim, embed)` answers a
   `PgIndex` whose operations are `Eff[Async, _]`. `Embed` still has no
   TypeableK, so it cannot be `!.translate`d into Async programs; the
-  handler is `Handler.union[okay.Async, Embed]` inside `Async.delay`. The
+  handler is `Answers.union[okay.Async, Embed]` inside `Async.delay`. The
   embedding handler moved into its own `Embedder`, shared by both index
   bodies. `TestRagLiveFromScala2` against `pgvector/pgvector:pg16`: GREEN,
   and the nearest segment matches the memory index's.

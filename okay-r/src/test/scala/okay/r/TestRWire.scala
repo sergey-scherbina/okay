@@ -34,7 +34,7 @@ abstract class RWireConformance extends munit.FunSuite:
   def open(timeoutMillis: Option[Long] = None): RSubprocess
 
   private lazy val r = open()
-  private given okay.Handler[REval] = r.handler
+  private given okay.Answers[REval] = r.handler
   override def afterAll(): Unit = if TestR.rscript.nonEmpty then r.close()
 
   private def call(fn: String, args: RValue*) = r.handler.handle(REval.Call(fn, args.toVector))

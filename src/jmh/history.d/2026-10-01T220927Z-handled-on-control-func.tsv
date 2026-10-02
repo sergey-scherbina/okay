@@ -1,0 +1,4 @@
+2026-10-01	e1e692bc1	-	StagedBenchmark.stagedDirect round1	13.67	7.75	1.76	handled-on-control-func REFUTED: Handled delegating to Control[Func] — the closures stop inlining; bytes 146968 vs 85368
+2026-10-01	e1e692bc1	-	StagedBenchmark.stagedDirect round2	13.60	7.78	1.75	handled-on-control-func REFUTED: Handled delegating to Control[Func] — the closures stop inlining; bytes 146968 vs 85368
+2026-10-01	e1e692bc1	-	StagedBenchmark.stagedHand round1	13.44	7.85	1.71	handled-on-control-func REFUTED: Handled delegating to Control[Func] — the closures stop inlining; bytes 143768 vs 84568
+2026-10-01	e1e692bc1	-	StagedBenchmark.stagedHand round2	13.37	7.86	1.70	handled-on-control-func REFUTED: Handled delegating to Control[Func] — the closures stop inlining; bytes 143768 vs 84568

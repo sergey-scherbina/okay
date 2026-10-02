@@ -3,47 +3,10 @@ package okay
 import scala.quoted.*
 
 /**
- * `shift`'s compile-time layer (specs/cont-stack.md Layer 1 A, plan
- * stage B). A body whose every use of its continuation `k` is a TAIL
- * call `k(v)`, with `v` not mentioning `k`, has nothing left to do
- * after the call: it IS `pure(v)`, computed when the runner reaches the
- * shift. So it is rewritten to exactly that, `Cont.tailShift(() => v)`
- * (a `Delay` the runner's loop walks), or to `Cont.tailPure(v)` when `v` is
- * a literal or a stable name and there are no statements before it.
- * No leaf, no `Reentry`, no nested frame, no room counted, no switch.
- *
- * Tail positions are followed through a block's result, both branches
- * of an `if`, every case of a `match`, an ascription and an inlined
- * call's expansion. Anything else — `k` in a statement, a condition, a
- * scrutinee, a guard, a nested lambda, an argument, under `try` (whose
- * `finally` would run BEFORE the rest instead of after), a branch that
- * answers without calling `k` — leaves the body as it was:
- * `Free.Inject(Shift.of(f))`, the runtime layer's case, byte for byte
- * the tree `shift` built before this macro existed.
- *
- * LAYER 1 B (cont-stack-layer1-b, plan stage E): a body that USES the
- * answer — `k(1) + k(10)`, `a :: k(x)`, `s"${k(a)}"`, `PState`'s
- * `s => k(s)(s2)` — is CPS-transformed SELECTIVELY (Rompf, Maier &
- * Odersky, ICFP 2009) into a `Cont.Body`: each `k(e)` becomes a `Call`
- * naming what is left; the runner walks the body in its own loop
- * (Cont.scala, `step`'s pending stack). NOT a function answer —
- * `PState`'s `s => k(s)(s2)` — which measured 2.8x the direct road
- * on statePara and stays opaque (specs/cont-stack.md, stage E). What ran
- * before a call still runs before it: every k-free part evaluated
- * ahead of a call is bound to a val first (A-normal form), unless it
- * is a literal, a stable name or a lambda. The transform follows a
- * block's statements and result, an `if` or `match` in tail
- * position, an application's function part and arguments in order,
- * an ascription, an inlined expansion; a by-name argument is left
- * as it is. Where `k` flows anywhere else — into a by-name argument,
- * a conditional that is not in tail position, a lambda, a `try`, a
- * loop, a value position (`xs.map(k)`) —
- * the body stays opaque, as before, and Layer 2 keeps it safe. The
- * rest of Layer 1 B (known higher-order functions, visible user
- * functions, `direct`) is backlog cont-stack-layer1-c.
- *
- * Public because an expansion at a user's call site calls it (the
- * same standing as `Distinct.impl`); not an API.
+ * `shift`'s compile-time layer, an optimization over the one leaf (specs/cont-stack.md Layer 1):
+ * a body calling `k` only in tail position is the value it passes (`tailShift`/`tailPure`); a body using
+ * `k`'s answer is CPS-transformed selectively (Rompf, Maier & Odersky, ICFP 2009) into a program over a lazy
+ * `k` (`lazyLeaf`); anything else stays the opaque leaf (`shiftLeaf`). Public for the expansions; not an API.
  */
 object ContMacro:
 
@@ -63,6 +26,25 @@ object ContMacro:
             case i: Ident if i.symbol == k => true
             case _ => foldOverTree(false, tree)(owner))
       .foldTree(false, t)(Symbol.spliceOwner)
+
+    /** does `t` CALL `k` (`k(v)`, `k.apply(v)`) while it runs — outside any lambda or local method in it. A call
+     * inside one (`produce(w).flatMap(_ => k(()))`, a `foldM` step) happens later, from whoever runs the program
+     * the body answers, and never nests (cont-js-depth's census); only a call made by the body itself waits */
+    def calls(k: Symbol, t: Tree): Boolean =
+      new TreeAccumulator[Boolean]:
+        def foldTree(found: Boolean, tree: Tree)(owner: Symbol): Boolean =
+          found || (tree match
+            case Apply(i: Ident, _) if i.symbol == k => true
+            case Apply(Select(i: Ident, "apply"), _) if i.symbol == k => true
+            case _: DefDef => false
+            case _ => foldOverTree(false, tree)(owner))
+      .foldTree(false, t)(Symbol.spliceOwner)
+
+    /** an opaque body that calls `k` and answers a PROGRAM gets the lazy `k` (cont-program-answer): its `k(a)`
+     * is a lazy run, never a nested one; a body that only passes `k` on keeps the strict leaf, at no cost */
+    def opaque(p: Symbol, body: Term): Expr[Cont[A, S, R]] =
+      if calls(p, body) && TypeRepr.of[S] <:< TypeRepr.of[Freer[?, ?, ?, ?]] then '{ Cont.programLeaf[A, S, R]($f) }
+      else fallback
 
     /** `k(v)` / `k.apply(v)`, with `v` free of `k` */
     object TailCall:
@@ -107,16 +89,16 @@ object ContMacro:
     case class Kont(rt: TypeRepr, rest: Option[Term => Term])
 
     def done(rt: TypeRepr, v: Term): Term = rt.asType match
-      case '[r] => '{ Cont.Body.Done[r](${ v.asExprOf[r] }) }.asTerm
+      case '[r] => '{ Cont.done[r](${ v.asExprOf[r] }) }.asTerm
 
     def feed(kont: Kont, v: Term): Term = kont.rest match
       case None => done(kont.rt, v)
       case Some(f) => f(v)
 
-    /** a fresh `name => rest(name)` of type `in => Body[rt]` */
+    /** a fresh `name => rest(name)` of type `in => Lazy[rt]` */
     def lam(name: String, in: TypeRepr, rt: TypeRepr)(rest: Term => Term): Term =
       val out = rt.asType match
-        case '[r] => TypeRepr.of[Cont.Body[r]]
+        case '[r] => TypeRepr.of[Cont.Lazy[r]]
       Lambda(Symbol.spliceOwner, MethodType(List(name))(_ => List(in), _ => out),
         (meth, ps) => rest(Ref(ps.head.symbol)).changeOwner(meth))
 
@@ -158,11 +140,11 @@ object ContMacro:
         case Apply(i: Ident, List(e)) if i.symbol == k => Some(e)
         case _ => None
 
-    /** `Call(k, e, s => rest)` */
+    /** `Cont.call(k, e, s => rest)` */
     def call(e: Term, kont: Kont)(using k: Symbol): Term = kont.rt.asType match
       case '[r] =>
-        '{ Cont.Body.Call[A, S, r](${ Ref(k).asExprOf[A => S] }, ${ e.asExprOf[A] },
-             ${ lam("s", TypeRepr.of[S], kont.rt)(sv => feed(kont, sv)).asExprOf[S => Cont.Body[r]] }) }.asTerm
+        '{ Cont.call[A, S, r](${ Ref(k).asExprOf[A => S] }, ${ e.asExprOf[A] },
+             ${ lam("s", TypeRepr.of[S], kont.rt)(sv => feed(kont, sv)).asExprOf[S => Cont.Lazy[r]] }) }.asTerm
 
     /** the parameter types a function term's arguments are matched against */
     def params(fun: Term): List[TypeRepr] = fun.tpe.widen match
@@ -213,50 +195,133 @@ object ContMacro:
         case _ => throw Opaque
       if before.isEmpty then tail else Block(before, tail)
 
+    /**
+     * A JOIN POINT (cont-stack-layer1-c (1)): a conditional whose branches call `k`, with something after it.
+     * The rest is bound ONCE as a local function `j` (a lambda: binding it runs nothing), and every branch ends
+     * in `j(value)` — the rest is not copied into each branch, so nested conditionals stay linear in size. In
+     * tail position there is no rest, and the branches end in the body's answer as before.
+     */
+    def joined(t: Term, kont: Kont)(branches: Kont => Term)(using k: Symbol): Term = kont.rest match
+      case None => branches(kont)
+      case Some(_) =>
+        fresh += 1
+        val in = t.tpe.widen
+        val j = lam(s"join$$$fresh", in, kont.rt)(v => feed(kont, v))
+        val sym = Symbol.newVal(Symbol.spliceOwner, s"join$$$fresh", j.tpe.widen, Flags.EmptyFlags, Symbol.noSymbol)
+        val toJ = Kont(kont.rt, Some(v => Select.unique(Ref(sym), "apply").appliedTo(v)))
+        Block(List(ValDef(sym, Some(j.changeOwner(sym)))), branches(toJ))
+
+    /** a lambda term's parameters and body, under any wrapping */
+    @scala.annotation.tailrec
+    def lambdaOf(t: Term): Option[(List[ValDef], Term)] = t match
+      case Lambda(ps, body) => Some((ps, body))
+      case Inlined(_, Nil, e) => lambdaOf(e)
+      case Typed(e, _) => lambdaOf(e)
+      case Block(Nil, e) => lambdaOf(e)
+      case _ => None
+
+    /** `k` itself, passed as a function value (under any wrapping), or None */
+    @scala.annotation.tailrec
+    def kValue(t: Term)(using k: Symbol): Option[Term] = t match
+      case i: Ident if i.symbol == k => Some(i)
+      case Inlined(_, Nil, e) => kValue(e)
+      case Typed(e, _) => kValue(e)
+      case _ => None
+
+    /** the element type of an immutable `Seq` receiver, or None */
+    def elemOf(q: Term): Option[TypeRepr] =
+      val seq = TypeRepr.of[scala.collection.immutable.Seq[Any]].typeSymbol
+      q.tpe.widen.baseType(seq) match
+        case AppliedType(_, List(x)) => Some(x)
+        case _ => None
+
+    /** `bs: List[B]` as the type the original call answered (`List`, `Vector`, `Seq`), or None */
+    def asResult(bs: Term, want: TypeRepr, b: TypeRepr): Option[Term] =
+      b.asType match
+        case '[bt] =>
+          val list = bs.asExprOf[List[bt]]
+          List(bs, '{ $list.toVector }.asTerm).find(_.tpe.widen <:< want)
+
+    /**
+     * THE KNOWN TRAVERSALS (cont-stack-layer1-c (2)): `xs.map(f)`, `xs.foreach(f)`, `xs.foldLeft(z)(f)` on an
+     * immutable `Seq`, `xs` and `z` free of `k`, `f` a lambda whose body calls it — the body a program over the
+     * lazy `k`, the traversal `Cont.traverse`/`Cont.foldIn`. Anything else is not one of them (None).
+     */
+    def traversal(t: Term, kont: Kont)(using k: Symbol): Option[Term] =
+      def step(ps: List[ValDef], body: Term, ins: List[TypeRepr], out: TypeRepr): Term =
+        val mt = MethodType(ps.map(_.name))(_ => ins, _ => out.asType match { case '[o] => TypeRepr.of[Cont.Lazy[o]] })
+        Lambda(Symbol.spliceOwner, mt, (meth, args) =>
+          cps(ps.zip(args).foldLeft(body)((b, pa) => subst(b, pa._1.symbol, Ref(pa._2.symbol))), Kont(out, None)).changeOwner(meth))
+      t match
+        case Apply(TypeApply(Select(q, m @ ("map" | "foreach")), List(bt)), List(fn)) if !mentions(k, q) =>
+          for
+            x <- elemOf(q)
+            // the lambda, or `k` itself passed as the function: `xs.map(k)` is `xs.map(x => k(x))`
+            g <- lambdaOf(fn).filter((ps, body) => ps.length == 1 && mentions(k, body)).map(Left(_))
+                   .orElse(kValue(fn).map(_ => Right(())))
+            b = bt.tpe
+            r <- if m == "foreach" then Some(None) else Some(Some(t.tpe.widen))
+          yield kont.rt.asType match { case '[rt] => x.asType match { case '[xt] => b.asType match { case '[btp] =>
+              val f = (g match
+                case Left((ps, body)) => step(ps, body, List(x), b)
+                case Right(()) => lam("x", x, b)(xv => call(xv, Kont(b, None)))).asExprOf[xt => Cont.Lazy[btp]]
+              val rest = lam("bs", TypeRepr.of[List[btp]], kont.rt)(bsv =>
+                r match
+                  case None => feed(kont, '{ () }.asTerm)
+                  case Some(want) => asResult(bsv, want, b) match
+                    case Some(res) => feed(kont, res)
+                    case None => throw Opaque).asExprOf[List[btp] => Cont.Lazy[rt]]
+              cps(q, Kont(kont.rt, Some(q2 =>
+                '{ Cont.traverse[xt, btp, rt](${ q2.asExprOf[Iterable[xt]] }, $f, $rest) }.asTerm))) } } }
+        case Apply(Apply(TypeApply(Select(q, "foldLeft"), List(bt)), List(z)), List(fn)) if !mentions(k, q) && !mentions(k, z) =>
+          for
+            x <- elemOf(q)
+            (ps, body) <- lambdaOf(fn) if ps.length == 2 && mentions(k, body)
+          yield kont.rt.asType match { case '[rt] => x.asType match { case '[xt] => bt.tpe.asType match { case '[btp] =>
+              val f = step(ps, body, List(bt.tpe, x), bt.tpe).asExprOf[(btp, xt) => Cont.Lazy[btp]]
+              val rest = lam("acc", bt.tpe, kont.rt)(av => feed(kont, av)).asExprOf[btp => Cont.Lazy[rt]]
+              cps(q, Kont(kont.rt, Some(q2 => cps(z, Kont(kont.rt, Some(z2 =>
+                '{ Cont.foldIn[xt, btp, rt](${ q2.asExprOf[Iterable[xt]] }, ${ z2.asExprOf[btp] }, $f, $rest) }.asTerm)))))) } } }
+        case _ => None
+
     /** the transform: `t` in value position, `kont` what follows its value */
     def cps(t: Term, kont: Kont)(using k: Symbol): Term =
       if !mentions(k, t) then value(t, kont)
       else t match
         case KCall(e) => cps(e, Kont(kont.rt, Some(e2 => call(e2, kont))))
+        case _ if traversal(t, kont).isDefined => traversal(t, kont).get
         case Apply(fun, args) =>
           cpsFun(fun, Kont(kont.rt, Some(f2 => cpsArgs(args, params(fun), kont.rt)(as => feed(kont, Apply.copy(t)(f2, as))))))
         case Inlined(call0, bindings, e) =>
           if bindings.exists(mentions(k, _)) then throw Opaque
           Inlined.copy(t)(call0, bindings, cps(e, kont))
         case Typed(e, _) => cps(e, kont)
+        // an assignment whose value calls `k` (`v = k(1)`, `seen += k(x)`): the value first, in its own order
+        // (a variable read on the right is bound before the call, as the strict road reads it), then the store
+        case Assign(lhs, rhs) if !mentions(k, lhs) =>
+          cps(rhs, Kont(kont.rt, Some(r2 => feed(kont, Assign.copy(t)(lhs, r2)))))
         case Block(stats, e) => cpsStats(stats, e, kont)
         case If(c, a, b) =>
           if mentions(k, a) || mentions(k, b) then
-            if kont.rest.isDefined then throw Opaque
-            cps(c, Kont(kont.rt, Some(c2 => If.copy(t)(c2, cps(a, kont), cps(b, kont)))))
+            joined(t, kont)(kb => cps(c, Kont(kont.rt, Some(c2 => If.copy(t)(c2, cps(a, kb), cps(b, kb))))))
           else cps(c, Kont(kont.rt, Some(c2 => feed(kont, If.copy(t)(c2, a, b)))))
         case Match(sc, cases) =>
           if cases.exists(c => c.guard.exists(mentions(k, _))) then throw Opaque
           if cases.exists(c => mentions(k, c.rhs)) then
-            if kont.rest.isDefined then throw Opaque
-            cps(sc, Kont(kont.rt, Some(s2 =>
-              Match.copy(t)(s2, cases.map(c => CaseDef.copy(c)(c.pattern, c.guard, cps(c.rhs, kont)))))))
+            joined(t, kont)(kb => cps(sc, Kont(kont.rt, Some(s2 =>
+              Match.copy(t)(s2, cases.map(c => CaseDef.copy(c)(c.pattern, c.guard, cps(c.rhs, kb))))))))
           else cps(sc, Kont(kont.rt, Some(s2 => feed(kont, Match.copy(t)(s2, cases)))))
         case _ => throw Opaque
 
-    /** the whole body as a `Cps`, or None where the transform cannot read it */
-    def cpsBody(body: Term)(using k: Symbol): Option[Expr[Cont.Cps[A, S, R]]] =
+    /** the body as a program over a lazy `k`, or None where the transform cannot read it */
+    def cpsBody(body: Term)(using k: Symbol): Option[Expr[(A => S) => Cont.Lazy[R]]] =
       try
         val b = cps(body, Kont(TypeRepr.of[R], None))
-        Some('{
-          new Cont.Cps[A, S, R]:
-            def body(k2: A => S): Cont.Body[R] = ${ subst(b, k, 'k2.asTerm).changeOwner(Symbol.spliceOwner).asExprOf[Cont.Body[R]] }
-        })
+        Some('{ (k2: A => S) => ${ subst(b, k, 'k2.asTerm).changeOwner(Symbol.spliceOwner).asExprOf[Cont.Lazy[R]] } })
       catch case Opaque => None
 
-    // A TAIL BODY'S TYPES SAY `S <: R` — `k(v): S` was the body's `R` —
-    // and `tailShift`/`tailPure` need that said as evidence, because the
-    // value they emit is a `Cont[A, S, S]` on a base covariant in `R`
-    // (freer-base-step-extractor). Searched HERE, at the call site, where
-    // `S` and `R` are the user's concrete types; the macro's own `S` and
-    // `R` are abstract and could not carry a bound. Not found — an
-    // answer-type-modifying shift whose body happens to be tail-shaped —
-    // the body stays a leaf, which is always right.
+    // a tail body's types say `S <: R`; searched here, where `S` and `R` are concrete. Not found: the body
+    // stays a leaf, which is always right
     lazy val tailEvidence: Option[Expr[S <:< R]] = Expr.summon[S <:< R]
 
     f.asTerm.underlyingArgument match
@@ -270,6 +335,6 @@ object ContMacro:
           case Some(_) => fallback
           case None if !mentions(p.symbol, body) => fallback
           case None => cpsBody(body) match
-            case Some(b) => '{ Cont.cps[A, S, R]($b) }
-            case None => fallback
+            case Some(b) => '{ Cont.lazyLeaf[A, S, R]($b) }
+            case None => opaque(p.symbol, body)
       case _ => fallback

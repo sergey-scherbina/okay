@@ -11,12 +11,12 @@ import Layered.{reify, reflect}
  */
 class TestDirectLayersInstances extends munit.FunSuite:
 
-  def run[A](p: A ! Delim + Pure): A = !.run(Delim.run[A, Pure](p))
+  def run[A](p: A ! Shift % ? + Pure): A = !.run(Shift.run[A, Pure](p))
 
   // ------------------------------------------------ instances
 
   test("a Lexical instance in a direct block: `get.?`, and `put(v).?` as a clean statement") {
-    val r = run(Lexical.State.deep[Int, Int, Delim + Pure](0) { s =>
+    val r = run(Lexical.State.deep[Int, Int, Shift % ? + Pure](0) { s =>
       direct {
         val v = s.get.?
         s.put(v + 1).?
@@ -27,8 +27,8 @@ class TestDirectLayersInstances extends munit.FunSuite:
   }
 
   test("two instances of one effect in one block, each answered by its own installation") {
-    val r = run(Lexical.State.deep[Int, Int, Delim + Pure](1) { a =>
-      Lexical.State.deep[Int, Int, Delim + Pure](20) { b =>
+    val r = run(Lexical.State.deep[Int, Int, Shift % ? + Pure](1) { a =>
+      Lexical.State.deep[Int, Int, Shift % ? + Pure](20) { b =>
         direct {
           val x = a.get.?
           val y = b.get.?
@@ -40,7 +40,7 @@ class TestDirectLayersInstances extends munit.FunSuite:
     assertEquals(r, (21, 120))
   }
 
-  test("the tail default on the pure row: no Delim, no machine, a plain program") {
+  test("the tail default on the pure row: no Shift, no machine, a plain program") {
     assertEquals(!.run(Lexical.State[Int, Int, Pure](5) { s =>
       direct {
         val v = s.get.?
@@ -88,21 +88,21 @@ class TestDirectLayersInstances extends munit.FunSuite:
     assertEquals(r, List(Some(11), None, Some(33)))
   }
 
-  test("a layer in scope but a block row WITHOUT Delim: refused, naming Delim") {
+  test("a layer in scope but a block row WITHOUT Shift: refused, naming Shift") {
     val e = compileErrors("""
       okay.Layered.reify[List, Int, okay.Pure] {
         val inner: Int ! okay.Writer % String = okay.Direct.direct {
           val x = List(1, 2, 3).?
           x
         }
-        okay.Delim.shift0[List[Int], Int, okay.Pure](???)(k => ???)
+        okay.Shift.shift0[List[Int], Int, okay.Pure](???)(k => ???)
       }""")
-    assert(e.contains("has no Delim"), s"compiled, or refused for another reason: $e")
+    assert(e.contains("has no Shift % ?"), s"compiled, or refused for another reason: $e")
   }
 
   test("no layer in scope: the mark on a List is refused as it always was") {
     val e = compileErrors("""
-      val p: Int ! okay.Delim + okay.Pure = okay.Direct.direct {
+      val p: Int ! okay.Shift % ? + okay.Pure = okay.Direct.direct {
         val x = List(1, 2, 3).?
         x
       }""")

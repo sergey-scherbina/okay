@@ -382,7 +382,7 @@ object ForeignEval:
       case Pull(stream) => s"pull:$stream"
       case Cancel(stream) => s"cancel:$stream"
     def withKey[A](op: ForeignEval[A], key: String): ForeignEval[A] = op
-    def perform[A](op: ForeignEval[A], inner: okay.Handler[ForeignEval]): (A, String) = op match
+    def perform[A](op: ForeignEval[A], inner: okay.Answers[ForeignEval]): (A, String) = op match
       case Call(fn, args, held) =>
         val answer = inner.handle(Call(fn, args, held))
         (answer, Wire.written(answer.map(Wire.enc)))

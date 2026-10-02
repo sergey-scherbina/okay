@@ -309,6 +309,10 @@ object Schedulers {
     private final class Worker(val id: Int) extends Runnable {
       val deque = new Deque(256)
       @volatile var parked = false
+      /** claimed by a `forkLong` waking this worker, cleared once it is
+       * awake: `parked` stays true until the worker RUNS, so two wakes in
+       * a row read the same sleeper (adaptive-chunked-merge-cost) */
+      val waking = new java.util.concurrent.atomic.AtomicBoolean(false)
       var ran = 0L
       var stolen = 0L
       val thread: Thread = { val t = new Thread(this, s"okay-own-${Owned.this.id}-$id"); t.setDaemon(true); t }
@@ -373,6 +377,7 @@ object Schedulers {
             val _ = awake.decrementAndGet()
             if (size == 0 && submissions.isEmpty && !stopped) LockSupport.park(this)
             parked = false
+            waking.set(false)
             val _ = awake.incrementAndGet()
             spins = 0
           }
@@ -417,6 +422,29 @@ object Schedulers {
         if (awake.get == 0 || submissionsSize.get > wakeAbove) { val _ = activateNext() }
       }
       t
+    }
+
+    /** a fiber the caller declares long (a channel's feed): forked as
+     * `fork` does, then ONE parked worker woken — one no other
+     * `forkLong` is already waking — to take it. okay2's `own` has no
+     * monitor, so without this a second long fiber forked from outside
+     * waits in the submission queue until the first one ENDS
+     * (okay2-forklong) */
+    override def forkLong[A](prog: () => A ! Async): Fiber[A] = {
+      val t = fork(prog)
+      val _ = activateUnclaimed()
+      t
+    }
+
+    private def activateUnclaimed(): Boolean = {
+      val alive = live.get
+      var i = 0
+      while (i < alive) {
+        val w = workers(i)
+        if (w.parked && w.waking.compareAndSet(false, true)) { LockSupport.unpark(w.thread); return true }
+        i += 1
+      }
+      false
     }
 
     private def fromSubmissions(): DriveTask[_] = {

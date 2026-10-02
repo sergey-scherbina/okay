@@ -61,8 +61,10 @@ changed or removed: in a Dialog flow collected values thread through
 lambdas; in `PWizard` they thread through a state whose TYPE GROWS —
 PState's typestate (Atkey; theory textbook ch. 3) with the machine as
 the threaded answer type. A step is `Cont[A, S2 => Machine, S =>
-Machine]`: it NAMES its state requirement, so the compiler enforces
-step order — asking the age before the name is a type error, proven
+Machine]` — since 2026-10-02 (specs/cont-js-depth.md 3a) a program on
+the indexed tree, `Step[A, S, S2, R] = Freer[Op, S2, S, A]`, run by a
+loop, no nested run per step: it NAMES its state requirement, so the
+compiler enforces step order — asking the age before the name is a type error, proven
 by compileErrors. `ask`/`get`/`mod`/`step` (the last with a built-in
 validation retry loop); `toDialog` bridges any machine into an
 ordinary Dialog program, so a typed wizard runs anywhere Dialog runs.

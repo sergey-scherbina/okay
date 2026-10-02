@@ -7622,3 +7622,66 @@ one that type-checked, which is a shape worth removing.
       inside it either answers as deep (machine inside the walk) or throws
       `LocalEscaped` (machine outside).
 
+
+## okay core: state-write-cost, answered (moved 2026-10-02)
+
+- [x] state-write-cost — ANSWERED 2026-10-02: the price stays, and why. The
+      ask (state-get-update + builtins-through-forms; the operator:
+      "замедление не страшно — потом будем оптимизировать"): 1000 get+set
+      at 13.96 µs and 198 KB against the old Get/Set/Modify/Update loop's
+      11.78 µs and 182 KB (1.19x, +16 B a write). Both candidates measured
+      alone (history.d `state-write-cost`):
+      (1) a `Put` arm in State's clause (`case Update(Put(n)) => (n, n)`):
+      REFUTED, identical bytes (198 048 B/op both arms) and time within
+      noise (13.41/13.47 against 13.62/13.34 µs, alternating). The JIT
+      already scalar-replaces `Put.apply`'s pair, so the +16 B a write is
+      the `Put` object itself, `Update(Put(s))` being two objects where
+      `Set` was one.
+      (2) one node per write (`Put`/`Modified` extending `Update`, State a
+      sealed trait, an `Update` extractor): REFUTED by the compiler. An
+      extractor over the scrutinee's `State[S, B]` keeps the GADT answer
+      but is refutable, so every match on State's operations is
+      non-exhaustive (six E029 in the library alone, and every user's
+      own State handler with it). An extractor over `Update[S, B]` is
+      irrefutable but loses the answer ("Found B$1, Required X"). Only a
+      case-class `Update` keeps both, and a case class carrying its
+      transition is two objects per `set`.
+      So the 16 B a write is the price of State as two operations, the
+      operator's choice. Re-open only with a third road: a `Set` case
+      back in the signature, which the operator removed on purpose, or a
+      language change that lets an extractor be both GADT-refining and
+      irrefutable. (2026-10-02)
+- [x] delim-forwarding-default — ANSWERED 2026-10-02 by shift-merge-guard
+      (83a0b7084), another way: the running combinators do not FORWARD to a
+      nested machine, they NEST on the outer one (`Shift.Machine` reads the
+      row; at a `Shift` row `delimited`/`collect`/`resumable`/`run` push
+      their delimiter and leave the running to the machine outside, as
+      `scope` does). So no machine per level and no frame chain: the cost
+      named below does not arise, and `OneMachine` is gone. Kept for the
+      history of the question. WAS: PRIORITY: LOW, CONDITIONAL: only if
+      freer-kont-frames-probe says the frame runtime is too expensive,
+      and only when a real program needs `delimited` inside a Delim row
+      (nothing has asked; `scope`/`collecting`/`pausing` cover every case
+      seen). THE CHANGE: keep the machine, make every running combinator
+      (`delimited`, `collect`, `resumable`, `Stacked.delimited`) forward
+      a capture whose prompt it does not hold — `runNested`'s behaviour,
+      chosen by the row (`Delim` in F: forward; not: root, `NoPrompt`) —
+      so `OneMachine` and "the second rule: one machine"
+      (docs/continuations-in-practice.md) go, and handlers may sit in any
+      order between delimiters. THE COST, which is why it is not done
+      "in any case": `OneMachine` is a SAFETY guard today. A recursion
+      that installs a delimiter per level through `scope` runs on one
+      machine in constant stack; the same recursion through `delimited`
+      is a compile error. After this change it compiles, every level is
+      a nested machine (a JVM frame chain, the bound
+      freer-kont-frames-probe records for all handler loops), and it
+      dies with StackOverflowError at depth — a compile error traded for
+      a run-time failure with no written bound. The lane must keep a
+      guard for that (a nesting counter per thread, refused by name, or
+      keeping `OneMachine` for recursion-shaped call sites) or not land.
+      WHAT SURVIVES EITHER WAY, and should be written first: the tests of
+      the semantics — a capture from an inner delimiter to an outer one
+      across a machine boundary, multi-shot of such a capture,
+      `State.handle` between two prompts, the `NoPrompt` diagnosis at the
+      root. They run on `runNested` today and are the oracle
+      freer-kont-frames-probe must satisfy.

@@ -20,7 +20,7 @@ class TestStackPool extends munit.FunSuite:
   test("consecutive switches reuse one parked worker instead of starting a thread each") {
     val where = collection.mutable.Set.empty[Thread]
     val before = StackSwitch.switches.get()
-    for _ <- 1 to 5 do assertEquals(SmallStack.run(256)(reset(program(2000, where))), 2000)
+    for _ <- 1 to 5 do assertEquals(SmallStack.run(256)(Cont.reset(program(2000, where))), 2000)
     assert(StackSwitch.switches.get() - before >= 5, "the program never switched")
     assertEquals(where.size, 1, s"finished on ${where.size} different threads: ${where.map(_.getName)}")
     assert(where.head.getName.startsWith("okay-cont-stack"), where.head.getName)
@@ -29,7 +29,7 @@ class TestStackPool extends munit.FunSuite:
   test("concurrent switching programs each get their answer") {
     val threads = (1 to 8).map: i =>
       var out = -1
-      val t = new Thread(null, () => out = reset(program(2000 + i, collection.mutable.Set.empty)), "caller", 256L * 1024)
+      val t = new Thread(null, () => out = Cont.reset(program(2000 + i, collection.mutable.Set.empty)), "caller", 256L * 1024)
       (t, () => out, 2000 + i)
     threads.foreach(_._1.start())
     threads.foreach(_._1.join())
@@ -40,9 +40,9 @@ class TestStackPool extends munit.FunSuite:
     def boom(n: Int): Int /> Int =
       (1 to n).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) =>
         m.flatMap(x => Cont.shiftLeaf[Int, Int, Int](k => if x == n - 1 then throw IllegalStateException("late") else k(x + 1))))
-    val e = intercept[IllegalStateException](SmallStack.run(256)(reset(boom(2000))))
+    val e = intercept[IllegalStateException](SmallStack.run(256)(Cont.reset(boom(2000))))
     assertEquals(e.getMessage, "late")
-    assertEquals(SmallStack.run(256)(reset(program(2000, collection.mutable.Set.empty))), 2000)
+    assertEquals(SmallStack.run(256)(Cont.reset(program(2000, collection.mutable.Set.empty))), 2000)
   }
 
   test("the caller's context class loader is the worker's while it runs the rest") {
@@ -52,7 +52,7 @@ class TestStackPool extends munit.FunSuite:
       .flatMap(x => { seen = Thread.currentThread().getContextClassLoader; Cont.Pure[Int, Int](x) })
     val answer = SmallStack.run(256):
       Thread.currentThread().setContextClassLoader(mine)
-      reset(p)
+      Cont.reset(p)
     assertEquals(answer, 2000)
     assert(seen eq mine, s"saw $seen")
   }

@@ -39,6 +39,26 @@ Flink row type and `Row`s: `rowTypeOf[A]`, `rows(xs)`, `rowType(fields)`,
 recursion encodings Spark gets); a `Json` column is text, Flink having
 no VARIANT, and an array is an `OBJECT_ARRAY` of its element's class.
 
+**Flink as a `Bulk`** (bulk-flink; [specs/streams-seam.md](../../specs/streams-seam.md), lane 3).
+`FlinkBulk.local(parallelism)` — or `FlinkBulk.FlinkBulk(env)` over an
+environment of your own — is a `Bulk` over Flink's DataStream API, run
+bounded, so a `Tables` program that names no platform runs on Flink
+unchanged, beside `localBulk`, `SparkBulk` and `FlowBulk`. A join is a
+`coGroup` keyed on both sides in one end-of-stream window; `aggregate`
+is the okay `Aggregator` as Flink's `AggregateFunction`. Elements travel
+as `AnyRef` under Flink's generic type information: the Scala 3 macros
+that derived a `TypeInformation` per type do not exist, and asking one
+per intermediate type is what the seam refuses. `flink-streaming-java`
+and `flink-clients` are OPTIONAL dependencies of okay-flink;
+`FlinkBulk.missing` names what to add when they are absent, and
+`FlinkBulk.local` refuses by that name.
+
+```scala
+val p = Tables.of(Vector.range(0, 500)).select(i => (i % 7, i)).join(Tables.of(Vector.tabulate(7)(k => (k, s"k$k"))))
+  .collect.map(_.elements.toVector.sorted)
+assertEquals(Tables.run(flink)(p), Tables.run(local)(p))
+```
+
 ## API reference
 
 | member | signature | meaning |

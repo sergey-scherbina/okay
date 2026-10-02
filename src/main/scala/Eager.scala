@@ -64,5 +64,5 @@ object Eager {
         FreeE.foldCont(toFree(m))(h)
 
       /** a pure value runs in O(1); a suspended tree runs like Free */
-      override def runWith(using Handler[F]): A = fold(m)(identity, FreeE.runWith(_))
+      override def runWith(using Answers[F]): A = fold(m)(identity, FreeE.runWith(_))
 }

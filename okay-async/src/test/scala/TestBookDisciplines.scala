@@ -33,21 +33,23 @@ class TestBookDisciplines extends munit.FunSuite {
       s"refused, but not for the discipline's reason: $e")
   }
 
-  test("the SAME mechanism in OneMachine: declared, so the call site answers") {
-    def oneMachineHelper[F[+_]](p: Int ! Delim + F)(using Delim.OneMachine[F]): Int ! F =
-      Delim.run(p)
-    // at a clean row it resolves
+  test("the SAME mechanism in Shift.Machine: declared, so the call site answers") {
+    def oneMachineHelper[F[+_]](p: Int ! Shift % ? + F)(using Shift.Machine[F]): Int ! F =
+      Shift.run(p)
+    // at a clean row the helper runs its own machine
     assertEquals(!.run(oneMachineHelper[P](okay.pure(1))), 1)
-    // at a row that already holds a machine the CALLER is refused
+    // at a row that already holds a machine the CALLER's row says so, and the helper nests
+    assertEquals(!.run(Shift.run[Int, P](oneMachineHelper[Shift % ? + P](okay.pure(1)))), 1)
+    // undeclared, an abstract row is refused rather than guessed
     val e = compileErrors(
-      "oneMachineHelper[okay.Delim + okay.Pure](okay.pure(1))")
-    assert(e.nonEmpty, "a second machine satisfied OneMachine")
+      "def h[F[+_]](p: Int ! okay.Shift % ? + F): Int ! F = okay.Shift.run(p)")
+    assert(e.contains("using Shift.Machine[F]"), s"the abstract row was guessed: $e")
   }
 
   test("THE SHARED HOLE: a helper that declares NOTHING is never asked") {
     // No witness in the signature, so nothing propagates and nothing
     // is checked. This compiles -- and that is precisely chapter 19's
-    // THE LIMIT, here to show it is not specific to Delim: an
+    // THE LIMIT, here to show it is not specific to Shift: an
     // undeclared obligation is an unasked question.
     val e = compileErrors("""
       def silent[F[+_]](p: Int ! F): Int ! F = p

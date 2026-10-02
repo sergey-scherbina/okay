@@ -25,3 +25,4 @@ given Scheduler = new:
       def onComplete(k: Either[Throwable, A] => Unit): Unit =
         p.future.onComplete(t => k(t.toEither))(using ExecutionContext.parasitic)
       def cancel(): Unit = d.cancel()
+      def answered: Boolean = p.isCompleted

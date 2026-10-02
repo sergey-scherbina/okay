@@ -20,7 +20,7 @@ class TestRProgram extends munit.FunSuite {
   override def munitIgnore: Boolean = TestR.rscript.isEmpty
 
   private lazy val r = RSubprocess.start(rscript = TestR.rscript.get, modules = Seq(progs))
-  private given okay.Handler[REval] = r.handler
+  private given okay.Answers[REval] = r.handler
   override def afterAll(): Unit = if TestR.rscript.nonEmpty then r.close()
 
   private val choose = R.callback[Vector[Double], Double]("choose")(xs => effect[Choose, Double](Choose(xs)))
@@ -59,7 +59,7 @@ class TestRReplay extends munit.FunSuite {
 
   test("R is replaced between two choices, and every branch still comes back") {
     val r = RSubprocess.start(rscript = TestR.rscript.get, timeoutMillis = Some(3000L), modules = Seq(progs))
-    given okay.Handler[REval] = r.handler
+    given okay.Answers[REval] = r.handler
     var replaced = false
     val choose = R.callback[Vector[Double], Double]("choose") { xs =>
       if !replaced && xs == Vector(10.0, 20.0) then

@@ -1,4 +1,4 @@
-# Okay! Extensible effects for Scala 3.
+# Okay! Extensible effects for Scala.
 
 There's one thing nearly every effect library does the same way, and I think it's the wrong way.
 
@@ -42,6 +42,23 @@ Scala Native — each platform contributes evidence (can it park? what
 is its timer? what schedules?), not API: the same Await-based test
 suite runs on a JVM, under Node and as a linked native binary.
 
+## Start here: what okay is
+
+**[The contract in three parts](docs/contract.md)** is the place to
+begin. It is one page on what your code actually depends on, out of
+everything this repository contains:
+
+1. `Effects[M]`, the kernel: programs `A ! F` over a row of effects,
+   `handle` to take an effect off the row, `shift`/`reset` as an
+   effect;
+2. `Applicative` and `Selective`, the static half a monad cannot
+   promise: every error, every operation known before running,
+   independent leaves run at once;
+3. the vocabulary: the ready effects, rows, handlers.
+
+Everything else, from direct style to HTTP, is syntax over those three
+or a library written with them.
+
 ### Inspired by Rúnar Bjarnason, Oleg Kiselyov and Robert Atkey.
 
 http://blog.higher-order.com/assets/trampolines.pdf
@@ -67,6 +84,7 @@ Start here:
 
 | | |
 |---|---|
+| [The contract](docs/contract.md) | what okay fundamentally is: the kernel `Effects[M]`, the static `Applicative`/`Selective` ladder, the vocabulary of effects, rows and handlers, and what sits on top |
 | [User guide](docs/guide.md) | the concepts, layer by layer — control, effects, streams, the upper modules |
 | [Continuations: a working book](docs/continuations/index.md) | the long form on the one idea the rest is built from: why a team should care, the four shapes as recipes, the machine, building new effects on it, the costs with numbers, and what it must not be asked to do |
 | [Tutorial](docs/tutorial.md) | the same layers by use: worked, runnable examples |
@@ -195,13 +213,13 @@ From the everyday to the rare; each name links to its own page, with examples. T
 - [`Prob`](docs/effects/prob.md) — probabilistic programming: weighted
   choice, `observe`, and exact inference as a multi-shot handler
   (Prob.scala).
-- [`Delim`](docs/continuations/10-prompts.md) — delimited control as an effect, multi-prompt in the shape
+- [`Shift`](docs/continuations/10-prompts.md) — delimited control as an effect, multi-prompt in the shape
   of Dybvig, Peyton Jones and Sabry (2007): a `Prompt` is a first-class
   tag carrying its delimiter's answer type, `push` installs one and
   `shift` captures up to a NAMED prompt, not the nearest. shift, control,
   shift0 and control0 are one operation with two flags. It is `Cont`'s
   shift/reset as an operation in a row, so it composes with the other
-  effects, and one machine owns the prompt stack (Delim.scala,
+  effects, and one machine owns the prompt stack (Shift.scala,
   [continuations book](docs/continuations/index.md)).
 - **[Several instances of one effect](docs/many-instances.md)** — `Tag.Of["small", State % Int]`
   names them in the row, for ANY signature; `tag` puts a finished
@@ -433,7 +451,7 @@ module with its own page under docs/modules:
   that replays from its record, a memory fold, a safetensors
   checkpoint — with every word and rule the caller's (`okay-dlm`).
 - **MCP** (`okay-mcp`) — both ends of the Model Context Protocol: a
-  server is another `Handler[Tool]`, our tools are another server,
+  server is another `Answers[Tool]`, our tools are another server,
   resources are documents, prompts are conversation openings,
   sampling is the `Model` effect; stdio and streamable HTTP (with
   server push over the GET stream), verified live against the

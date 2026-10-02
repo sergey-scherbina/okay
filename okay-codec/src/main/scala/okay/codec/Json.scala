@@ -1,6 +1,6 @@
 package okay.codec
 
-import okay.{Cont, reset, />}
+import okay.{Cont, />}
 import okay.lex.Json as JsonLex
 import okay.lex.Json.K
 import okay.parse.{Cst, JsonParse, Parse}
@@ -131,7 +131,7 @@ object Json {
     sb.toString
 
   private def printInto(j: Json, sb: StringBuilder, open: Int): Unit =
-    if open >= Codecs.NativeThreshold then reset(printIntoC[Unit](j, sb, open))
+    if open >= Codecs.NativeThreshold then Cont.reset(printIntoC[Unit](j, sb, open))
     else printIntoNative(j, sb, open)
 
   private def printIntoNative(j: Json, sb: StringBuilder, open: Int): Unit = j match
@@ -241,7 +241,7 @@ object Json {
   def mergePatch(target: Json, patch: Json): Json = mergePatchAt(target, patch, 0)
 
   private def mergePatchAt(target: Json, patch: Json, open: Int): Json =
-    if open >= Codecs.NativeThreshold then reset(mergePatchC[Json](target, patch, open))
+    if open >= Codecs.NativeThreshold then Cont.reset(mergePatchC[Json](target, patch, open))
     else mergePatchNative(target, patch, open)
 
   private def mergePatchNative(target: Json, patch: Json, open: Int): Json = patch match
@@ -357,7 +357,7 @@ object Json {
    * with values.
    */
   private def into(c: Cst[K], out: scala.collection.mutable.Builder[Json, Vector[Json]], open: Int): Unit =
-    if open >= Codecs.NativeThreshold then reset(intoC[Unit](c, out, open))
+    if open >= Codecs.NativeThreshold then Cont.reset(intoC[Unit](c, out, open))
     else intoNative(c, out, open)
 
   private def intoNative(c: Cst[K], out: scala.collection.mutable.Builder[Json, Vector[Json]], open: Int): Unit = c match
@@ -391,7 +391,7 @@ object Json {
    * place of a flatMap into a Vector and a grouped(2) that allocated
    * another Vector per field */
   private def pairs(kids: Vector[Cst[K]], open: Int): Vector[(String, Json)] =
-    if open >= Codecs.NativeThreshold then reset(pairsC[Vector[(String, Json)]](kids, open))
+    if open >= Codecs.NativeThreshold then Cont.reset(pairsC[Vector[(String, Json)]](kids, open))
     else pairsNative(kids, open)
 
   private def pairsNative(kids: Vector[Cst[K]], open: Int): Vector[(String, Json)] =
@@ -572,7 +572,7 @@ object Json {
   def decode[A](s: Schema[A])(j: Json): Either[String, A] = decodeAt(s, j, 0)
 
   private def decodeAt[A](s: Schema[A], j: Json, depth: Int): Either[String, A] =
-    if depth >= Codecs.NativeThreshold then reset(decodeC[A, Either[String, A]](s, j))
+    if depth >= Codecs.NativeThreshold then Cont.reset(decodeC[A, Either[String, A]](s, j))
     else decodeNative(s, j, depth)
 
   /** one field at its own type; the value joins the product's erased

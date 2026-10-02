@@ -13,17 +13,17 @@ val prog: Int ! State % Int =
     y <- State.get[Int]
   yield y + 2
 
-State.run(0)(prog)   // (40, 42) — the final state and the answer
+val ran = prog.handle(State(0)).run   // (40, 42) — the final state and the answer
 ```
 
-Nothing ran until `run`. Signatures union freely:
+Nothing ran until `run`: `handle` takes `State` off with its handler, `State(0)`, and `run` gives the value. Signatures union freely:
 
 ```scala
 type F = State % Int + Throws % String
 def risky(n: Int): Int ! F =
-  if n < 0 then effect(Throws("negative")) else effect(State.Set(n))
+  if n < 0 then effect(Throws("negative")) else effect(State.Update[Int, Int](_ => (n, n)))
 
-runEither(State.handle(0)(risky(5)))   // handle State, then Throws
+val both = risky(5).handle(State(0)).handle(Throws.either).run   // handle State, then Throws: Right((5, 5))
 ```
 
 ## 2. Telling is streaming
@@ -73,7 +73,7 @@ million rounds are fine:
 val digits: Int ! Writer % Int = !.loop(2024) { n =>
   Writer.tell(n % 10).map(_ => if n < 10 then Right(1) else Left(n / 10))
 }
-!.run(Writer.run(digits))   // (Seq(4, 2, 0, 2), 1) — the digits told, the answer 1
+val told = digits.handle(Writer.log).run   // (List(4, 2, 0, 2), 1) — the digits told, the answer 1
 ```
 
 `countdown` IS a generator, in Python's sense — the body runs to its
@@ -389,10 +389,10 @@ whole new effect — is user code, not a library change:
 
 ```scala
 // a generator: a prompt whose answer type is the list being built
-def emit[A](p: Prompt[List[A]])(a: A): Unit ! (Delim + Pure) =
-  Delim.shift(p)(k => k(()).map(a :: _))
+def emit[A](p: Prompt[List[A]])(a: A): Unit ! (Shift % ? + Pure) =
+  Shift.shift(p)(k => k(()).map(a :: _))
 
-Delim.reset[List[Int], Pure] { p =>
+Shift.reset[List[Int], Pure] { p =>
   emit(p)(1).flatMap(_ => emit(p)(2)).map(_ => Nil)
 }                                        // List(1, 2)
 ```
@@ -400,10 +400,9 @@ Delim.reset[List[Int], Pure] { p =>
 `Prompt[R]` is a first-class tag carrying the delimiter's answer
 type, so several delimiters of DIFFERENT answer types live in one
 row, and a `shift` can capture past an intervening one — which is
-what multi-prompt means and what nested handlers cannot express. All
-four classic operators are there: `shift`, `shift0`, `control`,
-`control0` (they are two independent bits — does the body keep the
-delimiter, does the continuation re-install it).
+what multi-prompt means and what nested handlers cannot express. The
+two captures of λ$ are there: `shift` and `shift0` (one bit — does the
+handler's body keep the delimiter).
 
 The library names the shapes people actually write, so a raw `shift`
 is rarely needed. `collect`/`emit` is the generator above with the
@@ -417,16 +416,16 @@ enum Tree[+A]:
   case Leaf(a: A)
   case Node(l: Tree[A], r: Tree[A])
 
-def walk(t: Tree[Int])(using Delim.Emitting[Int]): Unit ! Delim + Pure = direct:
+def walk(t: Tree[Int])(using Shift.Emitting[Int]): Unit ! Shift % ? + Pure = direct:
   t match
-    case Tree.Leaf(a)    => !Delim.emit(a)
+    case Tree.Leaf(a)    => !Shift.emit(a)
     case Tree.Node(l, r) => !walk(l); !walk(r)
 
 val tree = Tree.Node(Tree.Node(Tree.Leaf(1), Tree.Leaf(2)), Tree.Node(Tree.Leaf(3), Tree.Leaf(4)))
 
-!.run(Delim.collect[Int, Pure](walk(tree)))                                                          // List(1, 2, 3, 4)
-!.run(Delim.collectUntil[Int, Vector[Int], Vector[Int], Pure](using FoldUntil.take(2))(walk(tree)))    // Vector(1, 2) — the walk stops at its second leaf
-!.run(Delim.collectUntil[Int, Boolean, Boolean, Pure](using FoldUntil.exists[Int](_ > 2))(walk(tree)))  // true, after three leaves
+!.run(Shift.collect[Int, Pure](walk(tree)))                                                          // List(1, 2, 3, 4)
+!.run(Shift.collectUntil[Int, Vector[Int], Vector[Int], Pure](using FoldUntil.take(2))(walk(tree)))    // Vector(1, 2) — the walk stops at its second leaf
+!.run(Shift.collectUntil[Int, Boolean, Boolean, Pure](using FoldUntil.exists[Int](_ > 2))(walk(tree)))  // true, after three leaves
 ```
 
 `collect` builds its list on the way back, in the continuation;
@@ -451,10 +450,10 @@ unit test or a production agent depending on what you install:
 
 ```scala
 // a test
-given Handler[Model] = Handlers.scripted(Seq(Reply("hi", Nil)))
+given Answers[Model] = Handlers.scripted(Seq(Reply("hi", Nil)))
 // a live model — OpenAI-compatible, so most providers and every
 // local runtime; Provider.anthropic speaks the Messages API instead
-given Handler[Model] = Provider.openAi(Transports.http(), key, "gpt-4o-mini")
+given Answers[Model] = Provider.openAi(Transports.http(), key, "gpt-4o-mini")
 ```
 
 The conversation is compacted by an `Aggregator`, so staying inside a
@@ -542,7 +541,7 @@ the world untouched.
 val link = Stdio.of(Stdio.spawn(Seq("npx", "-y", "@modelcontextprotocol/server-everything")))
 val session = Client.connect(link, Mcp.Info("okay", "1")).runWith
 
-given Handler[Tool] = session.handler          // the only line that changes
+given Answers[Tool] = session.handler          // the only line that changes
 Agent.converse("...", session.tools.runWith)   // its tools, discovered
 ```
 
@@ -554,7 +553,7 @@ what a server serves (`Server.run(Stdio.std, info, tools, table)` —
 `RepoMcp` serves this repository that way), a server's resources
 become a `Corpus` the retriever indexes (`session.corpus`), its
 prompts become the `Seq[Turn]` an agent starts from, and
-`sampling/createMessage` is answered by whatever `Handler[Model]` you
+`sampling/createMessage` is answered by whatever `Answers[Model]` you
 already had — an MCP server borrows your model. Transports: stdio, or
 streamable HTTP (`McpHttp.link`), with server push on the GET stream.
 All of it verified live against the protocol's reference server
@@ -885,7 +884,7 @@ If part of your codebase is still on Scala 2.13, most of this tutorial
 carries over through `okay-scala2`. That covers chapter 2's telling
 (`Source`), chapter 5's async (`Async`, fibers, channels), `shift` and
 `reset` (`Cont`), and your own effects. Chapter 13's named prompts
-(`Delim`) are not in the Scala 2 facade yet. Direct style (chapter 20)
+(`Shift`) are not in the Scala 2 facade yet. Direct style (chapter 20)
 and staging (chapter 11) will not carry over, because they are Scala 3
 metaprogramming. [okay from Scala 2.13](scala2.md) shows what each
 looks like in Scala 2.

@@ -1,6 +1,6 @@
 package okay.codec
 
-import okay.{Cont, reset, />}
+import okay.{Cont, />}
 import scala.collection.mutable
 import scala.annotation.tailrec
 
@@ -392,7 +392,7 @@ object Edn {
   def decode[A](s: Schema[A])(e: Edn): Either[String, A] = decodeAt(s, e, 0)
 
   private def decodeAt[A](s: Schema[A], e: Edn, depth: Int): Either[String, A] =
-    if depth >= Codecs.NativeThreshold then reset(decodeC[A, Either[String, A]](s, e))
+    if depth >= Codecs.NativeThreshold then Cont.reset(decodeC[A, Either[String, A]](s, e))
     else decodeNative(s, e, depth)
 
   private def kindOf(s: Schema[?]): String = s match

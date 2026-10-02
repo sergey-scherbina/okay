@@ -53,7 +53,7 @@ inline def await[A](register: (A => Unit) => Unit): A ! Async =
 /**
  * Evidence that this platform can park a thread of control until a
  * callback fires. Given on JVM and Native; absent on JS, so every
- * blocking door (Handler[Async], Fiber.join, Async.run) is closed
+ * blocking door (Answers[Async], Fiber.join, Async.run) is closed
  * there by the compiler.
  */
 /** a computation that PARKS a thread, as a first-class VALUE
@@ -105,7 +105,7 @@ trait Timer:
 
 /** execute each operation on the current (ideally virtual) thread;
  * an Await parks it until the callback fires */
-given (using cb: CanBlock, w: Wait, p: Pause): Handler[Async] = new:
+given (using cb: CanBlock, w: Wait, p: Pause): Answers[Async] = new:
   def handle[A](e: Async[A]): A = e match
     case Async.Run(f) => f()
     case Async.Await(reg, poll) => Async.pollThenBlock(reg, poll).fold(e => throw e, identity)
@@ -125,6 +125,16 @@ trait Fiber[A]:
    * interruptible, or between operations, to notice) */
   def cancel(): Unit
 
+  /** whether the fiber has its answer — a value, a failure, or the
+   * cancellation it answers with — so a `join` now returns at once. A
+   * snapshot: `true` never turns back to `false`, `false` may be stale
+   * the moment it is read. For a wait, `onComplete`/`joinAsync`; this is
+   * for a watchdog, a test, a progress line (fiber-is-done). Read as
+   * `f.isDone`, the extension in `object Fiber`: the JVM's pooled fiber
+   * is a `ForkJoinTask`, whose own final `isDone` means "the pool task
+   * returned" — which a parked fiber's has, before its answer */
+  def answered: Boolean
+
   /** join as an operation: awaits the fiber, fails if it failed */
   def joinAsync: A ! Async = Async.await(k => { onComplete(k); () => () })
 
@@ -135,6 +145,11 @@ trait Fiber[A]:
   def joinEither()(using cb: CanBlock): Either[Throwable, A] =
     cb.block(k => { onComplete(k); () => () })
 
+object Fiber:
+  extension [A](f: Fiber[A])
+    /** `f.answered` (fiber-is-done): whether the fiber has its answer */
+    def isDone: Boolean = f.answered
+
 /**
  * The scheduler: how a program gets its own thread of control. It
  * takes the PROGRAM, not a computed answer — that is what lets the
@@ -144,6 +159,13 @@ trait Fiber[A]:
  */
 trait Scheduler:
   def fork[A](prog: () => A ! Async): Fiber[A]
+  /** a fork the caller declares LONG — a fiber that runs for a stream's
+   * whole life, such as a channel's feed. A scheduler that keeps a new
+   * fiber where it was forked until it has watched it run long (`own`,
+   * `adaptive`) may spread this one at once; the caller knows what the
+   * scheduler could only learn a monitor tick later
+   * (specs/adaptive-chunked-merge-cost.md). By default, `fork`. */
+  def forkLong[A](prog: () => A ! Async): Fiber[A] = fork(prog)
 
 object Async {
 
@@ -158,6 +180,10 @@ object Async {
   /** the full callback form: an error channel in, a canceller out */
   def await[A](register: (Either[Throwable, A] => Unit) => (() => Unit)): A ! Async =
     effect(Await(register))
+
+  /** the handler as a value: `p.handle(Async.blocking)` — each operation executed in place, an Await parked */
+  def blocking(using cb: CanBlock, w: Wait, p: Pause): Handler[Async, [A] =>> A] = new Handler[Async, [A] =>> A]:
+    def run[A, F[+_]](prog: A ! Async + F)(using A <:< Any, Distinct[Async + F], Handler.Nothing[F]): A ! F = Async.run(prog)
 
   /** handle by executing each operation in place, forwarding the
    * effects F; an Await parks (hence the evidence) */
@@ -287,7 +313,7 @@ object Async {
    * ~150 B on EVERY Loom fork for the ThreadLocalMap a fresh virtual thread
    * creates (7.49 MB against 5.97 per 10 000 fork/joins).
    */
-  private final class FiberHandler(cb: CanBlock) extends Handler[Async]:
+  private final class FiberHandler(cb: CanBlock) extends Answers[Async]:
     private var open: List[CancelScope] = Nil
     def handle[X](e: Async[X]): X = e match
       case Run(f) =>
@@ -369,39 +395,56 @@ object Async {
      * it — measured at 12.6 us of a 4000-bind chain on the JVM
      * (docs/benchmarks.md §18b/§18c).
      */
-    def apply(prog: A ! Async): Unit =
-      var cur: A ! Async = prog
+    def apply(prog: A ! Async): Unit = drive(prog, (), null)
+
+    /** a LATE answer resumes the fiber: by default right here, on whoever
+     * answered — which inside a pool saves a wake. A platform whose
+     * fibers have a home overrides it to send a foreign answerer's
+     * resumption home instead (adaptive-elementwise-small-ring) */
+    protected def resumeLate[X](x: X, k: X => A ! Async): Unit = resumeHere(x, k)
+    /** resume on the calling thread, inside this drive's loop */
+    protected final def resumeHere[X](x: X, k: X => A ! Async): Unit = drive(null, x, k)
+
+    /** the loop, entered either with a program or with a late answer and
+     * the continuation it resumes. The continuation is applied INSIDE the
+     * try and the slice (drive-resume-throw-lost: a throw there fails the
+     * fiber), and without building a `Bind` around it first — one
+     * allocation and one rotation per late resumption, which every
+     * `spawn`/`join` pays (spawnjoin-rise-bisect) */
+    private def drive[X](prog: (A ! Async) | Null, x: X, k: (X => A ! Async) | Null): Unit =
       var looping = !stopped
       val slice = sliceStarted()
       try
-        while looping do
-          looping = false
-          // the rotation is `Free.resume`'s, so this loop is three
-          // cases and turns once per OPERATION rather than once per
-          // node. The `stopped` check therefore no longer falls
-          // between two rotation steps — which changes nothing a
-          // canceller can observe: rotating reassociates nodes and
-          // runs no user code, and the check that matters, the one
-          // before the next operation, is exactly where it was.
-          (cur.resume: @unchecked) match
-            case Free.Return(a) =>
-              // a scope still open at the END was never exited: its
-              // program stopped early (a consumer that took what it
-              // needed) — release what it holds
-              releaseScopes()
-              succeed(a)
-            case Free.Bind(Free.Inject(e), f) =>
-              val next = op(e, f)
-              if next != null then
-                cur = next
-                looping = !stopped
-                if !looping then { discontinue(cur); releaseScopes() }
-            case Free.Inject(e) =>
-              val next = op(e, Free.Return(_))
-              if next != null then
-                cur = next
-                looping = !stopped
-                if !looping then { discontinue(cur); releaseScopes() }
+        if looping then
+          var cur: A ! Async = if k != null then k(x) else prog.nn
+          while looping do
+            looping = false
+            // the rotation is `Free.resume`'s, so this loop is three
+            // cases and turns once per OPERATION rather than once per
+            // node. The `stopped` check therefore no longer falls
+            // between two rotation steps — which changes nothing a
+            // canceller can observe: rotating reassociates nodes and
+            // runs no user code, and the check that matters, the one
+            // before the next operation, is exactly where it was.
+            (cur.resume: @unchecked) match
+              case Free.Return(a) =>
+                // a scope still open at the END was never exited: its
+                // program stopped early (a consumer that took what it
+                // needed) — release what it holds
+                releaseScopes()
+                succeed(a)
+              case Free.Bind(Free.Inject(e), f) =>
+                val next = op(e, f)
+                if next != null then
+                  cur = next
+                  looping = !stopped
+                  if !looping then { discontinue(cur); releaseScopes() }
+              case Free.Inject(e) =>
+                val next = op(e, Free.Return(_))
+                if next != null then
+                  cur = next
+                  looping = !stopped
+                  if !looping then { discontinue(cur); releaseScopes() }
       catch case e: Throwable => { releaseScopes(); fail(e) }
       finally sliceEnded(slice)
 
@@ -456,7 +499,7 @@ object Async {
                 // evaluated on the way in threw at whoever answered the
                 // callback, and the fiber never answered at all. One Bind
                 // per late resumption, rotated by `resume` like any other
-                case Right(x) => apply(Free.Return(x).flatMap(k))
+                case Right(x) => resumeLate(x, k)
                 case Left(e) => { releaseScopes(); fail(e) }
           }
           cell.getAndSet(Moved) match

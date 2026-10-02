@@ -5,7 +5,7 @@ The Model Context Protocol, both ends (specs/mcp.md).
 MCP is JSON-RPC 2.0 over a byte stream, and this module is small
 because the two ends were already in the library's vocabulary:
 
-- **an MCP server is a `Handler[Tool]`** — so an agent program does
+- **an MCP server is a `Answers[Tool]`** — so an agent program does
   not change by one character when its tools come from a server
   instead of a local table. `TestAgentOverMcp` runs the same program
   both ways and asserts the answers are equal.
@@ -22,7 +22,7 @@ because the two ends were already in the library's vocabulary:
 | `Mcp` | the protocol vocabulary: methods, the handshake, `inputSchema` <-> `ToolSpec` |
 | `Server.serveIn[G]` / `Serving.callF` | the protocol once, in a row carrying the tools' effect; `serve` is its `Pure` instance, `run(link, serving)` its `Async` one with effectful tools answered (specs/optics-outside.md stage 8) |
 | `Server.Around[G]` | a hook around EVERY request of `serveIn`: answer now (`Left`), or pass on with a `leave` that sees the reply; `Around.none` is the plain server; `run(link, serving, around)` on a wire. x402's gate ([okay-x402-mcp](okay-x402-mcp.md)) is one |
-| `Client` / `Session` | a server as `tools`, `call`, and a `Handler[Tool]` (or `interpret`, where nothing may park) |
+| `Client` / `Session` | a server as `tools`, `call`, and a `Answers[Tool]` (or `interpret`, where nothing may park) |
 | `Session.requestRpc` | a request answered as the peer answered it: `Outcome.Answered(result)`, `Outcome.Refused(failed)` with its code and `data` whole, or `Outcome.Ended`; `request` is this folded to the `Json` it always returned |
 | `Server` | `Serving` is everything a server has (tools, resources, prompts); `serve` is a PURE `Stage[Rpc, Rpc, Unit]` — the whole protocol is testable with no process, socket, clock or thread; `over` is the only part that touches a wire |
 | `Stdio` (JVM) | the transport: a spawned server's pipes, or this process's own stdin/stdout |
@@ -47,7 +47,7 @@ handshake (`session.has("prompts")`) rather than guessing.
 // verified against this exact server (TestLive), 13 tools and all
 val link = Stdio.of(Stdio.spawn(Seq("npx", "-y", "@modelcontextprotocol/server-everything")))
 val session = Client.connect(link, Mcp.Info("okay", "1")).runWith
-given Handler[Tool] = session.handler          // the only line that changes
+given Answers[Tool] = session.handler          // the only line that changes
 Agent.converse("...", session.tools.runWith)   // its tools, discovered
 ```
 
@@ -83,7 +83,7 @@ slow completion cannot stop the reader).
 ```scala
 val session = Client.connect(link, Mcp.Info("okay", "1"), Duplex.Peer(
   roots = Seq(Mcp.Root("file:///work")),
-  sample = Some(modelHandler)))          // the SAME Handler[Model] an agent uses
+  sample = Some(modelHandler)))          // the SAME Answers[Model] an agent uses
 session.subscribe("okay://a").runWith
 session.notifications.toLazyList.foreach(n => ...)   // updates, progress, list-changed
 

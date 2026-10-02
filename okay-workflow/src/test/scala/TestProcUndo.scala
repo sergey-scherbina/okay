@@ -19,7 +19,7 @@ import okay.Optic.arrows.*
 class TestProcUndo extends munit.FunSuite:
 
   type P = okay.Pure
-  type Row = Delim + P
+  type Row = Shift % ? + P
   type Sig = Wf.Asked[String, String]
 
   val A: Optic.Arrow[[X, Y] =>> Proc[Sig, X, Y]] & Optic.Choice[[X, Y] =>> Proc[Sig, X, Y]] =

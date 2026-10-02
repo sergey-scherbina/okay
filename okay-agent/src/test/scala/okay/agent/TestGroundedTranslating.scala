@@ -1,6 +1,6 @@
 package okay.agent
 
-import okay.{!, +, Async, Handler}
+import okay.{!, +, Async, Answers}
 import okay.given
 import okay.rag.*
 import java.util.concurrent.atomic.AtomicInteger
@@ -10,7 +10,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * handler, and the one thing that proves it was worth doing: a
  * retriever that CANNOT answer immediately.
  *
- * `Handler[Context]` is `Context ==> Id`. An operation interpreted
+ * `Answers[Context]` is `Context ==> Id`. An operation interpreted
  * into `Id` must produce a value, so it must finish — which is why
  * `Grounded.context` demands `Retriever[Pure]`, and why a retriever
  * that waits on anything could not be used for grounded recall at
@@ -95,8 +95,8 @@ class TestGroundedTranslating extends munit.FunSuite {
       Compact.window(4000)(Compact.chars), remote(AtomicInteger(0)),
       budget = 4000, share = 0.6, k = 2, onRecall = v => ntSeen = v)(Compact.chars)
 
-    given Handler[Context] = handler
-    given Handler[Context + Async] = okay.Handler.union[Context, Async]
+    given Answers[Context] = handler
+    given Answers[Context + Async] = okay.Answers.union[Context, Async]
     val viaHandler = ask.runWith
 
     Async.runAsync(okay.!.translate(ask)(nt)).map { viaTranslate =>

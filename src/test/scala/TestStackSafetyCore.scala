@@ -17,28 +17,28 @@ class TestStackSafetyCore extends munit.FunSuite:
     assertEquals(SmallStack.run()(A.topK[Int](k).run(xs)), xs)
   }
 
-  type Row = Delim + Pure
+  type Row = Shift % ? + Pure
 
-  test("Delim: a shift under thousands of pending continuations splits the stack as a loop") {
+  test("Shift: a shift under thousands of pending continuations splits the stack as a loop") {
     // every level leaves a `.map` pending under the prompt, so the n-th
     // shift cuts a chain n segments long
     val n = 20000
     def deep(p: Prompt[Long], i: Int): Long ! Row =
       if i == 0 then okay.pure(0L)
-      else Delim.shift[Long, Long, Pure](p)(k => k(i.toLong)).flatMap(x => deep(p, i - 1).map(_ + x))
-    assertEquals(SmallStack.run()(!.run(Delim.reset[Long, Pure](p => deep(p, n)))), n.toLong * (n + 1) / 2)
+      else Shift.shift[Long, Long, Pure](p)(k => k(i.toLong)).flatMap(x => deep(p, i - 1).map(_ + x))
+    assertEquals(SmallStack.run()(!.run(Shift.reset[Long, Pure](p => deep(p, n)))), n.toLong * (n + 1) / 2)
   }
 
-  test("Delim: a shift to a prompt under thousands of other delimiters cuts the chain as a loop") {
+  test("Shift: a shift to a prompt under thousands of other delimiters cuts the chain as a loop") {
     // n prompts pushed inside one another, then a shift to the OUTERMOST:
     // the cut walks past every inner mark
     val n = 20000
     // built inside out by a loop, so only the machine can be what overflows
     def nest(outer: Prompt[Int]): Int ! Row =
-      var prog: Int ! Row = Delim.shift[Int, Int, Pure](outer)(k => k(1).map(_ + 1))
-      for _ <- 1 to n do prog = Delim.push(Delim.prompt[Int])(prog)
+      var prog: Int ! Row = Shift.shift[Int, Int, Pure](outer)(k => k(1).map(_ + 1))
+      for _ <- 1 to n do prog = Shift.push(Shift.prompt[Int])(prog)
       prog
-    assertEquals(SmallStack.run()(!.run(Delim.reset[Int, Pure](p => nest(p)))), 2)
+    assertEquals(SmallStack.run()(!.run(Shift.reset[Int, Pure](p => nest(p)))), 2)
   }
 
   test("reflect into Eager: a program of many operations reflects without the stack") {

@@ -6,7 +6,7 @@ and `ProcMacro`, which builds one from an ordinary-looking block.
 It left the core on 2026-09-18 for the plainest of reasons: the core
 never referred to it. No file in `okay` names `Wf`, `Proc` or
 `ProcMacro` in code, on any platform source directory. The one edge
-that exists runs the other way — `Delim` is typed on `Replayable`, a
+that exists runs the other way — `Shift` is typed on `Replayable`, a
 78-line marker, and that stayed. See
 [specs/core-modules.md](../../specs/core-modules.md).
 

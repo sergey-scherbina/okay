@@ -1,6 +1,6 @@
 package okay.r
 
-import okay.{Cont, reset, />}
+import okay.{Cont, />}
 import okay.codec.Codecs
 import okay.codec.Schema
 import RValue.*
@@ -54,7 +54,7 @@ object RCodec {
   // stack-safety-py-r)
 
   private def enc[X](s: Schema[X], x: X, depth: Int): RValue =
-    if depth >= Codecs.NativeThreshold then reset(encC[X, RValue](s, x))
+    if depth >= Codecs.NativeThreshold then Cont.reset(encC[X, RValue](s, x))
     else encNative(s, x, depth)
 
   /** a sum's case as its named list, the case named in `type` */
@@ -167,7 +167,7 @@ object RCodec {
     case other => other.toString
 
   private def dec[X](s: Schema[X], v: RValue, at: At, depth: Int): Either[String, X] =
-    if depth >= Codecs.NativeThreshold then reset(decC[X, Either[String, X]](s, v, at))
+    if depth >= Codecs.NativeThreshold then Cont.reset(decC[X, Either[String, X]](s, v, at))
     else decNative(s, v, at, depth)
 
   /** the leaves, shared by both roads: a scalar has no children, so this

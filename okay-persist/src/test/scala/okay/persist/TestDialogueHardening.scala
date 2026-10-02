@@ -1,7 +1,7 @@
 package okay.persist
 
 import munit.FunSuite
-import okay.{!, +, Delim, Pure}
+import okay.{%, !, +, Shift, Pure}
 import okay.Direct.*
 import scala.language.implicitConversions
 
@@ -16,12 +16,12 @@ import scala.language.implicitConversions
  */
 class TestDialogueHardening extends FunSuite {
 
-  type Row = Delim + Pure
+  type Row = Shift % ? + Pure
 
   // ==== A: an answer the program cannot digest ======================
 
-  def strict(using Delim.Asking[String, String, String, Row]): String ! Row = direct:
-    val n = !Delim.pause("how many?")
+  def strict(using Shift.Asking[String, String, String, Row]): String ! Row = direct:
+    val n = !Shift.pause("how many?")
     s"ok ${n.toInt * 2}"
 
   test("A: an answer the program refuses is NOT journalled, and the dialogue lives") {
@@ -45,15 +45,15 @@ class TestDialogueHardening extends FunSuite {
 
   // ==== B: the program changed under the journal ====================
 
-  def v1(using Delim.Asking[String, String, String, Row]): String ! Row = direct:
-    val city = !Delim.pause("city?")
-    val nights = !Delim.pause("nights?")
+  def v1(using Shift.Asking[String, String, String, Row]): String ! Row = direct:
+    val city = !Shift.pause("city?")
+    val nights = !Shift.pause("nights?")
     s"$city/$nights"
 
-  def v2(using Delim.Asking[String, String, String, Row]): String ! Row = direct:
-    val promo = !Delim.pause("promo code?")     // a NEW first question
-    val city = !Delim.pause("city?")
-    val nights = !Delim.pause("nights?")
+  def v2(using Shift.Asking[String, String, String, Row]): String ! Row = direct:
+    val promo = !Shift.pause("promo code?")     // a NEW first question
+    val city = !Shift.pause("city?")
+    val nights = !Shift.pause("nights?")
     s"$promo/$city/$nights"
 
   test("B: a journal written by another program STOPS the fold instead of mis-mapping") {

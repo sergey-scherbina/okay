@@ -15,7 +15,7 @@ import okay.given
  * - tree search = `msplit` with `guard` to prune, `observe(n)` to
  *   take n leaves, `interleave` to split the budget fairly.
  *
- * Handler ORDER decides whether branches share a conversation:
+ * Answers ORDER decides whether branches share a conversation:
  * put `Memory.handle` INSIDE the search and every branch explores
  * its own context; put it outside and the transcript records
  * everything tried. Neither needs a flag — it is where you run it.

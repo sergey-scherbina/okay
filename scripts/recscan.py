@@ -123,10 +123,11 @@ for d in class_dirs(root):
                         deferred = cons is not None and (
                             DEFER_OWNER.match(cons[0]) and DEFER_NAME.match(cons[1])
                             or cons[1] in ('delay', 'defer', 'suspend', 'lazy', 'shared', 'tailcall')
-                            # an inlined flatMap builds the node itself
-                            or re.search(r'Free\$(Bind|Delay|Suspend)\$$', cons[0]) and cons[1] == 'apply'
+                            # an inlined flatMap builds the node itself (`Freer`'s since
+                            # freer-base-step-extractor made it the base Free is an alias of)
+                            or re.search(r'Freer?\$(Bind|Delay|Suspend)\$$', cons[0]) and cons[1] == 'apply'
                             # Scala 2 builds the node with `new`
-                            or re.search(r'Free\$(Bind|Delay|Suspend)$', cons[0]) and cons[1] == '<init>'
+                            or re.search(r'Freer?\$(Bind|Delay|Suspend)$', cons[0]) and cons[1] == '<init>'
                             or re.search(r'Safepoint\$$', cons[0]) and 'defer' in cons[1]
                             # a callback registered now, run later from another frame
                             or cons[1] == '<init>' and re.search(r'Waiter$', cons[0])

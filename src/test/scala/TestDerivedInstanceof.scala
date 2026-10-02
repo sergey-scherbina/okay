@@ -19,9 +19,9 @@ class TestDerivedInstanceof extends munit.FunSuite:
   test("the derived test agrees with ByClass on own, foreign and %-shaped operations") {
     val d = summon[Effect[Users]]
     val b = typeableK[Users](classOf[Users[?]])
-    val ops: List[Any] = List(Users.Find(1), (State.Get(): State[Int, Int]), State.Set(2), Writer.Say("w"), (Reader.Ask(): Reader[Int, Int]), Throws("e"), 42, null)
+    val ops: List[Any] = List(Users.Find(1), (State.Get(): State[Int, Int]), State.Update[Int, Int](_ => (2, 2)), Writer.Say("w"), (Reader.Ask(): Reader[Int, Int]), Throws("e"), 42, null)
     for op <- ops do assertEquals(d.test(op), b.test(op), s"$op")
-    assert(summon[Effect[State % Int]].test(State.Set(1)))
+    assert(summon[Effect[State % Int]].test(State.Update[Int, Int](_ => (1, 1))))
     assert(summon[Effect[State % Int]].test((State.Get(): State[String, String])), "the erasure: State of any S")
     assert(!summon[Effect[State % Int]].test(Writer.Say(1)))
   }

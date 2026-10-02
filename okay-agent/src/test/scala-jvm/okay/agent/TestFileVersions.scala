@@ -1,6 +1,6 @@
 package okay.agent
 
-import okay.Handler
+import okay.Answers
 import okay.codec.Json
 
 import java.nio.file.{Files, Path}
@@ -17,7 +17,7 @@ class TestFileVersions extends munit.FunSuite {
   def call(name: String, arg: String): ToolCall =
     ToolCall("id", name, Json.JObj(Vector(("q", Json.JStr(arg)))))
 
-  def world(answers: Map[String, String]): Handler[Tool] = new Handler[Tool]:
+  def world(answers: Map[String, String]): Answers[Tool] = new Answers[Tool]:
     def handle[A](e: Tool[A]): A = e match
       case Tool.Call(c) =>
         val q = c.args match
@@ -25,7 +25,7 @@ class TestFileVersions extends munit.FunSuite {
           case _ => ""
         answers.getOrElse(s"${c.name}:$q", s"no answer for ${c.name}:$q")
 
-  def recorded(w: Handler[Tool], calls: Seq[ToolCall],
+  def recorded(w: Answers[Tool], calls: Seq[ToolCall],
                p: Rerun.Provenance = Rerun.Provenance()): Rerun.Version =
     val j = Durable.MemoryJournal()
     val h = Durable.tools(w, j)()

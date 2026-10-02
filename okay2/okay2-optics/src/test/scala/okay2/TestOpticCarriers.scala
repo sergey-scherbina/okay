@@ -46,7 +46,7 @@ class TestOpticCarriers extends munit.FunSuite {
   test("Static: the operations a walk would perform, listed before running") {
     val spine = eachLine.traverseOf[St](priceLine)(order)
     assertEquals(spine.leaves, Vector[Any](Prices.Of("pen"), Prices.Of("ink"), Prices.Of("pad")))
-    implicit val h: Handler[Prices] = new Handler[Prices] {
+    implicit val h: Answers[Prices] = new Answers[Prices] {
       def handle[A](e: Prices.Op[A]): A = e match { case Prices.Of(sku) => answer[A](sku.length) }
     }
     assertEquals(Effects.runFree(spine.toFree), Order("A-1", Vector(Line("pen", 3), Line("ink", 3), Line("pad", 3))))

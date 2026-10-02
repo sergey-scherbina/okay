@@ -23,7 +23,10 @@ object Ledger:
     /** a pair that became everyone's: enough holders, or a teacher */
     case Shared(earlier: String, intent: String, holders: Int, at: Long, by: String)
     /** a table rebuilt: the hash before and after, and the corpus it came from */
-    case Rebuilt(artifact: String, encoder: String, before: Option[String], after: String, corpus: String, at: Long, by: String)
+    case Rebuilt(artifact: String, encoder: String, before: Option[String], after: String, corpus: String, at: Long, by: String,
+                 /** what the new table was built from (`Exemplars.origin`, specs/dlm-learning.md §11):
+                  * the same on every processor, where `after` — the numbers' hash — is not */
+                 origin: String = "")
     /** a door that said no, and why */
     case Refused(who: String, what: String, why: String, at: Long, by: String)
     /** a table let go from the shelf, and the policy that let it go */
@@ -181,10 +184,11 @@ object Ledger:
     case Entry.Shared(earlier, intent, holders, at, by) => JObj(Vector(
       "entry" -> JStr("shared"), "earlier" -> JStr(earlier), "intent" -> JStr(intent),
       "holders" -> JNum(holders.toDouble), "at" -> JNum(at.toDouble), "by" -> JStr(by)))
-    case Entry.Rebuilt(artifact, encoder, before, after, corpus, at, by) => JObj(Vector(
+    case Entry.Rebuilt(artifact, encoder, before, after, corpus, at, by, origin) => JObj(Vector(
       "entry" -> JStr("rebuilt"), "artifact" -> JStr(artifact), "encoder" -> JStr(encoder)) ++
       before.map(b => "before" -> JStr(b)) ++ Vector(
-      "after" -> JStr(after), "corpus" -> JStr(corpus), "at" -> JNum(at.toDouble), "by" -> JStr(by)))
+      "after" -> JStr(after), "corpus" -> JStr(corpus), "at" -> JNum(at.toDouble), "by" -> JStr(by)) ++
+      Option.when(origin.nonEmpty)("origin" -> JStr(origin)))
     case Entry.Refused(who, what, why, at, by) => JObj(Vector(
       "entry" -> JStr("refused"), "who" -> JStr(who), "what" -> JStr(what), "why" -> JStr(why),
       "at" -> JNum(at.toDouble), "by" -> JStr(by)))
@@ -206,7 +210,7 @@ object Ledger:
         case "shared" => for e <- s("earlier"); i <- s("intent"); h <- n("holders"); at <- n("at"); by <- s("by")
           yield Entry.Shared(e, i, h.toInt, at, by)
         case "rebuilt" => for a <- s("artifact"); enc <- s("encoder"); after <- s("after"); c <- s("corpus"); at <- n("at"); by <- s("by")
-          yield Entry.Rebuilt(a, enc, s("before"), after, c, at, by)
+          yield Entry.Rebuilt(a, enc, s("before"), after, c, at, by, s("origin").getOrElse(""))
         case "refused" => for who <- s("who"); w <- s("what"); why <- s("why"); at <- n("at"); by <- s("by")
           yield Entry.Refused(who, w, why, at, by)
         case "pruned" => for a <- s("artifact"); h <- s("hash"); p <- s("policy"); at <- n("at"); by <- s("by")

@@ -86,7 +86,7 @@ class TestFoldUntilStreams extends munit.FunSuite:
     assertEquals(performed, 5)
   }
 
-  test("the effectful writer program's .foldUntil: one using, the Handler[Async] in scope runs the rest") {
+  test("the effectful writer program's .foldUntil: one using, the Answers[Async] in scope runs the rest") {
     var performed = 0
     assertEquals(counted(1000, () => performed += 1).foldUntil(using FoldUntil.take[Int](3)), Vector(1, 2, 3))
     assertEquals(performed, 2)

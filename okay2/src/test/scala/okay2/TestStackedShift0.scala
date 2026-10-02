@@ -1,6 +1,6 @@
 package okay2
 
-import Delim.Stacked
+import Shift.Stacked
 
 /**
  * okay2-dollar, the stacked half: `Has` carries the stack BELOW a
@@ -34,7 +34,7 @@ class TestStackedShift0 extends munit.FunSuite {
 
   test("a shift from the body to the CONSUMED prompt is a compile error, and to the one below is not") {
     val consumed = compileErrors("""
-      okay2.Delim.Stacked.delimited[Int, okay2.Pure] { outer =>
+      okay2.Shift.Stacked.delimited[Int, okay2.Pure] { outer =>
         outer.stack.reset[Int, okay2.Pure] { inner =>
           inner.stack.shift0[Int, Int, okay2.Pure](inner.p).apply(below => _ =>
             below.shift[Int, Int, okay2.Pure](inner.p)(k2 => k2(1)))
@@ -42,7 +42,7 @@ class TestStackedShift0 extends munit.FunSuite {
       }""")
     assert(consumed.contains("is not on the prompt stack"), consumed)
     val below = compileErrors("""
-      okay2.Delim.Stacked.delimited[Int, okay2.Pure] { outer =>
+      okay2.Shift.Stacked.delimited[Int, okay2.Pure] { outer =>
         outer.stack.reset[Int, okay2.Pure] { inner =>
           inner.stack.shift0[Int, Int, okay2.Pure](inner.p).apply(below => _ =>
             below.shift[Int, Int, okay2.Pure](outer.p)(k2 => k2(1)))
@@ -53,7 +53,7 @@ class TestStackedShift0 extends munit.FunSuite {
 
   test("a stacked dollar: an Int body leaves through ret as a String, and a shift0 to it takes ret along") {
     val r = !.run(Stacked.delimited[String, P] { s =>
-      s.stack.dollar[Int, String, P](i => pure[Delim + P, String](s"n=$i")) { d =>
+      s.stack.dollar[Int, String, P](i => pure[Shift[Any] + P, String](s"n=$i")) { d =>
         d.stack.shift0[String, Int, P](d.p).apply(_ => k => k(1).flatMap(a => k(2).map(b => s"$a|$b"))).map(_ * 10)
       }
     })

@@ -11,12 +11,12 @@ case class E3[+A](a: A) derives Effect
 case class E4[+A](a: A) derives Effect
 
 /**
- * specs/handler-fusion.md, the `Handler.flat` box — its CEILING,
+ * specs/handler-fusion.md, the `Answers.flat` box — its CEILING,
  * measured before anything is built (staged-block-lanes, 2026-09-22).
  *
- * `Handler.union` is a nested chain: on `E1 + (E2 + (E3 + E4))` an E4
+ * `Answers.union` is a nested chain: on `E1 + (E2 + (E3 + E4))` an E4
  * operation passes three `split` tests and three nested `handle` calls
- * before its own handler sees it. `Handler.flat` would assemble the
+ * before its own handler sees it. `Answers.flat` would assemble the
  * same row inline as ONE match over the four operation classes. The
  * hand-written match below is what that unrolls to, so the difference
  * between the two arms is the whole prize of building it. Both arms
@@ -27,7 +27,7 @@ case class E4[+A](a: A) derives Effect
  *
  * Four forms, because the first ceiling lied by omission: `flat`
  * inlines the handlers' BODIES as well as flattening the dispatch,
- * and a macro over opaque `Handler` givens can only do the second.
+ * and a macro over opaque `Answers` givens can only do the second.
  * `flatCalls` is the reachable ceiling; `inlined` is the macro
  * (handler-fusion-flat). Position 4, minima: union 108.4, inlined
  * 100.2, flatCalls 94.9, flat 88.2 µs — bytes identical on all.
@@ -44,25 +44,25 @@ class FlatDispatchBenchmark {
 
   type Row = E1 + (E2 + (E3 + E4))
 
-  given Handler[E1] = new Handler[E1]:
+  given Answers[E1] = new Answers[E1]:
     def handle[A](a: E1[A]): A = a.a
-  given Handler[E2] = new Handler[E2]:
+  given Answers[E2] = new Answers[E2]:
     def handle[A](a: E2[A]): A = a.a
-  given Handler[E3] = new Handler[E3]:
+  given Answers[E3] = new Answers[E3]:
     def handle[A](a: E3[A]): A = a.a
-  given Handler[E4] = new Handler[E4]:
+  given Answers[E4] = new Answers[E4]:
     def handle[A](a: E4[A]): A = a.a
 
   /** the shipping composition: the README's shape, nested in row order */
-  val union: Handler[Row] =
-    given h34: Handler[E3 + E4] = Handler.union[E3, E4]
-    given h234: Handler[E2 + (E3 + E4)] = Handler.union[E2, E3 + E4]
-    Handler.union[E1, E2 + (E3 + E4)]
+  val union: Answers[Row] =
+    given h34: Answers[E3 + E4] = Answers.union[E3, E4]
+    given h234: Answers[E2 + (E3 + E4)] = Answers.union[E2, E3 + E4]
+    Answers.union[E1, E2 + (E3 + E4)]
 
-  /** what `Handler.flat` would unroll to: one match, row order, no
+  /** what `Answers.flat` would unroll to: one match, row order, no
    * nested handler call — position 4 pays four class tests and nothing
    * else */
-  val flat: Handler[Row] = new Handler[Row]:
+  val flat: Answers[Row] = new Answers[Row]:
     def handle[A](a: Row[A]): A = a match
       case E1(x) => x
       case E2(x) => x
@@ -72,10 +72,10 @@ class FlatDispatchBenchmark {
   /** the same flat match, but CALLING the four handlers (captured once
    * as fields) instead of inlining their bodies — the ceiling the macro
    * can actually reach: `flat` above also inlines the handlers, which
-   * no macro over opaque `Handler` givens can do */
-  val flatCalls: Handler[Row] =
-    val (ha, hb, hc, hd) = (summon[Handler[E1]], summon[Handler[E2]], summon[Handler[E3]], summon[Handler[E4]])
-    new Handler[Row]:
+   * no macro over opaque `Answers` givens can do */
+  val flatCalls: Answers[Row] =
+    val (ha, hb, hc, hd) = (summon[Answers[E1]], summon[Answers[E2]], summon[Answers[E3]], summon[Answers[E4]])
+    new Answers[Row]:
       def handle[A](a: Row[A]): A = a match
         case e: E1[A] => ha.handle(e)
         case e: E2[A] => hb.handle(e)
@@ -84,7 +84,7 @@ class FlatDispatchBenchmark {
 
   /** the shipped form: the macro's one expression over the row —
    * held to within 10% of `flatCalls` */
-  val inlined: Handler[Row] = Handler.flat[Row]
+  val inlined: Answers[Row] = Answers.flat[Row]
 
   def prog4(i: Int, acc: Int): Int ! Row =
     if i >= N then pure(acc) else effect[Row, Int](E4(i)).flatMap(x => prog4(i + 1, acc + x))

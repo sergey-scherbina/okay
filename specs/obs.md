@@ -107,7 +107,7 @@ a line told with no tracer carries no ids and says so by absence
 rather than by a guess.
 
 **The handler is comonadic, so a line is written WHEN TOLD.**
-`Say(w)` answers `Unit`, so `Handler[Writer % Line]` is expressible
+`Say(w)` answers `Unit`, so `Answers[Writer % Line]` is expressible
 and writes through. A crash after a log call has already logged,
 which is the whole point of logging and the one thing an
 accumulating Writer would get wrong.

@@ -2,7 +2,7 @@ package okay.codec
 
 import scala.compiletime.{constValueTuple, erasedValue, summonInline}
 import scala.deriving.Mirror
-import okay.{Cont, reset, />}
+import okay.{Cont, />}
 
 /**
  * The reified shape of a datatype (specs/codecs.md): every derivation
@@ -265,7 +265,7 @@ object Schema {
     /** THE descent: below the threshold native, at or past it the
       * trampoline — one node forced per iteration of `/`'s loop */
     private def child[E, X, R](s: Step[E, X, R], e: E, x: X, open: Int): R =
-      if open >= Codecs.NativeThreshold then reset(s.cont(e, x, open))
+      if open >= Codecs.NativeThreshold then Cont.reset(s.cont(e, x, open))
       else s.run(e, x, open)
 
     def leaf[E, A, R](f: (E, A) => R): Step[E, A, R] = new Step[E, A, R]:

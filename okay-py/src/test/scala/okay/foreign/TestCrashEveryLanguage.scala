@@ -53,7 +53,7 @@ abstract class CrashConformance extends munit.FunSuite:
 
   test("killed between two choices: every branch of a multi-shot program comes back") {
     val w = ForeignWorker.supervised(open())
-    given okay.Handler[ForeignEval] = w.handler
+    given okay.Answers[ForeignEval] = w.handler
     var killed = false
     val choose = Foreign.callback[Vector[Long], Long]("choose") { xs =>
       if !killed && xs == Vector(10L, 20L) then { killed = true; kill() }
@@ -69,7 +69,7 @@ abstract class CrashConformance extends munit.FunSuite:
 
   test("MUX: two programs open on one worker, the worker killed: both come back, every branch (foreign-mux-duplex part 4)") {
     val w = ForeignWorker.supervised(open())
-    given okay.Handler[ForeignEval] = w.handler
+    given okay.Answers[ForeignEval] = w.handler
     val probe = Foreign.program[Long](address("pairs")).calling(Foreign.callbacks(choose))()
     assertEquals(runChoice(probe.program).runWith.size, 4)
     assume(w.muxed, "this far side is served one exchange at a time")
@@ -97,7 +97,7 @@ abstract class CrashConformance extends munit.FunSuite:
 
   test("killed while idle: the next program runs on a fresh worker") {
     val w = ForeignWorker.supervised(open())
-    given okay.Handler[ForeignEval] = w.handler
+    given okay.Answers[ForeignEval] = w.handler
     try
       val pairs = () => Foreign.program[Long](address("pairs")).calling(Foreign.callbacks(choose))()
       assertEquals(runChoice(pairs().program).runWith.size, 4)
@@ -110,7 +110,7 @@ abstract class CrashConformance extends munit.FunSuite:
   test("killed mid-ask in DIRECT STYLE: WorkerDied as data, and the next call runs") {
     assume(direct, "this far side serves programs only")
     val w = ForeignWorker.supervised(open())
-    given okay.Handler[ForeignEval] = w.handler
+    given okay.Answers[ForeignEval] = w.handler
     var killed = false
     val priceOf = Foreign.callback[String, Double]("price_of") { sku =>
       if !killed then { killed = true; kill() }

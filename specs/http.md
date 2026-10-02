@@ -230,7 +230,7 @@ than growing without limit.
   is explicit and consistent: `llm.Transport`, `mcp.Link` and
   `cluster.Remote` are all values speaking `Async`, and a new signature
   is minted only for domain logic above the wire. Rejected: an `Http`
-  effect with a `Handler` (tempting, since handlers are what this
+  effect with a `Answers` (tempting, since handlers are what this
   library is for) — it would put a transport in the row that every
   caller must then forward, and buys nothing a trait does not already
   give, since the seam is already substitutable for tests.

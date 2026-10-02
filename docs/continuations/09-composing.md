@@ -1,64 +1,69 @@
 # 9 · Composing the shapes
 
-> Compiled in `src/test/scala/TestBookComposing.scala`, including one
-> test that asserts something **does not compile**. This is the
-> chapter that matters most in a real codebase, because a real
-> codebase never wants exactly one shape.
+> Compiled in `okay-direct/src/test/scala/TestBookComposing.scala`.
+> This is the chapter that matters most in a real codebase, because a
+> real codebase never wants exactly one shape.
 
 ---
 
-## The four do not compose naively
+## Two boundaries, one machine
 
-Here is the mistake, and it is the obvious thing to write:
+Here is the obvious thing to write:
 
 ```scala
-Delim.delimited[String, Pure]:
+Shift.delimited[String, Pure]:
   direct:
-    val x = !Delim.delimited[Int, Pure]:      // ← a second one, inside
+    val inner = !Shift.delimited[Int, Row]:
       direct:
-        !Delim.exit(7)
+        !Shift.exit(7)          // leaves the INNER boundary only
         0
-    s"inner said $x"
+    s"inner said $inner"
 ```
 
-Two boundaries, one inside the other. It reads correctly. It is wrong,
-and the compiler says so:
+Two boundaries, one inside the other, and it does what it says:
+`"inner said 7"`. `Row` is `Shift % ? + Pure`, the row of the outer
+block.
 
-```scala
-val e = compileErrors("""
-  okay.Delim.delimited[Int, okay.Delim + okay.Pure](okay.pure(1))""")
-assert(e.contains("SECOND machine"))
-```
+**What happens underneath.** Each of `delimited`, `collect` and
+`resumable` does two jobs: it *installs a boundary*, and, if none is
+running yet, it *starts the machine* that interprets captures. A prompt
+lives in the machine that pushed it, so a second machine inside the
+first could not see the outer boundary. That used to be a runtime
+`NoPrompt`, then a compile error. Now the inner door reads its row,
+sees a `Shift` (a machine is running), and only installs. Chapter 12
+is the whole story.
 
-**Why it is wrong.** Each of `delimited`, `collect` and `resumable`
-does two jobs: it *installs a boundary* and it *runs the machine* that
-interprets captures. A second one inside the first starts a second
-machine — and a prompt lives in the machine that pushed it. An exit
-aimed at the outer boundary from inside the inner machine cannot find
-it, because it is looking at a different stack.
-
-Getting that as a compile error rather than a runtime surprise is not
-an accident; it is the reason the two halves have separate names.
+**The row you write is what it reads.** `delimited[Int, Row]` says
+"inside a machine". `delimited[Int, Pure]` says "nothing outside", and
+the door believes it and starts a machine of its own. That is harmless
+until a capture inside it is aimed at the outer boundary: the inner
+machine claims it and cannot find the prompt. Inside a block, write
+the block's row.
 
 ## The rule, in one line
 
 > **The outermost combinator runs the machine. Everything under it
 > installs only.**
 
-| runs the machine (outermost) | installs only (nested) |
+| runs the machine when outermost | installs only, always |
 |---|---|
-| `Delim.delimited` | `Delim.scope` |
-| `Delim.collect` | `Delim.collecting` |
-| `Delim.resumable` | `Delim.pausing` |
+| `Shift.delimited` | `Shift.scope` |
+| `Shift.collect` | `Shift.collecting` |
+| `Shift.resumable` | `Shift.pausing` |
 
-Written correctly, the example above is:
+The left column nests by itself when its row says a machine runs. The
+right column says so explicitly, and its row needs no outer `Shift`:
+it keeps one in its result (`R ! Shift % ? + F`) for the machine outside
+to run.
+
+The example above, with the right column:
 
 ```scala
-Delim.delimited[String, Pure]:              // runs
+Shift.delimited[String, Pure]:              // runs
   direct:
-    val inner = !Delim.scope[Int, Pure]:    // installs
+    val inner = !Shift.scope[Int, Pure]:    // installs
       direct:
-        !Delim.exit(7)
+        !Shift.exit(7)
         0
     s"inner said $inner"
 // "inner said 7"
@@ -74,11 +79,11 @@ first-class value, an inner scope can leave through an **outer**
 boundary — the thing nested handlers cannot express:
 
 ```scala
-Delim.delimited[String, Pure]: outer ?=>
+Shift.delimited[String, Pure]: outer ?=>
   direct:
-    val inner = !Delim.scope[Int, Pure]:
+    val inner = !Shift.scope[Int, Pure]:
       direct:
-        !Delim.exit(using outer)("straight out")   // not this boundary — that one
+        !Shift.exit(using outer)("straight out")   // not this boundary — that one
         0
     s"inner said $inner"
 // "straight out"
@@ -99,12 +104,12 @@ default is the nearest.
 The common case. A walk that emits, and stops early:
 
 ```scala
-def upToBig(x: Tree)(using Delim.Emitting[Int], Delim.Prompted[Unit]): Unit ! Row =
+def upToBig(x: Tree)(using Shift.Emitting[Int], Shift.Prompted[Unit]): Unit ! Row =
   direct:
     x match
       case Tree.Leaf(n) =>
-        if n > 50 then !Delim.exit(())
-        !Delim.emit(n)
+        if n > 50 then !Shift.exit(())
+        !Shift.emit(n)
       case Tree.Node(l, r) => { !upToBig(l); !upToBig(r) }
 ```
 
@@ -116,9 +121,9 @@ Assembling it: `collect` is outermost (it runs), and a `scope` inside
 it provides the boundary the exit aims at.
 
 ```scala
-val got = !.run(Delim.collect[Int, Pure](
+val got = !.run(Shift.collect[Int, Pure](
   direct:
-    !Delim.scope[Unit, Pure](direct(!upToBig(t)))))
+    !Shift.scope[Unit, Pure](direct(!upToBig(t)))))
 // List(1)
 ```
 
@@ -141,12 +146,12 @@ documented rather than described.
 Chapter 8 promised this, and here it is composed:
 
 ```scala
-Delim.delimited[Int, Pure]:
+Shift.delimited[Int, Pure]:
   direct:
-    !Delim.onReturn(n => n + 1000)
-    val inner = !Delim.scope[Int, Pure]:
+    !Shift.onReturn(n => n + 1000)
+    val inner = !Shift.scope[Int, Pure]:
       direct:
-        !Delim.exit(5)
+        !Shift.exit(5)
         0
     inner
 // 1005

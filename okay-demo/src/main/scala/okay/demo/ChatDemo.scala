@@ -156,19 +156,19 @@ object ChatDemo {
    * projection that does not go through a tool.
    */
   def agentTurn(b: Board, text: String, history: Seq[Anthropic.Message],
-                modelH: okay.Handler[AgentModel], who: Option[String] = None): String =
+                modelH: okay.Answers[AgentModel], who: Option[String] = None): String =
     val system = boardSystem + who.fold("")(e =>
       s"\nThe speaker is a SIGNED-IN session as $e — use this as the owner, " +
       "even if the message names somebody else.")
-    given okay.Handler[AgentModel] = modelH
-    given okay.Handler[Tool] = Handlers.tools(boardTable(b))
+    given okay.Answers[AgentModel] = modelH
+    given okay.Answers[Tool] = Handlers.tools(boardTable(b))
     val ctx = Handlers.context(Compact.all)._2
-    given okay.Handler[AgentContext] = ctx
-    given r1: okay.Handler[AgentModel + Async] = okay.Handler.union[AgentModel, Async]
-    given r2: okay.Handler[AgentContext + (AgentModel + Async)] =
-      okay.Handler.union[AgentContext, AgentModel + Async]
-    given r3: okay.Handler[Tool + (AgentContext + (AgentModel + Async))] =
-      okay.Handler.union[Tool, AgentContext + (AgentModel + Async)]
+    given okay.Answers[AgentContext] = ctx
+    given r1: okay.Answers[AgentModel + Async] = okay.Answers.union[AgentModel, Async]
+    given r2: okay.Answers[AgentContext + (AgentModel + Async)] =
+      okay.Answers.union[AgentContext, AgentModel + Async]
+    given r3: okay.Answers[Tool + (AgentContext + (AgentModel + Async))] =
+      okay.Answers.union[Tool, AgentContext + (AgentModel + Async)]
     import okay.Direct.*
     def seed(ms: List[Anthropic.Message]): Unit ! okay.agent.Agent = ms match
       case Nil => pure(())

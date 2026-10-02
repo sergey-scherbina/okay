@@ -509,7 +509,7 @@ object Aggregator {
  * without an inverse.
  */
 def sliding[S[_], F[+_], A](s: S[A])(n: Int)
-                           (using G: Group[A], St: Stream[S, F], H: Handler[F]): LazyList[A] =
+                           (using G: Group[A], St: Stream[S, F], H: Answers[F]): LazyList[A] =
   def go(q: Vector[A], acc: A, rest: LazyList[A]): LazyList[A] = rest match
     case a #:: t =>
       val grown = G.combine(acc, a)

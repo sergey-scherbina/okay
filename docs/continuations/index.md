@@ -143,14 +143,15 @@ only to use.*
 
 **Thesis.** A typed, first-class prompt is what lets an inner scope
 abort ACROSS its own boundary to an outer one — the thing nested
-handlers cannot express — and it is why this library has `Delim` at
+handlers cannot express — and it is why this library has `Shift` at
 all.
 
-### [11. Four captures: `shift`, `shift0`, `control`, `control0`](11-four-captures.md) ✓
+### [11. Two captures: `shift` and `shift0`](11-four-captures.md) ✓
 
-**Thesis.** They differ in what they do to the delimiter, and the
-difference is visible in three-line programs. A table nobody has to
-memorise, plus which one every recipe in Part II actually uses.
+**Thesis.** They differ in one thing — whether the handler's body runs
+under the delimiter — and the difference is visible in a three-line
+program. Which one every recipe in Part II uses, and why `control` and
+`control0` left the library.
 
 ### [12. One machine, one prompt stack](12-one-machine.md) ✓
 
@@ -267,7 +268,7 @@ different shape.
 ### [21. The disciplines that make it safe](21-the-disciplines.md) ✓
 
 **Thesis.** Three constraints carry their weight in types rather than
-in prose — `Replayable`, `At`, `OneMachine` — and each exists because
+in prose — `Replayable`, `At`, `Shift.Machine` — and each exists because
 something went wrong without it.
 
 ### [22. Saving and restoring: checkpoints, and what cannot be one](22-checkpoints.md) ✓

@@ -18,7 +18,7 @@ import scala.language.implicitConversions
 class TestWf extends munit.FunSuite {
 
   type P = okay.Pure
-  type Row = Delim + P
+  type Row = Shift % ? + P
 
   /** a drive that was expected to finish (workflow-suspended-driver
    * made the result a `Step`, because a drive may now legitimately

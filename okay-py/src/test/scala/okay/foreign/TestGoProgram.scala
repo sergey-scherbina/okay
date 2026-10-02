@@ -181,7 +181,7 @@ class TestGoProgram extends munit.FunSuite {
     dir
 
   private lazy val w = ForeignWorker.speaking(Seq(GoWorker.build(project(main)).toString))
-  private given okay.Handler[ForeignEval] = w.handler
+  private given okay.Answers[ForeignEval] = w.handler
   override def afterAll(): Unit = if go then w.close()
 
   private val choose = Foreign.callback[Vector[Long], Long]("choose")(xs => effect[Choose, Long](Choose(xs)))

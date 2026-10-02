@@ -595,7 +595,7 @@ module page with its own worked shape:
   model reaches only through tools, rebuilt from its own log.
 - **Give the model tools** — [`okay-agent`](modules/okay-agent.md)
   and [`okay-mcp`](modules/okay-mcp.md): tools are operations, and an
-  MCP server is a `Handler[Tool]`.
+  MCP server is a `Answers[Tool]`.
 - **A different server** — [`okay-netty`](modules/okay-netty.md)
   behind the same seam; the same routes, one dependency swapped.
 

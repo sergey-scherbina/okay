@@ -1,0 +1,8 @@
+2026-10-01	0cdee9fe7	-	DelimBenchmark.delimGenerator round1	54.5	53.7	1.01	delimited-trait vs master: the interface over the same nodes, no allocation and no step added; bytes 542249 vs 542249
+2026-10-01	0cdee9fe7	-	DelimBenchmark.delimGenerator round2	52.9	54.2	0.98	delimited-trait vs master: the interface over the same nodes, no allocation and no step added; bytes 542249 vs 542249
+2026-10-01	0cdee9fe7	-	DelimBenchmark.delimPushOnly round1	23.0	23.2	0.99	delimited-trait vs master: the interface over the same nodes, no allocation and no step added; bytes 230064 vs 230064
+2026-10-01	0cdee9fe7	-	DelimBenchmark.delimPushOnly round2	23.1	22.9	1.01	delimited-trait vs master: the interface over the same nodes, no allocation and no step added; bytes 230064 vs 230064
+2026-10-01	0cdee9fe7	-	HandlerBenchmark.contAnswer round1	37.7	37.9	0.99	delimited-trait vs master: the interface over the same nodes, no allocation and no step added; bytes 398072 vs 398072
+2026-10-01	0cdee9fe7	-	HandlerBenchmark.contAnswer round2	37.7	37.9	1.00	delimited-trait vs master: the interface over the same nodes, no allocation and no step added; bytes 398072 vs 398072
+2026-10-01	0cdee9fe7	-	HandlerBenchmark.statePara round1	63.0	63.5	0.99	delimited-trait vs master: the interface over the same nodes, no allocation and no step added; bytes 549336 vs 549336
+2026-10-01	0cdee9fe7	-	HandlerBenchmark.statePara round2	63.3	63.4	1.00	delimited-trait vs master: the interface over the same nodes, no allocation and no step added; bytes 549336 vs 549336

@@ -42,6 +42,7 @@ class TestHedgeStart extends munit.FunSuite {
       val f = inner.fork(() => { attempt.set(n); prog() })
       new Fiber[A]:
         def onComplete(k: Either[Throwable, A] => Unit): Unit = f.onComplete(k)
+        def answered: Boolean = f.answered
         def cancel(): Unit =
           cancelled.updateAndGet(_ + n): Unit
           f.cancel()

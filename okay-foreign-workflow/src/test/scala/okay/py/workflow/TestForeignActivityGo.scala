@@ -1,6 +1,6 @@
 package okay.foreign.workflow
 
-import okay.{!, +, Delim, Pure, Wf}
+import okay.{%, !, +, Shift, Pure, Wf}
 import okay.Direct.*
 import okay.codec.{Schema, WireAuth, WireFormat}
 import okay.persist.{Dialogue, MemoryStore}
@@ -65,7 +65,7 @@ func main() {
       case _ => None
     (bound.getOrElse { p.destroy(); throw IllegalStateException(s"the Go shop did not say where it listens: $first") }, p)
 
-  def order(sku: String)(using w: Wf.Asks[ForeignCall, String, String, Pure]): String ! Delim + Pure = direct:
+  def order(sku: String)(using w: Wf.Asks[ForeignCall, String, String, Pure]): String ! Shift % ? + Pure = direct:
     val price = !ForeignActivity.call[Double]("price")(sku)
     price match
       case Left(c) => s"no price: ${c.kind}"
@@ -94,7 +94,7 @@ class TestForeignActivityGo extends munit.FunSuite:
     var server = first
     var restarted = false
     val w = ForeignWorker.supervised(ForeignWorker.connect("127.0.0.1", port))
-    given okay.Handler[ForeignEval] = w.handler
+    given okay.Answers[ForeignEval] = w.handler
     val topic = MemoryStore().topic("orders")
     try
       val oracle = (q: ForeignCall) =>
@@ -122,7 +122,7 @@ class TestForeignActivityGo extends munit.FunSuite:
     val (port, first) = listen(0, secret)
     first.destroyForcibly().waitFor(): Unit          // nobody is listening now
     val w = ForeignWorker.supervised(ForeignWorker.connect("127.0.0.1", port))
-    given okay.Handler[ForeignEval] = w.handler
+    given okay.Answers[ForeignEval] = w.handler
     val topic = MemoryStore().topic("orders")
     def run = Dialogue.workflow[ForeignCall, String, String, Pure](topic, "order-down", "order/1")(order("cake"))
       .runWorkflowIn(q => ForeignActivity.oracle(q))

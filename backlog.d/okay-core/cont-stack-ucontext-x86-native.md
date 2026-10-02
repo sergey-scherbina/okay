@@ -12,3 +12,6 @@
       `sigprocmask` syscall inside) — macOS-only, glibc mangles the slot.
       PRIORITY: LOW (a trigger: a user on x86 macOS, or an x86 Linux box
       in reach).
+      NOTE (cont-core-design, 2026-10-01): Cont's runner no longer reads
+      the stack; `StackRoom` and okayJdk22 are kept (operator) but have no
+      caller in the runner, so this is only about the reader itself.

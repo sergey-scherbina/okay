@@ -103,6 +103,15 @@ trait Buffer[A] {
    */
   def route(): Int = 0
 
+  /** a route for a producer that is NOT a thread — a fiber, which on a
+   * pool scheduler is resumed wherever it was woken — claimed once and
+   * carried by the caller for its whole life, so its order does not
+   * depend on where each send runs (channel-route-per-producer). -1:
+   * none — a buffer with one order needs none, and one that decides its
+   * shape from its pushers (`Growing`) must not be handed a route that
+   * its own swap would turn into the adopted part (growing-stale-route) */
+  def claimRoute(): Int = -1
+
   /** as `push`, to a route taken earlier */
   def pushAt(@annotation.unused route: Int, a: A): Boolean = push(a)
 

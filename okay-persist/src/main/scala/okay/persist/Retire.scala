@@ -1,6 +1,6 @@
 package okay.persist
 
-import okay.{!, +, At, Delim, Replayable, Wf, pure}
+import okay.{%, !, +, At, Shift, Replayable, Wf, pure}
 import okay.codec.Schema
 
 /**
@@ -128,11 +128,11 @@ object Retire:
    * passing them in rather than reaching into a `Dialogue` keeps this
    * a tool over data instead of a second way to build a dialogue.
    */
-  def patches[Q, A, R, F[+_]](journals: List[(String, Delim.Journal[Wf.Ans[A]])])
-                             (body: Wf.Asks[Q, A, R, F] ?=> R ! Delim + F)
-                             (using Delim.OneMachine[F], Replayable[Delim + F], At)
+  def patches[Q, A, R, F[+_]](journals: List[(String, Shift.Journal[Wf.Ans[A]])])
+                             (body: Wf.Asks[Q, A, R, F] ?=> R ! Shift % ? + F)
+                             (using Shift.Machine[F], Replayable[Shift % ? + F], At)
                              : Map[String, Branch] ! F =
-    def go(left: List[(String, Delim.Journal[Wf.Ans[A]])],
+    def go(left: List[(String, Shift.Journal[Wf.Ans[A]])],
            acc: Map[String, Branch]): Map[String, Branch] ! F = left match
       case Nil => pure(acc)
       case (id, j) :: rest =>

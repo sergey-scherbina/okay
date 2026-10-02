@@ -49,10 +49,16 @@ given [F[+_]]: MonadPlus[[A] =>> A ! Choose + F] with
     override def append(y: A ! Choose + F): A ! Choose + F =
       effect[Choose + F, A ! Choose + F](Choose(Seq(x, y))).flatMap(identity)
 
+object Choose:
+  /** the handler as a value: `p.handle(Choose.all)` answers every branch's result, in order */
+  def all: Handler[Choose, Seq] = new Handler[Choose, Seq]:
+    def run[A, F[+_]](p: A ! Choose + F)(using A <:< Any, Distinct[Choose + F], Handler.Nothing[F]): Seq[A] ! F =
+      runChoice(p)
+
 /** all the results of all the branches, forwarding the effects F */
 def runChoice[A, F[+_]](a: A ! Choose + F): Seq[A] ! F =
   Effects[Free].handle[Choose, F](a)(x => pure(Seq(x))):
-    [X] => c => shift: k =>
+    [X] => c => Cont.shift: k =>
       okay.!.foldM(c.as)(Seq.empty[A])((s, x) => k(x).map(s ++ _))
 
 /**
@@ -80,7 +86,7 @@ def runChoice[A, F[+_]](a: A ! Choose + F): Seq[A] ! F =
  */
 def runSeq[S[+X] <: Seq[X], A, F[+_]](p: A ! S + F)(using TypeableK[S]): Seq[A] ! F =
   Effects[Free].handle[S, F](p)(x => pure(Seq(x))):
-    [X] => (s: S[X]) => shift: k =>
+    [X] => (s: S[X]) => Cont.shift: k =>
       okay.!.foldM(s)(Seq.empty[A])((prev, x) => k(x).map(prev ++ _))
 
 /** the class IS the identity for a collection too: the element type

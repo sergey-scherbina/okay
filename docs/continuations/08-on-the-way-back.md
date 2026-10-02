@@ -25,10 +25,10 @@ through it.
 
 ```scala
 def handle(fail: Boolean, clock: () => Long): Outcome ! Pure =
-  Delim.delimited[Outcome, Pure]:
+  Shift.delimited[Outcome, Pure]:
     direct:
       val started = clock()
-      !Delim.onReturn(o => o.copy(took = clock() - started))
+      !Shift.onReturn(o => o.copy(took = clock() - started))
       if fail then Outcome(500, -1) else Outcome(200, -1)
 ```
 
@@ -49,10 +49,10 @@ test.
 ### An early exit DOES pass through the hook
 
 ```scala
-val r = !.run(Delim.delimited[Int, Pure]:
+val r = !.run(Shift.delimited[Int, Pure]:
   direct:
-    !Delim.onReturn(n => n + 100)
-    !Delim.exit(7)
+    !Shift.onReturn(n => n + 100)
+    !Shift.exit(7)
     1)
 // r == 107
 ```
@@ -66,9 +66,9 @@ still be timed, logged, or compensated.
 
 ```scala
 intercept[RuntimeException](
-  !.run(Delim.delimited[Int, Pure]:
+  !.run(Shift.delimited[Int, Pure]:
     direct:
-      !Delim.onReturn(n => { hookRan = true; n })
+      !Shift.onReturn(n => { hookRan = true; n })
       throw new RuntimeException("boom")))
 // hookRan == false
 ```
@@ -115,8 +115,8 @@ means two answers rather than an answer and a throw.
 ## Hooks nest, last registered applied first
 
 ```scala
-!Delim.onReturn(s => s"outer($s)")
-!Delim.onReturn(s => s"inner($s)")
+!Shift.onReturn(s => s"outer($s)")
+!Shift.onReturn(s => s"inner($s)")
 "x"
 // "outer(inner(x))"
 ```
@@ -136,9 +136,9 @@ about the outcome:
 
 ```scala
 def charge(amount: Int, ok: Boolean): String ! Pure =
-  Delim.delimited[String, Pure]:
+  Shift.delimited[String, Pure]:
     direct:
-      !Delim.onReturn(s => if s.startsWith("failed") then s"$s; refunded $amount" else s)
+      !Shift.onReturn(s => if s.startsWith("failed") then s"$s; refunded $amount" else s)
       if ok then s"charged $amount" else "failed: card declined"
 ```
 
@@ -169,10 +169,10 @@ was done**, not in an error branch far below.
 ## The recipe, condensed
 
 ```scala
-Delim.delimited[Answer, Row]:
+Shift.delimited[Answer, Row]:
   direct:
     val context = ...                        // 1. whatever the hook needs
-    !Delim.onReturn(a => transform(a))       // 2. register, from the middle
+    !Shift.onReturn(a => transform(a))       // 2. register, from the middle
     ...                                      // 3. untouched code
     answer                                   // 4. leaves through the hook
 ```

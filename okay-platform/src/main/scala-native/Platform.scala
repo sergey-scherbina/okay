@@ -96,6 +96,7 @@ object Schedulers {
       new Fiber[A]:
         def onComplete(k: Either[Throwable, A] => Unit): Unit = cell.subscribe(k)
         def cancel(): Unit = t.interrupt()
+        def answered: Boolean = cell.isDone
 
   /** a fixed pool of worker threads pulling fiber-start tasks from a
    * hand-rolled queue (no java.util.concurrent collection assumed
@@ -122,6 +123,7 @@ object Schedulers {
       q.offer(task)
       new Fiber[A]:
         def onComplete(k: Either[Throwable, A] => Unit): Unit = cell.subscribe(k)
+        def answered: Boolean = cell.isDone
         // best effort (Fiber.cancel's own contract): a task still
         // queued is simply skipped when its turn comes; a task
         // already RUNNING is interrupted through the worker that
@@ -196,6 +198,8 @@ private final class FiberCell[A]:
       if s.result.isDefined then (s, Nil) else (State(Some(r)), s.subs)
     }
     toRun.foreach(_(r))
+
+  def isDone: Boolean = cell.modify(s => (s, s.result.isDefined))
 
   def subscribe(k: Either[Throwable, A] => Unit): Unit =
     val now = cell.modify { s =>

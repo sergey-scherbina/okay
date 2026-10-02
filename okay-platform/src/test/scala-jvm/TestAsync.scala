@@ -147,13 +147,15 @@ class TestAsync extends munit.FunSuite {
     finally owned.foreach(_._2.close())
   }
 
-  test("a cancel interrupts only its own drive's code: a fiber resumed inline on its thread runs on") {
+  test("a fiber woken from inside another fiber's code runs on its own slice, and that fiber's cancel never reaches it") {
     import java.util.concurrent.{CountDownLatch, TimeUnit}
-    // drive-interrupts-blocking-run: fiber A's Run wakes fiber B, whose
-    // continuation then runs INLINE on A's thread — a slice nested inside
-    // A's. A is cancelled while B's code sleeps there. The interrupt is
-    // A's, and B must not meet it: A's slice is suspended while B's runs,
-    // and the cancel reaches A when B's slice is over.
+    // drive-interrupts-blocking-run pinned the NESTED case: fiber A's Run
+    // woke fiber B, B's continuation ran inline inside A's slice, and A's
+    // cancel had to be kept off B's code. Since ready-merge-side-starves
+    // (2026-09-30) B is not resumed on A's thread at all — a wake from
+    // inside a running fiber goes home — so the law is the stronger one:
+    // A's code finishes first, B runs on a slice of its own, and a cancel
+    // of A (answered already) reaches nothing of B's
     val sch = Schedulers.adaptive.workers(1).build
     try
       @volatile var wakeB: (Either[Throwable, Int] => Unit) | Null = null
@@ -162,10 +164,10 @@ class TestAsync extends munit.FunSuite {
         .flatMap(x => async { bSleeping.countDown(); Thread.sleep(300); x + 1 }))
       assert(bParked.await(5, TimeUnit.SECONDS))
       val a = sch.fork(() => async { wakeB.nn(Right(41)); "a" })
+      assertEquals(a.joinEither(), Right("a"), "the waking fiber finished its own code first")
       assert(bSleeping.await(5, TimeUnit.SECONDS))
       a.cancel()
-      assertEquals(b.joinEither(), Right(42), "the fiber resumed inline was interrupted by another fiber's cancel")
-      assert(a.joinEither().isLeft, "a cancelled fiber answers with a failure")
+      assertEquals(b.joinEither(), Right(42), "the woken fiber was interrupted by another fiber's cancel")
       assertEquals(sch.fork(() => async { Thread.sleep(20); 7 }).joinEither(), Right(7),
         "the worker kept an interrupt the cancel should have taken back")
     finally sch.close()

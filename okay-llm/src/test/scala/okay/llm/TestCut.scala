@@ -57,8 +57,8 @@ class TestCut extends munit.FunSuite {
     val outer = guarded[String] { po =>
       // an inner, stricter guard: a fresh prompt pushed INSIDE the
       // same machine (the Scope discipline: one run, nested pushes)
-      val p2 = Delim.prompt[Either[Violation, Unit]]
-      Delim.push[Either[Violation, Unit], Writer % String + Async](p2)(
+      val p2 = Shift.prompt[Either[Violation, Unit]]
+      Shift.push[Either[Violation, Unit], Writer % String + Async](p2)(
         checked(p2, Counted(List("ok", "BAD")).source)((i, t) =>
           if t == "BAD" then Some(Violation("inner", i, t)) else None)
           .map(Right(_))

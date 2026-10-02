@@ -97,6 +97,8 @@ object SparkBulk {
 
     def cache[A](d: Rows[A]): Rows[A] = wrap(d.rdd.persist(org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK))
 
+    override def uncache[A](d: Rows[A]): Unit = { val _ = d.rdd.unpersist(blocking = false) }
+
     def aggregate[A, Acc, Out](d: Rows[A])(agg: Aggregator[A, Acc, Out]): Out = {
       val acc: Any = d.rdd.aggregate[Any](agg.init)(
         (acc, x) => agg.add(elem[Acc](acc), elem[A](x)),

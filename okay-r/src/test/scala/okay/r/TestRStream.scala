@@ -23,7 +23,7 @@ class TestRStream extends munit.FunSuite {
   override def munitIgnore: Boolean = TestR.rscript.isEmpty
 
   private lazy val r = RSubprocess.start(rscript = TestR.rscript.get, modules = Seq(TestRStream.m))
-  private given okay.Handler[REval] = r.handler
+  private given okay.Answers[REval] = r.handler
   override def afterAll(): Unit = if TestR.rscript.nonEmpty then r.close()
 
   private def numbers(n: Int): Unit ! Writer % Double + REval =

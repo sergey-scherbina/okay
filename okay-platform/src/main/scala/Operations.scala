@@ -11,7 +11,7 @@ package okay
 object Operations {
   def ask(): AnyRef = Reader.Ask[Any, Any]()
   def get(): AnyRef = State.Get[Any, Any]()
-  def set(s: Any): AnyRef = State.Set[Any, Any](s)
+  def set(s: Any): AnyRef = State.Update[Any, Any](State.Put(s))
   def raise(e: Any): AnyRef = Throws[Any, Nothing](e)
   def choose(options: Seq[Any]): AnyRef = Choose(options)
 

@@ -45,7 +45,7 @@ private[okay2] object EagerImpl extends EagerModule {
     def flatMap[F <: Row, A, B](m: Any)(f: A => Any): Any =
       fold[F, A, Any](m)(f, t => t.flatMap((x: A) => toFree[F, B](f(x))))
     def foldCont[F <: Row, A, S](m: Any)(h: F !> S): A /> S = Effects.foldContFree(toFree[F, A](m))(h)
-    override def runWith[F <: Row, A](m: Any)(implicit H: Handler[F]): A =
+    override def runWith[F <: Row, A](m: Any)(implicit H: Answers[F]): A =
       fold[F, A, A](m)(identity, t => Effects.runFree(t))
   }
 }

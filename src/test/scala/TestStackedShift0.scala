@@ -1,10 +1,9 @@
 package okay
 
-import okay.Delim.Stacked.{delimited, dollar, reset, shift, shift0}
-import okay.Prog.{flatMap, map}
+import okay.Shift.Stacked.{delimited, dollar, reset, shift, shift0}
 
 /**
- * specs/shift0-dollar.md STAGE 2: shift0 and dollar in `Delim.Stacked`,
+ * specs/shift0-dollar.md STAGE 2: shift0 and dollar in `Shift.Stacked`,
  * and the body stacks that make them sound. Values worked by hand.
  */
 class TestStackedShift0 extends munit.FunSuite:
@@ -15,12 +14,12 @@ class TestStackedShift0 extends munit.FunSuite:
 
   test("CLOSED: a shift from a shift's body to the CAPTURED inner prompt is a compile error (it was NoPrompt at run time)") {
     val e = compileErrors("""
-      okay.Delim.Stacked.delimited[Int, okay.Pure] { outer =>
+      okay.Shift.Stacked.delimited[Int, okay.Pure] { outer =>
         import outer.given
-        okay.Delim.Stacked.reset[Int, okay.Pure] { inner =>
+        okay.Shift.Stacked.reset[Int, okay.Pure] { inner =>
           import inner.given
-          okay.Delim.Stacked.shift[Int, Int, okay.Pure](outer.p)(k =>
-            okay.Delim.Stacked.shift[Int, Int, okay.Pure](inner.p)(k2 => k2(1)).flatMap(k))
+          okay.Shift.Stacked.shift[Int, Int, okay.Pure](outer.p)(k =>
+            okay.Shift.Stacked.shift[Int, Int, okay.Pure](inner.p)(k2 => k2(1)).flatMap(k))
         }
       }""")
     assert(e.contains("not on the prompt stack"), s"compiled, or not our message: $e")
@@ -57,10 +56,10 @@ class TestStackedShift0 extends munit.FunSuite:
 
   test("shift0: a shift to the CONSUMED prompt from its body is a compile error") {
     val e = compileErrors("""
-      okay.Delim.Stacked.delimited[Int, okay.Pure] { s =>
+      okay.Shift.Stacked.delimited[Int, okay.Pure] { s =>
         import s.given
-        okay.Delim.Stacked.shift0[Int, Int, okay.Pure](s.p)(k =>
-          okay.Delim.Stacked.shift[Int, Int, okay.Pure](s.p)(k2 => k2(1)).flatMap(k))
+        okay.Shift.Stacked.shift0[Int, Int, okay.Pure](s.p)(k =>
+          okay.Shift.Stacked.shift[Int, Int, okay.Pure](s.p)(k2 => k2(1)).flatMap(k))
       }""")
     assert(e.contains("not on the prompt stack"), s"compiled, or not our message: $e")
   }
@@ -79,12 +78,12 @@ class TestStackedShift0 extends munit.FunSuite:
     // it (k1's segment never captures to p1); the index cannot know that,
     // so it asks for p1 and refuses. Sound, not complete.
     val e = compileErrors("""
-      okay.Delim.Stacked.delimited[String, okay.Pure] { p1 =>
+      okay.Shift.Stacked.delimited[String, okay.Pure] { p1 =>
         import p1.given
-        okay.Delim.Stacked.reset[String, okay.Pure] { p2 =>
+        okay.Shift.Stacked.reset[String, okay.Pure] { p2 =>
           import p2.given
-          okay.Delim.Stacked.shift0[String, String, okay.Pure](p2.p)(k1 =>
-            okay.Delim.Stacked.shift0[String, String, okay.Pure](p1.p)(k2 =>
+          okay.Shift.Stacked.shift0[String, String, okay.Pure](p2.p)(k1 =>
+            okay.Shift.Stacked.shift0[String, String, okay.Pure](p1.p)(k2 =>
               k2(".").flatMap(k1).map("A cat" + _))).map(" has " + _)
         }.map("Alice" + _)
       }""")
@@ -96,7 +95,7 @@ class TestStackedShift0 extends munit.FunSuite:
   test("dollar, stacked: ret runs outside, k carries it, and R0 differs from R: n=10|n=20") {
     val r = !.run(delimited[String, P] { s =>
       import s.given
-      dollar[Int, String, P](i => Prog.pure(s"n=$i")) { d =>
+      dollar[Int, String, P](i => Freer.Return(s"n=$i")) { d =>
         import d.given
         shift0[String, Int, P](d.p)(k => k(1).flatMap(a => k(2).map(b => s"$a|$b"))).map(_ * 10)
       }
@@ -104,39 +103,16 @@ class TestStackedShift0 extends munit.FunSuite:
     assertEquals(r, "n=10|n=20")
   }
 
-  test("control to a stacked RESET is allowed: the bare segment, spliced where f invokes it") {
-    // dollar-doors: the positive half of the Plain requirement
-    val r = !.run(delimited[Int, P] { s =>
-      import s.given
-      okay.Delim.Stacked.control[Int, Int, P](s.p)(k => k(1).map(_ + 100)).map(_ * 2)
-    })
-    // control: k(1) = 1 * 2 = 2 (no delimiter re-installed), then + 100
-    assertEquals(r, 102)
-  }
-
-  test("control to a stacked DOLLAR does not compile: its bare continuation answers the body's type") {
-    // dollar-doors: the machine used to refuse this at run time (TestDollar)
-    val e = compileErrors("""
-      okay.Delim.Stacked.delimited[String, okay.Pure] { s =>
-        import s.given
-        okay.Delim.Stacked.dollar[Int, String, okay.Pure](i => okay.Prog.pure(s"n=$i")) { d =>
-          import d.given
-          okay.Delim.Stacked.control[String, Int, okay.Pure](d.p)(k => k(1))
-        }
-      }""")
-    assert(e.contains("not a plain reset"), s"compiled, or not our message: $e")
-  }
-
   test("dollar, stacked: the dollar's prompt is gone after it returns") {
     val e = compileErrors("""
-      okay.Delim.Stacked.delimited[Int, okay.Pure] { s =>
+      okay.Shift.Stacked.delimited[Int, okay.Pure] { s =>
         import s.given
         var leaked: okay.Prompt[Int] | Null = null
-        okay.Delim.Stacked.dollar[Int, Int, okay.Pure](i => okay.Prog.pure(i)) { d =>
+        okay.Shift.Stacked.dollar[Int, Int, okay.Pure](i => okay.Freer.Return(i)) { d =>
           import d.given
           leaked = d.p
-          okay.Prog.pure(1)
-        }.flatMap(_ => okay.Delim.Stacked.shift[Int, Int, okay.Pure](leaked.nn)(k => k(1)))
+          okay.Freer.Return(1)
+        }.flatMap(_ => okay.Shift.Stacked.shift[Int, Int, okay.Pure](leaked.nn)(k => k(1)))
       }""")
     assert(e.contains("not on the prompt stack"), s"compiled, or not our message: $e")
   }

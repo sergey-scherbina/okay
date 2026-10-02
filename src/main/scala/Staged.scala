@@ -82,8 +82,6 @@ object Stager:
     inline def stage[X](inline op: Row[X]): Handled[Row, R, X] =
       inline op match
         case State.Get() => Handled.shift[Row, R, X](k => st => k(st._1)(st))
-        case State.Set(s2) => Handled.shift[Row, R, X](k => st => k(s2)((s2, st._2)))
-        case State.Modify(f) => Handled.shift[Row, R, X](k => st => { val s2 = f(st._1); k(s2)((s2, st._2)) })
         case State.Update(f) => Handled.shift[Row, R, X](k => st => { val (b, s2) = f(st._1); k(b)((s2, st._2)) })
         case Writer.Say(v) => Handled.shift[Row, R, X](k => st => k(())((st._1, st._2 :+ v)))
 
@@ -110,8 +108,6 @@ object Stager:
         case Reader.Ask() => Handled.shift[Row, R, X](k => env => acc => k(env)(env)(acc))
         case Reader.Asks(f) => Handled.shift[Row, R, X](k => env => acc => k(f(env))(env)(acc))
         case State.Get() => Handled.shift[Row, R, X](k => env => acc => k(acc._1)(env)(acc))
-        case State.Set(s2) => Handled.shift[Row, R, X](k => env => acc => k(s2)(env)((s2, acc._2)))
-        case State.Modify(f) => Handled.shift[Row, R, X](k => env => acc => { val s2 = f(acc._1); k(s2)(env)((s2, acc._2)) })
         case State.Update(f) => Handled.shift[Row, R, X](k => env => acc => { val (b, s2) = f(acc._1); k(b)(env)((s2, acc._2)) })
         case Writer.Say(v) => Handled.shift[Row, R, X](k => env => acc => k(())(env)((acc._1, acc._2 :+ v)))
         // the early end: the continuation is dropped, the answer is the error
@@ -145,8 +141,6 @@ object Stager:
     inline def stage[X](inline op: Row[X]): Handled[Row, R, X] =
       inline op match
         case State.Get() => Handled.shift[Row, R, X](k => s => k(s)(s))
-        case State.Set(s2) => Handled.shift[Row, R, X](k => _ => k(s2)(s2))
-        case State.Modify(f) => Handled.shift[Row, R, X](k => s => { val s2 = f(s); k(s2)(s2) })
         case State.Update(f) => Handled.shift[Row, R, X](k => s => { val (b, s2) = f(s); k(b)(s2) })
     def run(s: S)(p: Handled[Row, R, A]): (S, A) = Handled.run(p)(a => s => (s, a))(s)
 

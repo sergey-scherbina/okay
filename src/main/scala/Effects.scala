@@ -123,17 +123,68 @@ trait Effects[M[_[+_], _]]:
   extension [F[+_], A](m: M[F, A])
     def flatMap[B](f: A => M[F, B]): M[F, B]
     inline def map[B](f: A => B): M[F, B] = m.flatMap(a => pure(f(a)))
-    /** interpret the operations, i.e. reflect the computation into Cont */
+    /** `foldMap` into `Cont`: the program's fold, each operation answered by
+     * `h` as a continuation (`Static.foldMap` is the same fold into any
+     * `Selective`). The result is still waiting for its LAST continuation:
+     * `/ identity` when `S` is the answer (`runWith`), `/ ret` to finish
+     * into `S` (`handle`). TestFoldCont and docs/contract.md show three `S`. */
     def foldCont[S](h: F !> S): A /> S
-    /** run all the effects by a comonadic Handler (the foldCont definition; encodings may override with an equivalent fast path) */
-    def runWith(using Handler[F]): A = m.foldCont(handler[F, A]) / identity
+    /** run all the effects by a comonadic Answers (the foldCont definition; encodings may override with an equivalent fast path) */
+    def runWith(using Answers[F]): A = m.foldCont(handler[F, A]) / identity
+    /**
+     * The program folded into any `Monad` G, each operation translated by
+     * `nt` (`Static.foldMap` into a `Selective`, `Proc.foldMap` into a
+     * `Monad`, the same fold).
+     *
+     * IT IS G's `tailRecM`, as cats' `Free.foldMap` is: each step resumes
+     * the tree once and answers `Left(the rest)` or `Right(the value)`,
+     * so the fold is exactly as stack-safe as `TailRecM[G]` — which is
+     * the carrier's own loop, never a derivation
+     * (specs/eager-carrier-depth.md). The first cut folded through
+     * `foldCont`, and an eager G's `flatMap` nested the host stack per
+     * operation: 1 000 operations overflowed a 128 KB thread.
+     */
+    def foldMap[G[_]](nt: F ==> G)(using G: Monad[G], R: TailRecM[G]): G[A] =
+      R.tailRecM[A ! F, A](reify[M, F, A](m)(using Effects.this)) { p =>
+        (p.resume: @unchecked) match
+          case Free.Return(a) => G.pure(Right(a))
+          case Free.Inject(e) => G.fmap(nt(e), a => Right(a))
+          case Free.Bind(Free.Inject(e), k) => G.fmap(nt(e), x => Left(k(x)))
+      }
 
   /** handle the effect F by h (and the values by ret), forwarding the
    * effects G; for mass tail-resumption prefer !.relay (measured) */
   def handle[F[+_], G[+_]](using TypeableK[F])[A, B](m: M[F + G, A])
                           (ret: A => M[G, B])
                           (h: F !> M[G, B]): M[G, B] =
-    m.foldCont[M[G, B]]([X] => e => split[F, G](e)(e => h(e))(e => shift(k => perform(e).flatMap(k)))) / ret
+    m.foldCont[M[G, B]]([X] => e => split[F, G](e)(e => h(e))(e => Cont.shift(k => perform(e).flatMap(k)))) / ret
+
+  // LEVEL 1 (specs/shift-effect.md): continuations and the ready handlers, in any encoding. The default goes
+  // through the tree (`reify`, the top-level function, `reflect`); `Effects[Free]` is the top-level functions
+  // themselves, so there is one definition of each.
+
+  /** Danvy-Filinski's capture (the top-level `shift`) */
+  def shift[R, A, F[+_]](f: (A => M[Shift % R + F, R]) => M[Shift % R + F, R])(using k: Shift.Key[R], at: At): M[Shift % R + F, A] =
+    reflect[M, Shift % R + F, A](okay.shift[R, A, F](kk =>
+      reify[M, Shift % R + F, R](f(a => reflect[M, Shift % R + F, R](kk(a))(using this)))(using this)))(using this)
+
+  /** the capture whose body runs outside its `reset` (the top-level `shift0`) */
+  def shift0[R, A, F[+_]](f: (A => M[F, R]) => M[F, R])(using k: Shift.Key[R], at: At): M[Shift % R + F, A] =
+    reflect[M, Shift % R + F, A](okay.shift0[R, A, F](kk =>
+      reify[M, F, R](f(a => reflect[M, F, R](kk(a))(using this)))(using this)))(using this)
+
+  /** delimit (the top-level `reset`) */
+  def reset[R, F[+_]](body: M[Shift % R + F, R])(using Shift.Key[R], Distinct[Shift % R + F], Shift.Machine[F]): M[F, R] =
+    reflect[M, F, R](okay.reset[R, F](reify[M, Shift % R + F, R](body)(using this)))(using this)
+
+  /** take a ready handler's effect off the row (the program's `p.handle(h)`; two arguments in one list, so the
+   * level-2 `handle(m)(ret)(clause)` above stays its own overload) */
+  def handle[A, G[+_], E[+_], I, O[_], N[_[+_]], F[+_]](m: M[G, A], h: Handler.Full[E, I, O, N])
+            (using row: (A ! G) =:= (A ! E + F), ok: A <:< I, d: Distinct[E + F], n: N[F]): M[F, O[A]] =
+    reflect[M, F, O[A]](h.run[A, F](row(reify[M, G, A](m)(using this))))(using this)
+
+  /** a program with no effect left, to its value (the program's `run`) */
+  def run[A](m: M[Pure, A]): A = reify[M, Pure, A](m)(using this).run
 
 /**
  * The freer monad is the initial (defunctionalized) encoding of Effects:
@@ -154,9 +205,18 @@ given Effects[Free] with
     override def foldCont[S](h: F !> S): A /> S =
       Free.fold(m)(Cont.Pure(_))([X] => e => k => h(e).flatMap(k(_).foldCont(h)))
     /** the same answer as the foldCont definition, in one pass instead of two */
-    override def runWith(using Handler[F]): A = runFree(m)
+    override def runWith(using Answers[F]): A = runFree(m)
 
-  @tailrec private def runFree[F[+_], A](m: Free[F, A])(using H: Handler[F]): A =
+  // level 1: the top-level functions themselves
+  override def shift[R, A, F[+_]](f: (A => R ! Shift % R + F) => R ! Shift % R + F)(using k: Shift.Key[R], at: At): A ! Shift % R + F =
+    okay.shift[R, A, F](f)
+  override def shift0[R, A, F[+_]](f: (A => R ! F) => R ! F)(using k: Shift.Key[R], at: At): A ! Shift % R + F =
+    okay.shift0[R, A, F](f)
+  override def reset[R, F[+_]](body: R ! Shift % R + F)(using Shift.Key[R], Distinct[Shift % R + F], Shift.Machine[F]): R ! F =
+    okay.reset[R, F](body)
+  override def run[A](m: A ! Pure): A = m.runWith
+
+  @tailrec private def runFree[F[+_], A](m: Free[F, A])(using H: Answers[F]): A =
     (m.resume: @unchecked) match
       case Free.Return(a) => a
       case Free.Inject(e) => H.handle(e)
@@ -236,7 +296,12 @@ given Effects[Free] with
     // a call from inside flatMap cannot be a jump; `again` takes it, so
     // the walk itself stays a checked loop
     def again(x: Free[F + G, A]): Free[G, B] = loop(x)
-    @tailrec def loop(x: Free[F + G, A]): Free[G, B] = (x.resume: @unchecked) match
+
+    // ITS OWN METHOD, as `last` and `capture` are: written in the loop's arm it cost every forwarded operation
+    // 1.25x (handlePrebuilt 156 vs 124 µs) though the arm never ran — bytes in the loop, not work
+    def nested(y: Free[F + G, A]): Free[G, B] =
+      HandleFrames.pending[B, G](HandleFrames.control[F, A, B, G](ret, h, summon[TypeableK[F]])(y))
+    @tailrec def loop(x: Free[F + G, A]): Free[G, B] = (x.resumeRun: @unchecked) match
       case Free.Return(a) => ret(a)
       case Free.Inject(e) => last(e)
       case Free.Bind(i @ Free.Inject(e), k) =>
@@ -248,8 +313,13 @@ given Effects[Free] with
               Cont.onAnswer(c)(a => loop(k(a)))(capture(c, k))
             })
           (_ => forwarded[F, G](i).flatMap(x => again(k(x))))
+      // a run nested here (handle-frames): this loop becomes a frame of the machine over the rest
+      case y => nested(y)
 
-    loop(m)
+    // a value: run by whoever forces it, a frame for a machine that meets it
+    Free.delay(new HandleFrames.Run[B, G]:
+      def apply(): Free[G, B] = loop(m)
+      def program: Shift.U[G, B] = HandleFrames.control[F, A, B, G](ret, h, summon[TypeableK[F]])(m))
 
 /**
  * Any Effects program in ANY other Effects encoding.
@@ -266,8 +336,16 @@ given Effects[Free] with
  */
 inline def convert[M[_[+_], _] : Effects,
   N[_[+_], _] : Effects as N, F[+_], A](m: M[F, A]): N[F, A] =
-  m.foldCont[N[F, A]]([X] => e => shift(k =>
+  m.foldCont[N[F, A]]([X] => e => Cont.shift(k =>
     N.perform(e).flatMap(k))) / (a => N.pure(a))
+
+/**
+ * `M.tailRecM(a)(f)`: the loop of `TailRecM[F]`, spelled on the monad
+ * instance. The instance is the CARRIER's (Monad.scala,
+ * specs/eager-carrier-depth.md); there is none to derive.
+ */
+extension [F[_]](M: Monad[F])
+  def tailRecM[A, B](a: A)(f: A => F[Either[A, B]])(using R: TailRecM[F]): F[B] = R.tailRecM(a)(f)
 
 /**
  * any Effects program materializes back as a Free tree: building
@@ -303,6 +381,12 @@ def reflect[M[_[+_], _] : Effects as M, F[+_], A](m: A ! F): M[F, A] =
 object Effects {
   export Free.*
 
+  /** level 1, any encoding in direct style: `M[F, *]` as a monad, for `direct[[A] =>> M[F, A]]` over `Effects[M]` */
+  def monad[M[_[+_], _], F[+_]](using E: Effects[M]): Monad[[A] =>> M[F, A]] = new Monad[[A] =>> M[F, A]]:
+    def pure[A](a: A): M[F, A] = E.pure(a)
+    extension [A](a: M[F, A])
+      def flatMap[B](f: A => M[F, B]): M[F, B] = E.flatMap(a)(f)
+
   /** the staging entry for effect programs, as staged is for Control:
    * `Effects[Free]`, `Effects[Eager]`, `Effects[M]` for any M with an
    * instance in scope. Moved here from a bare top-level def of the
@@ -324,8 +408,8 @@ object Effects {
      * are documented together. A member wins resolution, so every
      * `.resume` in the library reaches that one loop. */
 
-    /** step through the next n operations by the Handler */
-    @tailrec def next(steps: Long = 1)(using H: Handler[F]): A ! F = (self.resume: @unchecked) match
+    /** step through the next n operations by the Answers */
+    @tailrec def next(steps: Long = 1)(using H: Answers[F]): A ! F = (self.resume: @unchecked) match
       case Bind(Inject(e), k) if steps > 0 => k(H.handle(e)).next(steps - 1)
       case a => a
 
@@ -334,16 +418,21 @@ object Effects {
      * handled.
      *
      * A WORD, not a glyph, since unwrap-glyph: this method RUNS
-     * operations through the `Handler`, which is a great deal to hide
+     * operations through the `Answers`, which is a great deal to hide
      * behind one character — and the character was wanted by the
      * thing users write far more often, the `direct` block's mark.
      * It was `?` until 2026-09-17, and every call site it had was in
      * the core's own tests and benchmarks, which is most of the
      * argument for which spelling gave way (specs/unwrap-glyph.md).
      */
-    @tailrec def peek: Handler[F] ?=> ? = self match
+    @tailrec def peek: Answers[F] ?=> ? = self match
       case Bind(a, _) => a.peek
-      case Inject(e) => summon[Handler[F]].handle(e)
+      case Inject(e) => summon[Answers[F]].handle(e)
+      // at `Unit` a diagonal node holds the same `F[A]` an `Inject` does
+      // (freer-diag-leaf); no door here builds one, and this is the one
+      // match over the erased tree that is exhaustive rather than
+      // `@unchecked`, so it says so
+      case Freer.Diag(e) => summon[Answers[F]].handle(e)
       case Return(a) => a
       // a peek forces the thunk too, same as `Bind(a, _) => a.peek`
       // discards its own continuation without applying it
@@ -522,7 +611,7 @@ object Effects {
   /**
    * Interpret F into ANOTHER ROW rather than into a value.
    *
-   * `Handler[F]` is `F ==> Id`, and Id is exactly where a suspension
+   * `Answers[F]` is `F ==> Id`, and Id is exactly where a suspension
    * cannot go — which is why a comonadic handler can never do I/O on
    * a platform with no thread to park (it must ANSWER, so it must
    * finish). The general form is the natural transformation this

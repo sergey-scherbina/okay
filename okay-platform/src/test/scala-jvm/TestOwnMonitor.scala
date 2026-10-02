@@ -89,6 +89,98 @@ class TestOwnMonitor extends munit.FunSuite with okay.testkit.Munit.Diagnosed {
     finally sch.close()
   }
 
+  /** adaptive-chunked-merge-cost (specs/adaptive-chunked-merge-cost.md):
+   * two fibers forked from OUTSIDE, the second after the first's worker
+   * is awake and busy, each spinning until the other has started (at
+   * most `patience`). Whether they MET says whether the second got a
+   * worker of its own while the first still ran. The monitor is off,
+   * so nothing but the fork itself can wake a second worker. */
+  private def outsidePairMeets(sch: Scheduler, long: Boolean, patience: Long): Boolean =
+    val started = AtomicInteger()
+    val met = AtomicInteger()
+    def body(): Unit =
+      val _ = started.incrementAndGet()
+      val end = System.nanoTime() + patience
+      while started.get < 2 && System.nanoTime() < end do Thread.onSpinWait()
+      if started.get >= 2 then { val _ = met.incrementAndGet() }
+    def go(): Fiber[Unit] = if long then sch.forkLong(() => async(body())) else sch.fork(() => async(body()))
+    Thread.sleep(20) // every worker parked
+    val a = go()
+    Thread.sleep(10) // a's worker is awake and inside `body`
+    val b = go()
+    a.join(); b.join()
+    note(s"long=$long started=${started.get} met=${met.get}")
+    met.get == 2
+
+  test("own: a long fiber forked from outside beside a busy one gets a worker at once (forkLong)") {
+    val sch = Schedulers.own.workers(4).unmonitored.build
+    try assert(outsidePairMeets(sch, long = true, patience = 2_000_000_000L), "forkLong: the second fiber waited behind the first")
+    finally sch.close()
+  }
+
+  test("own: the same pair forked with plain fork does not meet (the case forkLong exists for)") {
+    val sch = Schedulers.own.workers(4).unmonitored.build
+    try assert(!outsidePairMeets(sch, long = false, patience = 300_000_000L), "fork alone woke a second worker: the law above proves nothing")
+    finally sch.close()
+  }
+
+  test("forkLong is fork on a scheduler that does not override it") {
+    var forked = 0
+    val plain = new Scheduler:
+      def fork[A](prog: () => A ! Async): Fiber[A] =
+        forked += 1
+        Schedulers.loom.fork(prog)
+    assertEquals(plain.forkLong(() => pure(7)).join(), 7)
+    assertEquals(forked, 1)
+  }
+
+  /** adaptive-elementwise-small-ring (specs/adaptive-elementwise-small-ring.md):
+   * a fiber on `own` parks in an Await; `answer` is handed its callback
+   * once the drive has parked, and answers it from wherever it likes.
+   * The result is the thread the fiber's continuation ran on. */
+  private def resumedOn(answer: (Either[Throwable, Int] => Unit) => Unit): Thread =
+    val sch = Schedulers.own.workers(2).build
+    try
+      given Scheduler = sch
+      val cb = java.util.concurrent.atomic.AtomicReference[(Either[Throwable, Int] => Unit) | Null](null)
+      val ranOn = java.util.concurrent.atomic.AtomicReference[Thread | Null](null)
+      val f = Async.spawn(Async.await[Int] { k => cb.set(k); () => () }.map { _ => ranOn.set(Thread.currentThread()); () })
+      while cb.get == null do Thread.onSpinWait()
+      Thread.sleep(20) // the drive has parked: this answer is a LATE one
+      answer(cb.get.nn)
+      f.join()
+      note(s"resumed on ${ranOn.get}")
+      ranOn.get.nn
+    finally sch.close()
+
+  test("own: a fiber answered LATE by a foreign thread resumes on a worker, not on the answering thread") {
+    val answering = java.util.concurrent.atomic.AtomicReference[Thread | Null](null)
+    val ran = resumedOn { k =>
+      val t = Thread(() => { answering.set(Thread.currentThread()); k(Right(1)) }, "foreign-answerer")
+      t.start(); t.join()
+    }
+    assert(ran ne answering.get, s"the foreign thread ${answering.get} ran the fiber's continuation")
+    assert(ran.isInstanceOf[ManagedWorker], s"resumed on $ran, not on one of the scheduler's workers")
+  }
+
+  test("own: answered from inside ANOTHER FIBER's code, a fiber resumes on its own scheduler, not on that fiber's stack") {
+    // ready-merge-side-starves (2026-09-30) reversed what this test used to
+    // pin ("answered from inside a worker, a fiber still resumes inline on
+    // that worker"): resumed inline inside the answering fiber's slice, a
+    // consumer that never parked again held that fiber's thread for good —
+    // a merge starved its second side on every scheduler with owned
+    // workers. The answer now goes home; measured, merge cap 64 63.5 us
+    // (62.9 before), zip cap 7 1443 (1400), cap 64 351 (370)
+    val answering = java.util.concurrent.atomic.AtomicReference[Thread | Null](null)
+    val ran = resumedOn { k =>
+      val other = Schedulers.own.workers(1).build
+      try other.fork(() => async { answering.set(Thread.currentThread()); k(Right(1)) }).join()
+      finally other.close()
+    }
+    assert(ran ne answering.get, s"resumed on $ran, the answering fiber's own thread: its stack was borrowed")
+    assert(ran.isInstanceOf[ManagedWorker], s"resumed on $ran, not on one of the scheduler's workers")
+  }
+
   /** peak number of `calls` blocking at once when `n` fibers forked inside
    * a fiber each block `calls` times for 1 ms */
   private def blockingPeak(n: Int, calls: Int)(using Scheduler): Int =

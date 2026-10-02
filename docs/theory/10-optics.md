@@ -122,7 +122,7 @@ repository (chapter 3). Put them together and the zoom writes itself:
 
 ```scala
 // State.scala — the body, now the Strong instance's `lens`
-shift(k => (s1: S1) => (p / (x => (a2: A2) => k(x)(set(s1, a2))))(get(s1)))
+Cont.shift(k => (s1: S1) => (p / (x => (a2: A2) => k(x)(set(s1, a2))))(get(s1)))
 ```
 
 One `shift`: read the part out of the whole to start the inner

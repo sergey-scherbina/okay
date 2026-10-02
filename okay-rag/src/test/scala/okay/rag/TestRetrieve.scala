@@ -1,6 +1,6 @@
 package okay.rag
 
-import okay.{!, +, Handler}
+import okay.{!, +, Answers}
 import okay.given
 
 /** The retrieval layer: store, keyword, fusion, ingestion, and the
@@ -27,7 +27,7 @@ class TestRetrieve extends munit.FunSuite {
 
   // Embed + Pure IS Embed (Pure is the empty signature), so the one
   // handler serves the row — a union handler here would be ambiguous
-  given Handler[Embed] = Vectors.hashingHandler()
+  given Answers[Embed] = Vectors.hashingHandler()
 
   /** run a program in the embedding row */
   def run[A](p: A ! Embed + okay.Pure): A = p.runWith

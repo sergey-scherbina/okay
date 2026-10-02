@@ -1,7 +1,7 @@
 package okay.codec
 
 import Json.*
-import okay.{Cont, reset, />}
+import okay.{Cont, />}
 
 /**
  * The fast VALUE parser beside the lossless one (specs/codecs.md,
@@ -70,7 +70,7 @@ object JsonValue {
      * (`Json | Null` throughout, like `Cbor.In.skipItem`'s
      * `Either[String, Unit]`), so no cross-type `R` to thread. */
     def value(open: Int): Json | Null =
-      if open >= Codecs.NativeThreshold then reset(valueC[Json | Null](open))
+      if open >= Codecs.NativeThreshold then Cont.reset(valueC[Json | Null](open))
       else valueNative(open)
 
     private def valueNative(open: Int): Json | Null =

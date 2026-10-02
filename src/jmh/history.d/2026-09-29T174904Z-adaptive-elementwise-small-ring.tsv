@@ -1,0 +1,5 @@
+2026-09-29	833848306	jmh-lane-quiet	adaptive-elementwise-small-ring: before, MergeCapBenchmark cap=64 default vs loom (master after spawnjoin-rise-bisect)	90.9	81.2	1.119	us/op, 3 alternating rounds -f 3 (90.5/89.1/93.1 vs 80.9/81.4/81.4)
+2026-09-29	833848306	jmh-lane-quiet	adaptive-elementwise-small-ring: CPU profile cap=64: consumer samples in Drive.drive (the producers' code) adaptive vs loom	183	0	—	of 595 consumer samples (31%) under adaptive; under loom the consumer's share is unpark, 79 samples
+2026-09-29	833848306	jmh-lane-quiet	adaptive-elementwise-small-ring: AS LANDED (a foreign answerer sends the fiber home), cap=64 default vs loom	74.5	81.4	0.915	us/op, 3 alternating rounds -f 3 (73.8/74.0/75.8 vs 81.0/81.1/82.1)
+2026-09-29	833848306	jmh-lane-quiet	adaptive-elementwise-small-ring: AS LANDED cap=256 / 1024 default vs loom	63.1	64.8	0.974	us/op means, same 3 rounds; cap 1024 62.8 vs 60.9 (1.03)
+2026-09-29	833848306	jmh-lane-quiet	adaptive-elementwise-small-ring: AS LANDED ChunkFlushBenchmark.okayChunked k=16 default vs loom	186.7	198.7	0.940	us/op, one round -f 1; okayChunkedShared 199.9 vs 202.2; spawnJoinSeq (own) 66.9

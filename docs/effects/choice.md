@@ -10,6 +10,7 @@ mix of infinite branches. `Logic` adds backtracking search on top.
 | | |
 |---|---|
 | `choose(as*)` | one of these; no alternatives means failure |
+| `p.handle(Choose.all)` | every answer, in order |
 | `runChoice(p)` | every answer, in order |
 | `Logic.observe(n)(p)` | the first `n` answers, of a possibly infinite search |
 | `Logic.interleave(a, b)` | a FAIR or: two infinite branches take turns |
@@ -28,7 +29,7 @@ val sums: Int ! Choose =
     b <- choose(10, 20)
   yield a + b
 
-val all = !.run(runChoice(sums))   // every branch: 11, 21, 12, 22
+val all = sums.handle(Choose.all).run   // every branch: 11, 21, 12, 22
 
 val firstTwo = !.run(Logic.observe(2)(sums))   // the first two: 11, 21
 ```

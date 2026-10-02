@@ -1,7 +1,7 @@
 package okay.persist
 
 import munit.FunSuite
-import okay.{!, +, Async, CanBlock, Delim, Pure, Wf}
+import okay.{%, !, +, Async, CanBlock, Shift, Pure, Wf}
 import okay.given_CanBlock
 import okay.given_Scheduler
 import okay.Direct.*
@@ -34,7 +34,7 @@ class TestTickIsolation extends FunSuite {
   def drive[A](p: A ! Pure + Async)(using CanBlock): A =
     !.run(Async.run[A, Pure](p))
 
-  def nap(using w: Wf.Asks[String, String, String, Pure]): String ! Delim + Pure =
+  def nap(using w: Wf.Asks[String, String, String, Pure]): String ! Shift % ? + Pure =
     direct:
       val who = !w.pause("who?")
       !w.sleep(60_000L)

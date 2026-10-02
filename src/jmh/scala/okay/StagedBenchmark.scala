@@ -16,7 +16,7 @@ class StagedBenchmark {
     else steps(n - 1)(Control[M].flatMap(m)(x => Control[M].pure(x + 1)))
 
   @Benchmark
-  def cont24(): Int = reset(steps[Cont](24)(Cont.Pure(0)))
+  def cont24(): Int = Cont.reset(steps[Cont](24)(Cont.Pure(0)))
 
   @Benchmark
   def func24(): Int = steps[Func](24)(Control[Func].pure(0))(identity)

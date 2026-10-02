@@ -20,7 +20,7 @@ import scala.language.implicitConversions
 class TestProcOptics extends munit.FunSuite:
 
   type P = okay.Pure
-  type Row = Delim + P
+  type Row = Shift % ? + P
   type Sig = Wf.Asked[String, String]
 
   def ask(q: String): Wf.Question[String, String, String] = Wf.Question.Ask(q)

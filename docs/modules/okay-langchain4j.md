@@ -1,7 +1,7 @@
 # okay-langchain4j
 
 The interop sentence's Model half (specs/llm-agentic.md, "Interop,
-not reimplementation"): their `ChatModel` becomes a `Handler[Model]`
+not reimplementation"): their `ChatModel` becomes a `Answers[Model]`
 — every program written against the effect (compaction, search,
 grounding, the durable journal) runs over langchain4j's provider
 breadth unchanged. Depends on their CORE only; the caller constructs
@@ -20,5 +20,5 @@ network anywhere. The EmbeddingStore half is filed as
 rag-langchain4j, gated on a consumer naming a store.
 
 `Langchain4j.wired` is the handler-awaiting-environment form:
-`ChatModel ?=> Handler[Model]` — store it, ship it,
+`ChatModel ?=> Answers[Model]` — store it, ship it,
 `provide(chatModel) { ... }` at the edge.

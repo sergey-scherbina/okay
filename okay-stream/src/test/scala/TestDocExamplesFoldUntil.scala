@@ -22,7 +22,8 @@ class TestDocExamplesFoldUntil extends munit.FunSuite:
     val digits: Int ! Writer % Int = !.loop(2024) { n =>
       Writer.tell(n % 10).map(_ => if n < 10 then Right(1) else Left(n / 10))
     }
-    assertEquals(!.run(Writer.run(digits)), (Seq(4, 2, 0, 2), 1))
+    val told = digits.handle(Writer.log).run   // (List(4, 2, 0, 2), 1) — the digits told, the answer 1
+    assertEquals(told, (Seq(4, 2, 0, 2), 1))
   }
 
   test("guide §2: !.loop — Collatz steps, the state carrying the count") {

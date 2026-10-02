@@ -1,7 +1,7 @@
 package okay2.codec
 
 import Json._
-import okay2.{Cont, reset, />}
+import okay2.{Cont, />}
 
 /**
  * The fast VALUE parser beside the lossless one (okay-codec's
@@ -51,7 +51,7 @@ object JsonValue {
      * past `Codecs.NativeThreshold` the descent continues on the
      * trampoline, so depth is bounded by the heap, not the stack */
     def value(open: Int): Json =
-      if (open >= Codecs.NativeThreshold) reset(valueC[Json](open))
+      if (open >= Codecs.NativeThreshold) Cont.reset(valueC[Json](open))
       else valueNative(open)
 
     private def scalar(): Json = s.charAt(at) match {

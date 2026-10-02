@@ -81,7 +81,7 @@ class TestRowIdentity extends munit.FunSuite {
 
   // THE RULE BINDS A BARE ROW. Several instances of one signature are
   // had three ways — a key (`Tag`), a cell (`Refs`) or a fresh
-  // `Delim` prompt — and docs/many-instances.md is the whole story.
+  // `Shift` prompt — and docs/many-instances.md is the whole story.
   // `TestTag` and `TestRefs` are the ones that prove it; this suite
   // keeps proving what happens when none of the three is used, which
   // is what makes the choice a choice.

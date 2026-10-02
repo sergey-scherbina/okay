@@ -13,6 +13,22 @@ bounds are. The design and its measurements are in
 
 ## Three kinds of body, three prices
 
+**Since 2026-10-01 Cont runs on the frame machine** (cont-on-frames,
+[specs/freer-kont.md](../specs/freer-kont.md)): a run is one root
+delimiter whose `ret` is your `k`, and every leaf a `shift0` to it — the
+same machine `Shift` runs on, with its stack on the heap. The three
+kinds below are unchanged in what they cost the *stack*. What changed
+is who interprets them: the second kind is a program over a lazy `k`
+the machine pushes (no pending stack of the runner's own any more), and
+the third forces `k` as a nested run of the machine, counted and
+switched exactly as below. Against the runner this replaced, measured
+the day it landed: the second kind (`HandlerBenchmark.contAnswer`) at
+1.09x, `PState` (statePara) at 1.85–1.90x, a generator over `Cont`
+(`FibBenchmark.fib100`) at 2.62x — the third kind's strict `k` is where
+the work is. The same day's next lane (cont-strict-k) brought statePara
+to 1.67–1.71x and fib100 to 2.45x, and had the macro emit the second
+kind's program itself — simpler, fewer bytes, contAnswer at 1.20x.
+
 **A body that only ever calls `k` last** — `k => k(v)`, also under
 `if`/`match` and after statements that do not mention `k` — is the
 value it passes, decided at compile time: `shift` is a macro, and such a
@@ -21,16 +37,16 @@ no bookkeeping, no switch, on any platform. A million of them run on a
 128 KB stack:
 
 ```scala
-val deep = (1 to 1_000_000).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => shift[Int, Int, Int](k => k(x + 1))))
-reset(deep) // 1000000 — no frame per level: the body is the value it passes
+val deep = (1 to 1_000_000).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => Cont.shift[Int, Int, Int](k => k(x + 1))))
+Cont.reset(deep) // 1000000 — no frame per level: the body is the value it passes
 ```
 
 **A body that uses the answer** — `k(x + 1) + 1`, `k(1) + k(10)`,
 `a :: k(x)`, `s"${k(a)}"`, a block with `val a = k(1)`, an `if` or
 `match` in tail position with calls in its branches — is CPS-transformed at compile time (since
 `cont-stack-layer1-b`): each call of `k` becomes a step naming what is
-left to do with its answer, and the runner keeps those pending parts on
-an explicit stack of its own instead of the JVM's. Still no frame per
+left to do with its answer, and those pending parts live on the
+machine's own stack (a frame each) instead of the JVM's. Still no frame per
 level, on any platform; what ran before a call still runs before it;
 `k` is multi-shot as before. A million of these run on a 128 KB stack
 too. The price, measured on a thousand-level program of exactly this
@@ -42,63 +58,82 @@ small thread, and on Scala.js, where there is no fresh stack to switch
 to.
 
 ```scala
-val used = (1 to 1_000_000).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => shift[Int, Int, Int](k => k(x + 1) + 1)))
-reset(used) // 2000000 — no frame per level either: the pending `+ 1`s live on the runner's own stack
+val used = (1 to 1_000_000).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => Cont.shift[Int, Int, Int](k => k(x + 1) + 1)))
+Cont.reset(used) // 2000000 — no frame per level either: the pending `+ 1`s live on the runner's own stack
 ```
 
-**A body the macro cannot read, or should not** — `k` handed to `map`
-or any other function as a value, a call under a conditional that is
-not in tail position (`1 + (if c then k(1) else 2)`), in a by-name
+**Read since 2026-10-02 (cont-stack-layer1-c):** a call under a
+conditional that is not in tail position (`1 + (if c then k(1) else
+2)`, a `match` feeding an expression) — the rest after it becomes one
+local function every branch ends in, a join point — and a call inside
+the lambda of `map`, `foreach` or `foldLeft` on a `List`, `Vector` or
+immutable `Seq` (`List(1, 2).map(x => k(x)).sum`, or `k` itself passed:
+`List(1, 2).map(k)`), the traversal a chain of binds the machine runs;
+and an assignment from `k` (`v = k(1)`, `seen += k(x)`). All are
+programs over a lazy `k`, no frame per level.
+
+**A body the macro cannot read, or should not** — `k` handed to an
+unknown function as a value, in a by-name
 argument, under `try`, in a loop, in a lambda (`PState`'s
 `s => k(s)(s2)`: a function answer walked measured 2.8x its direct
 cost, so it is left direct on purpose), `k` passed into Java or an
 abstract method, a body passed to `shift` as a value rather than a
 literal — runs direct, and each level is a frame. The
 runner counts the levels the current stack has room for; when the
-count runs out it either *reads* how much stack is really left (below)
-and continues here, or hands the rest of the program to a fresh stack —
-a parked worker thread with a 1 GB stack — and waits for the answer. No
+count runs out it hands the rest of the program to a fresh stack — a
+parked worker thread with a 1 GB stack — and waits for the answer. No
 exception unwinds anything and nothing runs twice: the frames below
 stay where they are until the answer comes back. Multi-shot bodies
 keep working across the switch.
 
 ```scala
-val opaque = (1 to 20_000).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => shift[Int, Int, Int](k => List(x + 1).map(k).sum)))
-reset(opaque) // 20000 — `k` handed to `map`: each level a frame; past the room the rest runs on a fresh stack
+val opaque = (1 to 20_000).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => Cont.shift[Int, Int, Int](k => try k(x + 1) catch { case _: ArithmeticException => 0 })))
+Cont.reset(opaque) // 20000 — `k` under `try`: each level a frame; past the room the rest runs on a fresh stack
 ```
 
 ## How much room, per platform
 
-| platform | how the room is known | first look | what a switch costs |
-|---|---|---|---|
-| JVM 22+ **with** `--enable-native-access=ALL-UNNAMED` | exactly: the stack pointer and the thread's bounds through the FFM API (macOS arm64, and Linux aarch64 and x86_64 on glibc; macOS x86_64 and musl/Alpine count) | after ~870 levels on a 2 MB thread (1.2 KB a level, cold) — then the exact reading grants the rest | never, while the stack has room: a 1000-level program on a default thread switches **zero** times |
-| JVM 17–25 **without** the flag (a library on a classpath, by default) | counted: the VM's default thread stack over a cold level, halved for the caller | ~870 levels | one switch per ~870 levels on the caller's stack, then ~500 000 per segment: ~4 µs to hand off to a parked worker, ~0.01 µs a level after |
-| Scala Native | exactly, from the runtime's own thread info, always | 64 levels | as the JVM's |
-| Scala.js | not at all: no thread to switch to | — | **the bound**: nested bodies of the second kind are limited by the engine's stack (~10 800 frames on Node's default; `node --stack-size` raises it) |
+The stack is COUNTED, never read: a fixed number of levels per stack,
+then a switch. (Until 2026-10-01 a JVM 22+ with native access, and
+Scala Native always, READ the stack pointer and granted more levels on
+the caller's thread; the runner gave that up for one rule on every
+platform — specs/cont-core.md, step 7.)
 
-*Native access decides WHERE a deep program runs, not how fast.*
-Measured on `HandlerBenchmark.statePara` (a state-passing program of
-~2 000 levels, 2026-09-26, both roads on the same lane): with the flag
-it never leaves the caller's thread, and it costs what the counted
-road's one hand-off to a parked worker costs — 0.99x the time, +0.9%
-the bytes, at the default first room. What the flag buys is the
-caller's own thread for the whole run: its thread-locals, its stack
-traces, no second thread involved. A library cannot enable it for you — a JVM
-prints warnings on the first restricted call unless the launcher said
-`--enable-native-access` — so the flag is yours to pass:
+| platform | first room | what a switch costs |
+|---|---|---|
+| JVM 17+ | the VM's default thread stack over a cold level (1.2 KB), halved for the caller: ~870 levels on a 2 MB thread | one switch per first room on the caller's stack, then ~500 000 levels per segment: ~4 µs to hand off to a parked worker, ~0.01 µs a level after |
+| Scala Native | 16 levels (a first room derived from the main thread's 8 MB would be wrong for every other thread) | as the JVM's |
+| Scala.js | — no thread to switch to | **the bound**: nested bodies of the second kind are limited by the engine's stack (~10 800 frames on Node's default; `node --stack-size` raises it) |
 
+## A body that calls `k` and answers a program: no nesting at all
+
+When the answer type `S` is a PROGRAM (`Int ! Pure`, any `A ! F`) and the
+body calls `k` itself — `k(1).flatMap(a => k(10).map(b => a + b))`, a
+`val p = k(1)` used later — the macro gives the body a LAZY `k`
+(cont-program-answer, 2026-10-02): `k(a)` returns at once, a `Delay`
+holding a run of `k`'s rest that has not started. Whoever runs the
+answer program starts it: the Free fold forces it (one bounded run,
+whose answer is the program that goes on), and a running machine
+(`Shift.run`, a handler on the machine) steps into it and continues in
+its own loop. No nested run, so no switch and no bound — a million
+nested such bodies run on a 128 KB JVM thread and on Scala.js, where the
+strict `k` fails with "Maximum call stack size exceeded":
+
+```scala
+    val c = Cont.shift[Int, Ans, Ans](k => { val p = k(1); log += "body"; p.flatMap(v => k(v)) })
 ```
-java --enable-native-access=ALL-UNNAMED -jar your-service.jar
-```
 
-Without it `okay` never touches the native API and never prints the
-warning; it counts.
+**The contract it changes:** host side effects written after `k(a)` in
+such a body run BEFORE `k`'s rest (here `"body"` is logged before the
+rest of the program runs), where a strict `k` ran the rest first. A body
+that only PASSES `k` on (`perform(e).flatMap(k)`, a `foldM` step) is
+unchanged: its calls already happen later, from the loop.
 
 ## The knobs
 
 - `-Dokay.cont.room=N` — the levels the caller's stack is asked to hold
-  before the first look (default: the VM's `ThreadStackSize` over
-  1.2 KB, halved; 64 on Native).
+  before the switch (default: the VM's `ThreadStackSize` over 1.2 KB,
+  halved; 16 on Native).
 - `-Dokay.cont.idleWorkers=N` (2), `-Dokay.cont.idleMillis=N` (30 000)
   — parked workers kept for the next switch, and how long.
 - `-Dokay.cont.spinMicros=N` (50) — how long a caller and a worker spin
@@ -107,16 +142,14 @@ warning; it counts.
 ## The written bounds
 
 - **A thread with an explicit stack smaller than the VM default** (say
-  `new Thread(…, 256 KB)`) on the counted road: the count assumes the
-  default size and may overflow before its first look. Set
-  `-Dokay.cont.room` for such threads, or enable native access, where
-  the reading sees the real size.
-- **One frame more than twice the fattest seen so far** within one
-  64 KB slice of stack, on the exact road: the grant is sized to the
-  worst level measured, with the slice's own margin absorbing a 2x
-  overshoot; a body whose single frame is larger than that can still
-  overflow.
-- **Scala.js**: the engine's stack, as above.
+  `new Thread(…, 256 KB)`): the count assumes the default size and may
+  overflow before the switch. Set `-Dokay.cont.room` for such threads.
+- **A level fatter than ~2.4 KB** (twice the cold constant): the first
+  room is halved for exactly that margin; an opaque body whose own
+  frames take more than that per level can overflow before the switch.
+  Lower `-Dokay.cont.room` for such a program.
+- **Scala.js**: the engine's stack, as above — for a body whose answer is
+  not a program; one whose answer is a program has no bound (above).
 
 ## What it costs when it does not switch
 

@@ -71,16 +71,22 @@ object Merge:
     // released on an early stop like every other join, but NOT through
     // `Source.releasing`: its trailing `flatMap(_ => Exit)` is a Bind
     // over the whole element program, a rotation per element told. The
-    // scope is ENTERED in front and never exited — one Bind, in front —
-    // and the drive releases it when the program ends, early or not;
-    // at a normal end the channel is closed already and `closing`
-    // counts nothing (merge-scopes-everywhere)
+    // scope is ENTERED in front and EXITED where the channel ends, by
+    // the drain's own last step (`drainedThen`), one operation a run.
+    // That exit is also what keeps the scope reachable while the merge
+    // runs. Entered and never named again, it was held by nothing on a
+    // plain `runWith`, and a collection mid-run released it through its
+    // collector door, closing the channel under running producers
+    // (merge-shared-scope-gc-release; the zip had the same defect,
+    // source-zip-lost-pairs). An early stop never reaches the exit: the
+    // drive, a fiber's handler or, abandoned, the collector releases it
     def elements[A](l: Source[A], r: Source[A], capacity: Int)
                    (using Scheduler, CanBlock, Timer, Wait, Pause): Source[A] =
       okay.pure[Writer % A + Async, Unit](()).flatMap: _ =>
         val ch = Channel.merge[A, S, Async, S, Async](l, r, capacity)
         val scope = Async.CancelScope(closing(ch))
-        okay.effect[Writer % A + Async, Unit](Async.Run(Async.Enter(scope))).flatMap(_ => ch.drained)
+        okay.effect[Writer % A + Async, Unit](Async.Run(Async.Enter(scope)))
+          .flatMap(_ => ch.drainedThen(okay.effect[Writer % A + Async, Unit](Async.Run(Async.Exit(scope)))))
     def chunks[A](l: Source[A], r: Source[A], slots: Int, size: Int, within: Option[Long])
                  (using Scheduler, CanBlock, Timer, Wait, Pause): Source[Chunk[A]] =
       val ch = Channel.mergeChunked[A, S, Async, S, Async](l, r, slots, size, within)

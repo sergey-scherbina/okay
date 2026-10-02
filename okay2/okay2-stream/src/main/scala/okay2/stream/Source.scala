@@ -94,6 +94,44 @@ object Source {
   def zipWith[A, B, C](s: Source[A], t: Source[B], capacity: Int = 64)(f: (A, B) => C)(implicit sch: Scheduler, cb: CanBlock): Source[C] =
     Writer.mapAt[(A, B), C, Unit, Async](zip(s, t, capacity))(f.tupled)
 
+  /** the sort-merge join by key of two live sources NON-DECREASING in
+   * key (specs/stream-join.md), in `zip`'s shape: a fiber per side, the
+   * right run held; inner — ends when EITHER side ends and closes the
+   * other. `SortMerge` is the machine */
+  def joinSorted[K: Ordering, A, B](l: Source[(K, A)], r: Source[(K, B)], capacity: Int = 64)
+                                   (implicit sch: Scheduler, cb: CanBlock): Source[(K, (A, B))] =
+    SortMerge.source(l, r, capacity)(() => SortMerge.inner[K, A, B])
+
+  /** `joinSorted`, every left row kept; ends when the left side ends */
+  def leftJoinSorted[K: Ordering, A, B](l: Source[(K, A)], r: Source[(K, B)], capacity: Int = 64)
+                                       (implicit sch: Scheduler, cb: CanBlock): Source[(K, (A, Option[B]))] =
+    SortMerge.source(l, r, capacity)(() => SortMerge.left[K, A, B])
+
+  /** `joinSorted`, every row of either side kept; ends when both have */
+  def fullJoinSorted[K: Ordering, A, B](l: Source[(K, A)], r: Source[(K, B)], capacity: Int = 64)
+                                       (implicit sch: Scheduler, cb: CanBlock): Source[(K, (Option[A], Option[B]))] =
+    SortMerge.source(l, r, capacity)(() => SortMerge.full[K, A, B])
+
+  /** the event-time WINDOWED join by key of two unbounded, UNORDERED
+   * sources (specs/stream-join.md, stage 2; `WindowJoin` is the
+   * machine): a row matches on arrival every row of the other side with
+   * its key within `within` of its event time, is held until the joint
+   * watermark (the smaller side's greatest event time minus `lateness`)
+   * passes its reach; a row behind that watermark is dropped and
+   * counted. The sides are `either`-merged with each side's end marked */
+  def joinWithin[K, A, B](l: Source[(K, A)], r: Source[(K, B)], within: Long, lateness: Long, capacity: Int = 64)
+                         (atL: A => Long, atR: B => Long)
+                         (implicit sch: Scheduler, cb: CanBlock, timer: Timer): Source[(K, (A, B))] = {
+    type Ev = WindowJoin.Event[K, A, B]
+    type Out = (K, (A, B))
+    def ended[X](s: Source[X]): Source[Option[X]] =
+      Writer.mapAt[X, Option[X], Unit, Async](s)(x => Some(x))
+        .flatMap(_ => Writer.tell[Option[X]](None).at[Writer[Option[X]] + Async])
+    val merged: Source[Ev] = new SourceOps(ended(l)).either(ended(r), capacity)
+    Pipe.intoIn[Ev, Out, Async, Unit, Unit](merged)(
+      WindowJoin.stage[K, A, B](within, lateness)(atL, atR).at[Take[Ev] + (Writer[Out] + Async)])
+  }
+
   /** what `merge(chunked = true)` batches by: not a parameter, since
    * exposing it would quietly break `capacity`, which counts ELEMENTS */
   private[stream] val ChunkSize = 16
@@ -187,7 +225,7 @@ object Source {
      * chunk; answers the channel itself */
     def merge(t: Chunks[A], capacity: Int = 64)(implicit sch: Scheduler): Channel[Chunk[A]] = {
       type L[W] = Unit ! Writer[W]
-      Channel.merge[Chunk[A], L, Pure, L, Pure](s, t, capacity)(Stream.feedStream[Unit], Handler.pure, Stream.feedStream[Unit], Handler.pure, sch)
+      Channel.merge[Chunk[A], L, Pure, L, Pure](s, t, capacity)(Stream.feedStream[Unit], Answers.pure, Stream.feedStream[Unit], Answers.pure, sch)
     }
 
     /** `merge`, tagging which side each element came from */

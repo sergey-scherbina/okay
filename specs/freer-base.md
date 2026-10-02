@@ -157,7 +157,7 @@ object Delim.Stacked:   // spelled `Delim.Stacked` in Delim.scala
 Unchanged by this spec: `Control[M]` and its `Cont`/`Func` instances,
 `/>`, `^`, `Loop`, `answer`, `tailcall`; `Effects[M]` with its three
 instances — `Eff` is a function into `Cont` and `Eager` is a union
-`A | (A ! F)` over the alias, neither touches the tree; `Handler`,
+`A | (A ! F)` over the alias, neither touches the tree; `Answers`,
 `TypeableK`, `<|>`, `split`, the row algebra `+`/`%`; every handler
 signature in the library (they take `A ! F`, which is still one alias).
 
@@ -385,6 +385,16 @@ Stage 2 — the index as typestate, Delim first (lane freer-base-stage2, 2026-09
   would let a continuation of the wrong answer type into a bind by
   upcast. The opaque facade `Rep[A, S, R]` stays invariant in all
   three (backlog: cont-variance).
+  SUPERSEDED AGAIN, THE OTHER WAY (freer-consumed-index, 2026-09-30,
+  the operator's decision: "делаем S и R инвариантными"): the base is
+  `Freer[G[_, _, +_], S, R, +A]`. `+R` had exactly one reader,
+  `tailShift`/`tailPure`'s `liftCo`, and it cost the other reading of
+  the indexes — a state the handler CONSUMES — every arm that reads the
+  state (the probe below, "McBride's reading is refused by the variance
+  ALONE"). Invariance serves both readings; the tail-shift macro pays
+  one cast in `Cont.tailAt`, justified by the `S <:< R` it already
+  summons at the site. `cont-variance` keeps `+A` on the facade as its
+  question and loses `+R`.
 - **`resume` is the single rotation; an eliminator may inline the
   four lines only under the law.** Free's `runFree` was measured
   within 8% of stepping through `resume` (HandlerBenchmark
@@ -1033,3 +1043,341 @@ over the family. Not measured here: `scripts/jmh-lane.sh` needs the
 Mac; the lanes to re-read are the item's, and any movement is a
 defect, since every node is the same object.
 
+
+### Freer as the ParaMonad, and the two readings of an indexed signature (2026-09-30, freer-paramonad)
+
+The operator asked for `Freer` to be the `ParaMonad` instance, and
+behind it the question this base had not been asked: an effect whose
+SIGNATURE carries the indexes — typestate as a `Get`/`Put` enum a
+handler can look at, not `PState`'s shift bodies — how is it handled
+on this tree, and does "erase to `Unit` in `Free`, reintroduce in
+`PState`" have to be the road?
+
+**The instance** is one `given` in `object Freer`: `ParaMonad[Freer.
+Para[G]]` for every `G`, with `Para[G] = [A, S, R] =>> Freer[G, S, R,
+A]` because the trait reads value-first and the tree keeps `A` last
+for inference. `pure` is `Return`, `flatMap` is a prefix `Bind` (the
+extension-in-override self-recursion `Cont.bind` documents), `map` is
+the `Mapped` bind so builders keep reading it. `Control[Cont]` is the
+same structure at `Shift` with absorption, and `Cont` is opaque, so
+no search meets both; the effect row's `Monad[Free[F, *]]` still
+resolves beside the diagonal bridge — TestFreerPara pins both.
+
+**Where PState already stands.** Since the dual placement landed
+(2026-09-29) `PState` is NOT the erased road: `Cont.Rep[A, S, R]` is
+`Freer[Shift, S, R, A]`, so `PState.get: Cont[S, S => R, S => R]` is a
+leaf of the indexed tree with the state's type ON the node. What is
+erased to `Unit` is only the unary effect row, `A ! F`, because a
+unary `F[X]` has no answer type to put there.
+
+**Two readings of `Freer[G, S, R, A]` for a three-ary signature,
+compiled** (src/test/scala/TestFreerPara.scala):
+
+1. *The index is an ANSWER TYPE* — Cont's, PState's. `enum PSt[S, +R,
+   +X]` with `Get[S, Z]() extends PSt[S => Z, S => Z, S]` and `Put[S,
+   T, Z](t) extends PSt[T => Z, S => Z, S]` is `PState` as data, the
+   same signatures its `get`/`set` carry. A handler is an INDEXED
+   NATURAL TRANSFORMATION `[s, r, x] => G[s, r, x] => (x => s) => r`
+   — it chooses the shift body (`getAt`/`setAt`), which is the one
+   sentence this spec has carried since its overview — and the runner
+   is Cont's at any `G`, typed by the GADT end to end (`Return` gives
+   `S <: R`, `k(a): S` is the `R`). A program moving `Int -> String ->
+   List[String]` runs; a `Put` whose index does not meet the
+   continuation's is E007. This reading is what the base's variance
+   was designed for, and it is how an indexed effect is made here:
+   write the signature with the answer types, hand its handler to
+   Cont's runner (or `translate` it into `Cont` and absorb).
+
+2. *The index is a CONSUMED state* — McBride's `IxFree`, `R` the state
+   before, `S` after, `enum St[S, +R, +X]` with `Get[S]() extends
+   St[S, S, S]`, `Put[S, T](t) extends St[T, S, Unit]`, the handler a
+   loop `runSt(p)(r: R): (S, A)`. REFUSED, and by more than predicted:
+   the `Return` arm holds an `R` and owes an `S` with only `S <: R`
+   (the covariance `+R` that `tailShift` needed), and the `Get` arm
+   hands `r: R` to a continuation whose argument the match bound as a
+   SUPERtype of the case's own state, not as `R` — the signature is
+   covariant in `R` and `X` because the base's bound `G[_, +_, +_]`
+   says so, so the GADT yields bounds where an invariant enum gave
+   equalities. Only the `Put` arm, which PRODUCES the next state,
+   types. Pinned by `compileErrors` (two errors, both `Found: r: R`),
+   so the next change to the base's variance re-asks it.
+
+The principle, stated once: **on this base an index is something a
+handler PRODUCES, never something it consumes.** Threading a state
+through the answer type (`S => Z`) is not PState's trick around a
+missing feature; it is the only reading `Freer[G, S, +R, +A]` admits,
+and the reason is the same function-type arithmetic that put `+R`
+there. A consumed-state base would need `-R`/`+S` — the opposite
+variances — which is to say a different tree, and `Cont` would not
+fit it. Two consequences for the open items:
+
+- `Prog`'s phantom index and `Delim.Stacked` stay as they are. Their
+  index is a protocol CLAIM (a prompt stack, `Idle -> Open`) that the
+  machine reads at run time from prompt VALUES; nothing on the tree
+  could check it, and moving it onto the nodes would put a consumed
+  index under `+R`. The three-ary row algebra this spec lists as out
+  of scope is still out of scope: reading 1 needs no row — a
+  three-ary signature is handled by ONE natural transformation into
+  `Shift`, and combining it with a unary row is `PState`'s existing
+  road (a `Cont` program handling `A ! F` operations by `reflect`).
+- backlog `cont-variance` (`Rep[+A, S, +R]` on the facade) is
+  consistent with reading 1 and gains nothing for reading 2.
+
+Not measured: nothing on a hot path changed. The instance builds the
+nodes the tree's own `flatMap`/`map` build, and the runner in the test
+is a probe, not a production loop (its re-entry is direct style's
+frame, as `ProbeFreerStep`'s).
+
+### The indexes INSIDE the effect system — a row and a handler (2026-09-30, freer-paramonad-row)
+
+The operator's follow-up: not one three-ary signature, but WHERE in
+the effect system — rows, handlers, forwarding — the indexes are used.
+Compiled, in TestFreerPara, and green at the first typing:
+
+- **A mixed row.** `Row = [S, R, X] =>> PSt[S, R, X] | At[State[Int,
+  *], S, R, X]`: the indexed effect beside an ordinary `State % Int`.
+  The union's `+` is the unary one written at three parameters;
+  nothing else changes — `split`-by-class is index-blind.
+- **A unary effect enters ON THE DIAGONAL, and that is the one new
+  thing.** `Lift[F]` puts a unary operation at any index, and a
+  handler's loop over a mixed row cannot use that: matching
+  `Bind(Inject(op), k)` makes the middle index `T` existential, and
+  the answer the handler builds from `k`'s program is `T`-indexed
+  where it owes an `R`-indexed one. `enum At[F, S, +R, +X]` with
+  `Op[F, R, X](e: F[X]) extends At[F, R, R, X]` says the operation
+  moves nothing; the GADT gives `T <: R` and `+R` makes the
+  continuation's program an `R` one. Price: one wrapper per unary
+  operation. The allocation-free twin is `Free.Bind`'s trade at
+  `Unit` — an extractor that claims "a unary operation is diagonal"
+  by one cast, applied after the class test says the op is unary.
+  Which to take is a measurement, not taken here.
+- **State's handler, unchanged in shape, over the indexed row.**
+  `counted(s)(p: Freer[Row, S, R, A]): Freer[PSt, S, R, (Int, A)]`:
+  its own operations answered from the threaded `Int` and continued
+  at `T <: R`; a `PSt` operation FORWARDED with the index it came with
+  — `Inject(o).flatMap(x => counted(s)(k(x)))`, `(T, R)` then `(S,
+  T)`, closing at `(S, R)` — exactly the forwarding arm every handler
+  in the library has, at indexes that are no longer `Unit`. A program
+  ticking the counter around a `PSt` move `Int -> List[String]` runs
+  through `counted` then the indexed natural transformation and
+  answers `(List("x", "x"), (3, 3))`.
+
+So the answer to "where": in every handler's forwarding arm, which
+already has the right shape, and in the doors — an indexed effect's
+smart constructors carry their answer types, a unary effect's carry
+the diagonal. What production would add, all of it mechanical and none
+of it taken here: `+` at three parameters, `split`/`TypeableK` over
+three-ary constructors, `!`'s doors at a non-`Unit` index, and the
+diagonal claim for unary operations chosen between `At` and the
+extractor. Handlers stay Cont-valued (`F !> S` is `X /> S`); what
+moves is only that a handler of an INDEXED effect answers `Cont[X, S,
+R]` off the diagonal, which is `PState`'s `getAt`/`setAt` given a
+data operation to read.
+
+### McBride's reading is refused by the variance ALONE — probed on the invariant base (2026-09-30, freer-mcbride-probe)
+
+The operator asked what the problem with the consumed-state index is,
+what is lost without it, and what it would give. `src/test/scala/
+ProbeMcBride.scala` writes the SAME `St` signature and the SAME loop
+TestFreerPara pins as refused, against `ProbeFreerStep`'s invariant
+copy of the enum, and it types — kept compiling, exercised by
+TestFreerPara:
+
+- **No continuation object at all.** `run[A, S, R](p: Freer[St, A, S,
+  R])(r: R): (S, A)` is `State.handle`'s loop with the type moving:
+  `Return` gives `S = R` so `(r, a)` is the pair owed; `Get` gives
+  `X = T = R` so the continuation takes the state held; `Put` hands
+  `t: T` on. No `k`, no `Reentry`, no room, no switch — the whole of
+  Cont's stack machinery exists because a shift body CALLS `k`, and
+  this handler calls nothing.
+- **`@tailrec` with the type arguments changing per call.** Every
+  recursive call is at a different index; Scala 2 refused that
+  ("called recursively with different type arguments") and Scala 3
+  accepts it, so the loop is the fast shape, not an erased inner loop.
+- **The type still refuses** a `Put` from the wrong state and a run
+  from a state of the wrong type (`typeCheckErrors`, in the test).
+
+So the obstacle is `+R` and the bound `G[_, +_, +_]`, and nothing
+deeper. What `+R` is FOR, by grep: `Cont.tailShift`/`tailPure`'s
+`liftCo` — the macro's tail-shaped body emitted as a `Return(v):
+Cont[A, S, S]` where a `Cont[A, S, R]` is owed, with `S <:< R`
+summoned at the site. Nothing else reads the base's covariance in `R`
+(`Delim`'s `liftCo[Prog]` is on the value; the facade `Rep` is
+invariant, backlog `cont-variance`). The price of McBride's reading on
+the library's base is therefore exact: `S` and `R` invariant on
+`Freer`, `G[_, _, +_]`, and `tailShift` placing its `Return` at
+`(S, R)` by ONE cast justified by the evidence it already holds (or a
+`Return` case carrying the evidence, +8 B on every `pure`). Both
+readings then live on one invariant tree, each as its own signature.
+
+**What is lost without it.** A type-changing state — and any effect
+whose handler CONSUMES its index: a held resource typed `Handle[R]`,
+a session's channel at its protocol state — can be handled only
+through the answer type, which is CPS: `PState` costs a frame per
+operation, a `Reentry` per bind and the room/switch bookkeeping, and
+measures 1.29x `State.handle` on the same workload (State.scala's
+header, 21.23 vs 27.42 µs). McBride's loop is `State.handle`'s own
+shape, tail-recursive over `resume`, nodes only. The typed protocol
+would then cost what the untyped one costs.
+
+**What McBride's index gives beyond Atkey's, and what this tree cannot
+express.** In "Kleisli arrows of outrageous fortune" the value is a
+FAMILY over the index, `a : I -> Set`, so the state after an operation
+may depend on the VALUE it answers — `tryOpen` answering `Opened` at
+`Open` or `Failed` at `Closed`, the continuation typed for both. That
+needs `Bind`'s continuation polymorphic in the index, `[j] => A[j] =>
+M[B, j]`; this tree's `f: A => Freer[G, S, T, B]` fixes `T`. Atkey's
+encoding of the same is a sum-typed STATE, `Either[Open, Closed]`,
+which `Stage.phased` already runs (`S1 -> Either[S1, S2]`), the next
+operation matching on it. So: the value-dependent post-state stays
+encoded, the consumed index is one variance decision away.
+
+Not measured — a probe, not a lane. The lane, if the trade is wanted,
+is backlog `freer-consumed-index`; it is in tension with
+`cont-variance`, which asks for MORE covariance on the facade, and one
+of the two has to be chosen.
+
+### The indexes INVARIANT — both readings on the library's base (2026-09-30, freer-consumed-index, the operator's decision)
+
+"Делаем S и R инвариантными." `enum Freer[G[_, _, +_], S, R, +A]`:
+`+A` stays, `+R` and the covariant bound on the signature's second
+parameter go. What the compiler then said, each a round:
+
+- **`+R` had TWO readers, not one.** `tailShift`/`tailPure`'s `liftCo`
+  (known) and `Cont.noProgram`, the placeholder a CPS walk starts from,
+  a `Return` at index `Nothing` that rode the covariance into every
+  walk's `R`. The first is one cast in `Cont.tailAt`, the evidence as
+  its parameter; the second is a `Delay` that throws, at the walk's own
+  index, no cast — it is never matched (a walked body answers through
+  its pending parts).
+- **A signature with an INVARIANT value parameter silently switches
+  the GADT off.** `enum St[S, R, X]` against the bound `G[_, _, +_]`
+  typed its doors and then derived NOTHING in the handler's match —
+  not `S = R` at `Return`, not even `A0 <: A` — eight errors that read
+  like the variance decision had not happened. Bound conformance is
+  checked after typing, so the kind mismatch never surfaced as itself.
+  `St[S, R, +X]` and every arm typed. A signature's value parameter is
+  `+X`, and a handler that derives nothing from a match should check
+  the signature's kind before anything else.
+- **Doors on an invariant signature spell their type arguments.**
+  `Inject(St.Get())` no longer infers `G` from the expected `Freer[St,
+  S, S, S]`; `Inject[St, S, S, S](St.Get())` does. The library's own
+  doors (`Free.inject`, `Cont.shiftLeaf`) already spell them.
+- **The row probe's `At` and `PSt` are invariant in `R` too**: with
+  `+R` on the signature the GADT gave `T <: R` where the loop owes an
+  `R`-indexed program, and on an invariant base that is no longer
+  enough. A signature's variance is now exactly the base's.
+
+The reading-2 pin flipped: `runSt[S, R, A](p: Freer[St, S, R, A])(r:
+R): (S, A)`, `@tailrec`, no continuation object, runs `Int -> String ->
+List[String]` on the library's `Freer` and still refuses a `Put` from
+the wrong state and a run from the wrong state. TestCont, TestContMacro,
+TestContStack, TestState and TestProg are green unchanged, so the
+Cont side lost nothing to the cast it now carries. Not measured: the
+nodes are the same objects; `tailAt` is erased.
+
+### The diagonal leaf as a case of the node (2026-09-30, freer-diag-leaf, the operator's "Да")
+
+The first item of the from-scratch list in freer-consumed-index's
+answer, built: `Freer.Diag[G, R, A](a: G[R, R, A]) extends Freer[G, R,
+R, A]`, the fifth case, and `Freer.diag` as its door. It says on the
+NODE what `Lift`'s phantom index cannot: the operation moves nothing.
+Matching `Bind(Diag(e), k)` gives `T = R` by the GADT on the invariant
+base, so a handler's loop over a mixed row continues at `R` — which is
+what the row probe needed and had from a wrapper (`At.Op`, one
+allocation per unary operation) or would have had from an extractor
+claiming the diagonal by one cast, `Free.Bind`'s trade. Neither now:
+the row is `[S, R, X] =>> PSt[S, R, X] | State[Int, X]`, the unary
+member BARE, `tick[R] = Freer.diag[Row, R, Int](State.Modify(_ + 1))`,
+and `counted` answers `State` under `Diag` and forwards `PSt` under
+`Inject` with its index. A lone `Diag` and one under a `Bind` both run.
+
+What the compiler asked for, each a round:
+
+- **One exhaustive match over the erased tree exists**, `!.peek`
+  (Effects.scala); every other site is `(x.resume: @unchecked)`. It
+  gained a real arm — at `Unit` a `Diag` holds the same `F[A]` an
+  `Inject` does — through `Freer.Diag`, since `object Free` keeps only
+  the four old names on purpose (the `direct` macro looks them up by
+  symbol) and `Diag` is not one of them.
+- **Cont's `step` is `(c: @unchecked) match` now**, not a dead arm: a
+  Cont never holds a `Diag` — the companion builds every leaf, as
+  `Inject`, so it can be absorbed — and bytes in that loop are what
+  the Fib lanes price (cont-stack-fastpath, "callee is too large").
+- **`Free`'s doors at `Unit` keep building `Inject`.** The 112
+  `Bind(Inject(e), k)` sites across the family do not move, and at
+  `Unit` the two nodes mean the same thing. `Diag` is the door of an
+  INDEXED row only; the discipline is a door's, as `Free.Bind`'s
+  constant claim is, and a handler of a unary effect in an indexed
+  row matches `Diag`. What the type does not refuse: a unary
+  operation put under `Inject` at a moving index by hand. The row
+  probe's `moving` arm throws on it by name; closing it at the type
+  is the three-ary row algebra's job (a `+` whose unary member is a
+  match type reducing only on the diagonal is the road, untried).
+
+Not measured, and the reason is honest: the CI runner was gating the
+box beside this lane all morning. The one thing that could move is
+the JIT's view of `Freer`'s sealed hierarchy (five cases now), and no
+loop tests for `Diag`; if any core lane moves at the next reading,
+this is the change to bisect to.
+
+### Re-measured: the invariant indexes and the diagonal leaf cost nothing (2026-09-30, freer-base-remeasure)
+
+Two base changes landed unmeasured on 2026-09-30 because the CI runner
+gated the box beside them. Read afterwards on a quiet box: `mine` =
+78f8dfec2 (freer-consumed-index + freer-diag-leaf) against `ref` =
+7ae9a6aa9 (master just before them; the arms differ in Free.scala,
+Cont.scala, ContMacro.scala and Effects.scala only), three alternating
+rounds, MIN per lane, `jmh-lane.sh -f2 -wi3 -i5 -prof gc`, JDK 26,
+load 2.6-4.9, all 24 lanes with the script's "box stayed quiet"
+verdict (history.d `2026-09-30T095512Z-freer-base-remeasure.tsv`):
+
+| lane | mine | ref | ratio | B/op |
+|---|---|---|---|---|
+| `fib100` | 2277 ns | 2268 ns | 1.004 | 21 552 both |
+| `statePara` | 30.88 µs | 30.57 µs | 1.010 | 301 408 both |
+| `relayForward` | 168.0 µs | 167.9 µs | 1.001 | 1 995 617 both |
+| `stepBulk` | 192.5 µs | 193.4 µs | 0.996 | 2 319 825 both |
+
+UNCHANGED, as predicted: the nodes are the same objects, `tailAt`'s
+cast is erased, and the fifth enum case did not change the JIT's view
+of the `Inject`/`Bind` type tests on the Free side (`relayForward`,
+`stepBulk`) or of the leaf loop (`fib100`, `statePara`). Round 1 read
+`fib100` at 1.019 and rounds 2-3 at 1.000 and 0.978 — the inlining
+lottery this spec has met before, and why a single round is a
+hypothesis. The lanes the freer-consumed-index and freer-diag-leaf
+entries named as "the change to bisect to" need no bisecting.
+
+### PState as data through the threading loop — the payoff, measured (2026-09-30, pstate-threaded)
+
+Item 2 of the from-scratch list, and the number the invariance
+decision was for. `PState.Op[S, R, +X]` (`Get[S]` at `(S, S)`,
+`Put[S, T](t)` from `S` to `T`, answering the old state as `set`
+does), `PState.Threaded[A, S, R] = Freer[Op, S, R, A]`, doors
+`Threaded.get`/`put`, and `Threaded.run` — `State.handle`'s loop with
+the type moving, `@tailrec`, no continuation object. TestState pins
+the protocol (`Int -> String -> Boolean`) and the refusal of a `Put`
+from the wrong state. HandlerBenchmark `stateThreaded` is the same
+M = 1000 workload as `statePara`. Three lanes on one tree, order
+rotated per round, MIN of 3, `jmh-lane.sh -f2 -wi3 -i5 -prof gc`,
+every lane quiet (history.d `2026-09-30T104006Z-pstate-threaded.tsv`):
+
+| lane | µs/op | B/op | vs `stateEffect` |
+|---|---|---|---|
+| `stateEffect` (untyped `State`) | 16.96 | 244 904 | 1.00 |
+| `stateThreaded` (typed, data road) | 18.07 | 276 904 | **1.07** |
+| `statePara` (typed, shift road) | 30.39 | 301 407 | 1.79 |
+
+The typed protocol costs 7% over the untyped State on the data road
+and 79% on the shift road, so the data road is 0.59x of what `PState`
+paid. What the invariance bought is exactly this loop: a handler that
+CONSUMES its index and continues at the type the operation gives it.
+The 32 000 B the data road still carries over State are one
+`Inject(Get())` allocated per read, where `State.get` shares one node
+through a cast (`SharedOps.getNode`); the same cast here would close
+the bytes and is the next rung, priced on its own. The shift road's
+own ratio moved from the 1.29x State.scala's header quoted on
+2026-09-17 to 1.79x today — the re-entry road's cost is the JIT's
+inlining decision, not a constant — and the header says so now.
+Which road: the shift road for what only it can do (a body that uses
+`k`, the profunctor `Zooming`), the data road for a protocol.

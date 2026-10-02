@@ -54,7 +54,7 @@ private[okay] object DirectCompiler:
     // type broke two — `ctxMonad[E]`'s declared `E ?=> A` result is a
     // type the typer auto-applies ("bad adapt", TestDirectTryCtx), and
     // a Free block that REBUILDS a lambda (programLambda, a nested
-    // block under `Delim.shift`) left the inlined binds' proxies with
+    // block under `Shift.shift`) left the inlined binds' proxies with
     // an owner LambdaLift could not find (TestBookInTheSystem). The
     // Free road was then built with both laws kept (direct-inline-
     // bind-free, 2026-09-23) and REFUTED by its number: bytes 0.97,
@@ -153,7 +153,7 @@ private[okay] final class DirectCompiler[F[_]](val q: Quotes, val fT: Type[F],
    *
    * The block's OWN row, not any row: a lambda answering at another
    * row would need that row's `Monad` summoned and its type carried
-   * into the pipeline, and the shape that wants this — a `Delim`
+   * into the pipeline, and the shape that wants this — a `Shift`
    * continuation handler — answers at the row it was written in.
    */
   def programLambda(params: List[ValDef], body: Term): Option[Out] =
@@ -203,7 +203,7 @@ private[okay] final class DirectCompiler[F[_]](val q: Quotes, val fT: Type[F],
       // the lambda's type nor where it is evaluated; the macro only
       // rewrites what is already there. This is what lets a
       // continuation handler read as ordinary code —
-      // `Delim.shift(p)(k => { "x".tell; !k(n) })` with no inner
+      // `Shift.shift(p)(k => { "x".tell; !k(n) })` with no inner
       // block. Every other lambda keeps the refusal: rewriting a
       // higher-order argument generically is the expensive half of
       // the problem, and the refusal is the whole difference between

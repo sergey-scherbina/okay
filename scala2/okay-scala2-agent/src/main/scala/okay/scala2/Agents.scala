@@ -1,6 +1,6 @@
 package okay.scala2
 
-import okay.{+, Handler}
+import okay.{+, Answers}
 import okay.agent.{Agent, Compact, Context, Durable, Handlers, Reply, ToolCall, Toolbox, Turn}
 import okay.agent.{Model as ModelEffect, Tool as ToolEffect}
 import okay.codec.Schema
@@ -22,7 +22,7 @@ import okay.given
  */
 
 /** a language model, as okay-agent's `Model` handler */
-final class Model private (private[scala2] val handler: Handler[ModelEffect])
+final class Model private (private[scala2] val handler: Answers[ModelEffect])
 
 object Model {
 
@@ -68,7 +68,7 @@ object Tools {
 }
 
 /** how the conversation is kept within the model's context */
-final class Policy private (private[scala2] val make: () => (() => Seq[Turn], Handler[Context]))
+final class Policy private (private[scala2] val make: () => (() => Seq[Turn], Answers[Context]))
 
 object Policy {
 
@@ -100,7 +100,7 @@ final class Chat private (model: Model, tools: Tools, policy: Policy, maxSteps: 
 
   private val (recall, context) = policy.make()
 
-  private val tool: Handler[ToolEffect] = {
+  private val tool: Answers[ToolEffect] = {
     val gated = Handlers.gated(tools.box.table)(c => approve(Chat.call(c)))
     journal.fold(gated)(j => Durable.tools(gated, j)(onRepeat))
   }
@@ -109,12 +109,12 @@ final class Chat private (model: Model, tools: Tools, policy: Policy, maxSteps: 
   def say(message: String): Eff[Async, String] = Async(synchronized {
     // one handler per effect, assembled along the row, as okay-agent's
     // own tests do (TestAgent.run)
-    given modelH: Handler[ModelEffect] = model.handler
-    given toolH: Handler[ToolEffect] = tool
-    given contextH: Handler[Context] = context
-    given contextAsyncH: Handler[Context + okay.Async] = Handler.union[Context, okay.Async]
-    given modelContextAsyncH: Handler[ModelEffect + (Context + okay.Async)] = Handler.union[ModelEffect, Context + okay.Async]
-    given agentH: Handler[Agent] = Handler.union[ToolEffect, ModelEffect + (Context + okay.Async)]
+    given modelH: Answers[ModelEffect] = model.handler
+    given toolH: Answers[ToolEffect] = tool
+    given contextH: Answers[Context] = context
+    given contextAsyncH: Answers[Context + okay.Async] = Answers.union[Context, okay.Async]
+    given modelContextAsyncH: Answers[ModelEffect + (Context + okay.Async)] = Answers.union[ModelEffect, Context + okay.Async]
+    given agentH: Answers[Agent] = Answers.union[ToolEffect, ModelEffect + (Context + okay.Async)]
     Agent.converse(message, tools.box.specs, maxSteps).runWith
   })
 
