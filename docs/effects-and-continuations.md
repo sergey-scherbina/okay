@@ -57,25 +57,34 @@ what to do with it: call it once, call it twice, or drop it. It is an effect lik
 the row, where `R` is the answer of its `reset`. And `reset` is its handler, `Reset[R]`:
 
 ```scala
-val twice: Int ! Shift % Int =
-  shift[Int, Int, Pure](k => for a <- k(1); b <- k(10) yield a + b).map(_ * 2)
+val twice: Int ! Pure = reset {
+  shift[Int](k => for a <- k(1); b <- k(10) yield a + b).map(_ * 2)
+}
 
-val d = twice.handle(Reset[Int]).run   // 22: k(1) is 2, k(10) is 20
-val e = reset[Int, Pure](twice).run    // 22, the same: reset is a handler
+val d = twice.run   // 22: k(1) is 2, k(10) is 20
+
+val built: Int ! Shift % Int = shift[Int, Int, Pure](k => for a <- k(1); b <- k(10) yield a + b).map(_ * 2)
+val e = built.handle(Reset[Int]).run   // 22, the same: reset is a handler
 ```
+
+Inside a `reset { … }` block a `shift` names only the type of the value it passes, `shift[Int]`. The block
+knows the answer and the row, and `reset` takes those from the type the result is given. A capture built
+outside any block, like `built`, names all three: the answer, the value, and the row the `reset` leaves,
+`shift[Int, Int, Pure]`.
 
 `k` returns a program, so the body is written like any other program, and continuations mix with effects with
 nothing added. Here the rest of the program, which reads and writes the state, runs twice:
 
 ```scala
-val both: Int ! Shift % Int + State % Int =
+val both: Int ! State % Int = reset {
   for
-    x <- shift[Int, Int, State % Int](k => for a <- k(1); b <- k(10) yield a + b)
+    x <- shift[Int](k => for a <- k(1); b <- k(10) yield a + b)
     s <- State.get[Int].plus[Shift % Int]
     _ <- State.set(s + 1).plus[Shift % Int]
   yield x * 2 + s
+}
 
-val f = both.handle(Reset[Int]).handle(State(5)).run   // (7, 33): the rest ran twice, the state through both
+val f = both.handle(State(5)).run   // (7, 33): the rest ran twice, the state through both
 ```
 
 Two captures:
@@ -87,12 +96,13 @@ For a body that does not capture again, the two answer the same. `shift0` is the
 `k` is an early exit:
 
 ```scala
-val early: Int ! Shift % Int = shift0[Int, Int, Pure](_ => pure(42)).map(_ + 1)
-val g = early.handle(Reset[Int]).run   // 42: the continuation was dropped
+val early: Int ! Pure = reset(shift0[Int](_ => pure(42)).map(_ + 1))
+val g = early.run   // 42: the continuation was dropped
 ```
 
 Each answer type is its own effect, so `reset`s of different answer types nest. A capture goes to the nearest
-`reset` OF ITS TYPE, crossing the others:
+`reset` OF ITS TYPE, crossing the others. The short form answers the innermost block, so a capture that
+crosses one names its `reset`'s types in full:
 
 ```scala
 val crossing: String ! Shift % Int =
@@ -114,8 +124,8 @@ The same programs as plain code, with `okay-direct`'s `direct` block. A program 
 value. The body of `shift` is a block too:
 
 ```scala
-val both: Int ! State % Int = reset[Int, State % Int](direct {
-  val x = shift[Int, Int, State % Int](k => direct { k(1).? + k(10).? }).?
+val both: Int ! State % Int = reset(direct {
+  val x = shift[Int](k => direct { k(1).? + k(10).? }).?
   x * 2 + State.get[Int].?
 })
 
@@ -126,8 +136,8 @@ With `import scala.language.implicitConversions` the marks go too, and an ascrib
 value ([direct-style.md](direct-style.md), Layer 3):
 
 ```scala
-val quiet: Int ! State % Int = reset[Int, State % Int](direct {
-  val x: Int = shift[Int, Int, State % Int](k => direct { (k(1): Int) + (k(10): Int) })
+val quiet: Int ! State % Int = reset(direct {
+  val x: Int = shift[Int](k => direct { (k(1): Int) + (k(10): Int) })
   x * 2 + (State.get[Int]: Int)
 })
 

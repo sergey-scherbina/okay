@@ -24,7 +24,7 @@ specs/shift-effect.md.
 | a program | `A ! F`, rows `F + G` | `M[F, A]` |
 | a value | `pure(a)` | `E.pure(a)` |
 | an operation | ready ops; `perform(op)` / `op.perform` | `E.perform(op)` |
-| a capture | `shift`, `shift0` (`Shift % R` in the row) | `E.shift`, `E.shift0` |
+| a capture | `shift[A]`, `shift0[A]` inside `reset { … }`; `shift[R, A, F]` elsewhere (`Shift % R` in the row) | `E.shift`, `E.shift0` |
 | a delimiter | `reset` = `handle(Reset[R])` | `E.reset` |
 | take an effect off | `p.handle(h)`: `State(s)`, `Reader(r)`, `Writer.log`, `Throws.either`, `Choose.all`, `Maybe.option`, `Reset[R]` | `E.handle(p, h)` |
 | the value | `p.run` | `E.run(p)` |
@@ -48,5 +48,4 @@ TestDocExamplesLevel1 and TestDocExamplesLevel1Direct.
 
 ## Open
 
-- Every `shift` names `[R, A, F]`. They could come from the expected type, or in a block from its
-  `DirectCtx` (backlog shift-effect-level1).
+- None left of level 1's own. Inside `reset { … }` a `shift` names its value type only (shift-in-scope).

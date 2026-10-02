@@ -6,8 +6,8 @@ import okay.Direct.*
 class TestDocExamplesLevel1Direct extends munit.FunSuite:
 
   test("direct style: marks") {
-    val both: Int ! State % Int = reset[Int, State % Int](direct {
-      val x = shift[Int, Int, State % Int](k => direct { k(1).? + k(10).? }).?
+    val both: Int ! State % Int = reset(direct {
+      val x = shift[Int](k => direct { k(1).? + k(10).? }).?
       x * 2 + State.get[Int].?
     })
 
@@ -17,8 +17,8 @@ class TestDocExamplesLevel1Direct extends munit.FunSuite:
 
   test("direct style: no marks") {
     import scala.language.implicitConversions
-    val quiet: Int ! State % Int = reset[Int, State % Int](direct {
-      val x: Int = shift[Int, Int, State % Int](k => direct { (k(1): Int) + (k(10): Int) })
+    val quiet: Int ! State % Int = reset(direct {
+      val x: Int = shift[Int](k => direct { (k(1): Int) + (k(10): Int) })
       x * 2 + (State.get[Int]: Int)
     })
 

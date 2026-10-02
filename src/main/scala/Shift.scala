@@ -18,9 +18,21 @@ def shift[R, A, F[+_]](f: (A => R ! Shift % R + F) => R ! Shift % R + F)(using k
 def shift0[R, A, F[+_]](f: (A => R ! F) => R ! F)(using k: Shift.Key[R], at: At): A ! Shift % R + F =
   Shift.out(Delim.shift0[R, A, F](k.prompt)(Shift.clause(f)))
 
-/** delimit, and answer every capture of answer `R` */
-def reset[R, F[+_]](body: R ! Shift % R + F)(using k: Shift.Key[R], d: Distinct[Shift % R + F], n: Shift.Nesting[F]): R ! F =
-  val pushed = Delim.push[R, F](k.prompt)(Shift.in(body))
+/** inside a `reset` block: `R` and `F` are the block's, so only the value type is named */
+def shift[A](using in: Shift.In)(f: (A => in.R ! Shift % in.R + in.F) => in.R ! Shift % in.R + in.F)(using at: At): A ! Shift % in.R + in.F =
+  shift[in.R, A, in.F](f)(using in.key, at)
+
+/** inside a `reset` block, the 0-variant */
+def shift0[A](using in: Shift.In)(f: (A => in.R ! in.F) => in.R ! in.F)(using at: At): A ! Shift % in.R + in.F =
+  shift0[in.R, A, in.F](f)(using in.key, at)
+
+/**
+ * delimit, and answer every capture of answer `R`. The body sees a `Shift.In[R, F]`, so a `shift` written in it
+ * names only its value type; a program built elsewhere passes as it is.
+ */
+def reset[R, F[+_]](body: Shift.In.Aux[R, F] ?=> R ! Shift % R + F)
+                   (using k: Shift.Key[R], d: Distinct[Shift % R + F], n: Shift.Nesting[F]): R ! F =
+  val pushed = Delim.push[R, F](k.prompt)(Shift.in(body(using Shift.In[R, F](k))))
   // a row that still holds a capture's effect is run by the machine outside
   if n.inner then Shift.inner(pushed) else Delim.run[R, F](pushed)
 
@@ -32,6 +44,20 @@ object Reset:
         reset[R, F](a.substituteCo[[X] =>> X ! Shift % R + F](p))
 
 object Shift:
+
+  /** evidence of an enclosing `reset` block: its answer `R`, and `F`, the row outside it */
+  @scala.annotation.implicitNotFound("no reset around this shift: inside `reset { … }` a shift names only its value type, `shift[A](k => …)`; elsewhere name all three, `shift[R, A, F](k => …)`")
+  sealed trait In:
+    type R
+    type F[+_]
+    def key: Key[R]
+
+  object In:
+    type Aux[R0, F0[+_]] = In { type R = R0; type F[+X] = F0[X] }
+    def apply[R0, F0[+_]](k: Key[R0]): Aux[R0, F0] = new In:
+      type R = R0
+      type F[+X] = F0[X]
+      def key: Key[R0] = k
 
   // THE ONE CLAIM: a `Shift % R` program is a `Delim` program at the same erasure (only the machine reads
   // `Cont0`), and a capture of answer `R` reaches only the prompt of `R`'s key, where its `k` and body are

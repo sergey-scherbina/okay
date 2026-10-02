@@ -44,3 +44,11 @@ class TestShiftDirect extends munit.FunSuite:
     })
     assertEquals(State.run(5)(q), (5, 32))
   }
+
+  test("the short form in a direct block: shift[A], reset's types from the expected type") {
+    val q: Int ! S = reset(direct {
+      val x = shift[Int](k => direct { k(1).? + k(10).? }).?
+      x * 2 + State.get[Int].?
+    })
+    assertEquals(State.run(5)(q), (5, 32))
+  }

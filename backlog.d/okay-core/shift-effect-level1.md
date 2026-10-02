@@ -3,7 +3,6 @@
       (1) nested resets of the SAME answer type start a machine each:
       3 000-10 000 deep, depending on the JIT. (2) the machine's start per
       small `reset`: `twoShot` 10.3 µs against the probe's handler (a) at
-      7.29. (3) every `shift` names `[R, A, F]`: R and F from the block's
-      `DirectCtx` in direct style, R from the expected type outside it.
+      7.29. ((3), the type arguments, landed as shift-in-scope.)
       TRIGGER: a consumer writing either shape in a loop, or the level-1
       docs page (effects-shift-reset's step 5).

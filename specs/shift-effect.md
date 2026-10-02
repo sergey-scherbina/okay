@@ -173,6 +173,16 @@ one API, one suite over both:
   both styles, answers the same in `Free` and in `Eager` (TestEffectsLevel1,
   TestEffectsLevel1Direct).
 
+- **`shift[A]` inside a `reset` block** (shift-in-scope): `k`'s type holds
+  R and F, and Scala fixes a lambda's parameter types before it types the
+  body, so neither can come from the body. `reset` takes `Shift.In.Aux[R,
+  F] ?=> R ! Shift % R + F`, Delim's `Prompted` pattern, and `shift[A]` /
+  `shift0[A]` read R and F off it. A program built elsewhere still passes:
+  a value adapts to a context function. `reset { … }` takes R and F from
+  its expected type. Inside nested blocks the innermost wins, and the full
+  `shift[R, A, F]` (an overload chosen by the number of type arguments)
+  reaches past it.
+
 ## Results
 
 Probe: `okay-direct/src/test/scala/ShiftFx.scala`,

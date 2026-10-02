@@ -38,30 +38,34 @@ class TestDocExamplesLevel1 extends munit.FunSuite:
   }
 
   test("continuations: shift and reset") {
-    val twice: Int ! Shift % Int =
-      shift[Int, Int, Pure](k => for a <- k(1); b <- k(10) yield a + b).map(_ * 2)
+    val twice: Int ! Pure = reset {
+      shift[Int](k => for a <- k(1); b <- k(10) yield a + b).map(_ * 2)
+    }
 
-    val d = twice.handle(Reset[Int]).run   // 22: k(1) is 2, k(10) is 20
-    val e = reset[Int, Pure](twice).run    // 22, the same: reset is a handler
+    val d = twice.run   // 22: k(1) is 2, k(10) is 20
+
+    val built: Int ! Shift % Int = shift[Int, Int, Pure](k => for a <- k(1); b <- k(10) yield a + b).map(_ * 2)
+    val e = built.handle(Reset[Int]).run   // 22, the same: reset is a handler
     assertEquals(d, 22)
     assertEquals(e, 22)
   }
 
   test("continuations with effects") {
-    val both: Int ! Shift % Int + State % Int =
+    val both: Int ! State % Int = reset {
       for
-        x <- shift[Int, Int, State % Int](k => for a <- k(1); b <- k(10) yield a + b)
+        x <- shift[Int](k => for a <- k(1); b <- k(10) yield a + b)
         s <- State.get[Int].plus[Shift % Int]
         _ <- State.set(s + 1).plus[Shift % Int]
       yield x * 2 + s
+    }
 
-    val f = both.handle(Reset[Int]).handle(State(5)).run   // (7, 33): the rest ran twice, the state through both
+    val f = both.handle(State(5)).run   // (7, 33): the rest ran twice, the state through both
     assertEquals(f, (7, 33))
   }
 
   test("an early exit, and two answer types in one program") {
-    val early: Int ! Shift % Int = shift0[Int, Int, Pure](_ => pure(42)).map(_ + 1)
-    val g = early.handle(Reset[Int]).run   // 42: the continuation was dropped
+    val early: Int ! Pure = reset(shift0[Int](_ => pure(42)).map(_ + 1))
+    val g = early.run   // 42: the continuation was dropped
 
     val crossing: String ! Shift % Int =
       reset[String, Shift % Int](
