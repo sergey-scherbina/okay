@@ -145,3 +145,43 @@ active handler per level: the depth comes back, plus O(n^2) work.
   `relayPrebuilt` 1.01x, `handlePrebuilt` 0.99x. TestInlineBudget finds
   relay's lifted loop by `.*loop$N`; `relay` itself is now a 22-byte
   wrapper building its run object.
+
+## Results (stage 3, handle-frames-loops)
+
+ONE frame for every loop that threads a state: `HandleFrames.stateful`
+(and `statefulOver`, for a walker whose row in and out differ). Its
+clause gets the state, the operation and `resume(s2, v)`; a clause that
+does not resume stops there (a fold that is done, a halt); `ret` is the
+answer at the end. `State` itself now goes through it.
+
+CONVERTED (lazy, upgrading; `case y => frame` in its own method):
+Writer.loopWith (run, collect, censor, Source.concat), Writer.foldUntil,
+Writer.map, expand, listen, widen; Supply.run, Refs.handle, Once.run,
+Chronicle.run; Producer.fold, foldUntil, each; State.zoomWith;
+Lexical.walk; Maybe.prune; okay-agent Memory.handle; okay-py
+PyStream.holding; okay-stream Source.fromProducer, toProducer.
+TestHandleFramesLoops (cross): 100 000 nested of each on Scala.js, and
+5 000 for the walkers that re-tell (n nested re-tellers are n²/2
+re-tells by nature — the fold's too; the first draft at 100 000 ran 30
+minutes and was stopped).
+
+A SECOND LIMIT LIFTED: TestLexicalWalk's "multi-shot INSIDE the walk with
+the machine OUTSIDE it" asserted the operation inside the delimiter
+ESCAPED (`Instances.Survived`); with the walk a frame of that machine it
+answers deep's answer, (6, List(0, 1, 3)), as with the machine inside.
+
+LEFT AS FOLDS, on purpose — each stays correct and nests as before:
+- `Throws.rows` (CanTry) and `Resource.handle`: each step runs under a
+  JVM `try` (an exception guard, a finalizer on failure). A frame on the
+  machine has no host `try` to run in, so the guarantee would be lost.
+- `Logic.msplit`: a search with a stack of alternatives, not a handler
+  with one answer; its own lane if it ever nests deep.
+- `Gen`'s walks (splice, indexed, taking, filtering, ...): closed rows
+  (`Writer % W + Stop`), combinators of a generator, not handlers; the
+  reader fuses them.
+- okay-stream `Pipe` (two programs walked as a coroutine pair), and the
+  interpreters INTO `Async` (okay-sql Tx, okay-stm, Source.loop,
+  Channel): a pair is not one frame, and an interpreter into `Async` is
+  the outermost thing in its program.
+- Runners that answer a VALUE (Prob, Bayes, runFree, the steppers'
+  `uncons`/`advance`): top level by type, nothing nests them.
