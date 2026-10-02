@@ -14,5 +14,7 @@
       the `Sampler` facade with PyMC behind an import, okay-bayes-sampler.
       Stage 5, the rest of the book: 5a ch.4 ranking okay-bayes-ch4; 5b
       ch.5 loss functions okay-bayes-ch5; 5c ch.7 A/B by revenue
-      okay-bayes-ch7; §6 vectors as named scalars okay-bayes-vector. The
-      book and the spec are covered.
+      okay-bayes-ch7; §6 vectors as named scalars okay-bayes-vector; 5d
+      Dark Worlds on Kaggle's skies okay-bayes-darkworlds. Next: streams
+      (SMC online over a Stream) and Bulk (the likelihood as a
+      distributed sum) — operator's question 2026-10-02.

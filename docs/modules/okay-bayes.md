@@ -232,6 +232,19 @@ _ <- observeAll(theta.indices)(j => Normal(theta(j), sigma(j)), y)
 
 `Smooth.paramN` is the same for a model over `Grad`.
 
+**A data-heavy example: Dark Worlds.** Kaggle's *Observing Dark Worlds*
+(the book's ch.5) hides a dark-matter halo in a sky of a few hundred
+galaxies: it shears their ellipticities tangentially around itself. The
+data is a simulation, so the true halo is known; on ten skies the posterior
+of the halo's position holds it inside its 95% region every time, a median
+39 units off on a 4200-unit sky. One lesson came with it: the posterior has
+local hills, and NUTS from a random start stays on the one it lands on.
+Start it at a coarse search's best point:
+
+```scala
+val nuts = Smooth.nuts(haloAd(sky3), samples = 1500, burn = 700, chains = 2, init = Map("x" -> sx, "y" -> sy, "mass" -> sm))
+```
+
 **Reading the posterior.** `post.site("lambda_1")` is a site's chain,
 `post.draws` the program's values; `Summary` has the mean, sd, quantiles,
 the highest-density interval, the effective sample size (Geyer's initial
@@ -279,7 +292,7 @@ by `uv` through okay-py, samples the same model as a Live test.
 | `Target`, `Target.finite(d)(f)`, `Nuts.sample(target, samples, burn, seed, delta, maxDepth)` | NUTS over any log density on ℝᵈ |
 | `Real`, `Tape`, `Real.exp / log / log1p / sqrt / pow / softplus / sigmoid / lgamma / logSumExp` | reverse-mode AD |
 | `Smooth.param(name, prior)`, `observe`, `observeAll`, `score`; `Smooth.Normal, HalfNormal, Exponential, Gamma, Beta, Uniform, Bernoulli, BernoulliLogit, Poisson, Mixture` | a model over `Grad`, differentiable densities |
-| `Smooth.target(p)`, `Smooth.nuts(p, samples, burn, chains, seed, delta)` | its exact-gradient `Target`, and NUTS on it |
+| `Smooth.target(p)`, `Smooth.nuts(p, samples, burn, chains, seed, delta, init)` | its exact-gradient `Target`, and NUTS on it |
 | `Sampler`, `Sampler.Okay` (default), `PyMC.given` (JVM, optional okay-py), `Samplers.byName` | which NUTS runs `nuts` |
 | `Beta.cdf`, `Beta.quantile`, `Distribution.incompleteBeta`; `Rank.lowerBound / approxLowerBound / sort` | exact Beta tails; ranking by evidence |
 | `Decision.action(draws, lo, hi)(loss)`, `Decision.expectedLoss`; `Loss.squared / absolute / pinball(τ)` | the Bayes action |

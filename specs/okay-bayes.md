@@ -1,6 +1,6 @@
 # okay-bayes — Bayesian inference as effects, without Python
 
-Status: stage 1 landed (2026-10-02); stage 2a (ch.2, adaptive Metropolis) 2b (SMC), 2c (ch.3), 2d (ch.6), 3a (NUTS), 3b (AD) and 4 (the sampler facade), 5a (ch.4), 5b (ch.5), 5c (ch.7), §6 vectors 2026-10-02; specification 2026-10-02 (operator ask: "Bayesian Methods for
+Status: stage 1 landed (2026-10-02); stage 2a (ch.2, adaptive Metropolis) 2b (SMC), 2c (ch.3), 2d (ch.6), 3a (NUTS), 3b (AD) and 4 (the sampler facade), 5a (ch.4), 5b (ch.5), 5c (ch.7), 5d (Dark Worlds), §6 vectors 2026-10-02; specification 2026-10-02 (operator ask: "Bayesian Methods for
 Hackers ... make okay-bayes so we can do without Python; is it very
 hard?"). Builds on the core's `Prob` effect (specs/prob-effect-hansei.md:
 discrete `dist`, boolean `observe`, exact enumeration, rejection).
@@ -218,11 +218,22 @@ Stage 5 — the rest of the book, one lane per chapter:
   the galaxies around it tangentially, as m / max(r, 240); the book's
   single-halo model on its skies. The data is a SIMULATION, so the truth
   is known.
-  - [ ] Sky 3 (578 galaxies) by `adaptive` and by AD NUTS, against an exact
+  - [x] Sky 3 (578 galaxies) by `adaptive` and by AD NUTS, against an exact
         3-D grid posterior over (x, y, mass)
-  - [ ] the ten single-halo training skies: how often the true halo lies
+  - [x] the ten single-halo training skies: how often the true halo lies
         inside the 95% posterior region, and the distance from posterior
         mean to truth against the posterior's own spread — measured
+  Measured (TestDarkWorlds): Sky 3's grid posterior x 2324.1 ± 24.8, y
+  1123.5 ± 42.2, mass 145.2 ± 11.2; `adaptive` 2324.7 / 1124.1 / 145.5, AD
+  NUTS 2325.1 / 1123.5 / 144.6; the true halo (2315.8, 1082.0) 1.04
+  posterior sds from the mean. The ten skies: the truth inside the 95%
+  region in 10 of 10, median distance 39 (of a 4200-wide sky).
+  FOUND: this posterior has local modes, and NUTS from a random start
+  stays on the hill it lands on — Sky 3 at x 3229 with ESS 3, and 4 of the
+  10 skies off by 2000 or more, while `adaptive` from a prior draw found
+  the mode. Started at a coarse search's best point (`Smooth.nuts(...,
+  init = ...)`, added here) it is right on every sky. The grid's coarse
+  pass is the same search, so the start costs nothing new.
 - 5c. ch.7, A/B testing by EXPECTED REVENUE: a visitor buys one of
   several tiers or nothing; the tier probabilities have a Dirichlet
   posterior (flat prior + counts), and the revenue per visitor is Σ vᵢ pᵢ.

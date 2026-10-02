@@ -88,12 +88,13 @@ object Smooth:
     case Support.Interval(lo, hi) => (lo + (hi - lo) * sigmoid(u), math.log(hi - lo) - softplus(-u) - softplus(u))
     case Support.Discrete => throw IllegalArgumentException("Smooth: a parameter cannot be discrete")
 
-  private final case class Run[A](value: A, names: Vector[String], params: Vector[Real], logp: Real)
+  private final case class Run[A](value: A, names: Vector[String], params: Vector[Real], logp: Real, supports: Vector[Support])
 
   /** run the program, the k-th parameter's unconstrained value `u(k)`, every log weight on the tape */
   private def run[A](p: A ! Grad, u: Int => Real): Run[A] =
     var names = Vector.empty[String]
     var params = Vector.empty[Real]
+    var supports = Vector.empty[Support]
     var total = Real.const(0.0)
     def answer[X](op: Grad[X]): X = op match
       case Grad.Param(name, prior) =>
@@ -101,6 +102,7 @@ object Smooth:
         val (x, logJ) = constrain(prior.support, u(names.length))
         names = names :+ name
         params = params :+ x
+        supports = supports :+ prior.support
         total = total + prior.logPdf(x) + logJ
         x
       case Grad.Score(w) =>
@@ -111,7 +113,7 @@ object Smooth:
       case Free.Inject(op: Grad[A] @unchecked) => answer(op)
       case Free.Bind(Free.Inject(op: Grad[x] @unchecked), k) => loop(k(answer(op)))
     val a = loop(p)
-    Run(a, names, params, total)
+    Run(a, names, params, total, supports)
 
   /** the program as a `Target` on unconstrained ℝᵈ, its gradient by the tape */
   def target[A](p: A ! Grad): Target =
@@ -136,9 +138,27 @@ object Smooth:
   /** the program's parameter names, in the order the program draws them */
   def names[A](p: A ! Grad): Vector[String] = run(p, _ => Real.const(0.0)).names
 
-  /** the `Sampler` in scope (ours unless an import says otherwise) on `target(p)`: the program's values and each parameter's draws */
-  def nuts[A](p: A ! Grad, samples: Int, burn: Int = 1000, chains: Int = 1, seed: Long = 42L, delta: Double = 0.8)(using sampler: Sampler): Posterior[A] =
-    val t = target(p)
+  /** `t` started at `start` (parameter values by name, in their own units) instead of at random; a name left out starts at random */
+  private def startingAt[A](p: A ! Grad, t: Target, start: Map[String, Double]): Target =
+    if start.isEmpty then t
+    else
+      val r = run(p, _ => Real.const(0.0))
+      for n <- start.keys do require(r.names.contains(n), s"Smooth.nuts: no parameter '$n' to start at (${r.names.mkString(", ")})")
+      new Target:
+        def dim: Int = t.dim
+        def logp(u: Array[Double]): Double = t.logp(u)
+        def gradient(u: Array[Double]): (Double, Array[Double]) = t.gradient(u)
+        override def init(rng: scala.util.Random): Array[Double] =
+          val u = t.init(rng)
+          for i <- r.names.indices; x <- start.get(r.names(i)) do u(i) = r.supports(i).unconstrain(x)
+          u
+
+  /** the `Sampler` in scope (ours unless an import says otherwise) on `target(p)`: the program's values and each parameter's draws.
+   * `init` starts every chain at those parameter values (by name, in their own units) — for a posterior with
+   * local modes, where a gradient sampler stays on the hill it starts on (Dark Worlds, specs/okay-bayes.md 5d) */
+  def nuts[A](p: A ! Grad, samples: Int, burn: Int = 1000, chains: Int = 1, seed: Long = 42L, delta: Double = 0.8,
+    init: Map[String, Double] = Map.empty)(using sampler: Sampler): Posterior[A] =
+    val t = startingAt(p, target(p), init)
     Posterior(Vector.tabulate(chains) { c =>
       val ch = sampler.run(t, samples, burn, seed + c, delta)
       val runs = ch.draws.map(u => run(p, k => Real.const(u(k))))
