@@ -243,6 +243,13 @@ Stage 5 — the rest of the book, one lane per chapter:
   10, median distance 42. A stream is the wrong shape here: the
   likelihood is an unordered sum NUTS re-reads per gradient, which is what
   a Bulk aggregate is; the online filter is the stream example.
+  AND THE ORACLE (darkworlds-oracle-bulk, operator: "sky(n) as a Bulk, not
+  a Vector"): the grid oracle reads through a Bulk too, keeping its
+  independence by its own parser — the lines split by hand, columns by
+  position — against `Bulk.csv`'s rows by name in the model. Every sum over
+  galaxies, the coarse search and the 129 600-point fine grid alike, is ONE
+  `aggregate` whose accumulator holds a sum per point. Same numbers to the
+  last digit (grid x 2324.1 ± 24.8, mass 145.2 ± 11.2).
 - 5c. ch.7, A/B testing by EXPECTED REVENUE: a visitor buys one of
   several tiers or nothing; the tier probabilities have a Dirichlet
   posterior (flat prior + counts), and the revenue per visitor is Σ vᵢ pᵢ.

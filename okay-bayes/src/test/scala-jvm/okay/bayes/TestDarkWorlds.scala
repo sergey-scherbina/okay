@@ -15,8 +15,9 @@ import Distribution.*
  * The model reads a sky as a BULK and observes it with `observeBulk`: one
  * aggregate over the galaxies per run, wherever they are. Written over any
  * `Bulk[D]`, it runs on `Chunks` here and on an RDD with Spark's instance
- * in scope; the grid oracle reads the CSV by itself, as a Vector, so it
- * checks the Bulk road rather than sharing it.
+ * in scope. The grid oracle is a Bulk too, but reads the CSV with its OWN
+ * parser (lines split by hand, columns by position) where the model uses
+ * `Bulk.csv` (columns by name), so a mistake in either reading shows.
  */
 object DarkWorlds:
   final case class Galaxy(x: Double, y: Double, e1: Double, e2: Double)
@@ -26,10 +27,14 @@ object DarkWorlds:
     bulk.cache(bulk.map(bulk.csv(s"bmh/darkworlds/Training_Sky$n.csv"))(r =>
       Galaxy(r("x").toDouble, r("y").toDouble, r("e1").toDouble, r("e2").toDouble)))
 
-  /** the oracle's own reading of sky n */
-  def sky(n: Int): Vector[Galaxy] =
-    Source.fromInputStream(getClass.getResourceAsStream(s"/bmh/darkworlds/Training_Sky$n.csv")).getLines().drop(1)
-      .map(_.split(',')).map(r => Galaxy(r(1).toDouble, r(2).toDouble, r(3).toDouble, r(4).toDouble)).toVector
+  /** the ORACLE's reading of sky n: a Bulk as well, but its own parser — the file's lines split by hand, columns by
+   * position — where `galaxies` takes `Bulk.csv`'s rows by name */
+  def sky[D[_]](n: Int)(using bulk: Bulk[D]): D[Galaxy] =
+    bulk.cache(bulk.flatMap(bulk.of(Vector(s"bmh/darkworlds/Training_Sky$n.csv")))(path =>
+      Source.fromResource(path).getLines().drop(1).map(_.split(',')).map(r => Galaxy(r(1).toDouble, r(2).toDouble, r(3).toDouble, r(4).toDouble))))
+
+  /** how many galaxies a sky holds */
+  def count[D[_]](gs: D[Galaxy])(using bulk: Bulk[D]): Long = bulk.aggregate(gs)(okay.Aggregator.count)
 
   /** the true halo position of sky n (the simulation's) */
   def truth(n: Int): (Double, Double) =
@@ -52,9 +57,25 @@ object DarkWorlds:
     val (m1, m2) = shear(g, hx, hy, m)
     Normal(m1, noise).logPdf(g.e1) + Normal(m2, noise).logPdf(g.e2)
 
-  /** the oracle's: summed over its own Vector */
-  def logLik(gs: Vector[Galaxy], hx: Double, hy: Double, m: Double): Double =
-    gs.iterator.map(galaxyLogLik(_, hx, hy, m)).sum
+  /**
+   * the log likelihood at MANY halo positions in ONE pass over the Bulk: the accumulator holds a sum per point,
+   * and each galaxy adds its term to every one of them
+   */
+  def logLikAt[D[_]](gs: D[Galaxy], points: Vector[(Double, Double, Double)])(using bulk: Bulk[D]): Array[Double] =
+    bulk.aggregate(gs)(new okay.Aggregator[Galaxy, Array[Double], Array[Double]]:
+      def init: Array[Double] = new Array[Double](points.length)
+      def add(acc: Array[Double], g: Galaxy): Array[Double] =
+        var k = 0
+        while k < acc.length do
+          val (x, y, m) = points(k)
+          acc(k) += galaxyLogLik(g, x, y, m)
+          k += 1
+        acc
+      def merge(a: Array[Double], b: Array[Double]): Array[Double] =
+        var k = 0
+        while k < a.length do { a(k) += b(k); k += 1 }
+        a
+      def present(acc: Array[Double]): Array[Double] = acc)
 
   /** the book's model: mass ~ Uniform(40, 180), position ~ Uniform(0, 4200)²; the sky observed as a Bulk */
   def halo[D[_]](gs: D[Galaxy])(using Bulk[D]) = for
@@ -91,37 +112,20 @@ object DarkWorlds:
     for i <- Vector.range(0, 85); j <- Vector.range(0, 85); k <- Vector.range(0, 15)
     yield (math.min(math.max(i * 50.0, 1.0), 4199.0), math.min(math.max(j * 50.0, 1.0), 4199.0), math.min(math.max(40 + 10.0 * k, 41.0), 179.0))
 
-  /** where to START a sampler: the best point of the coarse search, in ONE pass over the Bulk — the accumulator is
-   * the whole search grid of log likelihoods, and each galaxy adds its term to every point of it */
-  def start[D[_]](gs: D[Galaxy])(using bulk: Bulk[D]): (Double, Double, Double) =
-    val sums = bulk.aggregate(gs)(new okay.Aggregator[Galaxy, Array[Double], Array[Double]]:
-      def init: Array[Double] = new Array[Double](searchPoints.length)
-      def add(acc: Array[Double], g: Galaxy): Array[Double] =
-        var k = 0
-        while k < acc.length do
-          val (x, y, m) = searchPoints(k)
-          acc(k) += galaxyLogLik(g, x, y, m)
-          k += 1
-        acc
-      def merge(a: Array[Double], b: Array[Double]): Array[Double] =
-        var k = 0
-        while k < a.length do { a(k) += b(k); k += 1 }
-        a
-      def present(acc: Array[Double]): Array[Double] = acc)
+  /** where to START a sampler: the best point of the coarse search, in one pass over the Bulk */
+  def start[D[_]](gs: D[Galaxy])(using Bulk[D]): (Double, Double, Double) =
+    val sums = logLikAt(gs, searchPoints)
     searchPoints(sums.indices.maxBy(sums))
 
-  /** the oracle's own coarse search over its own Vector, to place its window */
-  private def coarseOf(gs: Vector[Galaxy]): (Double, Double) =
-    val best = searchPoints.maxBy((x, y, m) => logLik(gs, x, y, m))
-    (best._1, best._2)
-
-  def grid(gs: Vector[Galaxy]): Grid =
-    val (cx, cy) = coarseOf(gs)
+  def grid[D[_]](gs: D[Galaxy])(using Bulk[D]): Grid =
+    val (cx, cy, _) = start(gs)
     val (n, half) = (60, 300.0)
     val xs = Vector.tabulate(n)(i => cx - half + 2 * half * i / (n - 1))
     val ys = Vector.tabulate(n)(j => cy - half + 2 * half * j / (n - 1))
     val ms = Vector.tabulate(36)(k => 40 + 140.0 * k / 35)
-    val logs = for x <- xs; y <- ys; m <- ms yield (x, y, m, logLik(gs, x, y, m))
+    val points = for x <- xs; y <- ys; m <- ms yield (x, y, m)
+    val sums = logLikAt(gs, points)
+    val logs = points.indices.map(i => (points(i)._1, points(i)._2, points(i)._3, sums(i))).toVector
     val top = logs.map(_._4).max
     val w = logs.map(t => math.exp(t._4 - top))
     val z = w.sum
@@ -142,7 +146,8 @@ class TestDarkWorlds extends Diagnosed:
   given Bulk[Chunks] = Bulk.local(path => Source.fromResource(path).getLines())
 
   lazy val sky3 = galaxies[Chunks](3)
-  lazy val exact = grid(sky(3))
+  lazy val oracle3 = sky[Chunks](3)
+  lazy val exact = grid(oracle3)
 
   def agrees(xs: Vector[Double], mean: Double, sd: Double, what: String): Unit =
     val (m, s, ess) = (Summary.mean(xs), Summary.sd(xs), Summary.ess(xs))
@@ -150,24 +155,24 @@ class TestDarkWorlds extends Diagnosed:
     assert(math.abs(s - sd) < 0.15 * sd, f"$what: sd $s%.2f, grid $sd%.2f")
 
   test("the sky observed as a Bulk has the oracle's density: both model forms, at points across the sky") {
-    val gs = sky(3)
     val t = Smooth.target(haloAd(sky3))
     val prior = math.log(1.0 / 140) + 2 * math.log(1.0 / 4200)
     for (x, y, m) <- Seq((2324.0, 1123.0, 145.0), (100.0, 4000.0, 50.0), (3000.0, 2000.0, 170.0)) do
       // the Grad form, in its unconstrained coordinates: its density less the Jacobian is prior + likelihood
       val u = Array(Support.Interval(40, 180).unconstrain(m), Support.Interval(0, 4200).unconstrain(x), Support.Interval(0, 4200).unconstrain(y))
       val logJ = Support.Interval(40, 180).constrain(u(0))._2 + Support.Interval(0, 4200).constrain(u(1))._2 + Support.Interval(0, 4200).constrain(u(2))._2
-      val want = prior + logLik(gs, x, y, m)
+      val oracle = logLikAt(oracle3, Vector((x, y, m)))(0)
+      val want = prior + oracle
       assertEqualsDouble(t.logp(u) - logJ, want, 1e-8 * math.abs(want))
       // the Model form: one forward run with the values fixed is the same sum
-      assertEqualsDouble(Bayes.prior(observeBulk(sky3)(galaxyLogLik(_, x, y, m)), scala.util.Random(0)).logLik, logLik(gs, x, y, m), 1e-8 * math.abs(want))
+      assertEqualsDouble(Bayes.prior(observeBulk(sky3)(galaxyLogLik(_, x, y, m)), scala.util.Random(0)).logLik, oracle, 1e-8 * math.abs(want))
   }
 
   test("Sky 3 by adaptive Metropolis and by AD NUTS, against the exact grid — and the true halo") {
     val g = exact
     val (tx, ty) = truth(3)
     assert(g.edge < 1e-4, s"the grid window must hold the posterior: edge weight ${g.edge}")
-    report(f"Dark Worlds, Sky 3 (${sky(3).length} galaxies, observed as a Bulk): grid x ${g.x}%.1f ± ${g.sdX}%.1f, y ${g.y}%.1f ± ${g.sdY}%.1f, mass ${g.mass}%.1f ± ${g.sdMass}%.1f; the true halo ($tx%.1f, $ty%.1f)")
+    report(f"Dark Worlds, Sky 3 (${count(sky3)} galaxies, observed as a Bulk): grid x ${g.x}%.1f ± ${g.sdX}%.1f, y ${g.y}%.1f ± ${g.sdY}%.1f, mass ${g.mass}%.1f ± ${g.sdMass}%.1f; the true halo ($tx%.1f, $ty%.1f)")
     val mh = adaptive(halo(sky3), samples = 8000, burn = 4000, chains = 2)
     // from a random start NUTS stays on whatever local hill it lands on (measured: x 3229, ESS 3); started at the coarse search's best point it does not
     val (sx, sy, sm) = start(sky3)
@@ -194,7 +199,7 @@ class TestDarkWorlds extends Diagnosed:
       val dist = math.hypot(mx - tx, my - ty)
       // the 95% region by the draws' own distances from their mean
       val radius = Summary.quantile(xs.indices.map(i => math.hypot(xs(i) - mx, ys(i) - my)).toVector, 0.95)
-      report(f"Sky $n%2d (${sky(n).length} galaxies): posterior mean ($mx%.0f, $my%.0f), truth ($tx%.0f, $ty%.0f), off by $dist%.0f; 95%% radius $radius%.0f${if dist <= radius then "" else "  — OUTSIDE"}")
+      report(f"Sky $n%2d (${count(gs)} galaxies): posterior mean ($mx%.0f, $my%.0f), truth ($tx%.0f, $ty%.0f), off by $dist%.0f; 95%% radius $radius%.0f${if dist <= radius then "" else "  — OUTSIDE"}")
       (dist, radius)
     }
     val inside = rows.count((d, r) => d <= r)
