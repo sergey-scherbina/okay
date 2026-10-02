@@ -81,14 +81,21 @@ object Maybe:
    * forwarded as it is, so `H` may hold `Choose` — the new alternatives
    * join the ones already there, which is the point.
    */
-  def prune[A, H[+_]](p: A ! Maybe + H): A ! Choose + H = (p.resume: @unchecked) match
-    case Free.Return(a) => Free.Return(a)
-    case Free.Inject(e) => split[Maybe, H](e)
-      (m => Free.Inject(Choose(m.value.toList)): A ! Choose + H)
-      (h => Free.Inject(h): A ! Choose + H)
-    case Free.Bind(Free.Inject(e), k) => split[Maybe, H](e)
-      (m => Free.Inject(Choose(m.value.toList)).flatMap(x => prune(k(x))): A ! Choose + H)
-      (h => Free.Inject(h).flatMap(x => prune(k(x))): A ! Choose + H)
+  def prune[A, H[+_]](p: A ! Maybe + H): A ! Choose + H =
+    // the walk as a frame (handle-frames-loops): an absence is a choice among what it holds
+    def frame(x: A ! Maybe + H): Shift.U[Choose + H, A] =
+      HandleFrames.statefulOver[Maybe, Unit, A, A, Choose + H, Maybe + H](summon[TypeableK[Maybe]], (_, a) => Free.Return(a))(
+        (_, op, resume) => Free.Inject[Choose + H, Any](Choose(op.asInstanceOf[Maybe[Any]].value.toList)).flatMap(x => resume((), x)))((), x)
+    def go(p: A ! Maybe + H): A ! Choose + H = (p.resumeRun: @unchecked) match
+      case Free.Return(a) => Free.Return(a)
+      case Free.Inject(e) => split[Maybe, H](e)
+        (m => Free.Inject(Choose(m.value.toList)): A ! Choose + H)
+        (h => Free.Inject(h): A ! Choose + H)
+      case Free.Bind(Free.Inject(e), k) => split[Maybe, H](e)
+        (m => Free.Inject(Choose(m.value.toList)).flatMap(x => go(k(x))): A ! Choose + H)
+        (h => Free.Inject(h).flatMap(x => go(k(x))): A ! Choose + H)
+      case y => HandleFrames.pending[A, Choose + H](frame(y))
+    HandleFrames.run[A, Choose + H](go(p), frame(p))
 
   extension [A, F[+_]](p: A ! Maybe + F)
     /** where p found nothing, try q — a handler installed over p alone,

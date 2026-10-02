@@ -35,7 +35,12 @@ object Memory {
       case Context.Mark() => (s, Snapshot(s))
       case Context.Restore(m) => (m.stateAs[S], ())
 
-    @tailrec def loop(s: S)(x: A ! Context + F): (S, A) ! F = (x.resume: @unchecked) match
+    // the loop as a frame of the machine (handle-frames-loops)
+    def frame(s: S)(x: A ! Context + F): okay.Shift.U[F, (S, A)] =
+      okay.HandleFrames.stateful[Context, S, A, (S, A), F](summon[okay.TypeableK[Context]], (s, a) => okay.pure((s, a)))(
+        (s, op, resume) => { val (s2, v) = answer(s, op.asInstanceOf[Context[Any]]); resume(s2, v) })(s, x)
+
+    @tailrec def loop(s: S)(x: A ! Context + F): (S, A) ! F = (x.resumeRun: @unchecked) match
       case Return(a) => Return((s, a))
       case Inject(e) => okay.<|>[Context, F](e) match
         case Left(c) => Return(answer(s, c))
@@ -45,8 +50,9 @@ object Memory {
           val (s2, x2) = answer(s, c)
           loop(s2)(k(x2))
         case Right(g) => Inject(g).flatMap(x => _loop(s)(k(x)))
+      case y => okay.HandleFrames.pending[(S, A), F](frame(s)(y))
 
-    loop(init)(prog)
+    okay.HandleFrames.run[(S, A), F](loop(init)(prog), frame(init)(prog))
   }
 
   /** the common case: start empty, keep the answer only */
