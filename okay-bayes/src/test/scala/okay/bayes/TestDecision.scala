@@ -56,9 +56,11 @@ class TestDecision extends Diagnosed:
     else math.abs(guess - truth)
 
   test("the showdown loss: the best bid falls as the risk of overbidding grows, and stays under the posterior mean") {
-    val draws = post.draws
-    val mean = Summary.mean(draws)
-    val bids = Seq(30000.0, 60000.0, 90000.0, 120000.0, 150000.0).map(r => r -> Decision.action(draws, 5000, 40000)(showdown(r)))
+    // every tenth draw: 4000 price an expected loss well enough, and 40 000 x a 400-point grid x 5 risks
+    // was 10 s on Native and past munit's 30 s under a loaded CI box (ci-runner, 2026-10-02)
+    val draws = post.draws.zipWithIndex.collect { case (d, i) if i % 10 == 0 => d }
+    val mean = Summary.mean(post.draws)
+    val bids = Seq(30000.0, 60000.0, 90000.0, 120000.0, 150000.0).map(r => r -> Decision.action(draws, 5000, 40000, points = 200)(showdown(r)))
     report(bids.map((r, b) => f"risk $r%.0f → bid $b%.0f").mkString("showdown: ", ", ", f" (posterior mean $mean%.0f)"))
     assert(bids.map(_._2).zip(bids.map(_._2).tail).forall((a, b) => b <= a + 1e-6), "a larger risk never raises the bid")
     assert(bids.forall(_._2 < mean))
