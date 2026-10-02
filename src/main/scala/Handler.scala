@@ -36,7 +36,8 @@ object Handler:
 
   final class For[F[+_]] private[Handler] ():
     /** the default form, 1: `Handler[Accounts] { case Find(id) => … }`, `Handler.answer[Accounts] { … }` */
-    inline def apply(inline cases: F[Answer] => Any)(using TypeableK[F]): Handler[F, [A] =>> A] = Handler.answer[F](cases)
+    inline def apply(using s: Seen[F])(inline cases: F[s.T] => Any)(using TypeableK[F]): Handler[F, [A] =>> A] =
+      Handler.answer[F].apply(using s)(cases)
     /** `Handler.answer[F]` */
     def answer: Answering[F] = Handler.answer[F]
     /** `Handler.state[F, S](init)`, `S` read off `init` */
@@ -55,9 +56,10 @@ object Handler:
 
   final class Answering[F[+_]] private[Handler] ():
     /** cases, each checked at compile time against its operation's answer type */
-    inline def apply(inline cases: F[Answer] => Any)(using TypeableK[F]): Handler[F, [A] =>> A] =
-      // THE CASTS the check licenses: an F[X] seen at the abstract Answer, each case answering its type
-      answerOf[F]([X] => (e: F[X]) => checkAnswers[F](cases)(e.asInstanceOf[F[Answer]]).asInstanceOf[X])
+    inline def apply(using s: Seen[F])(inline cases: F[s.T] => Any)(using TypeableK[F]): Handler[F, [A] =>> A] =
+      // THE CASTS the check licenses: an F[X] seen at the type the effect's cases see it at, each case
+      // answering its operation's type
+      answerOf[F]([X] => (e: F[X]) => checkAnswers[F, s.T](cases)(e.asInstanceOf[F[s.T]]).asInstanceOf[X])
     /** a polymorphic function, typed by the compiler with no macro */
     def poly(f: [X] => F[X] => X)(using TypeableK[F]): Handler[F, [A] =>> A] = answerOf[F](f)
 
@@ -80,9 +82,9 @@ object Handler:
 
   final class Stating[F[+_], S] private[Handler] (val init: S):
     /** cases, each checked at compile time: the second of the pair answers the operation's type */
-    inline def apply(inline cases: (S, F[Answer]) => Any)(using TypeableK[F]): Handler[F, [A] =>> (S, A)] =
+    inline def apply(using seen: Seen[F])(inline cases: (S, F[seen.T]) => Any)(using TypeableK[F]): Handler[F, [A] =>> (S, A)] =
       // THE CASTS the check licenses (checkStates)
-      stateOf[F, S](init)([X] => (s: S, e: F[X]) => checkStates[F, S](cases)(s, e.asInstanceOf[F[Answer]]).asInstanceOf[(S, X)])
+      stateOf[F, S](init)([X] => (s: S, e: F[X]) => checkStates[F, S, seen.T](cases)(s, e.asInstanceOf[F[seen.T]]).asInstanceOf[(S, X)])
     /** a polymorphic function, typed by the compiler with no macro */
     inline def poly(inline f: [X] => (S, F[X]) => (S, X))(using TypeableK[F]): Handler[F, [A] =>> (S, A)] =
       stateOf[F, S](init)(f)
@@ -116,9 +118,9 @@ object Handler:
 
   final class Into[F[+_], G[+_]] private[Handler] ():
     /** cases, each checked at compile time: the program's value answers the operation's type */
-    inline def apply(inline cases: F[Answer] => Any ! G)(using TypeableK[F]): Full[F, Any, [A] =>> A, Holds[G]] =
+    inline def apply(using s: Seen[F])(inline cases: F[s.T] => Any ! G)(using TypeableK[F]): Full[F, Any, [A] =>> A, Holds[G]] =
       // THE CASTS the check licenses (checkInto)
-      intoOf[F, G]([X] => (e: F[X]) => checkInto[F, G](cases)(e.asInstanceOf[F[Answer]]).asInstanceOf[X ! G])
+      intoOf[F, G]([X] => (e: F[X]) => checkInto[F, G, s.T](cases)(e.asInstanceOf[F[s.T]]).asInstanceOf[X ! G])
     /** a polymorphic function, typed by the compiler with no macro */
     def poly(f: [X] => F[X] => X ! G)(using TypeableK[F]): Full[F, Any, [A] =>> A, Holds[G]] = intoOf[F, G](f)
 
@@ -163,20 +165,61 @@ object Handler:
   // answers what its operation answers (the pattern's constructor, read as an `F[T]`, answers `T`). A case
   // with no constructor to read (`case _`) must not answer at all (a `throw`).
 
-  inline def checkAnswers[F[+_]](inline cases: F[Answer] => Any): F[Answer] => Any = ${ checkImpl[F, Unit, F[Answer] => Any]('cases, 0) }
+  inline def checkAnswers[F[+_], T](inline cases: F[T] => Any): F[T] => Any = ${ checkImpl[F, Unit, T, F[T] => Any]('cases, 0) }
   // the pair is checked here, not by the expected type: a case the macro must refuse with a reason
   // (`tied`, below) would otherwise fail first on its pair, with none
-  inline def checkStates[F[+_], S](inline cases: (S, F[Answer]) => Any): (S, F[Answer]) => Any =
-    ${ checkImpl[F, S, (S, F[Answer]) => Any]('cases, 1) }
-  inline def checkInto[F[+_], G[+_]](inline cases: F[Answer] => Any ! G): F[Answer] => Any ! G = ${ checkImpl[F, Unit, F[Answer] => Any ! G]('cases, 2) }
+  inline def checkStates[F[+_], S, T](inline cases: (S, F[T]) => Any): (S, F[T]) => Any =
+    ${ checkImpl[F, S, T, (S, F[T]) => Any]('cases, 1) }
+  inline def checkInto[F[+_], G[+_], T](inline cases: F[T] => Any ! G): F[T] => Any ! G = ${ checkImpl[F, Unit, T, F[T] => Any ! G]('cases, 2) }
+
+  /**
+   * The type an effect's cases see its operations at, picked from the effect BEFORE the cases are typed
+   * (handler-shape). `Answer`, abstract, is the default: an operation whose caller chooses its answer
+   * (`Asks[R, A]`) can then only be answered from its own data. An effect with an operation whose answer is
+   * its own field's type (`Put(k, v: V) extends KV[V, V]`) and none chosen by its caller is seen at `Any`
+   * instead: at `Answer` the typer could not keep the field's type. An effect with both keeps `Answer`, and
+   * the macro refuses the field's operation by name, pointing at `.poly`.
+   */
+  trait Seen[F[+_]]:
+    type T
+
+  object Seen:
+    transparent inline given of[F[+_]]: Seen[F] = ${ seenImpl[F] }
+
+  def seenImpl[F[+_]: Type](using q: Quotes): Expr[Seen[F]] =
+    import q.reflect.*
+    val effect = TypeRepr.of[F].appliedTo(TypeRepr.of[Any]).dealias.typeSymbol
+    // does `t` name the type parameter `p`; bounded by the type's own nesting
+    def names(t: TypeRepr, p: Symbol): Boolean = t.dealias match
+      case AppliedType(c, as) => names(c, p) || as.exists(names(_, p))
+      case r: TypeRef => r.typeSymbol == p
+      case _ => false
+    // per operation: (its answer is its own field's type, its caller chooses its answer)
+    val kinds = effect.children.map { c =>
+      val tps = if c.isClassDef then c.declaredTypes.filter(_.isTypeParam) else Nil
+      if tps.isEmpty then (false, false)
+      else
+        val self = c.typeRef.appliedTo(tps.map(_.typeRef))
+        self.baseType(effect) match
+          case AppliedType(_, dargs) if dargs.nonEmpty =>
+            dargs.last match
+              case r: TypeRef if tps.contains(r.typeSymbol) =>
+                val fixed = dargs.init.exists(names(_, r.typeSymbol))
+                (fixed && c.caseFields.exists(f => names(self.memberType(f), r.typeSymbol)), !fixed)
+              case _ => (false, false)
+          case _ => (false, false)
+    }
+    val seenAt = if kinds.exists(_._1) && !kinds.exists(_._2) then TypeRepr.of[Any] else TypeRepr.of[Answer]
+    seenAt.asType match
+      case '[t] => '{ new Seen[F] { type T = t } }
 
   /** the answer the cases see an operation at (`HandlerAnswer.Answer`) */
   type Answer = HandlerAnswer.Answer
 
   /** `kind`: 0 the body is the answer, 1 the pair's second is, 2 the program's value is */
-  def checkImpl[F[+_]: Type, S: Type, C: Type](cases: Expr[C], kind: Int)(using q: Quotes): Expr[C] =
+  def checkImpl[F[+_]: Type, S: Type, T: Type, C: Type](cases: Expr[C], kind: Int)(using q: Quotes): Expr[C] =
     import q.reflect.*
-    checkCore(cases.asTerm, TypeRepr.of[F], TypeRepr.of[S], kind)
+    checkCore(cases.asTerm, TypeRepr.of[F], TypeRepr.of[S], kind, TypeRepr.of[T] =:= TypeRepr.of[Any])
     cases
 
   /** the cases of a `{ case … }` lambda */
@@ -196,7 +239,8 @@ object Handler:
       case other => report.errorAndAbort("write the handler as cases: `{ case Op(…) => … }`", other.pos)
 
   /** the check itself, for an effect given as a type constructor */
-  def checkCore(using q: Quotes)(cases: q.reflect.Term, effectType: q.reflect.TypeRepr, stateType: q.reflect.TypeRepr, kind: Int): Unit =
+  def checkCore(using q: Quotes)(cases: q.reflect.Term, effectType: q.reflect.TypeRepr, stateType: q.reflect.TypeRepr, kind: Int,
+                seenAtAny: Boolean): Unit =
     import q.reflect.*
     val effect = effectType.appliedTo(TypeRepr.of[Any]).dealias.typeSymbol
     val pair = TypeRepr.of[(Any, Any)].typeSymbol
@@ -286,7 +330,8 @@ object Handler:
       val op = ctor(opPattern(cd.pattern))
       val name = op.map(_.name).getOrElse(opPattern(cd.pattern).show)
       val short = Printer.TypeReprShortCode
-      op.flatMap(tied) match
+      // seen at Any (Seen), a field's operation keeps its field's type: nothing to refuse
+      op.flatMap(o => if seenAtAny then None else tied(o)) match
         case Some(field) =>
           report.error(s"$name answers the type its field `$field` has, which a case written against the whole " +
             s"${effect.name} cannot keep: write this handler with `.poly { [X] => (e: …[X]) => … }`, where the " +

@@ -15,6 +15,11 @@ enum Env[R, +A] derives Effect:
 enum Box[V, +A] derives Effect:
   case Put(v: V) extends Box[V, V]
 
+/** both kinds at once: beyond the case form */
+enum Both[V, +A] derives Effect:
+  case Put(v: V) extends Both[V, V]
+  case Fetch[V, A](g: V => A) extends Both[V, A]
+
 /** specs/handler-forms.md: the author's four forms, each a level-1 value */
 class TestHandlerForms extends munit.FunSuite:
   import Accounts.*
@@ -96,8 +101,14 @@ class TestHandlerForms extends munit.FunSuite:
       .contains("Update answers what its caller chose"))
   }
 
-  test("where the case form stops: an operation whose answer is its own field's type, pointing at .poly") {
-    val errs = compileErrors("""Handler[Box % Int] { case Box.Put(v) => v }""")
+  test("an operation whose answer is its own field's type: seen at Any, it keeps the field's type (handler-shape)") {
+    val box = Handler[Box % Int] { case Box.Put(v) => v + 1 }
+    assertEquals(effect[Box % Int, Int](Box.Put(41)).handle(box).run, 42)
+    assert(compileErrors("""Handler[Box % Int] { case Box.Put(v) => "no" }""").contains("Put answers Int, but this case gives String"))
+  }
+
+  test("where the case form stops: a field's operation beside a caller-chosen one, pointing at .poly") {
+    val errs = compileErrors("""Handler[Both % Int] { case Both.Put(v) => v; case Both.Fetch(g) => g(1) }""")
     assert(errs.contains("Put answers the type its field `v` has"), errs)
     assert(errs.contains(".poly"), errs)
   }
