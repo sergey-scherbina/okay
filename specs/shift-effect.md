@@ -192,6 +192,10 @@ Depth, D-F captures in sequence: (b) 100 000; (a) 1 000, overflows by
 10 000. Nested same-type resets: 3 000 on both in this run (10 000 in the
 first), so the ceiling moves with the JIT.
 
+**In the core** (history.d `shift-effect-core`): `shift0` on `seq` 56.1 µs,
+534 KB, against Delim's 55.0 µs (1.02x: the interned key's prompt costs a
+map read). D-F `shift` on `seq` 69.1 µs, 638 KB. `twoShot` 10.3 µs.
+
 **Recommendation:** (b). It matches Delim on the common shape and
 already has the single machine that removes the nesting limit. Open:
 (1) a `reset` inside a running machine only pushes its prompt; (2) the
