@@ -27,9 +27,9 @@ trait Effects[M[_, _]] {
   def map[F <: Row, A, B](m: M[F, A])(f: A => B): M[F, B] = flatMap(m)((a: A) => pure[F, B](f(a)))
   /** interpret the operations: reflect the computation into Cont */
   def foldCont[F <: Row, A, S](m: M[F, A])(h: F !> S): A /> S
-  /** run every effect by a comonadic Handler; encodings may override
+  /** run every effect by a comonadic Answers; encodings may override
    * with an equivalent fast path */
-  def runWith[F <: Row, A](m: M[F, A])(implicit H: Handler[F]): A = foldCont[F, A, A](m)(Interpr.of[F, A]) / identity
+  def runWith[F <: Row, A](m: M[F, A])(implicit H: Answers[F]): A = foldCont[F, A, A](m)(Interpr.of[F, A]) / identity
 }
 
 /**
@@ -52,7 +52,7 @@ object Effects {
     def flatMap[F <: Row, A, B](m: Free[F, A])(f: A => Free[F, B]): Free[F, B] = m.flatMap(f)
     override def map[F <: Row, A, B](m: Free[F, A])(f: A => B): Free[F, B] = m.map(f)
     def foldCont[F <: Row, A, S](m: Free[F, A])(h: F !> S): A /> S = foldContFree(m)(h)
-    override def runWith[F <: Row, A](m: Free[F, A])(implicit H: Handler[F]): A = runFree(m)
+    override def runWith[F <: Row, A](m: Free[F, A])(implicit H: Answers[F]): A = runFree(m)
   }
 
   /** a program reflected into Cont: each operation by `h`, the rest of
@@ -82,23 +82,23 @@ object Effects {
   /** run a closed computation */
   def run[A](p: Free[Pure, A]): A = runFree(p)
 
-  /** run all the effects by a comonadic Handler: one pass, the
+  /** run all the effects by a comonadic Answers: one pass, the
    * `runWith` fast path */
-  @tailrec def runFree[R <: Row, A](p: Free[R, A])(implicit H: Handler[R]): A = Free.resume(p) match {
+  @tailrec def runFree[R <: Row, A](p: Free[R, A])(implicit H: Answers[R]): A = Free.resume(p) match {
     case Return(a) => a
     case Inject(e) => H.handleOp[A](e)
     case Bind(Inject(e), k) => runFree(k(H.handleOp[Any](e)))
     case other => throw new IllegalStateException("resume left a non-head form: " + other)
   }
 
-  /** step through the next n operations by the Handler */
-  @tailrec def next[R <: Row, A](p: Free[R, A], steps: Long)(implicit H: Handler[R]): A ! R = Free.resume(p) match {
+  /** step through the next n operations by the Answers */
+  @tailrec def next[R <: Row, A](p: Free[R, A], steps: Long)(implicit H: Answers[R]): A ! R = Free.resume(p) match {
     case Bind(Inject(e), k) if steps > 0 => next(k(H.handleOp[Any](e)), steps - 1)
     case a => a
   }
 
   /** peek the nearest answer: the value, or the first operation handled */
-  @tailrec def peek[R <: Row, A](p: Free[R, A])(implicit H: Handler[R]): Any = p match {
+  @tailrec def peek[R <: Row, A](p: Free[R, A])(implicit H: Answers[R]): Any = p match {
     case Bind(a, _) => peek(a)
     case Inject(e) => H.handleOp[Any](e)
     case Return(a) => a

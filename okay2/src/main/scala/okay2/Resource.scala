@@ -1,5 +1,7 @@
 package okay2
 
+import scala.annotation.unused
+
 
 import scala.annotation.{implicitNotFound, tailrec}
 import Free.{Return, Inject, Bind}
@@ -38,7 +40,7 @@ object Failing {
   }
 
   /** a row of two parts guards each operation by its own part's rule,
-   * split by F's test — EXPLICIT, as `Handler.union` is and for its
+   * split by F's test — EXPLICIT, as `Answers.union` is and for its
    * reason: an implicit rule over `F + G` matches every type and the
    * search diverges (stage 8). `Failing.both[Writer[W], Io]` is the
    * scope over a scoped source's whole row (okay2-interop-async). */
@@ -110,6 +112,12 @@ object Resource {
    * scalac infers the rest G from the intersection (stage 8), and G's
    * `Failing` says how a forwarded operation reports failure.
    */
+  /** the handler as a value, level 1: `p.handle(Resource.region)`; the rest of the row says how it fails */
+  val region: Handler.Full[Resource, Any, Handler.Id, Failing] = new Handler.Full[Resource, Any, Handler.Id, Failing] {
+    def run[A, F <: Row](p: Free[Resource with F, A])(implicit @unused ev: A <:< Any, @unused d: Distinct[Resource with F], failing: Failing[F]): A ! F =
+      runAt[A, F](p)(failing)
+  }
+
   def run[A, G <: Row](a: Free[Resource with G, A])(implicit failing: Failing[G]): A ! G =
     runAt[A, G](a)
 

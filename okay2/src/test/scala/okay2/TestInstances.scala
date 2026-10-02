@@ -54,14 +54,14 @@ class TestInstances extends munit.FunSuite {
         x <- Tag.one["same", Beep, Int](Beep.Boop)
         y <- Tag.one["same", Buzz, String](Buzz.Bzz)
       } yield (x, y)
-    implicit val ha: Handler[A] = Tag.handler["same", Beep](beep)
-    implicit val hb: Handler[B] = Tag.handler["same", Buzz](buzz)
-    assertEquals(p.runWith(Handler.union[A, B]), (42, "ada"))
+    implicit val ha: Answers[A] = Tag.handler["same", Beep](beep)
+    implicit val hb: Answers[B] = Tag.handler["same", Buzz](buzz)
+    assertEquals(p.runWith(Answers.union[A, B]), (42, "ada"))
   }
 
   test("Tag: the SAME signature class under one key is refused at compile time") {
     val errors = compileErrors(
-      "okay2.Handler.union[okay2.Tag[\"same\", okay2.Reader[Int]], okay2.Tag[\"same\", okay2.Reader[String]]](" +
+      "okay2.Answers.union[okay2.Tag[\"same\", okay2.Reader[Int]], okay2.Tag[\"same\", okay2.Reader[String]]](" +
         "okay2.Tag.effect, okay2.Tag.handler(null), okay2.Tag.handler(null), implicitly)")
     assert(errors.contains("no runtime test can tell apart"), errors)
     // two keys over one class, and one key over two classes, are good rows
@@ -141,11 +141,11 @@ class TestInstances extends munit.FunSuite {
         a <- Instances.at(s)(Store.get)
         b <- Instances.at(r)(Reader.ask[Int])
       } yield (a, b)
-    implicit val hs: Handler[Instances[Store]] = Instances.handler[Store](_ => store("ada"))
-    implicit val hr: Handler[Instances[Reader[Int]]] = Instances.handler[Reader[Int]](_ => new Handler.Of[Reader[Int]] {
+    implicit val hs: Answers[Instances[Store]] = Instances.handler[Store](_ => store("ada"))
+    implicit val hr: Answers[Instances[Reader[Int]]] = Instances.handler[Reader[Int]](_ => new Answers.Of[Reader[Int]] {
       def handle[A](a: Reader.Op[Int, A]): A = (7: Any).asInstanceOf[A]
     })
-    assertEquals(p.runWith(Handler.union[Instances[Store], Instances[Reader[Int]]]), ("ada", 7))
+    assertEquals(p.runWith(Answers.union[Instances[Store], Instances[Reader[Int]]]), ("ada", 7))
     // and one signature class under two Instances members is refused
     assert(compileErrors("implicitly[okay2.Distinct[okay2.Instances[okay2.Reader[Int]] + okay2.Instances[okay2.Reader[String]]]]")
       .contains("no runtime test can tell apart"))
@@ -179,7 +179,7 @@ object TestInstances {
     implicit val effect: Effect[Store] = Effect.byClass[Store](Get.getClass)
     def get: String ! Store = Free.inject[Store, String](Get)
   }
-  def store(answer: String): Handler[Store] = new Handler.Of[Store] {
+  def store(answer: String): Answers[Store] = new Answers.Of[Store] {
     def handle[A](a: Store.Get.type): A = (answer: Any).asInstanceOf[A]
   }
 
@@ -193,8 +193,8 @@ object TestInstances {
     case object Bzz
     implicit val effect: Effect[Buzz] = Effect.byClass[Buzz](Bzz.getClass)
   }
-  val beep: Handler[Beep] = new Handler.Of[Beep] { def handle[A](a: Beep.Boop.type): A = (42: Any).asInstanceOf[A] }
-  val buzz: Handler[Buzz] = new Handler.Of[Buzz] { def handle[A](a: Buzz.Bzz.type): A = ("ada": Any).asInstanceOf[A] }
+  val beep: Answers[Beep] = new Answers.Of[Beep] { def handle[A](a: Beep.Boop.type): A = (42: Any).asInstanceOf[A] }
+  val buzz: Answers[Buzz] = new Answers.Of[Buzz] { def handle[A](a: Buzz.Bzz.type): A = ("ada": Any).asInstanceOf[A] }
 
   val twoWriters: Unit ! (Writer[String] + Writer[Int]) = Writer.tell[String]("a").flatMap(_ => Writer.tell[Int](1))
 }

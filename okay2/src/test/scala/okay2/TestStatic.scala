@@ -56,8 +56,8 @@ class TestStatic extends munit.FunSuite {
   import StaticFixtures._
   import Fetch.{Get, Flag}
 
-  private def handler(st: Store, flag: Boolean, log: collection.mutable.Buffer[String]): Handler[Fetch] =
-    new Handler[Fetch] {
+  private def handler(st: Store, flag: Boolean, log: collection.mutable.Buffer[String]): Answers[Fetch] =
+    new Answers[Fetch] {
       def handle[A](e: Fetch.Op[A]): A = e match {
         case Get(k) => log += s"get:$k"; answer[A](st.one(k))
         case Flag(n) => log += s"flag:$n"; answer[A](flag)

@@ -12,8 +12,8 @@ class TestDistinct extends munit.FunSuite {
   import TestDistinct._
 
   test("the defect, as it was: a union over two Asks answers the String ask with the Int handler") {
-    val both: Handler[Ask[Int] + Ask[String]] =
-      Handler.union[Ask[Int], Ask[String]](Ask.effect[Int], intAsk, stringAsk, Distinct.unchecked)
+    val both: Answers[Ask[Int] + Ask[String]] =
+      Answers.union[Ask[Int], Ask[String]](Ask.effect[Int], intAsk, stringAsk, Distinct.unchecked)
     val p: String ! (Ask[Int] + Ask[String]) = Ask.ask[String]
     val e = intercept[ClassCastException](p.runWith(both).length)
     // the Int answer, named as each platform names it: `java.lang.Integer`
@@ -22,7 +22,7 @@ class TestDistinct extends munit.FunSuite {
   }
 
   test("refused: a union of two signatures of one class does not compile") {
-    val errors = compileErrors("okay2.Handler.union[okay2.TestDistinct.Ask[Int], okay2.TestDistinct.Ask[String]]")
+    val errors = compileErrors("okay2.Answers.union[okay2.TestDistinct.Ask[Int], okay2.TestDistinct.Ask[String]]")
     assert(errors.contains("no runtime test can tell apart"), errors)
     assert(compileErrors("implicitly[okay2.Distinct[okay2.State[Int] + okay2.Writer[String] + okay2.State[String]]]").contains("no runtime test can tell apart"))
   }
@@ -34,7 +34,7 @@ class TestDistinct extends munit.FunSuite {
     def generic[F <: Row]: Distinct[State[Int] + F] = implicitly[Distinct[State[Int] + F]]
     val _ = generic[Writer[String]]
     // and a real union still builds
-    val h: Handler[Ask[Int] + Produce] = Handler.union[Ask[Int], Produce]
+    val h: Answers[Ask[Int] + Produce] = Answers.union[Ask[Int], Produce]
     assertEquals((Ask.ask[Int]: Int ! (Ask[Int] + Produce)).runWith(h), 1)
   }
 
@@ -57,10 +57,10 @@ object TestDistinct {
     implicit def effect[T]: Effect[Ask[T]] = Effect.of[Ask[T]]
     def ask[T]: T ! Ask[T] = Free.inject[Ask[T], T](Get[T]())
   }
-  implicit val intAsk: Handler[Ask[Int]] = new Handler[Ask[Int]] {
+  implicit val intAsk: Answers[Ask[Int]] = new Answers[Ask[Int]] {
     def handle[A](a: Ask.Get[Int]): A = (1: Any).asInstanceOf[A]
   }
-  implicit val stringAsk: Handler[Ask[String]] = new Handler[Ask[String]] {
+  implicit val stringAsk: Answers[Ask[String]] = new Answers[Ask[String]] {
     def handle[A](a: Ask.Get[String]): A = ("s": Any).asInstanceOf[A]
   }
   val twoStates: Int ! (State[Int] + State[String]) = State.get[Int].flatMap(n => State.get[String].map(_.length + n))

@@ -209,7 +209,7 @@ object Lexical {
      * do exactly that), so `get`/`set`/`put` are the API a body writes,
      * built by each strategy without a clause, and `perform` is the
      * generic road through ONE cast, isolated here and true by the
-     * declarations `Get[S] extends Op[S, S]`, `Set[S] extends Op[S, S]`.
+     * declarations `Get[S] extends Op[S, S]`, `Update[S, B] extends Op[S, B]`.
      */
     abstract class Inst[S, G <: Row] private[Lexical] () extends Lexical.Inst[okay2.State[S], G] {
       def get: S ! G
@@ -218,7 +218,7 @@ object Lexical {
       def put(s: S): Unit ! G = set(s).map(_ => ())
       def perform[X](e: okay2.State.Op[S, X]): X ! G = (e match {
         case okay2.State.Get() => get
-        case okay2.State.Set(s1) => set(s1)
+        case okay2.State.Update(f) => get.flatMap { s => val (b, s1) = f(s); set(s1).map(_ => b) }
       }).asInstanceOf[X ! G]
     }
 
@@ -277,7 +277,7 @@ object Lexical {
       // answer is read off the operation's class, as `perform` does
       def op[X](e: okay2.State.Op[S, X], s: S): (S, X) = (e match {
         case okay2.State.Get() => (s, s)
-        case okay2.State.Set(s1) => (s1, s1)
+        case okay2.State.Update(f) => val (b, s1) = f(s); (s1, b)
       }).asInstanceOf[(S, X)]
     }
 
@@ -288,7 +288,7 @@ object Lexical {
       type R = Instances[okay2.State[S]] + G
       Lexical.walkWith[okay2.State[S], S, A, G, Inst[S, R]](s0)(stateClauses[S])(h => new Inst[S, R] {
         def get: S ! R = Free.Inject[R, S](Instances.Op[okay2.State[S], S](h, okay2.State.Get[S]()))
-        def set(s1: S): S ! R = Free.Inject[R, S](Instances.Op[okay2.State[S], S](h, okay2.State.Set[S](s1)))
+        def set(s1: S): S ! R = Free.Inject[R, S](Instances.Op[okay2.State[S], S](h, okay2.State.Update[S, S](okay2.State.Put(s1))))
       })(body)
     }
   }

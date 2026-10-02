@@ -53,7 +53,7 @@ object Replayable {
 object ReplayableMacro {
   /** the signatures replay may run again unobserved — and `Row`, which
    * is `Pure`, the empty requirement */
-  private val allowed = Set("okay2.State", "okay2.Reader", "okay2.Throws", "okay2.Delim", "okay2.Row")
+  private val allowed = Set("okay2.State", "okay2.Reader", "okay2.Throws", "okay2.Delim", "okay2.Shift", "okay2.Row")
 
   def derive[F: c.WeakTypeTag](c: blackbox.Context): c.Tree = {
     import c.universe._

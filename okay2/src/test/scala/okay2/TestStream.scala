@@ -61,7 +61,7 @@ class TestStream extends munit.FunSuite {
     assertEquals(told, 3)
   }
 
-  test("a writer program in G is a stream in G: the Handler runs the forwarded operations") {
+  test("a writer program in G is a stream in G: the Answers runs the forwarded operations") {
     type Row = Writer[Int] + Produce
     var performed = 0
     def prog: Unit ! Row = for {

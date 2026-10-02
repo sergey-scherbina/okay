@@ -1,5 +1,7 @@
 package okay2
 
+import scala.annotation.unused
+
 
 import Free.{Return, Inject, Bind}
 import scala.annotation.tailrec
@@ -54,6 +56,12 @@ object Choose {
   /** keep the branch exactly when `p` holds — `if` in a `for`, spelled
    * as a step */
   def guard(p: Boolean): Unit ! Choose = if (p) pure[Choose, Unit](()) else fail[Unit]
+
+  /** the handler as a value, level 1: `p.handle(Choose.all)` answers every branch's result, in order */
+  val all: Handler[Choose, Seq] = new Handler.Full[Choose, Any, Seq, Handler.Nothing] {
+    def run[A, F <: Row](p: Free[Choose with F, A])(implicit @unused ev: A <:< Any, @unused d: Distinct[Choose with F], @unused n: Handler.Nothing[F]): Seq[A] ! F =
+      runChoiceAt[A, F](p)
+  }
 
   /** all the results of all the branches, for a program whose row
    * mentions `Choose` anywhere */

@@ -15,7 +15,7 @@ object ComonadFixtures {
   }
 }
 
-/** the Scala 3 core's `given [F[_]: Comonad]: Handler[F]` — a row whose
+/** the Scala 3 core's `given [F[_]: Comonad]: Answers[F]` — a row whose
  * operations form a comonad needs no handler of its own; and the
  * `Safe`/`Unsafe` aliases */
 class TestComonadHandler extends munit.FunSuite {
@@ -24,7 +24,7 @@ class TestComonadHandler extends munit.FunSuite {
   test("a comonadic row is run by extract, with no handler written") {
     val prog = for { a <- Boxed.box("a", 20); b <- Boxed.box("b", 22) } yield a + b
     assertEquals(Effects.runFree(prog), 42)
-    assert(implicitly[Handler[Boxed]].isInstanceOf[Handler.ComonadHandler[_]])
+    assert(implicitly[Answers[Boxed]].isInstanceOf[Answers.ComonadHandler[_]])
   }
 
   test("Safe is Nothing and Unsafe is Throwable") {

@@ -86,7 +86,7 @@ object Tag {
     })
 
   /** a comonadic handler for one key, out of the effect's own */
-  def handler[K, F <: Row](h: Handler[F]): Handler[Tag[K, F]] = new Handler.Of[Tag[K, F]] {
+  def handler[K, F <: Row](h: Answers[F]): Answers[Tag[K, F]] = new Answers.Of[Tag[K, F]] {
     def handle[A](e: Op[K, F, A]): A = h.handleOp[A](e.op)
   }
 }
@@ -165,7 +165,7 @@ object Instances {
 
   /** ONE handler for every instance, choosing by handle; per-instance
    * state is the caller's to keep however it likes */
-  def handler[F <: Row](pick: Handle => Handler[F]): Handler[Instances[F]] = new Handler.Of[Instances[F]] {
+  def handler[F <: Row](pick: Handle => Answers[F]): Answers[Instances[F]] = new Answers.Of[Instances[F]] {
     def handle[A](e: Op[F, A]): A = pick(e.at).handleOp[A](e.op)
   }
 

@@ -1,5 +1,7 @@
 package okay2
 
+import scala.annotation.unused
+
 
 import scala.annotation.tailrec
 import Free.{Return, Inject, Bind}
@@ -93,6 +95,12 @@ object Once {
       case None | Some(Running) => (c + (s.h -> s.a), s.a)
       case Some(v) => (c, v)
     }
+  }
+
+  /** the handler as a value, level 1: `p.handle(Once.memo)` */
+  val memo: Handler[Once, Handler.Id] = new Handler.Full[Once, Any, Handler.Id, Handler.Nothing] {
+    def run[A, F <: Row](p: Free[Once with F, A])(implicit @unused ev: A <:< Any, @unused d: Distinct[Once with F], @unused n: Handler.Nothing[F]): A ! F =
+      runAt[A, F](p)
   }
 
   /** the handler, for a program whose row mentions `Once` anywhere */

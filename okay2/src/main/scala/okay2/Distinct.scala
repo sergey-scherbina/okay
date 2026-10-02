@@ -18,7 +18,7 @@ import scala.annotation.tailrec
  * operations reach the first's handler, and the program dies of a
  * ClassCastException at the first wrong answer (TestDistinct measures
  * it). `Distinct[R]` moves that to compile time, where handlers are
- * composed: `Handler.union`, `Into.union`, `IntoZ.union` require it.
+ * composed: `Answers.union`, `Into.union`, `IntoZ.union` require it.
  *
  * WHAT IT COMPARES is each part's RUNTIME IDENTITY — what its test
  * looks at — after flattening the intersection (stage 13, the Scala 3

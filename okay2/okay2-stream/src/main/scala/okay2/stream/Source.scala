@@ -225,7 +225,7 @@ object Source {
      * chunk; answers the channel itself */
     def merge(t: Chunks[A], capacity: Int = 64)(implicit sch: Scheduler): Channel[Chunk[A]] = {
       type L[W] = Unit ! Writer[W]
-      Channel.merge[Chunk[A], L, Pure, L, Pure](s, t, capacity)(Stream.feedStream[Unit], Handler.pure, Stream.feedStream[Unit], Handler.pure, sch)
+      Channel.merge[Chunk[A], L, Pure, L, Pure](s, t, capacity)(Stream.feedStream[Unit], Answers.pure, Stream.feedStream[Unit], Answers.pure, sch)
     }
 
     /** `merge`, tagging which side each element came from */

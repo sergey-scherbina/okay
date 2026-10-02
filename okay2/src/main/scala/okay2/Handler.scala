@@ -3,13 +3,17 @@ package okay2
 /*
  * What a signature says about itself and how a row is taken apart and
  * answered: `TypeableK`/`Effect` (the runtime test), `Split` (the one
- * trusted cast), `Handler` (the comonadic answer), and the handler
- * shapes `Interpr`, `Interpret`, `Relay` — the Scala 3 core's
+ * trusted cast), `Answers` (the comonadic answer), the handler
+ * shapes `Interpr`, `Interpret`, `Relay`, and `Handler`, the level-1
+ * handler value with its author's forms — the Scala 3 core's
  * Handler.scala. The row itself is in Row.scala.
  */
 
-import scala.annotation.implicitNotFound
+import scala.annotation.{implicitNotFound, tailrec, unused}
+import scala.language.experimental.macros
 import scala.reflect.ClassTag
+import scala.reflect.macros.whitebox
+import Free.{Return, Inject, Bind}
 
 /** ∀X, the runtime test for F's operations, by the erasure of F —
  * asked by `split` on every operation of every runner */
@@ -125,18 +129,18 @@ object Split {
  * A comonadic handler interprets each operation by its own value. It
  * takes the operation as `Any` because a row's `#Op` is not a type to
  * read at (see Row); a single signature's handler is written typed:
- * `new Handler[F] { def handle[A](a: F#Op[A]): A }`, as okay writes
- * it. `Handler.Of` is the same class under its stage-8 name.
+ * `new Answers[F] { def handle[A](a: F#Op[A]): A }`, as okay writes
+ * it. `Answers.Of` is the same class under its stage-8 name.
  *
- * INVARIANT, on purpose: covariant, `Handler[F + G] <: Handler[G]`, and
- * the documented `implicit val h: Handler[F + G] = Handler.union[F, G]`
- * resolved its own `Handler[G]` argument to `h` itself (measured,
+ * INVARIANT, on purpose: covariant, `Answers[F + G] <: Answers[G]`, and
+ * the documented `implicit val h: Answers[F + G] = Answers.union[F, G]`
+ * resolved its own `Answers[G]` argument to `h` itself (measured,
  * TestEffects, stage 8).
  */
-@implicitNotFound("no Handler[${F}].\nA Handler answers each operation with a plain value:\n  new Handler[YourOp] { def handle[A](a: YourOp#Op[A]): A = ... }\nFor a ROW, build the union from the parts: implicit val h: Handler[F + G] = Handler.union[F, G]\n(each part needs its own Handler in scope first).")
-trait Handler[F <: Row] {
+@implicitNotFound("no Answers[${F}].\nAn Answers answers each operation with a plain value:\n  new Answers[YourOp] { def handle[A](a: YourOp#Op[A]): A = ... }\nFor a ROW, build the union from the parts: implicit val h: Answers[F + G] = Answers.union[F, G]\n(each part needs its own Answers in scope first).")
+trait Answers[F <: Row] {
   /** one operation of the signature F, typed — what a user writes, as
-   * okay's `new Handler[F] { def handle[A](a: F[A]): A }` */
+   * okay's `new Answers[F] { def handle[A](a: F[A]): A }` */
   def handle[A](a: In[A]): A
 
   /** `F#Op`, named once here: `handle` is declared at this name so a
@@ -149,23 +153,23 @@ trait Handler[F <: Row] {
   /**
    * the same operation as the runner holds it, `Any` (a row's `#Op` is
    * not a type to read at). The default narrows to `F#Op` — sound
-   * because a Handler[F] is only ever run on a program whose row is F,
+   * because a Answers[F] is only ever run on a program whose row is F,
    * or given F's operations by a union's split; a union overrides it.
    */
   def handleOp[A](op: Any): A = handle(op.asInstanceOf[In[A]])
 }
 
-object Handler {
+object Answers {
   /**
    * one signature's handler, typed. The cast in `handleOp` is sound
-   * because a Handler[F] is only ever run on a program whose row is F
+   * because a Answers[F] is only ever run on a program whose row is F
    * (or a union whose split sent it F's operations): the row admits no
    * other operation to it.
    */
-  abstract class Of[F <: Row] extends Handler[F]
+  abstract class Of[F <: Row] extends Answers[F]
 
   /** Pure has no operations left to handle */
-  implicit val pure: Handler[Pure] = new Handler[Pure] {
+  implicit val pure: Answers[Pure] = new Answers[Pure] {
     def handle[A](a: In[A]): A = handleOp[A](a)
     override def handleOp[A](op: Any): A = throw new IllegalStateException("an operation in a Pure program: " + op)
   }
@@ -178,11 +182,11 @@ object Handler {
    * Found implicitly: it fires only where somebody has declared the
    * comonad, which is the declaration that the operation IS its answer
    * in a context */
-  final class ComonadHandler[F <: Row](val C: Comonad[OpOf[F]#L]) extends Handler[F] {
+  final class ComonadHandler[F <: Row](val C: Comonad[OpOf[F]#L]) extends Answers[F] {
     def handle[A](a: F#Op[A]): A = C.extract(a)
   }
 
-  implicit def comonad[F <: Row](implicit C: Comonad[OpOf[F]#L]): Handler[F] = new ComonadHandler[F](C)
+  implicit def comonad[F <: Row](implicit C: Comonad[OpOf[F]#L]): Answers[F] = new ComonadHandler[F](C)
 
   /**
    * Handlers compose along the union: split the operation by the F
@@ -193,9 +197,9 @@ object Handler {
    * class (`Ask[Int] + Ask[String]`), which the split below could not
    * tell apart — checked at compile time, as the Scala 3 core does.
    */
-  def union[F <: Row, G <: Row](implicit T: TypeableK[F], hf: Handler[F], hg: Handler[G], d: Distinct[F + G]): Handler[F + G] = {
+  def union[F <: Row, G <: Row](implicit T: TypeableK[F], hf: Answers[F], hg: Answers[G], d: Distinct[F + G]): Answers[F + G] = {
     val _ = d
-    new Handler[F + G] {
+    new Answers[F + G] {
       // a row's `#Op` is its last parent's, so the typed door forwards
       // to the untyped one, which splits by class
       def handle[A](a: In[A]): A = handleOp[A](a)
@@ -213,8 +217,8 @@ object Handler {
 trait Interpr[F <: Row, S] { def apply[X](e: F#Op[X]): Cont[X, S, S] }
 
 object Interpr {
-  /** a comonadic Handler at every answer type */
-  def of[F <: Row, S](implicit H: Handler[F]): F !> S = new Interpr[F, S] {
+  /** a comonadic Answers at every answer type */
+  def of[F <: Row, S](implicit H: Answers[F]): F !> S = new Interpr[F, S] {
     def apply[X](e: F#Op[X]): Cont[X, S, S] = Cont.Pure(H.handleOp[X](e))
   }
 }
@@ -226,3 +230,195 @@ trait Interpret[F <: Row, G <: Row] { def apply[X](e: F#Op[X]): X ! G }
 /** an answer-polymorphic handler: by parametricity it must resume the
  * continuation exactly once, which is what keeps `relay` a loop */
 trait Relay[F <: Row] { def apply[X, Y](e: F#Op[X]): X /> Y }
+
+/**
+ * A handler (Plotkin & Pretnar's sense, level 1, specs/api-levels.md): a VALUE that takes the effect `E` off
+ * any program's row and answers `O[A]` — `p.handle(State(5))`, `p.handle(State(5), Throws.either[String]).run`.
+ * `Handler[E, O]` (the package object's alias) is the usual one: any answer, nothing needed of the rest of the
+ * row. `Full` bounds the answer by `I` and needs `Needs[F]` of the rest `F` (`Reset[R]`: the answer is `R`,
+ * the rest's `Nesting`). An answer per operation and no more is `Answers[F]`. The Scala 3 core's twin; Scala 2
+ * has no type lambdas, so an answer shape is a projection: `Handler.Pair[S]#L`, `Handler.Or[E]#L`.
+ */
+object Handler {
+  /** every handler value: what `p.handle(h)` takes, its effect read off `Full` by the macro */
+  trait Value
+
+  /** the handler in full: the answers it takes (`I`) and what it needs of the rest of the row (`Needs`) */
+  trait Full[E <: Row, I, O[_], Needs[_ <: Row]] extends Value {
+    def run[A, F <: Row](p: Free[E with F, A])(implicit a: A <:< I, d: Distinct[E with F], n: Needs[F]): O[A] ! F
+  }
+
+  /** the evidence of nothing: always there */
+  final class Nothing[F <: Row] private[Handler] ()
+  object Nothing {
+    implicit def any[F <: Row]: Nothing[F] = new Nothing[F]()
+  }
+
+  // THE ANSWER SHAPES, as projections (Scala 2's type lambdas)
+  type Id[A] = A
+  type Pair[S] = { type L[A] = (S, A) }
+  type Or[E] = { type L[A] = Either[E, A] }
+  type Const[R] = { type L[A] = R }
+  /** what `into` needs of the rest of the row: that it holds `G` — an intersection holding G is below it */
+  type Holds[G <: Row] = { type L[R <: Row] = R <:< G }
+
+  // THE AUTHOR'S DOOR (level 2, specs/handler-forms.md): four forms by power. Scala 2 has no polymorphic
+  // functions, so a clause is a trait with a polymorphic `apply`, written `new … { def apply[X](…) = … }`.
+
+  /** 2 · a state threaded through the operations: `(s, op) => (s', answer)` */
+  trait StateClause[F <: Row, S] { def apply[X](s: S, e: F#Op[X]): (S, X) }
+
+  /** 4 · the values' answer, at every value type */
+  trait Ret[O[_]] { def apply[A](a: A): O[A] }
+
+  /** 4 · an operation with the rest of the program as `k`: resume it, many times, or not at all */
+  trait Control[F <: Row, O[_]] { def apply[X, A, G <: Row](e: F#Op[X], k: X => O[A] ! G): O[A] ! G }
+
+  /**
+   * The effect named once: `Handler[Accounts](answers)` is `Handler.answer(answers)`,
+   * `Handler[Accounts].state(0)(clause)` is `Handler.state[Accounts, Int](0)(clause)`. Helpers for type
+   * inference only; each form has its one implementation below.
+   */
+  def apply[F <: Row]: For[F] = new For[F]
+
+  final class For[F <: Row] private[Handler] () {
+    /** the default form, 1 */
+    def apply(a: Answers[F])(implicit T: TypeableK[F]): Handler[F, Id] = Handler.answer[F](a)
+    /** `Handler.answer` */
+    def answer(a: Answers[F])(implicit T: TypeableK[F]): Handler[F, Id] = Handler.answer[F](a)
+    /** `Handler.state[F, S](init)(c)`, `S` read off `init` */
+    def state[S](init: S)(c: StateClause[F, S])(implicit T: TypeableK[F]): Handler[F, Pair[S]#L] = Handler.state[F, S](init)(c)
+    /** `Handler.into[F, G](i)` */
+    def into[G <: Row](i: Interpret[F, G])(implicit T: TypeableK[F]): Full[F, Any, Id, Holds[G]#L] = Handler.into[F, G](i)
+    /** `Handler.control[F, O](ret)(c)` */
+    def control[O[_]](ret: Ret[O])(c: Control[F, O])(implicit T: TypeableK[F]): Handler[F, O] = Handler.control[F, O](ret)(c)
+  }
+
+  /** 1 · answer each operation with a value, and the program goes on (`!.relay`) */
+  def answer[F <: Row](a: Answers[F])(implicit T: TypeableK[F]): Handler[F, Id] = new Full[F, Any, Id, Nothing] {
+    private val g: Relay[F] = new Relay[F] { def apply[X, Y](e: F#Op[X]): X /> Y = Cont.Pure[X, Y](a.handle[X](e)) }
+    def run[A, G <: Row](p: Free[F with G, A])(implicit @unused ev: A <:< Any, d: Distinct[F with G], @unused n: Nothing[G]): A ! G =
+      Effects.relay[A, A, F, G](p)(x => pure[G, A](x))(g)(T, d)
+  }
+
+  /** 1 · the same, under the Scala 3 core's name for an `Answers` */
+  def from[F <: Row](a: Answers[F])(implicit T: TypeableK[F]): Handler[F, Id] = answer[F](a)
+
+  /** 2 · a state threaded through the operations, the result carrying the last state */
+  def state[F <: Row, S](init: S)(c: StateClause[F, S])(implicit T: TypeableK[F]): Handler[F, Pair[S]#L] =
+    new Full[F, Any, Pair[S]#L, Nothing] {
+      def run[A, G <: Row](p: Free[F with G, A])(implicit @unused ev: A <:< Any, @unused d: Distinct[F with G], @unused n: Nothing[G]): (S, A) ! G = {
+        val Mine = Split.at[F](T)
+        // a call from inside flatMap cannot be a jump; `again` takes it, so the walk stays a checked loop
+        def again(s: S)(x: Free[F with G, A]): (S, A) ! G = loop(s)(x)
+        @tailrec def loop(s: S)(x: Free[F with G, A]): (S, A) ! G = Free.resume(x) match {
+          case Return(a) => Return((s, a))
+          // a lone operation is a Bind with a pure continuation (package.scala)
+          case Inject(e) => loop(s)(Bind(Inject[F + G, A](e), (v: A) => Return[F + G, A](v)))
+          case Bind(Inject(Mine(op)), k) => val (s2, v) = c[Any](s, op); loop(s2)(k(v))
+          case Bind(Inject(e), k) => Inject[G, Any](e).flatMap(v => again(s)(k(v)))
+          case other => throw new IllegalStateException("resume left a non-head form: " + other)
+        }
+        loop(init)(p)
+      }
+    }
+
+  /** 3 · each operation a program in the effects `G`, which the rest of the row must hold (`!.translate`) */
+  def into[F <: Row, G <: Row](i: Interpret[F, G])(implicit T: TypeableK[F]): Full[F, Any, Id, Holds[G]#L] =
+    new Full[F, Any, Id, Holds[G]#L] {
+      def run[A, R <: Row](p: Free[F with R, A])(implicit @unused ev: A <:< Any, d: Distinct[F with R], n: R <:< G): A ! R =
+        Effects.translate[A, F, R](p)(new Interpret[F, R] {
+          // the rest holds G, so a program in G is one in the rest: the row is contravariant
+          def apply[X](e: F#Op[X]): X ! R = n.liftContra[({ type L[-r] = Free[r, X] })#L](i[X](e))
+        })(T, d)
+    }
+
+  /** 4 · the operation and the rest of the program, `k`: abort, resume many times, answer in the rest */
+  def control[F <: Row, O[_]](ret: Ret[O])(c: Control[F, O])(implicit T: TypeableK[F]): Handler[F, O] =
+    new Full[F, Any, O, Nothing] {
+      def run[A, G <: Row](p: Free[F with G, A])(implicit @unused ev: A <:< Any, d: Distinct[F with G], @unused n: Nothing[G]): O[A] ! G =
+        Effects.handleWith[A, O[A], F, G](p)(a => pure[G, O[A]](ret[A](a)))(new Interpr[F, O[A] ! G] {
+          def apply[X](e: F#Op[X]): Cont[X, O[A] ! G, O[A] ! G] = Cont.shift[X, O[A] ! G, O[A] ! G](k => c[X, A, G](e, k))
+        })(T, d)
+    }
+}
+
+/** `reset` as a value: `p.handle(Reset[R])` */
+object Reset {
+  def apply[R](implicit k: Shift.Key[R]): Handler.Full[Shift[R], R, Handler.Const[R]#L, Shift.Nesting] =
+    new Handler.Full[Shift[R], R, Handler.Const[R]#L, Shift.Nesting] {
+      def run[A, F <: Row](p: Free[Shift[R] with F, A])(implicit a: A <:< R, @unused d: Distinct[Shift[R] with F], n: Shift.Nesting[F]): R ! F =
+        Shift.handle[R, F](a.liftCo[({ type L[+x] = Free[Shift[R] with F, x] })#L](p))(k, n)
+    }
+}
+
+/** `p.handle(h)`, `p.handle(h1, h2)`, `p.handle(h1, h2, h3)`: each handler takes its effect off the row */
+final class Handles[R, A](val p: Free[R, A]) {
+  def handle(h: Handler.Value): Any = macro HandleMacro.one
+  def handle(h1: Handler.Value, h2: Handler.Value): Any = macro HandleMacro.two
+  def handle(h1: Handler.Value, h2: Handler.Value, h3: Handler.Value): Any = macro HandleMacro.three
+}
+
+/**
+ * Scala 2 cannot take an effect OFF an intersection row by inference — `Free[E with F, A]` at a known `E` solves
+ * `F` as the whole row in an implicit search — so the rest is computed here: the row's members, less the
+ * handler's effect, and the call is `h.run[A, Rest](p)`, typed as any call is. A whitebox macro so the result
+ * type is that call's.
+ */
+object HandleMacro {
+  def one(c: whitebox.Context)(h: c.Tree): c.Tree = step(c)(c.prefix.tree, h)
+
+  def two(c: whitebox.Context)(h1: c.Tree, h2: c.Tree): c.Tree = {
+    import c.universe._
+    q"new _root_.okay2.Handles(${step(c)(c.prefix.tree, h1)}).handle($h2)"
+  }
+
+  def three(c: whitebox.Context)(h1: c.Tree, h2: c.Tree, h3: c.Tree): c.Tree = {
+    import c.universe._
+    q"new _root_.okay2.Handles(${step(c)(c.prefix.tree, h1)}).handle($h2, $h3)"
+  }
+
+  private def step(c: whitebox.Context)(prefix: c.Tree, h: c.Tree): c.Tree = {
+    import c.universe._
+    val handles = typeOf[Handles[Any, Any]].typeSymbol
+    val full = c.mirror.staticModule("okay2.Handler").moduleClass.info.decl(TypeName("Full"))
+    val row = typeOf[Row]
+    // the members of an intersection, flattened by a worklist
+    def parts(t: Type): List[Type] = {
+      val out = List.newBuilder[Type]
+      var todo = List(t)
+      while (todo.nonEmpty) {
+        val x = todo.head
+        todo = todo.tail
+        x.dealias match {
+          case RefinedType(ps, _) => todo = ps ++ todo
+          case other => out += other
+        }
+      }
+      out.result()
+    }
+    val (g, a) = prefix.tpe.baseType(handles).typeArgs match {
+      case g0 :: a0 :: Nil => (g0, a0)
+      case _ => c.abort(prefix.pos, s"not a program: ${prefix.tpe}")
+    }
+    val e = h.tpe.baseType(full) match {
+      case TypeRef(_, _, e0 :: _) => e0
+      case _ => c.abort(h.pos, s"${h.tpe} is not a handler value (Handler.Full)")
+    }
+    val gs = parts(g)
+    val es = parts(e).filterNot(_ =:= row)
+    val missing = es.filterNot(x => gs.exists(_ =:= x))
+    if (missing.nonEmpty)
+      c.abort(h.pos, s"this program's row $g does not hold ${missing.mkString(" with ")}, which the handler takes off")
+    val rest = gs.filterNot(x => x =:= row || es.exists(_ =:= x))
+    val restTree: Tree =
+      if (rest.isEmpty) tq"_root_.okay2.Row"
+      else rest.map(t => TypeTree(t): Tree).reduceLeft((l, r) => tq"$l with $r")
+    // the program itself rather than its wrapper, so nothing is allocated for the call
+    val p = prefix match {
+      case Apply(_, List(arg)) => arg
+      case other => q"$other.p"
+    }
+    q"$h.run[$a, $restTree]($p)"
+  }
+}

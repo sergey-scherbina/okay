@@ -21,7 +21,7 @@ import okay2.Free.{Return, Inject, Bind}
  * - A FOLD INTO ANY MONAD: `foldTo` interprets a program into `M` by an
  *   `Into[R, M]` — the natural transformation from the row's operations
  *   — through `Monad.tailRecM`, so it is stack-safe wherever `M`'s
- *   `tailRecM` is. `Into` composes along `+` as `Handler.union` does.
+ *   `tailRecM` is. `Into` composes along `+` as `Answers.union` does.
  * - THE `Io` ROW: a signature whose operations ARE `IO` values
  *   (`type Op[+A] = IO[A]`), so `Io.lift(io)` is an operation of the
  *   row and `Io.run` folds a program whose every operation has an
@@ -42,9 +42,9 @@ object CatsInterop extends CatsInteropLow {
 
   /** the natural transformation from a row's operations into M — what
    * `foldTo` needs, and what a union's is made of, member by member.
-   * It takes the operation as `Any`, as `Handler` does (a row's `#Op`
+   * It takes the operation as `Any`, as `Answers` does (a row's `#Op`
    * is not a type to read at, Row.scala); one signature's is written
-   * typed, by `Into.Of`. Invariant, as `Handler` is and for its reason:
+   * typed, by `Into.Of`. Invariant, as `Answers` is and for its reason:
    * a union's own implicit must not answer for one of its parts. */
   trait Into[R <: Row, M[_]] { def applyOp[X](op: Any): M[X] }
 
@@ -57,7 +57,7 @@ object CatsInterop extends CatsInteropLow {
     }
 
     /** a union is interpreted by its parts: split by the F test,
-     * exactly as `Handler.union` — and, like it, an EXPLICIT combinator:
+     * exactly as `Answers.union` — and, like it, an EXPLICIT combinator:
      * `implicit val h: Into[Produce + Io, IO] = Into.union[Produce, Io, IO]`.
      * An implicit rule over `F + G` cannot take an intersection apart
      * (stage 8: it matches every type and the search diverges) */

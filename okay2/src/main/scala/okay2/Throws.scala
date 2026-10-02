@@ -1,5 +1,7 @@
 package okay2
 
+import scala.annotation.unused
+
 
 /**
  * The Throws effect fails with any E, and a handler decides what
@@ -32,6 +34,18 @@ object Throws {
           case Raise(err) => Cont.shift[X, Either[E, A] ! F, Either[E, A] ! F](_ => pure[F, Either[E, A]](Left(err)))
         }
       })
+
+  /** the handler as a value, level 1: `p.handle(Throws.either[E])` answers `Either[E, A]` */
+  def either[E]: Handler[Throws[E], Handler.Or[E]#L] = new Handler.Full[Throws[E], Any, Handler.Or[E]#L, Handler.Nothing] {
+    def run[A, F <: Row](p: Free[Throws[E] with F, A])(implicit @unused ev: A <:< Any, d: Distinct[Throws[E] with F], @unused n: Handler.Nothing[F]): Either[E, A] ! F =
+      runEitherAt[A, E, F](p)
+  }
+
+  /** `Abort` as a value: `p.handle(Throws.option)` answers `Option[A]` */
+  val option: Handler[Abort, Option] = new Handler.Full[Abort, Any, Option, Handler.Nothing] {
+    def run[A, F <: Row](p: Free[Abort with F, A])(implicit @unused ev: A <:< Any, d: Distinct[Abort with F], @unused n: Handler.Nothing[F]): Option[A] ! F =
+      runEitherAt[A, Unit, F](p).map(_.toOption)
+  }
 
   /** handle Abort into Option, forwarding the rest of the row */
   def runOption[A, R <: Row](a: Free[Abort with R, A])(implicit d: Distinct[Abort with R]): Option[A] ! R =

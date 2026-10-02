@@ -11,7 +11,7 @@ object Later {
 
   implicit val effect: Effect[Later] = Effect.of[Later]
 
-  implicit val handler: Handler[Later] = new Handler[Later] {
+  implicit val handler: Answers[Later] = new Answers[Later] {
     def handle[A](a: Run[A]): A = a.f()
   }
 

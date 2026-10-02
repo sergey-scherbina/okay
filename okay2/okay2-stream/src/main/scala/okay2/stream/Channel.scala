@@ -370,7 +370,7 @@ object Channel {
    * refused. The loop lives INSIDE a program step, so a producer that
    * throws throws in its own fiber, not out of `Channel.buffer`.
    */
-  private def feed[A, U[_], H <: Row](c: Channel[A], u: U[A])(implicit St: Stream[U, H], HH: Handler[H]): Unit ! Async = {
+  private def feed[A, U[_], H <: Row](c: Channel[A], u: U[A])(implicit St: Stream[U, H], HH: Answers[H]): Unit ! Async = {
     val it = St.iterator(u)
     def go: Unit ! Async =
       pure[Async, Unit](()).flatMap { _ =>
@@ -388,7 +388,7 @@ object Channel {
 
   /** the buffered producer's feed: accumulate into a LOCAL buffer and
    * send whole chunks — an element costs an array store, a chunk one send */
-  private def feedBatched[A, U[_], H <: Row](c: Channel[Chunk[A]], u: U[A], size: Int)(implicit St: Stream[U, H], HH: Handler[H]): Unit ! Async = {
+  private def feedBatched[A, U[_], H <: Row](c: Channel[Chunk[A]], u: U[A], size: Int)(implicit St: Stream[U, H], HH: Answers[H]): Unit ! Async = {
     val it = St.iterator(u)
     def go(buf: ChunkBuf[A], n: Int): Unit ! Async =
       if (!it.hasNext) { if (n == 0) pure(()) else c.send(buf.take(n)).map(_ => ()) }
@@ -403,7 +403,7 @@ object Channel {
 
   /** the chunking feed whose buffer a FLUSHER may take concurrently: a
    * `Cell`, not a local, so the timer never touches the pull */
-  private def feedChunked[A, U[_], H <: Row](c: Channel[Chunk[A]], u: U[A], size: Int, buf: Cell[Vector[A]])(implicit St: Stream[U, H], HH: Handler[H]): Unit ! Async = {
+  private def feedChunked[A, U[_], H <: Row](c: Channel[Chunk[A]], u: U[A], size: Int, buf: Cell[Vector[A]])(implicit St: Stream[U, H], HH: Answers[H]): Unit ! Async = {
     def take(full: Boolean): Option[Chunk[A]] = takeChunk(buf, size, full)
     def go(x: U[A]): Unit ! Async =
       Async(Effects.runFree(St.uncons(x))).flatMap {
@@ -477,7 +477,7 @@ object Channel {
 
   /** the chunking merge for ordinary sources */
   def mergeChunked[A, S[_], F <: Row, T[_], G <: Row](s: S[A], t: T[A], capacity: Int, size: Int, within: Option[Long])
-                                                    (implicit SS: Stream[S, F], HF: Handler[F], ST: Stream[T, G], HG: Handler[G],
+                                                    (implicit SS: Stream[S, F], HF: Answers[F], ST: Stream[T, G], HG: Answers[G],
                                                      sch: Scheduler, timer: Timer): Channel[Chunk[A]] =
     chunkedMerge(capacity, size, within)((c, buf) => feedChunked(c, s, size, buf), (c, buf) => feedChunked(c, t, size, buf))
 
@@ -485,7 +485,7 @@ object Channel {
    * feeds one channel; it closes when both sources end; a source that
    * fails is recorded and the other still feeds */
   def merge[A, S[_], F <: Row, T[_], G <: Row](s: S[A], t: T[A], capacity: Int = Int.MaxValue)
-                                             (implicit SS: Stream[S, F], HF: Handler[F], ST: Stream[T, G], HG: Handler[G],
+                                             (implicit SS: Stream[S, F], HF: Answers[F], ST: Stream[T, G], HG: Answers[G],
                                               sch: Scheduler): Channel[A] = {
     val c = forProducers[A](2, capacity)
     val alive = new AtomicInteger(2)
@@ -565,7 +565,7 @@ object Channel {
 
   /** the same as `buffer`, in CHUNKS: `capacity` counts chunks */
   def bufferChunked[A, S[_], F <: Row](capacity: Int, size: Int = Source.ChunkSize)(s: S[A])
-                                     (implicit SS: Stream[S, F], HF: Handler[F], sch: Scheduler): Channel[Chunk[A]] = {
+                                     (implicit SS: Stream[S, F], HF: Answers[F], sch: Scheduler): Channel[Chunk[A]] = {
     val c = Channel[Chunk[A]](capacity)
     sch.forkLong(() => feedBatched(c, s, size)).onComplete { r =>
       r.left.foreach(c.fail)
@@ -576,7 +576,7 @@ object Channel {
 
   /** run the producer ahead of the consumer, at most capacity elements
    * ahead: a fiber unfolds the stream into a bounded channel */
-  def buffer[A, S[_], F <: Row](capacity: Int)(s: S[A])(implicit SS: Stream[S, F], HF: Handler[F], sch: Scheduler): Channel[A] = {
+  def buffer[A, S[_], F <: Row](capacity: Int)(s: S[A])(implicit SS: Stream[S, F], HF: Answers[F], sch: Scheduler): Channel[A] = {
     val c = forProducers[A](1, capacity)
     sch.fork(() => feed(c, s)).onComplete { r =>
       r.left.foreach(c.fail)

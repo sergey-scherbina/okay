@@ -112,6 +112,13 @@ object Writer {
   def run[W, A, R <: Row](a: Free[Writer[W] with R, A])(implicit effect: TypeableK[Writer[W]], @unused d: Distinct[Writer[W] with R]): (Seq[W], A) ! R =
     loopWith[W, List[W], A, (Seq[W], A), R](a)(Nil)((s, w) => w :: s)((s, a) => (s.reverse, a))
 
+  /** the handler as a value, level 1: `p.handle(Writer.log[W])` answers everything told, in order */
+  def log[W](implicit effect: TypeableK[Writer[W]]): Handler[Writer[W], Handler.Pair[Vector[W]]#L] =
+    new Handler.Full[Writer[W], Any, Handler.Pair[Vector[W]]#L, Handler.Nothing] {
+      def run[A, F <: Row](p: Free[Writer[W] with F, A])(implicit @unused ev: A <:< Any, d: Distinct[Writer[W] with F], @unused n: Handler.Nothing[F]): (Vector[W], A) ! F =
+        collect[W, A, F](p)(effect, d)
+    }
+
   /** `run` answering a Vector */
   def collect[W, A, R <: Row](a: Free[Writer[W] with R, A])(implicit effect: TypeableK[Writer[W]], @unused d: Distinct[Writer[W] with R]): (Vector[W], A) ! R =
     loopWith[W, List[W], A, (Vector[W], A), R](a)(Nil)((s, w) => w :: s)((s, a) => (s.reverse.toVector, a))

@@ -90,7 +90,7 @@ class TestResource extends munit.FunSuite {
     assertEquals(log.reverse, List("open a", "close a"))
   }
 
-  test("bracket over any Handler-able row") {
+  test("bracket over any Answers-able row") {
     var released = 0
     assertEquals(bracket(41)(_ => released += 1)(r => later(r + 1)).runWith, 42)
     assertEquals(bracket(1)(_ => released += 1)(r => produce(r + 1)).runWith, 2)
