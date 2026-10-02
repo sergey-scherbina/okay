@@ -148,7 +148,7 @@ enum Freer[G[_, _, +_], S, R, +A] {
    * at the place it is made.
    */
   @tailrec final def resume: Freer[G, S, R, A] = this match
-    case Bind(Bind(a, f), g) => Bind(a, Freer.rotated(f, g)).resume
+    case Bind(Bind(a, f), g) => Bind(a, f(_).flatMap(g)).resume
     case Bind(Return(a), f) => f(a).resume
     // the deferred subprogram is forced HERE, in the loop, and its own
     // binds then rotate through the cases above — constant stack; and
@@ -167,7 +167,7 @@ enum Freer[G[_, _, +_], S, R, +A] {
   // bytes, past HotSpot's FreqInlineSize (325) that `resume`'s 322 sit under — the loops lost its inlining, 1.32x
   @tailrec final def resumeRun: Freer[G, S, R, A] = this match
     case Bind(h, g) => h match
-      case Bind(a, f) => Bind(a, Freer.rotated(f, g)).resumeRun
+      case Bind(a, f) => Bind(a, f(_).flatMap(g)).resumeRun
       case Return(a) => g(a).resumeRun
       case Delay(t) => if t.isInstanceOf[Frames.Pending[?, ?, ?, ?, ?]] then this else Bind(t(), g).resumeRun
       case _ => this
@@ -176,15 +176,6 @@ enum Freer[G[_, _, +_], S, R, +A] {
 }
 
 object Freer {
-
-  /**
-   * THE ROTATION'S CONTINUATION, one lambda class for both walks (handle-frames): `resume` and `resumeRun` each
-   * writing `f(_).flatMap(g)` made two classes, and a program one walk rotated and the other then ran saw both
-   * at every call through a chain of them — bimorphic where it had been monomorphic, 1.25x on the forwarding
-   * lanes (HandlerBenchmark.handlePrebuilt).
-   */
-  def rotated[G[_, _, +_], X, T2, T, A, S, B](f: X => Freer[G, T, T2, A], g: A => Freer[G, S, T, B]): X => Freer[G, S, T2, B] =
-    x => f(x).flatMap(g)
 
   /**
    * The effect signature's leaf, indexes IGNORED: `Free[F, A]` is this
