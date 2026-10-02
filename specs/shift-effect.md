@@ -63,27 +63,78 @@ one API, one suite over both:
 
 - (a) `Shift % R` as an ordinary effect, `reset` a deep handler over
   `Effects[Free].handle`.
-- (b) the same API on `Delim`'s machine: `shift` is `Delim.shift` to
+- (b) the same API on `Delim`'s machine: `shift` is `Delim.shift0` to
   one shared prompt (the innermost installed one answers, as (a)'s
   handler does), `reset` pushes it and runs the machine.
 
-- [ ] the laws: `reset(pure(v)) == pure(v)`; `reset(shift(k => k(v)))
+- [x] the laws: `reset(pure(v)) == pure(v)`; `reset(shift(k => k(v)))
       == pure(v)`; `reset(shift(_ => pure(v)))` aborts.
-- [ ] D-F's examples, no other effect: `reset(shift(k => k(1) + k(10))
+- [x] D-F's examples, no other effect: `reset(shift(k => k(1) + k(10))
       * 2) == 22`.
-- [ ] the same with `State` after the capture: `k` runs the rest twice,
+- [x] the same with `State` after the capture: `k` runs the rest twice,
       the state threaded through both.
-- [ ] multi-shot with `Choose` handled outside: every branch, in order.
-- [ ] nested resets, different answer types, each body in its own row.
-- [ ] nested resets, the same answer type: the innermost answers.
-- [ ] direct style: the body of `shift` and the block under `reset`
+- [x] multi-shot with `Choose` handled outside: every branch, in order.
+- [x] nested resets, different answer types, each body in its own row.
+- [x] nested resets, the same answer type: the innermost answers.
+- [x] direct style: the body of `shift` and the block under `reset`
       as `direct` blocks.
-- [ ] depth: 100 000 captures in sequence; 100 000 nested `reset`s.
-- [ ] level 2: `.cont` / `.!` round trip on the diagonal, and one
+- [x] depth: 100 000 captures in sequence. Nested `reset`s: between
+      10 000 and 30 000 on the default stack (see Results).
+- [x] level 2: `.cont` / `.!` round trip on the diagonal, and one
       answer-type-modifying `Cont` with an effect in its answer.
-- [ ] the JMH lanes: (a) vs (b) vs today's `Cont` and `Delim` on the
+- [x] the JMH lanes: (a) vs (b) vs today's `Cont` and `Delim` on the
       same shape.
 
 ## Decisions
 
+- **The body is `R ! F`.** Without `Shift % R` in the body's row, `shift`
+  and `shift0` agree, and (a) pays one `reset` per capture. A body
+  typed `R ! Shift % R + F` would need `reset(f(k))` in the clause, and
+  then every capture re-walks what `k` already handled: quadratic in a
+  sequence of captures.
+- **`cont` is `reset(q >>= k)`**, not a fold of its own: it works on
+  both implementations. A fold over `Shift` nodes was (a)-only. On (b)
+  the nodes are Delim's, so it failed with a ClassCastException.
+- **(b) shares ONE prompt** among all resets. The innermost installed
+  one answers, as (a)'s handler does, and the row typing (Distinct)
+  keeps a capture from reaching a `reset` of another answer type.
+
 ## Results
+
+Probe: `okay-direct/src/test/scala/ShiftFx.scala`,
+`TestShiftFx.scala` (13 tests × 2 implementations, green),
+`okay-direct/src/jmh/scala/okay/ShiftFxBenchmark.scala`.
+
+**It types without annotations beyond the effect's own.** The user writes
+`Int ! Shift % Int + State % Int`, `shift[Int, Int, S](k => …)` and
+`reset[Int, S](q)`. Direct style needs no new macro: the body of `shift`
+is a `direct` block with `k(1).?`.
+
+**JMH** (one lane per run, box quiet throughout, history.d
+`shift-effect-probe`):
+
+| lane | (a) handler | (b) Delim machine | Cont today | Delim today |
+|---|---|---|---|---|
+| `seq`, 1000 captures, one reset | 86.9 µs, 894 KB | **54.8 µs, 534 KB** | 60.8 µs, 518 KB | 53.9 µs, 534 KB |
+| `twoShot`, 100 resets of `k(1) + k(10)` | **7.29 µs**, 77 KB | 9.53 µs, 75 KB | 7.92 µs, 68 KB | 10.50 µs, 78 KB |
+
+- (b) costs exactly what Delim costs: the API adds nothing. Its
+  price is the machine's start per `reset`, visible in `twoShot`.
+- (a) loses 1.59x on a sequence: every capture goes through
+  `Effects.handle`'s capture arm, a `Cont` per capture plus a `Delay`.
+  It wins small resets, which start no machine.
+- Cont today sits between the two and is not faster than (b) on the
+  sequence.
+
+**The nesting limit is not Shift's.** Each `reset` runs its own handler
+(machine) inside its parent's, so JVM depth grows with nesting. Both
+implementations pass 10 000 and fail by 30 000. Any nested handler
+does the same, and Delim's own rule is "one `Delim.run` per program"
+(`scope` is its nested form). On (b) it has a direct fix: a `reset`
+inside a running machine should push its prompt on that machine instead
+of starting a second one.
+
+**Recommendation:** (b). It matches Delim on the common shape and
+already has the single machine that removes the nesting limit. Open:
+(1) a `reset` inside a running machine only pushes its prompt; (2) the
+machine's start cost for a small `reset` (`twoShot`, 1.31x behind (a)).

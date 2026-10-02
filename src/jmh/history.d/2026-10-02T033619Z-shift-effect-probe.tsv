@@ -1,0 +1,2 @@
+2026-10-02	e64cfed39	quiet	ShiftFxBenchmark.seq N=1000	fxDelim 54.77us 534144B	fxHandled 86.87us 893801B	0.63	(b) on Delim's machine vs (a) a handler over Effects.handle; Delim today 53.86us 534185B, Cont today 60.78us 518105B
+2026-10-02	e64cfed39	quiet	ShiftFxBenchmark.twoShot 100 resets	fxDelim 9.53us 75200B	fxHandled 7.29us 76800B	1.31	a reset per two-shot capture: the machine's start is (b)'s cost; Delim today 10.50us 77600B, Cont today 7.92us 68000B
