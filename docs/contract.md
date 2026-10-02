@@ -95,6 +95,19 @@ on as operations, and `/ ret` gives the program that remains. So
 `foldCont` is the one primitive under all of them. `runWith`, `handle`
 and every ready handler are choices of `S` and of the last continuation.
 
+One more choice of `S` has its own name. With `S = G[A]` for a monad
+`G`, each operation is translated by a natural transformation and bound
+with `G`'s `flatMap`. That is `foldMap`, the fold `Static` and `Proc`
+have too:
+
+```scala
+def foldMap[G[_]](nt: F ==> G)(using G: Monad[G]): G[A] =
+assertEquals(p.foldMap(toIO).unsafeRunSync(), 12)
+```
+
+It is stack-safe for an eager `G` as well: a million operations fold
+through `Option` (specs/effects-foldmap.md).
+
 You call it yourself only to write an interpretation the ready handlers
 do not have. To USE an effect, `handle` and `run` are the words.
 

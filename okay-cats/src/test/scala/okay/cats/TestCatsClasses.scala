@@ -139,6 +139,18 @@ class TestCatsClasses extends munit.ScalaCheckSuite with okay.testkit.Munit.Diag
     assertEquals(out.length, n)
   }
 
+  test("foldMap: a program's operations interpreted straight into IO") {
+    enum Ask[+A]:
+      case Num(k: String) extends Ask[Int]
+    val p: Int ! Ask = for
+      a <- okay.effect(Ask.Num("a"))
+      b <- okay.effect(Ask.Num("bb"))
+    yield a * 10 + b
+    val toIO: Ask ==> IO = [X] => (e: Ask[X]) => e match
+      case Ask.Num(k) => IO(k.length)
+    assertEquals(p.foldMap(toIO).unsafeRunSync(), 12)
+  }
+
   test("conversions: okay.Validated <-> cats' Validated, both roads") {
     val ok = Validated.valid[String, Int](1)
     val bad = Validated.invalid[String, Int]("e")

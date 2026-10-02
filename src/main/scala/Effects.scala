@@ -131,6 +131,22 @@ trait Effects[M[_[+_], _]]:
     def foldCont[S](h: F !> S): A /> S
     /** run all the effects by a comonadic Answers (the foldCont definition; encodings may override with an equivalent fast path) */
     def runWith(using Answers[F]): A = m.foldCont(handler[F, A]) / identity
+    /**
+     * The program folded into any `Monad` G, each operation translated by
+     * `nt` (`Static.foldMap` into a `Selective`, `Proc.foldMap` into a
+     * `Monad`, the same fold). DERIVED: `foldCont` with `S = G[A]`, so
+     * every encoding has it (specs/effects-foldmap.md).
+     *
+     * STACK-SAFE FOR AN EAGER G TOO, measured rather than assumed: the
+     * spec expected `Option`'s `flatMap`, which calls its continuation at
+     * once, to grow the host stack per operation, and TestFoldMap folds a
+     * million operations through `Option` in both shapes (left-nested
+     * binds, non-tail recursion). The continuation `k` handed to each
+     * operation is resumed by `Cont`'s own machine, which is data, not a
+     * host-stack call chain.
+     */
+    def foldMap[G[_]](nt: F ==> G)(using G: Monad[G]): G[A] =
+      m.foldCont[G[A]]([X] => e => Cont.shift(k => G.flatMap(nt(e))(k))) / G.pure
 
   /** handle the effect F by h (and the values by ret), forwarding the
    * effects G; for mass tail-resumption prefer !.relay (measured) */
