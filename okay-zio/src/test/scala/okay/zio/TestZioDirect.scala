@@ -1,6 +1,6 @@
 package okay.zio
 
-import okay.{!, Async, async}
+import okay.{!, Async, async, asOkay}
 import okay.Direct.*
 import okay.given
 import okay.zio.given

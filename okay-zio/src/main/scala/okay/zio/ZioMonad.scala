@@ -20,9 +20,13 @@ extension [A](p: => A ! Async)
    * program, a blocking `Async.Run` included */
   def asZIO: Task[A] = ZioInterop.toZIO(p)
 
-extension [A](z: Task[A])
-  /** the Task as an okay program — [[ZioInterop.fromZIO]] */
-  def asOkay: A ! Async = ZioInterop.fromZIO(z)
+/** a Task crosses into okay as one `Async` operation — [[ZioInterop.fromZIO]];
+ * `z.asOkay` (okay's own extension, specs/interop-compose.md) finds it */
+given zioToOkay[A]: okay.ToOkay[Task[A], A] = z => ZioInterop.fromZIO(z)
+
+extension [A, B](f: A => B ! Async)
+  /** the okay function as a ZIO one (specs/interop-compose.md) */
+  def asZIO: A => Task[B] = a => ZioInterop.toZIO(f(a))
 
 /**
  * ZIO values marked inside a `direct` block over an okay program

@@ -14,7 +14,8 @@ waits for it as ONE `Async.await`: the callback runner parks no thread,
 `runWith` parks as for any Await, and cancelling the okay side interrupts
 the ZIO fiber (its finalizers run; a late result resumes nothing).
 Neither side simulates the other's runtime; each waits its own native
-way. `p.asZIO` and `z.asOkay` are the same two doors as extensions.
+way. `p.asZIO` and `z.asOkay` are the same two doors as extensions
+(`asOkay` is okay's own since interop-compose: `import okay.asOkay`).
 
 **The whole `ZIO[R, E, A]`.** `Task` crosses with `fromZIO`/`toZIO`; a
 ZIO with an environment and a typed error crosses with

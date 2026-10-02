@@ -898,7 +898,10 @@ lazy val okayZio = (project in file("okay-zio"))
 
 /** interop with kyo: value and Async bridges (P3) */
 lazy val okayKyo = (project in file("okay-kyo"))
-  .dependsOn(okayAsync.jvm, okayPlatform.jvm, compare % "test->compile", okayTest.jvm % "test->compile")
+  // okay-cats and okay-zio for the tests only: TestMixed composes all
+  // three libraries with okay in one expression (specs/interop-compose.md)
+  .dependsOn(okayAsync.jvm, okayPlatform.jvm, compare % "test->compile", okayTest.jvm % "test->compile",
+    okayCats % "test->compile", okayZio % "test->compile", okayDirect.jvm % "test->compile")
   .settings(
     name := "okay-kyo",
     libraryDependencies ++= Seq(
