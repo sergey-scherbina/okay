@@ -48,6 +48,8 @@ object HandleFrames:
   def pending[B, G[+_]](program: Shift.U[G, B]): B ! G =
     Free.delay(new Frames.Own[Freer.Lift[G], Unit, Unit, B, B ! G](program, Shift.Stacked.residual[B, G]))
 
-  /** a handler's run as a value: forced, its fast loop; stepped into by a machine, its frame */
-  def handled[B, G[+_]](fast: () => B ! G, frame: () => Shift.U[G, B]): B ! G =
-    Free.delay(new Frames.Handled[Freer.Lift[G], Unit, Unit, B, B ! G](fast, frame))
+  /**
+   * a handler's run as ONE object (stateSmall: a holder of two closures was four allocations a run,
+   * 1.55x on 100 small runs): a form subclasses it where its loop is, `apply` the loop, `program` the frame
+   */
+  abstract class Run[B, G[+_]] extends Frames.Pending[Freer.Lift[G], Unit, Unit, B, B ! G]

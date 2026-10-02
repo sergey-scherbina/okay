@@ -207,11 +207,6 @@ object Frames:
                                                             val flat: Boolean) extends Pending[F, S, T, Z, B]:
     def apply(): B = out(Frames.run[F, S, T, Z](program))
 
-  /** a handler over a program: forced, its own fast loop (`fast`); stepped into, the handler as a FRAME (`frame`) */
-  final class Handled[F[_, _, +_], S, T, Z, B](fast: () => B, frame: () => Freer[Cont0.Row[F], S, T, Z]) extends Pending[F, S, T, Z, B]:
-    def program: Freer[Cont0.Row[F], S, T, Z] = frame()
-    def apply(): B = fast()
-
   /** a `Pending` thunk's program at the running machine's row, or null */
   private def own[F[_, _, +_], S, T, Z](t: () => Freer[Cont0.Row[F], S, T, Z]): Freer[Cont0.Row[F], S, T, Z] | Null = t match
     // THE ONE CLAIM: the run's program is at the row of the program that holds its Delay (its residual

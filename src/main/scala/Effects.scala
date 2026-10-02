@@ -317,7 +317,9 @@ given Effects[Free] with
       case y => nested(y)
 
     // a value: run by whoever forces it, a frame for a machine that meets it
-    HandleFrames.handled[B, G](() => loop(m), () => HandleFrames.control[F, A, B, G](ret, h, summon[TypeableK[F]])(m))
+    Free.delay(new HandleFrames.Run[B, G]:
+      def apply(): Free[G, B] = loop(m)
+      def program: Shift.U[G, B] = HandleFrames.control[F, A, B, G](ret, h, summon[TypeableK[F]])(m))
 
 /**
  * Any Effects program in ANY other Effects encoding.

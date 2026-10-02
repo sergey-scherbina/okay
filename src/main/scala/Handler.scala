@@ -108,8 +108,9 @@ object Handler:
                                                        (_ => forwarded[F, G](i).flatMap(x => again(s)(k(x))))
           case y => upgrade(s)(y)
         // a value: run by whoever forces it, a frame for a machine that meets it
-        HandleFrames.handled[(S, A), G](() => loop(init)(p),
-          () => HandleFrames.state[F, S, A, G](f, summon[TypeableK[F]])(init, p))
+        Free.delay(new HandleFrames.Run[(S, A), G]:
+          def apply(): (S, A) ! G = loop(init)(p)
+          def program: Shift.U[G, (S, A)] = HandleFrames.state[F, S, A, G](f, summon[TypeableK[F]])(init, p))
 
   /** what `into` needs of the rest of the row: that it holds `G` */
   type Holds[G[+_]] = [R[+_]] =>> Row.Sub[G, R]
