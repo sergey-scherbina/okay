@@ -149,6 +149,15 @@ val post = Bayes.sample(Ch1.texting, Kernel.nuts("lambda_1", "lambda_2") >>> Ker
 `Kernel.site`, `sites`, `everySite`, `nuts(names*)`, `>>>`,
 `mixture(w -> k, …)`, `times(n)`; each tunes during burn-in only.
 
+The same kernels refresh SMC. Resampling copies the heavy particles and
+drops the light ones, so a static parameter is left with fewer and fewer
+distinct values; `smc(p, n, move = Some(kernel))` moves every particle
+after a resampling with a kernel whose target is the posterior given the
+observations so far — the model re-run with its sites held, stopped at the
+same observation (resample-move, Gilks & Berzuini 2001). Observing 400
+flips one at a time, 259 of 1000 values survive without the move and 968
+with it.
+
 **Evidence: `smc`.** Sequential Monte Carlo runs many copies of the program
 side by side, each SUSPENDED at its next `observe`; at every observation the
 copies are reweighed and, when a few carry most of the weight, resampled —

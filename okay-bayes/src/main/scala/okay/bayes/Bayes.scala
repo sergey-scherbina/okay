@@ -181,28 +181,57 @@ object Bayes:
    * on the way from its prior: answers what is left of the program (its
    * value when it ended), the factor's log weight, and the sites so far.
    */
-  private def advance[A](x: A ! Model, sites0: Map[String, Double], rng: Random): (Either[A, A ! Model], Double, Map[String, Double]) =
-    var sites = sites0
-    def draw[X](name: String, d: Distribution[X]): X =
-      val v = d.sample(rng)
-      sites = sites.updated(name, d.numeric(v))
+  /** a program run up to some factor: what is left of it (or its value), its sites, the log likelihood so far */
+  private[bayes] final case class Prefix[A](rest: Either[A, A ! Model], trace: Map[String, Site[?]], logLik: Double, fresh: Set[String], factors: Int,
+    added: Double = 0.0):
+    def pass: Pass[Unit] = Pass((), trace, logLik, fresh)
+
+  private[bayes] def start[A](p: A ! Model): Prefix[A] = Prefix(Right(p), Map.empty, 0.0, Set.empty, 0)
+
+  /**
+   * RUN from `from` until `stopAfter` more factors have been weighed (or
+   * the program ends): each `Sample` takes its value from `fixed` when it
+   * can, as `pass` does, else draws it. The one interpreter behind SMC's
+   * advance (nothing fixed, one factor) and resample-move's re-run of a
+   * particle's prefix (its sites fixed, back to the same factor).
+   */
+  private[bayes] def runFactors[A](from: Prefix[A], fixed: Map[String, Any], stopAfter: Int, rng: Random): Prefix[A] =
+    var trace = from.trace
+    var fresh = from.fresh
+    var logLik = from.logLik
+    var factors = from.factors
+    var added = 0.0
+    val goal = from.factors + stopAfter
+    def sampleSite[X](name: String, d: Distribution[X]): X =
+      val reused = fixed.get(name).flatMap(d.coerce).filter(v => d.logPdf(v) > Distribution.NegInf)
+      val v = reused.getOrElse { fresh += name; d.sample(rng) }
+      trace = trace.updated(name, Site(d, v))
       v
-    def last(op: Model[A]): (A, Double) = op match
-      case Model.Sample(name, d) => (draw(name, d), 0.0)
-      case Model.Factor(w) => ((), w)
-    def step[X](op: Model[X], k: X => A ! Model): Either[A ! Model, (A ! Model, Double)] = op match
-      case Model.Sample(name, d) => Left(k(draw(name, d)))
-      case Model.Factor(w) => Right((k(()), w))
-    @tailrec def loop(x: A ! Model): (Either[A, A ! Model], Double) = (x.resume: @unchecked) match
-      case Free.Return(a) => (Left(a), 0.0)
-      case Free.Inject(op: Model[A] @unchecked) =>
-        val (a, w) = last(op)
-        (Left(a), w)
+    def last(op: Model[A]): A = op match
+      case Model.Sample(name, d) => sampleSite(name, d)
+      case Model.Factor(w) =>
+        logLik += w
+        added += w
+        factors += 1
+        ()
+    def step[X](op: Model[X], k: X => A ! Model): Either[A ! Model, A ! Model] = op match
+      case Model.Sample(name, d) => Left(k(sampleSite(name, d)))
+      case Model.Factor(w) =>
+        logLik += w
+        added += w
+        factors += 1
+        if factors >= goal then Right(k(())) else Left(k(()))
+    @tailrec def loop(x: A ! Model): Either[A, A ! Model] = (x.resume: @unchecked) match
+      case Free.Return(a) => Left(a)
+      case Free.Inject(op: Model[A] @unchecked) => Left(last(op))
       case Free.Bind(Free.Inject(op: Model[x] @unchecked), k) => step(op, k) match
         case Left(more) => loop(more)
-        case Right((rest, w)) => (Right(rest), w)
-    val (next, w) = loop(x)
-    (next, w, sites)
+        case Right(rest) => Right(rest)
+    from.rest match
+      case Left(_) => from.copy(added = 0.0)
+      case Right(x) =>
+        val rest = loop(x)
+        Prefix(rest, trace, logLik, fresh, factors, added)
 
   private def logSumExp(xs: Vector[Double]): Double =
     val top = xs.max
@@ -220,26 +249,21 @@ object Bayes:
    * the weighted particles and log p(data), the product of the mean
    * incremental weights (unbiased for the evidence).
    */
-  def smc[A](p: A ! Model, particles: Int, seed: Long = 42L): Particles[A] =
+  def smc[A](p: A ! Model, particles: Int, seed: Long = 42L, move: Option[Kernel] = None): Particles[A] =
     require(particles > 0, "smc: at least one particle")
     val rng = new Random(seed)
     val n = particles
-    var states = Vector.fill[Either[A, A ! Model]](n)(Right(p))
-    var sites = Vector.fill(n)(Map.empty[String, Double])
+    var parts = Vector.fill(n)(start(p))
     var lw = Vector.fill(n)(0.0)
     var logZ = 0.0
     var resamplings = 0
-    while states.exists(_.isRight) do
-      val stepped = states.indices.map(i => states(i) match
-        case Right(x) => advance(x, sites(i), rng)
-        case left => (left, 0.0, sites(i))).toVector
-      states = stepped.map(_._1)
-      sites = stepped.map(_._3)
-      lw = lw.zip(stepped).map((l, s) => l + s._2)
+    while parts.exists(_.rest.isRight) do
+      parts = parts.map(runFactors(_, Map.empty, 1, rng))
+      lw = lw.zip(parts).map((l, q) => l + q.added)
       val total = logSumExp(lw)
       require(total > Distribution.NegInf, "smc: every particle has weight zero — the observations rule out all of them")
       val ws = lw.map(l => math.exp(l - total))
-      if states.exists(_.isRight) && 1 / ws.map(w => w * w).sum < n / 2.0 then
+      if parts.exists(_.rest.isRight) && 1 / ws.map(w => w * w).sum < n / 2.0 then
         logZ += total - math.log(n)
         // systematic: one uniform, n evenly spaced pointers into the cumulative weights
         val u = rng.nextDouble() / n
@@ -250,14 +274,31 @@ object Bayes:
           while j < n - 1 && cum(j) < at do j += 1
           j
         }
-        states = idx.map(states)
-        sites = idx.map(sites)
+        parts = idx.map(parts)
         lw = Vector.fill(n)(0.0)
         resamplings += 1
+        // RESAMPLE-MOVE: each particle moved by a kernel whose target is the posterior given the observations so far
+        move.foreach(k => parts = parts.map(moved(p, _, k, rng)))
     val total = logSumExp(lw)
     logZ += total - math.log(n)
-    val values = states.map { case Left(a) => a; case Right(_) => throw IllegalStateException("smc: a particle did not finish") }
-    Particles(values, sites, lw.map(l => math.exp(l - total)), logZ, resamplings)
+    val values = parts.map(_.rest match
+      case Left(a) => a
+      case Right(_) => throw IllegalStateException("smc: a particle did not finish"))
+    Particles(values, parts.map(_.trace.view.mapValues(_.numeric).toMap), lw.map(l => math.exp(l - total)), logZ, resamplings)
+
+  /**
+   * a particle's prefix MOVED by `k` (Gilks & Berzuini 2001; Chopin 2002):
+   * the kernel sees the model re-run with its sites held and stopped after
+   * the same number of factors — a model of the observations so far — so
+   * its step leaves the current posterior invariant; the moved prefix is
+   * re-run once more to pick up its continuation
+   */
+  private def moved[A](p: A ! Model, q: Prefix[A], k: Kernel, rng: Random): Prefix[A] =
+    val run: (Map[String, Any], Random) => Pass[Unit] = (fixed, r) => runFactors(start(p), fixed, q.factors, r).pass
+    val t = Trace(run, q.pass)
+    val after = k.step(t, false, rng)
+    if after eq t then q
+    else runFactors(start(p), after.pass.trace.view.mapValues(_.raw).toMap, q.factors, rng).copy(added = q.added)
 
   /**
    * THE NO-U-TURN SAMPLER over an ordinary model (specs/okay-bayes.md
@@ -320,7 +361,7 @@ object Bayes:
       var tries = 1
       while cur.logJoint == Distribution.NegInf && tries < 10000 do { cur = pass(p, Map.empty, rng); tries += 1 }
       require(cur.logJoint > Distribution.NegInf, "sample: no prior draw the observations allow in 10 000 tries")
-      var t = Trace(p, cur)
+      var t = Trace((fixed, r) => pass(p, fixed, r), cur)
       val draws = Vector.newBuilder[A]
       val sites = Vector.newBuilder[Map[String, Double]]
       var i = 0

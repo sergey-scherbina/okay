@@ -38,7 +38,7 @@ class TestKernels extends Diagnosed:
       "site(l).times(3)" -> (() => Kernel.site("l").times(3)))
     for (name, make) <- kernels do
       val k = make()
-      val moved = exact.map((m, l) => k.step(Trace(model, Bayes.pass(model, Map("m" -> m, "l" -> l), rng)), false, rng).sites)
+      val moved = exact.map((m, l) => k.step(Trace((f, r) => Bayes.pass(model, f, r), Bayes.pass(model, Map("m" -> m, "l" -> l), rng)), false, rng).sites)
       val (ms, ls) = (moved.map(_("m")), moved.map(_("l")))
       val share = moved.indices.count(i => moved(i)("m") != exact(i)._1 || moved(i)("l") != exact(i)._2).toDouble / n
       report(f"invariance, $name%-30s: m ${Summary.mean(ms)}%.4f ± ${Summary.sd(ms)}%.4f (exact $mMean%.4f ± $mSd%.4f), l ${Summary.mean(ls)}%.4f ± ${Summary.sd(ls)}%.4f (exact $lMean%.4f ± $lSd%.4f), moved ${share * 100}%.0f%%")

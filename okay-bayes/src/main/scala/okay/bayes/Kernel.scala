@@ -1,10 +1,11 @@
 package okay.bayes
 
 import scala.util.Random
-import okay.!
 
-/** a model's current state in a chain: the program's value, every site, the log joint */
-final class Trace[A] private[bayes] (private[bayes] val model: A ! Model, private[bayes] val pass: Bayes.Pass[A]):
+/** a model's current state in a chain: the program's value, every site, the log joint. It carries how to RE-RUN the
+ * model with sites held — the whole model in a chain, a particle's prefix in resample-move SMC — so a kernel cannot
+ * tell the two apart */
+final class Trace[A] private[bayes] (private[bayes] val run: (Map[String, Any], Random) => Bayes.Pass[A], private[bayes] val pass: Bayes.Pass[A]):
   def value: A = pass.value
   def sites: Map[String, Double] = pass.trace.view.mapValues(_.numeric).toMap
   def logJoint: Double = pass.logJoint
@@ -70,7 +71,7 @@ object Kernel:
       case Some(site) =>
         val cur = t.pass
         val proposed = site.proposed(scale, rng)
-        val next = Bayes.pass(t.model, cur.trace.view.mapValues(_.raw).toMap.updated(name, proposed.raw), rng)
+        val next = t.run(cur.trace.view.mapValues(_.raw).toMap.updated(name, proposed.raw), rng)
         val logAlpha =
           if next.logJoint == Distribution.NegInf then Distribution.NegInf
           else
@@ -90,7 +91,7 @@ object Kernel:
               else if rate > 0.95 then 10.0 else if rate > 0.75 then 2.0 else if rate > 0.5 then 1.1 else 1.0)
             windowTried = 0
             windowTook = 0
-        if ok then Trace(t.model, next) else t
+        if ok then Trace(t.run, next) else t
 
   private final class EverySite extends Kernel:
     private val moves = scala.collection.mutable.HashMap.empty[String, SiteMove]
@@ -129,7 +130,7 @@ object Kernel:
             logJ += j
             m.updated(block(i), x)
           }
-          val r = Bayes.pass(t.model, fixed, quiet)
+          val r = t.run(fixed, quiet)
           // a fresh draw is a value its distribution refused, or a structure the held sites did not have: not this block's
           if r.fresh.nonEmpty || r.trace.keySet != t.pass.trace.keySet then None else Some((r, logJ))
         val target = Target.finite(block.length)(u => at(u).fold(Distribution.NegInf)((r, logJ) => r.logJoint + logJ))
@@ -138,4 +139,4 @@ object Kernel:
         tried += 1
         statSum += nuts.lastStat
         if nuts.lastDiverged then diverged += 1
-        at(u1).fold(t)((r, _) => Trace(t.model, r))
+        at(u1).fold(t)((r, _) => Trace(t.run, r))

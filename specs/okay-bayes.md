@@ -1,6 +1,6 @@
 # okay-bayes — Bayesian inference as effects, without Python
 
-Status: stage 1 landed (2026-10-02); stage 2a (ch.2, adaptive Metropolis) 2b (SMC), 2c (ch.3), 2d (ch.6), 3a (NUTS), 3b (AD) and 4 (the sampler facade), 5a (ch.4), 5b (ch.5), 5c (ch.7), 5d (Dark Worlds), §6 vectors, 6 (streams and Bulk) 2026-10-02; specification 2026-10-02 (operator ask: "Bayesian Methods for
+Status: stage 1 landed (2026-10-02); stage 2a (ch.2, adaptive Metropolis) 2b (SMC), 2c (ch.3), 2d (ch.6), 3a (NUTS), 3b (AD) and 4 (the sampler facade), 5a (ch.4), 5b (ch.5), 5c (ch.7), 5d (Dark Worlds), §6 vectors, 6 (streams and Bulk), 7 (kernels, resample-move) 2026-10-02; specification 2026-10-02 (operator ask: "Bayesian Methods for
 Hackers ... make okay-bayes so we can do without Python; is it very
 hard?"). Builds on the core's `Prob` effect (specs/prob-effect-hansei.md:
 discrete `dist`, boolean `observe`, exact enumeration, rejection).
@@ -332,9 +332,22 @@ typeclass survey: "kernels and resample-move first").
   sites held, stopped at the same factor — so a static parameter's
   particles are no longer only prior draws. `smc(p, particles, seed,
   move = kernel)`.
-  - [ ] Beta–Bernoulli observed one at a time: the number of distinct
+  - [x] Beta–Bernoulli observed one at a time: the number of distinct
         particle values, without and with the move, measured; the mean,
         sd and log evidence against the closed form with the move
+  Measured (TestResampleMove, JVM/Scala.js/Native): 400 flips, 1000
+  particles — 259 distinct values of p without the move, 968 with
+  `Kernel.site("p").times(3)`; with it E[p] 0.6638, sd 0.0242 (exact
+  0.6634 ± 0.0235), log p(y) −257.6169 (exact −257.6057). A NUTS block
+  as the move: E[p] 0.6642, 143 distinct of 500 (frozen at its first
+  step size, untuned). The move costs a re-run of the prefix, O(factors
+  so far) per particle, which is why it runs only after a resampling.
+  At 60 flips the weights resample once and 544 of 1000 survive anyway:
+  degeneracy needs a posterior that narrows a lot, and the first cut of
+  this test asked for it where there was none.
+  SMC itself was rewritten over one interpreter (`runFactors`, which
+  also re-runs a prefix) with every random draw in the old order: the
+  Kalman, Beta–Bernoulli and Bayes-factor numbers are unchanged.
 
 ## 4. Decisions
 
