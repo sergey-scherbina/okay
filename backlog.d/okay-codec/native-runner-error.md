@@ -204,3 +204,7 @@
       test process in the affected-set gate of freer-consumed-index
       (Free.scala touched, so every dependent ran, 8235 tests, beside
       the CI runner's own family gate). Recorded per the ledger.
+      2026-10-02, okayArrowNative, GREEN on the rerun alone: lost its
+      test process in the affected-set gate of cont-stack-layer1-c
+      (while; ContMacro touched, so every dependent ran, 9616 tests).
+      Recorded per the ledger.
