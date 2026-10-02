@@ -37,7 +37,7 @@ def reset[R, F[+_]](body: Shift.Prompted.Aux[R, Shift % R, F] ?=> R ! Shift % R 
                    (using k: Shift.Key[R], d: Distinct[Shift % R + F], n: Shift.Machine[F]): R ! F =
   val pushed = Shift.push[R, F](k.prompt)(Shift.toDyn(body(using Shift.Prompted.keyed[R, F](k))))
   // a row that still holds a capture's effect is run by the machine outside
-  if n.inner then Shift.innerDyn(pushed) else Shift.runReset[R, F](pushed)
+  if n.inner then Shift.innerDyn(pushed) else Shift.run[R, F](pushed)(using Shift.Machine.outermost[F])
 
 /** `reset` as a value: `p.handle(Reset[R])` */
 object Reset:
@@ -527,7 +527,9 @@ object Shift {
 
     /** under the barrier */
     private[okay] def bounded[R, F[+_]](prog: Freer[Row[F], Unit, Unit, R]): R ! F =
-      residual[R, F](Frames.run[Freer.Lift[F], Unit, Unit, R](Delimited.machine[Freer.Lift[F]].reset[Unit, Unit, R](Cont0.boundary[R, Unit])(prog)))
+      // a value: run by whoever forces it, stepped into by a machine already running (Frames.Own)
+      Free.delay(new Frames.Own[Freer.Lift[F], Unit, Unit, R, R ! F](
+        Delimited.machine[Freer.Lift[F]].reset[Unit, Unit, R](Cont0.boundary[R, Unit])(prog), residual[R, F]))
 
     /** the head form as the residual program */
     private[okay] def residual[R, F[+_]](head: Freer[Row[F], Unit, Unit, R]): R ! F =
@@ -577,34 +579,6 @@ object Shift {
       val s = new In[R, st.S](named[R]("dollar")(using at))
       Delimited.machine[Freer.Lift[F]].dollar[R, R0, st.S, st.S](Cont0.delimiter(s.p))(ret)(rebase(body(s)))
 
-
-  /**
-   * A `reset` that runs its own machine runs it INSIDE whatever forced it, and nested resets of one answer type
-   * each start one: JVM depth grows with the nesting (3 000-10 000 deep, then StackOverflowError). So the runs
-   * are counted per thread, and past the room the next one runs on a fresh stack, as Cont's strict `k` does
-   * (StackSwitch, specs/cont-stack.md Layer 2). A level is taken as ~4 KB cold, Cont's ~1.2 KB scaled.
-   */
-  // IN AN OBJECT OF ITS OWN, initialised only when a keyed `reset` runs (shift-merge): as fields of `Shift`
-  // they ran in the initialiser every `Shift` user reaches, and Scala.js has neither `Integer.getInteger` nor
-  // `ThreadLocal.withInitial` — the merged object failed to link for every JS program using a prompt by value.
-  // The room itself is a ThreadLocal, against cont-stack's rule: sprint shift-merge-guard.
-  private object ResetRoom:
-    val room: Int = Integer.getInteger("okay.shift.room", math.max(32L, StackSwitch.firstRoom.toLong * 1200 / 4096).toInt)
-    val left: ThreadLocal[Array[Int]] = ThreadLocal.withInitial(() => Array(room))
-
-  /** run the machine for one `reset`, one level less of room; at zero on a fresh stack */
-  private[okay] def runReset[R, F[+_]](pushed: R ! Shift % ? + F): R ! F =
-    val cell = ResetRoom.left.get
-    val here = cell(0)
-    if here > 0 then
-      cell(0) = here - 1
-      try Shift.run[R, F](pushed)(using Machine.outermost[F]) finally cell(0) = here
-    else StackSwitch.fresh { big =>
-      val c = ResetRoom.left.get
-      val saved = c(0)
-      c(0) = big / 2
-      try Shift.run[R, F](pushed)(using Machine.outermost[F]) finally c(0) = saved
-    }
 
   /** a program keyed STATICALLY (by an answer type) as a dynamic one, to mix with captures to prompts by
    * value in one `flatMap`: rows are invariant, so this is the written row coercion (widen-is-a-coercion) */

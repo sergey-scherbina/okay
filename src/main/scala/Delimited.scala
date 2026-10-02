@@ -147,6 +147,23 @@ object Frames:
   final class Resume[F[_, _, +_], A, S, T, Z](val a: A, val k: Stack[F, A, S, T, Z]) extends (() => Freer[Cont0.Row[F], S, T, Z]):
     def apply(): Freer[Cont0.Row[F], S, T, Z] = Frames.enterAt[F, A, S, T, Z](a, k)
 
+  /**
+   * A MACHINE RUN AS A VALUE (shift-stacked-key): a `Delay`'s thunk holding the program a run would start. Any
+   * other interpreter forces it, and it runs `program` on a machine of its own (`out` reads the head form back
+   * at the caller's type). A RUNNING machine steps into `program` in its own loop instead, so a run nested in a
+   * run — a keyed `reset` in another's continuation — is one loop, not a stack frame and not a stack switch.
+   */
+  final class Own[F[_, _, +_], S, T, Z, B](val program: Freer[Cont0.Row[F], S, T, Z],
+                                           out: Freer[Cont0.Row[F], S, T, Z] => B) extends (() => B):
+    def apply(): B = out(Frames.run[F, S, T, Z](program))
+
+  /** an `Own` thunk's program at the running machine's row, or null */
+  private def own[F[_, _, +_], S, T, Z](t: () => Freer[Cont0.Row[F], S, T, Z]): Freer[Cont0.Row[F], S, T, Z] | Null = t match
+    // THE ONE CLAIM: the run's program is at the row of the program that holds its Delay (its residual
+    // was typed into that row), and its delimiter indices are its own, closed by the boundary it starts with
+    case o: Own[?, ?, ?, ?, ?] => o.program.asInstanceOf[Freer[Cont0.Row[F], S, T, Z]]
+    case _ => null
+
   /** one empty segment and one empty stack for every index (`Nil`'s pattern) */
   private val theEnd: End[Nothing, Any, Any] = End()
   private val theDone: Done[Nothing, Any, Any] = Done()
@@ -304,8 +321,10 @@ object Frames:
             case i: Cat[F, Y, `s2`, S1, ?, ?, `y`] => loop(focus, fs, Cat(i.k, Cat(i.below, c.below)))
           case _: Done[F, Y, S0] @unchecked => focus
       case d: Delay[G, T, R, X] => Frames.resume[F, T, R, X](d.thunk) match
-        // a resumption is pushed, never forced
-        case null => loop(d.thunk(), fs, st)
+        // a resumption is pushed, never forced; a run is stepped into, never started
+        case null => own[F, T, R, X](d.thunk) match
+          case null => loop(d.thunk(), fs, st)
+          case p: Freer[G, T, R, X] @unchecked => loop(p, fs, st)
         case r: Resume[F, a, T, R, X] =>
           val n = resume(Return[G, R, a](r.a), r.k, fs, st)
           loop(n.focus, n.fs, n.st)
