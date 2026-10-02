@@ -85,6 +85,23 @@ backlog cont-stack-layer1-c.
    zooms on JVM (and 128 KB), Scala.js and Native; a million wizard
    steps between two asks on 128 KB; full affected gate 9 479 tests.
    The shift road's `PState.zoom` stays, the bridge, marked as such.
+2A. **`Effects.handle` as a translation onto the machine — REFUTED as
+   written** (handle-on-machine, 2026-10-02). The probe: the handler a
+   `Delim` prompt, an operation of `F` a `shift0` to it with `k` as data,
+   an operation of `G` forwarded, run by `Delim.run`; it agreed with
+   `Effects.handle` on every answer (a capture per handled operation,
+   and a clause resuming twice). Measured on one pre-built program —
+   10 000 operations, every 10th handled with a capture, the rest
+   forwarded through a real effect (`Produce` is `Id`, which every row
+   contains, so no machine can run it) — alternated, one lane per run,
+   quiet box: **306.5 / 305.6 µs against 175.7 / 176.5 for the fold,
+   1.74x; 3 398 330 B against 1 958 097, 1.74x** (history.d
+   handle-on-machine). The fold road stays: its strict `k` is the
+   bridge, but the census showed its answer is a lazy program, so it
+   never nests. The probe code is deleted; the numbers are the record.
+   Where the 1.74x would have to come from, if anyone revisits: the
+   rewrite builds a second tree (a `flatMap` per operation), and every
+   forwarded operation leaves the machine and re-enters it.
 3. The bridge on Scala.js: the nesting shapes of the census (state
    passing) and user code — candidates: the function answer walked as
    data on JS only (cont-stack-layer1-c (6)), a link-time IR transform
