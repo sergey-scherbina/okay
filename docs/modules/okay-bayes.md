@@ -176,6 +176,20 @@ On the book's arms (0.85, 0.60, 0.75) the mean regret is 14.3 after 1000
 pulls and 20.9 after 10 000 — logarithmic growth — where playing at random
 costs 1167; the best arm takes 98.3% of the pulls.
 
+**Ranking: `Rank`.** Chapter 4 sorts comments by votes. One upvote of one
+has a perfect ratio and almost no evidence; `Rank.sort` orders by a low
+quantile of each item's Beta posterior instead — how good it is AT LEAST,
+plausibly — computed exactly (`Beta.cdf` / `Beta.quantile`, the
+incomplete beta function):
+
+```scala
+val ranked = Rank.sort(items)(_._2).map(_._1)
+```
+
+999 of 1000 comes first and one of one last. The book's quick formula
+(mean − 1.65 sd) is optimistic by 0.054 for a single vote and right to 3e-4
+by 700.
+
 **Reading the posterior.** `post.site("lambda_1")` is a site's chain,
 `post.draws` the program's values; `Summary` has the mean, sd, quantiles,
 the highest-density interval, the effective sample size (Geyer's initial
@@ -225,6 +239,7 @@ by `uv` through okay-py, samples the same model as a Live test.
 | `Smooth.param(name, prior)`, `observe`, `observeAll`, `score`; `Smooth.Normal, HalfNormal, Exponential, Gamma, Beta, Uniform, Bernoulli, BernoulliLogit, Poisson, Mixture` | a model over `Grad`, differentiable densities |
 | `Smooth.target(p)`, `Smooth.nuts(p, samples, burn, chains, seed, delta)` | its exact-gradient `Target`, and NUTS on it |
 | `Sampler`, `Sampler.Okay` (default), `PyMC.given` (JVM, optional okay-py), `Samplers.byName` | which NUTS runs `nuts` |
+| `Beta.cdf`, `Beta.quantile`, `Distribution.incompleteBeta`; `Rank.lowerBound / approxLowerBound / sort` | exact Beta tails; ranking by evidence |
 | `smc(p, particles, seed)`, `observeEach(xs)(d, value)` | sequential Monte Carlo: `Particles` with `expect`, `mean(site)`, `ess`, `logEvidence` |
 | `Posterior`: `draws`, `site(name)`, `rhat(name)`, `acceptance` | the posterior, typed |
 | `Summary.mean / sd / quantile / hdi / ess / rhat` | reading it |

@@ -1,6 +1,6 @@
 # okay-bayes — Bayesian inference as effects, without Python
 
-Status: stage 1 landed (2026-10-02); stage 2a (ch.2, adaptive Metropolis) 2b (SMC), 2c (ch.3), 2d (ch.6), 3a (NUTS), 3b (AD) and 4 (the sampler facade) 2026-10-02; specification 2026-10-02 (operator ask: "Bayesian Methods for
+Status: stage 1 landed (2026-10-02); stage 2a (ch.2, adaptive Metropolis) 2b (SMC), 2c (ch.3), 2d (ch.6), 3a (NUTS), 3b (AD) and 4 (the sampler facade), 5a (ch.4) 2026-10-02; specification 2026-10-02 (operator ask: "Bayesian Methods for
 Hackers ... make okay-bayes so we can do without Python; is it very
 hard?"). Builds on the core's `Prob` effect (specs/prob-effect-hansei.md:
 discrete `dist`, boolean `observe`, exact enumeration, rejection).
@@ -195,13 +195,13 @@ Stage 5 — the rest of the book, one lane per chapter:
   continued fraction, the quantile by safeguarded Newton), and `Rank` —
   items ordered by the lower bound of their Beta posterior, not by their
   raw ratio, the book's answer to "1 upvote of 1 beats 999 of 1000".
-  - [ ] `Beta.cdf` against closed forms (Beta(1, 1), Beta(a, 1) = xᵃ,
+  - [x] `Beta.cdf` against closed forms (Beta(1, 1), Beta(a, 1) = xᵃ,
         Beta(2, 2)) and symmetry; `quantile` its inverse to 1e-10
-  - [ ] the book's approximate lower bound against the exact quantile:
+  - [x] the book's approximate lower bound against the exact quantile:
         close for many votes, wrong by how much for few — measured
-  - [ ] the ranking: a small sample cannot outrank a large one with a
+  - [x] the ranking: a small sample cannot outrank a large one with a
         slightly lower ratio, and ties in ratio order by evidence
-  - [ ] the law of large numbers as the book shows it: the spread of a
+  - [x] the law of large numbers as the book shows it: the spread of a
         mean of n draws falls as 1/√n
 - 5b. ch.5, loss functions and the Bayes action.
 - 5c. ch.7, A/B testing by expected revenue (Dirichlet).
@@ -386,6 +386,23 @@ TestPyMCSampler (Live): with `import okay.bayes.PyMC.given`, the same
 zero divergences both. The second row is the finding that refutes stage
 2a's geometry explanation (corrected there): the same NUTS on the same
 raw-temperature posterior is fine when the density is okay's.
+
+Stage 5a (2026-10-02), TestRank — JVM, Scala.js and Native. The book's
+5% lower bound (mean − 1.65 sd) against the exact Beta quantile:
+
+| votes | exact | the book's | off by |
+|---|---|---|---|
+| 1 up, 0 down | 0.2236 | 0.2778 | +0.054 |
+| 5 up, 2 down | 0.4003 | 0.4207 | +0.020 |
+| 50 up, 20 down | 0.6176 | 0.6206 | +0.003 |
+| 500 up, 200 down | 0.6853 | 0.6855 | +0.0003 |
+
+The approximation is always optimistic, and most where it matters — few
+votes, exactly the items the bound exists to hold back. Ranked by ratio:
+one of one first; by the exact bound: 999 of 1000, 750 of 1000, 75 of 100,
+3 of 4, one of one. The spread of a mean of n Poisson(4.5) draws:
+0.655 / 0.218 / 0.066 at n = 10 / 100 / 1000 against √(4.5/n) 0.671 /
+0.212 / 0.067.
 
 ## 6. Open questions
 

@@ -77,6 +77,42 @@ object Distribution:
   /** ln B(a, b) */
   def logBeta(a: Double, b: Double): Double = logGamma(a) + logGamma(b) - logGamma(a + b)
 
+  /**
+   * I_x(a, b), the regularized incomplete beta function — the continued
+   * fraction by the modified Lentz method (Numerical Recipes §6.4), taken on
+   * whichever side of (a + 1)/(a + b + 2) converges fast.
+   */
+  def incompleteBeta(a: Double, b: Double, x: Double): Double =
+    if x <= 0 then 0.0
+    else if x >= 1 then 1.0
+    else
+      val front = math.exp(a * math.log(x) + b * math.log1p(-x) - logBeta(a, b))
+      if x < (a + 1) / (a + b + 2) then front * betaFraction(a, b, x) / a
+      else 1 - front * betaFraction(b, a, 1 - x) / b
+
+  private def betaFraction(a: Double, b: Double, x: Double): Double =
+    val tiny = 1e-300
+    def fix(v: Double): Double = if math.abs(v) < tiny then tiny else v
+    var c = 1.0
+    var d = 1 / fix(1 - (a + b) * x / (a + 1))
+    var h = d
+    var m = 1
+    var done = false
+    while !done && m <= 500 do
+      val m2 = 2 * m
+      val even = m * (b - m) * x / ((a - 1 + m2) * (a + m2))
+      d = 1 / fix(1 + even * d)
+      c = fix(1 + even / c)
+      h *= d * c
+      val odd = -(a + m) * (a + b + m) * x / ((a + m2) * (a + 1 + m2))
+      d = 1 / fix(1 + odd * d)
+      c = fix(1 + odd / c)
+      val step = d * c
+      h *= step
+      done = math.abs(step - 1) < 1e-16
+      m += 1
+    h
+
   /** ln C(n, k) */
   def logChoose(n: Int, k: Int): Double = logGamma(n + 1.0) - logGamma(k + 1.0) - logGamma(n - k + 1.0)
 
@@ -156,6 +192,30 @@ object Distribution:
     def coerce(v: Any): Option[Double] = double(v)
     def numeric(v: Double): Double = v
     override def support: Support = Support.Interval(0, 1)
+    /** P(X ≤ x): the regularized incomplete beta I_x(a, b) */
+    def cdf(x: Double): Double = Distribution.incompleteBeta(a, b, x)
+    /**
+     * the x with P(X ≤ x) = p: Newton on the cdf, kept inside a shrinking
+     * bracket and bisecting whenever a Newton step would leave it
+     */
+    def quantile(p: Double): Double =
+      require(p >= 0 && p <= 1, s"Beta.quantile: p must be in [0, 1], got $p")
+      if p == 0 then 0.0 else if p == 1 then 1.0
+      else
+        var (lo, hi) = (0.0, 1.0)
+        var x = a / (a + b)
+        var i = 0
+        var done = false
+        while !done && i < 200 do
+          val f = cdf(x) - p
+          if f < 0 then lo = x else hi = x
+          val dens = math.exp(logPdf(x))
+          val newton = if dens > 0 then x - f / dens else Double.NaN
+          val next = if newton > lo && newton < hi then newton else 0.5 * (lo + hi)
+          done = math.abs(next - x) < 1e-15 || hi - lo < 1e-15
+          x = next
+          i += 1
+        x
 
   final case class Uniform(lo: Double, hi: Double) extends Distribution[Double]:
     require(hi > lo, s"Uniform: hi must exceed lo, got [$lo, $hi]")
