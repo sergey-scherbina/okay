@@ -119,6 +119,13 @@ class TestShift extends munit.FunSuite:
     assertEquals(!.run(reset[Int, P](loop(100000))), 100000)
   }
 
+  test("depth: 100 000 nested resets of one answer type, past the stack's room") {
+    def nest(n: Int): Int ! Pure =
+      if n == 0 then pure(0)
+      else reset[Int, Pure](!.tailcall(nest(n - 1)).plus[Shift % Int].flatMap(x => shift0[Int, Int, Pure](k => k(x + 1))))
+    assertEquals(!.run(nest(100000)), 100000)
+  }
+
   test("level 2: cont and embed round-trip on the diagonal") {
     val q: Int ! Shift % Int + S =
       for

@@ -183,6 +183,20 @@ one API, one suite over both:
   `shift[R, A, F]` (an overload chosen by the number of type arguments)
   reaches past it.
 
+- **Nested resets of one answer type get a fresh stack past the room**
+  (reset-nesting-room, the operator's "Приземляй" after the alternatives
+  were weighed). A `reset` that runs its own machine runs it inside what
+  forced it, so nesting is JVM depth: 3 000-10 000, then StackOverflowError
+  (the new 100 000 test, watched to fail with the switch off). `Shift.run`
+  counts the runs in a `ThreadLocal` and, past the room (Cont's first
+  room scaled to ~4 KB a level, `-Dokay.shift.room`), runs the next on
+  `StackSwitch.fresh`. Refuted without one: the row cannot see a nesting of
+  one type; the lexical `Shift.In` breaks when a handler sits between the
+  two resets (its operations hide in the pushed body); measuring the
+  stack costs microseconds a reset; catching the overflow re-runs the
+  user's side effects. Cost: `twoShot` 10.8 µs against 10.3, the bytes
+  equal.
+
 ## Results
 
 Probe: `okay-direct/src/test/scala/ShiftFx.scala`,

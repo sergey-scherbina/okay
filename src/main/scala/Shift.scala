@@ -34,7 +34,7 @@ def reset[R, F[+_]](body: Shift.In.Aux[R, F] ?=> R ! Shift % R + F)
                    (using k: Shift.Key[R], d: Distinct[Shift % R + F], n: Shift.Nesting[F]): R ! F =
   val pushed = Delim.push[R, F](k.prompt)(Shift.in(body(using Shift.In[R, F](k))))
   // a row that still holds a capture's effect is run by the machine outside
-  if n.inner then Shift.inner(pushed) else Delim.run[R, F](pushed)
+  if n.inner then Shift.inner(pushed) else Shift.run[R, F](pushed)
 
 /** `reset` as a value: `p.handle(Reset[R])` */
 object Reset:
@@ -44,6 +44,29 @@ object Reset:
         reset[R, F](a.substituteCo[[X] =>> X ! Shift % R + F](p))
 
 object Shift:
+
+  /**
+   * A `reset` that runs its own machine runs it INSIDE whatever forced it, and nested resets of one answer type
+   * each start one: JVM depth grows with the nesting (3 000-10 000 deep, then StackOverflowError). So the runs
+   * are counted per thread, and past the room the next one runs on a fresh stack, as Cont's strict `k` does
+   * (StackSwitch, specs/cont-stack.md Layer 2). A level is taken as ~4 KB cold, Cont's ~1.2 KB scaled.
+   */
+  private val room: Int = Integer.getInteger("okay.shift.room", math.max(32L, StackSwitch.firstRoom.toLong * 1200 / 4096).toInt)
+  private val left: ThreadLocal[Array[Int]] = ThreadLocal.withInitial(() => Array(room))
+
+  /** run the machine for one `reset`, one level less of room; at zero on a fresh stack */
+  private[okay] def run[R, F[+_]](pushed: R ! Delim + F): R ! F =
+    val cell = left.get
+    val here = cell(0)
+    if here > 0 then
+      cell(0) = here - 1
+      try Delim.run[R, F](pushed) finally cell(0) = here
+    else StackSwitch.fresh { big =>
+      val c = left.get
+      val saved = c(0)
+      c(0) = big / 2
+      try Delim.run[R, F](pushed) finally c(0) = saved
+    }
 
   /** evidence of an enclosing `reset` block: its answer `R`, and `F`, the row outside it */
   @scala.annotation.implicitNotFound("no reset around this shift: inside `reset { … }` a shift names only its value type, `shift[A](k => …)`; elsewhere name all three, `shift[R, A, F](k => …)`")
