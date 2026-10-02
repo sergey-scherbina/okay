@@ -149,9 +149,9 @@ object Cont:
     r.room = room
     try enter(k, x) finally r.room = saved
 
-  /** `x` into `k`'s nodes, run to a value: `k(x)` is the machine's own resumption node, run through the door */
+  /** `x` into `k`'s nodes, run to a value, through the door's resumption form */
   private def enter(k: K, x: Any): Any =
-    answerOf(M.runHead[Any, Any, Any](k(x)))
+    answerOf(M.runHeadAt[Any, Any, Any, Any](k)(x))
 
   /** the root at the bottom of `k`: a strict `k` always ends at it (the machine reads its own stack) */
   private def rootOf(k: K): Root = M.retOf(k, root) match

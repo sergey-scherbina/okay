@@ -21,6 +21,14 @@ The operator's ask in cont-js-depth's design conversation: "Одна дверь 
   at random points, captures crossing it included, on every platform. A
   mutant `runHead` that put a boundary around the sub-run failed all
   three program sets.
+- **The resumption form of the door, `runHeadAt(k)(a)`,** is `runHead(k(a))`
+  without building `k(a)`, and is the strict-`k` bridge's road. It was
+  measured on statePara in three rounds (history.d `delimited-one-door`):
+  - `runHead(k(x))`: 1.15x and +92 KB;
+  - `runHeadAt` through `enterAt`: +12 KB, from one call level more into
+    the loop;
+  - `runHeadAt` entering the loop itself, kept: identical bytes
+    (549 336 B), and 61.5 µs against master's 63.3 µs.
 - **`Delimited` is a `ParaMonad`** (`[A, S, R] =>> M[S, R, A]`): `pure`
   takes its type parameters in Atkey's order, and `flatMap` is `bind`.
 

@@ -44,6 +44,10 @@ trait Delimited[M[_, _, _]] extends ParaMonad[[A, S, R] =>> M[S, R, A]]:
    */
   def runHead[T, R, A](m: M[T, R, A]): M[T, R, A]
 
+  /** the same door entered from a captured stack: `runHeadAt(k)(a)` is `runHead(k(a))` without building `k(a)`
+   * (a resumption node per call: +92 KB and 1.15x on statePara through the strict-`k` bridge, measured) */
+  def runHeadAt[A, S, T, Z](k: SubCont[A, S, T, Z])(a: A): M[S, T, Z]
+
   /** run to a value (`runCC`): `runHead` under a boundary; a capture without its delimiter is `NoPrompt` */
   def run[A](m: M[A, A, A]): A
 
@@ -139,6 +143,11 @@ object Frames:
 
     /** the loop, the only start of it outside this object */
     def runHead[T, R, A](m: Freer[Cont0.Row[F], T, R, A]): Freer[Cont0.Row[F], T, R, A] = Frames.run[F, T, R, A](m)
+
+    // the loop entered directly, not through `enterAt`: one call level more on the strict-k road cost +12 KB a
+    // statePara op (the JIT's escape analysis gave up on the focus `Return`), measured exact (ProbeDoorBytes)
+    def runHeadAt[A, S, T, Z](k: Stack[F, A, S, T, Z])(a: A): Freer[Cont0.Row[F], S, T, Z] =
+      Frames.machine[F, S, T, Z, A, T](Return[Cont0.Row[F], T, A](a), k)
 
     /** under the barrier; any head form but a value is an unhandled operation of `F` */
     def run[A](m: Freer[Cont0.Row[F], A, A, A]): A =

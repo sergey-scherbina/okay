@@ -72,4 +72,6 @@ object DelimitedReference:
      * `runHead` runs its loop and must agree with this in every context (TestDelimitedDifferential) */
     def runHead[T, R, A](m: P[T, R, A]): P[T, R, A] = m
 
+    def runHeadAt[A, S, T, Z](k: K[A, S, T, Z])(a: A): P[S, T, Z] = k(a)
+
     def run[A](m: P[A, A, A]): A = as[A](m.prog.go(Nil))

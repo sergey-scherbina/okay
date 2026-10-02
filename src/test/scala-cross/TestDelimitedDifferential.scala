@@ -32,6 +32,7 @@ object DelimitedDifferential:
     case Drop(n: Int)                    // never resumes: answers n
     case Then(a: Int, after: Prog)       // k(a), then a program outside, mixed
     case ResumeWith(m: Prog)             // resume k with a COMPUTATION
+    case HeadAt(a: Int)                  // k(a) through the door's resumption form, runHeadAt
 
   /** two answers into one, order-sensitive, wrapping like Int does */
   def mix(x: Int, y: Int): Int = x * 31 + y
@@ -48,6 +49,7 @@ object DelimitedDifferential:
       case Body.Drop(n) => pure(n)
       case Body.Then(a, after) => bind(k(a))(x => bind(go(after))(y => pure(mix(x, y))))
       case Body.ResumeWith(m) => D.resume(k)(go(m))
+      case Body.HeadAt(a) => D.runHeadAt(k)(a)
     def go(p: Prog): M[Int, Int, Int] = p match
       case Prog.Pure(n) => pure(n)
       case Prog.Bind(m, rest) => bind(go(m))(x => bind(go(rest))(y => pure(mix(x, y))))
@@ -82,7 +84,8 @@ object DelimitedDifferential:
       case 3 => Body.Twice(n, n)
       case 4 | 5 => Body.Drop(n)
       case 6 | 7 => Body.Then(n, gen(r, d - 1))
-      case _ => Body.ResumeWith(gen(r, d - 1))
+      case 8 => Body.ResumeWith(gen(r, d - 1))
+      case _ => Body.HeadAt(n)
     if depth <= 0 then Prog.Pure(n)
     else r.nextInt(14) match
       case 0 => Prog.Pure(n)
