@@ -259,7 +259,9 @@ object State {
  * (`stateThreaded` 18.07 us/op): the type moves, and the price is one
  * unshared `Get` node a step. Buy the shift road for what only it can
  * do — a body that uses `k`, the profunctor `Zooming` — and the data
- * road for a protocol.
+ * road for a protocol. A ZOOM by a lens is on the data road too since
+ * 2026-10-02 (`Threaded.zoomWith`, okay-optics' `Threaded.zoom`): one
+ * operation of the tree, no nested run (specs/cont-js-depth.md 3a).
  */
 object PState {
   /** read the state, leaving its type unchanged */
@@ -340,6 +342,10 @@ object PState {
     case Get[S]() extends Op[S, S, S]
     /** replace the state, moving its type from `S` to `T`; the old state is the answer */
     case Put[S, T](t: T) extends Op[T, S, S]
+    /** run `inner` over the PART `look` reads, then put the part back:
+     * the whole goes `S1 -> S2` exactly when the part goes `A1 -> A2`
+     * (a four-parameter lens; specs/cont-js-depth.md stage 3a) */
+    case Zoom[S1, S2, A1, A2, X](look: S1 => A1, put: (S1, A2) => S2, inner: Freer[Op, A2, A1, X]) extends Op[S2, S1, X]
 
   /** a typestate program on the threaded road: `A` computed, the state
    * moved from `R` to `S` */
@@ -353,15 +359,51 @@ object PState {
     inline def get[S]: Threaded[S, S, S] = SharedOps.getT.asInstanceOf[Threaded[S, S, S]]
     inline def put[S, T](t: T): Threaded[S, T, S] = Freer.Inject[Op, T, S, S](Op.Put(t))
 
+    /**
+     * A program over the PART of the state a lens reads, run over the
+     * whole (specs/cont-js-depth.md stage 3a): the inner program starts
+     * at `look(s1)`, and its final part goes back with `put`. The shift
+     * road's `PState.zoom` runs the inner program as a NESTED run
+     * (`p / …` inside a body); here it is one operation of the tree,
+     * and `run` keeps the outer program on its own stack.
+     */
+    def zoomWith[S1, S2, A1, A2, X](look: S1 => A1, put: (S1, A2) => S2)(inner: Threaded[X, A2, A1]): Threaded[X, S2, S1] =
+      Freer.Inject[Op, S2, S1, X](Op.Zoom(look, put, inner))
+
+    /**
+     * What is waiting for an inner program's answer: TYPE-ALIGNED, so no
+     * frame is cast — `Pop` holds the outer continuation, the whole's
+     * state at the zoom, and how to put the part back. `Top` is the
+     * program's own end.
+     */
+    private enum Waiting[X, T, S, A]:
+      case Top[S, A]() extends Waiting[A, S, S, A]
+      case Pop[X, T, S1, S2, Y, U, S, A](k: X => Threaded[Y, U, S2], s1: S1, put: (S1, T) => S2,
+                                         below: Waiting[Y, U, S, A]) extends Waiting[X, T, S, A]
+
     /** run from an initial state to (final state, value): the loop
      * threads the state, typed by the GADT at every arm — `Return` gives
      * `S = R`, `Get` gives its state's type to the continuation, `Put`
-     * hands the new state on */
-    @tailrec def run[A, S, R](p: Threaded[A, S, R])(r: R): (S, A) =
+     * hands the new state on, `Zoom` pushes the outer program and runs
+     * the inner one. One loop for any nesting: no host frame per zoom */
+    def run[A, S, R](p: Threaded[A, S, R])(r: R): (S, A) = go(p, r, Waiting.Top[S, A]())
+
+    @tailrec private def go[X, T, R, S, A](p: Threaded[X, T, R], r: R, w: Waiting[X, T, S, A]): (S, A) =
       (p.resume: @unchecked) match
-        case Freer.Return(a) => (r, a)
-        case Freer.Inject(Op.Get()) => (r, r)
-        case Freer.Inject(Op.Put(t)) => (t, r)
-        case Freer.Bind(Freer.Inject(Op.Get()), k) => run(k(r))(r)
-        case Freer.Bind(Freer.Inject(Op.Put(t)), k) => run(k(r))(t)
+        case Freer.Return(x) => finish(x, r, w) match
+          case Left(a) => a
+          case Right(next) => go(next.p, next.r, next.w)
+        case Freer.Inject(op) => go(Freer.Bind(Freer.Inject(op), (x: X) => Freer.Return(x)), r, w)
+        case Freer.Bind(Freer.Inject(Op.Get()), k) => go(k(r), r, w)
+        case Freer.Bind(Freer.Inject(Op.Put(t)), k) => go(k(r), t, w)
+        case Freer.Bind(Freer.Inject(Op.Zoom(look, put, inner)), k) => go(inner, look(r), Waiting.Pop(k, r, put, w))
+
+    /** a running program and what waits for it, under one existential */
+    private final class Next[X, T, R, S, A](val p: Threaded[X, T, R], val r: R, val w: Waiting[X, T, S, A])
+
+    /** an inner program answered `x` at state `t`: the end, or the outer
+     * program resumed with the part put back */
+    private def finish[X, T, S, A](x: X, t: T, w: Waiting[X, T, S, A]): Either[(S, A), Next[?, ?, ?, S, A]] = w match
+      case Waiting.Top() => Left((t, x))
+      case Waiting.Pop(k, s1, put, below) => Right(Next(k(x), put(s1, t), below))
 }

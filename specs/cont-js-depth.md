@@ -1,6 +1,6 @@
 # cont-js-depth — the machine apart, and no stack overflow in principle
 
-Status: stages 1-2 done, differential oracle landed, 2026-10-02. Owner lane: `cont-js-depth`.
+Status: stages 1-2 and 3a done, differential oracle landed, 2026-10-02. Owner lane: `cont-js-depth`.
 Sprint item of the same name; follows specs/cont-stack.md and
 specs/freer-kont.md.
 
@@ -75,6 +75,16 @@ backlog cont-stack-layer1-c.
    of the machine's fast path (capture at ANY delimiter right under the
    live segment, its prompt unchecked) passes the hand-written laws and
    the depth suite (15 of 15) and fails all three differential sets.
+3a. **The census's nesting sites off the bridge** — DONE (threaded-zoom):
+   `PState.Threaded` gained `zoomWith` (an `Op.Zoom`; `run` keeps the
+   outer program on a TYPE-ALIGNED waiting stack, no cast, the
+   four-parameter lens's type change kept) and okay-optics' lens spelling
+   `PState.Threaded.zoom(lens)`; `PWizard` runs on data (`Get`/`Put`/
+   `Show` operations, a loop to `Machine`, the loop resumed from the
+   `Showing` callback), its names and syntax unchanged. A million nested
+   zooms on JVM (and 128 KB), Scala.js and Native; a million wizard
+   steps between two asks on 128 KB; full affected gate 9 479 tests.
+   The shift road's `PState.zoom` stays, the bridge, marked as such.
 3. The bridge on Scala.js: the nesting shapes of the census (state
    passing) and user code — candidates: the function answer walked as
    data on JS only (cont-stack-layer1-c (6)), a link-time IR transform

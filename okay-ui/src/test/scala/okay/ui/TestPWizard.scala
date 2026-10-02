@@ -28,7 +28,7 @@ class TestPWizard extends munit.FunSuite {
       case _ => None
     }
 
-  def wizard[R]: Cont[Unit, ((String, Int)) => Machine[R], Unit => Machine[R]] =
+  def wizard[R]: Step[Unit, Unit, (String, Int), R] =
     askName.flatMap(_ => askAge)
 
   test("the typed wizard collects through a growing state; validation retries") {
@@ -64,6 +64,18 @@ class TestPWizard extends munit.FunSuite {
       "def bad[R] = TestPWizardSteps.askAge[R].flatMap(_ => TestPWizardSteps.askName[R])\n" +
       "PWizard.run(())(bad)")
     assert(errors.nonEmpty && errors.contains("Found"), errors)
+  }
+
+  test("a wizard of a million steps between two asks runs on a 128 KB thread") {
+    // the shift road ran each step NESTED inside the last; on data the
+    // loop holds none (specs/cont-js-depth.md stage 3a)
+    val n = 1000000
+    val many: Step[Unit, Int, Int, Unit] =
+      (1 to n).foldLeft(mod[Int, Int, Unit](identity))((p, _) => p.flatMap(_ => mod[Int, Int, Unit](_ + 1)))
+    var out: Either[Throwable, Machine[(Int, Unit)]] = Left(IllegalStateException("never ran"))
+    val t = Thread(null, () => out = try Right(run(0)(many)) catch case e: Throwable => Left(e), "small-stack", 128L * 1024)
+    t.start(); t.join()
+    assertEquals(out.fold(e => throw e, identity), Machine.Done((n, ())))
   }
 }
 

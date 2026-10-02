@@ -26,6 +26,17 @@ extension (st: State.type)
   def zoom[S, A, X, F[+_]](l: Lens[S, S, A, A])(p: X ! State % A + F): X ! State % S + F =
     zoomLens[S, A, X, F](l)(p)
 
+extension (t: PState.Threaded.type)
+  /**
+   * The lens spelling of `PState.Threaded.zoomWith` — the typestate zoom
+   * on the THREADED road (specs/cont-js-depth.md stage 3a): the same
+   * type-changing lens as `PState.zoom` below, but the inner program is
+   * one operation the loop runs, not a nested run inside a shift body,
+   * so zooms nest to any depth without a host frame each.
+   */
+  def zoom[S1, S2, A1, A2, X](l: Lens[S1, S2, A1, A2])(inner: PState.Threaded[X, A2, A1]): PState.Threaded[X, S2, S1] =
+    PState.Threaded.zoomWith[S1, S2, A1, A2, X](s => l.get(s), (s, a) => l.set(a)(s))(inner)
+
 extension (ps: PState.type)
   /**
    * A typestate program over a PART, run over the whole — and this is
@@ -40,6 +51,9 @@ extension (ps: PState.type)
    * types line up on their own, which is the sense in which the
    * type-changing lens and parameterised state are the same picture.
    */
+  // THE SHIFT ROAD: the inner program is a nested run inside the shift's
+  // body — the strict-`k` bridge, a host frame per nested zoom.
+  // `PState.Threaded.zoom` above is the same zoom with no such frame.
   inline def zoom[S1, S2, A1, A2, X, R](l: Lens[S1, S2, A1, A2])
                                        (m: Cont[X, A2 => R, A1 => R]): Cont[X, S2 => R, S1 => R] =
     l[PState.Zooming[X, R]](m)
