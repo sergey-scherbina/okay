@@ -285,11 +285,78 @@ import scala.quoted.*
                 '{ Cont.foldIn[xt, btp, rt](${ q2.asExprOf[Iterable[xt]] }, ${ z2.asExprOf[btp] }, $f, $rest) }.asTerm)))))) } } }
         case _ => None
 
+    /**
+     * THE KNOWN METHODS (cont-stack-layer1-c (2)): a call whose meaning is fixed, rewritten into a plain `match`
+     * or `if` the transform already reads (with its join point) — `Option`'s `getOrElse`, `map`, `flatMap`,
+     * `fold`, `orElse`, `Either`'s `fold` and `getOrElse`, `&&`, `||`. The receiver is evaluated once, as the
+     * scrutinee; a by-name argument only in its branch, as the method would. None: not one of them.
+     */
+    def known(t: Term)(using k: Symbol): Option[Term] =
+      /** a one-parameter lambda's body with its parameter replaced by `v`, owned where it is spliced */
+      def applied(fn: Term, v: Term): Option[Term] = lambdaOf(fn) match
+        case Some((List(p), body)) => Some(subst(body, p.symbol, v).changeOwner(Symbol.spliceOwner))
+        case _ => None
+      def isOption(q: Term) = q.tpe.widen <:< TypeRepr.of[Option[Any]]
+      def isEither(q: Term) = q.tpe.widen <:< TypeRepr.of[Either[Any, Any]]
+      // the receiver's element types, read off its own type
+      def optionOf(q: Term): Option[TypeRepr] = q.tpe.widen.baseType(TypeRepr.of[Option[Any]].typeSymbol) match
+        case AppliedType(_, List(a)) => Some(a)
+        case _ => None
+      def eitherOf(q: Term): Option[(TypeRepr, TypeRepr)] = q.tpe.widen.baseType(TypeRepr.of[Either[Any, Any]].typeSymbol) match
+        case AppliedType(_, List(l, r)) => Some((l, r))
+        case _ => None
+      // each rewrite at the receiver's own element types; `B >: A` (getOrElse, orElse) by the evidence the call
+      // already had, summoned here, never a cast
+      def here(t: Term): Term = t.changeOwner(Symbol.spliceOwner)
+      t match
+        // a && b, a || b: b only when it decides
+        case Apply(Select(a, "&&"), List(b)) if a.tpe.widen <:< TypeRepr.of[Boolean] =>
+          Some(If(a, b, Literal(BooleanConstant(false))))
+        case Apply(Select(a, "||"), List(b)) if a.tpe.widen <:< TypeRepr.of[Boolean] =>
+          Some(If(a, Literal(BooleanConstant(true)), b))
+        case Apply(TypeApply(Select(o, "getOrElse"), List(bt)), List(d)) if isOption(o) =>
+          optionOf(o).flatMap(a => a.asType match { case '[at] => bt.tpe.asType match { case '[b] =>
+            Expr.summon[at <:< b].map(ev => '{ ${ o.asExprOf[Option[at]] } match
+              case Some(x) => $ev(x)
+              case None => ${ here(d).asExprOf[b] } }.asTerm) } })
+        case Apply(TypeApply(Select(o, "getOrElse"), List(bt)), List(d)) if isEither(o) =>
+          eitherOf(o).flatMap((l, r) => l.asType match { case '[lt] => r.asType match { case '[rt] => bt.tpe.asType match { case '[b] =>
+            Expr.summon[rt <:< b].map(ev => '{ ${ o.asExprOf[Either[lt, rt]] } match
+              case Right(x) => $ev(x)
+              case Left(_) => ${ here(d).asExprOf[b] } }.asTerm) } } })
+        case Apply(TypeApply(Select(o, "map"), List(bt)), List(fn)) if isOption(o) =>
+          optionOf(o).map(a => a.asType match { case '[at] => bt.tpe.asType match { case '[b] =>
+            '{ ${ o.asExprOf[Option[at]] } match
+              case Some(x) => Some(${ applied(fn, 'x.asTerm).get.asExprOf[b] })
+              case None => None }.asTerm } })
+        case Apply(TypeApply(Select(o, "flatMap"), List(bt)), List(fn)) if isOption(o) =>
+          optionOf(o).map(a => a.asType match { case '[at] => bt.tpe.asType match { case '[b] =>
+            '{ ${ o.asExprOf[Option[at]] } match
+              case Some(x) => ${ applied(fn, 'x.asTerm).get.asExprOf[Option[b]] }
+              case None => None }.asTerm } })
+        case Apply(Apply(TypeApply(Select(o, "fold"), List(bt)), List(ifEmpty)), List(fn)) if isOption(o) =>
+          optionOf(o).map(a => a.asType match { case '[at] => bt.tpe.asType match { case '[b] =>
+            '{ ${ o.asExprOf[Option[at]] } match
+              case Some(x) => ${ applied(fn, 'x.asTerm).get.asExprOf[b] }
+              case None => ${ here(ifEmpty).asExprOf[b] } }.asTerm } })
+        case Apply(TypeApply(Select(o, "orElse"), List(bt)), List(alt)) if isOption(o) =>
+          optionOf(o).flatMap(a => a.asType match { case '[at] => bt.tpe.asType match { case '[b] =>
+            Expr.summon[at <:< b].map(ev => '{ ${ o.asExprOf[Option[at]] } match
+              case Some(x) => Some($ev(x))
+              case None => ${ here(alt).asExprOf[Option[b]] } }.asTerm) } })
+        case Apply(TypeApply(Select(e, "fold"), List(ct)), List(fa, fb)) if isEither(e) =>
+          eitherOf(e).map((l, r) => l.asType match { case '[lt] => r.asType match { case '[rt] => ct.tpe.asType match { case '[c] =>
+            '{ ${ e.asExprOf[Either[lt, rt]] } match
+              case Left(x) => ${ applied(fa, 'x.asTerm).get.asExprOf[c] }
+              case Right(y) => ${ applied(fb, 'y.asTerm).get.asExprOf[c] } }.asTerm } } })
+        case _ => None
+
     /** the transform: `t` in value position, `kont` what follows its value */
     def cps(t: Term, kont: Kont)(using k: Symbol): Term =
       if !mentions(k, t) then value(t, kont)
       else t match
         case KCall(e) => cps(e, Kont(kont.rt, Some(e2 => call(e2, kont))))
+        case _ if known(t).isDefined => cps(known(t).get, kont)
         case _ if traversal(t, kont).isDefined => traversal(t, kont).get
         case Apply(fun, args) =>
           cpsFun(fun, Kont(kont.rt, Some(f2 => cpsArgs(args, params(fun), kont.rt)(as => feed(kont, Apply.copy(t)(f2, as))))))

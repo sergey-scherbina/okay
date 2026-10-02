@@ -226,9 +226,45 @@ class TestContMacro extends munit.FunSuite:
       Cont.shift[Int, Int, Int](k => { var s = 0; var i = 0; while i < z do { s += k(1); i += 1 }; s }))), 3)
   }
 
+  test("1M bodies calling k through Option.getOrElse and &&, on a 128 KB stack: ZERO switches") {
+    val (a, s) = switchesDuring(SmallStack.run(128)(Cont.reset(row(n)(x =>
+      Cont.shift[Int, Int, Int](k => Option.empty[Int].getOrElse(k(x + 1)))))))
+    assertEquals(a, n)
+    assertEquals(s, 0L)
+    val (a2, s2) = switchesDuring(SmallStack.run(128)(Cont.reset(row(n)(x =>
+      Cont.shift[Int, Int, Int](k => if x >= 0 && k(x + 1) > 0 then x + 1 else 0)))))
+    // the body answers x + 1, not k's answer: the run answers the outermost body's, as the strict road does
+    assertEquals(a2, 1)
+    assertEquals(s2, 0L)
+  }
+
+  test("Option, Either, && and || with k keep their meaning: by-name stays lazy, the receiver once, multi-shot") {
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => Option.empty[Int].getOrElse(k(4)))), 4)
+    // a by-name default is NOT evaluated when the option is defined: k never called
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => Option(9).getOrElse(k(4)))), 9)
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => Option(2).map(x => k(x) * 10).getOrElse(0))), 20)
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => Option(2).flatMap(x => Option(k(x))).getOrElse(0))), 2)
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => Option.empty[Int].fold(k(1))(x => k(x) + 100))), 1)
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => Option(5).fold(k(1))(x => k(x) + 100))), 105)
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => Option.empty[Int].orElse(Option(k(3))).getOrElse(0))), 3)
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => (Left("e"): Either[String, Int]).fold(_ => k(7), r => r))), 7)
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => (Right(6): Either[String, Int]).fold(_ => 0, r => k(r)))), 6)
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => (Left("e"): Either[String, Int]).getOrElse(k(8)))), 8)
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => if false && k(1) > 0 then 1 else 2)), 2)
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => if true || k(1) > 0 then 1 else 2)), 1)
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => if true && k(1) > 0 then 1 else 2)), 1)
+    // the receiver is evaluated once
+    var built = 0
+    def opt(): Option[Int] = { built += 1; Some(1) }
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => opt().map(x => k(x)).getOrElse(0))), 1)
+    assertEquals(built, 1)
+    // multi-shot across the rewritten match
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k1 => k1(1) + k1(2)).flatMap(z =>
+      Cont.shift[Int, Int, Int](k => Option(z).map(x => k(x)).getOrElse(0)))), 3)
+  }
+
   test("bodies the transform cannot read stay opaque and keep their meaning") {
     assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => try k(1) catch { case _: Exception => 0 })), 1)
-    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => Option.empty[Int].getOrElse(k(4)))), 4)
     assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => (() => k(1))())), 1)
   }
 
