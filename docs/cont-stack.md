@@ -96,6 +96,30 @@ platform — specs/cont-core.md, step 7.)
 | Scala Native | 16 levels (a first room derived from the main thread's 8 MB would be wrong for every other thread) | as the JVM's |
 | Scala.js | — no thread to switch to | **the bound**: nested bodies of the second kind are limited by the engine's stack (~10 800 frames on Node's default; `node --stack-size` raises it) |
 
+## A body that calls `k` and answers a program: no nesting at all
+
+When the answer type `S` is a PROGRAM (`Int ! Pure`, any `A ! F`) and the
+body calls `k` itself — `k(1).flatMap(a => k(10).map(b => a + b))`, a
+`val p = k(1)` used later — the macro gives the body a LAZY `k`
+(cont-program-answer, 2026-10-02): `k(a)` returns at once, a `Delay`
+holding a run of `k`'s rest that has not started. Whoever runs the
+answer program starts it: the Free fold forces it (one bounded run,
+whose answer is the program that goes on), and a running machine
+(`Shift.run`, a handler on the machine) steps into it and continues in
+its own loop. No nested run, so no switch and no bound — a million
+nested such bodies run on a 128 KB JVM thread and on Scala.js, where the
+strict `k` fails with "Maximum call stack size exceeded":
+
+```scala
+    val c = Cont.shift[Int, Ans, Ans](k => { val p = k(1); log += "body"; p.flatMap(v => k(v)) })
+```
+
+**The contract it changes:** host side effects written after `k(a)` in
+such a body run BEFORE `k`'s rest (here `"body"` is logged before the
+rest of the program runs), where a strict `k` ran the rest first. A body
+that only PASSES `k` on (`perform(e).flatMap(k)`, a `foldM` step) is
+unchanged: its calls already happen later, from the loop.
+
 ## The knobs
 
 - `-Dokay.cont.room=N` — the levels the caller's stack is asked to hold
@@ -115,7 +139,8 @@ platform — specs/cont-core.md, step 7.)
   room is halved for exactly that margin; an opaque body whose own
   frames take more than that per level can overflow before the switch.
   Lower `-Dokay.cont.room` for such a program.
-- **Scala.js**: the engine's stack, as above.
+- **Scala.js**: the engine's stack, as above — for a body whose answer is
+  not a program; one whose answer is a program has no bound (above).
 
 ## What it costs when it does not switch
 

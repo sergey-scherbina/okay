@@ -1,0 +1,1 @@
+2026-10-02	ef27966b2	quiet	ShiftBenchmark.shift0_twoShot (keyed reset road: Own gains flat)	11.574/11.092/10.268/11.545us 79200B	master 11.601/9.409/11.707/10.205us 79200B	1.02	four alternating pairs, the sign flips between pairs, master alone 9.4-11.7: noise; bytes identical (Own stays 24 B with a boolean)

@@ -173,7 +173,12 @@ object Frames:
     /** a run as a VALUE (`Own`): a `Delay`'s thunk any interpreter forces to `runHead(program)`, read back by `out`,
      * and a running machine steps into in its own loop (shift-stacked-key) — the door's lazy form */
     def owned[T, R, A, B](program: Freer[Cont0.Row[F], T, R, A])(out: Freer[Cont0.Row[F], T, R, A] => B): () => B =
-      new Own[F, T, R, A, B](program, out)
+      new Own[F, T, R, A, B](program, out, false)
+
+    /** `owned` for a run whose ANSWER is the program that goes on (a `k` whose answer is a program,
+     * cont-program-answer): forced, `out` reads the answer; stepped into, the running machine continues into it */
+    def ownedFlat[T, R, A, B](program: Freer[Cont0.Row[F], T, R, A])(out: Freer[Cont0.Row[F], T, R, A] => B): () => B =
+      new Own[F, T, R, A, B](program, out, true)
 
     /** the `ret` of the nearest delimiter `d` in a captured `k`, or null: how Cont's strict `k` finds its run's
      * root (`Cont.rootOf`) without walking the machine's stack itself */
@@ -194,15 +199,25 @@ object Frames:
    * run — a keyed `reset` in another's continuation — is one loop, not a stack frame and not a stack switch.
    */
   final class Own[F[_, _, +_], S, T, Z, B] private[Frames] (val program: Freer[Cont0.Row[F], S, T, Z],
-                                                            out: Freer[Cont0.Row[F], S, T, Z] => B) extends (() => B):
+                                                            out: Freer[Cont0.Row[F], S, T, Z] => B,
+                                                            val flat: Boolean) extends (() => B):
     def apply(): B = out(Frames.run[F, S, T, Z](program))
 
   /** an `Own` thunk's program at the running machine's row, or null */
   private def own[F[_, _, +_], S, T, Z](t: () => Freer[Cont0.Row[F], S, T, Z]): Freer[Cont0.Row[F], S, T, Z] | Null = t match
     // THE ONE CLAIM: the run's program is at the row of the program that holds its Delay (its residual
     // was typed into that row), and its delimiter indices are its own, closed by the boundary it starts with
-    case o: Own[?, ?, ?, ?, ?] => o.program.asInstanceOf[Freer[Cont0.Row[F], S, T, Z]]
+    // A FLAT run answers the program that goes on (Cont's program-answered `k`, cont-program-answer): stepped
+    // into, the machine runs it and continues into its answer, in the same loop
+    case o: Own[?, ?, ?, ?, ?] =>
+      if o.flat then Bind(o.program.asInstanceOf[Freer[Cont0.Row[F], S, T, Any]], continueInto[F, S, S, Z])
+      else o.program.asInstanceOf[Freer[Cont0.Row[F], S, T, Z]]
     case _ => null
+
+  /** a flat run's answer, the program itself, continued: one function for every index */
+  private val theInto: Any => Any = (p: Any) => p
+  private def continueInto[F[_, _, +_], S, T, Z]: Any => Freer[Cont0.Row[F], S, T, Z] =
+    theInto.asInstanceOf[Any => Freer[Cont0.Row[F], S, T, Z]]
 
   /** one empty segment and one empty stack for every index (`Nil`'s pattern) */
   private val theEnd: End[Nothing, Any, Any] = End()

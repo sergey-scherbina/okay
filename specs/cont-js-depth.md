@@ -107,6 +107,23 @@ backlog cont-stack-layer1-c.
    `Delimited.runHead` is the only start of the loop; the strict `k`
    resumes as `runHead(k(x))`; the reference checks that door
    (specs/delimited.md). A probe of the bridge now has one place to act.
+3b. **A program-answered body's `k`, lazy** — DONE (cont-program-answer,
+   operator: "можешь решить эту проблему?" on way 1 of the bridge): when
+   `S` is a program and the body calls `k` itself (outside any lambda),
+   `ContMacro` emits `Cont.programLeaf`, whose `k(a)` is
+   `Delay(ownedFlat(k(a)))`: forced by any interpreter (a bounded run,
+   its answer the program that goes on), stepped into by a running
+   machine, which continues into that answer in its own loop (`Own`'s
+   `flat`). Not handle-on-machine's 1.74x: nothing is translated (`Free`
+   IS the machine's tree at a narrower row) and no operation leaves and
+   re-enters. A million nested such bodies on a 128 KB JVM thread, on
+   Scala.js and Native, forced and stepped into; the strict leaf on the
+   same program: StackOverflowError on 128 KB, "Maximum call stack size
+   exceeded" on Scala.js (watched first). One site in the whole tree
+   changes form (TestHandleForward's multi-shot handler, its answers and
+   forwarded order unchanged); every library body passes `k` on or
+   calls it inside a lambda, and keeps its leaf. Contract: host effects
+   after `k(a)` run before `k`'s rest (docs/cont-stack.md).
 3. The bridge on Scala.js: the nesting shapes of the census (state
    passing) and user code — candidates: the function answer walked as
    data on JS only (cont-stack-layer1-c (6)), a link-time IR transform

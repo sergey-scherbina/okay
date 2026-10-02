@@ -27,6 +27,25 @@ object ContMacro:
             case _ => foldOverTree(false, tree)(owner))
       .foldTree(false, t)(Symbol.spliceOwner)
 
+    /** does `t` CALL `k` (`k(v)`, `k.apply(v)`) while it runs — outside any lambda or local method in it. A call
+     * inside one (`produce(w).flatMap(_ => k(()))`, a `foldM` step) happens later, from whoever runs the program
+     * the body answers, and never nests (cont-js-depth's census); only a call made by the body itself waits */
+    def calls(k: Symbol, t: Tree): Boolean =
+      new TreeAccumulator[Boolean]:
+        def foldTree(found: Boolean, tree: Tree)(owner: Symbol): Boolean =
+          found || (tree match
+            case Apply(i: Ident, _) if i.symbol == k => true
+            case Apply(Select(i: Ident, "apply"), _) if i.symbol == k => true
+            case _: DefDef => false
+            case _ => foldOverTree(false, tree)(owner))
+      .foldTree(false, t)(Symbol.spliceOwner)
+
+    /** an opaque body that calls `k` and answers a PROGRAM gets the lazy `k` (cont-program-answer): its `k(a)`
+     * is a lazy run, never a nested one; a body that only passes `k` on keeps the strict leaf, at no cost */
+    def opaque(p: Symbol, body: Term): Expr[Cont[A, S, R]] =
+      if calls(p, body) && TypeRepr.of[S] <:< TypeRepr.of[Freer[?, ?, ?, ?]] then '{ Cont.programLeaf[A, S, R]($f) }
+      else fallback
+
     /** `k(v)` / `k.apply(v)`, with `v` free of `k` */
     object TailCall:
       def unapply(t: Term)(using k: Symbol): Option[Term] = t match
@@ -225,5 +244,5 @@ object ContMacro:
           case None if !mentions(p.symbol, body) => fallback
           case None => cpsBody(body) match
             case Some(b) => '{ Cont.lazyLeaf[A, S, R]($b) }
-            case None => fallback
+            case None => opaque(p.symbol, body)
       case _ => fallback

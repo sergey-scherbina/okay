@@ -1,6 +1,6 @@
 package okay
 
-import okay.Freer.{Return, Bind}
+import okay.Freer.{Return, Bind, Delay}
 
 /**
  * Danvy-Filinski's one-prompt `shift`/`reset` with answer-type modification: `M[A, S, R]` is `(A => S) => R`.
@@ -51,6 +51,24 @@ object Cont:
   def shiftLeaf[A, S, R](f: (A => S) => R): Rep[A, S, R] =
     val body = f.asInstanceOf[(Any => Any) => Any]
     leaf((k: K) => Return(body(Resumption(k))))
+
+  /**
+   * an opaque body whose answer `S` is a PROGRAM and which calls `k` itself (cont-program-answer): its `k(a)`
+   * returns at once — a `Delay` holding a lazy run of `k`'s rest (the machine's `ownedFlat`), no nested run.
+   * Any interpreter forces it: one bounded run, answering the program that goes on. A RUNNING machine steps
+   * into it and continues into that program in its own loop, so the rest of the body is that machine's frame.
+   * The contract it changes: host side effects written after `k(a)` in the body run before `k`'s rest.
+   */
+  def programLeaf[A, S, R](f: (A => S) => R): Rep[A, S, R] =
+    val body = f.asInstanceOf[(Any => Any) => Any]
+    leaf((k: K) => Return(body(Later(k))))
+
+  /** the lazy `k` of a program-answered body */
+  private final class Later(k: K) extends (Any => Any):
+    def apply(x: Any): Any = Delay[Sig, Any, Any, Any](M.ownedFlat[Any, Any, Any, P](k(x))(answerProgram))
+
+  /** a run of `k`'s rest to its answer, which is the program that goes on */
+  private val answerProgram: P => P = head => answerOf(head).asInstanceOf[P]
 
   /** the one leaf: `shift0` to the run's root */
   private def leaf[A, S, R](clause: K => P): Rep[A, S, R] =
