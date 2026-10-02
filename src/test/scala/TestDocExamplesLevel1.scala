@@ -30,6 +30,25 @@ class TestDocExamplesLevel1 extends munit.FunSuite:
     assertEquals(c, (1, Right(1)))
   }
 
+  test("tutorial §1, in level 1's words") {
+    val prog: Int ! State % Int =
+      for
+        x <- State.get[Int]
+        _ <- State.set(x + 40)
+        y <- State.get[Int]
+      yield y + 2
+
+    val ran = prog.handle(State(0)).run   // (40, 42) — the final state and the answer
+
+    type F = State % Int + Throws % String
+    def risky(n: Int): Int ! F =
+      if n < 0 then effect(Throws("negative")) else effect(State.Update[Int, Int](_ => (n, n)))
+
+    val both = risky(5).handle(State(0)).handle(Throws.either).run   // handle State, then Throws: Right((5, 5))
+    assertEquals(ran, (40, 42))
+    assertEquals(both, Right((5, 5)))
+  }
+
   test("perform: an operation as a program, either spelling") {
     val asked: Int ! State % Int = perform(State.Get[Int, Int]())
     val same: Int ! State % Int = State.Get[Int, Int]().perform

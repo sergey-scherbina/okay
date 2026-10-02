@@ -12,6 +12,7 @@ it may change".
 | `State.set(s)` | replace it |
 | `State.modify(f)` | replace it by a function of itself |
 | `State.update(f)` | answer something and replace the state in one step |
+| `p.handle(State(s))` | handle it: answers `(final state, answer)`, forwarding the program's other effects |
 | `State.run(s)(p)` | handle it: answers `(final state, answer)` for a program with no other effects |
 | `State.handle(s)(p)` | the same, forwarding the program's other effects |
 | `State.zoomWith(look, put)(p)` | run a program on one part of a bigger state |
@@ -28,9 +29,9 @@ val next: Int ! State % Int =
     _ <- State.set(n + 1)
   yield n
 
-val twice = State.run(10)(next.flatMap(a => next.map(b => (a, b))))   // (12, (10, 11))
+val twice = next.flatMap(a => next.map(b => (a, b))).handle(State(10)).run   // (12, (10, 11))
 
-val doubled = State.run(5)(State.modify[Int](_ * 2))   // (10, 10)
+val doubled = State.modify[Int](_ * 2).handle(State(5)).run   // (10, 10)
 ```
 
 ## Notes

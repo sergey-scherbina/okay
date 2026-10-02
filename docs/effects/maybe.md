@@ -1,7 +1,7 @@
 # Maybe
 
 A value that may not be there, as an effect: `Some(x).maybe` answers `x`,
-`None.maybe` stops the program, and `Maybe.run` answers `None` for it. The
+`None.maybe` stops the program, and `p.handle(Maybe.option)` answers `None` for it. The
 `Option` moves out of every signature along the way and into the handler
 at the end.
 
@@ -11,6 +11,7 @@ at the end.
 |---|---|
 | `option.maybe` | the value, or stop |
 | `Maybe.none[A]` | stop: nothing is there |
+| `p.handle(Maybe.option)` | handle it: `Some(answer)` or `None` |
 | `Maybe.run(p)` | handle it: `Some(answer)` or `None` |
 
 ## Example
@@ -19,8 +20,8 @@ at the end.
 val ages = Map("ada" -> 36)
 def age(name: String): Int ! Maybe = ages.get(name).maybe
 
-val found   = !.run(Maybe.run(age("ada")))   // Some(36)
-val missing = !.run(Maybe.run(age("bob")))   // None
+val found   = age("ada").handle(Maybe.option).run   // Some(36)
+val missing = age("bob").handle(Maybe.option).run   // None
 ```
 
 ## Why not Abort

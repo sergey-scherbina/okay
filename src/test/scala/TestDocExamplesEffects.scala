@@ -14,9 +14,9 @@ class TestDocExamplesEffects extends munit.FunSuite:
     val greet: String ! Reader % String =
       Reader.ask[String].map(name => s"hello, $name")
 
-    val hello = !.run(Reader.run("ada")(greet))   // "hello, ada"
+    val hello = greet.handle(Reader("ada")).run   // "hello, ada"
 
-    val shout = !.run(Reader.run("ada")(Reader.local[String, String, Pure](_.toUpperCase)(greet)))   // "hello, ADA"
+    val shout = Reader.local[String, String, Pure](_.toUpperCase)(greet).handle(Reader("ada")).run   // "hello, ADA"
     assertEquals(hello, "hello, ada")
     assertEquals(shout, "hello, ADA")
   }
@@ -28,9 +28,9 @@ class TestDocExamplesEffects extends munit.FunSuite:
         _ <- State.set(n + 1)
       yield n
 
-    val twice = State.run(10)(next.flatMap(a => next.map(b => (a, b))))   // (12, (10, 11))
+    val twice = next.flatMap(a => next.map(b => (a, b))).handle(State(10)).run   // (12, (10, 11))
 
-    val doubled = State.run(5)(State.modify[Int](_ * 2))   // (10, 10)
+    val doubled = State.modify[Int](_ * 2).handle(State(5)).run   // (10, 10)
     assertEquals(twice, (12, (10, 11)))
     assertEquals(doubled, (10, 10))
   }
@@ -42,7 +42,7 @@ class TestDocExamplesEffects extends munit.FunSuite:
         _ <- Writer.tell("check")
       yield 42
 
-    val (log, answer) = !.run(Writer.collect(steps))   // (Vector(parse, check), 42)
+    val (log, answer) = steps.handle(Writer.log).run   // (List(parse, check), 42)
     assertEquals((log, answer), (Vector("parse", "check"), 42))
   }
 
@@ -52,8 +52,8 @@ class TestDocExamplesEffects extends munit.FunSuite:
         case Some(n) => pure(n)
         case None    => raise(s"not a number: $s")
 
-    val good = !.run(runEither(parse("42")))   // Right(42)
-    val bad  = !.run(runEither(parse("x")))    // Left(not a number: x)
+    val good = parse("42").handle(Throws.either).run   // Right(42)
+    val bad  = parse("x").handle(Throws.either).run    // Left(not a number: x)
 
     val nothing = !.run(runOption(abort[Int]))   // None
     assertEquals(good, Right(42))
@@ -65,8 +65,8 @@ class TestDocExamplesEffects extends munit.FunSuite:
     val ages = Map("ada" -> 36)
     def age(name: String): Int ! Maybe = ages.get(name).maybe
 
-    val found   = !.run(Maybe.run(age("ada")))   // Some(36)
-    val missing = !.run(Maybe.run(age("bob")))   // None
+    val found   = age("ada").handle(Maybe.option).run   // Some(36)
+    val missing = age("bob").handle(Maybe.option).run   // None
     assertEquals(found, Some(36))
     assertEquals(missing, None)
   }
@@ -77,10 +77,10 @@ class TestDocExamplesEffects extends munit.FunSuite:
       if s.contains("_") then Chronicle.dictate(s"'$s' has an underscore").map(_ => s)
       else pure(s)
 
-    val clean  = !.run(Chronicle.run(host("db")))      // Clean(db)
-    val warned = !.run(Chronicle.run(host("my_db")))   // Warned(my_db, Vector('my_db' has an underscore))
+    val clean  = host("db").handle(Chronicle.verdict).run      // Clean(db)
+    val warned = host("my_db").handle(Chronicle.verdict).run   // Warned(my_db, Vector('my_db' has an underscore))
 
-    val failed = !.run(Chronicle.run(Chronicle.confess[String, String]("no host")))   // Failed(Vector(no host))
+    val failed = Chronicle.confess[String, String]("no host").handle(Chronicle.verdict).run   // Failed(Vector(no host))
     assertEquals(clean, Clean("db"))
     assertEquals(warned, Warned("my_db", Vector("'my_db' has an underscore")))
     assertEquals(failed, Failed(Vector("no host")))
@@ -104,7 +104,7 @@ class TestDocExamplesEffects extends munit.FunSuite:
     val expensive: Int ! Once = Once.once[Int, Pure] { runs += 1; pure(21) }
     val both: Int ! Once = expensive.flatMap(a => expensive.map(b => a + b))
 
-    val answer = !.run(Once.run(both))   // 42, and runs is 1
+    val answer = both.handle(Once.memo).run   // 42, and runs is 1
     assertEquals(answer, 42)
     assertEquals(runs, 1)
   }
@@ -112,9 +112,9 @@ class TestDocExamplesEffects extends munit.FunSuite:
   test("supply.md") {
     val three = for a <- Fresh.next; b <- Fresh.next; c <- Fresh.next yield List(a, b, c)
 
-    val ids = !.run(Fresh.run(three))   // List(0, 1, 2)
+    val ids = three.handle(Fresh.counter).run   // List(0, 1, 2)
 
-    val (after, letters) = !.run(Supply.run('a')(c => (c + 1).toChar)(Supply.next[Char].flatMap(x => Supply.next[Char].map(y => s"$x$y"))))   // ('c', "ab")
+    val (after, letters) = Supply.next[Char].flatMap(x => Supply.next[Char].map(y => s"$x$y")).handle(Supply.from('a')(c => (c + 1).toChar)).run   // ('c', "ab")
     assertEquals(ids, List(0L, 1L, 2L))
     assertEquals((after, letters), ('c', "ab"))
   }
@@ -126,7 +126,7 @@ class TestDocExamplesEffects extends munit.FunSuite:
         b <- choose(10, 20)
       yield a + b
 
-    val all = !.run(runChoice(sums))   // every branch: 11, 21, 12, 22
+    val all = sums.handle(Choose.all).run   // every branch: 11, 21, 12, 22
 
     val firstTwo = !.run(Logic.observe(2)(sums))   // the first two: 11, 21
     assertEquals(all.toList, List(11, 21, 12, 22))
@@ -151,10 +151,10 @@ class TestDocExamplesEffects extends munit.FunSuite:
         b <- Prob.uniform(0, 1)
       yield a + b
 
-    val heads = !.run(Prob.runExact[Int, Pure](coins)).posterior   // Map(0 -> 0.25, 1 -> 0.5, 2 -> 0.25)
+    val heads = coins.handle(Prob.exact).run.posterior   // Map(0 -> 0.25, 1 -> 0.5, 2 -> 0.25)
 
     val someHeads: Int ! Dist = coins.flatMap(n => Prob.observe(n > 0).map(_ => n))
-    val conditioned = !.run(Prob.runExact[Int, Pure](someHeads)).posterior   // 1 -> 2/3, 2 -> 1/3
+    val conditioned = someHeads.handle(Prob.exact).run.posterior   // 1 -> 2/3, 2 -> 1/3
     assertEquals(heads, Map(0 -> 0.25, 1 -> 0.5, 2 -> 0.25))
     assertEqualsDouble(conditioned(1), 2.0 / 3, 1e-9, "P(1 | n > 0)")
     assertEqualsDouble(conditioned(2), 1.0 / 3, 1e-9, "P(2 | n > 0)")

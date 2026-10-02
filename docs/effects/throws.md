@@ -12,6 +12,7 @@ with an E". `Abort` is `Throws % Unit`, a failure with nothing to say.
 | `abort` | fail with nothing to say |
 | `either.orRaise` | an `Either` as a program |
 | `p.recover(h)` / `p.orElse(q)` | handle an error inside the program |
+| `p.handle(Throws.either)` | handle it: `Right(answer)` or `Left(error)` |
 | `runEither(p)` | handle it: `Right(answer)` or `Left(error)` |
 | `runOption(p)` | handle `Abort`: `Some(answer)` or `None` |
 | `catching(a)` | a Scala 3 `throws` call as a program |
@@ -24,8 +25,8 @@ def parse(s: String): Int ! Throws % String =
     case Some(n) => pure(n)
     case None    => raise(s"not a number: $s")
 
-val good = !.run(runEither(parse("42")))   // Right(42)
-val bad  = !.run(runEither(parse("x")))    // Left(not a number: x)
+val good = parse("42").handle(Throws.either).run   // Right(42)
+val bad  = parse("x").handle(Throws.either).run    // Left(not a number: x)
 
 val nothing = !.run(runOption(abort[Int]))   // None
 ```

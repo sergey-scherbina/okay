@@ -33,7 +33,11 @@ A handler interprets operations into continuations — `F !> S` is
 literally a natural transformation into `Cont`, and `Cont` is this
 same freer tree at the signature "a function of the continuation"
 ([theory ch. 11](theory/11-one-tree.md)): a program and its meaning
-are made of the same nodes. Three ways to run:
+are made of the same nodes. For a USER the whole of it is `p.handle(h)`
+with a ready handler value (`State(s)`, `Throws.either`, `Reader(r)`, …)
+and `p.run` at the end ([effects-and-continuations.md](effects-and-continuations.md));
+an effect AUTHOR writes `Handler[F] { case … }` or one of its forms
+([your-own-effect.md](your-own-effect.md)). Underneath, three ways to run:
 
 - `runWith` — a per-operation `Answers[F]` (comonadic: each operation
   answers with a value);

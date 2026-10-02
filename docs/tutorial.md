@@ -13,17 +13,17 @@ val prog: Int ! State % Int =
     y <- State.get[Int]
   yield y + 2
 
-State.run(0)(prog)   // (40, 42) — the final state and the answer
+val ran = prog.handle(State(0)).run   // (40, 42) — the final state and the answer
 ```
 
-Nothing ran until `run`. Signatures union freely:
+Nothing ran until `run`: `handle` takes `State` off with its handler, `State(0)`, and `run` gives the value. Signatures union freely:
 
 ```scala
 type F = State % Int + Throws % String
 def risky(n: Int): Int ! F =
   if n < 0 then effect(Throws("negative")) else effect(State.Update[Int, Int](_ => (n, n)))
 
-runEither(State.handle(0)(risky(5)))   // handle State, then Throws
+val both = risky(5).handle(State(0)).handle(Throws.either).run   // handle State, then Throws: Right((5, 5))
 ```
 
 ## 2. Telling is streaming
@@ -73,7 +73,7 @@ million rounds are fine:
 val digits: Int ! Writer % Int = !.loop(2024) { n =>
   Writer.tell(n % 10).map(_ => if n < 10 then Right(1) else Left(n / 10))
 }
-!.run(Writer.run(digits))   // (Seq(4, 2, 0, 2), 1) — the digits told, the answer 1
+val told = digits.handle(Writer.log).run   // (List(4, 2, 0, 2), 1) — the digits told, the answer 1
 ```
 
 `countdown` IS a generator, in Python's sense — the body runs to its

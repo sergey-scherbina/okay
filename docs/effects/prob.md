@@ -11,6 +11,7 @@ evidence, and INFERENCE IS A HANDLER over the ordinary program.
 | `Prob.dist((a, w)*)` | a weighted choice |
 | `Prob.uniform(as*)` | an unweighted one |
 | `Prob.observe(cond)` | condition on evidence: branches where it is false are dropped |
+| `p.handle(Prob.exact)` | exact inference, as a handler value |
 | `Prob.runExact(p)` | exact inference: the joint weight of every reachable value |
 | `.posterior` | those weights normalized to sum to 1 (`import Prob.posterior`) |
 | `Prob.sampleOnce(p)` / `Prob.runRejection(n)(p)` | sampling, for models too big to enumerate |
@@ -27,10 +28,10 @@ val coins: Int ! Dist =
     b <- Prob.uniform(0, 1)
   yield a + b
 
-val heads = !.run(Prob.runExact[Int, Pure](coins)).posterior   // Map(0 -> 0.25, 1 -> 0.5, 2 -> 0.25)
+val heads = coins.handle(Prob.exact).run.posterior   // Map(0 -> 0.25, 1 -> 0.5, 2 -> 0.25)
 
 val someHeads: Int ! Dist = coins.flatMap(n => Prob.observe(n > 0).map(_ => n))
-val conditioned = !.run(Prob.runExact[Int, Pure](someHeads)).posterior   // 1 -> 2/3, 2 -> 1/3
+val conditioned = someHeads.handle(Prob.exact).run.posterior   // 1 -> 2/3, 2 -> 1/3
 ```
 
 A shared sub-model is memoised with [Once](once.md): share the value,

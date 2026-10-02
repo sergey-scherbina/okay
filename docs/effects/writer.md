@@ -9,6 +9,7 @@ results. `A ! Writer % W` reads "computes A, telling W".
 |---|---|
 | `Writer.tell(w)` | emit `w` |
 | `Writer.collect(p)` | handle it: answers `(everything told, answer)` |
+| `p.handle(Writer.log)` | handle it: what was told, in order, and the answer |
 | `Writer.run` / `fold` / `foldWith` | fold what is told into any result, as it is told |
 | `Writer.listen(p)` / `censor(p)(f)` | see what a sub-program told / rewrite it |
 | `Writer.map(p)(f)` / `expand(p)(f)` | re-tell at another type / as several values |
@@ -27,7 +28,7 @@ val steps: Int ! Writer % String =
     _ <- Writer.tell("check")
   yield 42
 
-val (log, answer) = !.run(Writer.collect(steps))   // (Vector(parse, check), 42)
+val (log, answer) = steps.handle(Writer.log).run   // (List(parse, check), 42)
 ```
 
 ## Notes
