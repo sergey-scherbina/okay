@@ -326,6 +326,31 @@ inline def convert[M[_[+_], _] : Effects,
     N.perform(e).flatMap(k))) / (a => N.pure(a))
 
 /**
+ * `tailRecM` for ANY okay `Monad` (specs/monad-tailrecm.md): iterate `f`
+ * from `a`, a `Left` continues, a `Right` answers. The programs' own
+ * loop is `!.loop`; this is the same loop for a monad that is not a
+ * program, written as an extension on the instance: `M.tailRecM(a)(f)`.
+ *
+ * STACK-SAFE FOR EVERY CARRIER, eager ones included, with nothing asked
+ * of the instance: each iteration is a `Cont.shift` whose body hands the
+ * continuation to the monad's `flatMap`, and the `Left` case loops inside
+ * `Cont`'s own `flatMap`. `Cont` is data and resumes a continuation in
+ * its own machine, so an `Option`, whose `flatMap` calls the
+ * continuation at once, adds no host frames per iteration (measured: a
+ * million, TestTailRecM; `foldMap` above found it first). TRAMPOLINED in
+ * `Cont` (AGENTS.md, no unbounded stack recursion): `step` is called
+ * from a `Cont` continuation, never from itself.
+ */
+extension [F[_]](M: Monad[F])
+  def tailRecM[A, B](a: A)(f: A => F[Either[A, B]]): F[B] =
+    def step(s: A): Cont[B, F[B], F[B]] =
+      Cont.shift[Either[A, B], F[B], F[B]](k => M.flatMap(f(s))(k)).flatMap {
+        case Left(next) => step(next)
+        case Right(b) => Cont.Pure(b)
+      }
+    step(a) / (b => M.pure(b))
+
+/**
  * any Effects program materializes back as a Free tree: building
  * the syntax is itself an interpretation !>, with the answers A ! F
  */

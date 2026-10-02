@@ -53,6 +53,11 @@ same material with the measurements attached.
   resumes that `Bind`. In `object !` beside `tailcall`, not top-level:
   Generate.scala's Cont fixpoint is called as `loop(f)(a)`, the same
   two-list shape. okay-ui's `Toolkit` dialogs are its first callers.
+- **`TailRecM[F]`** — the same loop for ANY okay `Monad`, not only
+  programs: `M.tailRecM(a)(f)` (an extension in Effects.scala) or the
+  class, which every `Monad` has from its companion. Stack-safe on an
+  eager carrier too: each iteration is a `Cont.shift`, resumed by
+  `Cont`'s data machine (specs/monad-tailrecm.md).
 - **`Module[F]`** (specs/di.md, [the guide](di.md)) — a description of
   what to build, not a built thing: `module[Db](open)(close)` acquires
   in a `Resource` region, `Module.value` needs no building,

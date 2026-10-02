@@ -1,0 +1,11 @@
+## monad-tailrecm — `tailRecM` for every okay Monad, and cats' Monad from ours
+
+Operator ask, 2026-10-02. `TailRecM[F]` (Monad.scala: the class and a
+one-line companion given) is answered for every okay `Monad` by the
+extension `M.tailRecM(a)(f)` in Effects.scala, beside `!.loop` and
+`foldMap`: each iteration a `Cont.shift` whose body hands the
+continuation to the monad's `flatMap`, so it is stack-safe on an EAGER
+carrier too (a million through `Option`; the naive `flatMap` recursion,
+as a mutant, overflows). With it `ToCats.monad`: cats' `Monad` from any
+okay `Monad`, cats-laws `MonadTests` green on it. docs/interop-classes.md
+no longer says ToCats has no Monad; typepedia names the class.

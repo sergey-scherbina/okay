@@ -182,15 +182,24 @@ trait FromCatsFunctor:
 
 /**
  * Any okay class as cats' (`import okay.cats.ToCats.given`): cats'
- * `traverse`, `mapN`, `combineK` over every type okay has an instance
- * for. Alternative, Applicative, Functor — and NOT Monad: cats' Monad
- * needs `tailRecM`, which a generic okay Monad can only write as a
- * `flatMap` recursion, stack-safe only on a carrier that defers. The
- * carriers that do (`A ! F`) have their `StackSafeMonad` by default.
+ * `traverse`, `mapN`, `flatMap`, `combineK` over every type okay has an
+ * instance for. Monad, Alternative, Applicative, Functor, in that
+ * priority. cats' `Monad` demands a stack-safe `tailRecM`; okay's
+ * `TailRecM` is one for every okay `Monad`, eager ones included
+ * (derived in Effects.scala, specs/monad-tailrecm.md), and the bridge
+ * passes it through.
  *
  * NOT together with [[FromCats]] — see there.
  */
-object ToCats extends ToCatsApplicative:
+object ToCats extends ToCatsAlternative:
+  given monad[F[_]](using M: okay.Monad[F], R: okay.TailRecM[F]): _root_.cats.Monad[F] with
+    def pure[X](a: X): F[X] = M.pure(a)
+    override def map[X, B](fa: F[X])(f: X => B): F[B] = M.fmap(fa, f)
+    override def ap[X, B](ff: F[X => B])(fa: F[X]): F[B] = M.app(ff)(fa)
+    def flatMap[X, B](fa: F[X])(f: X => F[B]): F[B] = M.flatMap(fa)(f)
+    def tailRecM[X, B](a: X)(f: X => F[Either[X, B]]): F[B] = R.tailRecM(a)(f)
+
+trait ToCatsAlternative extends ToCatsApplicative:
   given alternative[F[_]](using A: okay.Alternative[F]): _root_.cats.Alternative[F] with
     def pure[X](a: X): F[X] = A.pure(a)
     override def map[X, B](fa: F[X])(f: X => B): F[B] = A.fmap(fa, f)

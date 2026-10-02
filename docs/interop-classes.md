@@ -67,7 +67,7 @@ Two generic bridges, one import each:
   cats `Monad`, `Alternative`, `Applicative` or `Functor`, with
   `MonadPlus` when cats has both a `Monad` and an `Alternative`;
 - `import okay.cats.ToCats.given` gives cats' class from okay's:
-  `Alternative`, `Applicative`, `Functor`.
+  `Monad`, `Alternative`, `Applicative`, `Functor`.
 
 ```scala
 val out = okay.traverse(Seq(1, 2))(i => NonEmptyList.of(i, i * 10))
@@ -79,10 +79,12 @@ either. A given in lexical scope is found before the type's own
 instance, so a default `FromCats` would reroute okay's own
 `Monad[A ! F]` through cats.
 
-`ToCats` has no `Monad`. cats' `Monad` needs `tailRecM`, and a generic
-okay `Monad` could only write it as recursion through `flatMap`. That
-recursion is stack-safe only on a carrier that defers, and the
-programs that do defer already have their `StackSafeMonad`.
+cats' `Monad` needs a stack-safe `tailRecM`. Every okay `Monad` has
+one, `TailRecM` (specs/monad-tailrecm.md), and it is safe even on an
+eager carrier, because each iteration's continuation is resumed by
+`Cont`'s data machine and not by the host stack. So `ToCats` gives
+cats' `Monad` too, and cats' own laws hold for it, their `tailRecM`
+stack-safety law included.
 
 ## ZIO
 

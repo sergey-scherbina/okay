@@ -50,6 +50,17 @@ class TestToCats extends munit.FunSuite with okay.testkit.Munit.Diagnosed {
     assertEquals(out, Count(3, List(2, 4, 6)))
   }
 
+  test("cats' Monad from okay's: tailRecM a million deep through an EAGER okay monad") {
+    // an okay Monad cats has never heard of, eager like Option
+    final case class Box[A](a: A)
+    given okay.Monad[Box] with
+      def pure[A](a: A): Box[A] = Box(a)
+      extension [A](b: Box[A]) def flatMap[B](f: A => Box[B]): Box[B] = f(b.a)
+    val C = summon[_root_.cats.Monad[Box]]
+    assertEquals(C.tailRecM(0)(i => Box(if i < 1000000 then Left(i + 1) else Right(i))), Box(1000000))
+    assertEquals(C.flatMap(Box(20))(x => Box(x + 1)), Box(21))
+  }
+
   test("cats' Alternative from okay's: LazyList's MonadPlus") {
     import okay.given
     val A = summon[_root_.cats.Alternative[LazyList]]

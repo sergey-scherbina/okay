@@ -49,4 +49,11 @@ class TestLaws extends munit.ScalaCheckSuite {
 
   checkAll("MonadError[A ! Throws % String + Pure]",
     MonadErrorTests[PE, String].monadError[Int, Int, String])
+
+  // ---- cats' Monad derived from an okay Monad (ToCats, specs/monad-tailrecm.md):
+  // okay's eager Monad[Option], through the bridge, against cats' own laws —
+  // their tailRecM stack-safety law included
+
+  checkAll("ToCats.monad from okay.Monad[Option]",
+    MonadTests[Option](using ToCats.monad[Option](using summon[okay.Monad[Option]], summon[okay.TailRecM[Option]])).monad[Int, Int, String])
 }

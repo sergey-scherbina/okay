@@ -151,6 +151,23 @@ trait Monad[F[_]] extends Selective[F]:
     override def select(f: => F[A => B]): F[B] =
       e.flatMap(_.fold(a => f.map(_(a)), pure))
 
+
+/**
+ * Iteration in F that does not grow the stack: from `a`, a `Left`
+ * continues and a `Right` answers. cats calls it `tailRecM`, PureScript's
+ * class is `MonadRec`. Every okay `Monad` has one: the instance is
+ * derived in Effects.scala, beside `!.loop` and `foldMap`
+ * (specs/monad-tailrecm.md).
+ */
+trait TailRecM[F[_]]:
+  def tailRecM[A, B](a: A)(f: A => F[Either[A, B]]): F[B]
+
+object TailRecM:
+  /** every okay `Monad`, through the extension in Effects.scala — in the
+   * companion so it is found with no import */
+  given derived[F[_]](using M: Monad[F]): TailRecM[F] with
+    def tailRecM[A, B](a: A)(f: A => F[Either[A, B]]): F[B] = okay.tailRecM(M)(a)(f)
+
 /** choice with a neutral element */
 trait Alternative[F[_]] extends Applicative[F]:
   def empty[A]: F[A]

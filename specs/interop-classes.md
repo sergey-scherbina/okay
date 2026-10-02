@@ -54,6 +54,9 @@ derive the other's instance from its own and the search diverges:
   (AGENTS.md, no unbounded stack recursion) refuses that for an
   arbitrary carrier. The deferring carriers (`A ! F` and its aliases)
   already have their `StackSafeMonad` by default.
+  SUPERSEDED by monad-tailrecm (2026-10-02): `tailRecM` is derived for
+  every okay `Monad` through `Cont`, stack-safe on eager carriers too,
+  and `ToCats.monad` exists.
 
 ### okay-zio
 
