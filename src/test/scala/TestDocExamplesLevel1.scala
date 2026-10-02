@@ -106,8 +106,8 @@ class TestDocExamplesLevel1 extends munit.FunSuite:
 
     val found = firstOver(10, List(3, 12, 40)).run   // 12: the rest is never looked at
 
-    def evens(n: Int)(using Shift.In.Aux[List[Int], Pure]): Unit ! Shift % List[Int] =
-      if n == 0 then pure(()) else (if n % 2 == 0 then emit(n) else pure[Shift % List[Int], Unit](())).flatMap(_ => evens(n - 1))
+    def evens(n: Int)(using Shift.Emitting.Aux[Int, Pure]): Unit ! Shift % ? =
+      if n == 0 then pure(()) else (if n % 2 == 0 then emit(n) else pure[Shift % ?, Unit](())).flatMap(_ => evens(n - 1))
 
     val listed = collect(evens(6)).run   // List(6, 4, 2)
     assertEquals(found, 12)

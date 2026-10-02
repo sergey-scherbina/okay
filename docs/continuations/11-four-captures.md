@@ -32,7 +32,7 @@ This is worth establishing first, because it is why the choice rarely
 matters:
 
 ```scala
-Delim.push(p)(capture(c, p)(k => k("a")).map(s => s"[$s]"))
+Shift.push(p)(capture(c, p)(k => k("a")).map(s => s"[$s]"))
 // "[a]" for both
 ```
 
@@ -53,7 +53,7 @@ The difference appears when the handler body captures **again, to the
 same prompt**:
 
 ```scala
-Delim.push(p)(
+Shift.push(p)(
   capture(c, p)(_ => capture("shift", p)(_ => okay.pure("inner-caught"))))
 ```
 
@@ -108,14 +108,14 @@ In that calculus a plain reset is only `(λx.x) $ e`. okay has it as an
 operation of the machine:
 
 ```scala
-def dollar[R0, R, F[+_]](p: Prompt[R])(ret: R0 => R ! Delim + F)(body: R0 ! Delim + F): R ! Delim + F =
+def dollar[R0, R, F[+_]](p: Prompt[R])(ret: R0 => R ! Shift % ? + F)(body: R0 ! Shift % ? + F): R ! Shift % ? + F =
 ```
 
 This is not `push(p)(body).flatMap(ret)`. A `shift0` captures the
 delimiter TOGETHER WITH `ret`, so `ret` runs once per resumption:
 
 ```scala
-val p = Delim.prompt[String]
+val p = Shift.prompt[String]
 val body = shift0(p)(k => k("a").flatMap(x => k("b").map(y => x + y))).map(_ + "!")
 assertEquals(run(dollar(p)(angle)(body)), "<a!><b!>")
 ```
@@ -131,8 +131,8 @@ The body and the delimiter may answer different types, which is what a
 return clause is for:
 
 ```scala
-Delim.shift0[String, Int, Pure](p)(k => k(1).flatMap(a => k(2).map(b => s"$a|$b"))).map(_ * 10)
-assertEquals(run(Delim.dollar[Int, String, Pure](p)(i => okay.pure(s"n=$i"))(body)), "n=10|n=20")
+Shift.shift0[String, Int, Pure](p)(k => k(1).flatMap(a => k(2).map(b => s"$a|$b"))).map(_ * 10)
+assertEquals(run(Shift.dollar[Int, String, Pure](p)(i => okay.pure(s"n=$i"))(body)), "n=10|n=20")
 ```
 
 The correspondence runs as code in TestHandlersAsDollar. A deep State
@@ -150,10 +150,10 @@ inside the continuation, so `abort(p)("gone")` under `ret $ …` answers
 specs/shift0-dollar.md.
 
 The same door exists with the evidence in scope instead of a prompt in
-hand, as `scope` does for `push`: `Delim.dollar(ret) { body }` makes a
+hand, as `scope` does for `push`: `Shift.dollar(ret) { body }` makes a
 fresh delimiter, runs `body` with `Prompted[R]` in scope, and leaves
-through `ret`. Inside a `direct` block, `!Delim.shift0[A](k => …)` is
-the one-type-argument spelling of the 0-capture, beside `!Delim.shift[A]`.
+through `ret`. Inside a `direct` block, `!Shift.shift0[A](k => …)` is
+the one-type-argument spelling of the 0-capture, beside `!Shift.shift[A]`.
 
 ## References
 

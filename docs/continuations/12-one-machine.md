@@ -26,9 +26,9 @@ Here is the sentence somebody wants to write: *a producer that pauses
 for an answer*. Naturally:
 
 ```scala
-Delim.resumable[Q, A, R, F]:        // I want to pause...
+Shift.resumable[Q, A, R, F]:        // I want to pause...
   ...
-    Delim.collect[Int, F]:          // ...and also collect
+    Shift.collect[Int, F]:          // ...and also collect
       ...
 ```
 
@@ -40,10 +40,10 @@ It is wrong, and before the guard existed it **compiled and threw
 because the mistake is in a shape people naturally write and the
 failure arrives in production.
 
-**Why it breaks.** A row is a union, so the inner `Delim` is the *same
-`Delim` by class* as the outer one. The inner machine, walking the
+**Why it breaks.** A row is a union, so the inner `Shift` is the *same
+`Shift` by class* as the outer one. The inner machine, walking the
 program, meets a capture aimed at the OUTER machine's prompt and
-claims it: it is a `Delim` operation and this is a `Delim` machine.
+claims it: it is a `Shift` operation and this is a `Shift` machine.
 Then it looks for that prompt on its own stack, does not find it, and
 raises `NoPrompt`.
 
@@ -52,15 +52,15 @@ raises `NoPrompt`.
 The three machine-starting combinators ask for a witness:
 
 ```scala
-def run[R, F[+_]](prog: R ! (Delim + F))(using OneMachine[F]): R ! F
+def run[R, F[+_]](prog: R ! (Shift % ? + F))(using OneMachine[F]): R ! F
 ```
 
 and `OneMachine[F]` exists only when `F` does not already contain
-`Delim`. So the nested spelling fails to compile, with a message that
+`Shift`. So the nested spelling fails to compile, with a message that
 names the fix:
 
 ```
-this row already contains Delim, so this would start a SECOND machine,
+this row already contains Shift, so this would start a SECOND machine,
 and a capture cannot cross from one machine's prompt stack to another's.
 Use the nested form, which installs a delimiter on the machine already running:
   delimited -> scope,   collect -> collecting,   resumable -> pausing
@@ -75,14 +75,14 @@ what to do instead is only half a guard.
 A detail worth one paragraph, because it is a real constraint and not
 a style choice.
 
-The natural spelling is "prove `Delim` is not a member of `F`", using
-a membership witness (`NotGiven[In[Delim, F]]`). That does not work:
+The natural spelling is "prove `Shift` is not a member of `F`", using
+a membership witness (`NotGiven[In[Shift % ?, F]]`). That does not work:
 proving membership in an *abstract* row makes the compiler unfold the
 row into a union and try to join its alternatives, and dotty crashes —
 `AssertionError: Failure to join alternatives`. It crashed at this
 library's own call sites, so the core did not compile.
 
-The spelling that works is subtyping: `NotGiven[Delim[Any] <:< F[Any]]`.
+The spelling that works is subtyping: `NotGiven[Shift[?, Any] <:< F[Any]]`.
 A union on the *right* of a `<:<` needs no join, because subtyping
 *into* a union is the easy direction.
 
@@ -97,20 +97,20 @@ Here is the hole, and the suite demonstrates it rather than describing
 it.
 
 ```scala
-def runAnything[A, F[+_]](p: A ! Delim + F): A ! F =
-  Delim.run(p)
+def runAnything[A, F[+_]](p: A ! Shift % ? + F): A ! F =
+  Shift.run(p)
 ```
 
 This compiles. Inside the body `F` is abstract, so
-`Delim[Any] <:< F[Any]` cannot be proved — and `NotGiven` reads
+`Shift[?, Any] <:< F[Any]` cannot be proved — and `NotGiven` reads
 **"cannot be proved" as "false"**. The witness is manufactured inside
 the helper, and the obligation never reaches the caller. Instantiate it
-at a row that already contains `Delim` and you have the exact mistake
+at a row that already contains `Shift` and you have the exact mistake
 the guard exists to refuse, at run time again.
 
 > **The first draft of this test wrote the helper with
-> `(using Delim.OneMachine[F])`, and the guard CAUGHT it** — with the
-> obligation propagated, a caller at a concrete `Delim` row cannot
+> `(using Shift.OneMachine[F])`, and the guard CAUGHT it** — with the
+> obligation propagated, a caller at a concrete `Shift` row cannot
 > satisfy it and the code does not compile. That failure is the guard
 > working, and it is why the hole needs this exact shape: a helper
 > that swallows the obligation instead of passing it on.

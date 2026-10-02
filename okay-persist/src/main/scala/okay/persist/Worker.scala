@@ -1,6 +1,6 @@
 package okay.persist
 
-import okay.{!, +, At, Delim, Replayable, Row, Wf, pure}
+import okay.{%, !, +, At, Shift, Replayable, Row, Wf, pure}
 import okay.Row.up
 import okay.codec.Schema
 
@@ -136,15 +136,15 @@ final class Worker[Q, A, R, F[+_], G[+_]](topic: Topic, program: String, timers:
                                     * Catching it needs the ROW, and `G` is abstract
                                     * here -- so the ability is carried as a
                                     * parameter rather than searched for, which is
-                                    * the same rule `Delim.answer` follows and the
+                                    * the same rule `Shift.answer` follows and the
                                     * one ProbeRowCrash states. `Worker.isolating`
                                     * is the instance for `Async`. Left out, `tick`
                                     * behaves exactly as before.
                                     */
                                    isolate: Option[Worker.Isolate[G]] = None)
-                                  (body: Wf.Asks[Q, A, R, F] ?=> R ! Delim + F)
-                                  (using Schema[Wf.Ans[A]], Replayable[Delim + F],
-                                   Delim.OneMachine[F], At, Wf.Runtime,
+                                  (body: Wf.Asks[Q, A, R, F] ?=> R ! Shift % ? + F)
+                                  (using Schema[Wf.Ans[A]], Replayable[Shift % ? + F],
+                                   Shift.OneMachine[F], At, Wf.Runtime,
                                    Row.Sub[F, G]):
 
   /** the dialogue this worker drives, for an id */
@@ -294,9 +294,9 @@ final class Worker[Q, A, R, F[+_], G[+_]](topic: Topic, program: String, timers:
    */
   private def placed(d: Dialogue[Wf.Ask[Q], Wf.Ans[A], R, F])
       : Either[Worker.Progress[R],
-               (Delim.Dialogue[Wf.Ask[Q], Wf.Ans[A], R, F], Int)] ! G =
+               (Shift.Dialogue[Wf.Ask[Q], Wf.Ans[A], R, F], Int)] ! G =
     val look: Either[Throwable, Either[Dialogue.Stopped,
-                (Delim.Dialogue[Wf.Ask[Q], Wf.Ans[A], R, F], Int)]] ! G =
+                (Shift.Dialogue[Wf.Ask[Q], Wf.Ans[A], R, F], Int)]] ! G =
       isolate match
         case None => d.standing.up[G].map(Right(_))
         case Some(iso) => iso(d.standing.up[G])

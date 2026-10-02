@@ -12,7 +12,7 @@ chain is stack-safe. `shift` captures the continuation, `reset`
 delimits it. `Control[M[_,_,_]]` is the final-tagless interface;
 `Cont` (data, stack-safe) and `Func` (the raw function encoding) are
 its instances. You rarely touch this layer directly — it is what
-handlers are made of. When you DO want it, the door is `Delim`
+handlers are made of. When you DO want it, the door is `Shift`
 (multi-prompt delimited control as an effect): cancellable Dialog
 scopes (`Scope`), the streaming cut (`Cut`), the agent stepper and
 the sim scheduler are its shipped consumers — and the prompts can
@@ -86,7 +86,7 @@ streaming — see below), `State` (+ the type-changing `PState`),
 multi-shot), `Async` (Loom-style, below), `Resource` (the region:
 releases run at the scope's end, in reverse, surviving handled aborts).
 
-The floor of the library is available as an effect too: **`Delim`**
+The floor of the library is available as an effect too: **`Shift`**
 is multi-prompt delimited control — `Prompt[R]` tags a delimiter and
 carries its answer type, `push` installs one, and
 `shift`/`shift0` capture the continuation up to
@@ -367,7 +367,7 @@ nesting `local(f2)(local(f1)(p))` composes INSIDE-OUT (`f1(f2(r))`,
 not the mtl-style `f2(f1(r))` a first guess assumes) because `local`'s
 own bookkeeping ask is an ordinary `ask`, reachable by an enclosing
 `local` exactly like a user's; and `local`/`recover` cannot reach
-inside another effect's OPAQUE operation payload (a `Delim.push`'s
+inside another effect's OPAQUE operation payload (a `Shift.push`'s
 `body`, chiefly) — a plainer, more basic limit than Kiselyov, Shan &
 Sabry's "Delimited dynamic binding" (ICFP 2006), which is about a
 narrower case one level past this one. specs/scoped-effects-laws.md
@@ -463,7 +463,7 @@ there.
 Where the instances are MADE rather than named, `Refs` is the
 counterpart — cells created at run time, one row member however many,
 identity by cell, at the price of a heap and one stated cast. And the
-third route is the one `Delim` already has: a fresh prompt per handler
+third route is the one `Shift` already has: a fresh prompt per handler
 installation, scoped dynamically, with the program carrying the
 prompt.
 
@@ -792,7 +792,7 @@ val n = interpret(
 is unrepresentable — nor does `interpret(commit())`, nor a program that
 ends inside a transaction. The connection the handler holds is `Conn[S]`
 with the same index, so closing an idle one or opening an open one does
-not type INSIDE the handler either. The same tree puts `Delim`'s prompt
+not type INSIDE the handler either. The same tree puts `Shift`'s prompt
 stack in the type, so a `shift` to a prompt that is not installed is a
 compile error rather than `NoPrompt`
 ([continuations in practice](continuations-in-practice.md#the-stack-in-the-type)),

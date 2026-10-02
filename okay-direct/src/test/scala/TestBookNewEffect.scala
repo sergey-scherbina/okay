@@ -9,11 +9,11 @@ import scala.language.implicitConversions
  *
  * A capture turned into something its users never see as a capture.
  * The point is what the call sites look like: no prompt, no `k`, no
- * mention of Delim beyond the row they were already in.
+ * mention of Shift beyond the row they were already in.
  */
 class TestBookNewEffect extends munit.FunSuite {
 
-  type Row = Delim + Pure
+  type Row = Shift % ? + Pure
 
   // ==== the library ================================================
 
@@ -35,16 +35,16 @@ class TestBookNewEffect extends munit.FunSuite {
     /** run `body` with `limit` to spend. Overspend and the block ends
      * with `orElse`, the rest of the body discarded. */
     def within[R, F[+_]](limit: Int)(orElse: => R)
-                        (body: Budget[R] ?=> R ! Delim + F)
-                        (using Delim.OneMachine[F], At): R ! F =
-      val p = Delim.prompt[R]
-      Delim.run(Delim.push(p)(body(using new Budget(AtomicInteger(limit), () => orElse, p))))
+                        (body: Budget[R] ?=> R ! Shift % ? + F)
+                        (using Shift.OneMachine[F], At): R ! F =
+      val p = Shift.prompt[R]
+      Shift.run(Shift.push(p)(body(using new Budget(AtomicInteger(limit), () => orElse, p))))
 
     /** the ONLY thing a caller writes. No cast: `b.Res` is the
      * member, so the prompt and the fallback already agree. */
-    def spend[F[+_]](n: Int)(using b: Budget[?], at: At): Unit ! Delim + F =
+    def spend[F[+_]](n: Int)(using b: Budget[?], at: At): Unit ! Shift % ? + F =
       if b.left.addAndGet(-n) >= 0 then okay.pure(())
-      else Delim.abort[b.Res, Unit, F](b.prompt)(b.orElse())
+      else Shift.abort[b.Res, Unit, F](b.prompt)(b.orElse())
 
     /** what is left, as an ordinary question — no capture involved */
     def remaining(using b: Budget[?]): Int = b.left.get

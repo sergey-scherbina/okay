@@ -1,7 +1,7 @@
 package okay.persist
 
 import munit.FunSuite
-import okay.{!, +, Delim, Pure, Wf}
+import okay.{%, !, +, Shift, Pure, Wf}
 import okay.Direct.*
 import okay.codec.Schema
 import scala.language.implicitConversions
@@ -19,7 +19,7 @@ class TestDocExamplesDurableProgram extends FunSuite {
   given Wf.Runtime = Wf.Runtime.scripted(millis = 1_700_000_000_000L,
                                          id = "id-1", dice = 0.25)
 
-  def booking(using w: Wf.Asks[String, String, String, Pure]): String ! Delim + Pure = direct:
+  def booking(using w: Wf.Asks[String, String, String, Pure]): String ! Shift % ? + Pure = direct:
     val city = !w.pause("city?")          // the world answers
     val when = !w.now                     // the RUNTIME answers, once, and it is journalled
     val n    = !w.pause("nights?")

@@ -1,11 +1,11 @@
 package okay
 
-import okay.Delim.Stacked
-import okay.Delim.Stacked.{abort, delimited, reset, shift, under}
+import okay.Shift.Stacked
+import okay.Shift.Stacked.{abort, delimited, reset, shift, under}
 import okay.Row.at
 
 /**
- * specs/freer-base.md, stage 2: the indexed facade, and `Delim`'s
+ * specs/freer-base.md, stage 2: the indexed facade, and `Shift`'s
  * prompt stack in the index. The five positive shapes of the probe
  * (scripts/stage2-prompt-identity-probe.scala) run through the REAL
  * machine and answer the shift/reset laws' values; the three shapes
@@ -42,7 +42,7 @@ class TestProg extends munit.FunSuite:
     val r = !.run(Reader.run[Int, Int, P](41)(delimited[Int, F] { s =>
       import s.given
       for
-        a <- under(Reader.ask[Int].at[Delim + F])
+        a <- under(Reader.ask[Int].at[Shift % ? + F])
         b <- shift[Int, Int, F](s.p)(k => k(a + 1))
       yield b
     }))
@@ -67,7 +67,7 @@ class TestProg extends munit.FunSuite:
     val r = !.run(delimited[Int, P] { s =>
       import s.given
       for
-        a <- under(pure[Delim + P, Int](5))
+        a <- under(pure[Shift % ? + P, Int](5))
         b <- reset[Int, P] { s2 =>
                import s2.given
                shift[Int, Int, P](s2.p)(k => k(a))
@@ -94,18 +94,18 @@ class TestProg extends munit.FunSuite:
 
   test("6. a shift with NO reset is a compile error (NoPrompt at run time on the unstacked door)") {
     val e = compileErrors("""
-      { val loose = okay.Delim.prompt[Int]
-        okay.Delim.Stacked.shift[Int, Int, okay.Pure](loose)(k => k(1)) }""")
+      { val loose = okay.Shift.prompt[Int]
+        okay.Shift.Stacked.shift[Int, Int, okay.Pure](loose)(k => k(1)) }""")
     assert(e.nonEmpty, "a shift with no reset compiled")
     assert(e.contains("Stack"), s"the message does not name the stack: $e")
   }
 
   test("7. a shift to a FOREIGN prompt of the same answer type is a compile error") {
     val e = compileErrors("""
-      okay.Delim.Stacked.delimited[Int, okay.Pure] { s =>
+      okay.Shift.Stacked.delimited[Int, okay.Pure] { s =>
         import s.given
-        val stolen = okay.Delim.prompt[Int]
-        okay.Delim.Stacked.shift[Int, Int, okay.Pure](stolen)(k => k(1))
+        val stolen = okay.Shift.prompt[Int]
+        okay.Shift.Stacked.shift[Int, Int, okay.Pure](stolen)(k => k(1))
       }""")
     assert(e.nonEmpty, "a shift to a foreign prompt compiled")
     assert(e.contains("not on the prompt stack"), s"the message is not ours: $e")
@@ -116,16 +116,16 @@ class TestProg extends munit.FunSuite:
     // reset returns, the stack in force is the OUTER one, and the
     // leaked prompt is not on it
     val e = compileErrors("""
-      okay.Delim.Stacked.delimited[Int, okay.Pure] { outer =>
+      okay.Shift.Stacked.delimited[Int, okay.Pure] { outer =>
         import outer.given
         var leaked: okay.Prompt[Int] | Null = null
-        okay.Delim.Stacked.reset[Int, okay.Pure] { inner =>
+        okay.Shift.Stacked.reset[Int, okay.Pure] { inner =>
           import inner.given
           leaked = inner.p
-          okay.Delim.Stacked.shift[Int, Int, okay.Pure](inner.p)(k => k(1))
+          okay.Shift.Stacked.shift[Int, Int, okay.Pure](inner.p)(k => k(1))
         }.flatMap { _ =>
           val l = leaked.nn
-          okay.Delim.Stacked.shift[Int, Int, okay.Pure](l)(k => k(2))
+          okay.Shift.Stacked.shift[Int, Int, okay.Pure](l)(k => k(2))
         }
       }""")
     assert(e.nonEmpty, "a shift to an escaped prompt compiled")

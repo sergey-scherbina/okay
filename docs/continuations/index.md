@@ -143,7 +143,7 @@ only to use.*
 
 **Thesis.** A typed, first-class prompt is what lets an inner scope
 abort ACROSS its own boundary to an outer one — the thing nested
-handlers cannot express — and it is why this library has `Delim` at
+handlers cannot express — and it is why this library has `Shift` at
 all.
 
 ### [11. Two captures: `shift` and `shift0`](11-four-captures.md) ✓

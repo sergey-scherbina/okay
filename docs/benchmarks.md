@@ -3249,7 +3249,7 @@ the sketches, the obvious next question was where else state is
 rebuilt per element. Two candidates, both cleared, and the reasons are
 worth keeping so they are not re-examined.
 
-**`Delim`** carries its continuation stack as a `List[Seg]` — push and
+**`Shift`** carries its continuation stack as a `List[Seg]` — push and
 pop are O(1) and allocate one cons cell, which is what a stack costs.
 Nothing to fix.
 

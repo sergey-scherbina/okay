@@ -13,7 +13,7 @@ Part II kept saying "the boundary" without saying what it is. It is a
 value:
 
 ```scala
-val p = Delim.prompt[Int]
+val p = Shift.prompt[Int]
 ```
 
 `Prompt[R]` — a **prompt**. Making one allocates nothing interesting
@@ -28,9 +28,9 @@ Three properties, and each one buys something specific.
 `Prompt[R]` says: **what leaves through this boundary is an `R`.**
 
 ```scala
-Delim.delimited[String, Pure]:
+Shift.delimited[String, Pure]:
   direct:
-    !Delim.exit("a string, because the boundary says String")
+    !Shift.exit("a string, because the boundary says String")
     "unreachable"
 ```
 
@@ -44,11 +44,11 @@ Different types are different boundaries, and they nest without
 interference:
 
 ```scala
-Delim.delimited[String, Pure]:
+Shift.delimited[String, Pure]:
   direct:
-    val n = !Delim.scope[Int, Pure]:      // an Int boundary inside a String one
+    val n = !Shift.scope[Int, Pure]:      // an Int boundary inside a String one
       direct:
-        !Delim.exit(42)
+        !Shift.exit(42)
         0
     s"got $n"
 // "got 42"
@@ -62,8 +62,8 @@ about the outer `String` is involved.
 Two prompts of the same type are two different boundaries:
 
 ```scala
-val a = Delim.prompt[Int]
-val b = Delim.prompt[Int]
+val a = Shift.prompt[Int]
+val b = Shift.prompt[Int]
 assert(a ne b)
 ```
 
@@ -76,7 +76,7 @@ two libraries collide on `"retry"`.
 ## It knows where it came from
 
 ```scala
-val p = Delim.prompt[Int]
+val p = Shift.prompt[Int]
 p.label      // "prompt @ TestBookPrompts.scala:29"
 ```
 
@@ -116,13 +116,13 @@ A prompt is an ordinary value, so it can be passed like one. That is
 not a curiosity — it is what crossing a boundary requires:
 
 ```scala
-def deep(n: Int)(using p: Delim.Prompted[String]): Int ! Row = direct:
+def deep(n: Int)(using p: Shift.Prompted[String]): Int ! Row = direct:
   if n == 0 then
-    !Delim.exit(using p)("bottom reached")
+    !Shift.exit(using p)("bottom reached")
     0
   else !deep(n - 1)
 
-Delim.delimited[String, Pure]: outer ?=>
+Shift.delimited[String, Pure]: outer ?=>
   direct:
     val _ = !deep(30)(using outer)
     "never"
@@ -167,7 +167,7 @@ type invented for the purpose of being caught somewhere specific,
 which is a prompt with worse ergonomics and no type.
 
 That is the case for first-class prompts, and it is the reason this
-library has `Delim` underneath its effects rather than only handlers
+library has `Shift` underneath its effects rather than only handlers
 on top.
 
 ---

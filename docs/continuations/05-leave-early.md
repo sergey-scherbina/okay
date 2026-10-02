@@ -28,22 +28,22 @@ to travel out.
 
 ```scala
 def check(inv: Invoice): Option[Rejected] ! Pure =
-  Delim.delimited[Option[Rejected], Pure]:
+  Shift.delimited[Option[Rejected], Pure]:
     direct:
       for line <- inv.lines; alloc <- line.allocations do
-        if closed(alloc.centre) then !Delim.exit(Some(Rejected(alloc.centre)))
+        if closed(alloc.centre) then !Shift.exit(Some(Rejected(alloc.centre)))
       None
 ```
 
 Three things are happening, and only the middle one is new.
 
-**`Delim.delimited[R, F]` installs the boundary.** It says: *this
+**`Shift.delimited[R, F]` installs the boundary.** It says: *this
 block is where an exit lands, and what comes out of it is an `R`.*
 The type is the contract — a reader sees `Option[Rejected]` and knows
 what the block can produce, whether it finishes normally or leaves
 early.
 
-**`!Delim.exit(value)` leaves.** Everything between the exit and the
+**`!Shift.exit(value)` leaves.** Everything between the exit and the
 boundary is discarded — the rest of the allocation loop, the rest of
 the line loop, and the `None` at the bottom. Not skipped conditionally:
 *discarded*, because the rest of the block was the thing the exit did
@@ -108,9 +108,9 @@ boundary you declared. The suite pins the consequence that surprises
 people:
 
 ```scala
-val r = Delim.delimited[Int, Pure]:
+val r = Shift.delimited[Int, Pure]:
   direct:
-    !Delim.exit(1)
+    !Shift.exit(1)
     ranAfter = true      // unreachable: the rest was discarded
     2
 // r is 1, and ranAfter is false
@@ -152,10 +152,10 @@ From chapter 4, applied here:
 ## The recipe, condensed
 
 ```scala
-Delim.delimited[Answer, Row]:          // 1. name the boundary and its type
+Shift.delimited[Answer, Row]:          // 1. name the boundary and its type
   direct:
     ...                                 // 2. ordinary code, however deep
-    if condition then !Delim.exit(a)    // 3. leave, with the answer
+    if condition then !Shift.exit(a)    // 3. leave, with the answer
     ...
     fallback                            // 4. what it means to finish normally
 ```

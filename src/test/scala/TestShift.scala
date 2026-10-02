@@ -2,7 +2,7 @@ package okay
 
 import okay.Row.*
 
-/** specs/shift-effect.md: `Shift % R`, the continuation as an effect, on Delim's machine */
+/** specs/shift-effect.md, specs/shift-merge.md: `Shift % R`, the continuation as an effect, on the one machine */
 class TestShift extends munit.FunSuite:
 
   type P = okay.Pure
@@ -98,11 +98,11 @@ class TestShift extends munit.FunSuite:
     assert(summon[Shift.Key[Int]] ne summon[Shift.Key[Long]])
   }
 
-  test("a reset inside Delim's own delimited block runs on Delim's machine") {
-    val r: Int ! P = Delim.delimited[Int, P] {
+  test("a keyed reset inside a dynamic Shift.delimited block runs on the one machine") {
+    val r: Int ! P = Shift.delimited[Int, P] {
       for
-        n <- reset[Int, Delim](shift0[Int, Int, Delim](k => k(4).map(_ * 10)).map(_ + 1))
-        m <- Delim.shift[Int, Int, P](k => k(n).map(_ + 1))
+        n <- reset[Int, Shift % ?](shift0[Int, Int, Shift % ?](k => k(4).map(_ * 10)).map(_ + 1))
+        m <- Shift.shift[Int, Int, P](k => k(n).map(_ + 1))
       yield m
     }
     assertEquals(!.run(r), 51)
@@ -136,4 +136,12 @@ class TestShift extends munit.FunSuite:
     assertEquals(State.run(5)(viaCont), State.run(5)(reset[Int, S](q)))
     val back: Int ! S = reset[Int, S](Shift.embed(Shift.cont(q)))
     assertEquals(State.run(5)(back), State.run(5)(reset[Int, S](q)))
+  }
+
+  test("Shift.dynamic: a capture keyed by its answer type and one to a prompt by value, in one program") {
+    // the keyed capture reaches the Int key's prompt; the scope's exit leaves the scope only
+    val keyed: Int ! Shift % Int = shift[Int, Int, Pure](k => k(1).map(_ + 10))
+    val mixed: Int ! Shift % ? = Shift.dynamic(keyed).flatMap(x => Shift.scope[Int, Pure](Shift.exit(x * 2)))
+    val prog = Shift.push[Int, Pure](summon[Shift.Key[Int]].prompt)(mixed)
+    assertEquals(Shift.run[Int, Pure](prog).run, 12)
   }

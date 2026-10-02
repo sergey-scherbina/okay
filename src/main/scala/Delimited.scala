@@ -216,7 +216,7 @@ object Frames:
       case Done() => null
       case c: Cat[F, C, S0, T2, ?, ?, Z] => cut(sh, all, uncat(c), rev)
       case r: Run[F, C, S0, ?, T2, ?, Z] => cut(sh, all, r.below, Rev.SnocRun(rev, r.frames))
-      // the barrier (Flatt et al., ICFP 2007): `Delim.run`'s root, which no capture may cross
+      // the barrier (Flatt et al., ICFP 2007): `Shift.run`'s root, which no capture may cross
       case d: Dollar[F, C, S0, T2, ?, Z] if d.p eq Cont0.boundary[Any, Any] => throw NoPrompt(sh.at, sh.p.label, installed(all))
       case d: Dollar[F, C, S0, T2, y2, Z] =>
         if sh.p eq d.p then
@@ -348,11 +348,11 @@ object Cont0:
   /** a prompt with the index its delimiter is installed at: finding it by `eq` types `k` */
   opaque type Delimiter[Y, I] <: Prompt[Y] = Prompt[Y]
 
-  /** THE INDEX CLAIM, made at the door that knows the index (Delim: Unit, Cont: Any, Stacked: the stack below) */
+  /** THE INDEX CLAIM, made at the door that knows the index (Shift: Unit, Cont: Any, Stacked: the stack below) */
   def delimiter[Y, I](p: Prompt[Y]): Delimiter[Y, I] = p
 
-  /** the barrier's prompt: `Delim.run` installs it, nobody can name it */
-  private val theBoundary = new Prompt[Any]("boundary", "Delim.run")
+  /** the barrier's prompt: `Shift.run` installs it, nobody can name it */
+  private val theBoundary = new Prompt[Any]("boundary", "Shift.run")
   /** at any type: compared by `eq` only */
   def boundary[Y, I]: Delimiter[Y, I] = theBoundary.asInstanceOf[Delimiter[Y, I]]
 

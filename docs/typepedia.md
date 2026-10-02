@@ -233,7 +233,7 @@ same material with the measurements attached.
   transaction region (sql-typestate) is its second consumer.
 - **`Blocking[A]`** — `CanBlock ?=> A`: parks-a-thread as a
   first-class value; forced only where the capability is given.
-- **`Prompt[R]`** — a delimiter's identity AND answer type (Delim);
+- **`Prompt[R]`** — a delimiter's identity AND answer type (Shift);
   ambient in the capability forms (`Scope.mark/exit/bounded`,
   `Cut.guard/violation`) — nested using-params resolve to the
   NEAREST scope, verified.
@@ -255,15 +255,15 @@ same material with the measurements attached.
   `interleave` (fair or), `fairBind`/`>>-` (fair bind), `observe(n)`
   (first n of an infinite search). A library over the effect, not a
   new effect. See specs/backtracking.md.
-- **`Delim`** — delimited control AS AN EFFECT, multi-prompt **The typed door** is `Delim.Prompted[R]`
+- **`Shift`** — delimited control AS AN EFFECT, multi-prompt **The typed door** is `Shift.Prompted[R]`
   (delim-prompted): evidence that a delimiter is installed, made only
-  by `Delim.delimited` (or `Delim.scope`, its nested half), so a
+  by `Shift.delimited` (or `Shift.scope`, its nested half), so a
   capture through the evidence-taking `shift` cannot name a prompt
   that is not on the stack — of the machine that installed it: ONE
-  `Delim.run` per program, and the nested forms (`scope`,
+  `Shift.run` per program, and the nested forms (`scope`,
   `collecting`, `pausing`) put a delimiter on the machine already
   running instead of starting a second one (delim-nesting).
-  `Delim.collectUntil(using fo: FoldUntil[A, S, R])(body): R ! F`
+  `Shift.collectUntil(using fo: FoldUntil[A, S, R])(body): R ! F`
   (collect-early-stop) runs the same producer `collect` runs and stops
   it where `done` first holds — the state passed on the way DOWN as
   the prompt's answer-function, the rest of the producer never run;
@@ -275,7 +275,7 @@ same material with the measurements attached.
   from the block, and `A` stays because a mark gives its argument no
   expected type — `NoPrompt` moved to compile time
   for that path. A portable function reads `Prompted[Int] ?=> Int !
-  (Delim + W)`: written apart, stored, passed, and callable only where
+  (Shift % ? + W)`: written apart, stored, passed, and callable only where
   a `delimited` put the evidence in scope. The obligation is NOT a row
   member: rows are unions and `Free` is invariant in them, so a body
   that does not capture to the prompt being installed could not be
@@ -287,7 +287,7 @@ same material with the measurements attached.
   OPERATION, not a handler — one machine must own the whole prompt
   stack, or a capture cannot cross an intervening delimiter), and
   `shift`/`shift0` capture up to a NAMED prompt.
-  The tags are what let several answer types share one row. `Delim.run`
+  The tags are what let several answer types share one row. `Shift.run`
   is the machine; the captured continuation is turned back into a
   PROGRAM, so it is an ordinary value and multi-shot is free. With it
   a user can define new effects (a generator is a prompt and a shift)
@@ -877,7 +877,7 @@ blanket suppression; the categories and what each turned out to be:
   it is named and `TestRowIdentity` demonstrates it — and it binds the
   BARE row only: [several instances of one
   effect](many-instances.md) are had by key (`Tag`), by cell (`Refs`)
-  or by prompt (`Delim`).
+  or by prompt (`Shift`).
 - **100 "match may not be exhaustive" → 0.** All one claim: `resume`
   normalizes two of `Free`'s cases away, so a three-case match is
   correct and the type cannot say so. Written `(x.resume: @unchecked)`
@@ -1211,11 +1211,11 @@ once tested, and this list exists to not repeat that.
   one above is not).
 - **A method expecting `R ! F + G` does not recover that shape from
   an argument already typed as the EXPANDED union
-  `[A] =>> F[A] | G[A]`.** `Delim.Stacked`'s own `reset`/`delimited`
+  `[A] =>> F[A] | G[A]`.** `Shift.Stacked`'s own `reset`/`delimited`
   needed `push[R, F](...)`/`run[R, F](...)` with explicit type
   arguments for exactly this reason — the argument's type, once
-  Scala has expanded `Delim + F` into the type lambda, is no longer
-  syntactically `Delim + F` for a LATER call's inference to match
+  Scala has expanded `Shift % ? + F` into the type lambda, is no longer
+  syntactically `Shift % ? + F` for a LATER call's inference to match
   against.
 - **`Effects[Free].handle[F, G](...)`/`!.translate[A, F, G]` want
   their type arguments spelled**, not inferred from the value

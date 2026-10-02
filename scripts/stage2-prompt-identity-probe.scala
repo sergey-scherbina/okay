@@ -1,12 +1,12 @@
 //> using scala 3.9.0
 
-/** freer-base STAGE 2, the Delim half: the language question, settled
+/** freer-base STAGE 2, the Shift half: the language question, settled
  *  by compiling. Run it — it is a whole answer in one file:
  *
  *      scala-cli run scripts/stage2-prompt-identity-probe.scala
  *
- *  THE QUESTION. `Delim.Prompt[R]` is made at RUN time (`new Prompt[R]`
- *  inside `reset`), and `Delim.scala:223` throws `NoPrompt` when a
+ *  THE QUESTION. `Shift.Prompt[R]` is made at RUN time (`new Prompt[R]`
+ *  inside `reset`), and `Shift.scala:223` throws `NoPrompt` when a
  *  shift names a prompt that is not installed. Stage 2 asks whether
  *  that throw can become a compile error — which needs a prompt's
  *  IDENTITY, not just its answer type, to reach the type level.
@@ -71,7 +71,7 @@ object Stage2:
     given stack: Stack[p.type *: S] = new Stack[p.type *: S]
 
   /** "p is on the stack" - the using clause that replaces
-   *  Delim.scala's `throw NoPrompt()` */
+   *  Shift.scala's `throw NoPrompt()` */
   @annotation.implicitNotFound("prompt ${P} is not on the stack ${S}")
   sealed trait Has[S <: Tuple, P]
   object Has:
@@ -169,7 +169,7 @@ object Stage2Test:
     yield b
 
   // ---- 6. NEGATIVE: a shift with NO reset. Today this is
-  //         Delim.scala:223 throwing NoPrompt at RUN time.
+  //         Shift.scala:223 throwing NoPrompt at RUN time.
   val noPrompt = refuses(
     """{ val loose = new Stage2.Prompt[Int]
          Stage2.Prog.shift[Int, Int](loose)(k => k(1)) }"""

@@ -38,8 +38,8 @@ of it: leaving early, coming back later, running the rest twice.
 and reconstruct what the continuation is. A name does not:
 
 ```scala
-if r(t) then !Delim.exit(Some(t))              // obvious
-if r(t) then !Delim.shift[Unit](_ => pure(Some(t)))   // a puzzle
+if r(t) then !Shift.exit(Some(t))              // obvious
+if r(t) then !Shift.shift[Unit](_ => pure(Some(t)))   // a puzzle
 ```
 
 Both compile to the same thing. The second one asks every future
@@ -55,7 +55,7 @@ patterns people actually hit.
 
 ## The second rule: one machine
 
-> **One `Delim.run` per program. The outermost pattern runs the
+> **One `Shift.run` per program. The outermost pattern runs the
 > machine; everything nested inside it only installs a delimiter.**
 
 `delimited`, `collect` and `resumable` each end by running the
@@ -70,20 +70,20 @@ Each of the three therefore has a half that does not run:
 
 | runs the machine (outermost) | installs a delimiter (nested) |
 |---|---|
-| `Delim.delimited` | `Delim.scope` |
-| `Delim.collect` | `Delim.collecting` |
-| `Delim.resumable` | `Delim.pausing` |
+| `Shift.delimited` | `Shift.scope` |
+| `Shift.collect` | `Shift.collecting` |
+| `Shift.resumable` | `Shift.pausing` |
 
 ```scala
-def half(using Delim.Asking[String, Int, List[Int], Delim + Pure]) =
-  Delim.collecting[Int, Pure]:        // nested: installs only
+def half(using Shift.Asking[String, Int, List[Int], Shift % ? + Pure]) =
+  Shift.collecting[Int, Pure]:        // nested: installs only
     direct:
-      !Delim.emit(1)
-      val more = !Delim.pause("more?")  // crosses the collect's delimiter
-      !Delim.emit(more)
-      !Delim.emit(3)
+      !Shift.emit(1)
+      val more = !Shift.pause("more?")  // crosses the collect's delimiter
+      !Shift.emit(more)
+      !Shift.emit(3)
 
-!.run(Delim.drive(!.run(Delim.resumable(half)))(_ => pure(2)))  // List(1, 2, 3)
+!.run(Shift.drive(!.run(Shift.resumable(half)))(_ => pure(2)))  // List(1, 2, 3)
 ```
 
 Under one machine the delimiters compose the way multi-prompt
@@ -93,7 +93,7 @@ emits after the answer land in the same list. Both halves are in
 `TestDelimNesting`, the wrong spelling pinned beside the right one.
 
 The type system catches the wrong spelling where the row is concrete:
-`collect[A, Delim + F]` puts **two** `Delim` in one row, and the
+`collect[A, Shift % ? + F]` puts **two** `Shift` in one row, and the
 combinators that run a machine refuse that with a message naming the
 nested form. It cannot catch an ABSTRACT row — a row-polymorphic
 helper still compiles — so the failure is still reachable, and when
@@ -106,7 +106,7 @@ Installed here, innermost first:
   collecting @ Walk.scala:12
   delimited @ Job.scala:40
 
-ONE `Delim.run` PER PROGRAM. …
+ONE `Shift.run` PER PROGRAM. …
 ```
 
 A prompt knows what made it and where; the machine knows which
@@ -116,7 +116,7 @@ resumed somewhere else.
 
 ### The stack in the type
 
-That error is a run-time one, and it need not be. `Delim.Stacked`
+That error is a run-time one, and it need not be. `Shift.Stacked`
 carries the stack of installed prompts as a lexical given: `delimited`
 starts it empty and runs the machine, `reset` pushes the prompt it
 makes for its body only, and `shift` asks the compiler for evidence
@@ -182,10 +182,10 @@ continuation never captures to the prompt, and the index refuses it.
 you have the answer. You want out, with it.
 
 ```scala
-Delim.delimited[Option[Int], Pure]:
+Shift.delimited[Option[Int], Pure]:
   direct:
     for t <- txs; r <- rules do
-      if r(t) then !Delim.exit(Some(t))   // out of BOTH loops, with a value
+      if r(t) then !Shift.exit(Some(t))   // out of BOTH loops, with a value
     None
 ```
 
@@ -206,7 +206,7 @@ alternatives at that point are an exception thrown for control flow
 orderly exit) or a sentinel threaded through every caller.
 
 `exit` is a capture that **drops** its continuation — that is all an
-early return is. `Delim.abort` is the same thing outside a direct
+early return is. `Shift.abort` is the same thing outside a direct
 block.
 
 ## 2 · A push producer, read as a pull
@@ -214,12 +214,12 @@ block.
 **The shape:** the producer wants to call you; you want a sequence.
 
 ```scala
-def walk(t: Tree[Int])(using Delim.Emitting[Int]): Unit ! R = direct:
+def walk(t: Tree[Int])(using Shift.Emitting[Int]): Unit ! R = direct:
   t match
-    case Tree.Leaf(a)    => !Delim.emit(a)
+    case Tree.Leaf(a)    => !Shift.emit(a)
     case Tree.Node(l, r) => !walk(l); !walk(r)
 
-Delim.collect[Int, Pure](walk(t))    // List(1, 2, 3)
+Shift.collect[Int, Pure](walk(t))    // List(1, 2, 3)
 ```
 
 **How it is usually written:** a `ListBuffer` threaded through the
@@ -238,8 +238,8 @@ wanted to pull.
 and the rest of the producer never runs — the same `walk`, unchanged:
 
 ```scala
-Delim.collectUntil[Int, Vector[Int], Vector[Int], Pure](using FoldUntil.take(2))(walk(t))   // Vector(1, 2) — the third leaf is never visited
-Delim.collectUntil[Int, Option[Int], Option[Int], Pure](using FoldUntil.find[Int](_ > 1))(walk(t))  // Some(2)
+Shift.collectUntil[Int, Vector[Int], Vector[Int], Pure](using FoldUntil.take(2))(walk(t))   // Vector(1, 2) — the third leaf is never visited
+Shift.collectUntil[Int, Option[Int], Option[Int], Pure](using FoldUntil.find[Int](_ > 1))(walk(t))  // Some(2)
 ```
 
 Why `exit` inside a `collect` could not do this: `collect` builds its
@@ -258,14 +258,14 @@ what `collect` answers. `collectingUntil` is the nested half, as
 different service, the next HTTP request.
 
 ```scala
-def booking(using Delim.Asking[String, String, String, R]): String ! R = direct:
-  val city   = !Delim.pause("Which city?")
-  val nights = !Delim.pause(s"How many nights in $city?")
-  val pay    = !Delim.pause(s"Pay ${nights.toInt * 90} for $city?")
+def booking(using Shift.Asking[String, String, String, R]): String ! R = direct:
+  val city   = !Shift.pause("Which city?")
+  val nights = !Shift.pause(s"How many nights in $city?")
+  val pay    = !Shift.pause(s"Pay ${nights.toInt * 90} for $city?")
   if pay == "yes" then s"Booked $city for $nights nights" else "Cancelled"
 
-val start = !.run(Delim.resumable[String, String, String, Pure](booking))
-!.run(Delim.drive(start)(answering(List("Kyiv", "3", "yes"))))
+val start = !.run(Shift.resumable[String, String, String, Pure](booking))
+!.run(Shift.drive(start)(answering(List("Kyiv", "3", "yes"))))
 ```
 
 `resumable` answers with a `Paused[Q, A, R, G]`: either `Ask(question,
@@ -292,17 +292,17 @@ the answers given so far, in order. Where the dialogue stands is then
 re-derived:
 
 ```scala
-val (p1, j1) = !.run(Delim.answer(p0, Nil)("Kyiv"))
-val (p2, j2) = !.run(Delim.answer(p1, j1)("3"))    // j2 = List("Kyiv", "3")
+val (p1, j1) = !.run(Shift.answer(p0, Nil)("Kyiv"))
+val (p2, j2) = !.run(Shift.answer(p1, j1)("3"))    // j2 = List("Kyiv", "3")
 
 // ---- the process dies here. p0, p1, p2 go with it; j2 was written down.
 
-val back = !.run(Delim.replay[String, String, String, Pure](booking)(j2))
+val back = !.run(Shift.replay[String, String, String, Pure](booking)(j2))
 back.asking    // Some("Pay 270 for Kyiv?") — the same place
 ```
 
 This is what durable workflow engines do (Temporal, Cadence, Durable
-Functions), and here it is nine lines in `Delim` rather than a
+Functions), and here it is nine lines in `Shift` rather than a
 runtime. What has to be storable is the answers — ordinary data, not
 code.
 
@@ -312,7 +312,7 @@ It is exact under one discipline:
 > `pause`.**
 
 Since `dialogue-replay-discipline` that sentence is a TYPE, not a
-hope: `Delim.replay` and `okay.persist.Dialogue` ask for
+hope: `Shift.replay` and `okay.persist.Dialogue` ask for
 `Replayable[F]`, and a row holding `Async`, `Writer` or `Resource`
 does not have it — so a body that calls a service between two pauses
 does not compile as a durable dialogue. Breaking it on purpose is
@@ -378,7 +378,7 @@ production run replays on a laptop.
 ### A durable program, as it actually reads
 
 ```scala
-def booking(using w: Wf.Asks[String, String, String, Pure]): String ! Delim + Pure = direct:
+def booking(using w: Wf.Asks[String, String, String, Pure]): String ! Shift % ? + Pure = direct:
   val city = !w.pause("city?")          // the world answers
   val when = !w.now                     // the RUNTIME answers, once, and it is journalled
   val n    = !w.pause("nights?")
@@ -421,9 +421,9 @@ this should plan for that difference rather than discover it.
 the *rest* of the block produces.
 
 ```scala
-Delim.delimited[String, Pure]:
+Shift.delimited[String, Pure]:
   direct:
-    !Delim.onReturn(s => if s.startsWith("failed") then s"$s; refunded $amount" else s)
+    !Shift.onReturn(s => if s.startsWith("failed") then s"$s; refunded $amount" else s)
     if ok then s"charged $amount" else "failed: card declined"
 ```
 
@@ -448,7 +448,7 @@ rather than by reasoning — every line below is a test in
 | `Resource.acquire`, then `exit` (k dropped) | **the release still runs.** Resource's handler is outside the machine, so it closes what was opened |
 | `Resource.acquire` under a k invoked twice | two acquires, then two releases **at the end of the program**, LIFO — n branches hold n handles at once |
 | a cleanup line written by hand after the capture point | **it does not run.** It was part of the continuation that was dropped. Cleanup goes in `Resource`, not in the block |
-| `bracketNow` in a row containing `Delim` | **a compile error** ("no Handler"). It runs its body to completion in one suspension, which is what a capture breaks — so the unsafe mix cannot be written. `bracket` is `Resource` in one expression and behaves as the two rows above; it also releases at a `raise`, `None`, `halt` or pruned branch caught outside (`Final` operations) |
+| `bracketNow` in a row containing `Shift` | **a compile error** ("no Handler"). It runs its body to completion in one suspension, which is what a capture breaks — so the unsafe mix cannot be written. `bracket` is `Resource` in one expression and behaves as the two rows above; it also releases at a `raise`, `None`, `halt` or pruned branch caught outside (`Final` operations) |
 | `try { !x } finally { … }` in a `direct` block | **a compile error**, naming the finalizer |
 | `try { !x } catch { … }` in a `direct` block | **compiles, and catches nothing.** The catch guards the BUILDING of the program; the throw happens when it is run, one stack away. Failure belongs in the row: `Throws` |
 | `raise` inside or instead of a captured `k` | reaches the handler normally; the abandoned part does not run |
@@ -456,7 +456,7 @@ rather than by reasoning — every line below is a test in
 | a `var` touched by the rest of the block | same reason: the block runs once per invocation of `k`, and the `var` is shared across those runs |
 | 10 000 `emit`s, 3 000 `pause`s, replay of 3 000 answers | all fine — the machine is a loop, not the JVM stack |
 | `exit` from inside a lambda the block does not own (`xs.map { … }`) | works, with a typed answer |
-| a `pause` on either side of an async operation | works; the row is `Delim + Async`, the machine suspends for the foreign operation and resumes with the same stack |
+| a `pause` on either side of an async operation | works; the row is `Shift % ? + Async`, the machine suspends for the foreign operation and resumes with the same stack |
 
 Two more costs that are not tests:
 
@@ -479,15 +479,15 @@ Two more costs that are not tests:
 |---|---|
 | a sequence, possibly failing | `direct` over your row |
 | it can fail / branch / remember | the effect: `Fail`, `Choice`, `State`, `Once` |
-| leave from the middle with an answer | `Delim.exit` (`Delim.abort` in `for`) |
-| a producer that pushes, a consumer that pulls | `Delim.collect` / `Delim.emit` |
-| ...pulled lazily, or stopped early | `Generate` / `Producer` for the lazy pull; `Delim.collectUntil(using fo)` for a push producer stopped by a `FoldUntil`; on a stream the fold itself (`Stream.foldUntil`, `Writer.foldUntil`, `Chunks.foldUntil`, `Source.runFoldUntil`) |
-| stop now, resume when the answer arrives | `Delim.resumable` / `pause` / `drive` |
-| ...and survive a restart | `Delim.answer` + `Delim.replay` over the journal |
+| leave from the middle with an answer | `Shift.exit` (`Shift.abort` in `for`) |
+| a producer that pushes, a consumer that pulls | `Shift.collect` / `Shift.emit` |
+| ...pulled lazily, or stopped early | `Generate` / `Producer` for the lazy pull; `Shift.collectUntil(using fo)` for a push producer stopped by a `FoldUntil`; on a stream the fold itself (`Stream.foldUntil`, `Writer.foldUntil`, `Chunks.foldUntil`, `Source.runFoldUntil`) |
+| stop now, resume when the answer arrives | `Shift.resumable` / `pause` / `drive` |
+| ...and survive a restart | `Shift.answer` + `Shift.replay` over the journal |
 | ...and keep the journal in a durable log | `okay.persist.Dialogue` |
-| act on what the rest of the block answers | `Delim.onReturn` |
+| act on what the rest of the block answers | `Shift.onReturn` |
 | any of the above INSIDE another one | the nested half: `scope` / `collecting` / `pausing` |
-| none of the above | `Delim.shift`, and then give it a name |
+| none of the above | `Shift.shift`, and then give it a name |
 
 ## Introducing it to a codebase that has none
 
@@ -501,7 +501,7 @@ default* — a consumer who ignores the new door loses nothing.
    no capture at all, and a team that has not yet felt the pain will
    not keep a tool it did not need.
 2. **A named exit.** The first capture anyone should write is
-   `Delim.exit`, because the thing it replaces — an exception thrown
+   `Shift.exit`, because the thing it replaces — an exception thrown
    for control flow, or a sentinel threaded through five signatures —
    is already in the codebase and already disliked. One `delimited`
    at the top of a function, one `exit` in the middle.

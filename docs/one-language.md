@@ -518,7 +518,7 @@ its own. It is a question, `ForeignCall`, and the worker is the oracle
 (module okay-foreign-workflow). The workflow is written in do-notation:
 
 ```scala
-  def order(sku: String)(using w: Wf.Asks[ForeignCall, String, String, Pure]): String ! Delim + Pure = direct:
+  def order(sku: String)(using w: Wf.Asks[ForeignCall, String, String, Pure]): String ! Shift % ? + Pure = direct:
     val price = !ForeignActivity.call[Double]("shop:price")(sku)
     price match
       case Left(c) => s"no price: ${c.kind}"

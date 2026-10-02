@@ -126,7 +126,7 @@ retrieval under the same budget.
 `Cut` closes P9's open item: a validator stands IN the token stream
 and, on a violation, ABORTS to a prompt installed over the
 generation — the non-local exit no specialised effect can spell
-(Delim as the doctrine's PRIMARY case), behind an ADDITIVE wrapper:
+(Shift as the doctrine's PRIMARY case), behind an ADDITIVE wrapper:
 `guarded`/`checked` explicit, `guard`/`watched`/`violation` with the
 prompt ambient (nearest guard by nesting). The poisoned token never
 flows; the source records NO further pulls after the cut; a passing

@@ -196,7 +196,7 @@ object Freer {
    *
    * Only a builder that CALLS NOTHING BUT ITS OWN NEXT STEP may do that.
    * `Freer.flatMap` itself must not: its continuation is anybody's, and
-   * calling it directly chained Delim's composed continuations 20 000
+   * calling it directly chained Shift's composed continuations 20 000
    * deep (map-fusion, refuted).
    */
   final class Mapped[G[_, _, +_], S, X, A](val f: X => A) extends (X => Freer[G, S, S, A]):

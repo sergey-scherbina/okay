@@ -21,7 +21,7 @@ import scala.util.Random
  * Channel's do to whoever completes them), and the simulated one is
  * chosen where the real one's timing is not the scheduler's to
  * decide: the multi-
- * prompt `Delim` effect joins this seam unchanged when fibers
+ * prompt `Shift` effect joins this seam unchanged when fibers
  * carry intervening delimiters of their own.
  *
  * The virtual clock advances only when nothing is runnable (the

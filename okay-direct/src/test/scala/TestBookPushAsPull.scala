@@ -8,7 +8,7 @@ import scala.language.implicitConversions
  */
 class TestBookPushAsPull extends munit.FunSuite {
 
-  type Row = Delim + Pure
+  type Row = Shift % ? + Pure
 
   // ---- the domain: a directory tree, walked recursively
 
@@ -25,21 +25,21 @@ class TestBookPushAsPull extends munit.FunSuite {
 
   // ---- the producer: it emits, and knows nothing about the consumer
 
-  def walk(e: Entry, prefix: String = "")(using Delim.Emitting[String]): Unit ! Row =
+  def walk(e: Entry, prefix: String = "")(using Shift.Emitting[String]): Unit ! Row =
     direct:
       e match
-        case Entry.File(n, _) => !Delim.emit(s"$prefix$n")
+        case Entry.File(n, _) => !Shift.emit(s"$prefix$n")
         case Entry.Dir(n, es) =>
           val here = if n == "/" then "/" else s"$prefix$n/"
           for child <- es do !walk(child, here)
 
   test("the producer stays a recursive walk; the caller gets a list") {
-    assertEquals(!.run(Delim.collect[String, Pure](walk(tree))),
+    assertEquals(!.run(Shift.collect[String, Pure](walk(tree))),
       List("/a.txt", "/src/Main.scala", "/src/Util.scala", "/b.log"))
   }
 
   test("a producer that emits nothing is not a special case") {
-    assertEquals(!.run(Delim.collect[String, Pure](direct(()))), List.empty[String])
+    assertEquals(!.run(Shift.collect[String, Pure](direct(()))), List.empty[String])
   }
 
   // ---- the callback version, for the comparison the chapter makes
@@ -54,23 +54,23 @@ class TestBookPushAsPull extends munit.FunSuite {
   test("the callback version agrees — which is what makes the comparison fair") {
     val buf = List.newBuilder[String]
     walkCallback(tree)(buf += _)
-    assertEquals(buf.result(), !.run(Delim.collect[String, Pure](walk(tree))))
+    assertEquals(buf.result(), !.run(Shift.collect[String, Pure](walk(tree))))
   }
 
   // ---- the limit this chapter is honest about: collect runs it ALL
 
   test("collect runs the producer to the end, and the counter proves it") {
     var emitted = 0
-    def counting(e: Entry, prefix: String = "")(using Delim.Emitting[String]): Unit ! Row =
+    def counting(e: Entry, prefix: String = "")(using Shift.Emitting[String]): Unit ! Row =
       direct:
         e match
           case Entry.File(n, _) =>
             emitted += 1
-            !Delim.emit(s"$prefix$n")
+            !Shift.emit(s"$prefix$n")
           case Entry.Dir(n, es) =>
             val here = if n == "/" then "/" else s"$prefix$n/"
             for child <- es do !counting(child, here)
-    val all = !.run(Delim.collect[String, Pure](counting(tree)))
+    val all = !.run(Shift.collect[String, Pure](counting(tree)))
     assertEquals(all.size, 4)
     assertEquals(emitted, 4, "collect did not run the whole producer")
   }

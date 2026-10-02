@@ -389,10 +389,10 @@ whole new effect — is user code, not a library change:
 
 ```scala
 // a generator: a prompt whose answer type is the list being built
-def emit[A](p: Prompt[List[A]])(a: A): Unit ! (Delim + Pure) =
-  Delim.shift(p)(k => k(()).map(a :: _))
+def emit[A](p: Prompt[List[A]])(a: A): Unit ! (Shift % ? + Pure) =
+  Shift.shift(p)(k => k(()).map(a :: _))
 
-Delim.reset[List[Int], Pure] { p =>
+Shift.reset[List[Int], Pure] { p =>
   emit(p)(1).flatMap(_ => emit(p)(2)).map(_ => Nil)
 }                                        // List(1, 2)
 ```
@@ -416,16 +416,16 @@ enum Tree[+A]:
   case Leaf(a: A)
   case Node(l: Tree[A], r: Tree[A])
 
-def walk(t: Tree[Int])(using Delim.Emitting[Int]): Unit ! Delim + Pure = direct:
+def walk(t: Tree[Int])(using Shift.Emitting[Int]): Unit ! Shift % ? + Pure = direct:
   t match
-    case Tree.Leaf(a)    => !Delim.emit(a)
+    case Tree.Leaf(a)    => !Shift.emit(a)
     case Tree.Node(l, r) => !walk(l); !walk(r)
 
 val tree = Tree.Node(Tree.Node(Tree.Leaf(1), Tree.Leaf(2)), Tree.Node(Tree.Leaf(3), Tree.Leaf(4)))
 
-!.run(Delim.collect[Int, Pure](walk(tree)))                                                          // List(1, 2, 3, 4)
-!.run(Delim.collectUntil[Int, Vector[Int], Vector[Int], Pure](using FoldUntil.take(2))(walk(tree)))    // Vector(1, 2) — the walk stops at its second leaf
-!.run(Delim.collectUntil[Int, Boolean, Boolean, Pure](using FoldUntil.exists[Int](_ > 2))(walk(tree)))  // true, after three leaves
+!.run(Shift.collect[Int, Pure](walk(tree)))                                                          // List(1, 2, 3, 4)
+!.run(Shift.collectUntil[Int, Vector[Int], Vector[Int], Pure](using FoldUntil.take(2))(walk(tree)))    // Vector(1, 2) — the walk stops at its second leaf
+!.run(Shift.collectUntil[Int, Boolean, Boolean, Pure](using FoldUntil.exists[Int](_ > 2))(walk(tree)))  // true, after three leaves
 ```
 
 `collect` builds its list on the way back, in the continuation;
@@ -884,7 +884,7 @@ If part of your codebase is still on Scala 2.13, most of this tutorial
 carries over through `okay-scala2`. That covers chapter 2's telling
 (`Source`), chapter 5's async (`Async`, fibers, channels), `shift` and
 `reset` (`Cont`), and your own effects. Chapter 13's named prompts
-(`Delim`) are not in the Scala 2 facade yet. Direct style (chapter 20)
+(`Shift`) are not in the Scala 2 facade yet. Direct style (chapter 20)
 and staging (chapter 11) will not carry over, because they are Scala 3
 metaprogramming. [okay from Scala 2.13](scala2.md) shows what each
 looks like in Scala 2.

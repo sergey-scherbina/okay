@@ -4,11 +4,11 @@ import Layered.*
 
 /**
  * specs/layered-reflection.md stage 0: several monads in one block,
- * each reflect reaching its own reify, on today's multi-prompt Delim.
+ * each reflect reaching its own reify, on today's multi-prompt Shift.
  */
 class TestLayered extends munit.FunSuite:
 
-  def run[A](p: A ! Delim + Pure): A = !.run(Delim.run[A, Pure](p))
+  def run[A](p: A ! Shift % ? + Pure): A = !.run(Shift.run[A, Pure](p))
 
   // ------------------------------------------------ one layer: Filinski's laws
 
@@ -109,7 +109,7 @@ class TestLayered extends munit.FunSuite:
 
 /** specs/layered-reflection.md stage 2: the stacked layers */
 class TestLayeredStacked extends munit.FunSuite:
-  import okay.Delim.Stacked.delimited
+  import okay.Shift.Stacked.delimited
   import okay.Layered.Stacked.{reify, reflect}
 
   type P = okay.Pure
@@ -150,9 +150,9 @@ class TestLayeredStacked extends munit.FunSuite:
 
   test("stacked: a layer used AFTER its reify returned does not compile (stage 0 threw NoPrompt)") {
     val e = compileErrors("""
-      okay.Delim.Stacked.delimited[Option[Int], okay.Pure] { root =>
+      okay.Shift.Stacked.delimited[Option[Int], okay.Pure] { root =>
         import root.given
-        var leaked: okay.Delim.Stacked.In[Option[Int], ?] | Null = null
+        var leaked: okay.Shift.Stacked.In[Option[Int], ?] | Null = null
         okay.Layered.Stacked.reify[Option, Int, okay.Pure] { opt =>
           import opt.given
           leaked = opt

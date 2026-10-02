@@ -355,16 +355,16 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
       // macro emits no cast of its own.
       // a FOREIGN monad's value, with its `Layered` layer in scope
       // (direct-layers-instances): `list.?` inside `reify[List, …]` is
-      // `Layered.reflect(list)`, a `X ! Delim`, which `narrowRow` then
+      // `Layered.reflect(list)`, a `X ! Shift % ?`, which `narrowRow` then
       // widens to this block's row by Row's own proof
       case Some(row) =>
         layerTerm(m) match
           case Some(reflected) =>
-            if !(TypeRepr.of[okay.Delim].appliedTo(elem.widen) <:< row.appliedTo(elem.widen)) then
+            if !(TypeRepr.of[[A] =>> okay.Shift[?, A]].appliedTo(elem.widen) <:< row.appliedTo(elem.widen)) then
               report.errorAndAbort(
                 s"the marked value ${m.tpe.show} has a Layered layer in scope, and reflecting into it " +
-                  s"is a Delim capture, but this block's row ${row.show} has no Delim: " +
-                  "write the block at a row with Delim (the layer's reify needs one anyway)", at)
+                  s"is a capture (Shift % ?), but this block's row ${row.show} has no Shift % ?: " +
+                  "write the block at a row with Shift % ? (the layer's reify needs one anyway)", at)
             narrowRow(reflected, elem, row, at)
           case None =>
             foreignTerm(m) match

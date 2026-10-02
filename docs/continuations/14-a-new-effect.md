@@ -54,22 +54,22 @@ version instead.
 
 ```scala
 def within[R, F[+_]](limit: Int)(orElse: => R)
-                    (body: Budget[R] ?=> R ! Delim + F)
-                    (using Delim.OneMachine[F], At): R ! F =
-  val p = Delim.prompt[R]
-  Delim.run(Delim.push(p)(body(using new Budget(AtomicInteger(limit), () => orElse, p))))
+                    (body: Budget[R] ?=> R ! Shift % ? + F)
+                    (using Shift.OneMachine[F], At): R ! F =
+  val p = Shift.prompt[R]
+  Shift.run(Shift.push(p)(body(using new Budget(AtomicInteger(limit), () => orElse, p))))
 ```
 
-This is the only place that mentions `Delim.run`, and it takes
+This is the only place that mentions `Shift.run`, and it takes
 `OneMachine[F]` — chapter 12's rule, applied: *a library that starts a
 machine passes the obligation on to its caller.*
 
 **The operation** — the only thing users write:
 
 ```scala
-def spend[F[+_]](n: Int)(using b: Budget[?], at: At): Unit ! Delim + F =
+def spend[F[+_]](n: Int)(using b: Budget[?], at: At): Unit ! Shift % ? + F =
   if b.left.addAndGet(-n) >= 0 then okay.pure(())
-  else Delim.abort[b.Res, Unit, F](b.prompt)(b.orElse())
+  else Shift.abort[b.Res, Unit, F](b.prompt)(b.orElse())
 ```
 
 Spend and carry on, or leave the block with the fallback. `b.Res` is
@@ -147,10 +147,10 @@ is the entire argument for putting them there.
 
 Two, so nobody copies the example and wonders.
 
-`spend[Pure](30)` names the row. The doors in `Delim` itself do
-better — `!Delim.exit(value)` needs no type argument at all — by
+`spend[Pure](30)` names the row. The doors in `Shift` itself do
+better — `!Shift.exit(value)` needs no type argument at all — by
 taking the direct block's own colouring as evidence
-(`DirectCtx[F]` and `Reader.RowOf[F]`, both visible in `Delim.exit`'s
+(`DirectCtx[F]` and `Reader.RowOf[F]`, both visible in `Shift.exit`'s
 signature). It costs an inline definition and some plumbing, and it is
 what you do when an operation graduates from useful to used
 constantly.
@@ -168,11 +168,11 @@ final class Cap[R] private (state, fallback, prompt: Prompt[R]):
   type Res = R
 
 // 2. the boundary: the ONLY place that runs a machine, passing OneMachine on
-def within[R, F[+_]](...)(body: Cap[R] ?=> R ! (Delim + F))
-                    (using Delim.OneMachine[F], At): R ! F
+def within[R, F[+_]](...)(body: Cap[R] ?=> R ! (Shift % ? + F))
+                    (using Shift.OneMachine[F], At): R ! F
 
 // 3. the operations: named in the user's vocabulary, hiding the capture
-def op[F[+_]](...)(using c: Cap[?], at: At): A ! (Delim + F)
+def op[F[+_]](...)(using c: Cap[?], at: At): A ! (Shift % ? + F)
 ```
 
 Chapter 15 applies exactly this recipe to the oldest problem in the

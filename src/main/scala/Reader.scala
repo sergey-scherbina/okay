@@ -195,7 +195,7 @@ object Reader {
    * Built on `Effects.handle`, the same tool `Throws.recover` uses:
    * peel this ONE signature's own operations, forward everything
    * else unchanged. That forwarding is why `local` composes
-   * correctly through a `Delim` capture made and re-invoked from
+   * correctly through a `Shift` capture made and re-invoked from
    * INSIDE `p` — `handle`'s forwarding arm wraps a forwarded
    * operation's continuation with the SAME handling loop again, and
    * that wrapping is baked into the tree it returns, not a pass that

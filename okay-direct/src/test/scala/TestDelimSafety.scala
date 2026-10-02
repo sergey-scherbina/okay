@@ -14,10 +14,10 @@ class TestDelimSafety extends munit.FunSuite {
 
   type P = okay.Pure
 
-  test("collect inside a Delim row does not compile, and the message names `collecting`") {
+  test("collect inside a Shift row does not compile, and the message names `collecting`") {
     val e = compileErrors("""
-      okay.Delim.collect[Int, okay.Delim + okay.Pure](okay.Direct.direct {
-        !okay.Delim.emit(1)
+      okay.Shift.collect[Int, okay.Shift % ? + okay.Pure](okay.Direct.direct {
+        !okay.Shift.emit(1)
       })""")
     assert(e.nonEmpty, "a second machine compiled")
     assert(e.contains("collecting"), s"the message does not name the fix: $e")
@@ -26,24 +26,24 @@ class TestDelimSafety extends munit.FunSuite {
 
   test("the same guard on delimited, resumable, reset and run") {
     assert(compileErrors(
-      "okay.Delim.delimited[Int, okay.Delim + okay.Pure](okay.pure(1))").nonEmpty)
+      "okay.Shift.delimited[Int, okay.Shift % ? + okay.Pure](okay.pure(1))").nonEmpty)
     assert(compileErrors(
-      "okay.Delim.reset[Int, okay.Delim + okay.Pure](_ => okay.pure(1))").nonEmpty)
+      "okay.Shift.reset[Int, okay.Shift % ? + okay.Pure](_ => okay.pure(1))").nonEmpty)
     assert(compileErrors(
-      "okay.Delim.run[Int, okay.Delim + okay.Pure](okay.pure(1))").nonEmpty)
+      "okay.Shift.run[Int, okay.Shift % ? + okay.Pure](okay.pure(1))").nonEmpty)
     assert(compileErrors("""
-      okay.Delim.resumable[String, Int, Int, okay.Delim + okay.Pure](okay.pure(1))""").nonEmpty)
+      okay.Shift.resumable[String, Int, Int, okay.Shift % ? + okay.Pure](okay.pure(1))""").nonEmpty)
   }
 
-  test("the nested forms still compile in a Delim row — that is what they are for") {
+  test("the nested forms still compile in a Shift row — that is what they are for") {
     // exactly the shape the guard refuses above, spelled the right way
-    def half(using Delim.Asking[String, Int, List[Int], Delim + P]): List[Int] ! Delim + P =
-      Delim.collecting[Int, P]:
+    def half(using Shift.Asking[String, Int, List[Int], Shift % ? + P]): List[Int] ! Shift % ? + P =
+      Shift.collecting[Int, P]:
         direct:
-          !Delim.emit(1)
-          !Delim.emit(!Delim.pause("more?"))
-    val start = !.run(Delim.resumable[String, Int, List[Int], P](half))
-    assertEquals(!.run(Delim.drive(start)(_ => okay.pure(2))), List(1, 2))
+          !Shift.emit(1)
+          !Shift.emit(!Shift.pause("more?"))
+    val start = !.run(Shift.resumable[String, Int, List[Int], P](half))
+    assertEquals(!.run(Shift.drive(start)(_ => okay.pure(2))), List(1, 2))
   }
 
 }

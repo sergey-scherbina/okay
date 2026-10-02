@@ -37,13 +37,13 @@ class TestDelimDiagnostics extends munit.FunSuite {
   // ---- the label a delimiter carries
 
   test("each door labels its prompt with what made it and where") {
-    val label = !.run(Delim.delimited[String, P]: (p: Delim.Prompted[String]) ?=>
+    val label = !.run(Shift.delimited[String, P]: (p: Shift.Prompted[String]) ?=>
       okay.pure(p.prompt.label))
     assert(label.startsWith("delimited @ TestDelimDiagnostics.scala:"), label)
 
-    val nested = !.run(Delim.delimited[String, P]:
+    val nested = !.run(Shift.delimited[String, P]:
       direct:
-        !Delim.scope[String, P]: (in: Delim.Prompted[String]) ?=>
+        !Shift.scope[String, P]: (in: Shift.Prompted[String]) ?=>
           okay.pure(in.prompt.label))
     assert(nested.startsWith("scope @ TestDelimDiagnostics.scala:"), nested)
   }
@@ -52,12 +52,12 @@ class TestDelimDiagnostics extends munit.FunSuite {
 
   test("NoPrompt names the capture, the prompt it wanted, what IS installed, and the rule") {
     // the hole delim-safety stage 0 cannot close: an abstract row, so
-    // a second machine is started inside one that already has a Delim
-    def generic[F[+_]](p: Int ! Delim + F): Int ! F = Delim.run(p)
-    val outer = Delim.prompt[Int]
-    def prog: Int ! P = Delim.delimited[Int, P]:
+    // a second machine is started inside one that already has a Shift
+    def generic[F[+_]](p: Int ! Shift % ? + F): Int ! F = Shift.run(p)
+    val outer = Shift.prompt[Int]
+    def prog: Int ! P = Shift.delimited[Int, P]:
       direct:
-        100 + !generic[Delim + P](Delim.shift[Int, Int, Delim + P](outer)(k => k(5)))
+        100 + !generic[Shift % ? + P](Shift.shift[Int, Int, Shift % ? + P](outer)(k => k(5)))
 
     val e = intercept[NoPrompt](!.run(prog))
     val msg = e.getMessage
@@ -69,19 +69,19 @@ class TestDelimDiagnostics extends munit.FunSuite {
     assert(e.wanted.startsWith("prompt @ TestDelimDiagnostics.scala:"), s"wanted=${e.wanted}")
     assert(msg.contains(e.wanted), msg)
     // and the RULE that explains the difference
-    assert(msg.contains("ONE `Delim.run` PER PROGRAM"), msg)
+    assert(msg.contains("ONE `Shift.run` PER PROGRAM"), msg)
     assert(msg.contains("scope"), msg)
     assert(msg.contains("collecting"), msg)
   }
 
   test("NoPrompt lists the delimiters that ARE installed, innermost first") {
     // two delimiters on one machine, and a capture to neither
-    val stray = Delim.prompt[Int]
-    def prog: Int ! P = Delim.delimited[Int, P]:
+    val stray = Shift.prompt[Int]
+    def prog: Int ! P = Shift.delimited[Int, P]:
       direct:
-        !Delim.scope[Int, P]:
+        !Shift.scope[Int, P]:
           direct:
-            !Delim.shift[Int, Int, P](stray)(k => k(5))
+            !Shift.shift[Int, Int, P](stray)(k => k(5))
 
     val e = intercept[NoPrompt](!.run(prog))
     assertEquals(e.installed.size, 2, s"installed=${e.installed}")
@@ -91,9 +91,9 @@ class TestDelimDiagnostics extends munit.FunSuite {
   }
 
   test("a machine with no delimiter at all says so, rather than printing an empty list") {
-    val stray = Delim.prompt[Int]
+    val stray = Shift.prompt[Int]
     val e = intercept[NoPrompt](
-      !.run(Delim.run[Int, P](Delim.shift[Int, Int, P](stray)(k => k(1)))))
+      !.run(Shift.run[Int, P](Shift.shift[Int, Int, P](stray)(k => k(1)))))
     assertEquals(e.installed, Nil)
     assert(e.getMessage.contains("no delimiter installed"), e.getMessage)
   }
@@ -101,25 +101,25 @@ class TestDelimDiagnostics extends munit.FunSuite {
   // ---- where a dialogue is waiting
 
   test("Paused.where is the line of the pause that made it") {
-    def booking(using Delim.Asking[String, String, String, Delim + P]): String ! Delim + P =
+    def booking(using Shift.Asking[String, String, String, Shift % ? + P]): String ! Shift % ? + P =
       direct:
-        val city = !Delim.pause("city?")
-        val nights = !Delim.pause(s"nights in $city?")
+        val city = !Shift.pause("city?")
+        val nights = !Shift.pause(s"nights in $city?")
         s"$city/$nights"
 
-    val first = !.run(Delim.resumable[String, String, String, P](booking))
+    val first = !.run(Shift.resumable[String, String, String, P](booking))
     assertEquals(first.asking, Some("city?"))
     val w1 = first.where.getOrElse(fail("a paused dialogue does not know where it is"))
     assert(w1.startsWith("TestDelimDiagnostics.scala:"), w1)
 
     // the SECOND pause is a different line, which is the point: a
     // dialogue that has not moved names the line it is sitting on
-    val second = !.run(Delim.answer(first, Nil)("Kyiv"))._1
+    val second = !.run(Shift.answer(first, Nil)("Kyiv"))._1
     val w2 = second.where.getOrElse(fail("no position after the first answer"))
     assertNotEquals(w1, w2, "both pauses reported the same line")
 
     // and a finished dialogue is not waiting anywhere
-    val done = !.run(Delim.answer(second, Nil)("3"))._1
+    val done = !.run(Shift.answer(second, Nil)("3"))._1
     assertEquals(done.where, None)
     assertEquals(done.finished, Some("Kyiv/3"))
   }

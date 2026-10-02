@@ -5,8 +5,8 @@ import java.util.concurrent.TimeUnit
 import okay.Freer.Return
 
 /**
- * The frame machine against the Delim machine and against the rotation
- * (specs/freer-kont.md, the last box). The Delim shapes are
+ * The frame machine against the Shift machine and against the rotation
+ * (specs/freer-kont.md, the last box). The Shift shapes are
  * DelimBenchmark's own, one to one — `delimGenerator`, `delimPushOnly`,
  * `delimDollarOnly`, `delimDollarResume` — written on `Cont0` and run by
  * `Frames.run`; the two "nested" pairs are pure programs (no

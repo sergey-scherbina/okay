@@ -34,9 +34,9 @@ The contrast that makes chapter 17 land:
 
 ```scala
 var seen = List.empty[Int]
-Delim.delimited[Int, P]:
+Shift.delimited[Int, P]:
   direct:
-    val x = !Delim.shift[Int, Int, P](k => direct { !k(1) + !k(10) })
+    val x = !Shift.shift[Int, Int, P](k => direct { !k(1) + !k(10) })
     seen = seen :+ x
     x
 // seen == List(1, 10)
@@ -66,7 +66,7 @@ Three facts, and the third is a cost:
 
 ```scala
 // an abandoned continuation still releases
-!Delim.exit(r * 2)          // log: acquire, release
+!Shift.exit(r * 2)          // log: acquire, release
 ```
 
 `Resource`'s handler is outside the machine, so dropping the rest of
@@ -86,7 +86,7 @@ the single most expensive surprise in the chapter.
 And the pair that explains both:
 
 ```scala
-!Delim.exit(1)
+!Shift.exit(1)
 cleaned = true      // never runs
 ```
 
@@ -103,16 +103,16 @@ line survives nothing.
 Two shapes that would be wrong are not available:
 
 ```scala
-okay.bracket[Int, Int, okay.Delim + okay.Pure](1)(_ => ())(r => okay.pure(r))
+okay.bracket[Int, Int, okay.Shift % ? + okay.Pure](1)(_ => ())(r => okay.pure(r))
 // error, mentioning: Handler
 ```
 
 `bracket` runs its body to completion inside one suspension, which is
 exactly what a capture breaks. It needs a `Answers` for the row, and
-`Delim` has none.
+`Shift` has none.
 
 ```scala
-try { !okay.Delim.exit(1); 0 } finally { closed = true }
+try { !okay.Shift.exit(1); 0 } finally { closed = true }
 // error, mentioning: finalizer
 ```
 
@@ -143,7 +143,7 @@ raises instead of resuming leaves the rest of the block unrun.
 ## A second machine is a compile error, with one hole
 
 ```scala
-okay.Delim.delimited[Int, okay.Delim + okay.Pure](okay.pure(1))
+okay.Shift.delimited[Int, okay.Shift % ? + okay.Pure](okay.pure(1))
 // error, mentioning: SECOND machine
 ```
 
@@ -153,13 +153,13 @@ runtime `NoPrompt` and is now refused by the row guard.
 The hole, stated by its own test and named `THE LIMIT`:
 
 ```scala
-def generic[F[+_]](p: Int ! Delim + F): Int ! F = Delim.run(p)
+def generic[F[+_]](p: Int ! Shift % ? + F): Int ! F = Shift.run(p)
 ```
 
 A row-polymorphic helper with **no witness in its signature** compiles,
 because `NotGiven` reads an unknown `F` as "absent". Instantiated at a
-`Delim` row it throws `NoPrompt` at runtime. The fix available today
-is for the helper to take `using Delim.OneMachine[F]`, which propagates
+`Shift` row it throws `NoPrompt` at runtime. The fix available today
+is for the helper to take `using Shift.OneMachine[F]`, which propagates
 the obligation so its call site is refused instead. Stages 1 and 2 of
 `specs/delim-safety.md` exist for this line, and stage 2 is open on
 purpose — the cost is a type parameter on every signature carrying
@@ -184,7 +184,7 @@ and chapter 20 prices it.
 ## Shapes that do work, and are worth knowing
 
 ```scala
-val xs = List(1, 2, 3).map(n => if n == 2 then !Delim.exit(n * 100) else ())
+val xs = List(1, 2, 3).map(n => if n == 2 then !Shift.exit(n * 100) else ())
 // the whole block answers 200
 ```
 
@@ -192,9 +192,9 @@ val xs = List(1, 2, 3).map(n => if n == 2 then !Delim.exit(n * 100) else ())
 promised that; here it is pinned.
 
 ```scala
-val a = !Delim.pause("q1")
+val a = !Shift.pause("q1")
 val b = !okay.async(a * 2).at[Row]
-val c = !Delim.pause(s"q2:$b")
+val c = !Shift.pause(s"q2:$b")
 ```
 
 A dialogue pauses **across** an async operation. This is the shape all

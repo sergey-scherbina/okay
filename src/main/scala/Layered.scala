@@ -35,29 +35,29 @@ object Layered:
   final class Reflect[M[_], R] private[Layered] (val prompt: Prompt[M[R]], val layer: Layer[M])
 
   /** a layer: `pure $ body` at a fresh prompt */
-  def reify[M[_], R, F[+_]](body: Reflect[M, R] ?=> R ! Delim + F)(using L: Layer[M], at: At): M[R] ! Delim + F =
-    val p = Delim.prompt[M[R]]
-    Delim.dollar[R, M[R], F](p)(r => okay.pure(L.pure(r)))(body(using new Reflect[M, R](p, L)))
+  def reify[M[_], R, F[+_]](body: Reflect[M, R] ?=> R ! Shift % ? + F)(using L: Layer[M], at: At): M[R] ! Shift % ? + F =
+    val p = Shift.prompt[M[R]]
+    Shift.dollar[R, M[R], F](p)(r => okay.pure(L.pure(r)))(body(using new Reflect[M, R](p, L)))
 
   extension [M[_], X](m: M[X])
     /** reflect into the layer whose capability is in scope */
-    def reflect[R, F[+_]](using r: Reflect[M, R], at: At): X ! Delim + F =
-      Delim.shift0[M[R], X, F](r.prompt)(k => r.layer.bind(m)(k))
+    def reflect[R, F[+_]](using r: Reflect[M, R], at: At): X ! Shift % ? + F =
+      Shift.shift0[M[R], X, F](r.prompt)(k => r.layer.bind(m)(k))
 
   /** the same over the typed prompt stack: a capability kept past its `reify` does not compile */
   object Stacked:
-    import Delim.Stacked.{In, Stack, Under, Has}
+    import Shift.Stacked.{In, Stack, Under, Has}
 
     /** a stacked layer */
     def reify[M[_], R, F[+_]](using st: Stack[?])
                              (body: (l: In[M[R], st.S]) => Under[F, R, l.p.type *: st.S])
                              (using L: Layer[M], at: At): Under[F, M[R], st.S] =
-      Delim.Stacked.dollar[R, M[R], F]((r: R) => Freer.Return(L.pure(r)))(body)
+      Shift.Stacked.dollar[R, M[R], F]((r: R) => Freer.Return(L.pure(r)))(body)
 
     extension [M[_], X](m: M[X])
       /** reflect, the layer's prompt proven on the stack */
       def reflect[R, F[+_]](layer: In[M[R], ?])(using st: Stack[?])[B <: Tuple]
                            (using Has.Aux[st.S, layer.p.type, B], Layer[M], At): Under[F, X, st.S] =
-        Delim.Stacked.shift0[M[R], X, F](layer.p)(k =>
-          Delim.Stacked.at[F, M[R], B](summon[Layer[M]].bind(m)(x => Delim.Stacked.erase(k(x)))))
+        Shift.Stacked.shift0[M[R], X, F](layer.p)(k =>
+          Shift.Stacked.at[F, M[R], B](summon[Layer[M]].bind(m)(x => Shift.Stacked.erase(k(x)))))
 

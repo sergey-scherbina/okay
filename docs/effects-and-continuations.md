@@ -135,8 +135,8 @@ val found = firstOver(10, List(3, 12, 40)).run   // 12: the rest is never looked
 and no buffer:
 
 ```scala
-def evens(n: Int)(using Shift.In.Aux[List[Int], Pure]): Unit ! Shift % List[Int] =
-  if n == 0 then pure(()) else (if n % 2 == 0 then emit(n) else pure[Shift % List[Int], Unit](())).flatMap(_ => evens(n - 1))
+def evens(n: Int)(using Shift.Emitting.Aux[Int, Pure]): Unit ! Shift % ? =
+  if n == 0 then pure(()) else (if n % 2 == 0 then emit(n) else pure[Shift % ?, Unit](())).flatMap(_ => evens(n - 1))
 
 val listed = collect(evens(6)).run   // List(6, 4, 2)
 ```
@@ -189,7 +189,7 @@ In direct style over `Effects[M]`, `Effects.monad[M, F]` is the monad `direct` n
 
 Measured (specs/shift-effect.md, history.d `shift-effect-core`):
 
-- 1000 captures under one `reset` take 56 µs with `shift0`, against 55 µs for the same shape on `Delim`'s
+- 1000 captures under one `reset` take 56 µs with `shift0`, against 55 µs for the same shape on `Shift`'s
   own doors and 61 µs on level 2's `Cont`.
 - `shift` takes 69 µs: it re-installs its `reset` for the body.
 - 100 separate small `reset`s take 10 µs: each starts the machine once.

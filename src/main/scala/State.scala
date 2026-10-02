@@ -21,7 +21,7 @@ import okay.!.*
  * whole story: `Tag` names them in the type (`Tag.Of["small", State %
  * Int]`, and `Tag.tag` puts an ALREADY WRITTEN program's operations
  * under a key), `Refs` makes them at run time when a type cannot list
- * them, and a fresh `Delim` prompt separates them dynamically.
+ * them, and a fresh `Shift` prompt separates them dynamically.
  */
 enum State[S, +A] derives Effect {
   /** read the current state */

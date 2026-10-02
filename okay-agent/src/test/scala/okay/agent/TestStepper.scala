@@ -68,12 +68,12 @@ class TestStepper extends munit.FunSuite {
       Agent.complete().flatMap(r => Agent.call(r.calls.head)).map(_.toUpperCase)
 
     val forked = stepped(prog).flatMap {
-      case Delim.Paused.Ask(_, resume, _) =>
+      case Shift.Paused.Ask(_, resume, _) =>
         // the SAME continuation, resumed twice with different pasts.
-        // `Delim.run` is what the bespoke enum used to hide: the
+        // `Shift.run` is what the bespoke enum used to hide: the
         // resumption is a program in the machine's own row.
-        Delim.run(resume("first world")).flatMap { a =>
-          Delim.run(resume("second world")).map { b => (a.finished, b.finished) }
+        Shift.run(resume("first world")).flatMap { a =>
+          Shift.run(resume("second world")).map { b => (a.finished, b.finished) }
         }
       case done => pure((done.finished, done.finished))
     }
@@ -111,12 +111,12 @@ class TestStepper extends munit.FunSuite {
   }
 
   test("a stepping run is NOT replayable, and the row says why") {
-    // the backlog asked for this rewrite partly to gain `Delim.replay`
+    // the backlog asked for this rewrite partly to gain `Shift.replay`
     // for free. It does not: replaying a stepping session would ask
     // the MODEL again, and `Replayable` refuses the row that says so.
     val e = compileErrors("""
-      okay.Delim.replay[ToolCall, String, String, Stepper.Rest](
-        summon[okay.Delim.Asking[ToolCall, String, String, okay.Delim + Stepper.Rest]] ?=>
+      okay.Shift.replay[ToolCall, String, String, Stepper.Rest](
+        summon[okay.Shift.Asking[ToolCall, String, String, okay.Shift % ? + Stepper.Rest]] ?=>
           okay.pure(""))(Nil)""")
     assert(e.nonEmpty, "a stepping run typechecked as replayable")
   }

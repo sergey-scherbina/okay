@@ -35,10 +35,10 @@ class TestBookLeaveEarly extends munit.FunSuite {
   // ---- the chapter's version
 
   def check(inv: Invoice): Option[Rejected] ! Pure =
-    Delim.delimited[Option[Rejected], Pure]:
+    Shift.delimited[Option[Rejected], Pure]:
       direct:
         for line <- inv.lines; alloc <- line.allocations do
-          if closed(alloc.centre) then !Delim.exit(Some(Rejected(alloc.centre)))
+          if closed(alloc.centre) then !Shift.exit(Some(Rejected(alloc.centre)))
         None
 
   test("it leaves both loops with the answer") {
@@ -52,11 +52,11 @@ class TestBookLeaveEarly extends munit.FunSuite {
   test("it stops AT the first closed centre, and looks at nothing after it") {
     var seen = 0
     def counting(inv: Invoice): Option[Rejected] ! Pure =
-      Delim.delimited[Option[Rejected], Pure]:
+      Shift.delimited[Option[Rejected], Pure]:
         direct:
           for line <- inv.lines; alloc <- line.allocations do
             seen += 1
-            if closed(alloc.centre) then !Delim.exit(Some(Rejected(alloc.centre)))
+            if closed(alloc.centre) then !Shift.exit(Some(Rejected(alloc.centre)))
           None
     assertEquals(!.run(counting(invoice)), Some(Rejected("CC-OLD")))
     // four allocations were examined; the fifth was never reached
@@ -83,9 +83,9 @@ class TestBookLeaveEarly extends munit.FunSuite {
 
   test("exit is not catchable as an exception, because it is not one") {
     var ranAfter = false
-    val r = Delim.delimited[Int, Pure]:
+    val r = Shift.delimited[Int, Pure]:
       direct:
-        !Delim.exit(1)
+        !Shift.exit(1)
         ranAfter = true      // unreachable: the rest was discarded
         2
     assertEquals(!.run(r), 1)

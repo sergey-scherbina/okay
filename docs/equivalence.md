@@ -145,7 +145,7 @@ same(Bisim.check(State.handle[Int](7)(twice), State.handle[Int](7)(once)), "unde
 ```
 
 Operations are compared with `==`, so an operation that carries a
-function (a `Delim` shift) cannot be compared yet.
+function (a `Shift` shift) cannot be compared yet.
 
 ## References
 

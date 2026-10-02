@@ -24,10 +24,10 @@ class TestHandlersAsDollar extends munit.FunSuite:
   given Answers[W] = Answers.writer[String]
 
   /** rewrite every State operation with `op`, forwarding the rest */
-  def rewrite[A](op: [X] => State[Int, X] => X ! Delim + W)(prog: A ! Row): A ! Delim + W =
-    def step[X](e: Row[X], k: X => A ! Row): A ! Delim + W =
+  def rewrite[A](op: [X] => State[Int, X] => X ! Shift % ? + W)(prog: A ! Row): A ! Shift % ? + W =
+    def step[X](e: Row[X], k: X => A ! Row): A ! Shift % ? + W =
       split[State % Int, W](e)(s => op(s).flatMap(x => rewrite(op)(k(x))))(g =>
-        effect[Delim + W, X](g).flatMap(x => rewrite(op)(k(x))))
+        effect[Shift % ? + W, X](g).flatMap(x => rewrite(op)(k(x))))
     (prog.resume: @unchecked) match
       case Free.Return(a) => okay.pure(a)
       case Free.Inject(e) => step[A](e, okay.pure)
@@ -36,14 +36,14 @@ class TestHandlersAsDollar extends munit.FunSuite:
   /** DEEP: the answer is a state-passing function; `ret` is the return
    * clause, and each operation's clause gets k with the handler in it */
   def deep[A](s0: Int)(prog: A ! Row): (Int, A) ! W =
-    type Ans = Int => (Int, A) ! Delim + W
-    val p = Delim.prompt[Ans]
+    type Ans = Int => (Int, A) ! Shift % ? + W
+    val p = Shift.prompt[Ans]
     val op = [X] => (e: State[Int, X]) => (e match
-      case State.Get() => Delim.shift0[Ans, Int, W](p)(k => okay.pure((s: Int) => k(s).flatMap(f => f(s))))
-      case State.Update(g) => Delim.shift0[Ans, X, W](p)(k => okay.pure((s: Int) => { val (b, s1) = g(s); k(b).flatMap(f => f(s1)) }))
-    ): X ! Delim + W
-    val ret: A => Ans ! Delim + W = a => okay.pure((s: Int) => okay.pure((s, a)))
-    Delim.run[(Int, A), W](Delim.dollar[A, Ans, W](p)(ret)(rewrite(op)(prog)).flatMap(f => f(s0)))
+      case State.Get() => Shift.shift0[Ans, Int, W](p)(k => okay.pure((s: Int) => k(s).flatMap(f => f(s))))
+      case State.Update(g) => Shift.shift0[Ans, X, W](p)(k => okay.pure((s: Int) => { val (b, s1) = g(s); k(b).flatMap(f => f(s1)) }))
+    ): X ! Shift % ? + W
+    val ret: A => Ans ! Shift % ? + W = a => okay.pure((s: Int) => okay.pure((s, a)))
+    Shift.run[(Int, A), W](Shift.dollar[A, Ans, W](p)(ret)(rewrite(op)(prog)).flatMap(f => f(s0)))
 
   val counter: Int ! Row = for
     a <- State.get[Int].at[Row]
@@ -76,15 +76,15 @@ class TestHandlersAsDollar extends munit.FunSuite:
   }
 
   test("MUTANT: a deep Update clause that keeps the OLD state is refused, with the first differing tell") {
-    type Ans = Int => (Int, Int) ! Delim + W
-    val p = Delim.prompt[Ans]
+    type Ans = Int => (Int, Int) ! Shift % ? + W
+    val p = Shift.prompt[Ans]
     val op = [X] => (e: State[Int, X]) => (e match
-      case State.Get() => Delim.shift0[Ans, Int, W](p)(k => okay.pure((s: Int) => k(s).flatMap(f => f(s))))
+      case State.Get() => Shift.shift0[Ans, Int, W](p)(k => okay.pure((s: Int) => k(s).flatMap(f => f(s))))
       // THE MUTANT: the new state is computed and dropped, the old one passed on
-      case State.Update(g) => Delim.shift0[Ans, X, W](p)(k => okay.pure((s: Int) => { val (b, _) = g(s); k(b).flatMap(f => f(s)) }))
-    ): X ! Delim + W
-    val ret: Int => Ans ! Delim + W = a => okay.pure((s: Int) => okay.pure((s, a)))
-    val wrong = Delim.run[(Int, Int), W](Delim.dollar[Int, Ans, W](p)(ret)(rewrite(op)(counter)).flatMap(f => f(1)))
+      case State.Update(g) => Shift.shift0[Ans, X, W](p)(k => okay.pure((s: Int) => { val (b, _) = g(s); k(b).flatMap(f => f(s)) }))
+    ): X ! Shift % ? + W
+    val ret: Int => Ans ! Shift % ? + W = a => okay.pure((s: Int) => okay.pure((s, a)))
+    val wrong = Shift.run[(Int, Int), W](Shift.dollar[Int, Ans, W](p)(ret)(rewrite(op)(counter)).flatMap(f => f(1)))
     Bisim.check(wrong, State.handle[Int](1)(counter)) match
       case Verdict.Differ(path, l, r) =>
         assertEquals((l, r), ("performed Say(b=1)", "performed Say(b=11)"))

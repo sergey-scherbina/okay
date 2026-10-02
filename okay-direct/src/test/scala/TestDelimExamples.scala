@@ -7,11 +7,11 @@ import scala.language.implicitConversions
  * WORKED EXAMPLES OF DELIMITED CONTROL, from the literature, as tests
  * so they cannot rot (delim-examples, 2026-09-16). Each one is a
  * shape the papers use to argue that first-class continuations earn
- * their keep, written here in `direct` style against `Delim`.
+ * their keep, written here in `direct` style against `Shift`.
  */
 class TestDelimExamples extends munit.FunSuite {
 
-  type R = Delim + okay.Pure
+  type R = Shift % ? + okay.Pure
 
   // ---- 1 · reverse-mode automatic differentiation
   //      Wang & Rompf, "Demystifying Differentiable Programming" (2018).
@@ -20,25 +20,25 @@ class TestDelimExamples extends munit.FunSuite {
 
   final class Num(val x: Double, var d: Double = 0.0)
 
-  def times(a: Num, b: Num)(using Delim.Prompted[Unit]): Num ! R = direct:
-    !Delim.shift[Num]: k =>
+  def times(a: Num, b: Num)(using Shift.Prompted[Unit]): Num ! R = direct:
+    !Shift.shift[Num]: k =>
       val y = Num(a.x * b.x)
       direct:
         !k(y)                  // the rest of the computation runs...
         a.d += b.x * y.d       // ...and on the way back, the adjoints
         b.d += a.x * y.d
 
-  def plus(a: Num, b: Num)(using Delim.Prompted[Unit]): Num ! R = direct:
-    !Delim.shift[Num]: k =>
+  def plus(a: Num, b: Num)(using Shift.Prompted[Unit]): Num ! R = direct:
+    !Shift.shift[Num]: k =>
       val y = Num(a.x + b.x)
       direct:
         !k(y)
         a.d += y.d
         b.d += y.d
 
-  def grad(f: Delim.Prompted[Unit] ?=> Num => Num ! R)(x: Double): Double =
+  def grad(f: Shift.Prompted[Unit] ?=> Num => Num ! R)(x: Double): Double =
     val v = Num(x)
-    !.run(Delim.delimited[Unit, okay.Pure]:
+    !.run(Shift.delimited[Unit, okay.Pure]:
       direct:
         val y = !f(v)
         y.d = 1.0)             // seed the output adjoint
@@ -46,7 +46,7 @@ class TestDelimExamples extends munit.FunSuite {
 
   test("reverse-mode AD: the backward pass IS the continuation") {
     // f(x) = x*x + 3x, so f'(x) = 2x + 3
-    def f(using Delim.Prompted[Unit])(v: Num): Num ! R = direct:
+    def f(using Shift.Prompted[Unit])(v: Num): Num ! R = direct:
       val sq = !times(v, v)
       val lin = !times(Num(3.0), v)
       !plus(sq, lin)
@@ -64,10 +64,10 @@ class TestDelimExamples extends munit.FunSuite {
 
   type Items = List[Int]
 
-  def yieldOne(a: Int)(using Delim.Prompted[Items]): Unit ! R = direct:
-    !Delim.shift[Unit](k => direct { a :: !k(()) })
+  def yieldOne(a: Int)(using Shift.Prompted[Items]): Unit ! R = direct:
+    !Shift.shift[Unit](k => direct { a :: !k(()) })
 
-  def walk(t: Tree[Int])(using Delim.Prompted[Items]): Unit ! R = direct:
+  def walk(t: Tree[Int])(using Shift.Prompted[Items]): Unit ! R = direct:
     t match
       case Tree.Leaf(a) => !yieldOne(a)
       case Tree.Node(l, r) =>
@@ -75,7 +75,7 @@ class TestDelimExamples extends munit.FunSuite {
         !walk(r)
 
   def elements(t: Tree[Int]): List[Int] =
-    !.run(Delim.delimited[Items, okay.Pure]:
+    !.run(Shift.delimited[Items, okay.Pure]:
       direct:
         !walk(t)
         List.empty[Int])
@@ -95,11 +95,11 @@ class TestDelimExamples extends munit.FunSuite {
     case Ask(question: String, resume: String => Page)
     case Done(text: String)
 
-  def ask(q: String)(using Delim.Prompted[Page]): String ! R = direct:
-    !Delim.shift[String]: k =>
-      okay.pure(Page.Ask(q, (answer: String) => !.run(Delim.run(k(answer)))))
+  def ask(q: String)(using Shift.Prompted[Page]): String ! R = direct:
+    !Shift.shift[String]: k =>
+      okay.pure(Page.Ask(q, (answer: String) => !.run(Shift.run(k(answer)))))
 
-  def booking(using Delim.Prompted[Page]): Page ! R = direct:
+  def booking(using Shift.Prompted[Page]): Page ! R = direct:
     val city = !ask("Which city?")
     val days = !ask(s"How many nights in $city?")
     val pay = !ask(s"Pay ${days.toInt * 90} for $city?")
@@ -110,7 +110,7 @@ class TestDelimExamples extends munit.FunSuite {
     def answer(p: Page, as: List[String]): Page = (p, as) match
       case (Page.Ask(_, resume), a :: rest) => answer(resume(a), rest)
       case (done, _) => done
-    val start = !.run(Delim.delimited[Page, okay.Pure](booking))
+    val start = !.run(Shift.delimited[Page, okay.Pure](booking))
     assertEquals(answer(start, List("Kyiv", "3", "yes")),
       Page.Done("Booked Kyiv for 3 nights"))
     // the SAME start page, answered differently — the dialogue is a value

@@ -1,7 +1,7 @@
 package okay.persist
 
 import munit.FunSuite
-import okay.{!, +, Delim, Pure}
+import okay.{%, !, +, Shift, Pure}
 import okay.Direct.*
 import scala.language.implicitConversions
 
@@ -18,11 +18,11 @@ import scala.language.implicitConversions
  */
 class TestDiagnosis extends FunSuite {
 
-  type Row = Delim + Pure
+  type Row = Shift % ? + Pure
 
-  def booking(using Delim.Asking[String, String, String, Row]): String ! Row = direct:
-    val city = !Delim.pause("city?")
-    val nights = !Delim.pause("nights?")            // THE LINE the second test wants
+  def booking(using Shift.Asking[String, String, String, Row]): String ! Row = direct:
+    val city = !Shift.pause("city?")
+    val nights = !Shift.pause("nights?")            // THE LINE the second test wants
     s"$city/$nights"
 
   def dialogue(t: Topic, program: String = "book/1") =

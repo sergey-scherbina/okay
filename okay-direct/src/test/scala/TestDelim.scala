@@ -1,6 +1,6 @@
 package okay
 
-import Delim.{abort, push, reset, shift}
+import Shift.{abort, push, reset, shift}
 
 /**
  * Delimited control as an effect: the classic shift/reset laws, and
@@ -10,7 +10,7 @@ import Delim.{abort, push, reset, shift}
  */
 class TestDelim extends munit.FunSuite {
 
-  type Row = Delim + okay.Pure
+  type Row = Shift % ? + okay.Pure
 
   test("shift/reset: the continuation comes back as a value") {
     // reset { shift(k => k(5) * 2) } == 10
@@ -56,8 +56,8 @@ class TestDelim extends munit.FunSuite {
   }
 
   test("MULTI-PROMPT: a shift escapes past an intervening delimiter") {
-    val outer = Delim.prompt[Int]
-    val inner = Delim.prompt[Int]
+    val outer = Shift.prompt[Int]
+    val inner = Shift.prompt[Int]
     var innerFinished = false
 
     val prog: Int ! Row =
@@ -72,13 +72,13 @@ class TestDelim extends munit.FunSuite {
     // push — outside the delimiter, not captured — still runs: 1099.
     // What was skipped is everything between the shift and that
     // prompt, the inner delimiter's tail included.
-    assertEquals(!.run(Delim.run[Int, okay.Pure](prog)), 1099)
+    assertEquals(!.run(Shift.run[Int, okay.Pure](prog)), 1099)
     assert(!innerFinished, "the intervening delimiter's tail ran")
   }
 
   test("two prompts of DIFFERENT answer types live in one row") {
-    val num = Delim.prompt[Int]
-    val str = Delim.prompt[String]
+    val num = Shift.prompt[Int]
+    val str = Shift.prompt[String]
 
     val prog: String ! Row =
       push[String, okay.Pure](str) {
@@ -87,7 +87,7 @@ class TestDelim extends munit.FunSuite {
         }.flatMap(n => shift[String, String, okay.Pure](str)(_ => okay.pure(s"n=$n")))
       }
 
-    assertEquals(!.run(Delim.run[String, okay.Pure](prog)), "n=42")
+    assertEquals(!.run(Shift.run[String, okay.Pure](prog)), "n=42")
   }
 
   test("the captured continuation re-installs its own prompt") {
@@ -104,12 +104,12 @@ class TestDelim extends munit.FunSuite {
 
   test("other effects pass through the machine untouched") {
     type F = Writer % String
-    val told = Delim.run[Int, F] {
-      push[Int, F](Delim.prompt[Int]) {
-        okay.effect[Delim + F, Unit](Writer("before")).flatMap(_ =>
+    val told = Shift.run[Int, F] {
+      push[Int, F](Shift.prompt[Int]) {
+        okay.effect[Shift % ? + F, Unit](Writer("before")).flatMap(_ =>
           okay.pure(1))
       }.flatMap(x =>
-        okay.effect[Delim + F, Unit](Writer("after")).map(_ => x + 1))
+        okay.effect[Shift % ? + F, Unit](Writer("after")).map(_ => x + 1))
     }
     val (ws, a) = !.run(Writer.run[String, Int, okay.Pure](told))
     assertEquals(a, 2)
@@ -118,11 +118,11 @@ class TestDelim extends munit.FunSuite {
 
   test("effects inside an abandoned continuation do NOT run") {
     type F = Writer % String
-    val prog = Delim.run[Int, F] {
-      Delim.prompt[Int] match
+    val prog = Shift.run[Int, F] {
+      Shift.prompt[Int] match
         case p => push[Int, F](p) {
           shift[Int, Int, F](p)(_ => okay.pure(5)).flatMap(x =>
-            okay.effect[Delim + F, Unit](Writer("never")).map(_ => x))
+            okay.effect[Shift % ? + F, Unit](Writer("never")).map(_ => x))
         }
     }
     val (ws, a) = !.run(Writer.run[String, Int, okay.Pure](prog))
@@ -134,8 +134,8 @@ class TestDelim extends munit.FunSuite {
     // shift puts the body back under the prompt, so a SECOND shift to
     // the same prompt from inside f finds it
     val nested = !.run(reset[Int, okay.Pure] { p =>
-      Delim.shift[Int, Int, okay.Pure](p)(_ =>
-        Delim.shift[Int, Int, okay.Pure](p)(_ => okay.pure(1)))
+      Shift.shift[Int, Int, okay.Pure](p)(_ =>
+        Shift.shift[Int, Int, okay.Pure](p)(_ => okay.pure(1)))
     })
     assertEquals(nested, 1)
 
@@ -143,8 +143,8 @@ class TestDelim extends munit.FunSuite {
     // delimiter and finds nothing
     intercept[NoPrompt] {
       !.run(reset[Int, okay.Pure] { p =>
-        Delim.shift0[Int, Int, okay.Pure](p)(_ =>
-          Delim.shift0[Int, Int, okay.Pure](p)(_ => okay.pure(1)))
+        Shift.shift0[Int, Int, okay.Pure](p)(_ =>
+          Shift.shift0[Int, Int, okay.Pure](p)(_ => okay.pure(1)))
       })
     }
   }
@@ -153,8 +153,8 @@ class TestDelim extends munit.FunSuite {
     // the captured continuation contains a shift to the same prompt.
     // shift0's k re-installs the delimiter, so that shift finds one
     val ok = !.run(reset[Int, okay.Pure] { p =>
-      Delim.shift0[Int, Int, okay.Pure](p)(k => k(1))
-        .flatMap(x => Delim.shift0[Int, Int, okay.Pure](p)(_ => okay.pure(x + 40)))
+      Shift.shift0[Int, Int, okay.Pure](p)(k => k(1))
+        .flatMap(x => Shift.shift0[Int, Int, okay.Pure](p)(_ => okay.pure(x + 40)))
     })
     assertEquals(ok, 41)
   }
@@ -164,7 +164,7 @@ class TestDelim extends munit.FunSuite {
     // generator needs no new operation and no new handler, only a
     // prompt whose answer type is the list being built
     def emit[A](p: Prompt[List[A]])(a: A): Unit ! Row =
-      Delim.shift[List[A], Unit, okay.Pure](p)(k => k(()).map(a :: _))
+      Shift.shift[List[A], Unit, okay.Pure](p)(k => k(()).map(a :: _))
 
     def collect[A](body: Prompt[List[A]] => Unit ! Row): List[A] =
       !.run(reset[List[A], okay.Pure](p => body(p).map(_ => Nil)))
@@ -176,7 +176,7 @@ class TestDelim extends munit.FunSuite {
     // and it composes with ordinary control flow
     assertEquals(
       collect[Int] { p =>
-        (1 to 4).foldLeft(okay.pure[Delim + okay.Pure, Unit](())) { (acc, i) =>
+        (1 to 4).foldLeft(okay.pure[Shift % ? + okay.Pure, Unit](())) { (acc, i) =>
           acc.flatMap(_ => if i % 2 == 0 then emit(p)(i) else okay.pure(()))
         }
       },
@@ -184,9 +184,9 @@ class TestDelim extends munit.FunSuite {
   }
 
   test("a shift to an uninstalled prompt fails loudly") {
-    val stray = Delim.prompt[Int]
+    val stray = Shift.prompt[Int]
     intercept[NoPrompt] {
-      !.run(Delim.run[Int, okay.Pure](
+      !.run(Shift.run[Int, okay.Pure](
         shift[Int, Int, okay.Pure](stray)(k => k(1))))
     }
   }
@@ -199,17 +199,17 @@ class TestDelim extends munit.FunSuite {
     type W = Writer % String
 
     // the classic, with the continuation invoked twice inside the handler
-    def twice: Int ! okay.Pure = Delim.reset[Int, okay.Pure]: p =>
+    def twice: Int ! okay.Pure = Shift.reset[Int, okay.Pure]: p =>
       direct:
-        1 + !Delim.shift[Int, Int, okay.Pure](p)(k => direct { !k(!k(5)) })
+        1 + !Shift.shift[Int, Int, okay.Pure](p)(k => direct { !k(!k(5)) })
     assertEquals(!.run(twice), 7)
 
     // reset itself written inside a block, and effects around the
     // continuation on both of its invocations
     def both(n: Int): Int ! W = direct:
-      val x = !Delim.reset[Int, W]: p =>
+      val x = !Shift.reset[Int, W]: p =>
         direct:
-          !Delim.shift[Int, Int, W](p): k =>
+          !Shift.shift[Int, Int, W](p): k =>
             direct:
               "before".tell
               val a = !k(n)
@@ -227,9 +227,9 @@ class TestDelim extends munit.FunSuite {
     import okay.Direct.*
     import scala.language.implicitConversions
     type W = Writer % String
-    def guard(n: Int): Int ! W = Delim.reset[Int, W]: p =>
+    def guard(n: Int): Int ! W = Shift.reset[Int, W]: p =>
       direct:
-        val x = !Delim.shift[Int, Int, W](p): k =>
+        val x = !Shift.shift[Int, Int, W](p): k =>
           "deciding".tell                       // a mark directly under the lambda
           if n % 2 == 0 then k(n) else okay.pure(-1)
         s"got $x".tell
@@ -256,18 +256,18 @@ class TestDelim extends munit.FunSuite {
     type W = Writer % String
 
     // written on its own, with no prompt in sight
-    def banner: Delim.Prompted[Int] ?=> Int ! Delim + W = direct:
+    def banner: Shift.Prompted[Int] ?=> Int ! Shift % ? + W = direct:
       "hello".tell
-      1 + !Delim.shift[Int, Int, W](k => k(5))
+      1 + !Shift.shift[Int, Int, W](k => k(5))
 
-    assertEquals(!.run(Writer.run[String, Int, okay.Pure](Delim.delimited[Int, W](banner))),
+    assertEquals(!.run(Writer.run[String, Int, okay.Pure](Shift.delimited[Int, W](banner))),
       (Seq("hello"), 6))
   }
 
   test("Prompted: the evidence cannot be forged, so a capture cannot miss its delimiter") {
-    val e = compileErrors("new okay.Delim.Prompted[Int](okay.Delim.prompt[Int])")
+    val e = compileErrors("new okay.Shift.Prompted[Int](okay.Shift.prompt[Int])")
     assert(e.nonEmpty, "the evidence was constructible outside the package")
-    val e2 = compileErrors("okay.Delim.shift[Int, Int, okay.Pure](k => k(1))")
+    val e2 = compileErrors("okay.Shift.shift[Int, Int, okay.Pure](k => k(1))")
     assert(e2.nonEmpty, "a capture compiled with no delimiter in scope")
   }
 
@@ -275,10 +275,10 @@ class TestDelim extends munit.FunSuite {
     import okay.Direct.*
     import scala.language.implicitConversions
     type W = Writer % String
-    def banner: Delim.Prompted[Int] ?=> Int ! Delim + W = direct:
+    def banner: Shift.Prompted[Int] ?=> Int ! Shift % ? + W = direct:
       "hello".tell
-      1 + !Delim.shift[Int](k => k(5))     // A alone: R and the row are known
-    assertEquals(!.run(Writer.run[String, Int, okay.Pure](Delim.delimited[Int, W](banner))),
+      1 + !Shift.shift[Int](k => k(5))     // A alone: R and the row are known
+    assertEquals(!.run(Writer.run[String, Int, okay.Pure](Shift.delimited[Int, W](banner))),
       (Seq("hello"), 6))
   }
 
@@ -289,11 +289,11 @@ class TestDelim extends munit.FunSuite {
     // delimiter on the machine already running, which is what lets a
     // capture cross it (delim-nesting; TestDelimNesting has both
     // directions, TestDelimLimits pins what the second machine does)
-    val prog: Int ! okay.Pure = Delim.delimited[Int, okay.Pure]:
+    val prog: Int ! okay.Pure = Shift.delimited[Int, okay.Pure]:
       direct:
-        10 + !Delim.scope[Int, okay.Pure]:
+        10 + !Shift.scope[Int, okay.Pure]:
           direct:
-            1 + !Delim.shift[Int, Int, okay.Pure](k => k(5))
+            1 + !Shift.shift[Int, Int, okay.Pure](k => k(5))
     assertEquals(!.run(prog), 16)
   }
 }

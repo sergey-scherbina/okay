@@ -49,7 +49,7 @@ If a combinator's signature matches, use it.
 
 ### A3. Adopting the mechanism for one call site
 
-*Looks like:* an entire module moved into a `Delim` row because one
+*Looks like:* an entire module moved into a `Shift` row because one
 function needed a non-local exit.
 
 *Easy because* the row is viral in exactly the way that makes it feel

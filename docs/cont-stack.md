@@ -16,7 +16,7 @@ bounds are. The design and its measurements are in
 **Since 2026-10-01 Cont runs on the frame machine** (cont-on-frames,
 [specs/freer-kont.md](../specs/freer-kont.md)): a run is one root
 delimiter whose `ret` is your `k`, and every leaf a `shift0` to it — the
-same machine `Delim` runs on, with its stack on the heap. The three
+same machine `Shift` runs on, with its stack on the heap. The three
 kinds below are unchanged in what they cost the *stack*. What changed
 is who interprets them: the second kind is a program over a lazy `k`
 the machine pushes (no pending stack of the runner's own any more), and

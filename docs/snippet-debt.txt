@@ -158,59 +158,59 @@ docs/continuations/01-four-programs.md	val order = place(request)
 docs/continuations/01-four-programs.md	val res = route(req)
 docs/continuations/01-four-programs.md	val started = now()
 docs/continuations/05-leave-early.md	...                                 // 2. ordinary code, however deep
-docs/continuations/05-leave-early.md	Delim.delimited[Answer, Row]:          // 1. name the boundary and its type
+docs/continuations/05-leave-early.md	Shift.delimited[Answer, Row]:          // 1. name the boundary and its type
 docs/continuations/05-leave-early.md	assertEquals(seen, 4)          // the fifth allocation was never reached
 docs/continuations/05-leave-early.md	fallback                            // 4. what it means to finish normally
-docs/continuations/05-leave-early.md	if condition then !Delim.exit(a)    // 3. leave, with the answer
-docs/continuations/06-push-as-pull.md	!Delim.emit(item)
+docs/continuations/05-leave-early.md	if condition then !Shift.exit(a)    // 3. leave, with the answer
+docs/continuations/06-push-as-pull.md	!Shift.emit(item)
 docs/continuations/06-push-as-pull.md	case Entry.Dir(n, es) => es.foreach(walkCallback(_, here)(onFile))
-docs/continuations/06-push-as-pull.md	def produce(...)(using Delim.Emitting[A]): Unit ! (Delim + F) =
-docs/continuations/06-push-as-pull.md	val files = !.run(Delim.collect[String, Pure](walk(tree)))
-docs/continuations/06-push-as-pull.md	val items: List[A] = !.run(Delim.collect[A, F](produce(...)))
-docs/continuations/07-stop-in-the-middle.md	def prog(using Delim.Asking[Q, A, R, Row]): R ! Row = direct:
-docs/continuations/07-stop-in-the-middle.md	p = !.run(Delim.answer(p, Nil)(()))._1     // hand back an answer, get the next stop
-docs/continuations/07-stop-in-the-middle.md	val (next, _) = !.run(Delim.answer(p, Nil)(answer))
-docs/continuations/07-stop-in-the-middle.md	val p = !.run(Delim.resumable[Q, A, R, F](prog))
-docs/continuations/07-stop-in-the-middle.md	val result = !.run(Delim.drive(p)(q => okay.pure(answerFor(q))))
-docs/continuations/07-stop-in-the-middle.md	val x = !Delim.pause(question)
-docs/continuations/08-on-the-way-back.md	!Delim.onReturn(a => transform(a))       // 2. register, from the middle
+docs/continuations/06-push-as-pull.md	def produce(...)(using Shift.Emitting[A]): Unit ! (Shift % ? + F) =
+docs/continuations/06-push-as-pull.md	val files = !.run(Shift.collect[String, Pure](walk(tree)))
+docs/continuations/06-push-as-pull.md	val items: List[A] = !.run(Shift.collect[A, F](produce(...)))
+docs/continuations/07-stop-in-the-middle.md	def prog(using Shift.Asking[Q, A, R, Row]): R ! Row = direct:
+docs/continuations/07-stop-in-the-middle.md	p = !.run(Shift.answer(p, Nil)(()))._1     // hand back an answer, get the next stop
+docs/continuations/07-stop-in-the-middle.md	val (next, _) = !.run(Shift.answer(p, Nil)(answer))
+docs/continuations/07-stop-in-the-middle.md	val p = !.run(Shift.resumable[Q, A, R, F](prog))
+docs/continuations/07-stop-in-the-middle.md	val result = !.run(Shift.drive(p)(q => okay.pure(answerFor(q))))
+docs/continuations/07-stop-in-the-middle.md	val x = !Shift.pause(question)
+docs/continuations/08-on-the-way-back.md	!Shift.onReturn(a => transform(a))       // 2. register, from the middle
 docs/continuations/08-on-the-way-back.md	"x"
 docs/continuations/08-on-the-way-back.md	...                                      // 3. untouched code
-docs/continuations/08-on-the-way-back.md	Delim.delimited[Answer, Row]:
+docs/continuations/08-on-the-way-back.md	Shift.delimited[Answer, Row]:
 docs/continuations/08-on-the-way-back.md	answer                                   // 4. leaves through the hook
 docs/continuations/08-on-the-way-back.md	val context = ...                        // 1. whatever the hook needs
-docs/continuations/09-composing.md	!Delim.exit(using outer)("straight out")   // not this boundary — that one
-docs/continuations/09-composing.md	Delim.delimited[Int, Pure]:
-docs/continuations/09-composing.md	Delim.delimited[String, Pure]:              // runs
-docs/continuations/09-composing.md	Delim.delimited[String, Pure]: outer ?=>
+docs/continuations/09-composing.md	!Shift.exit(using outer)("straight out")   // not this boundary — that one
+docs/continuations/09-composing.md	Shift.delimited[Int, Pure]:
+docs/continuations/09-composing.md	Shift.delimited[String, Pure]:              // runs
+docs/continuations/09-composing.md	Shift.delimited[String, Pure]: outer ?=>
 docs/continuations/09-composing.md	assert(e.contains("SECOND machine"))
 docs/continuations/09-composing.md	s"inner said $x"
-docs/continuations/09-composing.md	val inner = !Delim.scope[Int, Pure]:    // installs
-docs/continuations/09-composing.md	val x = !Delim.delimited[Int, Pure]:      // ← a second one, inside
-docs/continuations/10-prompts.md	Delim.delimited[String, Pure]: outer ?=>
+docs/continuations/09-composing.md	val inner = !Shift.scope[Int, Pure]:    // installs
+docs/continuations/09-composing.md	val x = !Shift.delimited[Int, Pure]:      // ← a second one, inside
+docs/continuations/10-prompts.md	Shift.delimited[String, Pure]: outer ?=>
 docs/continuations/10-prompts.md	assert(a ne b)
 docs/continuations/10-prompts.md	assert(e.getMessage.contains("Installed here"))
 docs/continuations/10-prompts.md	assert(e.getMessage.contains("delimited @"))
 docs/continuations/10-prompts.md	assert(e.getMessage.contains("is not on the stack"))
 docs/continuations/10-prompts.md	p.label      // "prompt @ TestBookPrompts.scala:29"
 docs/continuations/10-prompts.md	val e = intercept[NoPrompt](...)
-docs/continuations/10-prompts.md	val n = !Delim.scope[Int, Pure]:      // an Int boundary inside a String one
-docs/continuations/11-four-captures.md	Delim.push(p)(
-docs/continuations/11-four-captures.md	Delim.push(p)(capture(c, p)(k => k("a")).map(s => s"[$s]"))
+docs/continuations/10-prompts.md	val n = !Shift.scope[Int, Pure]:      // an Int boundary inside a String one
+docs/continuations/11-four-captures.md	Shift.push(p)(
+docs/continuations/11-four-captures.md	Shift.push(p)(capture(c, p)(k => k("a")).map(s => s"[$s]"))
 docs/continuations/11-four-captures.md	capture(c, p)(_ => capture("shift", p)(_ => okay.pure("inner-caught"))))
 docs/continuations/11-four-captures.md	capture(c, p)(k => k("a").flatMap(x => k("b").map(y => x + y)))
-docs/continuations/12-one-machine.md	Delim.collect[Int, F]:          // ...and also collect
-docs/continuations/12-one-machine.md	Delim.resumable[Q, A, R, F]:        // I want to pause...
-docs/continuations/12-one-machine.md	def run[R, F[+_]](prog: R ! (Delim + F))(using OneMachine[F]): R ! F
-docs/continuations/13-multi-shot.md	Delim.delimited[List[Int], Pure]:
+docs/continuations/12-one-machine.md	Shift.collect[Int, F]:          // ...and also collect
+docs/continuations/12-one-machine.md	Shift.resumable[Q, A, R, F]:        // I want to pause...
+docs/continuations/12-one-machine.md	def run[R, F[+_]](prog: R ! (Shift % ? + F))(using OneMachine[F]): R ! F
+docs/continuations/13-multi-shot.md	Shift.delimited[List[Int], Pure]:
 docs/continuations/13-multi-shot.md	log = log :+ s"ran with $x"        // IN the continuation
 docs/continuations/13-multi-shot.md	opened += 1                        // NOT in the continuation
 docs/continuations/13-multi-shot.md	ran = true                                       // never happens
-docs/continuations/13-multi-shot.md	val x = !Delim.shift[Int](k => ...)
-docs/continuations/14-a-new-effect.md	(using Delim.OneMachine[F], At): R ! F
+docs/continuations/13-multi-shot.md	val x = !Shift.shift[Int](k => ...)
+docs/continuations/14-a-new-effect.md	(using Shift.OneMachine[F], At): R ! F
 docs/continuations/14-a-new-effect.md	Budget.within[String, Pure](100)("over budget")(shop)
-docs/continuations/14-a-new-effect.md	def op[F[+_]](...)(using c: Cap[?], at: At): A ! (Delim + F)
-docs/continuations/14-a-new-effect.md	def within[R, F[+_]](...)(body: Cap[R] ?=> R ! (Delim + F))
+docs/continuations/14-a-new-effect.md	def op[F[+_]](...)(using c: Cap[?], at: At): A ! (Shift % ? + F)
+docs/continuations/14-a-new-effect.md	def within[R, F[+_]](...)(body: Cap[R] ?=> R ! (Shift % ? + F))
 docs/continuations/14-a-new-effect.md	final class Budget[R] private (val left: AtomicInteger,
 docs/continuations/14-a-new-effect.md	final class Cap[R] private (state, fallback, prompt: Prompt[R]):
 docs/continuations/14-a-new-effect.md	val orElse: () => R,
@@ -222,24 +222,24 @@ docs/continuations/16-continuations-and-monads.md	State.run[Int, Int](1)(p)   //
 docs/continuations/16-continuations-and-monads.md	def sGet[S, R]: Cont[S, S => R, S => R]           = Cont.shift(k => s => k(s)(s))
 docs/continuations/16-continuations-and-monads.md	sRun(7) { sGet.flatMap(s => sSet(s)) }              // (7, ())
 docs/continuations/16-continuations-and-monads.md	sRun(7) { sSet(9).flatMap(_ => sGet) }              // (9, 9)
-docs/continuations/17-in-the-effect-system.md	!.run(Delim.delimited[(Int, Int), P](State.handle[Int](0)(inside)))
-docs/continuations/17-in-the-effect-system.md	State.run[Int, Int](0)(Delim.delimited[Int, State % Int](outside))
-docs/continuations/17-in-the-effect-system.md	type Row = Delim + State % Int          // inside the delimiter
+docs/continuations/17-in-the-effect-system.md	!.run(Shift.delimited[(Int, Int), P](State.handle[Int](0)(inside)))
+docs/continuations/17-in-the-effect-system.md	State.run[Int, Int](0)(Shift.delimited[Int, State % Int](outside))
+docs/continuations/17-in-the-effect-system.md	type Row = Shift % ? + State % Int          // inside the delimiter
 docs/continuations/18-what-belongs-in-a-library.md	*  `Wf.Runtime`, and it is journalled. These two must not be
 docs/continuations/18-what-belongs-in-a-library.md	*  confused -- one is operational, the other is state. */
 docs/continuations/18-what-belongs-in-a-library.md	/** wall time, for the lease only: the PROGRAM's clock is
 docs/continuations/18-what-belongs-in-a-library.md	def attempt[A](times: Int)(f: () => A): Either[Throwable, A]
 docs/continuations/18-what-belongs-in-a-library.md	stamped("hi").runWith        // "hi@7"     -- exactly, every time
-docs/continuations/19-what-a-capture-does.md	!Delim.exit(r * 2)          // log: acquire, release
-docs/continuations/19-what-a-capture-does.md	Delim.delimited[Int, P]:
+docs/continuations/19-what-a-capture-does.md	!Shift.exit(r * 2)          // log: acquire, release
+docs/continuations/19-what-a-capture-does.md	Shift.delimited[Int, P]:
 docs/continuations/19-what-a-capture-does.md	cleaned = true      // never runs
-docs/continuations/19-what-a-capture-does.md	okay.Delim.delimited[Int, okay.Delim + okay.Pure](okay.pure(1))
-docs/continuations/19-what-a-capture-does.md	okay.bracket[Int, Int, okay.Delim + okay.Pure](1)(_ => ())(r => okay.pure(r))
+docs/continuations/19-what-a-capture-does.md	okay.Shift.delimited[Int, okay.Shift % ? + okay.Pure](okay.pure(1))
+docs/continuations/19-what-a-capture-does.md	okay.bracket[Int, Int, okay.Shift % ? + okay.Pure](1)(_ => ())(r => okay.pure(r))
 docs/continuations/20-the-costs-measured.md	s"$what @ $where"
-docs/continuations/21-the-disciplines.md	Delim.delimited[Int, Pure](…)      // At("Booking.scala:31")
+docs/continuations/21-the-disciplines.md	Shift.delimited[Int, Pure](…)      // At("Booking.scala:31")
 docs/continuations/21-the-disciplines.md	def delimited[R, F[+_]](body: …)(using At): R ! F
 docs/continuations/21-the-disciplines.md	door    // "TestDelimDiagnostics.scala:36" -- the CALLER's line
-docs/continuations/21-the-disciplines.md	given fresh[F[+_]](using NotGiven[Delim[Any] <:< F[Any]]): OneMachine[F]
+docs/continuations/21-the-disciplines.md	given fresh[F[+_]](using NotGiven[Shift[?, Any] <:< F[Any]]): OneMachine[F]
 docs/continuations/21-the-disciplines.md	given union[F, G](using Replayable[F], Replayable[G]): Replayable[F + G]
 docs/continuations/22-checkpoints.md	"the snapshot changed how much the PROGRAM ran")
 docs/continuations/23-durable-workflows.md	!w.sleep(24 * 3600 * 1000L)              // the run ENDS here, resumes tomorrow
@@ -947,7 +947,7 @@ docs/static-workflows.md	Wf.Proc.walk(rooms)((), List(Right("3"), Right("a"), Ri
 docs/static-workflows.md	booking.leaves.map(_.name)        // Vector("ask", "now", "uuid")
 docs/static-workflows.md	booking.mermaid()                 // the shape
 docs/static-workflows.md	booking.mermaid(Some(at))         // ...with a run's position marked
-docs/static-workflows.md	def bookingMonadic(using w: Wf.Asks[String, String, String, Pure]): String ! (Delim + Pure) =
+docs/static-workflows.md	def bookingMonadic(using w: Wf.Asks[String, String, String, Pure]): String ! (Shift % ? + Pure) =
 docs/static-workflows.md	districted.leaves.map(_.name)   // Vector("ask", "ask") — BOTH branches
 docs/static-workflows.md	guest.andThen(city)(confirmCity)     // Booking ~> Booking
 docs/static-workflows.md	val districted: Wf.Proc[String, String, Unit, String] = Proc.direct: _ =>
@@ -1045,9 +1045,9 @@ docs/theory/13-rows-without-unions.md	def run[A](e: Eff[Any, A]): A             
 docs/theory/13-rows-without-unions.md	def run[S, R, A](s: S)(e: Eff[State[S] & R, A]): Eff[R, (S, A)]   // Eff.scala:88
 docs/theory/13-rows-without-unions.md	final class Eff[-R, A] private (private val body: EffBody[A])      // okay-scala2 Eff.scala:26
 docs/theory/13-rows-without-unions.md	infix type +[F[+_], G[+_]] = [A] =>> F[A] | G[A]     // Effects.scala:69
-docs/tutorial.md	!.run(Delim.collectUntil[Int, Boolean, Boolean, Pure](using FoldUntil.exists[Int](_ > 2))(walk(tree)))  // true, after three leaves
-docs/tutorial.md	!.run(Delim.collectUntil[Int, Vector[Int], Vector[Int], Pure](using FoldUntil.take(2))(walk(tree)))    // Vector(1, 2) — the walk stops at its second leaf
-docs/tutorial.md	!.run(Delim.collect[Int, Pure](walk(tree)))                                                          // List(1, 2, 3, 4)
+docs/tutorial.md	!.run(Shift.collectUntil[Int, Boolean, Boolean, Pure](using FoldUntil.exists[Int](_ > 2))(walk(tree)))  // true, after three leaves
+docs/tutorial.md	!.run(Shift.collectUntil[Int, Vector[Int], Vector[Int], Pure](using FoldUntil.take(2))(walk(tree)))    // Vector(1, 2) — the walk stops at its second leaf
+docs/tutorial.md	!.run(Shift.collect[Int, Pure](walk(tree)))                                                          // List(1, 2, 3, 4)
 docs/tutorial.md	(base and providing[Principal](bob)) { api }    // answers for:Bob
 docs/tutorial.md	.map(_ * 2).filter(_ % 3 == 0).take(1000))(using Fold.sum[Int])
 docs/tutorial.md	.toLazyList)
@@ -1065,8 +1065,8 @@ docs/tutorial.md	Condition.run { case (Damaged(_), _) => Invoke("skip", ()) }(lo
 docs/tutorial.md	Condition.run { case (Damaged(_), _) => Resume(2) }(loop(in))       // Vector(1, 2, 3)
 docs/tutorial.md	Cst.errors(cst)                 // the diagnostics ARE in the tree
 docs/tutorial.md	Cst.lexemes(cst) == text        // lossless, damage included
-docs/tutorial.md	Delim.reset[List[Int], Pure] { p =>
-docs/tutorial.md	Delim.shift(p)(k => k(()).map(a :: _))
+docs/tutorial.md	Shift.reset[List[Int], Pure] { p =>
+docs/tutorial.md	Shift.shift(p)(k => k(()).map(a :: _))
 docs/tutorial.md	Durable.tools(inner, journal)(policy = {
 docs/tutorial.md	Form(name, email, age)          // three problems, or a Form
 docs/tutorial.md	Json.read[Answer]("""{"city": "Kyiv", "country": "Ukraine"""")
@@ -1101,7 +1101,7 @@ docs/tutorial.md	countdown(1000000).foldUntil(using FoldUntil.find[Int](_ % 7 ==
 docs/tutorial.md	countdown(1000000).toLazyList.take(3).toList   // List(1000000, 999999, 999998)
 docs/tutorial.md	cut.stopped    // true: the tokens after the closing brace were never pulled
 docs/tutorial.md	cut.value      // Some(Answer(...)) — decoded mid-stream
-docs/tutorial.md	def emit[A](p: Prompt[List[A]])(a: A): Unit ! (Delim + Pure) =
+docs/tutorial.md	def emit[A](p: Prompt[List[A]])(a: A): Unit ! (Shift % ? + Pure) =
 docs/tutorial.md	def loop(raws: List[String]): Vector[Int] ! Op = ...
 docs/tutorial.md	def nats: Long ! (Choose + Pure) = effect(Choose(LazyList.from(0).map(_.toLong)))
 docs/tutorial.md	def traverseOf[F[_]](f: A => F[B]): S => F[T]      // Applicative[F]

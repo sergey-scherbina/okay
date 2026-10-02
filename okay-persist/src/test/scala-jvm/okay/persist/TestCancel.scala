@@ -1,7 +1,7 @@
 package okay.persist
 
 import munit.FunSuite
-import okay.{!, +, Async, CanBlock, Delim, Pure, Wf}
+import okay.{%, !, +, Async, CanBlock, Shift, Pure, Wf}
 import okay.given_CanBlock
 import okay.Direct.*
 import okay.codec.Schema
@@ -29,7 +29,7 @@ class TestCancel extends FunSuite {
     !.run(Async.run[A, Pure](p))
 
   /** checks twice: once before the nap, once after */
-  def job(using w: Wf.Asks[String, String, String, Pure]): String ! Delim + Pure =
+  def job(using w: Wf.Asks[String, String, String, Pure]): String ! Shift % ? + Pure =
     direct:
       val who = !w.pause("who?")
       val early = !w.cancelled

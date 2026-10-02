@@ -1,6 +1,6 @@
 package okay.persist
 
-import okay.Delim
+import okay.Shift
 
 /**
  * KEEPING THE PROGRAM BETWEEN CALLS (dialogue-resume-cache,
@@ -60,7 +60,7 @@ final class Resume[Q, A, R, F[+_]](val max: Int = 256):
 
   /** keep this one, evicting the least recently used if full */
   def put(id: String, dialogue: Dialogue[Q, A, R, F],
-          paused: Delim.Dialogue[Q, A, R, F], at: Int): Unit =
+          paused: Shift.Dialogue[Q, A, R, F], at: Int): Unit =
     val _ = held.remove(id)
     val _ = held.put(id, Resume.Held(dialogue, paused, at))
     while held.size > max do
@@ -85,5 +85,5 @@ object Resume:
   /** a program in hand, the dialogue that owns it, and the position
    * the next answer goes to */
   final case class Held[Q, A, R, F[+_]](dialogue: Dialogue[Q, A, R, F],
-                                        paused: Delim.Dialogue[Q, A, R, F],
+                                        paused: Shift.Dialogue[Q, A, R, F],
                                         at: Int)

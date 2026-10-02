@@ -42,12 +42,12 @@ measurement is the reason anybody believes the rule.
 So the row of a replayable program is constrained:
 
 ```scala
-type Safe = Delim[Any] | State[?, Any] | Reader[?, Any] | Throws[?, Any]
+type Safe = Shift[?, Any] | State[?, Any] | Reader[?, Any] | Throws[?, Any]
 ```
 
 **In, and why each:** `State` and `Reader` are re-threaded from the
 same answers, so a replay produces the same values. `Throws` raises the
-same error at the same place. `Delim` is the machine doing the
+same error at the same place. `Shift` is the machine doing the
 replaying.
 
 **Out, deliberately:** `Async` and anything reaching outside — replay
@@ -93,7 +93,7 @@ of a call site.
 
 ```scala
 def delimited[R, F[+_]](body: …)(using At): R ! F
-Delim.delimited[Int, Pure](…)      // At("Booking.scala:31")
+Shift.delimited[Int, Pure](…)      // At("Booking.scala:31")
 ```
 
 It is a **given** rather than an `inline def` you call by hand, and
@@ -126,7 +126,7 @@ pause that made it. All pinned in `TestDelimDiagnostics`.
 
 A macro cannot be expanded in the compilation run that defines it, so
 `okay`'s own main sources must never *summon* an `At` — they thread
-the one their caller supplied. `Delim` does exactly that. If you build
+the one their caller supplied. `Shift` does exactly that. If you build
 something like this, expect that constraint; it is not a bug and it has
 no workaround.
 
@@ -135,10 +135,10 @@ no workaround.
 Chapter 12's rule, as evidence:
 
 ```scala
-given fresh[F[+_]](using NotGiven[Delim[Any] <:< F[Any]]): OneMachine[F]
+given fresh[F[+_]](using NotGiven[Shift[?, Any] <:< F[Any]]): OneMachine[F]
 ```
 
-"Give me evidence that `F` does not already contain `Delim`." A second
+"Give me evidence that `F` does not already contain `Shift`." A second
 `delimited` in the same row is then a compile error that says
 `SECOND machine`, where it used to be a runtime `NoPrompt` for an
 ordinary nesting.

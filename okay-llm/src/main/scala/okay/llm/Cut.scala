@@ -22,7 +22,7 @@ import okay.*
  *
  * A passing stream really never captures, and the push really is
  * nothing — a thousand of them cost 28.4 µs, so one is about 0.03 µs.
- * But entering `Delim + Async` puts EVERY operation of the body
+ * But entering `Shift % ? + Async` puts EVERY operation of the body
  * through the delimited-control machine, and that is per token:
  *
  *     writerTell            15.098 / 18.012 µs   N tells, no machine
@@ -51,19 +51,19 @@ object Cut {
   final case class Violation(rule: String, at: Int, seen: String)
 
   /** the streaming row under a cut boundary */
-  type Guarded[A] = Writer % String + (Delim + Async)
+  type Guarded[A] = Writer % String + (Shift % ? + Async)
 
   /** install the boundary; the body streams tokens and may abort to
    * the prompt with a named violation */
-  def guarded[A](gen: Prompt[Either[Violation, A]] => A ! (Writer % String + (Delim + Async)))
+  def guarded[A](gen: Prompt[Either[Violation, A]] => A ! (Writer % String + (Shift % ? + Async)))
   : Either[Violation, A] ! Writer % String + Async =
-    val p = Delim.prompt[Either[Violation, A]]
-    Delim.run(Delim.push(p)(gen(p).map(Right(_))))
+    val p = Shift.prompt[Either[Violation, A]]
+    Shift.run(Shift.push(p)(gen(p).map(Right(_))))
 
   /** abort the generation with a violation — the non-local exit */
   def cut[A, X](p: Prompt[Either[Violation, A]])(v: Violation)
-  : X ! (Writer % String + (Delim + Async)) =
-    Delim.abort[Either[Violation, A], X, Writer % String + Async](p)(Left(v))
+  : X ! (Writer % String + (Shift % ? + Async)) =
+    Shift.abort[Either[Violation, A], X, Writer % String + Async](p)(Left(v))
 
   /**
    * The recurring shape: pull a token source, CHECK each token, emit
@@ -74,17 +74,17 @@ object Cut {
   def checked[A](p: Prompt[Either[Violation, A]],
                  tokens: Unit ! Writer % String + Async)
                 (check: (Int, String) => Option[Violation])
-  : Unit ! (Writer % String + (Delim + Async)) =
+  : Unit ! (Writer % String + (Shift % ? + Async)) =
     def go(src: Unit ! Writer % String + Async, i: Int)
-    : Unit ! (Writer % String + (Delim + Async)) =
+    : Unit ! (Writer % String + (Shift % ? + Async)) =
       !.widen[Either[Unit, (String, Unit ! Writer % String + Async)],
-              Async, Writer % String + Delim](
+              Async, Writer % String + Shift % ?](
         Writer.uncons[String, Unit, Async](src)).flatMap {
         case Left(_) => pure(())
         case Right((t, rest)) => check(i, t) match
           case Some(v) => cut[A, Unit](p)(v)
           case None =>
-            effect[Writer % String + (Delim + Async), Unit](Writer(t))
+            effect[Writer % String + (Shift % ? + Async), Unit](Writer(t))
               .flatMap(_ => go(rest, i + 1))
       }
     go(tokens, 0)
@@ -95,39 +95,39 @@ object Cut {
 
   /**
    * The boundary with an ambient prompt — and the evidence is
-   * `Delim.Prompted`, not `Prompt` (delim-doors-are-prompted,
+   * `Shift.Prompted`, not `Prompt` (delim-doors-are-prompted,
    * 2026-09-18). A `Prompt` is one line to make, so asking for one as
    * a GIVEN proves nothing: a `violation` outside any guard compiled
    * and then failed at runtime with `NoPrompt`. `Prompted`'s
-   * constructor is private to `Delim`, so holding one means being
+   * constructor is private to `Shift`, so holding one means being
    * inside the guard that installed it. The explicit forms
    * (`guarded`, `cut`, `checked(p, …)`) are unaffected.
    */
-  def guard[A](gen: Delim.Prompted[Either[Violation, A]] ?=> A ! (Writer % String + (Delim + Async)))
+  def guard[A](gen: Shift.Prompted[Either[Violation, A]] ?=> A ! (Writer % String + (Shift % ? + Async)))
   : Either[Violation, A] ! Writer % String + Async =
-    // `Delim.scope` is the only door that hands out the evidence —
-    // its constructor is private to `Delim`, which is exactly what
+    // `Shift.scope` is the only door that hands out the evidence —
+    // its constructor is private to `Shift`, which is exactly what
     // makes the evidence worth asking for
-    Delim.run(Delim.scope[Either[Violation, A], Writer % String + Async](gen.map(Right(_))))
+    Shift.run(Shift.scope[Either[Violation, A], Writer % String + Async](gen.map(Right(_))))
 
   /** `checked` against the NEAREST guard — the prompt is ambient
    * (the ctx-prompts door; the explicit form stays) */
   def checked[A](tokens: Unit ! Writer % String + Async)
                 (check: (Int, String) => Option[Violation])
-                (using p: Delim.Prompted[Either[Violation, A]])
-  : Unit ! (Writer % String + (Delim + Async)) =
+                (using p: Shift.Prompted[Either[Violation, A]])
+  : Unit ! (Writer % String + (Shift % ? + Async)) =
     checked(p.prompt, tokens)(check)
 
   /** abort to the nearest guard — no prompt in hand */
-  def violation[A, X](v: Violation)(using p: Delim.Prompted[Either[Violation, A]])
-  : X ! (Writer % String + (Delim + Async)) =
+  def violation[A, X](v: Violation)(using p: Shift.Prompted[Either[Violation, A]])
+  : X ! (Writer % String + (Shift % ? + Async)) =
     cut[A, X](p.prompt)(v)
 
   /** `checked`, prompt ambient */
   def watched[A](tokens: Unit ! Writer % String + Async)
                 (check: (Int, String) => Option[Violation])
-                (using p: Delim.Prompted[Either[Violation, A]])
-  : Unit ! (Writer % String + (Delim + Async)) =
+                (using p: Shift.Prompted[Either[Violation, A]])
+  : Unit ! (Writer % String + (Shift % ? + Async)) =
     checked[A](p.prompt, tokens)(check)
 
   // ── the repair door (specs/condition.md): between passing a token
@@ -136,7 +136,7 @@ object Cut {
   // never signals.
 
   /** the screened row: conditions over the guarded row */
-  type Screened = Condition.Op + (Writer % String + (Delim + Async))
+  type Screened = Condition.Op + (Writer % String + (Shift % ? + Async))
 
   /**
    * `checked`, repairable: a violating token SIGNALS the Violation
@@ -149,14 +149,14 @@ object Cut {
    */
   def screened[A](tokens: Unit ! Writer % String + Async)
                  (check: (Int, String) => Option[Violation])
-                 (using p: Delim.Prompted[Either[Violation, A]])
+                 (using p: Shift.Prompted[Either[Violation, A]])
   : Unit ! Screened =
-    type R = Writer % String + (Delim + Async)
+    type R = Writer % String + (Shift % ? + Async)
     def emit(t: String): Unit ! Screened =
       effect[Screened, Unit](Writer(t))
     def go(src: Unit ! Writer % String + Async, i: Int): Unit ! Screened =
       !.widen[Either[Unit, (String, Unit ! Writer % String + Async)],
-              Async, Condition.Op + (Writer % String + Delim)](
+              Async, Condition.Op + (Writer % String + Shift % ?)](
         Writer.uncons[String, Unit, Async](src)).flatMap {
         case Left(_) => pure(())
         case Right((t, rest)) => check(i, t) match
@@ -174,7 +174,7 @@ object Cut {
     Condition.frame[Option[Violation], Violation, R]("cut")(go(tokens, 0).map(_ => None))(
       v => Some(v)).flatMap {
       case Some(v) =>
-        !.widen[Unit, Writer % String + (Delim + Async), Condition.Op](
+        !.widen[Unit, Writer % String + (Shift % ? + Async), Condition.Op](
           violation[A, Unit](v))
       case None => pure(())
     }

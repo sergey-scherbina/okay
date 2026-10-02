@@ -232,7 +232,7 @@ inspectable than a native stack, not less, and that is exactly why it
 is multi-shot (chapter 13).
 
 The opacity is `Frame`'s `f`. An ordinary host function — the same one
-`Bind` was already carrying before `Delim` existed.
+`Bind` was already carrying before `Shift` existed.
 
 > **The problem was never continuations. It is `flatMap`.** Captures
 > only made it visible.
@@ -377,7 +377,7 @@ generation fails. Seconds per restore, and a compiler on the
 production classpath.
 
 **Symbols still resolve against a classpath.** The term refers to
-`okay.Delim.pause` and to your own definitions by name. It is not a
+`okay.Shift.pause` and to your own definitions by name. It is not a
 self-contained blob — though note that **replay is in exactly the same
 position**, so this is not a cost *relative to replay*. It is a cost
 relative to the fantasy of a program in a bottle.

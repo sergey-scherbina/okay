@@ -1,7 +1,7 @@
 package okay.persist
 
 import munit.FunSuite
-import okay.{!, +, Async, CanBlock, Delim, Pure, Retry, Wf}
+import okay.{%, !, +, Async, CanBlock, Shift, Pure, Retry, Wf}
 import okay.Direct.*
 import okay.codec.Schema
 import okay.given_CanBlock
@@ -33,7 +33,7 @@ class TestWorkflowGuide extends FunSuite {
 
   // ---- the page's first block, verbatim
 
-  def booking(using w: Wf.Asks[String, String, String, Pure]): String ! Delim + Pure = direct:
+  def booking(using w: Wf.Asks[String, String, String, Pure]): String ! Shift % ? + Pure = direct:
     val city = !w.pause("which city?")           // the WORLD answers
     val start = !w.now                           // the RUNTIME answers, once
     !w.sleep(24 * 3600 * 1000L)                  // the run ENDS here and resumes tomorrow
@@ -120,7 +120,7 @@ class TestWorkflowGuide extends FunSuite {
 
   // ---- the page's cancellation block, verbatim
 
-  def cancellable(using w: Wf.Asks[String, String, String, Pure]): String ! Delim + Pure =
+  def cancellable(using w: Wf.Asks[String, String, String, Pure]): String ! Shift % ? + Pure =
     direct:
       val city = !w.pause("which city?")
       !w.sleep(24 * 3600 * 1000L)
@@ -150,7 +150,7 @@ class TestWorkflowGuide extends FunSuite {
   // ---- the page's bounded-history block, verbatim
 
   def stage(using w: Wf.Asks[String, String, Wf.Next[String, String], Pure])
-      : Wf.Next[String, String] ! Delim + Pure = direct:
+      : Wf.Next[String, String] ! Shift % ? + Pure = direct:
     val input = !w.pause("input")               // the SEED, on a continued run
     if input.length >= 4 then Wf.Next.Done(s"done:$input")
     else Wf.Next.Continue(input + "x")          // close this chapter, open the next
@@ -168,13 +168,13 @@ class TestWorkflowGuide extends FunSuite {
 
   // ---- the page's child block, verbatim
 
-  def paid(using w: Wf.Asks[String, String, String, Pure]): String ! Delim + Pure =
+  def paid(using w: Wf.Asks[String, String, String, Pure]): String ! Shift % ? + Pure =
     direct:
       val id = !w.pause("start the payment run")   // the ACTIVITY spawns it
       val got = !w.awaitChild(id)                  // the run ENDS here
       s"paid: $got"
 
-  def payment(using w: Wf.Asks[String, String, String, Pure]): String ! Delim + Pure =
+  def payment(using w: Wf.Asks[String, String, String, Pure]): String ! Shift % ? + Pure =
     direct:
       val ref = !w.pause("charge")
       s"ok/$ref"
@@ -205,7 +205,7 @@ class TestWorkflowGuide extends FunSuite {
 
   /** a program with a branch in the MIDDLE, so a journal written
    * before the branch has records after the point it would sit at */
-  def staged(using w: Wf.Asks[String, String, String, Pure]): String ! Delim + Pure =
+  def staged(using w: Wf.Asks[String, String, String, Pure]): String ! Shift % ? + Pure =
     direct:
       val city = !w.pause("city?")
       val promo = !w.patch("promo")

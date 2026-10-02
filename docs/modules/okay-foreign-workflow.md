@@ -19,7 +19,7 @@ okay-workflow and okay-persist apply as they are.
 ## Using it
 
 ```scala
-  def order(sku: String)(using w: Wf.Asks[ForeignCall, String, String, Pure]): String ! Delim + Pure = direct:
+  def order(sku: String)(using w: Wf.Asks[ForeignCall, String, String, Pure]): String ! Shift % ? + Pure = direct:
     val price = !ForeignActivity.call[Double]("shop:price")(sku)
 ```
 

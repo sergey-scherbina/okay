@@ -19,7 +19,7 @@ import scala.language.implicitConversions
 class TestWfSuspend extends munit.FunSuite {
 
   type P = okay.Pure
-  type Row = Delim + P
+  type Row = Shift % ? + P
 
   given Wf.Runtime = Wf.Runtime.scripted(millis = 1_000L, id = "id", dice = 0.5)
 
@@ -51,7 +51,7 @@ class TestWfSuspend extends munit.FunSuite {
     val later: Wf.Runtime = Wf.Runtime.scripted(millis = 9_999_999L, id = "x", dice = 0.1)
     val back = !.run(Wf.replay[String, String, String, P](overnight)(j))
     val (st2, _) = !.run(Wf.drive(back)(_ => fail("the oracle was asked again"))(
-      using later, summon[Delim.OneMachine[P]]))
+      using later, summon[Shift.OneMachine[P]]))
     assertEquals(st2, st1, "the replayed run chose a different deadline")
   }
 

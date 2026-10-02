@@ -1,7 +1,7 @@
 package okay.persist
 
 import munit.FunSuite
-import okay.{!, +, Async, CanBlock, Delim, Pure, Wf}
+import okay.{%, !, +, Async, CanBlock, Shift, Pure, Wf}
 import okay.given_CanBlock
 import okay.Direct.*
 import okay.codec.Schema
@@ -41,12 +41,12 @@ class TestStatuses extends FunSuite {
     !.run(Async.run[A, Pure](p))
 
 
-  def nap(using w: Wf.Asks[String, String, String, Pure]): String ! Delim + Pure = direct:
+  def nap(using w: Wf.Asks[String, String, String, Pure]): String ! Shift % ? + Pure = direct:
     val who = !w.pause("who?")
     !w.sleep(60_000L)
     s"$who woke"
 
-  def approval(using w: Wf.Asks[String, String, String, Pure]): String ! Delim + Pure =
+  def approval(using w: Wf.Asks[String, String, String, Pure]): String ! Shift % ? + Pure =
     direct:
       val what = !w.pause("what?")
       val by = !w.awaitSignal("approved")

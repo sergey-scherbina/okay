@@ -12,11 +12,11 @@
 Here is the mistake, and it is the obvious thing to write:
 
 ```scala
-Delim.delimited[String, Pure]:
+Shift.delimited[String, Pure]:
   direct:
-    val x = !Delim.delimited[Int, Pure]:      // ← a second one, inside
+    val x = !Shift.delimited[Int, Pure]:      // ← a second one, inside
       direct:
-        !Delim.exit(7)
+        !Shift.exit(7)
         0
     s"inner said $x"
 ```
@@ -26,7 +26,7 @@ and the compiler says so:
 
 ```scala
 val e = compileErrors("""
-  okay.Delim.delimited[Int, okay.Delim + okay.Pure](okay.pure(1))""")
+  okay.Shift.delimited[Int, okay.Shift % ? + okay.Pure](okay.pure(1))""")
 assert(e.contains("SECOND machine"))
 ```
 
@@ -47,18 +47,18 @@ an accident; it is the reason the two halves have separate names.
 
 | runs the machine (outermost) | installs only (nested) |
 |---|---|
-| `Delim.delimited` | `Delim.scope` |
-| `Delim.collect` | `Delim.collecting` |
-| `Delim.resumable` | `Delim.pausing` |
+| `Shift.delimited` | `Shift.scope` |
+| `Shift.collect` | `Shift.collecting` |
+| `Shift.resumable` | `Shift.pausing` |
 
 Written correctly, the example above is:
 
 ```scala
-Delim.delimited[String, Pure]:              // runs
+Shift.delimited[String, Pure]:              // runs
   direct:
-    val inner = !Delim.scope[Int, Pure]:    // installs
+    val inner = !Shift.scope[Int, Pure]:    // installs
       direct:
-        !Delim.exit(7)
+        !Shift.exit(7)
         0
     s"inner said $inner"
 // "inner said 7"
@@ -74,11 +74,11 @@ first-class value, an inner scope can leave through an **outer**
 boundary — the thing nested handlers cannot express:
 
 ```scala
-Delim.delimited[String, Pure]: outer ?=>
+Shift.delimited[String, Pure]: outer ?=>
   direct:
-    val inner = !Delim.scope[Int, Pure]:
+    val inner = !Shift.scope[Int, Pure]:
       direct:
-        !Delim.exit(using outer)("straight out")   // not this boundary — that one
+        !Shift.exit(using outer)("straight out")   // not this boundary — that one
         0
     s"inner said $inner"
 // "straight out"
@@ -99,12 +99,12 @@ default is the nearest.
 The common case. A walk that emits, and stops early:
 
 ```scala
-def upToBig(x: Tree)(using Delim.Emitting[Int], Delim.Prompted[Unit]): Unit ! Row =
+def upToBig(x: Tree)(using Shift.Emitting[Int], Shift.Prompted[Unit]): Unit ! Row =
   direct:
     x match
       case Tree.Leaf(n) =>
-        if n > 50 then !Delim.exit(())
-        !Delim.emit(n)
+        if n > 50 then !Shift.exit(())
+        !Shift.emit(n)
       case Tree.Node(l, r) => { !upToBig(l); !upToBig(r) }
 ```
 
@@ -116,9 +116,9 @@ Assembling it: `collect` is outermost (it runs), and a `scope` inside
 it provides the boundary the exit aims at.
 
 ```scala
-val got = !.run(Delim.collect[Int, Pure](
+val got = !.run(Shift.collect[Int, Pure](
   direct:
-    !Delim.scope[Unit, Pure](direct(!upToBig(t)))))
+    !Shift.scope[Unit, Pure](direct(!upToBig(t)))))
 // List(1)
 ```
 
@@ -141,12 +141,12 @@ documented rather than described.
 Chapter 8 promised this, and here it is composed:
 
 ```scala
-Delim.delimited[Int, Pure]:
+Shift.delimited[Int, Pure]:
   direct:
-    !Delim.onReturn(n => n + 1000)
-    val inner = !Delim.scope[Int, Pure]:
+    !Shift.onReturn(n => n + 1000)
+    val inner = !Shift.scope[Int, Pure]:
       direct:
-        !Delim.exit(5)
+        !Shift.exit(5)
         0
     inner
 // 1005

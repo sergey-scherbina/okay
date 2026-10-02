@@ -391,7 +391,7 @@ states there are, and the handler's heap is keyed by identity, so one
 cast turns a slot back into its type. Use a key when the instances can
 be named, cells when they are made. A third route exists for the case
 where they must be nested and separated dynamically — a fresh prompt
-per handler installation, which `Delim`'s multi-prompt control already
+per handler installation, which `Shift`'s multi-prompt control already
 supports.
 
 ## 9. What bites

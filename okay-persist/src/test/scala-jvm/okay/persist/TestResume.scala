@@ -1,7 +1,7 @@
 package okay.persist
 
 import munit.FunSuite
-import okay.{!, +, Async, CanBlock, Delim, Pure, Wf}
+import okay.{%, !, +, Async, CanBlock, Shift, Pure, Wf}
 import okay.given_CanBlock
 import okay.Direct.*
 import okay.codec.Schema
@@ -33,7 +33,7 @@ class TestResume extends FunSuite {
   /** counts its own builds: one per replay */
   class Counted:
     var builds = 0
-    def body(using w: Wf.Asks[String, String, String, Pure]): String ! Delim + Pure =
+    def body(using w: Wf.Asks[String, String, String, Pure]): String ! Shift % ? + Pure =
       direct:
         builds += 1
         val who = !w.pause("who?")

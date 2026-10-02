@@ -21,9 +21,9 @@ class TestBookCaptureAndTheRest extends munit.FunSuite {
     // order. A `var` has no handler, so there is no order to choose.
     // Both branches write the same cell, always.
     var seen = List.empty[Int]
-    val prog: Int ! P = Delim.delimited[Int, P]:
+    val prog: Int ! P = Shift.delimited[Int, P]:
       direct:
-        val x = !Delim.shift[Int, Int, P](k => direct { !k(1) + !k(10) })
+        val x = !Shift.shift[Int, Int, P](k => direct { !k(1) + !k(10) })
         seen = seen :+ x
         x
     assertEquals(!.run(prog), 11)
@@ -36,10 +36,10 @@ class TestBookCaptureAndTheRest extends munit.FunSuite {
     // the block did before the capture point happened once.
     var before = 0
     var after = 0
-    val prog: Int ! P = Delim.delimited[Int, P]:
+    val prog: Int ! P = Shift.delimited[Int, P]:
       direct:
         before += 1
-        val x = !Delim.shift[Int, Int, P](k => direct { !k(1) + !k(2) })
+        val x = !Shift.shift[Int, Int, P](k => direct { !k(1) + !k(2) })
         after += 1
         x
     assertEquals(!.run(prog), 3)
@@ -50,15 +50,15 @@ class TestBookCaptureAndTheRest extends munit.FunSuite {
   test("a loop counter survives a pause, because the continuation holds it") {
     // The reassuring case. A `var` inside the captured region is part
     // of the continuation's closure, so pausing and resuming keeps it.
-    def counting(using Delim.Asking[Int, Int, Int, Delim + P]): Int ! Delim + P = direct:
+    def counting(using Shift.Asking[Int, Int, Int, Shift % ? + P]): Int ! Shift % ? + P = direct:
       var acc = 0
       var i = 0
       while i < 3 do
-        acc += !Delim.pause(i)
+        acc += !Shift.pause(i)
         i += 1
       acc
-    val out = !.run(Delim.drive[Int, Int, Int, P](
-      !.run(Delim.resumable[Int, Int, Int, P](counting)))(q => okay.pure(q * 10)))
+    val out = !.run(Shift.drive[Int, Int, Int, P](
+      !.run(Shift.resumable[Int, Int, Int, P](counting)))(q => okay.pure(q * 10)))
     assertEquals(out, 30, "0*10 + 1*10 + 2*10")
   }
 }

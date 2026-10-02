@@ -13,44 +13,44 @@ import scala.language.implicitConversions
  */
 class TestDelimPersist extends munit.FunSuite {
 
-  type Row = Delim + okay.Pure
+  type Row = Shift % ? + okay.Pure
 
-  def booking(using Delim.Asking[String, String, String, Row]): String ! Row = direct:
-    val city = !Delim.pause("Which city?")
-    val nights = !Delim.pause(s"How many nights in $city?")
-    val pay = !Delim.pause(s"Pay ${nights.toInt * 90} for $city?")
+  def booking(using Shift.Asking[String, String, String, Row]): String ! Row = direct:
+    val city = !Shift.pause("Which city?")
+    val nights = !Shift.pause(s"How many nights in $city?")
+    val pay = !Shift.pause(s"Pay ${nights.toInt * 90} for $city?")
     if pay == "yes" then s"Booked $city for $nights nights" else "Cancelled"
 
   test("replay: a dialogue survives a restart, because its journal does") {
     // ---- the process that starts the booking
-    val p0 = !.run(Delim.resumable[String, String, String, okay.Pure](booking))
+    val p0 = !.run(Shift.resumable[String, String, String, okay.Pure](booking))
     assertEquals(p0.asking, Some("Which city?"))
-    val (p1, j1) = !.run(Delim.answer(p0, List.empty[String])("Kyiv"))
-    val (p2, j2) = !.run(Delim.answer(p1, j1)("3"))
+    val (p1, j1) = !.run(Shift.answer(p0, List.empty[String])("Kyiv"))
+    val (p2, j2) = !.run(Shift.answer(p1, j1)("3"))
     assertEquals(j2, List("Kyiv", "3"))
     assertEquals(p2.asking, Some("Pay 270 for Kyiv?"))
 
     // ---- the process dies. p0, p1, p2 are gone with it; the only
     //      thing that was written down is j2, a list of two strings.
 
-    val back = !.run(Delim.replay[String, String, String, okay.Pure](booking)(j2))
+    val back = !.run(Shift.replay[String, String, String, okay.Pure](booking)(j2))
     assertEquals(back.asking, Some("Pay 270 for Kyiv?"))   // the same place
-    val (end, j3) = !.run(Delim.answer(back, j2)("yes"))
+    val (end, j3) = !.run(Shift.answer(back, j2)("yes"))
     assertEquals(end.finished, Some("Booked Kyiv for 3 nights"))
     assertEquals(j3, List("Kyiv", "3", "yes"))
   }
 
   test("replay: the empty journal is where it started") {
-    val fresh = !.run(Delim.replay[String, String, String, okay.Pure](booking)(Nil))
+    val fresh = !.run(Shift.replay[String, String, String, okay.Pure](booking)(Nil))
     assertEquals(fresh.asking, Some("Which city?"))
   }
 
   test("replay: a full journal comes back finished") {
-    val done = !.run(Delim.replay[String, String, String, okay.Pure](booking)(
+    val done = !.run(Shift.replay[String, String, String, okay.Pure](booking)(
       List("Lviv", "2", "no")))
     assertEquals(done.finished, Some("Cancelled"))
     // more answers than questions is not an error: the extra are ignored
-    val over = !.run(Delim.replay[String, String, String, okay.Pure](booking)(
+    val over = !.run(Shift.replay[String, String, String, okay.Pure](booking)(
       List("Lviv", "2", "no", "stray")))
     assertEquals(over.finished, Some("Cancelled"))
   }
@@ -58,15 +58,15 @@ class TestDelimPersist extends munit.FunSuite {
   // ---- the limit, measured
 
   type Log = Writer % String + okay.Pure
-  type Logged = Delim + Log
-  type Where = Delim.Dialogue[String, String, String, Log]
+  type Logged = Shift % ? + Log
+  type Where = Shift.Dialogue[String, String, String, Log]
 
   /** an effect OUTSIDE pause: this is what replay re-runs */
-  def chatty(using Delim.Asking[String, String, String, Logged]): String ! Logged = direct:
+  def chatty(using Shift.Asking[String, String, String, Logged]): String ! Logged = direct:
     "asking for the city".tell
-    val city = !Delim.pause("Which city?")
+    val city = !Shift.pause("Which city?")
     s"got $city".tell
-    val nights = !Delim.pause("How many nights?")
+    val nights = !Shift.pause("How many nights?")
     s"booking $city for $nights".tell
     s"$city/$nights"
 
@@ -80,7 +80,7 @@ class TestDelimPersist extends munit.FunSuite {
     given Replayable[Logged] = Replayable.unchecked
 
     def go(j: List[String]) = Writer.run[String, Where, okay.Pure](
-      Delim.replay[String, String, String, Log](chatty)(j))
+      Shift.replay[String, String, String, Log](chatty)(j))
 
     val (log1, p1) = !.run(go(List("Kyiv")))
     assertEquals(log1.toList, List("asking for the city", "got Kyiv"))
@@ -108,20 +108,20 @@ class TestDelimPersist extends munit.FunSuite {
         case "rate:EUR" => "42"
         case other => s"?$other"
 
-    def priced(using Delim.Asking[String, String, String, Row]): String ! Row = direct:
-      val rate = !Delim.pause("rate:EUR")
-      val fee = !Delim.pause("fee:standard")
+    def priced(using Shift.Asking[String, String, String, Row]): String ! Row = direct:
+      val rate = !Shift.pause("rate:EUR")
+      val fee = !Shift.pause("fee:standard")
       s"$rate/$fee"
 
     // leg 1: one question performed, the answer journalled
-    val p0 = !.run(Delim.resumable[String, String, String, okay.Pure](priced))
-    val (p1, j1) = !.run(Delim.answer(p0, List.empty[String])(perform(p0.asking.get)))
+    val p0 = !.run(Shift.resumable[String, String, String, okay.Pure](priced))
+    val (p1, j1) = !.run(Shift.answer(p0, List.empty[String])(perform(p0.asking.get)))
     assertEquals(performed, List("rate:EUR"))
 
     // the process dies; a new one replays from j1 and carries on
-    val back = !.run(Delim.replay[String, String, String, okay.Pure](priced)(j1))
+    val back = !.run(Shift.replay[String, String, String, okay.Pure](priced)(j1))
     assertEquals(back.asking, Some("fee:standard"))
-    val (end, _) = !.run(Delim.answer(back, j1)(perform(back.asking.get)))
+    val (end, _) = !.run(Shift.answer(back, j1)(perform(back.asking.get)))
     assertEquals(end.finished, Some("42/?fee:standard"))
 
     // the replayed leg did NOT ask the outside world again

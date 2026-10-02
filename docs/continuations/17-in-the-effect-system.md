@@ -26,11 +26,11 @@ A program that captures, invokes the continuation **twice**, and adds
 to a state in between. Handler outside the delimiter:
 
 ```scala
-def outside(using Delim.Prompted[Int]): Int ! Row = direct:
-  val x = !Delim.shift[Int, Int, State % Int](k => direct { !k(1) + !k(10) })
+def outside(using Shift.Prompted[Int]): Int ! Row = direct:
+  val x = !Shift.shift[Int, Int, State % Int](k => direct { !k(1) + !k(10) })
   !State.modify[Int](_ + x).at[Row]
 
-State.run[Int, Int](0)(Delim.delimited[Int, State % Int](outside))
+State.run[Int, Int](0)(Shift.delimited[Int, State % Int](outside))
 // (11, 12)
 ```
 
@@ -43,15 +43,15 @@ that happens to be written as a fork.
 Now the handler inside:
 
 ```scala
-def inside(using Delim.Prompted[(Int, Int)]): Int ! Row = direct:
-  val x = !Delim.shift[(Int, Int), Int, State % Int]: k =>
+def inside(using Shift.Prompted[(Int, Int)]): Int ! Row = direct:
+  val x = !Shift.shift[(Int, Int), Int, State % Int]: k =>
     direct:
       val (s1, a1) = !k(1)
       val (s2, a2) = !k(10)
       (s1 + s2, a1 + a2)
   !State.modify[Int](_ + x).at[Row]
 
-!.run(Delim.delimited[(Int, Int), P](State.handle[Int](0)(inside)))
+!.run(Shift.delimited[(Int, Int), P](State.handle[Int](0)(inside)))
 // (11, 11)
 ```
 
@@ -72,7 +72,7 @@ both ways, moving only the brackets. That does not compile, and the
 error is the most useful sentence in the chapter:
 
 ```
-No given instance of type okay.Delim.Prompted[Int] was found
+No given instance of type okay.Shift.Prompted[Int] was found
 ```
 
 A prompt is typed by **what the delimiter answers**. With the handler
@@ -100,11 +100,11 @@ So the rule has a corollary worth remembering:
 The row is where this is written down. In `outside`:
 
 ```scala
-type Row = Delim + State % Int          // inside the delimiter
-val prog: Int ! State % Int = Delim.delimited[Int, State % Int](outside)
+type Row = Shift % ? + State % Int          // inside the delimiter
+val prog: Int ! State % Int = Shift.delimited[Int, State % Int](outside)
 ```
 
-`Delim` is in the body's row and **not** in the result's. That is what
+`Shift` is in the body's row and **not** in the result's. That is what
 `delimited` does: it discharges the machine. `State % Int` passes
 through untouched, which is precisely the statement "the state handler
 is somewhere further out, and I have not run it".

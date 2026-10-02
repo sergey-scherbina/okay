@@ -1,6 +1,6 @@
 package okay.foreign.workflow
 
-import okay.{!, +, At, Delim, Wf, effect}
+import okay.{%, !, +, At, Shift, Wf, effect}
 import okay.codec.Schema
 import okay.foreign.{Condition, ForeignEval, PyNode, Value, Shape, ToPy, Wire}
 
@@ -89,13 +89,13 @@ object ForeignActivity:
   def call[Out: Schema](address: String)(using Shape): Call[Out] = Call(address)
 
   final class Call[Out: Schema](address: String)(using shape: Shape):
-    def apply[R, F[+_]]()(using Wf.Asks[ForeignCall, String, R, F], At): Either[Condition, Out] ! Delim + F =
+    def apply[R, F[+_]]()(using Wf.Asks[ForeignCall, String, R, F], At): Either[Condition, Out] ! Shift % ? + F =
       go(Vector.empty)
-    def apply[A: ToPy, R, F[+_]](a: A)(using Wf.Asks[ForeignCall, String, R, F], At): Either[Condition, Out] ! Delim + F =
+    def apply[A: ToPy, R, F[+_]](a: A)(using Wf.Asks[ForeignCall, String, R, F], At): Either[Condition, Out] ! Shift % ? + F =
       go(Vector(ToPy(a)))
     def apply[A: ToPy, B: ToPy, R, F[+_]](a: A, b: B)
-                                         (using Wf.Asks[ForeignCall, String, R, F], At): Either[Condition, Out] ! Delim + F =
+                                         (using Wf.Asks[ForeignCall, String, R, F], At): Either[Condition, Out] ! Shift % ? + F =
       go(Vector(ToPy(a), ToPy(b)))
     private def go[R, F[+_]](args: Vector[Value])
-                            (using w: Wf.Asks[ForeignCall, String, R, F], at: At): Either[Condition, Out] ! Delim + F =
+                            (using w: Wf.Asks[ForeignCall, String, R, F], at: At): Either[Condition, Out] ! Shift % ? + F =
       w.perform(ForeignCall(address, args)).map(s => answer(s).flatMap(shape.decode[Out]))

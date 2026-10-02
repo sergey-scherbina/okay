@@ -37,7 +37,7 @@ get subtly wrong **is the straight-line program you already wrote**.
 ## What it looks like
 
 ```scala
-def booking(using w: Wf.Asks[String, String, String, Pure]): String ! Delim + Pure = direct:
+def booking(using w: Wf.Asks[String, String, String, Pure]): String ! Shift % ? + Pure = direct:
   val city  = !w.pause("which city?")          // the WORLD answers
   val start = !w.now                           // the RUNTIME answers, once
   !w.sleep(24 * 3600 * 1000L)                  // the run ENDS here and resumes tomorrow
@@ -104,7 +104,7 @@ the design, and it is what makes the engine's failures boring.
 
 Break it — read a clock, call a service, roll a die anywhere else —
 and replay re-runs that, because replay is just running the program
-again. So it is not a convention: `Delim.replay` and
+again. So it is not a convention: `Shift.replay` and
 `okay.persist.Dialogue` ask for `Replayable[F]`, and a row holding
 `Async`, `Writer` or `Resource` does not have it.
 

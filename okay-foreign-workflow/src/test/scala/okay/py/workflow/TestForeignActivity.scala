@@ -1,6 +1,6 @@
 package okay.foreign.workflow
 
-import okay.{!, +, Delim, Pure, Wf}
+import okay.{%, !, +, Shift, Pure, Wf}
 import okay.Direct.*
 import okay.codec.Schema
 import okay.persist.{Dialogue, MemoryStore}
@@ -31,7 +31,7 @@ object Shop:
   """)
 
   // no margin: the docs quote these lines
-  def order(sku: String)(using w: Wf.Asks[ForeignCall, String, String, Pure]): String ! Delim + Pure = direct:
+  def order(sku: String)(using w: Wf.Asks[ForeignCall, String, String, Pure]): String ! Shift % ? + Pure = direct:
     val price = !ForeignActivity.call[Double]("shop:price")(sku)
     price match
       case Left(c) => s"no price: ${c.kind}"
@@ -92,7 +92,7 @@ class TestForeignActivity extends munit.FunSuite:
   }
 
   test("an answer of the wrong shape is a Left from the Schema, not a crash of the workflow") {
-    def labelled(using w: Wf.Asks[ForeignCall, String, String, Pure]): String ! Delim + Pure = direct:
+    def labelled(using w: Wf.Asks[ForeignCall, String, String, Pure]): String ! Shift % ? + Pure = direct:
       val n = !ForeignActivity.call[Long]("shop:label")(4.0)
       n.fold(c => s"refused: ${c.kind}", v => s"got $v")
     val topic = MemoryStore().topic("orders")

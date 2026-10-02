@@ -12,13 +12,13 @@ class TestLexical extends munit.FunSuite:
 
   type W = Writer % String
 
-  def run[A](p: A ! Delim + Pure): A = !.run(Delim.run[A, Pure](p))
+  def run[A](p: A ! Shift % ? + Pure): A = !.run(Shift.run[A, Pure](p))
 
   // ------------------------------------------------ two of a kind
 
   test("TWO State[Int] instances in one program, each operation reaching its own — deep") {
-    val prog = Lexical.State.deep[Int, (Int, Int), Delim + Pure](0) { a =>
-      Lexical.State.deep[Int, Int, Delim + Pure](10) { b =>
+    val prog = Lexical.State.deep[Int, (Int, Int), Shift % ? + Pure](0) { a =>
+      Lexical.State.deep[Int, Int, Shift % ? + Pure](10) { b =>
         for
           x <- a.get
           y <- b.get
@@ -45,8 +45,8 @@ class TestLexical extends munit.FunSuite:
     // the innermost State % Int handler (and two in one row are refused,
     // above). An instance NAMES its installation, and the capture crosses
     // the inner one of the same effect untouched.
-    val lex = run(Lexical.State.deep[Int, Int, Delim + Pure](0) { outer =>
-      Lexical.State.deep[Int, Int, Delim + Pure](10) { inner => outer.get.flatMap(o => inner.get.map(i => o * 100 + i)) }
+    val lex = run(Lexical.State.deep[Int, Int, Shift % ? + Pure](0) { outer =>
+      Lexical.State.deep[Int, Int, Shift % ? + Pure](10) { inner => outer.get.flatMap(o => inner.get.map(i => o * 100 + i)) }
         .map(_._2)
     })
     assertEquals(lex, (0, 10), "outer answered 0, inner answered 10")
@@ -56,13 +56,13 @@ class TestLexical extends munit.FunSuite:
 
   given Answers[W] = Answers.writer[String]
 
-  val counter: Lexical.Inst[State % Int, Delim + W] => Int ! Delim + W = s =>
+  val counter: Lexical.Inst[State % Int, Shift % ? + W] => Int ! Shift % ? + W = s =>
     for
       a <- s.get
-      _ <- effect[Delim + W, Unit](Writer(s"a=$a"))
+      _ <- effect[Shift % ? + W, Unit](Writer(s"a=$a"))
       _ <- s.set(a + 10)
       b <- s.get
-      _ <- effect[Delim + W, Unit](Writer(s"b=$b"))
+      _ <- effect[Shift % ? + W, Unit](Writer(s"b=$b"))
     yield a + b
 
   val counterRow: Int ! State % Int + W = for
@@ -75,7 +75,7 @@ class TestLexical extends munit.FunSuite:
 
   test("ONE instance, deep, is Bisim-equivalent to State.handle on the Writer row") {
     val row = State.handle[Int](1)(counterRow)
-    val deep = Delim.run[(Int, Int), W](Lexical.State.deep[Int, Int, Delim + W](1)(counter))
+    val deep = Shift.run[(Int, Int), W](Lexical.State.deep[Int, Int, Shift % ? + W](1)(counter))
     assertEquals(Bisim.check(deep, row), Verdict.Same(1, 0))
   }
 
@@ -85,9 +85,9 @@ class TestLexical extends munit.FunSuite:
     case Coin() extends Flip[Boolean]
 
   test("a NON-tail-resumptive handler from user clauses: every answer of two coin flips, k called twice") {
-    val all = new Lexical.Clauses[Flip, (Boolean, Boolean), List[(Boolean, Boolean)], Lexical.Unstacked[Delim + Pure]]:
-      def ret(a: (Boolean, Boolean)): List[(Boolean, Boolean)] ! Delim + Pure = okay.pure(List(a))
-      def op[X](e: Flip[X], k: X => List[(Boolean, Boolean)] ! Delim + Pure): List[(Boolean, Boolean)] ! Delim + Pure =
+    val all = new Lexical.Clauses[Flip, (Boolean, Boolean), List[(Boolean, Boolean)], Lexical.Unstacked[Shift % ? + Pure]]:
+      def ret(a: (Boolean, Boolean)): List[(Boolean, Boolean)] ! Shift % ? + Pure = okay.pure(List(a))
+      def op[X](e: Flip[X], k: X => List[(Boolean, Boolean)] ! Shift % ? + Pure): List[(Boolean, Boolean)] ! Shift % ? + Pure =
         e match
           case Flip.Coin() => k(true).flatMap(xs => k(false).map(xs ++ _))
     val r = run(Lexical.deep(all) { f =>
@@ -97,9 +97,9 @@ class TestLexical extends munit.FunSuite:
   }
 
   test("depth: 10 000 get/set through one deep instance, in constant stack") {
-    def spin(s: Lexical.Inst[State % Int, Delim + Pure], n: Int): Int ! Delim + Pure =
+    def spin(s: Lexical.Inst[State % Int, Shift % ? + Pure], n: Int): Int ! Shift % ? + Pure =
       if n == 0 then s.get else s.get.flatMap(v => s.set(v + 1)).flatMap(_ => spin(s, n - 1))
-    assertEquals(run(Lexical.State.deep[Int, Int, Delim + Pure](0)(s => spin(s, 10_000))), (10_000, 10_000))
+    assertEquals(run(Lexical.State.deep[Int, Int, Shift % ? + Pure](0)(s => spin(s, 10_000))), (10_000, 10_000))
   }
 
 /** specs/lexical-instances.md stage 1: the `tail` strategy */
@@ -110,17 +110,17 @@ class TestLexicalTail extends munit.FunSuite:
   type W = Writer % String
   given Answers[W] = Answers.writer[String]
 
-  def run[A](p: A ! Delim + Pure): A = !.run(Delim.run[A, Pure](p))
+  def run[A](p: A ! Shift % ? + Pure): A = !.run(Shift.run[A, Pure](p))
 
   test("tail is Bisim-equivalent to State.handle on the Writer row") {
     val t = new TestLexical
-    val tail = Delim.run[(Int, Int), W](Lexical.State.tail[Int, Int, Delim + W](1)(t.counter))
+    val tail = Shift.run[(Int, Int), W](Lexical.State.tail[Int, Int, Shift % ? + W](1)(t.counter))
     assertEquals(Bisim.check(tail, State.handle[Int](1)(t.counterRow)), Verdict.Same(1, 0))
   }
 
   test("strategies MIX in one program: a deep outer and a tail inner State[Int], the same answer as two deeps") {
-    val prog = Lexical.State.deep[Int, (Int, Int), Delim + Pure](0) { a =>
-      Lexical.State.tail[Int, Int, Delim + Pure](10) { b =>
+    val prog = Lexical.State.deep[Int, (Int, Int), Shift % ? + Pure](0) { a =>
+      Lexical.State.tail[Int, Int, Shift % ? + Pure](10) { b =>
         for
           x <- a.get
           y <- b.get
@@ -133,7 +133,7 @@ class TestLexicalTail extends munit.FunSuite:
   }
 
   /** the body both multi-shot tests run: pick from a List layer, read and bump the state */
-  def pick[R](s: Lexical.Inst[State % Int, Delim + Pure])(using Layered.Reflect[List, R]): Int ! Delim + Pure =
+  def pick[R](s: Lexical.Inst[State % Int, Shift % ? + Pure])(using Layered.Reflect[List, R]): Int ! Shift % ? + Pure =
     for
       x <- List(1, 2, 3).reflect[R, Pure]
       v <- s.get
@@ -141,16 +141,16 @@ class TestLexicalTail extends munit.FunSuite:
     yield v
 
   test("multi-shot INSIDE the installation: tail threads the cell through the branches exactly as deep does") {
-    val deep = run(Lexical.State.deep[Int, List[Int], Delim + Pure](0)(s => reify[List, Int, Pure](pick(s))))
-    val tail = run(Lexical.State.tail[Int, List[Int], Delim + Pure](0)(s => reify[List, Int, Pure](pick(s))))
+    val deep = run(Lexical.State.deep[Int, List[Int], Shift % ? + Pure](0)(s => reify[List, Int, Pure](pick(s))))
+    val tail = run(Lexical.State.tail[Int, List[Int], Shift % ? + Pure](0)(s => reify[List, Int, Pure](pick(s))))
     assertEquals(deep, (6, List(0, 1, 3)))
     assertEquals(tail, deep)
   }
 
-  test("multi-shot ACROSS the installation: tail in a Delim row is installed deep, a state per branch") {
-    val deep = run(reify[List, (Int, Int), Pure](Lexical.State.deep[Int, Int, Delim + Pure](0)(s => pick(s))))
+  test("multi-shot ACROSS the installation: tail in a Shift row is installed deep, a state per branch") {
+    val deep = run(reify[List, (Int, Int), Pure](Lexical.State.deep[Int, Int, Shift % ? + Pure](0)(s => pick(s))))
     assertEquals(deep, List((1, 0), (2, 0), (3, 0)))
-    val tail = run(reify[List, (Int, Int), Pure](Lexical.State.tail[Int, Int, Delim + Pure](0)(s => pick(s))))
+    val tail = run(reify[List, (Int, Int), Pure](Lexical.State.tail[Int, Int, Shift % ? + Pure](0)(s => pick(s))))
     assertEquals(tail, deep)
   }
 
@@ -160,43 +160,43 @@ class TestLexicalTail extends munit.FunSuite:
     // installation, so a cell written by the first resumption would be
     // read by the second. Installed deep (cont-core-design), there is no
     // cell to share.
-    val p0 = Delim.prompt[Int]
-    val twice: Unit ! Delim + Pure =
-      Delim.shift[Int, Unit, Pure](p0)(k => k(()).flatMap(a => k(()).map(b => a * 10 + b)))
-    def body(s: Lexical.Inst[State % Int, Delim + Pure]): Int ! Delim + Pure =
+    val p0 = Shift.prompt[Int]
+    val twice: Unit ! Shift % ? + Pure =
+      Shift.shift[Int, Unit, Pure](p0)(k => k(()).flatMap(a => k(()).map(b => a * 10 + b)))
+    def body(s: Lexical.Inst[State % Int, Shift % ? + Pure]): Int ! Shift % ? + Pure =
       for
         _ <- twice
         v <- s.get
         _ <- s.set(v + 1)
         r <- s.get
-        _ <- Delim.abort[Int, Unit, Pure](p0)(r)
+        _ <- Shift.abort[Int, Unit, Pure](p0)(r)
       yield r
     // deep: each resumption starts from the state the capture saw, 0 -> 1, twice
-    assertEquals(run(Delim.push[Int, Pure](p0)(Lexical.State.deep[Int, Int, Delim + Pure](0)(body).map(_._2))), 11)
+    assertEquals(run(Shift.push[Int, Pure](p0)(Lexical.State.deep[Int, Int, Shift % ? + Pure](0)(body).map(_._2))), 11)
     // tail: the same — a cell would have answered 12 (1 -> 2 on the second resumption)
-    assertEquals(run(Delim.push[Int, Pure](p0)(Lexical.State.tail[Int, Int, Delim + Pure](0)(body).map(_._2))), 11)
+    assertEquals(run(Shift.push[Int, Pure](p0)(Lexical.State.tail[Int, Int, Shift % ? + Pure](0)(body).map(_._2))), 11)
   }
 
   test("the same program run TWICE is not a multi-shot: the state is made per run") {
-    val once = Lexical.State.tail[Int, Int, Delim + Pure](5)(s => s.get.flatMap(v => s.set(v + 1)))
+    val once = Lexical.State.tail[Int, Int, Shift % ? + Pure](5)(s => s.get.flatMap(v => s.set(v + 1)))
     assertEquals(run(once), (6, 6))
     assertEquals(run(once), (6, 6))
   }
 
   test("depth: 100 000 operations through one tail instance, in constant stack") {
-    def spin(s: Lexical.Inst[State % Int, Delim + Pure], n: Int): Int ! Delim + Pure =
+    def spin(s: Lexical.Inst[State % Int, Shift % ? + Pure], n: Int): Int ! Shift % ? + Pure =
       if n == 0 then s.get else s.get.flatMap(v => s.set(v + 1)).flatMap(_ => spin(s, n - 1))
-    assertEquals(run(Lexical.State.tail[Int, Int, Delim + Pure](0)(s => spin(s, 100_000))), (100_000, 100_000))
+    assertEquals(run(Lexical.State.tail[Int, Int, Shift % ? + Pure](0)(s => spin(s, 100_000))), (100_000, 100_000))
   }
 
 /** specs/lexical-instances.md stage 2: stacked instances */
 class TestLexicalStacked extends munit.FunSuite:
-  import okay.Delim.Stacked.delimited
+  import okay.Shift.Stacked.delimited
 
   type P = okay.Pure
 
   object StateClauses:
-    import okay.Delim.Stacked.Under
+    import okay.Shift.Stacked.Under
     /** the answer is itself a stacked program at the clauses' stack:
      * nothing on this road is erased (indexed-effects stage 9) */
     type Ans[St <: Tuple] = Int => Under[P, (Int, Int), St]
@@ -233,11 +233,11 @@ class TestLexicalStacked extends munit.FunSuite:
   // refused — the twin is what makes the refusal a proof rather than a typo
   test("stacked clauses are typed at the stack below their prompt: clauses over another stack are refused at the installation") {
     assertEquals(compileErrors("""
-      okay.Delim.Stacked.delimited[Int, okay.Pure] { root =>
+      okay.Shift.Stacked.delimited[Int, okay.Pure] { root =>
         import root.given
         val c = new okay.Lexical.Clauses[okay.State % Int, Int, Int, okay.Lexical.Stacked.Below[okay.Pure, root.p.type *: EmptyTuple]]:
           def ret(a: Int) = okay.Freer.Return(a)
-          def op[X](e: okay.State[Int, X], k: X => okay.Delim.Stacked.Under[okay.Pure, Int, root.p.type *: EmptyTuple]) = e match
+          def op[X](e: okay.State[Int, X], k: X => okay.Shift.Stacked.Under[okay.Pure, Int, root.p.type *: EmptyTuple]) = e match
             case okay.State.Get() => k(0)
             case _ => okay.Freer.Return(0)
         okay.Lexical.Stacked.deep(c) { b =>
@@ -246,11 +246,11 @@ class TestLexicalStacked extends munit.FunSuite:
         }
       }"""), "")
     val e = compileErrors("""
-      okay.Delim.Stacked.delimited[Int, okay.Pure] { root =>
+      okay.Shift.Stacked.delimited[Int, okay.Pure] { root =>
         import root.given
         val c = new okay.Lexical.Clauses[okay.State % Int, Int, Int, okay.Lexical.Stacked.Below[okay.Pure, EmptyTuple]]:
           def ret(a: Int) = okay.Freer.Return(a)
-          def op[X](e: okay.State[Int, X], k: X => okay.Delim.Stacked.Under[okay.Pure, Int, EmptyTuple]) = e match
+          def op[X](e: okay.State[Int, X], k: X => okay.Shift.Stacked.Under[okay.Pure, Int, EmptyTuple]) = e match
             case okay.State.Get() => k(0)
             case _ => okay.Freer.Return(0)
         okay.Lexical.Stacked.deep(c) { b =>
@@ -263,7 +263,7 @@ class TestLexicalStacked extends munit.FunSuite:
 
   test("a stacked instance used AFTER its installation returned does not compile") {
     val e = compileErrors("""
-      okay.Delim.Stacked.delimited[(Int, Int), okay.Pure] { root =>
+      okay.Shift.Stacked.delimited[(Int, Int), okay.Pure] { root =>
         import root.given
         var leaked: okay.Lexical.Stacked.Tail[okay.State % Int, Int, Int, okay.Pure, ?] | Null = null
         okay.Lexical.Stacked.tail[okay.State % Int, Int, Int, okay.Pure](0)(null) { a =>
@@ -280,28 +280,28 @@ class TestLexicalDefault extends munit.FunSuite:
   import Lexical.State.{get, set}
   import Layered.{reify, reflect}
 
-  def run[A](p: A ! Delim + Pure): A = !.run(Delim.run[A, Pure](p))
+  def run[A](p: A ! Shift % ? + Pure): A = !.run(Shift.run[A, Pure](p))
 
-  def pick[R](s: Lexical.Inst[State % Int, Delim + Pure])(using Layered.Reflect[List, R]): Int ! Delim + Pure =
+  def pick[R](s: Lexical.Inst[State % Int, Shift % ? + Pure])(using Layered.Reflect[List, R]): Int ! Shift % ? + Pure =
     for
       x <- List(1, 2, 3).reflect[R, Pure]
       v <- s.get
       _ <- s.set(v + x)
     yield v
 
-  test("Lexical.State(s0) is tail: across a multi-shot capture in a Delim row it answers as deep does") {
-    val deep = run(reify[List, (Int, Int), Pure](Lexical.State.deep[Int, Int, Delim + Pure](0)(s => pick(s))))
+  test("Lexical.State(s0) is tail: across a multi-shot capture in a Shift row it answers as deep does") {
+    val deep = run(reify[List, (Int, Int), Pure](Lexical.State.deep[Int, Int, Shift % ? + Pure](0)(s => pick(s))))
     assertEquals(deep, List((1, 0), (2, 0), (3, 0)))
-    assertEquals(run(reify[List, (Int, Int), Pure](Lexical.State[Int, Int, Delim + Pure](0)(s => pick(s)))), deep)
+    assertEquals(run(reify[List, (Int, Int), Pure](Lexical.State[Int, Int, Shift % ? + Pure](0)(s => pick(s)))), deep)
   }
 
   enum Flip[+A]:
     case Coin() extends Flip[Boolean]
 
   test("Lexical.handle picks by clause kind: general clauses run deep (multi-shot works), tail clauses run tail") {
-    val all = new Lexical.Clauses[Flip, Boolean, List[Boolean], Lexical.Unstacked[Delim + Pure]]:
-      def ret(a: Boolean): List[Boolean] ! Delim + Pure = okay.pure(List(a))
-      def op[X](e: Flip[X], k: X => List[Boolean] ! Delim + Pure): List[Boolean] ! Delim + Pure = e match
+    val all = new Lexical.Clauses[Flip, Boolean, List[Boolean], Lexical.Unstacked[Shift % ? + Pure]]:
+      def ret(a: Boolean): List[Boolean] ! Shift % ? + Pure = okay.pure(List(a))
+      def op[X](e: Flip[X], k: X => List[Boolean] ! Shift % ? + Pure): List[Boolean] ! Shift % ? + Pure = e match
         case Flip.Coin() => k(true).flatMap(xs => k(false).map(xs ++ _))
     assertEquals(run(Lexical.handle(all)(f => f.perform(Flip.Coin()))), List(true, false))
     val counter = new Lexical.TailClauses[State % Int, Int]:
@@ -327,20 +327,20 @@ class TestLexicalPayAsYouGo extends munit.FunSuite:
       _ <- Writer.tell(s"b=$b")
     yield a + b
 
-  test("tail on a row WITHOUT Delim: no guard, no machine — the program is (S, A) ! Writer, and Bisim-equal to State.handle") {
+  test("tail on a row WITHOUT Shift: no guard, no machine — the program is (S, A) ! Writer, and Bisim-equal to State.handle") {
     val t = new TestLexical
     val lex: (Int, Int) ! W = Lexical.State.tail[Int, Int, W](1)(counterW)
     assertEquals(Bisim.check(lex, State.handle[Int](1)(t.counterRow)), Verdict.Same(1, 0))
   }
 
-  test("the default on the pure row: Lexical.State(0) runs with !.run alone — no Delim anywhere") {
+  test("the default on the pure row: Lexical.State(0) runs with !.run alone — no Shift anywhere") {
     val p: (Int, Int) ! Pure = Lexical.State[Int, Int, Pure](5)(s => s.get.flatMap(v => s.set(v * 3)))
     assertEquals(!.run(p), (15, 15))
   }
 
-  test("deep NEEDS Delim in the row: on a Writer-only row it does not compile") {
+  test("deep NEEDS Shift in the row: on a Writer-only row it does not compile") {
     val e = compileErrors("okay.Lexical.State.deep[Int, Int, okay.Writer % String](0)(s => okay.Lexical.State.get(s))")
-    assert(e.contains("Delim"), s"compiled, or refused for another reason: $e")
+    assert(e.contains("Shift"), s"compiled, or refused for another reason: $e")
   }
 
   test("depth, unguarded: 100 000 operations in constant stack") {
@@ -378,7 +378,7 @@ class TestLexicalWalk extends munit.FunSuite:
     assertEquals(Bisim.check(walked, State.handle[Int](1)(t.counterRow)), Verdict.Same(1, 0))
   }
 
-  test("walk on the pure row: runLocal and !.run, no Delim anywhere") {
+  test("walk on the pure row: runLocal and !.run, no Shift anywhere") {
     assertEquals(!.run(done(Lexical.State.walk[Int, Int, Pure](5)(s => s.get.flatMap(v => s.set(v * 3))))), (15, 15))
   }
 
@@ -399,37 +399,37 @@ class TestLexicalWalk extends munit.FunSuite:
   }
 
   test("multi-shot ACROSS the walk (List outside): each branch resumes the walk at its captured state — deep's answer") {
-    def pick(s: Lexical.Inst[State % Int, SI + Delim + Pure])(using Layered.Reflect[List, (Int, Int)]): Int ! SI + Delim + Pure =
+    def pick(s: Lexical.Inst[State % Int, SI + Shift % ? + Pure])(using Layered.Reflect[List, (Int, Int)]): Int ! SI + Shift % ? + Pure =
       for
         x <- List(1, 2, 3).reflect[(Int, Int), SI + Pure]
         v <- s.get
         _ <- s.set(v + x)
       yield v
-    val r = !.run(done(Delim.run[List[(Int, Int)], SI + Pure](
-      reify[List, (Int, Int), SI + Pure](Lexical.State.walk[Int, Int, Delim + Pure](0)(s => pick(s))))))
+    val r = !.run(done(Shift.run[List[(Int, Int)], SI + Pure](
+      reify[List, (Int, Int), SI + Pure](Lexical.State.walk[Int, Int, Shift % ? + Pure](0)(s => pick(s))))))
     assertEquals(r, List((1, 0), (2, 0), (3, 0)))
   }
 
   test("multi-shot INSIDE the walk with the machine OUTSIDE it: the operation inside the delimiter escapes, loudly") {
-    def pick(s: Lexical.Inst[State % Int, SI + Delim + Pure])(using Layered.Reflect[List, Int]): Int ! SI + Delim + Pure =
+    def pick(s: Lexical.Inst[State % Int, SI + Shift % ? + Pure])(using Layered.Reflect[List, Int]): Int ! SI + Shift % ? + Pure =
       for
         x <- List(1, 2, 3).reflect[Int, SI + Pure]
         v <- s.get
         _ <- s.set(v + x)
       yield v
-    intercept[Instances.Survived](!.run(done(Delim.run[(Int, List[Int]), SI + Pure](
-      Lexical.State.walk[Int, List[Int], Delim + Pure](0)(s => reify[List, Int, SI + Pure](pick(s)))))))
+    intercept[Instances.Survived](!.run(done(Shift.run[(Int, List[Int]), SI + Pure](
+      Lexical.State.walk[Int, List[Int], Shift % ? + Pure](0)(s => reify[List, Int, SI + Pure](pick(s)))))))
   }
 
   test("multi-shot INSIDE the walk with the machine INSIDE it: the walk threads the state through the branches — deep's answer") {
-    def pick(s: Lexical.Inst[State % Int, SI + Pure])(using Layered.Reflect[List, Int]): Int ! Delim + SI + Pure =
+    def pick(s: Lexical.Inst[State % Int, SI + Pure])(using Layered.Reflect[List, Int]): Int ! Shift % ? + SI + Pure =
       for
         x <- List(1, 2, 3).reflect[Int, SI + Pure]
-        v <- s.get.up[Delim + SI + Pure]
-        _ <- s.set(v + x).up[Delim + SI + Pure]
+        v <- s.get.up[Shift % ? + SI + Pure]
+        _ <- s.set(v + x).up[Shift % ? + SI + Pure]
       yield v
     val r = !.run(done(Lexical.State.walk[Int, List[Int], Pure](0)(s =>
-      Delim.run[List[Int], SI + Pure](reify[List, Int, SI + Pure](pick(s))))))
+      Shift.run[List[Int], SI + Pure](reify[List, Int, SI + Pure](pick(s))))))
     assertEquals(r, (6, List(0, 1, 3)))
   }
 

@@ -77,17 +77,17 @@ a `Free`; lowering one into the other (chapter 5) replaces leaves and
 keeps the spine, because the spine is the same class of node on both
 sides.
 
-## Prompts as an effect: `Delim`
+## Prompts as an effect: `Shift`
 
 `shift`/`reset` capture to the *nearest* delimiter. Multi-prompt
 control — capture to a *named* delimiter, possibly across intervening
 ones — is strictly more expressive, and Okay implements it in the
 shape of Dybvig, Peyton Jones and Sabry's monadic framework \[[Dybvig,
 Peyton Jones & Sabry 2007](#ref-dybvig-2007)\]: a **prompt is a first-class tag carrying
-the delimiter's answer type** (`Delim.scala:74`), `push` installs one,
-and `shift(p)` captures up to the prompt `p` (`Delim.scala:90`).
+the delimiter's answer type** (`Shift.scala:74`), `push` installs one,
+and `shift(p)` captures up to the prompt `p` (`Shift.scala:90`).
 
-Two decisions are documented in `Delim.scala`'s header because both
+Two decisions are documented in `Shift.scala`'s header because both
 were "arrived at the hard way", and they are worth restating as
 theory-meets-implementation:
 
@@ -97,17 +97,17 @@ theory-meets-implementation:
   it does not own forwards it opaquely, leaving its own frames out of
   the captured continuation. One machine must own the whole prompt
   stack, so both `push` and `shift` reach it as operations of a single
-  `Delim` signature.
+  `Shift` signature.
 - **Tags are what let several answer types share one row.** Okay's
   union splitting is by runtime class (chapter 5); a signature
   parameterised by its answer type would erase two different prompts
   to the same class. With the answer type riding inside the tag, one
-  `Delim` signature suffices and tags keep prompts apart.
+  `Shift` signature suffices and tags keep prompts apart.
 
 The generators are the everyday face of this machinery: `Generate.scala`
 builds `LazyList`, `Producer` and `Teller` from one delimited-control
 unfold (`Loop`/`take`/`put`), which is `shift` capturing "the rest of
-the enumeration" at each element. `Delim.collectUntil` is the other
+the enumeration" at each element. `Shift.collectUntil` is the other
 half of Filinski's theorem \[[Filinski 1994](#ref-filinski-1994)\] put
 to work: a fold's state threaded through the prompt's *answer* — the
 answer is a function `S => R`, each `emit` answers `s => …` and
@@ -132,7 +132,7 @@ but one theorem, specialized twice.
 
 ## `shift` in a direct block: `Cont.direct`
 
-`Delim.shift` captures under a handler, in a row. The bare paramonad
+`Shift.shift` captures under a handler, in a row. The bare paramonad
 has the same word, and since cont-in-direct (2026-09-17) it can be
 written in a direct block too:
 
@@ -154,7 +154,7 @@ Two things are worth naming.
 nothing else; the answer type comes from the block, through an
 `AnswerOf[F]` witness that also re-associates `Cont[A, R, R]` to `F[A]`
 by *typing* it, so the convenience costs no cast. This is the same
-trick as `Delim.shift[A]`, whose answer type comes from its `Prompted`
+trick as `Shift.shift[A]`, whose answer type comes from its `Prompted`
 evidence.
 
 **Its own scope, not an overload.** Making the package-level `shift`
@@ -273,7 +273,7 @@ a test asserts that `AnswerOf` has no instance for them.
 
 ← [1 · Monads and functors](01-monads.md) · [Contents](index.md) · [3 · Parameterised monads](03-parameterised.md) →
 
-*Shipped consumers of this chapter (2026-09-01):* `Delim` carries
+*Shipped consumers of this chapter (2026-09-01):* `Shift` carries
 Dialog's cancellable scopes (`Scope`), the streaming cut (`Cut`),
 the agent stepper's pause-and-fork, and the sim scheduler's
 captured-continuation feeding — the operator's adoption doctrine

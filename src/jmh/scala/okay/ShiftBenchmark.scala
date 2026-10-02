@@ -4,7 +4,7 @@ import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 
 /**
- * specs/shift-effect.md: `Shift % R` in the core against Cont and Delim on the same shapes (the probe's
+ * specs/shift-effect.md: `Shift % R` in the core against Cont and Shift on the same shapes (the probe's
  * ShiftFxBenchmark, its (b) lanes). `seq`: N captures in sequence under one delimiter, each body `k(1)`
  * plus 0. `seqDF`: the same with Danvy-Filinski's `shift`. `twoShot`: 100 delimiters, each
  * `shift(k => k(1) + k(10)) * 2`.
@@ -32,20 +32,20 @@ class ShiftBenchmark {
     if n == 0 then Cont.Pure(0)
     else Cont.shift[Int, Int, Int](k => k(1) + 0).flatMap(x => Cont.delay(() => contSeq(n - 1)).map(_ + x))
 
-  def delimSeq(p: Prompt[Int])(n: Int): Int ! Delim + P =
+  def delimSeq(p: Prompt[Int])(n: Int): Int ! Shift % ? + P =
     if n == 0 then pure(0)
-    else Delim.shift0[Int, Int, P](p)(k => k(1).map(_ + 0)).flatMap(x => !.tailcall(delimSeq(p)(n - 1)).map(_ + x))
+    else Shift.shift0[Int, Int, P](p)(k => k(1).map(_ + 0)).flatMap(x => !.tailcall(delimSeq(p)(n - 1)).map(_ + x))
 
   def two: Int ! P =
     reset[Int, P](shift0[Int, Int, P](k => for a <- k(1); b <- k(10) yield a + b).map(_ * 2))
 
   def delimTwo: Int ! P =
-    Delim.reset[Int, P](p => Delim.shift0[Int, Int, P](p)(k => for a <- k(1); b <- k(10) yield a + b).map(_ * 2))
+    Shift.reset[Int, P](p => Shift.shift0[Int, Int, P](p)(k => for a <- k(1); b <- k(10) yield a + b).map(_ * 2))
 
   @Benchmark def shift0_seq(): Int = !.run(reset[Int, P](seq0(N)))
   @Benchmark def shift_seqDF(): Int = !.run(reset[Int, P](seqDF(N)))
   @Benchmark def cont_seq(): Int = Cont.reset(contSeq(N))
-  @Benchmark def delim_seq(): Int = !.run(Delim.reset[Int, P](p => delimSeq(p)(N)))
+  @Benchmark def delim_seq(): Int = !.run(Shift.reset[Int, P](p => delimSeq(p)(N)))
 
   @Benchmark def shift0_twoShot(): Int = { var s = 0; var i = 0; while i < 100 do { s += !.run(two); i += 1 }; s }
   @Benchmark def cont_twoShot(): Int = { var s = 0; var i = 0; while i < 100 do { s += Cont.reset(Cont.shift[Int, Int, Int](k => k(1) + k(10)).map(_ * 2)); i += 1 }; s }

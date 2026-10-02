@@ -118,7 +118,7 @@ class TestBookTwoMonadsFilinski extends munit.FunSuite:
 class TestBookTwoMonadsLayered extends munit.FunSuite:
   import Layered.{reify, reflect}
 
-  def run[A](p: A ! Delim + Pure): A = !.run(Delim.run[A, Pure](p))
+  def run[A](p: A ! Shift % ? + Pure): A = !.run(Shift.run[A, Pure](p))
 
   test("List outside Option, no transformer: each reflect reaches its own reify") {
     val listOfOptions = reify[List, Option[Int], Pure]:

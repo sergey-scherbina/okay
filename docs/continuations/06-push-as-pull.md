@@ -43,10 +43,10 @@ people pay it without noticing.
 The producer says `emit` and nothing else; the boundary collects:
 
 ```scala
-def walk(e: Entry, prefix: String = "")(using Delim.Emitting[String]): Unit ! Row =
+def walk(e: Entry, prefix: String = "")(using Shift.Emitting[String]): Unit ! Row =
   direct:
     e match
-      case Entry.File(n, _) => !Delim.emit(s"$prefix$n")
+      case Entry.File(n, _) => !Shift.emit(s"$prefix$n")
       case Entry.Dir(n, es) =>
         val here = if n == "/" then "/" else s"$prefix$n/"
         for child <- es do !walk(child, here)
@@ -55,7 +55,7 @@ def walk(e: Entry, prefix: String = "")(using Delim.Emitting[String]): Unit ! Ro
 and the consumer is ordinary code again:
 
 ```scala
-val files = !.run(Delim.collect[String, Pure](walk(tree)))
+val files = !.run(Shift.collect[String, Pure](walk(tree)))
 // List("/a.txt", "/src/Main.scala", "/src/Util.scala", "/b.log")
 ```
 
@@ -69,7 +69,7 @@ it takes no parameter for "where to send this" — the boundary decides.
 local, in a method that can `return`, loop, or stop. No cell outlives
 anything.
 
-**`Delim.Emitting[String]` in the signature is the contract.** The
+**`Shift.Emitting[String]` in the signature is the contract.** The
 producer declares *I emit strings*, and cannot be called except under
 a boundary that accepts them. A `using` parameter rather than a
 lambda, which is what makes the recursive call read as `!walk(child, here)`
@@ -83,7 +83,7 @@ list. Not an implication — a test:
 ```scala
 val buf = List.newBuilder[String]
 walkCallback(tree)(buf += _)
-assertEquals(buf.result(), !.run(Delim.collect[String, Pure](walk(tree))))
+assertEquals(buf.result(), !.run(Shift.collect[String, Pure](walk(tree))))
 ```
 
 So the argument is not about correctness. Both are correct. It is
@@ -95,7 +95,7 @@ about which one leaves the consumer able to be ordinary code.
 suite pins it with a counter:
 
 ```scala
-val all = !.run(Delim.collect[String, Pure](counting(tree)))
+val all = !.run(Shift.collect[String, Pure](counting(tree)))
 assertEquals(all.size, 4)
 assertEquals(emitted, 4, "collect did not run the whole producer")
 ```
@@ -133,14 +133,14 @@ first mistake.
 
 ```scala
 // the producer: declare what it emits, and emit
-def produce(...)(using Delim.Emitting[A]): Unit ! (Delim + F) =
+def produce(...)(using Shift.Emitting[A]): Unit ! (Shift % ? + F) =
   direct:
     ...
-    !Delim.emit(item)
+    !Shift.emit(item)
     ...
 
 // the consumer: install the boundary, get the items
-val items: List[A] = !.run(Delim.collect[A, F](produce(...)))
+val items: List[A] = !.run(Shift.collect[A, F](produce(...)))
 ```
 
 Two lines of structure, and the recursion in between is untouched.

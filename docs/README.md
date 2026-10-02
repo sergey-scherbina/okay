@@ -28,7 +28,7 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   [Chronicle](effects/chronicle.md), [Resource](effects/resource.md),
   [Async](effects/async.md), [Supply and Fresh](effects/supply.md),
   [Once](effects/once.md), [Choice and Logic](effects/choice.md),
-  [Gen](effects/gen.md), [Prob](effects/prob.md), and Delim in
+  [Gen](effects/gen.md), [Prob](effects/prob.md), and Shift in
   [the continuations book](continuations/10-prompts.md).
 - **[Your own effect](your-own-effect.md)** — one worked effect from
   the enum to four interpretations of the same program: `derives
@@ -90,7 +90,7 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   in the target monad; the pure stream layer (chunks, stages,
   pipelines, windows); the Async effect and the JVM platform under it
   (Loom, the schedulers, supervised scopes); channels and sources
-  (merge by readiness, buffer); Resource, Once, multi-prompt Delim
+  (merge by readiness, buffer); Resource, Once, multi-prompt Shift
   with the evidence doors, replayable dialogues and the prompt stack
   as a type, Choose/Logic, SharedOnce, provide/Module;
   generators with fused chains;
@@ -232,7 +232,7 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
 - **[Several instances of one effect](many-instances.md)** — two
   counters in one row: why a bare row holds one of each signature, and
   the three routes that lift it (a key with `Tag`, a cell with `Refs`,
-  a fresh `Delim` prompt), with what each costs.
+  a fresh `Shift` prompt), with what each costs.
 - **[Are these two programs the same program?](equivalence.md)** —
   `Bisim.check` walks two programs in lockstep over sampled answers and
   either proves a difference (with its path) or reports how many paths

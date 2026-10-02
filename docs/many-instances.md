@@ -227,15 +227,15 @@ and Sieczkowski, POPL 2020): a lexical binder in the types, a fresh
 label at run time. `okay.Lexical` is the API:
 
 ```scala
-val lex = run(Lexical.State.deep[Int, Int, Delim + Pure](0) { outer =>
-  Lexical.State.deep[Int, Int, Delim + Pure](10) { inner => outer.get.flatMap(o => inner.get.map(i => o * 100 + i)) }
+val lex = run(Lexical.State.deep[Int, Int, Shift % ? + Pure](0) { outer =>
+  Lexical.State.deep[Int, Int, Shift % ? + Pure](10) { inner => outer.get.flatMap(o => inner.get.map(i => o * 100 + i)) }
     .map(_._2)
 })
 assertEquals(lex, (0, 10), "outer answered 0, inner answered 10")
 ```
 
 Two things set it apart from the other routes. **The effect never
-enters the row**: the program is `A ! Delim + G`, so there is nothing
+enters the row**: the program is `A ! Shift % ? + G`, so there is nothing
 to split, test or misroute, and two `State[Int]` are two names. And
 **there is no accidental handling**: `outer.get` names its
 installation, so the capture passes the inner handler of the same
@@ -255,8 +255,8 @@ strategies run the same body, because the body only sees `Inst[F, G]`:
 - `Lexical.tail` answers each operation IN PLACE (evidence passing,
   Xie et al., ICFP 2020), with the handler's state in a cell made per
   run. A cell would be wrong in one shape, a capture from outside the
-  installation resuming its body twice, and that shape needs `Delim` in
-  the row. So on a row WITH `Delim`, `tail` is installed deep instead,
+  installation resuming its body twice, and that shape needs `Shift` in
+  the row. So on a row WITH `Shift`, `tail` is installed deep instead,
   the state carried by the continuation, and answers what `deep` does.
 - `Lexical.deep` runs the clauses with shift0 under a `dollar` whose
   return function is the return clause. It suits anything, including
@@ -264,15 +264,15 @@ strategies run the same body, because the body only sees `Inst[F, G]`:
   handler.
 
 **You pay for what the row can do.** The instance's type carries the
-body's whole row, `Inst[F, G]`. `deep` needs `Delim` in it.
-`tail` on a row WITHOUT `Delim` cannot be crossed by a capture, so it
+body's whole row, `Inst[F, G]`. `deep` needs `Shift` in it.
+`tail` on a row WITHOUT `Shift` cannot be crossed by a capture, so it
 keeps its cell and needs no machine, and the program is an ordinary one:
 
 ```scala
 val p: (Int, Int) ! Pure = Lexical.State[Int, Int, Pure](5)(s => s.get.flatMap(v => s.set(v * 3)))
 ```
 
-The guard and the `Delim` machine appear only when the row has `Delim`.
+The guard and the `Shift` machine appear only when the row has `Shift`.
 
 **One more strategy, by name only: `walk`.** It is `Instances`, made
 lexical. The installation makes a fresh handle and walks its body the
@@ -289,9 +289,9 @@ assertEquals(!.run(done(Lexical.State.walk[Int, Int, Pure](5)(s => s.get.flatMap
 ```
 
 A walk sees the program's spine. An instance operation performed inside
-a `Delim` delimiter's body, such as a `reset`, a `dollar` or a
+a `Shift` delimiter's body, such as a `reset`, a `dollar` or a
 `Layered.reify`, reaches the machine and not the walk. `exhausted` then
-throws `Instances.Survived`: it does not answer wrongly. Put `Delim.run`
+throws `Instances.Survived`: it does not answer wrongly. Put `Shift.run`
 inside the walk and the walk sees those operations in order. It is not
 the default because of that rule and because `Instances.Of[F]` has to
 appear in the row.
@@ -317,7 +317,7 @@ lexically. The row handler is what you use when there is one of a kind.
 | made at run time from data, one handler choosing by handle | any | `Instances` | the handle | `Instances.Of[F]` | a wrapper per operation, no cast |
 | installed where they are used, nested, or reached past a handler of the same effect | any | `Lexical.State(s0)` / `Lexical.handle` (tail) | the installation | nothing | 1.65x |
 | the same, cheapest, on the spine only | tail-resumptive | `Lexical.walk` (by name) | a fresh `Instances` handle | `Instances.Of[F]` | 1.29x |
-| the same, with multi-shot, dropped or stored `k` | any | `Lexical.deep` (by name) | a prompt | nothing (needs `Delim`) | ~7x bytes, ~4x time |
+| the same, with multi-shot, dropped or stored `k` | any | `Lexical.deep` (by name) | a prompt | nothing (needs `Shift`) | ~7x bytes, ~4x time |
 | any of those, and use outside the installation must not compile | deep or tail | `Lexical.Stacked` | a prompt on the typed stack | nothing | as unstacked |
 
 The compiler enforces the first row's condition: `Distinct` refuses a row

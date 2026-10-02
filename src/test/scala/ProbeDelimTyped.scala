@@ -11,7 +11,7 @@ import scala.annotation.tailrec
  *
  *  1. `Has[S, P, B]` — "p is on the stack S, and B is what lies below
  *     it" — as an INDUCTIVE VALUE (`Here`/`There`), still derived by
- *     the two givens `Delim.Stacked.Has` derives it with today, so a
+ *     the two givens `Shift.Stacked.Has` derives it with today, so a
  *     capture's door asks for the same evidence and gets a path.
  *  2. `Segs`, the machine's continuation stack, INDEXED BY THE PROMPT
  *     STACK: a `Mark` frame is at `P0 *: St` for the prompt's own

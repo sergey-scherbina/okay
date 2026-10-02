@@ -1,6 +1,6 @@
 package okay.foreign.workflow
 
-import okay.{!, +, Delim, Pure, Wf}
+import okay.{%, !, +, Shift, Pure, Wf}
 import okay.Direct.*
 import okay.codec.{Schema, WireAuth, WireFormat}
 import okay.persist.{Dialogue, MemoryStore}
@@ -65,7 +65,7 @@ func main() {
       case _ => None
     (bound.getOrElse { p.destroy(); throw IllegalStateException(s"the Go shop did not say where it listens: $first") }, p)
 
-  def order(sku: String)(using w: Wf.Asks[ForeignCall, String, String, Pure]): String ! Delim + Pure = direct:
+  def order(sku: String)(using w: Wf.Asks[ForeignCall, String, String, Pure]): String ! Shift % ? + Pure = direct:
     val price = !ForeignActivity.call[Double]("price")(sku)
     price match
       case Left(c) => s"no price: ${c.kind}"

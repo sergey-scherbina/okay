@@ -39,7 +39,7 @@ the diff, native toolkits (satellites over the same seam), styling
 beyond bold/dim, Windows raw mode.
 
 The architecture above v1 is largely BUILT since: scenarios as
-programs (`Dialog`, with cancellable scopes — `Scope`, the Delim
+programs (`Dialog`, with cancellable scopes — `Scope`, the Shift
 door, now also in capability form: `mark`/`exit`/`bounded`, exit
 to the NEAREST scope by nesting), screens as a stack (`Nav`, with
 NAMED boundaries: `Nav.boundary`/`PopTo` drop intervening frames

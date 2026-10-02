@@ -49,7 +49,7 @@ opaque type Rep[A, S, R] = Freer[Sig, S, R, A]
 R`, the shift body itself as the leaf, run by a runner of Cont's own.
 Since cont-on-frames it is `Sig = Cont0.Row[NoEffect]`: a leaf is a
 `Shift0` to the run's root delimiter, and Cont runs on the same frame
-machine as `Delim` — chapter 2's `shift0`/`$` calculus, one prompt per
+machine as `Shift` — chapter 2's `shift0`/`$` calculus, one prompt per
 run. What follows holds of both: the leaf is a function of the
 continuation either way.)
 

@@ -1,7 +1,7 @@
 package okay.persist
 
 import munit.FunSuite
-import okay.{!, +, Delim, Pure}
+import okay.{%, !, +, Shift, Pure}
 import okay.Direct.*
 import scala.language.implicitConversions
 
@@ -20,12 +20,12 @@ import scala.language.implicitConversions
  */
 class TestContinueAs extends FunSuite {
 
-  type Row = Delim + Pure
+  type Row = Shift % ? + Pure
 
-  def three(using Delim.Asking[String, String, String, Row]): String ! Row = direct:
-    val a = !Delim.pause("1?")
-    val b = !Delim.pause("2?")
-    val c = !Delim.pause("3?")
+  def three(using Shift.Asking[String, String, String, Row]): String ! Row = direct:
+    val a = !Shift.pause("1?")
+    val b = !Shift.pause("2?")
+    val c = !Shift.pause("3?")
     s"$a$b$c"
 
   /** two answers in, still asking the third */

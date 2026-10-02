@@ -5,7 +5,7 @@ import scala.language.implicitConversions
 
 /**
  * SHIFT INSIDE A DIRECT BLOCK, over Cont itself (cont-in-direct,
- * 2026-09-17). `Delim.shift` captures under a handler; this is the
+ * 2026-09-17). `Shift.shift` captures under a handler; this is the
  * same word for the bare paramonad, on its DIAGONAL — the blocks whose
  * answer type does not move, which is the only shape `direct` has.
  */

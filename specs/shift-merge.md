@@ -1,6 +1,6 @@
 # shift-merge — Delim and Shift, one effect named `Shift`
 
-Status: spec, 2026-10-02. Owner lane: `shift-merge`. Sprint
+Status: stages 1, 2 and 4 done, 2026-10-02; stage 3 and the one guard next. Owner lane: `shift-merge`. Sprint
 cont-js-depth, the design conversation after stage 3a.
 
 ## Why
@@ -83,18 +83,45 @@ different keys mix in one `flatMap`. `Shift.dynamic(p)` names it.
 
 ## Behavior
 
-- [ ] stage 1: every `Delim` suite green renamed onto `Shift % ?`
-      (TestDelim*, the collect/resumable/replay suites), TestShift and
-      TestShiftPatterns unchanged; a static program widened with
-      `Shift.dynamic` mixes with a dynamic one in one `flatMap`
-- [ ] the machine guard: a row holding any `Shift` refuses a second
-      machine at compile time, with today's message
-- [ ] stage 2: the satellites' suites green; no `Delim` left in code
-- [ ] the differential oracle (TestDelimitedDifferential) and the
-      machine's depth suite unchanged and green — this lane changes the
-      front, not the machine
+- [x] stage 1: every `Delim` suite green renamed onto `Shift % ?`
+      (TestDelim*, the collect/resumable/replay suites); TestShift and
+      TestShiftPatterns pass with `exit`/`emit` from the ONE evidence; a
+      static program widened with `Shift.dynamic` mixes with a capture to
+      a prompt by value in one program (TestShift)
+- [ ] the machine guard: one evidence for "a machine already runs in F"
+      — NEXT LANE (today `OneMachine` and `Nesting` both stand, each
+      message saying `Shift`)
+- [x] stage 2: the satellites' suites green; no `Delim` left in code
+      (okay2, a separate Scala 2 build with its own `Delim`, untouched)
+- [x] the differential oracle and the machine's depth suite unchanged and
+      green — this lane changed the front, not the machine
+- [x] stage 4: every `Delim` in docs/ moved (docs/okay2.md excepted, it
+      documents okay2's own); the pinned examples re-pinned
 
 ## Decisions
+
+- **ONE BLOCK EVIDENCE, `Shift.Prompted`** (operator: "делай", after
+  asking whether `reset` is the handler). A keyed `reset` and a
+  `delimited`/`scope`/`dollar` both make it; it carries the prompt, the
+  answer (`Res`), the key's effect (`K`: `Shift % R` or `Shift % ?`) and
+  the row outside (`F`). `Shift.In` is gone. So `exit`, `emit` and the
+  one-argument `shift`/`shift0` work in any block.
+- **Their row is CHOSEN (`Shift.RowFor`):** inside a `direct` block the
+  block's (a helper holding the evidence abstractly, `!Shift.emit(a)`,
+  needs it — the evidence's own row is unknown there), elsewhere the
+  evidence's `K + F` (a `for` over a `reset` reads it). A given with a
+  priority, the direct one INLINE with an inline `DirectCtx`. Refuted on
+  the way: an inline `summonFrom` on `DirectCtx[f]` (its type variable
+  leaked into the block's typing: "Found DirectCtx[f], Required
+  DirectCtx[Nothing]"), and a non-inline given holding the `DirectCtx`
+  ("a reference to parameter contextual$2 was used outside the scope
+  where it was defined" — the evidence exists only while `direct`
+  expands).
+- **The static `Shift.collect/emit/exit` of shift-patterns are the same
+  names now**: one `collect`/`emit`/`exit` for every block.
+- **Noted, not changed here:** a keyed `reset` counts its nested runs in a
+  `ThreadLocal` room and switches stacks past it (`runReset`); the
+  cont-stack rule says a room is a value, never a `ThreadLocal`.
 
 - **The name is `Shift`** (operator), the dynamic form `Shift % ?` (the
   operator's glyph, its literal Scala spelling).

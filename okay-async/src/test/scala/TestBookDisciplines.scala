@@ -34,20 +34,20 @@ class TestBookDisciplines extends munit.FunSuite {
   }
 
   test("the SAME mechanism in OneMachine: declared, so the call site answers") {
-    def oneMachineHelper[F[+_]](p: Int ! Delim + F)(using Delim.OneMachine[F]): Int ! F =
-      Delim.run(p)
+    def oneMachineHelper[F[+_]](p: Int ! Shift % ? + F)(using Shift.OneMachine[F]): Int ! F =
+      Shift.run(p)
     // at a clean row it resolves
     assertEquals(!.run(oneMachineHelper[P](okay.pure(1))), 1)
     // at a row that already holds a machine the CALLER is refused
     val e = compileErrors(
-      "oneMachineHelper[okay.Delim + okay.Pure](okay.pure(1))")
+      "oneMachineHelper[okay.Shift % ? + okay.Pure](okay.pure(1))")
     assert(e.nonEmpty, "a second machine satisfied OneMachine")
   }
 
   test("THE SHARED HOLE: a helper that declares NOTHING is never asked") {
     // No witness in the signature, so nothing propagates and nothing
     // is checked. This compiles -- and that is precisely chapter 19's
-    // THE LIMIT, here to show it is not specific to Delim: an
+    // THE LIMIT, here to show it is not specific to Shift: an
     // undeclared obligation is an unasked question.
     val e = compileErrors("""
       def silent[F[+_]](p: Int ! F): Int ! F = p

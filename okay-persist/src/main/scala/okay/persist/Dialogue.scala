@@ -1,14 +1,14 @@
 package okay.persist
 
-import okay.{!, +, At, Delim, Replayable, Row, Wf, pure}
+import okay.{%, !, +, At, Shift, Replayable, Row, Wf, pure}
 import okay.Row.up
 import okay.codec.Schema
 
 /**
  * A PAUSED PROGRAM WHOSE JOURNAL IS A TOPIC (durable-dialogue,
- * 2026-09-17): the glue between `Delim.replay` and the durable log.
+ * 2026-09-17): the glue between `Shift.replay` and the durable log.
  *
- * `Delim.resumable` stops a program in the middle and hands the rest
+ * `Shift.resumable` stops a program in the middle and hands the rest
  * of it back as a value; that value is a closure and does not survive
  * a restart, so what is kept is the JOURNAL — the answers given so
  * far — and where the program stands is re-derived by running it
@@ -68,7 +68,7 @@ import okay.codec.Schema
  * every workflow engine has, and the key is how a caller survives it.
  *
  * THE DISCIPLINE IS A CONSTRAINT, not a hope
- * (dialogue-replay-discipline): `Replayable[Delim + F]` is required
+ * (dialogue-replay-discipline): `Replayable[Shift % ? + F]` is required
  * here, so a body that performs an `Async` effect between two pauses
  * does not compile as a durable dialogue. The sentence the whole
  * design rests on — everything the outside world tells the program
@@ -106,7 +106,7 @@ final class Dialogue[Q, A, R, F[+_]] private (topic: Topic, val id: String,
                                       * thing about this class that the program's
                                       * shape decides (wf-durable-journal,
                                       * 2026-09-17). An ordinary dialogue folds with
-                                      * `Delim.replay`; a WORKFLOW folds with
+                                      * `Shift.replay`; a WORKFLOW folds with
                                       * `Wf.replay`, which knows not to feed an
                                       * answer to a `patch` that was not there when
                                       * the journal was written. Everything else —
@@ -114,7 +114,7 @@ final class Dialogue[Q, A, R, F[+_]] private (topic: Topic, val id: String,
                                       * advance and append — is the same for both,
                                       * so it is written once.
                                       */
-                                     place: Delim.Journal[A] => Delim.Dialogue[Q, A, R, F] ! F)
+                                     place: Shift.Journal[A] => Shift.Dialogue[Q, A, R, F] ! F)
                                     (using Schema[A]):
 
   private val typed = Typed[Dialogue.Entry[A]](topic, version, upcasts)
@@ -189,7 +189,7 @@ final class Dialogue[Q, A, R, F[+_]] private (topic: Topic, val id: String,
 
   /** the answers accepted so far; a stopped fold ends the journal
    * where it stopped, and `recovered` is how you see that it did */
-  def journal: Delim.Journal[A] = recovered.answers
+  def journal: Shift.Journal[A] = recovered.answers
 
   /**
    * Where the program stands — itself, folded over its journal.
@@ -201,7 +201,7 @@ final class Dialogue[Q, A, R, F[+_]] private (topic: Topic, val id: String,
    * journal it accepts — that exception belongs to the caller's
    * interpretation and reaches them where they ran it.
    */
-  def at: Either[Dialogue.Stopped, Delim.Dialogue[Q, A, R, F]] ! F =
+  def at: Either[Dialogue.Stopped, Shift.Dialogue[Q, A, R, F]] ! F =
     val r = recovered
     r.stopped match
       case Some(s) => pure(Left(s))
@@ -248,7 +248,7 @@ final class Dialogue[Q, A, R, F[+_]] private (topic: Topic, val id: String,
    * index is what `step` needs, so handing them out together is the
    * shape that cannot be got wrong.
    */
-  def standing: Either[Dialogue.Stopped, (Delim.Dialogue[Q, A, R, F], Int)] ! F =
+  def standing: Either[Dialogue.Stopped, (Shift.Dialogue[Q, A, R, F], Int)] ! F =
     val r = recovered
     r.stopped match
       case Some(s) => pure(Left(s))
@@ -284,20 +284,20 @@ final class Dialogue[Q, A, R, F[+_]] private (topic: Topic, val id: String,
    * `expect` is the position this answer will occupy; a holder of the
    * program knows it because it counted its own steps.
    */
-  def step(p: Delim.Dialogue[Q, A, R, F], a: A, expect: Int)
+  def step(p: Shift.Dialogue[Q, A, R, F], a: A, expect: Int)
           : Dialogue.Answered[Q, A, R, F] ! F =
     advance(p, a, expect)
 
   /** the one move both paths make: advance, then journal, then say
    * whether this writer's answer is the one the fold accepted */
-  private def advance(p: Delim.Dialogue[Q, A, R, F], a: A, expect: Int)
+  private def advance(p: Shift.Dialogue[Q, A, R, F], a: A, expect: Int)
                      : Dialogue.Answered[Q, A, R, F] ! F =
     p match
-      case Delim.Paused.Done(_) => pure(Dialogue.Answered.NotAsking(p))
-      case Delim.Paused.Ask(_, _, _) =>
+      case Shift.Paused.Done(_) => pure(Dialogue.Answered.NotAsking(p))
+      case Shift.Paused.Ask(_, _, _) =>
         // the durable journal is the journal, so the in-memory one
-        // this hands to `Delim.answer` is empty and its copy dropped
-        Delim.answer(p, List.empty[A])(a).flatMap: (next, _) =>
+        // this hands to `Shift.answer` is empty and its copy dropped
+        Shift.answer(p, List.empty[A])(a).flatMap: (next, _) =>
           // ONLY HERE: the advance produced a value, so the answer is
           // one the program accepts. A throw above never reaches this.
           val before = seen
@@ -481,15 +481,15 @@ final class Dialogue[Q, A, R, F[+_]] private (topic: Topic, val id: String,
    * as a separate door rather than a flag so the obligation is
    * visible at the call site.
    */
-  def runFromIn[S, G[+_]](from: Delim.Dialogue[Q, A, R, F], at: Int)
+  def runFromIn[S, G[+_]](from: Shift.Dialogue[Q, A, R, F], at: Int)
                          (oracle: (Q, Dialogue.Attempt) => Either[S, A] ! G)
                          (using Row.Sub[F, G])
-                         : (Either[S, R], Delim.Dialogue[Q, A, R, F], Int) ! G =
-    def go(p: Delim.Dialogue[Q, A, R, F], index: Int)
-          : (Either[S, R], Delim.Dialogue[Q, A, R, F], Int) ! G = p match
-      case Delim.Paused.Done(r) => pure((Right(r), p, index))
+                         : (Either[S, R], Shift.Dialogue[Q, A, R, F], Int) ! G =
+    def go(p: Shift.Dialogue[Q, A, R, F], index: Int)
+          : (Either[S, R], Shift.Dialogue[Q, A, R, F], Int) ! G = p match
+      case Shift.Paused.Done(r) => pure((Right(r), p, index))
       // the WARM path: the program is in hand, so no step replays
-      case Delim.Paused.Ask(q, _, _) =>
+      case Shift.Paused.Ask(q, _, _) =>
         oracle(q, Dialogue.Attempt(id, index)).flatMap:
           case Left(s) => pure((Left(s), p, index))
           case Right(a) =>
@@ -504,18 +504,18 @@ object Dialogue:
 
   /**
    * AN ORDINARY DURABLE DIALOGUE: the author's questions, answered by
-   * the author's oracle, folded with `Delim.replay`.
+   * the author's oracle, folded with `Shift.replay`.
    */
   def apply[Q, A, R, F[+_]](topic: Topic, id: String, program: String,
                             snapshots: Option[Snapshots] = None,
                             snapshotEvery: Int = 0,
                             version: Int = 1,
                             upcasts: Map[Int, Typed.Upcast] = Map.empty)
-                           (body: Delim.Asking[Q, A, R, Delim + F] ?=> R ! Delim + F)
-                           (using Schema[A], Replayable[Delim + F],
-                            Delim.OneMachine[F], At): Dialogue[Q, A, R, F] =
+                           (body: Shift.Asking[Q, A, R, Shift % ? + F] ?=> R ! Shift % ? + F)
+                           (using Schema[A], Replayable[Shift % ? + F],
+                            Shift.OneMachine[F], At): Dialogue[Q, A, R, F] =
     new Dialogue(topic, id, program, snapshots, snapshotEvery, version, upcasts,
-      j => Delim.replay[Q, A, R, F](body)(j))
+      j => Shift.replay[Q, A, R, F](body)(j))
 
   /**
    * A DURABLE WORKFLOW: the same journal, but it also carries the
@@ -532,9 +532,9 @@ object Dialogue:
                                snapshotEvery: Int = 0,
                                version: Int = 1,
                                upcasts: Map[Int, Typed.Upcast] = Map.empty)
-                              (body: Wf.Asks[Q, A, R, F] ?=> R ! Delim + F)
-                              (using Schema[Wf.Ans[A]], Replayable[Delim + F],
-                               Delim.OneMachine[F], At)
+                              (body: Wf.Asks[Q, A, R, F] ?=> R ! Shift % ? + F)
+                              (using Schema[Wf.Ans[A]], Replayable[Shift % ? + F],
+                               Shift.OneMachine[F], At)
                               : Dialogue[Wf.Ask[Q], Wf.Ans[A], R, F] =
     new Dialogue(topic, id, program, snapshots, snapshotEvery, version, upcasts,
       j => Wf.replay[Q, A, R, F](body)(j))
@@ -593,10 +593,10 @@ object Dialogue:
      *
      * The caller owes the validity of `from` — see `Dialogue.runFromIn`.
      */
-    def runWorkflowFromIn[G[+_]](from: Delim.Dialogue[Wf.Ask[Q], Wf.Ans[A], R, F], at: Int)
+    def runWorkflowFromIn[G[+_]](from: Shift.Dialogue[Wf.Ask[Q], Wf.Ans[A], R, F], at: Int)
                                 (oracle: Q => Dialogue.Attempt ?=> A ! G)
                                 (using Wf.Runtime, Row.Sub[F, G])
-        : (Either[Wf.Wait, R], Delim.Dialogue[Wf.Ask[Q], Wf.Ans[A], R, F], Int) ! G =
+        : (Either[Wf.Wait, R], Shift.Dialogue[Wf.Ask[Q], Wf.Ans[A], R, F], Int) ! G =
       d.runFromIn[Wf.Wait, G](from, at)(askingIn(oracle))
 
   /**
@@ -653,12 +653,12 @@ object Dialogue:
   /** what an attempt to answer did */
   enum Answered[Q, A, R, F[+_]]:
     /** this writer's answer was accepted; here is where it stands */
-    case Advanced[Q, A, R, F[+_]](to: Delim.Dialogue[Q, A, R, F]) extends Answered[Q, A, R, F]
+    case Advanced[Q, A, R, F[+_]](to: Shift.Dialogue[Q, A, R, F]) extends Answered[Q, A, R, F]
     /** another writer got there first; `to` is where it ACTUALLY
      * stands, which is what the caller needs to decide what to do */
-    case Lost[Q, A, R, F[+_]](to: Delim.Dialogue[Q, A, R, F]) extends Answered[Q, A, R, F]
+    case Lost[Q, A, R, F[+_]](to: Shift.Dialogue[Q, A, R, F]) extends Answered[Q, A, R, F]
     /** nobody was asking, so nothing was written */
-    case NotAsking[Q, A, R, F[+_]](to: Delim.Dialogue[Q, A, R, F]) extends Answered[Q, A, R, F]
+    case NotAsking[Q, A, R, F[+_]](to: Shift.Dialogue[Q, A, R, F]) extends Answered[Q, A, R, F]
     /** the log could not be folded into a place at all */
     case Broken[Q, A, R, F[+_]](why: Stopped) extends Answered[Q, A, R, F]
 

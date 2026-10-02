@@ -346,7 +346,7 @@ is shown earlier in this chapter) — and each team's helper reflects its
 own monads through the capabilities its `reify` blocks hand out:
 
 ```scala
-def flights(from: String)(using Reflect[List, Out], Reflect[Checked, Int]): (String, Int) ! Delim + Pure =
+def flights(from: String)(using Reflect[List, Out], Reflect[Checked, Int]): (String, Int) ! Shift % ? + Pure =
   routes.get(from).toRight(s"airport $from is closed").reflect[Int, Pure]
     .flatMap(_.reflect[Out, Pure])
 ```
@@ -581,19 +581,19 @@ delimited control around two different primitives:
 In their calculus the CPS hierarchy is not a separate feature; it
 falls out of `$` and `shift0`. And Filinski's two operators become two
 lines. This library's `Layered` is exactly those two lines, on the
-multi-prompt `Delim` machine (chapter 10), where every delimiter has a
+multi-prompt `Shift` machine (chapter 10), where every delimiter has a
 NAME instead of a number:
 
 ```scala
-Delim.dollar[R, M[R], F](p)(r => okay.pure(L.pure(r)))(body(using new Reflect[M, R](p, L)))
+Shift.dollar[R, M[R], F](p)(r => okay.pure(L.pure(r)))(body(using new Reflect[M, R](p, L)))
 ```
 
 is `reify`: a fresh delimiter whose way out is the monad's `pure`
 (`[e] = η $ e`). And
 
 ```scala
-def reflect[R, F[+_]](using r: Reflect[M, R], at: At): X ! Delim + F =
-  Delim.shift0[M[R], X, F](r.prompt)(k => r.layer.bind(m)(k))
+def reflect[R, F[+_]](using r: Reflect[M, R], at: At): X ! Shift % ? + F =
+  Shift.shift0[M[R], X, F](r.prompt)(k => r.layer.bind(m)(k))
 ```
 
 is `reflect`: capture up to THIS layer's delimiter — past any inner
@@ -625,7 +625,7 @@ reify[List, Out, Pure]:
       for
         shop  <- List("north", "south").reflect[Out, Pure]
         _     <- Logged(Vector(s"shop $shop"), ()).reflect[Either[String, Int], Pure]
-        ps    <- items.foldLeft(pure[Delim + Pure, List[Int]](Nil))((acc, item) =>
+        ps    <- items.foldLeft(pure[Shift % ? + Pure, List[Int]](Nil))((acc, item) =>
                    acc.flatMap(xs => price(shop, item).reflect[Int, Pure].map(xs :+ _)))
         total  = ps.sum
         _     <- Logged(Vector(s"total $total"), ()).reflect[Either[String, Int], Pure]
@@ -788,8 +788,8 @@ the `$` encoding, and keeps `Layered` for the monads it does not own.
   (Brachthäuser, Boruch-Gruszecki and Odersky, 2020) reaches `Future` by
   running on fibres, and pays by being one-shot and JVM-only; this
   library's continuations are multi-shot on all three platforms.
-- **The row must hold `Delim`**, and something must run it
-  (`Delim.run`). The layers are ordinary programs in that row.
+- **The row must hold `Shift`**, and something must run it
+  (`Shift.run`). The layers are ordinary programs in that row.
 - **A capability that escapes its `reify`** fails with `NoPrompt` when
   used. `Layered.Stacked` refuses it at compile time instead
   (docs/direct-style.md, Layer 1½).

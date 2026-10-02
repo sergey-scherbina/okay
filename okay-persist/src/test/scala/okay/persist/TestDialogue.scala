@@ -1,7 +1,7 @@
 package okay.persist
 
 import munit.FunSuite
-import okay.{!, +, Delim, Pure}
+import okay.{%, !, +, Shift, Pure}
 import okay.Direct.*
 import okay.codec.Schema
 import scala.annotation.unused
@@ -15,13 +15,13 @@ import scala.language.implicitConversions
  */
 class TestDialogue extends FunSuite {
 
-  type Row = Delim + Pure
+  type Row = Shift % ? + Pure
 
   /** the program: straight-line code that happens to pause */
-  def booking(using Delim.Asking[String, String, String, Row]): String ! Row = direct:
-    val city = !Delim.pause("Which city?")
-    val nights = !Delim.pause(s"How many nights in $city?")
-    val pay = !Delim.pause(s"Pay ${nights.toInt * 90} for $city?")
+  def booking(using Shift.Asking[String, String, String, Row]): String ! Row = direct:
+    val city = !Shift.pause("Which city?")
+    val nights = !Shift.pause(s"How many nights in $city?")
+    val pay = !Shift.pause(s"Pay ${nights.toInt * 90} for $city?")
     if pay == "yes" then s"Booked $city for $nights nights" else "Cancelled"
 
   def dialogue(t: Topic, id: String = "b-1") =
@@ -29,11 +29,11 @@ class TestDialogue extends FunSuite {
 
   /** where a dialogue stands, for a test that knows the log is intact */
   extension [Q, A, R](d: Dialogue[Q, A, R, Pure])
-    def place: Delim.Dialogue[Q, A, R, Pure] = (!.run(d.at)).toOption.get
+    def place: Shift.Dialogue[Q, A, R, Pure] = (!.run(d.at)).toOption.get
 
   /** where an answer left it, for a test that expects it to be taken */
   extension [Q, A, R, G[+_]](x: Dialogue.Answered[Q, A, R, G])
-    def now: Delim.Dialogue[Q, A, R, G] = x match
+    def now: Shift.Dialogue[Q, A, R, G] = x match
       case Dialogue.Answered.Advanced(to) => to
       case Dialogue.Answered.NotAsking(to) => to
       case Dialogue.Answered.Lost(to) => to
@@ -132,8 +132,8 @@ class TestDialogue extends FunSuite {
     def compact(p: Int): Unit = under.compact(p)
 
   /** a program with as many pauses as you like */
-  def sumUp(n: Int)(using Delim.Asking[Int, Int, Int, Row]): Int ! Row = direct:
-    if n == 0 then 0 else (!Delim.pause(n)) + (!sumUp(n - 1))
+  def sumUp(n: Int)(using Shift.Asking[Int, Int, Int, Row]): Int ! Row = direct:
+    if n == 0 then 0 else (!Shift.pause(n)) + (!sumUp(n - 1))
 
   val N = 40
 
@@ -147,9 +147,9 @@ class TestDialogue extends FunSuite {
     // the same answers, each taken from a standing start
     val cold = Counting(MemoryStore().topic("cold"))
     val dc = Dialogue[Int, Int, Int, Pure](cold, "c", "sum/1")(sumUp(N))
-    def loop(p: Delim.Dialogue[Int, Int, Int, Pure]): Int = p match
-      case Delim.Paused.Done(r) => r
-      case Delim.Paused.Ask(q, _, _) => loop((!.run(dc.answer(q * 2))).now)
+    def loop(p: Shift.Dialogue[Int, Int, Int, Pure]): Int = p match
+      case Shift.Paused.Done(r) => r
+      case Shift.Paused.Ask(q, _, _) => loop((!.run(dc.answer(q * 2))).now)
     assertEquals(loop(dc.place), (1 to N).sum * 2)
 
     // Both answered the same questions; only one of them re-read the

@@ -1,6 +1,6 @@
 package bookcats
 
-import okay.{!, +, %, Delim, Pure, pure}
+import okay.{!, +, %, Shift, Pure, pure}
 
 /**
  * THE BOOK'S CHAPTER 16b, one program three ways
@@ -131,31 +131,31 @@ object LayeredBasket:
   def price(shop: String, item: String): Either[String, Int] =
     prices(shop).get(item).toRight(s"$shop has no $item")
 
-  def basket(items: List[String]): List[Out] ! Delim + Pure =
+  def basket(items: List[String]): List[Out] ! Shift % ? + Pure =
     reify[List, Out, Pure]:
       reify[Logged, Either[String, Int], Pure]:
         reify[Checked, Int, Pure]:
           for
             shop  <- List("north", "south").reflect[Out, Pure]
             _     <- Logged(Vector(s"shop $shop"), ()).reflect[Either[String, Int], Pure]
-            ps    <- items.foldLeft(pure[Delim + Pure, List[Int]](Nil))((acc, item) =>
+            ps    <- items.foldLeft(pure[Shift % ? + Pure, List[Int]](Nil))((acc, item) =>
                        acc.flatMap(xs => price(shop, item).reflect[Int, Pure].map(xs :+ _)))
             total  = ps.sum
             _     <- Logged(Vector(s"total $total"), ()).reflect[Either[String, Int], Pure]
           yield total
 
   def run(items: List[String]): List[(Vector[String], Either[String, Int])] =
-    !.run(Delim.run[List[Out], Pure](basket(items))).map(o => (o.log, o.value))
+    !.run(Shift.run[List[Out], Pure](basket(items))).map(o => (o.log, o.value))
 
   /** the other order, by swapping blocks: the error layer outermost */
-  def failFirst(items: List[String]): Either[String, List[Logged[Int]]] ! Delim + Pure =
+  def failFirst(items: List[String]): Either[String, List[Logged[Int]]] ! Shift % ? + Pure =
     reify[Checked, List[Logged[Int]], Pure]:
       reify[List, Logged[Int], Pure]:
         reify[Logged, Int, Pure]:
           for
             shop  <- List("north", "south").reflect[Logged[Int], Pure]
             _     <- Logged(Vector(s"shop $shop"), ()).reflect[Int, Pure]
-            ps    <- items.foldLeft(pure[Delim + Pure, List[Int]](Nil))((acc, item) =>
+            ps    <- items.foldLeft(pure[Shift % ? + Pure, List[Int]](Nil))((acc, item) =>
                        acc.flatMap(xs => price(shop, item).reflect[List[Logged[Int]], Pure].map(xs :+ _)))
           yield ps.sum
 
@@ -306,16 +306,16 @@ object LayeredTrips:
   type Out        = Logged[Either[String, Int]]
 
   /** team A's helper: an error into the error layer, the flights into the list layer */
-  def flights(from: String)(using Reflect[List, Out], Reflect[Checked, Int]): (String, Int) ! Delim + Pure =
+  def flights(from: String)(using Reflect[List, Out], Reflect[Checked, Int]): (String, Int) ! Shift % ? + Pure =
     routes.get(from).toRight(s"airport $from is closed").reflect[Int, Pure]
       .flatMap(_.reflect[Out, Pure])
 
   /** team B's helper: an error into the error layer, the booking into the log layer */
-  def book(from: String, to: String)(using Reflect[Logged, Either[String, Int]], Reflect[Checked, Int]): Unit ! Delim + Pure =
+  def book(from: String, to: String)(using Reflect[Logged, Either[String, Int]], Reflect[Checked, Int]): Unit ! Shift % ? + Pure =
     val seat: Either[String, Unit] = if soldOut((from, to)) then Left(s"$from → $to: sold out") else Right(())
     seat.reflect[Int, Pure].flatMap(_ => Logged(Vector(s"booked $from → $to"), ()).reflect[Either[String, Int], Pure])
 
-  def trip(from: String): List[Out] ! Delim + Pure =
+  def trip(from: String): List[Out] ! Shift % ? + Pure =
     reify[List, Out, Pure]:
       reify[Logged, Either[String, Int], Pure]:
         reify[Checked, Int, Pure]:
@@ -327,7 +327,7 @@ object LayeredTrips:
           } yield p1 + p2
 
   def run(from: String): List[(Vector[String], Either[String, Int])] =
-    !.run(Delim.run[List[Out], Pure](trip(from))).map(o => (o.log, o.value))
+    !.run(Shift.run[List[Out], Pure](trip(from))).map(o => (o.log, o.value))
 
 object EffectsTrips:
   import okay.{Choose, Throws, Writer, choose, raise, runChoice, runEither}
@@ -473,7 +473,7 @@ class TestBookTwoMonadsCats extends munit.FunSuite:
   }
 
   test("the other order: layered by swapping blocks, effects by swapping handlers — one missing price fails it all") {
-    assertEquals(!.run(Delim.run[Either[String, List[LayeredBasket.Logged[Int]]], Pure](
+    assertEquals(!.run(Shift.run[Either[String, List[LayeredBasket.Logged[Int]]], Pure](
       LayeredBasket.failFirst(List("tea", "cake")))), Left("south has no cake"))
     assertEquals(EffectsBasket.failFirst(List("tea", "cake")), Left("south has no cake"))
     assertEquals(EffectsBasket.failFirst(List("tea")),

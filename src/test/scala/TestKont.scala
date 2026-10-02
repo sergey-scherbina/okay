@@ -6,7 +6,7 @@ import okay.Freer.{Bind, Delay, Diag, Return}
  * specs/freer-kont.md, the oracle: the `($v)` and `($/S0)` rules of
  * λ$ (Materzok & Biernacki, APLAS 2012), TestDollar's bodies without
  * prompts' machinery, the depth tests, the head form. Every expected
- * value is the one TestDollar pins for the same body on the Delim
+ * value is the one TestDollar pins for the same body on the Shift
  * machine.
  */
 class TestKont extends munit.FunSuite:
@@ -22,7 +22,7 @@ class TestKont extends munit.FunSuite:
 
   def pure[S, A](a: A): P[S, S, A] = Return(a)
 
-  /** run under a boundary, as `Delim.run` does: a capture that finds no
+  /** run under a boundary, as `Shift.run` does: a capture that finds no
    * delimiter is `NoPrompt` by name, not an operation let out */
   def run[S, A](p: P[S, S, A]): A =
     Frames.run[F, S, S, A](Delimited.machine[F].reset[S, S, A](Cont0.boundary[A, S])(p)) match
