@@ -410,15 +410,19 @@ class TestLexicalWalk extends munit.FunSuite:
     assertEquals(r, List((1, 0), (2, 0), (3, 0)))
   }
 
-  test("multi-shot INSIDE the walk with the machine OUTSIDE it: the operation inside the delimiter escapes, loudly") {
+  test("multi-shot INSIDE the walk with the machine OUTSIDE it: since handle-frames-loops the walk is a frame of that machine — deep's answer") {
+    // it ESCAPED, loudly (Instances.Survived), while the walk was a fold the machine could not see into: the
+    // operation inside the delimiter went past the walk. Now the machine runs the walk as a frame below the
+    // delimiter, and the branches thread the walk's state as with the machine inside
     def pick(s: Lexical.Inst[State % Int, SI + Shift % ? + Pure])(using Layered.Reflect[List, Int]): Int ! SI + Shift % ? + Pure =
       for
         x <- List(1, 2, 3).reflect[Int, SI + Pure]
         v <- s.get
         _ <- s.set(v + x)
       yield v
-    intercept[Instances.Survived](!.run(done(Shift.run[(Int, List[Int]), SI + Pure](
-      Lexical.State.walk[Int, List[Int], Shift % ? + Pure](0)(s => reify[List, Int, SI + Pure](pick(s)))))))
+    val r = !.run(done(Shift.run[(Int, List[Int]), SI + Pure](
+      Lexical.State.walk[Int, List[Int], Shift % ? + Pure](0)(s => reify[List, Int, SI + Pure](pick(s))))))
+    assertEquals(r, (6, List(0, 1, 3)))
   }
 
   test("multi-shot INSIDE the walk with the machine INSIDE it: the walk threads the state through the branches — deep's answer") {

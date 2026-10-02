@@ -74,7 +74,15 @@ object Chronicle:
 
     // the seed of `Writer.loopWith`'s shape: a bespoke loop, because the
     // record has to be threaded through it
-    @tailrec def loop(errs: List[E])(x: A ! Chronicle % E + F): Verdict[E, A] ! F = (x.resume: @unchecked) match
+    // the loop as a frame (handle-frames-loops): the record is its state, and a halt does not resume
+    def frame(errs: List[E])(x: A ! Chronicle % E + F): Shift.U[F, Verdict[E, A]] =
+      HandleFrames.stateful[Chronicle % E, List[E], A, Verdict[E, A], F](summon[TypeableK[Chronicle % E]],
+        (errs, a) => pure(verdict(errs, a)))(
+        (errs, op, resume) => (op.asInstanceOf[Chronicle[E, Any]]: @unchecked) match
+          case Dictate(err) => resume(err :: errs, ())
+          case Halt() => pure(Failed(errs.reverse.toVector)))(errs, x)
+
+    @tailrec def loop(errs: List[E])(x: A ! Chronicle % E + F): Verdict[E, A] ! F = (x.resumeRun: @unchecked) match
       case Return(a) => Return(verdict(errs, a))
       case i @ Inject(e) => split[Chronicle % E, F](e) { c =>
           // `@unchecked` as the Bind case below explains: under the
@@ -92,8 +100,9 @@ object Chronicle:
             case Dictate(err) => loop(err :: errs)(k(()))
             case Halt() => Return(Failed(errs.reverse.toVector)): Verdict[E, A] ! F
         } { _ => forwarded[Chronicle % E, F](i).flatMap(x => _loop(errs)(k(x))) }
+      case y => HandleFrames.pending[Verdict[E, A], F](frame(errs)(y))
 
-    loop(Nil)(p)
+    HandleFrames.run[Verdict[E, A], F](loop(Nil)(p), frame(Nil)(p))
   }
 
   /**

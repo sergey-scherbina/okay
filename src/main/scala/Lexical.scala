@@ -97,8 +97,14 @@ object Lexical:
         def perform[X](e: F[X]): X ! R = Free.Inject(Instances[F, X](handle, e))
       // a resumption from a forwarded operation re-enters here
       def again(s: S)(x: A ! R): (S, A) ! R = loop(s)(x)
+      // the walk as a frame (handle-frames-loops): it takes the operations of ITS instance only
+      def mine: TypeableK[Instances.Of[F]] = new TypeableK[Instances.Of[F]]:
+        def test(x: Any): Boolean = summon[TypeableK[Instances.Of[F]]].test(x) && (x.asInstanceOf[Instances[F, Any]].at eq handle)
+      def frame(s: S)(x: A ! R): Shift.U[R, (S, A)] =
+        HandleFrames.stateful[Instances.Of[F], S, A, (S, A), R](mine, (s, a) => okay.pure((s, a)))(
+          (s, op, resume) => { val (s1, y) = c.op(op.asInstanceOf[Instances[F, Any]].op, s); resume(s1, y) })(s, x)
       @scala.annotation.tailrec
-      def loop(s: S)(x: A ! R): (S, A) ! R = (x.resume: @unchecked) match
+      def loop(s: S)(x: A ! R): (S, A) ! R = (x.resumeRun: @unchecked) match
         case Free.Return(a) => okay.pure((s, a))
         case Free.Inject(e) => split[Instances.Of[F], G](e) { in =>
             if in.at eq handle then { val (s1, a) = c.op(in.op, s); okay.pure[R, (S, A)]((s1, a)) }
@@ -108,7 +114,9 @@ object Lexical:
             if in.at eq handle then { val (s1, y) = c.op(in.op, s); loop(s1)(k(y)) }
             else Free.Inject(in).flatMap(y => again(s)(k(y)))
           } { g => Free.Inject(g).flatMap(y => again(s)(k(y))) }
-      loop(s0)(body(i))
+        case y => HandleFrames.pending[(S, A), R](frame(s)(y))
+      val b = body(i)
+      HandleFrames.run[(S, A), R](loop(s0)(b), frame(s0)(b))
     }
 
   /** the default by clause kind: tail clauses run `tail`, others `deep` */

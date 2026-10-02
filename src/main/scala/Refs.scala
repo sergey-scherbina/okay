@@ -97,8 +97,17 @@ object Refs:
 
     def _loop(n: Int, h: Map[Int, Any])(x: A ! Refs + F): A ! F = loop(n, h)(x)
 
+    // the loop as a frame (handle-frames-loops): the counter and the heap are its state
+    def frame(n: Int, h: Map[Int, Any])(x: A ! Refs + F): Shift.U[F, A] =
+      HandleFrames.stateful[Refs, (Int, Map[Int, Any]), A, A, F](summon[TypeableK[Refs]], (_, a) => pure(a))(
+        (s, op, resume) => (op.asInstanceOf[Refs[Any]]: @unchecked) match
+          case New(init) => resume((s._1 + 1, s._2.updated(s._1, init)), s._1)
+          case Read(c) => resume(s, s._2(c))
+          case Write(c, v) => resume((s._1, s._2.updated(c, v)), v))((n, h), x)
+    def upgrade(n: Int, h: Map[Int, Any])(x: A ! Refs + F): A ! F = HandleFrames.pending[A, F](frame(n, h)(x))
+
     @tailrec def loop(n: Int, h: Map[Int, Any])(x: A ! Refs + F): A ! F =
-      (x.resume: @unchecked) match
+      (x.resumeRun: @unchecked) match
         case Return(a) => Return(a)
         case Inject(e) => split[Refs, F](e) {
             case New(init) => Return(n): A ! F
@@ -110,8 +119,9 @@ object Refs:
             case Read(c) => loop(n, h)(k(slot(h, c)))
             case Write(c, s) => loop(n, h.updated(c, s))(k(s))
           } (_ => forwarded[Refs, F](i).flatMap(x => _loop(n, h)(k(x))))
+        case y => upgrade(n, h)(y)
 
-    loop(0, Map.empty)(p)
+    HandleFrames.run[A, F](loop(0, Map.empty)(p), frame(0, Map.empty)(p))
 
   /** run a program that uses cells, and nothing else */
   inline def run[A](p: A ! Refs): A = !.run(handle[A, okay.Pure](p))
