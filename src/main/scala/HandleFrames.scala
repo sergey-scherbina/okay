@@ -46,7 +46,7 @@ object HandleFrames:
 
   /** a frame program as a value: stepped into by a running machine, else run on a machine of its own */
   def pending[B, G[+_]](program: Shift.U[G, B]): B ! G =
-    Free.delay(new Frames.Own[Freer.Lift[G], Unit, Unit, B, B ! G](program, Shift.Stacked.residual[B, G]))
+    Free.delay(Delimited.machine[Freer.Lift[G]].owned[Unit, Unit, B, B ! G](program)(Shift.Stacked.residual[B, G]))
 
   /**
    * a handler's run as ONE object (stateSmall: a holder of two closures was four allocations a run,
