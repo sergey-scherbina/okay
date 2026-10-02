@@ -112,7 +112,34 @@ object Bayes:
   def metropolis[A](p: A ! Model, samples: Int, burn: Int = 1000, thin: Int = 1, chains: Int = 1, seed: Long = 42L): Posterior[A] =
     Posterior(Vector.tabulate(chains)(i => chain(p, samples, burn, thin, new Random(seed + i))))
 
+  /**
+   * ADAPTIVE METROPOLIS (Haario, Saksman & Tamminen, Bernoulli 2001) for
+   * the CONTINUOUS sites: single-site moves for the first half of burn-in
+   * while their draws are collected, then ONE joint move per iteration from
+   * N(x, (2.38²/d) Σ + εI), Σ the collected covariance, re-estimated through
+   * the rest of burn-in and frozen after it. Discrete sites keep their
+   * single-site moves. Where two parameters lie along a ridge (the book's
+   * Challenger regression: α and β correlated near −0.99), a joint step
+   * moves along it and single-site steps cannot.
+   */
+  def adaptive[A](p: A ! Model, samples: Int, burn: Int = 2000, thin: Int = 1, chains: Int = 1, seed: Long = 42L): Posterior[A] =
+    Posterior(Vector.tabulate(chains)(i => chain(p, samples, burn, thin, new Random(seed + i), joint = true)))
+
+  /** the lower Cholesky factor of a symmetric positive-definite matrix */
+  private def cholesky(m: Array[Array[Double]]): Array[Array[Double]] =
+    val n = m.length
+    val l = Array.ofDim[Double](n, n)
+    for i <- 0 until n; j <- 0 to i do
+      var s = m(i)(j)
+      var k = 0
+      while k < j do { s -= l(i)(k) * l(j)(k); k += 1 }
+      l(i)(j) = if i == j then math.sqrt(math.max(s, 1e-12)) else s / l(j)(j)
+    l
+
   private def chain[A](p: A ! Model, samples: Int, burn: Int, thin: Int, rng: Random): Chain[A] =
+    chain(p, samples, burn, thin, rng, joint = false)
+
+  private def chain[A](p: A ! Model, samples: Int, burn: Int, thin: Int, rng: Random, joint: Boolean): Chain[A] =
     // a start the observations do not rule out
     var cur = pass(p, Map.empty, rng)
     var tries = 1
@@ -156,10 +183,64 @@ object Bayes:
       if tuning then tune(name)
     }
 
+    // the continuous sites, and what the adaptive step has learnt of them
+    def continuous: Vector[String] =
+      cur.trace.toVector.collect { case (n, site) if site.raw.isInstanceOf[Double] => n }.sorted
+    val names = if joint then continuous else Vector.empty
+    val d = names.length
+    // an ArrayBuffer, not a Vector builder: the covariance is re-read while draws are still being added,
+    // and a builder's state after `result()` is undefined
+    val seen = scala.collection.mutable.ArrayBuffer.empty[Array[Double]]
+    var factor: Option[Array[Array[Double]]] = None
+    var jointScale = 1.0
+    var jointTried = 0
+    var jointTook = 0
+    def learn(): Unit =
+      val xs = seen
+      if xs.length > 2 * d + 10 then
+        val mean = Array.tabulate(d)(k => xs.iterator.map(_(k)).sum / xs.length)
+        val cov = Array.tabulate(d, d)((a, b) => xs.iterator.map(x => (x(a) - mean(a)) * (x(b) - mean(b))).sum / (xs.length - 1))
+        val sd = 2.38 * 2.38 / d
+        factor = Some(cholesky(Array.tabulate(d, d)((a, b) => sd * cov(a)(b) + (if a == b then 1e-8 else 0.0))))
+    def jointMove(l: Array[Array[Double]], tuning: Boolean): Unit =
+      val now = names.map(n => cur.trace.get(n).map(_.raw))
+      if now.forall(_.exists(_.isInstanceOf[Double])) then
+        val x = now.map { case Some(v: Double) => v; case _ => 0.0 }
+        val z = Array.fill(d)(rng.nextGaussian())
+        val y = Array.tabulate(d)(a => x(a) + jointScale * (0 to a).iterator.map(b => l(a)(b) * z(b)).sum)
+        val fixed = names.indices.foldLeft(cur.trace.view.mapValues(_.raw).toMap)((m, k) => m.updated(names(k), y(k)))
+        val next = pass(p, fixed, rng)
+        val logAlpha = if next.logJoint == Distribution.NegInf || next.fresh.nonEmpty then Distribution.NegInf else next.logJoint - cur.logJoint
+        tried("(joint)") += 1
+        val ok = math.log(rng.nextDouble()) < logAlpha
+        if ok then { cur = next; took("(joint)") += 1 }
+        if tuning then
+          // the single-site rule, on the joint step's own window
+          jointTried += 1
+          if ok then jointTook += 1
+          if jointTried >= 100 then
+            val rate = jointTook.toDouble / jointTried
+            jointScale *= (if rate < 0.001 then 0.1 else if rate < 0.05 then 0.5 else if rate < 0.2 then 0.9
+              else if rate > 0.95 then 10.0 else if rate > 0.75 then 2.0 else if rate > 0.5 then 1.1 else 1.0)
+            jointTried = 0
+            jointTook = 0
+    def record(): Unit =
+      if d > 0 then
+        val v = names.map(n => cur.trace.get(n).map(_.raw))
+        if v.forall(_.exists(_.isInstanceOf[Double])) then seen += v.map { case Some(x: Double) => x; case _ => 0.0 }.toArray: Unit
+
     var i = 0
     while i < burn + samples * thin do
       val tuning = i < burn
-      rng.shuffle(cur.trace.keys.toVector).foreach(move(_, tuning))
+      factor match
+        case Some(l) if joint =>
+          jointMove(l, tuning)
+          rng.shuffle(cur.trace.keys.toVector.filterNot(names.contains)).foreach(move(_, tuning))
+        case _ =>
+          rng.shuffle(cur.trace.keys.toVector).foreach(move(_, tuning))
+      if joint && tuning then
+        record()
+        if i >= burn / 2 && (factor.isEmpty || i % 500 == 0) then learn()
       if !tuning && (i - burn) % thin == 0 then
         draws += cur.value
         sites += cur.trace.view.mapValues(_.numeric).toMap

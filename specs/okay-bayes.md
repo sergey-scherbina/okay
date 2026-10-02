@@ -1,6 +1,6 @@
 # okay-bayes — Bayesian inference as effects, without Python
 
-Status: stage 1 landed (2026-10-02); specification 2026-10-02 (operator ask: "Bayesian Methods for
+Status: stage 1 landed (2026-10-02); stage 2a (ch.2, adaptive Metropolis) 2026-10-02; specification 2026-10-02 (operator ask: "Bayesian Methods for
 Hackers ... make okay-bayes so we can do without Python; is it very
 hard?"). Builds on the core's `Prob` effect (specs/prob-effect-hansei.md:
 discrete `dist`, boolean `observe`, exact enumeration, rejection).
@@ -40,7 +40,8 @@ object Bayes:
   def factor(logWeight: Double): Unit ! Model
   def prior[A](p: A ! Model, rng): Run[A]                          // one forward draw: value, trace, log prior, log likelihood
   def weighted[A](p: => A ! Model, n, rng): Vector[(A, Double)]    // likelihood weighting
-  def metropolis[A](p: A ! Model, samples, burn, thin, seed): Posterior[A]
+  def metropolis[A](p: A ! Model, samples, burn, thin, chains, seed): Posterior[A]   // single-site
+  def adaptive[A](p: A ! Model, samples, burn, thin, chains, seed): Posterior[A]     // + joint moves, learnt covariance
 
 final case class Posterior[A](chains: Vector[Chain[A]]):   // Chain(draws: Vector[A], sites: Vector[Map[String, Double]], acceptance)
   def draws: Vector[A]; def site(name: String): Vector[Double]; def rhat(name: String): Double
@@ -68,7 +69,21 @@ Stage 1 — distributions, the effect, MH, summaries:
 - [x] PyMC as an oracle (Live: okay-py, a `uv`-provisioned PyMC): the texting
       model's posterior means agree within MC error
 
-Stage 2 — SMC (multi-shot), mixtures and convergence (ch.3), Thompson
+Stage 2a — *Bayesian Methods for Hackers* ch.2:
+- [x] the A/B test (the book's simulated 1500 + 750 visitors): pA's
+      posterior and P(pA > pB) against the exact Beta posteriors
+      (numerical integration)
+- [x] the Challenger O-ring logistic regression on the book's data, against
+      an exact 2400 x 2400 grid posterior: E[α], E[β], sd(β), p(31°F)
+- [x] adaptive Metropolis (Haario, Saksman & Tamminen 2001): after the
+      first half of burn-in the continuous sites move JOINTLY with the
+      learnt covariance x 2.38²/d, the scale tuned toward acceptance 0.23;
+      discrete sites keep single-site moves. On Challenger it raises ESS(β)
+      from 151 to 6879 in the same budget
+- [x] PyMC as an oracle for Challenger (Live) — see Results for why the
+      book's own parametrisation cannot be that oracle
+
+Stage 2b — SMC (multi-shot), mixtures and convergence (ch.3), Thompson
 sampling for bandits (ch.6). Stage 3 — HMC/NUTS with automatic
 differentiation. Stage 4 — `Inference` as a facade (specs/own-or-standard.md):
 ours by default, PyMC/Stan behind an import over an optional dependency.
@@ -86,6 +101,14 @@ ours by default, PyMC/Stan behind an import over an optional dependency.
 4. **Proposals are symmetric** (a random walk for continuous and integer
    sites, a flip for Bernoulli), tuned during burn-in toward an acceptance
    of about 0.44 per site, as PyMC's Metropolis tunes.
+
+5. **Adaptive Metropolis as a second sampler, not a replacement.**
+   `metropolis` stays single-site (it is what handles a draw that changes
+   the model's structure, and its numbers are stage 1's); `adaptive` adds
+   joint moves for the continuous sites of a fixed-structure model, where
+   strongly correlated parameters (α and β on raw temperature, ρ ≈ -0.99)
+   leave a single-site walk nearly still. Joint proposals are Gaussian with
+   the Cholesky factor of the burn-in covariance, so they stay symmetric.
 
 ## 5. Results
 
@@ -109,6 +132,34 @@ chains; tuned acceptance 0.28–0.33. Found on the way: pytensor (PyMC's
 backend) passes `-ld64` to the linker, which a current macOS clang reads as
 "library d64" — the oracle runs pytensor's pure-Python backend
 (`PYTENSOR_FLAGS=cxx=`); okay-bayes needs no compiler at all.
+
+Stage 2a (2026-10-02), TestHackersCh2 and TestHackersPyMC:
+
+| | exact | okay-bayes | PyMC 6.3.2 |
+|---|---|---|---|
+| A/B E[pA] | 0.05393 | 0.05388 | |
+| A/B P(pA > pB) | 0.8217 | 0.8220 | |
+| Challenger E[α] (grid) | -17.511 | -17.404 (adaptive) | -17.555 |
+| Challenger E[β] | 0.2693 | 0.2677 (adaptive), 0.2539 (single-site) | 0.2701 |
+| Challenger sd(β) | 0.1163 | 0.1150 | |
+| Challenger p(31°F) | 0.9874 | 0.9869 | 0.9874 |
+| ESS(β) of 120 000 draws | | 6879 adaptive, 151 single-site | |
+
+The grid's edge carries < 1e-6 of the mass, so it is exact to well
+inside the tolerances. The single-site chain's ESS of 151 is the book's
+own experience (it burns 100 000 and still sees autocorrelation); joint
+acceptance after tuning 0.39.
+
+PyMC's NUTS on the book's model AS WRITTEN is wrong here: every one of
+5000 draws divergent, answer α -8.27, β -0.26 (the wrong sign). Its model
+is right — PyMC's own logp is -19.1 at the grid's mean against -439.5 at
+its answer, and its gradient matches a finite difference to 1e-6. The
+geometry is what fails: on raw temperature α and β are almost collinear.
+The same posterior through a linear change of variables (standardised
+temperature; constant Jacobian; the book's priors kept as a Potential)
+samples with no divergence and agrees with the grid, and that is the
+oracle the Live test runs. okay-bayes needs no reparametrisation: the
+adaptive sampler learns the correlation itself.
 
 ## 6. Open questions
 

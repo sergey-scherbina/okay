@@ -42,6 +42,29 @@ joint densities — with the correction for sites that appear or vanish, so
 a model whose STRUCTURE depends on a draw is sampled correctly. Proposal
 scales are tuned per site during burn-in by PyMC's own Metropolis rule.
 
+**Correlated parameters: `adaptive`.** Chapter 2's Challenger model — the
+probability of O-ring damage as a logistic function of launch temperature —
+is two parameters that are almost the same parameter: on raw temperature α
+and β correlate at about -0.99, and a walk that moves one at a time barely
+moves. `adaptive` is Metropolis with Haario's adaptation (2001): after half
+of burn-in it learns the continuous sites' covariance and from then moves
+them JOINTLY, its scale tuned toward the textbook acceptance; a discrete
+site still moves alone.
+
+```scala
+val challenger = for
+beta <- sample("beta", Normal(0, sd))
+alpha <- sample("alpha", Normal(0, sd))
+_ <- observeAll(flights)(f => Bernoulli(p(f._1, alpha, beta)), _._2)
+yield (alpha, beta, p(31, alpha, beta))
+val post = adaptive(challenger, samples = 60000, burn = 20000, chains = 2)
+```
+
+Same budget, effective sample size of β: 151 with `metropolis`, 6879 with
+`adaptive`. PyMC's NUTS, given the book's model exactly as written, diverges
+on every draw here and answers β with the wrong sign; it agrees only after
+temperature is standardised by hand. `adaptive` needs no such rewrite.
+
 **Reading the posterior.** `post.site("lambda_1")` is a site's chain,
 `post.draws` the program's values; `Summary` has the mean, sd, quantiles,
 the highest-density interval, the effective sample size (Geyer's initial
@@ -61,11 +84,17 @@ Three oracles, none of them "close to the book":
 | Gamma–Poisson | 3.6364 ± 0.5750 | 3.6367 ± 0.5821 |
 | Normal–Normal | 1.5278 ± 0.2827 | 1.5293 ± 0.2813 |
 | a draw choosing which sites exist, P(coin) | 0.4295 | 0.4316 |
+| ch.2 A/B, P(pA > pB) | 0.8217 | 0.8220 |
+| ch.2 Challenger, E[β] (exact grid) | 0.2693 | 0.2677 |
+| ch.2 Challenger, sd(β) | 0.1163 | 0.1150 |
+| ch.2 Challenger, p(damage at 31°F) | 0.9874 | 0.9869 |
 
 The chapter-1 "exact" is exact: an `Exponential(α)` prior is `Gamma(1,
 α)`, conjugate to the Poisson, so both rates integrate out and τ's
 posterior is a finite sum — computed in the test, independently of the
-sampler. The conjugate rows are closed forms. And PyMC itself, provisioned
+sampler. The conjugate rows are closed forms, the A/B row an exact Beta
+integral, and the Challenger rows a 2400 x 2400 grid over (α, β) whose edge
+carries under a millionth of the mass. And PyMC itself, provisioned
 by `uv` through okay-py, samples the same model as a Live test.
 
 ## API reference
@@ -75,6 +104,7 @@ by `uv` through okay-py, samples the same model as a Live test.
 | `Normal, Exponential, Gamma(shape, rate), Beta, Uniform, Poisson, Bernoulli, Binomial, DiscreteUniform(lo, hi)` | `logPdf`, `sample`, a symmetric `propose`, `coerce` (a trace value back as its own type) |
 | `sample(name, d)`, `observe(d, x)`, `observeAll(xs)(d, value)`, `factor(logW)` | the `Model` effect |
 | `prior(p, rng)`, `weighted(p, n, rng)`, `metropolis(p, samples, burn, thin, chains, seed)` | handlers: a forward run, likelihood weighting, lightweight MH |
+| `adaptive(p, samples, burn, thin, chains, seed)` | MH with joint moves under a learnt covariance (Haario 2001) |
 | `Posterior`: `draws`, `site(name)`, `rhat(name)`, `acceptance` | the posterior, typed |
 | `Summary.mean / sd / quantile / hdi / ess / rhat` | reading it |
 
@@ -87,6 +117,11 @@ by `uv` through okay-py, samples the same model as a Live test.
   Probabilistic Programming Languages via Transformational Compilation*
   (AISTATS 2011) — single-site MH over named traces, with the
   trans-dimensional correction.
+- Haario, Saksman, Tamminen, *An Adaptive Metropolis Algorithm*
+  (Bernoulli 7(2), 2001) — the learnt covariance and the 2.38²/d scale
+  (Gelman, Roberts, Gilks 1996).
+- Dalal, Fowlkes, Hoadley, *Risk Analysis of the Space Shuttle:
+  Pre-Challenger Prediction of Failure* (JASA 1989) — the O-ring data.
 - Kiselyov, Shan, *Embedded Probabilistic Programming* (DSL 2009) — a
   model as a program, inference as a handler: the core's `Prob`.
 - Marsaglia, Tsang, *A Simple Method for Generating Gamma Variables* (ACM

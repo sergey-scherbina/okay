@@ -8,6 +8,9 @@ import okay.testkit.Munit.Diagnosed
 /** what PyMC answers for the book's texting model */
 final case class PyMCTexting(lambda1: Double, lambda2: Double, p44: Double, p45: Double, version: String) derives Schema
 
+/** what PyMC answers for the book's Challenger regression */
+final case class PyMCChallenger(alpha: Double, beta: Double, p31: Double) derives Schema
+
 /** PyMC ITSELF as the oracle (Live: a uv-provisioned PyMC, okay-py): the book's ch.1 model as the book writes
  * it, sampled by PyMC's own defaults (NUTS for the rates, Metropolis for τ), against the exact posterior and
  * okay-bayes's Metropolis–Hastings. Python is a test oracle here, never a dependency of okay-bayes. */
@@ -40,6 +43,29 @@ class TestHackersPyMC extends Diagnosed:
         taus = post["tau"].values.ravel()
         return {"lambda1": float(post["lambda_1"].values.mean()), "lambda2": float(post["lambda_2"].values.mean()),
                 "p44": float((taus == 44).mean()), "p45": float((taus == 45).mean()), "version": pm.__version__}
+
+    def challenger(temps, damage):
+        t = np.asarray(temps, dtype=float)
+        d = np.asarray(damage, dtype=int)
+        # The book's model, written as it is NUTS diverges on every draw here
+        # (PyMC 6.3.2: alpha -8.3, beta -0.26, 5000 of 5000 divergent) though
+        # its own logp and gradient are right: on raw temperature alpha and
+        # beta are almost collinear. The same posterior through a linear
+        # change of variables (standardised temperature, constant Jacobian,
+        # the book's priors kept as a Potential) samples with no divergence.
+        m0, s0 = t.mean(), t.std()
+        sd = 1.0 / np.sqrt(0.001)
+        with pm.Model():
+            zb = pm.Flat("zb")
+            za = pm.Flat("za")
+            beta = pm.Deterministic("beta", zb / s0)
+            alpha = pm.Deterministic("alpha", za - zb * m0 / s0)
+            pm.Potential("prior", pm.logp(pm.Normal.dist(0, sd), beta) + pm.logp(pm.Normal.dist(0, sd), alpha))
+            pm.Bernoulli("obs", logit_p=-(beta * t + alpha), observed=d)
+            trace = pm.sample(5000, tune=2000, chains=2, cores=1, random_seed=42, progressbar=False, compute_convergence_checks=False)
+        a = trace.posterior["alpha"].values.ravel()
+        b = trace.posterior["beta"].values.ravel()
+        return {"alpha": float(a.mean()), "beta": float(b.mean()), "p31": float((1.0 / (1.0 + np.exp(b * 31 + a))).mean())}
   """)
 
   test("PyMC on the book's model agrees with the exact posterior — and so does okay-bayes, without Python") {
@@ -56,3 +82,19 @@ class TestHackersPyMC extends Diagnosed:
       assert(math.abs(py.p44 + py.p45 - (pTau(44) + pTau(45))) < 0.05, s"PyMC $py vs exact τ")
     finally w.close()
   }
+
+  test("PyMC (NUTS) on the book's Challenger regression agrees with the grid") {
+    val env = PyEnv(python = "3.12", packages = Map("pymc" -> ""))
+    val w = env.start(modules = Seq(pymc))
+    try
+      given okay.Answers[PyEval] = w.handler
+      val got = pymc.fn[PyMCChallenger]("challenger")(Ch2.flights.map(_._1), Ch2.flights.map(f => if f._2 then 1 else 0)).runWith
+      assert(got.isRight, got.toString)
+      val Right(py) = got: @unchecked
+      val (ea, eb, ep, sdb, _) = Ch2.grid
+      println(f"  okay-bayes | PyMC Challenger: E[α] = ${py.alpha}%.3f, E[β] = ${py.beta}%.4f, E[p(31°F)] = ${py.p31}%.4f (grid $ea%.3f, $eb%.4f, $ep%.4f)")
+      assert(math.abs(py.beta - eb) < 0.25 * sdb, s"PyMC $py vs grid $eb")
+      assert(math.abs(py.p31 - ep) < 0.01, s"PyMC $py vs grid $ep")
+    finally w.close()
+  }
+
