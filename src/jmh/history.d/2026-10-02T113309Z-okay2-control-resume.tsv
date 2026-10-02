@@ -1,0 +1,4 @@
+2026-10-02	5c416f9a0	quiet	reader_control_vs_shift	36.25	46.54	0.78	okay2 HandlerFormsBenchmark, N=1000 tail-resumed asks; control with Resume vs the old capture-per-op (!.handle + Cont.shift); 423652 vs 495648 B/op (-72 B/op); round 1
+2026-10-02	5c416f9a0	quiet	reader_control_vs_shift	36.29	48.42	0.75	round 2 (alternating order); 423652 vs 495649 B/op
+2026-10-02	5c416f9a0	quiet	reader_control_vs_handle	36.25	32.56	1.11	control vs !.handle with Cont.Pure (no capture, the floor); +48 B/op: the Resume and its Delay node; 423652 vs 375648 B/op
+2026-10-02	5c416f9a0	quiet	reader_handle_vs_builtin	32.56	33.02	0.99	!.handle Cont.Pure vs Reader(7), the bespoke loop; 375648 vs 375637 B/op

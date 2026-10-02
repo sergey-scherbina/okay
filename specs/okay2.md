@@ -2562,3 +2562,33 @@ shift-effect.md, handler-forms.md), then "А можем в окей2 класс 
   trip, 100 000 operations, every default agrees with `Free`.
 - **Left** (okay2/backlog.d): `foldMap` + `TailRecM`, the `control` form's
   tail resume, the case-form macro, the `modify` measurement.
+
+## Stage 50 — okay2-effects-foldmap: TailRecM, foldMap, control's tail resume (2026-10-02)
+
+Operator: "Продолжай", after stage 49 — its two follow-ups that close the
+`Effects` parity and the `control` form's price.
+
+- **`TailRecM[F]` from the carrier** (Monad.scala), the core's
+  eager-carrier-depth design: `Option`, `Either[E, *]`, `LazyList` (an
+  explicit stack, lazily) and programs (`!.loop`, in Free's companion);
+  `TailRecM.deferring` for a carrier whose `flatMap` defers, its recursion a
+  DEFERRED row in the inventory, checked on a 128 KB thread. No generic
+  given: `TailRecM[List]` is a compile error naming `TailRecM`.
+- **`Effects.foldMap`** is G's `tailRecM` over one resume a step; `Free`'s
+  instance skips the `reify`. A million operations, left-nested and
+  non-tail, on a 128 KB JVM thread and on Scala.js and Native
+  (TestStackSafeLoops, TestStackSafeLoopsSmall).
+- **`Handler.control`'s `Resume`**: a clause that returns `k(x)` as its
+  answer is answered `Cont.Pure`, no capture; the first call's `Delay` is
+  the object itself. MEASURED (HandlerFormsBenchmark, 1 000 tail-resumed
+  asks, alternating, quiet box): 36.25/36.29 us against 46.54/48.42 for the
+  capture it replaced (0.75-0.78x, -72 B an operation), 1.11x
+  `!.handle` with `Cont.Pure` (32.56, +48 B: the Resume and its Delay),
+  which reads at parity with `Reader(7)` (33.02). history.d
+  `okay2-control-resume`.
+- **`scripts/jmh-lane.sh` from a sub-build**: it sourced `bench-window.sh`
+  through a relative `$0` after its `cd` to the root, so `cd okay2 && sh
+  ../scripts/jmh-lane.sh …` died at once, and it would have run sbt at the
+  root, which has no okay2 project. It sources through `$here` and runs sbt
+  in the caller's directory when that has its own `build.sbt` (selftest 15,
+  red first).
