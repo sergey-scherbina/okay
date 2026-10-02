@@ -1,0 +1,2 @@
+2026-10-02	3ae8838f9	exact	modify_vs_get_then_set	112.0	240.0	0.47	okay2 ProbeRowCost (ThreadMXBean, exact, warm, N=100000): B/level of a State mutual recursion; modify is one Update(Modified(f)) since okay2-level1-api, against get-then-set written out
+2026-10-02	3ae8838f9	exact	modify_vs_set	112.0	112.0	1.00	modify at set's level (set is Update(Put(s))); get 80, Pure tailcall 40 B/level; the core's D1 read 96 for both (specs/effect-row-cost.md)
