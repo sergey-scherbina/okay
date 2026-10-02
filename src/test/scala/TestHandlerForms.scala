@@ -7,6 +7,10 @@ enum Accounts[+A] derives Effect:
   case Find(id: Long) extends Accounts[Option[String]]
   case Save(id: Long, name: String) extends Accounts[Option[String]]
 
+/** an environment with a generic constructor, for the case form */
+enum Env[R, +A] derives Effect:
+  case Get() extends Env[R, R]
+
 /** specs/handler-forms.md: the author's four forms, each a level-1 value */
 class TestHandlerForms extends munit.FunSuite:
   import Accounts.*
@@ -19,7 +23,7 @@ class TestHandlerForms extends munit.FunSuite:
 
   test("answer: an answer per operation") {
     val db = scala.collection.mutable.Map(7L -> "ada")
-    val live: Handler[Accounts, [A] =>> A] = Handler.answer[Accounts] { [X] => (e: Accounts[X]) => e match
+    val live: Handler[Accounts, [A] =>> A] = Handler.answer[Accounts] {
       case Find(id) => db.get(id)
       case Save(id, name) => db.put(id, name)
     }
@@ -33,7 +37,7 @@ class TestHandlerForms extends munit.FunSuite:
         r <- Reader.ask[Int].plus[State % Int]
         s <- State.get[Int].plus[Reader % Int]
       yield r + s
-    val asReader = Handler.answer[Reader % Int] { [X] => (e: Reader[Int, X]) => e match
+    val asReader = Handler.answer[Reader % Int].poly { [X] => (e: Reader[Int, X]) => e match
       case Reader.Ask() => 40
       case Reader.Asks(g) => g(40)
     }
@@ -41,16 +45,27 @@ class TestHandlerForms extends munit.FunSuite:
   }
 
   test("state: a counter of operations, the store as the state") {
-    val store = Handler.state[Accounts, Map[Long, String]](Map(7L -> "ada")) { [X] => (m: Map[Long, String], e: Accounts[X]) => e match
-      case Find(id) => (m, m.get(id))
-      case Save(id, name) => (m.updated(id, name), m.get(id))
+    val store = Handler.state[Accounts, Map[Long, String]](Map(7L -> "ada")) {
+      case (m, Find(id)) => (m, m.get(id))
+      case (m, Save(id, name)) => (m.updated(id, name), m.get(id))
     }
     assertEquals(rename(7, "grace").handle(store).run, (Map(7L -> "grace"), Some("ada")))
   }
 
+  test("cases over a generic constructor: Env's Get[R] read at Get[Int]") {
+    val asEnv = Handler.answer[Env % Int] { case Env.Get() => 40 }
+    assertEquals(effect[Env % Int, Int](Env.Get()).map(_ + 2).handle(asEnv).run, 42)
+    assert(compileErrors("""Handler.answer[Env % Int] { case Env.Get() => "no" }""").contains("Get answers Int, but this case gives String"))
+  }
+
+  test("an answer its own pattern binds (Reader's Asks[R, A]) is refused, pointing at .poly") {
+    val errs = compileErrors("""Handler.answer[Reader % Int] { case Reader.Ask() => 1; case Reader.Asks(g) => g(1) }""")
+    assert(errs.contains("Asks answers a type its own pattern binds"), errs)
+  }
+
   test("state: State re-expressed, the same as State(s)") {
     val p: Int ! State % Int = State.get[Int].flatMap(s => State.set(s + 1).map(_ => s * 2))
-    val asState = Handler.state[State % Int, Int](5) { [X] => (s: Int, e: State[Int, X]) => e match
+    val asState = Handler.state[State % Int, Int](5).poly { [X] => (s: Int, e: State[Int, X]) => e match
       case State.Get() => (s, s)
       case State.Set(n) => (n, n)
       case State.Modify(g) => { val n = g(s); (n, n) }
@@ -60,9 +75,9 @@ class TestHandlerForms extends munit.FunSuite:
   }
 
   test("into: each operation a program in State, which the rest of the row holds") {
-    val stored = Handler.into[Accounts, State % Map[Long, String]] { [X] => (e: Accounts[X]) => e match
+    val stored = Handler.into[Accounts, State % Map[Long, String]] {
       case Find(id) => State.get[Map[Long, String]].map(_.get(id))
-      case Save(id, name) => State.update[Map[Long, String], X](m => (m.get(id), m.updated(id, name)))
+      case Save(id, name) => State.update[Map[Long, String], Option[String]](m => (m.get(id), m.updated(id, name)))
     }
     val p: Option[String] ! Accounts + State % Map[Long, String] = rename(7, "grace").plus[State % Map[Long, String]]
     assertEquals(p.handle(stored).handle(State(Map(7L -> "ada"))).run, (Map(7L -> "grace"), Some("ada")))
@@ -87,6 +102,49 @@ class TestHandlerForms extends munit.FunSuite:
     assertEquals(c.handle(asChoose).run, c.handle(Choose.all).run)
   }
 
+  test("cases are checked: a case answering the wrong type is refused, naming the operation") {
+    val errs = compileErrors("""
+      Handler.answer[Accounts] {
+        case Accounts.Find(id) => 42
+        case Accounts.Save(id, name) => None
+      }""")
+    assert(errs.contains("Find answers Option[String], but this case gives Int"), errs)
+    val pairs = compileErrors("""
+      Handler.state[Accounts, Int](0) {
+        case (n, Accounts.Find(_)) => (n, "no")
+        case (n, Accounts.Save(_, _)) => (n, None)
+      }""")
+    assert(pairs.contains("Find answers Option[String], but this case gives String"), pairs)
+  }
+
+  test("cases are checked: every operation handled, or a compile error naming the missing one") {
+    val errs = compileErrors("""
+      Handler.answer[Accounts] {
+        case Accounts.Find(id) => None
+      }""")
+    assert(errs.contains("not every operation of Accounts is handled: Save"), errs)
+    val guarded = compileErrors("""
+      Handler.answer[Accounts] {
+        case Accounts.Find(id) => None
+        case Accounts.Save(id, _) if id > 0 => None
+      }""")
+    assert(guarded.contains("is handled: Save"), guarded)
+  }
+
+  test("cases are checked: a wildcard may only throw") {
+    val errs = compileErrors("""
+      Handler.answer[Accounts] {
+        case Accounts.Find(id) => None
+        case _ => None
+      }""")
+    assert(errs.contains("only a `throw` may stand here"), errs)
+    val ok = Handler.answer[Accounts] {
+      case Find(id) => None
+      case _ => throw new IllegalStateException("not here")
+    }
+    assertEquals(Find(1).perform.handle(ok).run, None)
+  }
+
   test("from: an existing Answers[F] as a handler value") {
     val answers: Answers[Accounts] = new Answers[Accounts]:
       def handle[A](e: Accounts[A]): A = e match
@@ -102,7 +160,7 @@ class TestHandlerForms extends munit.FunSuite:
         r <- rename(7, "grace").plus[Writer % String]
         _ <- Writer.tell("after").plus[Accounts]
       yield r
-    val live = Handler.answer[Accounts] { [X] => (e: Accounts[X]) => e match
+    val live = Handler.answer[Accounts] {
       case Find(_) => Some("ada")
       case Save(_, _) => Some("ada")
     }
@@ -112,13 +170,13 @@ class TestHandlerForms extends munit.FunSuite:
   test("stack: 100 000 operations through answer, state and control") {
     def many(n: Int): Int ! Accounts =
       if n == 0 then pure(0) else Find(n.toLong).perform.flatMap(_ => !.tailcall(many(n - 1)).map(_ + 1))
-    val a = Handler.answer[Accounts] { [X] => (e: Accounts[X]) => e match
+    val a = Handler.answer[Accounts].poly { [X] => (e: Accounts[X]) => e match
       case Find(_) => None
       case Save(_, _) => None
     }
-    val s = Handler.state[Accounts, Int](0) { [X] => (n: Int, e: Accounts[X]) => e match
-      case Find(_) => (n + 1, None)
-      case Save(_, _) => (n, None)
+    val s = Handler.state[Accounts, Int](0) {
+      case (n, Find(_)) => (n + 1, None)
+      case (n, Save(_, _)) => (n, None)
     }
     val c = Handler.control[Accounts, [A] =>> A]([A] => (a: A) => a):
       [X, A, G[+_]] => (e: Accounts[X], resume: X => A ! G) => e match

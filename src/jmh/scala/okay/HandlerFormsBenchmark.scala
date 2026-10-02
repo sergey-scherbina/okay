@@ -8,6 +8,11 @@ import java.util.concurrent.TimeUnit
  * `reader`: N asks (Reader(r) vs Handler.answer). `state`: N get-and-set pairs (State(s) vs Handler.state).
  * `maybe`: N operations that resume (Maybe.option vs Handler.control).
  */
+/** an effect whose every operation has a fixed answer, for the `{ case … }` form against `.poly` */
+enum Tick[+A] derives Effect:
+  case Next() extends Tick[Int]
+  case Peek() extends Tick[Int]
+
 @JmhState(Scope.Thread)
 @BenchmarkMode(Array(Mode.AverageTime))
 @OutputTimeUnit(TimeUnit.MICROSECONDS)
@@ -27,12 +32,14 @@ class HandlerFormsBenchmark {
   def somes(n: Int): Int ! Maybe =
     if n == 0 then pure(0) else effect[Maybe, Int](Maybe(Some(1))).flatMap(x => !.tailcall(somes(n - 1)).map(_ + x))
 
-  val readerForm = Handler.answer[Reader % Int] { [X] => (e: Reader[Int, X]) => e match
+  // `.poly`: Asks answers a type its pattern binds, which the case form refuses
+  val readerForm = Handler.answer[Reader % Int].poly { [X] => (e: Reader[Int, X]) => e match
     case Reader.Ask() => 1
     case Reader.Asks(g) => g(1)
   }
 
-  val stateForm = Handler.state[State % Int, Int](0) { [X] => (s: Int, e: State[Int, X]) => e match
+  // `.poly`: Update answers a type its pattern binds, which the case form refuses
+  val stateForm = Handler.state[State % Int, Int](0).poly { [X] => (s: Int, e: State[Int, X]) => e match
     case State.Get() => (s, s)
     case State.Set(n) => (n, n)
     case State.Modify(g) => { val n = g(s); (n, n) }
@@ -44,6 +51,30 @@ class HandlerFormsBenchmark {
       case Some(x) => resume(x)
       case None => pure[G, Option[A]](None)
 
+  def ticks(n: Int): Int ! Tick =
+    if n == 0 then pure(0) else effect[Tick, Int](Tick.Next()).flatMap(x => !.tailcall(ticks(n - 1)).map(_ + x))
+
+  val tickCases = Handler.answer[Tick] {
+    case Tick.Next() => 1
+    case Tick.Peek() => 0
+  }
+  val tickPoly = Handler.answer[Tick].poly { [X] => (e: Tick[X]) => e match
+    case Tick.Next() => 1
+    case Tick.Peek() => 0
+  }
+  val countCases = Handler.state[Tick, Int](0) {
+    case (n, Tick.Next()) => (n + 1, n)
+    case (n, Tick.Peek()) => (n, n)
+  }
+  val countPoly = Handler.state[Tick, Int](0).poly { [X] => (n: Int, e: Tick[X]) => e match
+    case Tick.Next() => (n + 1, n)
+    case Tick.Peek() => (n, n)
+  }
+
+  @Benchmark def tick_cases(): Int = ticks(N).handle(tickCases).run
+  @Benchmark def tick_poly(): Int = ticks(N).handle(tickPoly).run
+  @Benchmark def count_cases(): (Int, Int) = ticks(N).handle(countCases).run
+  @Benchmark def count_poly(): (Int, Int) = ticks(N).handle(countPoly).run
   @Benchmark def reader_builtin(): Int = asks(N).handle(Reader(1)).run
   @Benchmark def reader_answer(): Int = asks(N).handle(readerForm).run
   @Benchmark def state_builtin(): (Int, Int) = steps(N).handle(State(0)).run
