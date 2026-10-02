@@ -36,3 +36,19 @@ class TestHandler extends munit.FunSuite:
       yield x * 2 + s
     assertEquals(p.handle(Reset[Int]).handle(State(5)).run, (5, 32))
   }
+
+class TestHandleMany extends munit.FunSuite:
+  import okay.Row.*
+
+  test("p.handle(h1, h2) is p.handle(h1).handle(h2), innermost first") {
+    val p: Int ! State % Int + Throws % String =
+      State.get[Int].plus[Throws % String].flatMap(s => if s > 3 then raise[String, Int]("big").plus[State % Int] else pure(s))
+    assertEquals(p.handle(State(5), Throws.either).run, p.handle(State(5)).handle(Throws.either).run)
+    assertEquals(p.handle(Throws.either, State(1)).run, (1, Right(1)))
+  }
+
+  test("three at once") {
+    val p: Int ! State % Int + Throws % String + Reader % Int =
+      Reader.ask[Int].plus[State % Int + Throws % String].flatMap(r => State.get[Int].plus[Throws % String + Reader % Int].map(_ + r))
+    assertEquals(p.handle(Reader(10), State(1), Throws.either).run, Right((1, 11)))
+  }

@@ -239,6 +239,22 @@ object Freer {
                                                (using row: (A ! G) =:= (A ! E + F), ok: A <:< I, d: Distinct[E + F], n: N[F]): O[A] ! F =
       h.run[A, F](row(p))
 
+    /** two handlers, innermost first: `p.handle(State(5), Throws.either)` is `p.handle(State(5)).handle(Throws.either)` */
+    def handle[Ef1[+_], I1, O1[_], N1[_[+_]], F1[+_], Ef2[+_], I2, O2[_], N2[_[+_]], F2[+_]](
+        h1: Handler.Full[Ef1, I1, O1, N1], h2: Handler.Full[Ef2, I2, O2, N2])
+        (using r1: (A ! G) =:= (A ! Ef1 + F1), ok1: A <:< I1, d1: Distinct[Ef1 + F1], n1: N1[F1],
+               r2: (O1[A] ! F1) =:= (O1[A] ! Ef2 + F2), ok2: O1[A] <:< I2, d2: Distinct[Ef2 + F2], n2: N2[F2]): O2[O1[A]] ! F2 =
+      h2.run[O1[A], F2](r2(h1.run[A, F1](r1(p))))
+
+    /** three handlers, innermost first */
+    def handle[Ef1[+_], I1, O1[_], N1[_[+_]], F1[+_], Ef2[+_], I2, O2[_], N2[_[+_]], F2[+_], Ef3[+_], I3, O3[_], N3[_[+_]], F3[+_]](
+        h1: Handler.Full[Ef1, I1, O1, N1], h2: Handler.Full[Ef2, I2, O2, N2], h3: Handler.Full[Ef3, I3, O3, N3])
+        (using r1: (A ! G) =:= (A ! Ef1 + F1), ok1: A <:< I1, d1: Distinct[Ef1 + F1], n1: N1[F1],
+               r2: (O1[A] ! F1) =:= (O1[A] ! Ef2 + F2), ok2: O1[A] <:< I2, d2: Distinct[Ef2 + F2], n2: N2[F2],
+               r3: (O2[O1[A]] ! F2) =:= (O2[O1[A]] ! Ef3 + F3), ok3: O2[O1[A]] <:< I3, d3: Distinct[Ef3 + F3], n3: N3[F3])
+        : O3[O2[O1[A]]] ! F3 =
+      h3.run[O2[O1[A]], F3](r3(h2.run[O1[A], F2](r2(h1.run[A, F1](r1(p))))))
+
   extension [A](p: A ! Pure)
     /** a program with no effect left, run to its value */
     inline def run: A = p.runWith
