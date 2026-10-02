@@ -1,0 +1,1 @@
+claude session_01EpHeM4HTPNHdPJjvCNaWHg, 2026-10-02, operator ask ("okay-bayes ... без питона", Bayesian Methods for Hackers): specs/okay-bayes.md; stage 1 — module okay-bayes: distributions, named sample/observe, prior/likelihood-weighting/Metropolis-Hastings handlers, summaries+diagnostics; oracles: conjugate posteriors, the book ch.1 texting model, PyMC (Live, via okay-py)
