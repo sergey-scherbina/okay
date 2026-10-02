@@ -69,3 +69,5 @@ runChoice(back)                                // Seq(1, 2, 3), every branch
 - kyo evaluates at CONSTRUCTION (its eagerness contract): see
   compare/TestLaziness for the exact differences the bridges
   preserve rather than paper over.
+
+Type classes both ways (okay's ladder over this library's types): [the class ladder](../interop-classes.md).

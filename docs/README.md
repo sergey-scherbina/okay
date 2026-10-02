@@ -36,6 +36,10 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   okay effects, ZIO written in okay's direct style, a `Future`, a ZIO or
   an `IO` marked inside an okay block, cancellation both ways, blocking
   or callback, and your own effect type with one `ForeignEffect` given.
+- **[The class ladder across cats, ZIO and kyo](interop-classes.md)** —
+  okay's `Functor`/`Applicative`/`Selective`/`Monad` over their types,
+  cats' classes over ours (`Validated` accumulates under cats'
+  `traverse`, `Par` is cats' `Parallel`), and the two generic bridges.
 - **[Building a chat application](building-a-chat-app.md)** — from an
   EMPTY DIRECTORY to a running streaming chat, outside this
   repository: how to depend on a library that is not published yet

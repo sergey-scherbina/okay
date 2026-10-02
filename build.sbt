@@ -870,7 +870,7 @@ lazy val okayStm = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 lazy val okayCats = (project in file("okay-cats"))
   // okay-direct for the tests only: an IO marked inside a direct block
   // (specs/direct-foreign-mark.md)
-  .dependsOn(okayAsync.jvm, okayPlatform.jvm, okayDirect.jvm % "test->compile")
+  .dependsOn(okayAsync.jvm, okayPlatform.jvm, okayDirect.jvm % "test->compile", okayTest.jvm % "test->compile")
   .settings(
     name := "okay-cats",
     libraryDependencies ++= Seq(
@@ -886,7 +886,7 @@ lazy val okayCats = (project in file("okay-cats"))
 lazy val okayZio = (project in file("okay-zio"))
   // okay-direct for the tests only: ZIO's Monad is core's, and direct
   // blocks over it are the user's choice (specs/zio-direct-cancel.md)
-  .dependsOn(okay.jvm, okayStream.jvm, compare % "test->compile", okayDirect.jvm % "test->compile")
+  .dependsOn(okay.jvm, okayStream.jvm, compare % "test->compile", okayDirect.jvm % "test->compile", okayTest.jvm % "test->compile")
   .settings(
     name := "okay-zio",
     libraryDependencies ++= Seq(
@@ -898,7 +898,7 @@ lazy val okayZio = (project in file("okay-zio"))
 
 /** interop with kyo: value and Async bridges (P3) */
 lazy val okayKyo = (project in file("okay-kyo"))
-  .dependsOn(okayAsync.jvm, okayPlatform.jvm, compare % "test->compile")
+  .dependsOn(okayAsync.jvm, okayPlatform.jvm, compare % "test->compile", okayTest.jvm % "test->compile")
   .settings(
     name := "okay-kyo",
     libraryDependencies ++= Seq(

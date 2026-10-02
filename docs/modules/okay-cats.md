@@ -92,3 +92,5 @@ Async.par(async(1), async(2)).runWith          // fibers on cats-effect
 - discipline-munit 2.0.0 is inline-incompatible with munit 1.1 —
   the law suites unfold `RuleSet.all.properties` into plain
   munit-scalacheck properties instead.
+
+Type classes both ways (okay's ladder over this library's types, cats' over ours): [the class ladder](../interop-classes.md).

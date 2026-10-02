@@ -99,6 +99,16 @@ object CatsInterop {
       () => { val _ = cancel() }
     }
 
+  /** okay's accumulating `Validated` as cats' (specs/interop-classes.md) */
+  def toCatsValidated[E, A](v: okay.Validated[E, A]): _root_.cats.data.Validated[E, A] = v match
+    case okay.Validated.Valid(a) => _root_.cats.data.Validated.Valid(a)
+    case okay.Validated.Invalid(e) => _root_.cats.data.Validated.Invalid(e)
+
+  /** cats' `Validated` as okay's */
+  def fromCatsValidated[E, A](v: _root_.cats.data.Validated[E, A]): okay.Validated[E, A] = v match
+    case _root_.cats.data.Validated.Valid(a) => okay.Validated.Valid(a)
+    case _root_.cats.data.Validated.Invalid(e) => okay.Validated.Invalid(e)
+
   /** an okay Free program as a cats free monad, operation for operation */
   def toCats[F[+_], A](p: A ! F): _root_.cats.free.Free[F, A] =
     (p.resume: @unchecked) match

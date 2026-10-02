@@ -1,6 +1,6 @@
 # interop-classes — okay's type-class ladder across cats, ZIO and kyo
 
-Status: in progress, 2026-10-02. Owner lane: `interop-classes`.
+Status: done, 2026-10-02. Owner lane: `interop-classes`.
 Follows `specs/interop.md` (P3), which put instances on PROGRAMS only:
 cats `Monad`/`MonadError` for `A ! F`, okay `Monad` for `ZIO`.
 
@@ -35,9 +35,9 @@ anything that existed:
 | `catsValidated[E: okay.Semigroup]` | `cats.Applicative` | `okay.Validated[E, *]` — `ap` ACCUMULATES |
 | `catsStatic[F]` | `cats.Applicative` | `okay.Static[F, *]` — stays static |
 | `catsPar(using Scheduler)` | `cats.Parallel.Aux` | `A ! Async` ↔ `Par` — `parTraverse` forks |
-| `catsChoose` | `cats.StackSafeMonad & cats.Alternative` | `A ! Choose` |
+| `catsChoose` | `cats.MonoidK` | `A ! Choose` (full `Alternative`: `CatsClasses.chooseAlternative`, explicit) |
 | `okayCatsValidated[E: cats.Semigroup]` | `okay.Selective` | `cats.data.Validated[E, *]` — real `select` |
-| `okayIO` | `okay.Monad` | `cats.effect.IO` |
+| `okayIO`, `okayEval` | `okay.Monad` | `cats.effect.IO`, `cats.Eval` |
 
 Conversions: `CatsInterop.toCatsValidated` / `fromCatsValidated`.
 
@@ -58,40 +58,40 @@ derive the other's instance from its own and the search diverges:
 ### okay-zio
 
 - `zstreamMonad[R, E]`: `okay.Monad[ZStream[R, E, *]]` (default given).
-- `ZioInterop.parApplicative[R, E]`: `okay.Applicative[ZIO[R, E, *]]`
+- `ZioClasses.parApplicative[R, E]`: `okay.Applicative[ZIO[R, E, *]]`
   whose `app` is `zipWithPar` — NOT a given (it would tie with the
   monad); passed explicitly, the way cats's `Parallel` is chosen.
 
 ### okay-kyo
 
 - `kyoMonad[S]`: `okay.Monad[[A] =>> A < S]` (default given via
-  `import okay.kyo.given`).
-- `KyoInterop.parApplicative[E]`: `okay.Applicative[[A] =>> A < (Abort[E] & kyo.Async)]`,
+  `import okay.kyo.given`); `Pending[S]` names the hole for inference.
+- `KyoClasses.parApplicative[E]`: `okay.Applicative[[A] =>> A < (Abort[E] & kyo.Async)]`,
   `app` by `Async.parallel` — explicit, like ZIO's.
 
 ## Behavior
 
-- [ ] cats: `cats.Traverse[List].traverse` at `okay.Validated` collects
+- [x] cats: `cats.Traverse[List].traverse` at `okay.Validated` collects
       EVERY error; cats-laws `ApplicativeTests` hold for it
-- [ ] cats: `Static` under cats' `traverse` is still a `Static` whose
+- [x] cats: `Static` under cats' `traverse` is still a `Static` whose
       operations are listed before running, and runs to the same answer
-- [ ] cats: `parTraverse` over `A ! Async` runs its leaves at once
-      (both started before either finishes), answers in order
-- [ ] cats: `A ! Choose` — `combineK` is choice, `empty` prunes, and
-      `cats.Applicative[A ! Choose]` resolves without ambiguity
-- [ ] okay `Selective` at `cats.data.Validated`: `select` skips the
+- [x] cats: `parTraverse` over `A ! Async` runs its leaves at once (a
+      rendezvous of four), and cats' sequential `traverse` does not
+- [x] cats: `A ! Choose` — `<+>` is choice, `empty` prunes, `guard`
+      through `chooseAlternative`; cats' `traverse` over it still resolves
+- [x] okay `Selective` at `cats.data.Validated`: `select` skips the
       handler on `Right`, `app` accumulates
-- [ ] okay `Monad[IO]`: `okay.traverse` and `whenS` over an IO
-- [ ] FromCats: `okay.traverse` over cats' `Eval`/`NonEmptyList`/`Chain`
-      via the bridge; `okay.Alternative[List]` from cats'; precedence
-      picks MonadPlus where cats has Monad + Alternative
-- [ ] ToCats: cats' `traverse` over a carrier that only has OUR
-      Applicative (`Const`-like test carrier); `okay.Validated` keeps
-      its accumulation through the bridge
-- [ ] ZIO: `okay.traverse` over a `ZStream` (monad, cartesian); the
-      parallel applicative runs two sleeps in parallel time
-- [ ] kyo: `okay.traverse` and `whenS` over `A < S`; the parallel
-      applicative runs both leaves at once
+- [x] okay `Monad[IO]`: `okay.traverse` and `whenS` over an IO;
+      `Monad[Eval]`: a 100 000-deep traverse
+- [x] FromCats: `okay.traverse` over cats' `NonEmptyList`/`Chain`;
+      precedence picks MonadPlus for `List`; cats' `ValidatedNel` stays
+      accumulating through the Applicative bridge
+- [x] ToCats: cats' `traverse` over a carrier only okay knows (a
+      leaf-counting applicative); cats' `Alternative[LazyList]` from okay's
+- [x] ZIO: `okay.traverse` over a `ZStream` (cartesian) and a ZIO; the
+      parallel applicative passes a rendezvous the monad fails
+- [x] kyo: `okay.traverse` over `A < Env` and `A < Emit`, `ifS` over
+      kyo; the parallel applicative passes a rendezvous the monad fails
 
 ## Decisions
 
@@ -101,6 +101,17 @@ derive the other's instance from its own and the search diverges:
   instance for our own programs instead of okay's own in `Free`'s
   companion — the same answer, by a detour, and the staging that reads
   okay's instance at its precise type would stop seeing it.
+- **`A ! Choose` gets only `MonoidK` by default.** The first cut gave
+  one instance that was `StackSafeMonad & Alternative`; it TIED with the
+  program monad of CatsInterop.scala (`Ambiguous given instances` on
+  `cats.Applicative[A ! Choose]`) — two top-level givens in two files
+  have no priority between them, so cats' `traverse` over a choice
+  program would have stopped compiling. `MonoidK` is not an
+  Applicative, so it ties with nothing.
+- **kyo needs the hole named.** `<[+A, -S]` has the value first and
+  Scala infers `F[_]` by the last parameter: `traverse` over
+  `Env.use(...)` inferred `F = [S] =>> Int < S`. `Pending[S]` is the
+  alias a call site writes.
 - **kyo's `pure` bypasses `WeakFlat`.** `A < S` is `A | Kyo[A, S]`, so
   `pure(x)` of a value that is itself a kyo computation is not a new
   layer: the monad laws hold for every `A` that is not a `<`. That is
@@ -109,3 +120,11 @@ derive the other's instance from its own and the search diverges:
   it, so it is documented on the instance instead.
 
 ## Results
+
+- 47 tests in five new suites (TestCatsClasses with the cats-laws
+  Applicative rules, TestFromCats, TestToCats, TestZioClasses,
+  TestKyoClasses), green. Each carrier's POINT is checked by a mutant
+  that kills it: cats' `ap` keeping the first error fails the two
+  accumulation tests; `zipWith` for `zipWithPar` and a `flatMap` for
+  kyo's `Async.parallel` fail the rendezvous tests (each waits its 10 s
+  and answers `false`).

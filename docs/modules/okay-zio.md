@@ -161,3 +161,5 @@ and closes it at release, so it composes with `and`; `fromEnvironment`
 lifts a built `ZEnvironment` as a `Providing`. One capability per
 conversion: their environment is typed by Tags per member, ours by a
 context-function chain, and each side composes in its own words.
+
+Type classes both ways (okay's ladder over this library's types): [the class ladder](../interop-classes.md).
