@@ -42,6 +42,23 @@ Scala Native — each platform contributes evidence (can it park? what
 is its timer? what schedules?), not API: the same Await-based test
 suite runs on a JVM, under Node and as a linked native binary.
 
+## Start here: what okay is
+
+**[The contract in three parts](docs/contract.md)** is the place to
+begin. It is one page on what your code actually depends on, out of
+everything this repository contains:
+
+1. `Effects[M]`, the kernel: programs `A ! F` over a row of effects,
+   `handle` to take an effect off the row, `shift`/`reset` as an
+   effect;
+2. `Applicative` and `Selective`, the static half a monad cannot
+   promise: every error, every operation known before running,
+   independent leaves run at once;
+3. the vocabulary: the ready effects, rows, handlers.
+
+Everything else, from direct style to HTTP, is syntax over those three
+or a library written with them.
+
 ### Inspired by Rúnar Bjarnason, Oleg Kiselyov and Robert Atkey.
 
 http://blog.higher-order.com/assets/trampolines.pdf
@@ -67,6 +84,7 @@ Start here:
 
 | | |
 |---|---|
+| [The contract](docs/contract.md) | what okay fundamentally is: the kernel `Effects[M]`, the static `Applicative`/`Selective` ladder, the vocabulary of effects, rows and handlers, and what sits on top |
 | [User guide](docs/guide.md) | the concepts, layer by layer — control, effects, streams, the upper modules |
 | [Continuations: a working book](docs/continuations/index.md) | the long form on the one idea the rest is built from: why a team should care, the four shapes as recipes, the machine, building new effects on it, the costs with numbers, and what it must not be asked to do |
 | [Tutorial](docs/tutorial.md) | the same layers by use: worked, runnable examples |

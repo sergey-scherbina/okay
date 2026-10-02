@@ -6,6 +6,10 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
 
 ## Start here
 
+- **[What okay is: the contract in three parts](contract.md)**: the
+  kernel `Effects[M]`, the static `Applicative`/`Selective` ladder, and
+  the vocabulary of effects, rows and handlers. Everything else is
+  syntax over these or a library written with them.
 - **[Effects and continuations, the whole API on one page](effects-and-continuations.md)**
   — one type, `A ! F`, and six words: `pure`, `perform`, `shift`,
   `reset`, `handle`, `run`, in the monadic and the direct style and
