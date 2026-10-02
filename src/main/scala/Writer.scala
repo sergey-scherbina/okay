@@ -125,16 +125,15 @@ object Writer {
                                          (inline step: (S, W) => S)
                                          (inline finish: (S, A) => R)
                                          (using TypeableK[Writer % W]): R ! F = {
-    def _loop(s: S)(x: A ! Writer % W + F): R ! F = loop(s)(x)
+    def _loop(d: Int)(s: S)(x: A ! Writer % W + F): R ! F = loop(d)(s)(x)
 
     // the walk as a frame of the machine, from state `s` (handle-frames-loops)
     def frame(s: S)(x: A ! Writer % W + F): Shift.U[F, R] =
       HandleFrames.stateful[Writer % W, S, A, R, F](summon[TypeableK[Writer % W]], (s, a) => pure(finish(s, a)))(
         (s, op, resume) => resume(step(s, Writer.told[W](op)), ()))(s, x)
-    def upgrade(s: S)(x: A ! Writer % W + F): R ! F = HandleFrames.pending[R, F](frame(s)(x))
 
     // `split`, not `<|>` (split-without-either): no Either per tell.
-    @tailrec def loop(s: S)(x: A ! Writer % W + F): R ! F = (x.resumeRun: @unchecked) match
+    @tailrec def loop(d: Int)(s: S)(x: A ! Writer % W + F): R ! F = (x.resumeRun: @unchecked) match
       case Return(a) => Return(finish(s, a))
       case i @ Inject(e) => split[Writer % W, F](e) { w0 =>
           // matching the constructor refines the answer type to Unit:
@@ -152,11 +151,11 @@ object Writer {
           // that `Say` is the only constructor under an existential
           // answer type — the same claim `resume`'s @unchecked makes
           (w0: @unchecked) match
-            case Say(v) => loop(step(s, v))(k(()))
-        } { _ => forwarded[Writer % W, F](i).flatMap(x => _loop(s)(k(x))) }
-      case y => upgrade(s)(y)
+            case Say(v) => loop(d)(step(s, v))(k(()))
+        } { _ => forwarded[Writer % W, F](i).flatMap(x => _loop(d)(s)(k(x))) }
+      case y => loop(d)(s)(HandleFrames.shallow(y, d))
 
-    HandleFrames.run[R, F](loop(z)(a), frame(z)(a))
+    HandleFrames.run[R, F](d => loop(d)(z)(a), frame(z)(a))
   }
 
   /**
@@ -172,7 +171,7 @@ object Writer {
   def foldUntil[W, S, A, R, F[+_]](a: A ! Writer % W + F)(using Distinct[Writer % W + F])
                                   (using TypeableK[Writer % W], FoldUntil[W, S, R]): R ! F = {
     val K = summon[FoldUntil[W, S, R]]
-    def _loop(s: S)(x: A ! Writer % W + F): R ! F = loop(s)(x)
+    def _loop(d: Int)(s: S)(x: A ! Writer % W + F): R ! F = loop(d)(s)(x)
 
     // the fold as a frame (handle-frames-loops): a clause that is done does not resume — the producer stops
     def frame(s: S)(x: A ! Writer % W + F): Shift.U[F, R] =
@@ -180,9 +179,8 @@ object Writer {
         (s, op, resume) =>
           val s2 = K.add(s, Writer.told[W](op))
           if K.done(s2) then pure(K.end(s2)) else resume(s2, ()))(s, x)
-    def upgrade(s: S)(x: A ! Writer % W + F): R ! F = HandleFrames.pending[R, F](frame(s)(x))
 
-    @tailrec def loop(s: S)(x: A ! Writer % W + F): R ! F =
+    @tailrec def loop(d: Int)(s: S)(x: A ! Writer % W + F): R ! F =
       if K.done(s) then Return(K.end(s))
       else (x.resumeRun: @unchecked) match
         case Return(_) => Return(K.end(s))
@@ -192,12 +190,12 @@ object Writer {
           } { _ => forwarded[Writer % W, F](i).map(_ => K.end(s)) }
         case Bind(i @ Inject(e), k) => split[Writer % W, F](e) { w0 =>
             (w0: @unchecked) match
-              case Say(v) => loop(K.add(s, v))(k(()))
-          } { _ => forwarded[Writer % W, F](i).flatMap(x => _loop(s)(k(x))) }
-        case y => upgrade(s)(y)
+              case Say(v) => loop(d)(K.add(s, v))(k(()))
+          } { _ => forwarded[Writer % W, F](i).flatMap(x => _loop(d)(s)(k(x))) }
+        case y => loop(d)(s)(HandleFrames.shallow(y, d))
 
     if K.done(K.init) then Return(K.end(K.init))
-    else HandleFrames.run[R, F](loop(K.init)(a), frame(K.init)(a))
+    else HandleFrames.run[R, F](d => loop(d)(K.init)(a), frame(K.init)(a))
   }
 
   /** collect everything told, in order, forwarding the effects F */
@@ -256,7 +254,7 @@ object Writer {
     def frame(x: A ! Writer % W + G): Shift.U[Writer % V + G, A] =
       HandleFrames.statefulOver[Writer % W, Unit, A, A, Writer % V + G, Writer % W + G](summon[TypeableK[Writer % W]], (_, a) => pure(a))(
         (_, op, resume) => Inject[Writer % V + G, Unit](Writer(f(Writer.told[W](op)))).flatMap(_ => resume((), ())))((), x)
-    def go(a: A ! Writer % W + G): A ! Writer % V + G = (a.resumeRun: @unchecked) match
+    def go(d: Int)(a: A ! Writer % W + G): A ! Writer % V + G = (a.resumeRun: @unchecked) match
       case Free.Return(x) => Free.Return(x)
       // THE HANDLED SIGNATURE IS TESTED FIRST (distinct-on-handlers,
       // 2026-09-24). It was `split[G, Writer % W]`, the rest first; and
@@ -273,10 +271,10 @@ object Writer {
         (g => Inject(g): A ! Writer % V + G)
       case Bind(Inject(e), k) => split[Writer % W, G](e)
         { w0 => (w0: @unchecked) match
-            case Say(w) => Inject(Writer(f(w))).flatMap(_ => go(k(()))): A ! Writer % V + G }
-        (g => Inject(g).flatMap(x => go(k(x))))
-      case y => HandleFrames.pending[A, Writer % V + G](frame(y))
-    HandleFrames.run[A, Writer % V + G](go(a), frame(a))
+            case Say(w) => Inject(Writer(f(w))).flatMap(_ => go(d)(k(()))): A ! Writer % V + G }
+        (g => Inject(g).flatMap(x => go(d)(k(x))))
+      case y => go(d)(HandleFrames.shallow(y, d))
+    HandleFrames.run[A, Writer % V + G](d => go(d)(a), frame(a))
 
   /**
    * ONE TOLD VALUE BECOMES MANY (merge-chunk-size-curve-inverted,
@@ -312,7 +310,7 @@ object Writer {
     def frame(x: A ! Writer % W + G): Shift.U[Writer % V + G, A] =
       HandleFrames.statefulOver[Writer % W, Unit, A, A, Writer % V + G, Writer % W + G](summon[TypeableK[Writer % W]], (_, a) => pure(a))(
         (_, op, resume) => tellAll(f(Writer.told[W](op)), 0).flatMap(_ => resume((), ())))((), x)
-    def go(a: A ! Writer % W + G): A ! Writer % V + G = (a.resumeRun: @unchecked) match
+    def go(d: Int)(a: A ! Writer % W + G): A ! Writer % V + G = (a.resumeRun: @unchecked) match
       case Free.Return(x) => Free.Return(x)
       // Writer tested first, for `map`'s reason (above)
       case Inject(e) => split[Writer % W, G](e)
@@ -321,10 +319,10 @@ object Writer {
         (g => Inject(g): A ! Writer % V + G)
       case Bind(Inject(e), k) => split[Writer % W, G](e)
         { w0 => (w0: @unchecked) match
-            case Say(w) => tellAll(f(w), 0).flatMap(_ => go(k(()))): A ! Writer % V + G }
-        (g => Inject(g).flatMap(x => go(k(x))))
-      case y => HandleFrames.pending[A, Writer % V + G](frame(y))
-    HandleFrames.run[A, Writer % V + G](go(a), frame(a))
+            case Say(w) => tellAll(f(w), 0).flatMap(_ => go(d)(k(()))): A ! Writer % V + G }
+        (g => Inject(g).flatMap(x => go(d)(k(x))))
+      case y => go(d)(HandleFrames.shallow(y, d))
+    HandleFrames.run[A, Writer % V + G](d => go(d)(a), frame(a))
 
   /**
    * WHAT A PART OF THE PROGRAM TOLD, as its answer — mtl's `listen`,
@@ -349,7 +347,7 @@ object Writer {
         (h, op, resume) =>
           val w = Writer.told[W](op)
           Inject[Writer % W + G, Unit](Writer(w)).flatMap(_ => resume(w :: h, ())))(heard, x)
-    def go(heard: List[W])(x: A ! Writer % W + G): (A, Seq[W]) ! Writer % W + G = (x.resumeRun: @unchecked) match
+    def go(d: Int)(heard: List[W])(x: A ! Writer % W + G): (A, Seq[W]) ! Writer % W + G = (x.resumeRun: @unchecked) match
       case Free.Return(v) => Free.Return((v, heard.reverse))
       // Writer tested first, for `map`'s reason (above)
       case Inject(e) => split[Writer % W, G](e)
@@ -358,10 +356,10 @@ object Writer {
         (g => Inject[Writer % W + G, A](g).map(v => (v, heard.reverse)))
       case Bind(Inject(e), k) => split[Writer % W, G](e)
         { w0 => (w0: @unchecked) match
-            case Say(w) => Inject[Writer % W + G, Unit](Writer(w)).flatMap(_ => go(w :: heard)(k(()))): (A, Seq[W]) ! Writer % W + G }
-        (g => Inject(g).flatMap(x => go(heard)(k(x))))
-      case y => HandleFrames.pending[(A, Seq[W]), Writer % W + G](frame(heard)(y))
-    HandleFrames.run[(A, Seq[W]), Writer % W + G](go(Nil)(a), frame(Nil)(a))
+            case Say(w) => Inject[Writer % W + G, Unit](Writer(w)).flatMap(_ => go(d)(w :: heard)(k(()))): (A, Seq[W]) ! Writer % W + G }
+        (g => Inject(g).flatMap(x => go(d)(heard)(k(x))))
+      case y => go(d)(heard)(HandleFrames.shallow(y, d))
+    HandleFrames.run[(A, Seq[W]), Writer % W + G](d => go(d)(Nil)(a), frame(Nil)(a))
 
   /**
    * A PART OF THE PROGRAM'S WHOLE OUTPUT, REWRITTEN — mtl's `censor`
@@ -399,9 +397,6 @@ object Writer {
    */
   def widen[W, V >: W, A, G[+_] : TypeableK](a: A ! Writer % W + G)
   : A ! Writer % V + G = a match
-    // a run (handle-frames-loops) is not forced here: the rest, widened, as a frame — each tell re-told as it is
-    case Free.Delay(t) if t.isInstanceOf[Frames.Pending[?, ?, ?, ?, ?]] => widenFrame[W, V, A, G](a)
-    case Bind(Free.Delay(t), _) if t.isInstanceOf[Frames.Pending[?, ?, ?, ?, ?]] => widenFrame[W, V, A, G](a)
     // a deferred head stays deferred, as in `!.widen`: the walk
     // begins when the program runs, not when it is widened
     case Free.Delay(t) => Free.Delay(() => widen[W, V, A, G](t()))
@@ -419,12 +414,6 @@ object Writer {
       case Bind(Inject(e), k) => split[G, Writer % W](e)
         (g => Inject(g).flatMap(x => widen[W, V, A, G](k(x))))
         { case sw @ (_: Say[W, Unit] @unchecked) => Inject(sw: Writer[V, Unit]).flatMap(_ => widen[W, V, A, G](k(()))) }
-
-  /** `widen` as a frame of the machine: the told operation is a `Writer[V, Unit]` already (covariance) */
-  private def widenFrame[W, V >: W, A, G[+_]](a: A ! Writer % W + G): A ! Writer % V + G =
-    HandleFrames.pending[A, Writer % V + G](
-      HandleFrames.statefulOver[Writer % W, Unit, A, A, Writer % V + G, Writer % W + G](Writer.writerK[W], (_, x) => pure(x))(
-        (_, op, resume) => Inject[Writer % V + G, Unit](Writer[V](Writer.told[W](op))).flatMap(_ => resume((), ())))((), a))
 
   /**
    * ANY stream as a writer program: its elements told one by one, its

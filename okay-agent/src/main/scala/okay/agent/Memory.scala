@@ -27,7 +27,7 @@ object Memory {
    */
   def handle[S, A, F[+_]](policy: Aggregator[Turn, S, Seq[Turn]])
                                      (init: S)(prog: A ! Context + F): (S, A) ! F = {
-    def _loop(s: S)(x: A ! Context + F): (S, A) ! F = loop(s)(x)
+    def _loop(d: Int)(s: S)(x: A ! Context + F): (S, A) ! F = loop(d)(s)(x)
 
     def answer[X](s: S, e: Context[X]): (S, X) = e match
       case Context.Remember(t) => (policy.add(s, t), ())
@@ -40,7 +40,7 @@ object Memory {
       okay.HandleFrames.stateful[Context, S, A, (S, A), F](summon[okay.TypeableK[Context]], (s, a) => okay.pure((s, a)))(
         (s, op, resume) => { val (s2, v) = answer(s, op.asInstanceOf[Context[Any]]); resume(s2, v) })(s, x)
 
-    @tailrec def loop(s: S)(x: A ! Context + F): (S, A) ! F = (x.resumeRun: @unchecked) match
+    @tailrec def loop(d: Int)(s: S)(x: A ! Context + F): (S, A) ! F = (x.resumeRun: @unchecked) match
       case Return(a) => Return((s, a))
       case Inject(e) => okay.<|>[Context, F](e) match
         case Left(c) => Return(answer(s, c))
@@ -48,11 +48,11 @@ object Memory {
       case Bind(Inject(e), k) => okay.<|>[Context, F](e) match
         case Left(c) =>
           val (s2, x2) = answer(s, c)
-          loop(s2)(k(x2))
-        case Right(g) => Inject(g).flatMap(x => _loop(s)(k(x)))
-      case y => okay.HandleFrames.pending[(S, A), F](frame(s)(y))
+          loop(d)(s2)(k(x2))
+        case Right(g) => Inject(g).flatMap(x => _loop(d)(s)(k(x)))
+      case y => loop(d)(s)(okay.HandleFrames.shallow(y, d))
 
-    okay.HandleFrames.run[(S, A), F](loop(init)(prog), frame(init)(prog))
+    okay.HandleFrames.run[(S, A), F](d => loop(d)(init)(prog), frame(init)(prog))
   }
 
   /** the common case: start empty, keep the answer only */

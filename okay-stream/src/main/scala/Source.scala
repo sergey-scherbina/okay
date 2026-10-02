@@ -136,16 +136,16 @@ object Source {
     def frame(x: B ! Produce + G): okay.Shift.U[R, B] =
       okay.HandleFrames.statefulOver[Produce, Unit, B, B, R, Produce + G](okay.producing[G], (_, b) => okay.pure(b))(
         (_, w, resume) => okay.effect[R, Unit](Writer(produced[W](w))).flatMap(_ => resume((), w)))((), x)
-    def go(p: B ! Produce + G): B ! R = (p.resumeRun: @unchecked) match
+    def go(d: Int)(p: B ! Produce + G): B ! R = (p.resumeRun: @unchecked) match
       case Free.Return(b) => okay.pure(b)
       case Inject(e) => split[G, Produce](e)
         (g => Inject(g): B ! R)
         (w => okay.effect[R, Unit](Writer(produced[W](w))).map(_ => produced[B](w)))
       case Bind(Inject(e), k) => split[G, Produce](e)
-        (g => Inject(g).flatMap(x => go(k(x))): B ! R)
-        (w => okay.effect[R, Unit](Writer(produced[W](w))).flatMap(_ => go(k(w))))
-      case y => okay.HandleFrames.pending[B, R](frame(y))
-    okay.HandleFrames.run[B, R](go(p), frame(p))
+        (g => Inject(g).flatMap(x => go(d)(k(x))): B ! R)
+        (w => okay.effect[R, Unit](Writer(produced[W](w))).flatMap(_ => go(d)(k(w))))
+      case y => go(d)(HandleFrames.shallow(y, d))
+    okay.HandleFrames.run[B, R](d => go(d)(p), frame(p))
 
   /** a producer whose elements ARE its answer type — `Producer[A]` in
    * a row — as a `Source`: the answer, phantom by construction, is
@@ -203,7 +203,7 @@ object Source {
     def frame(x: Unit ! Writer % A + G): okay.Shift.U[R, A] =
       okay.HandleFrames.statefulOver[Writer % A, Unit, Unit, A, R, Writer % A + G](summon[TypeableK[Writer % A]], (_, _) => okay.pure(end))(
         (_, op, resume) => okay.effect[R, A](Writer.told[A](op)).flatMap(_ => resume((), ())))((), x)
-    def go(s: Unit ! Writer % A + G): A ! R = (s.resumeRun: @unchecked) match
+    def go(d: Int)(s: Unit ! Writer % A + G): A ! R = (s.resumeRun: @unchecked) match
       case Free.Return(_) => okay.pure(end)
       // Say is Writer's ONLY constructor, so a value that reaches the
       // second arm IS one — `Writer.widen`'s own argument, and its
@@ -220,13 +220,13 @@ object Source {
         (g => (Inject(g): Unit ! R).map(_ => end))
       case Bind(Inject(e), k) => split[Writer % A, G](e)
         (w => (w: @unchecked) match
-          case Writer.Say(v) => okay.effect[R, A](v).flatMap(_ => go(k(()))))
+          case Writer.Say(v) => okay.effect[R, A](v).flatMap(_ => go(d)(k(()))))
         // the operation's answer type is the tree's own existential and
         // cannot be named: no ascription, the expected type of the
         // branch types the re-injection — `Writer.widen`'s own shape
-        (g => Inject(g).flatMap(x => go(k(x))))
-      case y => okay.HandleFrames.pending[A, R](frame(y))
-    okay.HandleFrames.run[A, R](go(s), frame(s))
+        (g => Inject(g).flatMap(x => go(d)(k(x))))
+      case y => go(d)(HandleFrames.shallow(y, d))
+    okay.HandleFrames.run[A, R](d => go(d)(s), frame(s))
 
   /**
    * Merge by READINESS on ONE thread of control (specs/ready-merge.md):

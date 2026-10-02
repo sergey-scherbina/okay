@@ -290,18 +290,18 @@ given Effects[Free] with
     def last(e: F[A] | G[A]): Free[G, B] =
       split[F, G](e)(e => h(e) / ret)(e => Free.Inject(e).flatMap(ret))
 
-    def capture[X](c: Cont[X, Free[G, B], Free[G, B]], k: X => Free[F + G, A]): Free[G, B] =
-      c / (x => Free.delay(() => loop(k(x))))
+    def capture[X](d: Int)(c: Cont[X, Free[G, B], Free[G, B]], k: X => Free[F + G, A]): Free[G, B] =
+      c / (x => Free.delay(() => loop(d)(k(x))))
 
     // a call from inside flatMap cannot be a jump; `again` takes it, so
     // the walk itself stays a checked loop
-    def again(x: Free[F + G, A]): Free[G, B] = loop(x)
+    def again(d: Int)(x: Free[F + G, A]): Free[G, B] = loop(d)(x)
 
-    // ITS OWN METHOD, as `last` and `capture` are: written in the loop's arm it cost every forwarded operation
-    // 1.25x (handlePrebuilt 156 vs 124 µs) though the arm never ran — bytes in the loop, not work
-    def nested(y: Free[F + G, A]): Free[G, B] =
-      HandleFrames.pending[B, G](HandleFrames.control[F, A, B, G](ret, h, summon[TypeableK[F]])(y))
-    @tailrec def loop(x: Free[F + G, A]): Free[G, B] = (x.resumeRun: @unchecked) match
+    // the forwarding arm in its own method too (handle-frames-loops): the depth `shallow` needs pushed the loop
+    // to 356 bytes, past FreqInlineSize; the arm's lambda out of it is what brings the loop back under
+    def forward[X](d: Int)(i: Free[F + G, X], k: X => Free[F + G, A]): Free[G, B] =
+      forwarded[F, G](i).flatMap(x => again(d)(k(x)))
+    @tailrec def loop(d: Int)(x: Free[F + G, A]): Free[G, B] = (x.resumeRun: @unchecked) match
       case Free.Return(a) => ret(a)
       case Free.Inject(e) => last(e)
       case Free.Bind(i @ Free.Inject(e), k) =>
@@ -310,15 +310,15 @@ given Effects[Free] with
           // read the same program, and a handler is not assumed pure
             (e => {
               val c = h(e)
-              Cont.onAnswer(c)(a => loop(k(a)))(capture(c, k))
+              Cont.onAnswer(c)(a => loop(d)(k(a)))(capture(d)(c, k))
             })
-          (_ => forwarded[F, G](i).flatMap(x => again(k(x))))
-      // a run nested here (handle-frames): this loop becomes a frame of the machine over the rest
-      case y => nested(y)
+          (_ => forward(d)(i, k))
+      // a run nested here: forced — its fold below HandleFrames.Limit, its frame on a machine at it
+      case y => loop(d)(HandleFrames.shallow(y, d))
 
     // a value: run by whoever forces it, a frame for a machine that meets it
     Free.delay(new HandleFrames.Run[B, G]:
-      def apply(): Free[G, B] = loop(m)
+      def at(d: Int): Free[G, B] = loop(d)(m)
       def program: Shift.U[G, B] = HandleFrames.control[F, A, B, G](ret, h, summon[TypeableK[F]])(m))
 
 /**
@@ -690,19 +690,19 @@ object Effects {
     // `split`, not `<|>`: no Either per operation (core-cleanup); the
     // recursion is not a loop, so the inlined arms cost no inlining
     // budget the way they would inside `relay`
-    def go(p: A ! F + G): A ! G = (p.resumeRun: @unchecked) match
+    def go(d: Int)(p: A ! F + G): A ! G = (p.resumeRun: @unchecked) match
       case Return(a) => Return(a)
       case i @ Inject(e) => split[F, G](e)(f => h(f))(_ => forwarded[F, G](i))
       case Bind(i @ Inject(e), k) =>
         // the Bind node types e and k together
         split[F, G](e)
-          (f => h(f).flatMap(x => go(k(x))))
-          (_ => forwarded[F, G](i).flatMap(x => go(k(x))))
-      // a run nested here (handle-frames): the rest as a frame of the machine
-      case y => HandleFrames.pending[A, G](intoFrame[A, F, G](h)(y))
+          (f => h(f).flatMap(x => go(d)(k(x))))
+          (_ => forwarded[F, G](i).flatMap(x => go(d)(k(x))))
+      // a run nested here: forced — its fold below HandleFrames.Limit, its frame on a machine at it
+      case y => go(d)(HandleFrames.shallow(y, d))
     // a value: run by whoever forces it, a frame for a machine that meets it (handle-frames)
     Free.delay(new HandleFrames.Run[A, G]:
-      def apply(): A ! G = go(prog)
+      def at(d: Int): A ! G = go(d)(prog)
       def program: Shift.U[G, A] = intoFrame[A, F, G](h)(prog))
 
   /** `translate` as a frame: an operation is its program, then the continuation */
@@ -747,25 +747,22 @@ object Effects {
       split[F, G](e)(e => g(e) / f)(e => Inject(e).flatMap(f))
 
     // a call from inside flatMap cannot be a jump; `again` takes it
-    def again(x: A ! F + G): B ! G = loop(x)
+    def again(d: Int)(x: A ! F + G): B ! G = loop(d)(x)
 
-    // a run nested here (handle-frames): the rest as a frame of the machine. Its own method, as `last` is:
-    // the loop's arm stays a call (handle-frames measured an arm that built the frame in place at 1.25x)
-    def nested(y: A ! F + G): B ! G = HandleFrames.pending[B, G](frame(y))
     def frame(y: A ! F + G): Shift.U[G, B] =
       HandleFrames.control[F, A, B, G](f, [X] => (e: F[X]) => g[X, B ! G](e), summon[TypeableK[F]])(y)
 
-    @tailrec def loop(x: A ! F + G): B ! G = (x.resumeRun: @unchecked) match
+    @tailrec def loop(d: Int)(x: A ! F + G): B ! G = (x.resumeRun: @unchecked) match
       // `g(e) / k`, not `g(e)(k)`: the Cont carrier's application is
       // `/` since Cont became a facade over Free (specs/freer-base.md)
-      case Bind(i @ Inject(e), k) => split[F, G](e)(e => loop(g(e) / k))(_ => forwarded[F, G](i).flatMap(x => again(k(x))))
+      case Bind(i @ Inject(e), k) => split[F, G](e)(e => loop(d)(g(e) / k))(_ => forwarded[F, G](i).flatMap(x => again(d)(k(x))))
       case Inject(e) => last(e)
       case Return(a) => f(a)
-      case y => nested(y)
+      case y => loop(d)(HandleFrames.shallow(y, d))
 
     // a value: run by whoever forces it, a frame for a machine that meets it (handle-frames)
     Free.delay(new HandleFrames.Run[B, G]:
-      def apply(): B ! G = loop(a)
+      def at(d: Int): B ! G = loop(d)(a)
       def program: Shift.U[G, B] = frame(a))
   }
 

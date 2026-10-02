@@ -5,11 +5,11 @@ import okay.Freer.Return
 /**
  * HANDLERS AS FRAMES OF THE ONE MACHINE (handle-frames, specs/handle-frames.md).
  *
- * A handler form runs as its own fast loop until that loop meets a run nested in it (`Frames.Pending`: a
- * machine run, another handler). Then it UPGRADES: it describes itself — its clause and its state now — as a
- * frame over the rest of its program and hands the whole to the machine, which runs it, the nested run and every
- * handler it meets after as frames on one stack. The host stack no longer grows with the program's handler
- * nesting.
+ * A handler's run is a VALUE (`Run`, a `Frames.Pending` in a `Delay`) with two faces: its fast fold, and its
+ * FRAME. Forced by anything but a machine, it is the fold; a fold that meets a run nested in it forces that one
+ * as a fold too, until `Limit` folds deep, and there as its frame on a machine — inside which every handler is a
+ * frame, so nothing nests past it. A running machine steps into a run's frame in its own loop. The host stack is
+ * bounded by `Limit`, whatever the program's handler nesting; a composition of handlers stays on the folds.
  *
  * A frame is `ret $ body` with a `Cont0.Handling` for its delimiter; the machine makes an operation the frame
  * takes a `shift0` to it whose body is the clause (Delimited.scala). A handler with a state is parameter
@@ -58,13 +58,6 @@ object HandleFrames:
       val (s2, v) = f(s, op.asInstanceOf[F[Any]])
       resume(s2, v))(s0, x)
 
-  /** a loop's run as a value, its two faces written in place (one object, as `Run` says) */
-  @scala.annotation.nowarn("msg=New anonymous class definition will be duplicated")
-  inline def run[B, G[+_]](inline fast: B ! G, inline frame: Shift.U[G, B]): B ! G =
-    Free.delay(new Run[B, G]:
-      def apply(): B ! G = fast
-      def program: Shift.U[G, B] = frame)
-
   /** the control form (`Effects[Free].handle`, `Handler.control`) as a frame over `x`: the clause gets `k` */
   def control[F[+_], A, B, G[+_]](ret: A => Free[G, B], h: F !> Free[G, B], t: TypeableK[F])(x: Free[F + G, A]): Shift.U[G, B] =
     val frame = new Cont0.Handling[B]("handle"):
@@ -78,7 +71,44 @@ object HandleFrames:
     Free.delay(Delimited.machine[Freer.Lift[G]].owned[Unit, Unit, B, B ! G](program)(Shift.Stacked.residual[B, G]))
 
   /**
-   * a handler's run as ONE object (stateSmall: a holder of two closures was four allocations a run,
-   * 1.55x on 100 small runs): a form subclasses it where its loop is, `apply` the loop, `program` the frame
+   * HOW DEEP FOLDS NEST (handle-frames-loops, measured): a fold that meets a nested run FORCES it — the nested
+   * fold runs on this one's stack, the old behaviour and the fast one — until it is `Limit` folds deep; there
+   * the nested run runs as its FRAME on a machine of its own, and inside a machine every handler is a frame, so
+   * nothing nests past it. Handing the outer fold to the machine at the first nested run instead cost a
+   * composition of two handlers 7.4x (SplitBenchmark.mixedList, `State.run(Writer.run(p))`): on the machine every
+   * tail-resumptive operation is a capture. The bound is the stack's: 32 folds of a few frames each, well inside a
+   * 128 KB thread and Scala.js.
    */
-  abstract class Run[B, G[+_]] extends Frames.Pending[Freer.Lift[G], Unit, Unit, B, B ! G]
+  final val Limit = 32
+
+  /**
+   * a handler's run as ONE object (stateSmall: a holder of two closures was four allocations a run,
+   * 1.55x on 100 small runs): `at(depth)` its fold, entered `depth` folds deep; `program` its frame
+   */
+  abstract class Run[B, G[+_]] extends Frames.Pending[Freer.Lift[G], Unit, Unit, B, B ! G]:
+    def at(depth: Int): B ! G
+    final def apply(): B ! G = at(0)
+
+  /** a loop's run as a value, its two faces written in place (one object, as `Run` says) */
+  @scala.annotation.nowarn("msg=New anonymous class definition will be duplicated")
+  inline def run[B, G[+_]](inline fast: Int => B ! G, inline frame: Shift.U[G, B]): B ! G =
+    Free.delay(new Run[B, G]:
+      def at(depth: Int): B ! G = fast(depth)
+      def program: Shift.U[G, B] = frame)
+
+  /**
+   * the nested run at the head of `y` (a `Delay`, alone or under its `Bind`) FORCED, for a fold `depth` deep: as
+   * its fold below the `Limit`, as its frame on a machine at it. A machine run (`Own`) is forced as it is.
+   */
+  def shallow[A, H[+_]](y: A ! H, depth: Int): A ! H = y match
+    case Freer.Delay(t) => forced[A, H](t, depth)
+    case Freer.Bind(Freer.Delay(t), g) => forced[Any, H](t, depth).flatMap(g.asInstanceOf[Any => A ! H])
+    case other => other
+
+  /** THE ONE CLAIM: the thunk of a `Delay` in a program of row H answers a program of row H */
+  private def forced[A, H[+_]](t: () => Any, depth: Int): A ! H = t match
+    case r: Run[?, ?] =>
+      if depth < Limit then r.at(depth + 1).asInstanceOf[A ! H]
+      else Delimited.machine[Freer.Lift[H]].owned[Unit, Unit, A, A ! H](r.program.asInstanceOf[Shift.U[H, A]])(
+        Shift.Stacked.residual[A, H])()
+    case o => o().asInstanceOf[A ! H]

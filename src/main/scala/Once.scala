@@ -135,18 +135,18 @@ object Once:
    */
   def run[A, F[+_]](a: A ! Once + F): A ! F =
     import !.*
-    def again(c: Cells)(x: A ! Once + F): A ! F = loop(c)(x)
+    def again(d: Int)(c: Cells)(x: A ! Once + F): A ! F = loop(d)(c)(x)
     // the loop as a frame (handle-frames-loops): the cells are its state
     def frame(c: Cells)(x: A ! Once + F): Shift.U[F, A] =
       HandleFrames.stateful[Once, Cells, A, A, F](summon[TypeableK[Once]], (_, a) => pure(a))(
         (c, op, resume) => { val (c2, v) = step(c, op.asInstanceOf[Once[Any]]); resume(c2, v) })(c, x)
-    @tailrec def loop(c: Cells)(x: A ! Once + F): A ! F = (x.resumeRun: @unchecked) match
+    @tailrec def loop(d: Int)(c: Cells)(x: A ! Once + F): A ! F = (x.resumeRun: @unchecked) match
       case Return(v) => Return(v)
       case i @ Inject(e) => split[Once, F](e)
         (o => Return(step(c, o)._2): A ! F)
         (_ => forwarded[Once, F](i))
       case Bind(i @ Inject(e), k) => split[Once, F](e)
-        (o => { val (c2, x) = step(c, o); loop(c2)(k(x)) })
-        (_ => forwarded[Once, F](i).flatMap(x => again(c)(k(x))))
-      case y => HandleFrames.pending[A, F](frame(c)(y))
-    HandleFrames.run[A, F](loop(Map.empty)(a), frame(Map.empty)(a))
+        (o => { val (c2, x) = step(c, o); loop(d)(c2)(k(x)) })
+        (_ => forwarded[Once, F](i).flatMap(x => again(d)(c)(k(x))))
+      case y => loop(d)(c)(HandleFrames.shallow(y, d))
+    HandleFrames.run[A, F](d => loop(d)(Map.empty)(a), frame(Map.empty)(a))

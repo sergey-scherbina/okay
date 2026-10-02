@@ -84,12 +84,12 @@ object PyStream:
     def releaseAll(held: Held): Unit ! F =
       val ops = held.streams.map(ForeignEval.Cancel(_)) ++ held.refs.map(ForeignEval.Release(_))
       okay.!.each(ops)(op => perform(op))
-    def again(held: Held)(x: A ! Holding + F): A ! F = loop(held)(x)
+    def again(d: Int)(held: Held)(x: A ! Holding + F): A ! F = loop(d)(held)(x)
     // the walk as a frame of the machine (handle-frames-loops): what is held is its state, released at the end
     def frame(held: Held)(x: A ! Holding + F): okay.Shift.U[F, A] =
       okay.HandleFrames.stateful[Holding, Held, A, A, F](summon[okay.TypeableK[Holding]], (held, a) => releaseAll(held).map(_ => a))(
         (held, op, resume) => resume(held(op.asInstanceOf[Holding[?]]), ()))(held, x)
-    @tailrec def loop(held: Held)(x: A ! Holding + F): A ! F =
+    @tailrec def loop(d: Int)(held: Held)(x: A ! Holding + F): A ! F =
       (x.resumeRun: @unchecked) match
         case Return(a) => releaseAll(held).map(_ => a)
         case Inject(e) => split[Holding, F](e) {
@@ -99,13 +99,13 @@ object PyStream:
             case h @ Holding.LetStream(_) => releaseAll(held(h)): A ! F
           } { e => Inject(e).flatMap(a => releaseAll(held).map(_ => a)) }
         case Bind(Inject(e), k) => split[Holding, F](e) {
-            case h @ Holding.Hold(_) => loop(held(h))(k(()))
-            case h @ Holding.Let(_) => loop(held(h))(k(()))
-            case h @ Holding.HoldStream(_) => loop(held(h))(k(()))
-            case h @ Holding.LetStream(_) => loop(held(h))(k(()))
-          } { e => Inject(e).flatMap(y => again(held)(k(y))) }
-        case y => okay.HandleFrames.pending[A, F](frame(held)(y))
-    okay.HandleFrames.run[A, F](loop(Held(Nil, Nil))(p), frame(Held(Nil, Nil))(p))
+            case h @ Holding.Hold(_) => loop(d)(held(h))(k(()))
+            case h @ Holding.Let(_) => loop(d)(held(h))(k(()))
+            case h @ Holding.HoldStream(_) => loop(d)(held(h))(k(()))
+            case h @ Holding.LetStream(_) => loop(d)(held(h))(k(()))
+          } { e => Inject(e).flatMap(y => again(d)(held)(k(y))) }
+        case y => loop(d)(held)(okay.HandleFrames.shallow(y, d))
+    okay.HandleFrames.run[A, F](d => loop(d)(Held(Nil, Nil))(p), frame(Held(Nil, Nil))(p))
 
   /**
    * A STREAM THE FAR SIDE DRIVES (foreign-mux-duplex part 3): `fn` of `args`

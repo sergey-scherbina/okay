@@ -70,7 +70,7 @@ object Chronicle:
     def verdict[B](errs: List[E], a: B): Verdict[E, B] =
       if errs.isEmpty then Clean(a) else Warned(a, errs.reverse.toVector)
 
-    def _loop(errs: List[E])(x: A ! Chronicle % E + F): Verdict[E, A] ! F = loop(errs)(x)
+    def _loop(d: Int)(errs: List[E])(x: A ! Chronicle % E + F): Verdict[E, A] ! F = loop(d)(errs)(x)
 
     // the seed of `Writer.loopWith`'s shape: a bespoke loop, because the
     // record has to be threaded through it
@@ -82,7 +82,7 @@ object Chronicle:
           case Dictate(err) => resume(err :: errs, ())
           case Halt() => pure(Failed(errs.reverse.toVector)))(errs, x)
 
-    @tailrec def loop(errs: List[E])(x: A ! Chronicle % E + F): Verdict[E, A] ! F = (x.resumeRun: @unchecked) match
+    @tailrec def loop(d: Int)(errs: List[E])(x: A ! Chronicle % E + F): Verdict[E, A] ! F = (x.resumeRun: @unchecked) match
       case Return(a) => Return(verdict(errs, a))
       case i @ Inject(e) => split[Chronicle % E, F](e) { c =>
           // `@unchecked` as the Bind case below explains: under the
@@ -97,12 +97,12 @@ object Chronicle:
           // checker cannot see that under an existential answer type the
           // two cases are all there is — `Writer.loopWith`'s claim
           (c: @unchecked) match
-            case Dictate(err) => loop(err :: errs)(k(()))
+            case Dictate(err) => loop(d)(err :: errs)(k(()))
             case Halt() => Return(Failed(errs.reverse.toVector)): Verdict[E, A] ! F
-        } { _ => forwarded[Chronicle % E, F](i).flatMap(x => _loop(errs)(k(x))) }
-      case y => HandleFrames.pending[Verdict[E, A], F](frame(errs)(y))
+        } { _ => forwarded[Chronicle % E, F](i).flatMap(x => _loop(d)(errs)(k(x))) }
+      case y => loop(d)(errs)(HandleFrames.shallow(y, d))
 
-    HandleFrames.run[Verdict[E, A], F](loop(Nil)(p), frame(Nil)(p))
+    HandleFrames.run[Verdict[E, A], F](d => loop(d)(Nil)(p), frame(Nil)(p))
   }
 
   /**

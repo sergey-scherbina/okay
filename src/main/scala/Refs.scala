@@ -95,7 +95,7 @@ object Refs:
   def handle[A, F[+_]](p: A ! Refs + F): A ! F =
     def slot[S](h: Map[Int, Any], c: Ref[S]): S = h(c).asInstanceOf[S]
 
-    def _loop(n: Int, h: Map[Int, Any])(x: A ! Refs + F): A ! F = loop(n, h)(x)
+    def _loop(d: Int)(n: Int, h: Map[Int, Any])(x: A ! Refs + F): A ! F = loop(d)(n, h)(x)
 
     // the loop as a frame (handle-frames-loops): the counter and the heap are its state
     def frame(n: Int, h: Map[Int, Any])(x: A ! Refs + F): Shift.U[F, A] =
@@ -104,9 +104,8 @@ object Refs:
           case New(init) => resume((s._1 + 1, s._2.updated(s._1, init)), s._1)
           case Read(c) => resume(s, s._2(c))
           case Write(c, v) => resume((s._1, s._2.updated(c, v)), v))((n, h), x)
-    def upgrade(n: Int, h: Map[Int, Any])(x: A ! Refs + F): A ! F = HandleFrames.pending[A, F](frame(n, h)(x))
 
-    @tailrec def loop(n: Int, h: Map[Int, Any])(x: A ! Refs + F): A ! F =
+    @tailrec def loop(d: Int)(n: Int, h: Map[Int, Any])(x: A ! Refs + F): A ! F =
       (x.resumeRun: @unchecked) match
         case Return(a) => Return(a)
         case Inject(e) => split[Refs, F](e) {
@@ -115,13 +114,13 @@ object Refs:
             case Write(_, s) => Return(s): A ! F
           } (e => Inject(e))
         case Bind(i @ Inject(e), k) => split[Refs, F](e) {
-            case New(init) => loop(n + 1, h.updated(n, init))(k(n))
-            case Read(c) => loop(n, h)(k(slot(h, c)))
-            case Write(c, s) => loop(n, h.updated(c, s))(k(s))
-          } (_ => forwarded[Refs, F](i).flatMap(x => _loop(n, h)(k(x))))
-        case y => upgrade(n, h)(y)
+            case New(init) => loop(d)(n + 1, h.updated(n, init))(k(n))
+            case Read(c) => loop(d)(n, h)(k(slot(h, c)))
+            case Write(c, s) => loop(d)(n, h.updated(c, s))(k(s))
+          } (_ => forwarded[Refs, F](i).flatMap(x => _loop(d)(n, h)(k(x))))
+        case y => loop(d)(n, h)(HandleFrames.shallow(y, d))
 
-    HandleFrames.run[A, F](loop(0, Map.empty)(p), frame(0, Map.empty)(p))
+    HandleFrames.run[A, F](d => loop(d)(0, Map.empty)(p), frame(0, Map.empty)(p))
 
   /** run a program that uses cells, and nothing else */
   inline def run[A](p: A ! Refs): A = !.run(handle[A, okay.Pure](p))

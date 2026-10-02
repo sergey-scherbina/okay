@@ -178,28 +178,28 @@ object State {
     def updatePart[B](g: A => (B, A)): B ! State % S + F =
       !.widen[B, State % S, F](update[S, B](s => { val (b, a2) = g(look(s)); (b, put(a2)(s)) }))
 
-    def _loop(x: X ! State % A + F): X ! State % S + F = loop(x)
+    def _loop(d: Int)(x: X ! State % A + F): X ! State % S + F = loop(d)(x)
     // the walk as a frame (handle-frames-loops): each operation on the part, its program on the whole
     def frame(x: X ! State % A + F): Shift.U[State % S + F, X] =
       HandleFrames.statefulOver[State[A, *], Unit, X, X, State % S + F, State % A + F](summon[TypeableK[State[A, *]]], (_, v) => Return(v))(
         (_, op, resume) => (op.asInstanceOf[State[A, Any]]: @unchecked) match
           case Get() => readPart.flatMap(a => resume((), a))
           case Update(g) => updatePart(g).flatMap(x => resume((), x)))((), x)
-    @tailrec def loop(x: X ! State % A + F): X ! State % S + F = (x.resumeRun: @unchecked) match
+    @tailrec def loop(d: Int)(x: X ! State % A + F): X ! State % S + F = (x.resumeRun: @unchecked) match
       case Return(v) => Return(v)
       // A LONE OPERATION IS A BIND WITH A PURE CONTINUATION, and the
       // arm below already knows that case. Written out here it would
       // need `A ! row <: X ! row` from the GADT refinement — Free is
       // invariant in its answer, so that is a cast, and this costs one
       // node instead of one.
-      case Inject(e) => loop(Inject(e).flatMap(x => Return(x)))
+      case Inject(e) => loop(d)(Inject(e).flatMap(x => Return(x)))
       case Bind(Inject(e), k) => split[State[A, *], F](e) {
-          case Get() => readPart.flatMap(a => _loop(k(a)))
-          case Update(g) => updatePart(g).flatMap(x => _loop(k(x)))
-        } { e => Inject(e).flatMap(x => _loop(k(x))) }
-      case y => HandleFrames.pending[X, State % S + F](frame(y))
+          case Get() => readPart.flatMap(a => _loop(d)(k(a)))
+          case Update(g) => updatePart(g).flatMap(x => _loop(d)(k(x)))
+        } { e => Inject(e).flatMap(x => _loop(d)(k(x))) }
+      case y => loop(d)(HandleFrames.shallow(y, d))
 
-    HandleFrames.run[X, State % S + F](loop(p), frame(p))
+    HandleFrames.run[X, State % S + F](d => loop(d)(p), frame(p))
   }
 
   /**

@@ -61,21 +61,21 @@ object Supply:
 
   def run[S](first: S)(step: S => S)[A, F[+_]](p: A ! Supply % S + F)
             (using Distinct[Supply % S + F]): (S, A) ! F = {
-    def _loop(s: S)(x: A ! Supply % S + F): (S, A) ! F = loop(s)(x)
+    def _loop(d: Int)(s: S)(x: A ! Supply % S + F): (S, A) ! F = loop(d)(s)(x)
 
     // the loop as a frame (handle-frames-loops): `Next` answers the state and steps it
     def frame(s: S)(x: A ! Supply % S + F): Shift.U[F, (S, A)] =
       HandleFrames.stateful[Supply % S, S, A, (S, A), F](summon[TypeableK[Supply % S]], (s, a) => pure((s, a)))(
         (s, _, resume) => resume(step(s), s))(s, x)
-    @tailrec def loop(s: S)(x: A ! Supply % S + F): (S, A) ! F = (x.resumeRun: @unchecked) match
+    @tailrec def loop(d: Int)(s: S)(x: A ! Supply % S + F): (S, A) ! F = (x.resumeRun: @unchecked) match
       case Return(a) => Return((s, a))
       case i @ Inject(e) => split[Supply % S, F](e) {
           case Next() => Return((step(s), s)): (S, A) ! F
         } { _ => forwarded[Supply % S, F](i).map((s, _)) }
       case Bind(i @ Inject(e), k) => split[Supply % S, F](e) {
-          case Next() => loop(step(s))(k(s))
-        } { _ => forwarded[Supply % S, F](i).flatMap(x => _loop(s)(k(x))) }
-      case y => HandleFrames.pending[(S, A), F](frame(s)(y))
+          case Next() => loop(d)(step(s))(k(s))
+        } { _ => forwarded[Supply % S, F](i).flatMap(x => _loop(d)(s)(k(x))) }
+      case y => loop(d)(s)(HandleFrames.shallow(y, d))
 
-    HandleFrames.run[(S, A), F](loop(first)(p), frame(first)(p))
+    HandleFrames.run[(S, A), F](d => loop(d)(first)(p), frame(first)(p))
   }

@@ -95,20 +95,17 @@ object Handler:
     new Handler[F, [A] =>> (S, A)]:
       def run[A, G[+_]](p: A ! F + G)(using A <:< Any, Distinct[F + G], Nothing[G]): (S, A) ! G =
         // a call from inside flatMap cannot be a jump; `again` takes it, so the walk stays a checked loop
-        def again(s: S)(x: A ! F + G): (S, A) ! G = loop(s)(x)
-        // a run nested here (handle-frames): this loop becomes a frame of the machine over the rest
-        def upgrade(s: S)(x: A ! F + G): (S, A) ! G =
-          HandleFrames.pending[(S, A), G](HandleFrames.state[F, S, A, G](f, summon[TypeableK[F]])(s, x))
-        @tailrec def loop(s: S)(x: A ! F + G): (S, A) ! G = (x.resumeRun: @unchecked) match
+        def again(d: Int)(s: S)(x: A ! F + G): (S, A) ! G = loop(d)(s)(x)
+        @tailrec def loop(d: Int)(s: S)(x: A ! F + G): (S, A) ! G = (x.resumeRun: @unchecked) match
           case Return(a) => Return((s, a))
           case i @ Inject(e) => split[F, G](e)(op => { val (s2, v) = f(s, op); Return((s2, v)): (S, A) ! G })
                                                (_ => forwarded[F, G](i).map((s, _)))
-          case Bind(i @ Inject(e), k) => split[F, G](e)(op => { val (s2, v) = f(s, op); loop(s2)(k(v)) })
-                                                       (_ => forwarded[F, G](i).flatMap(x => again(s)(k(x))))
-          case y => upgrade(s)(y)
+          case Bind(i @ Inject(e), k) => split[F, G](e)(op => { val (s2, v) = f(s, op); loop(d)(s2)(k(v)) })
+                                                       (_ => forwarded[F, G](i).flatMap(x => again(d)(s)(k(x))))
+          case y => loop(d)(s)(HandleFrames.shallow(y, d))
         // a value: run by whoever forces it, a frame for a machine that meets it
         Free.delay(new HandleFrames.Run[(S, A), G]:
-          def apply(): (S, A) ! G = loop(init)(p)
+          def at(d: Int): (S, A) ! G = loop(d)(init)(p)
           def program: Shift.U[G, (S, A)] = HandleFrames.state[F, S, A, G](f, summon[TypeableK[F]])(init, p))
 
   /** what `into` needs of the rest of the row: that it holds `G` */
