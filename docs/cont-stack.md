@@ -66,14 +66,16 @@ Cont.reset(used) // 2000000 — no frame per level either: the pending `+ 1`s li
 conditional that is not in tail position (`1 + (if c then k(1) else
 2)`, a `match` feeding an expression) — the rest after it becomes one
 local function every branch ends in, a join point — and a call inside
-the lambda of `map`, `foreach` or `foldLeft` on a `List`, `Vector` or
-immutable `Seq` (`List(1, 2).map(x => k(x)).sum`, or `k` itself passed:
+the lambda of `map`, `foreach` or `foldLeft` on an immutable collection —
+`List`, `Vector`, `Seq`, `Set`, `Map` (`List(1, 2).map(x => k(x)).sum`,
+`Set(1, 3).map(x => k(x) % 2)` still a `Set`, or `k` itself passed:
 `List(1, 2).map(k)`), the traversal a chain of binds the machine runs;
 an assignment from `k` (`v = k(1)`, `seen += k(x)`); the KNOWN methods —
 `flatMap`, `exists`, `forall` (stopping at the first element that
-decides), `find`, `foldRight` on an immutable `Seq`, and `Option`'s
-`getOrElse`/`map`/`flatMap`/`fold`/`orElse`, `Either`'s
-`fold`/`getOrElse`, `&&`, `||`, rewritten into a `match`/`if` (the
+decides — over an infinite `LazyList` too), `find`, `foldRight` on the
+same collections, and `Option`'s `getOrElse`/`map`/`flatMap`/`fold`/`orElse`,
+`Either`'s `fold`/`getOrElse`/`map`/`flatMap`, `Try`'s `getOrElse`,
+`&&`, `||`, rewritten into a `match`/`if` (the
 receiver once, a by-name argument only in its branch); an `inline def`
 helper with `k`, or `k`'s answer, among its arguments (`applyTo(k, x)`,
 `plusOne(k(x))`); and a `while` loop
@@ -88,8 +90,12 @@ interpreter's loop (TestContDirectDepth, a million on 128 KB).
 
 **A body the macro cannot read, or should not** — `k` handed to an
 unknown (not `inline`) function as a value, in a by-name
-argument, under `try` (on purpose: with a lazy `k` the rest would run
-outside it), in a lambda (`PState`'s
+argument, under `try`, or in `Try(…)` and `Try`'s `map`/`flatMap`/`fold`/
+`recover` (on purpose: they catch what their code throws, and with a lazy
+`k` the rest would run outside them), in the lambda of a MUTABLE
+collection's traversal (on purpose: the traversal would read the
+collection after the body could have changed it), in a `LazyList`'s lazy
+`map` (it forces no element the program does not ask for), in a lambda (`PState`'s
 `s => k(s)(s2)`: a function answer walked measured 2.8x its direct
 cost, so it is left direct on purpose), `k` passed into Java or an
 abstract method, a body passed to `shift` as a value rather than a
@@ -100,6 +106,14 @@ parked worker thread with a 1 GB stack — and waits for the answer. No
 exception unwinds anything and nothing runs twice: the frames below
 stay where they are until the answer comes back. Multi-shot bodies
 keep working across the switch.
+
+**A helper of your own that calls `k`:** the macro reads only what it can
+see, and a plain `def`'s body is compiled elsewhere. Make the helper
+`inline` (its body is then part of the shift body and is read like it),
+or write it in Cont style — have it take the value and answer it, and
+call `k` in the body yourself (`k(helper(x))` rather than
+`helper(k, x)`). Reading a non-inline `def` from its TASTy tree would
+need `-Yretain-trees` in every caller's build; it was not done.
 
 ```scala
 val opaque = (1 to 20_000).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => Cont.shift[Int, Int, Int](k => try k(x + 1) catch { case _: ArithmeticException => 0 })))

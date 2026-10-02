@@ -126,23 +126,25 @@ object Cont:
   /** `xs.exists(p)` (`want` true) / `xs.forall(p)` (`want` false) in an answer-using body: the elements in turn,
    * stopping at the first whose answer is `want` — `p` is not run for the elements after it */
   def existsIn[X, R](xs: Iterable[X], p: X => Lazy[Boolean], want: Boolean, rest: Boolean => Lazy[R]): Lazy[R] =
-    existsFrom[X, R](xs.toList, p, want, rest)
+    existsFrom[X, R](LazyList.from(xs), p, want, rest)
 
   // recursion DEFERRED, as `traverseFrom`
-  private def existsFrom[X, R](rem: List[X], p: X => Lazy[Boolean], want: Boolean, rest: Boolean => Lazy[R]): Lazy[R] =
-    rem match
-      case Nil => rest(!want)
-      case x :: tl => Bind(p(x), (b: Any) => if answered[Boolean](b) == want then rest(want) else existsFrom[X, R](tl, p, want, rest))
+  // over a LazyList: an early stop never forces the elements after it (an infinite receiver included), and
+  // the memoised list is what a resumed k walks again, multi-shot safe
+  private def existsFrom[X, R](rem: LazyList[X], p: X => Lazy[Boolean], want: Boolean, rest: Boolean => Lazy[R]): Lazy[R] =
+    if rem.isEmpty then rest(!want)
+    else Bind(p(rem.head), (b: Any) => if answered[Boolean](b) == want then rest(want) else existsFrom[X, R](rem.tail, p, want, rest))
 
   /** `xs.find(p)` in an answer-using body, stopping at the first element `p` holds for */
   def findIn[X, R](xs: Iterable[X], p: X => Lazy[Boolean], rest: Option[X] => Lazy[R]): Lazy[R] =
-    findFrom[X, R](xs.toList, p, rest)
+    findFrom[X, R](LazyList.from(xs), p, rest)
 
   // recursion DEFERRED, as `traverseFrom`
-  private def findFrom[X, R](rem: List[X], p: X => Lazy[Boolean], rest: Option[X] => Lazy[R]): Lazy[R] =
-    rem match
-      case Nil => rest(None)
-      case x :: tl => Bind(p(x), (b: Any) => if answered[Boolean](b) then rest(Some(x)) else findFrom[X, R](tl, p, rest))
+  private def findFrom[X, R](rem: LazyList[X], p: X => Lazy[Boolean], rest: Option[X] => Lazy[R]): Lazy[R] =
+    if rem.isEmpty then rest(None)
+    else
+      val x = rem.head
+      Bind(p(x), (b: Any) => if answered[Boolean](b) then rest(Some(x)) else findFrom[X, R](rem.tail, p, rest))
 
   /** THE CLAIM of `Lazy`: a step's program answers what its lambda's body answers, `B` (the macro built it so) */
   private def answered[B](b: Any): B = b.asInstanceOf[B]

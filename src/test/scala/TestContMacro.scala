@@ -320,9 +320,67 @@ class TestContMacro extends munit.FunSuite:
       Cont.shift[Int, Int, Int](k => applyTo(k, z)))), 3)
   }
 
+  test("1M bodies calling k through Either.map/flatMap, Try.getOrElse, Set and Map, on a 128 KB stack: ZERO switches") {
+    import scala.util.{Failure, Try}
+    val boom = new RuntimeException("boom")
+    for (label, body) <- List[(String, Int => Int /> Int)](
+        "Either.map" -> (x => Cont.shift[Int, Int, Int](k => (Right(x): Either[String, Int]).map(y => k(y + 1)).getOrElse(0))),
+        "Either.flatMap" -> (x => Cont.shift[Int, Int, Int](k =>
+          (Right(x): Either[String, Int]).flatMap(y => Right(k(y + 1))).getOrElse(0))),
+        "Try.getOrElse" -> (x => Cont.shift[Int, Int, Int](k => (Failure(boom): Try[Int]).getOrElse(k(x + 1)))),
+        "Set.map" -> (x => Cont.shift[Int, Int, Int](k => Set(x).map(y => k(y + 1)).sum)),
+        "Set.foldLeft" -> (x => Cont.shift[Int, Int, Int](k => Set(x).foldLeft(0)((acc, y) => acc + k(y + 1)))),
+        "Map.foldLeft" -> (x => Cont.shift[Int, Int, Int](k => Map(x -> 1).foldLeft(0) { case (acc, (key, _)) => acc + k(key + 1) }))) do
+      val (a, s) = switchesDuring(SmallStack.run(128)(Cont.reset(row(n)(body))))
+      assertEquals(a, n, label)
+      assertEquals(s, 0L, label)
+  }
+
+  test("Either.map/flatMap, Try.getOrElse, Set, Map and LazyList with k keep their meaning") {
+    import scala.util.{Failure, Success, Try}
+    // a Left passes through map/flatMap: k never called
+    var calls = 0
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => (Left("e"): Either[String, Int]).map(y => { calls += 1; k(y) }).getOrElse(5))), 5)
+    assertEquals(calls, 0)
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k =>
+      (Right(2): Either[String, Int]).flatMap(y => if k(y) > 1 then Left("big") else Right(0)).fold(_.length, identity))), 3)
+    // flatMap widens the left side: Either[Nothing, Int] into Either[String, Int]
+    val e: Either[String, Int] = Cont.reset(Cont.shift[Int, Either[String, Int], Either[String, Int]](k =>
+      (Right(1): Either[Nothing, Int]).flatMap(y => k(y))).map(x => Right(x + 1)))
+    assertEquals(e, Right(2))
+    // Try.getOrElse: a by-name default, evaluated only on a Failure
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => (Success(3): Try[Int]).getOrElse(k(1)))), 3)
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => (Failure(new Exception): Try[Int]).getOrElse(k(1)))), 1)
+    // Set.map answers a Set: duplicates collapse
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => Set(1, 3).map(x => k(x) % 2).size)), 1)
+    val st: Set[Int] = Cont.reset(Cont.shift[Int, Set[Int], Set[Int]](k => Set(1, 2).flatMap(x => k(x))).map(x => Set(x, -x)))
+    assertEquals(st, Set(1, -1, 2, -2))
+    // Map: the iteration order the map itself has
+    val log = collection.mutable.ArrayBuffer.empty[Int]
+    val m = Map(3 -> "c", 1 -> "a", 2 -> "b")
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => { m.foreach((key, _) => log += k(key)); log.sum })), 6)
+    assertEquals(log.toList, m.keys.toList)
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => if m.exists((key, _) => k(key) == 2) then 1 else 0)), 1)
+    // exists / find over an INFINITE LazyList stop at the first that decides
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => if LazyList.from(1).exists(x => k(x) > 2) then 1 else 0)), 1)
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => LazyList.from(1).find(x => k(x) == 4).getOrElse(0))), 4)
+    // multi-shot across a Set traversal
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k1 => k1(1) + k1(2)).flatMap(z =>
+      Cont.shift[Int, Int, Int](k => Set(z).map(x => k(x)).sum))), 3)
+  }
+
   test("bodies the transform cannot read stay opaque and keep their meaning") {
     assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => try k(1) catch { case _: Exception => 0 })), 1)
     assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => (() => k(1))())), 1)
+    // OPAQUE ON PURPOSE (cont-stack-layer1-c): Try(...) and Try's map catch what the rest throws; with a lazy k
+    // the rest would run outside them
+    import scala.util.Try
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => Try(k(1)).getOrElse(-1)).map(x => if x == 1 then sys.error("rest") else x)), -1)
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => Try(1).map(x => k(x)).getOrElse(-1)).map(x => if x == 1 then sys.error("rest") else x)), -1)
+    // a mutable collection: the traversal would read it after the body could have changed it
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => collection.mutable.ArrayBuffer(1, 2).map(x => k(x)).sum)), 3)
+    // LazyList.map is lazy: the elements are not forced by the transform
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => LazyList.from(1).map(x => k(x)).take(2).sum)), 3)
   }
 
   test("the Control[Cont] instance's shift keeps its meaning") {

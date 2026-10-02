@@ -101,7 +101,8 @@ the body's tree and classifies each use of `k`:
   the pending stack as a parameter; a `Call` continues the program
   in-loop through the `Reentry`'s fields, and every exit that returned
   an answer feeds the part on top instead. What stays opaque is listed
-  under cont-stack-layer1-c.
+  in docs/cont-stack.md (cont-stack-layer1-c closed it 2026-10-02 but for
+  the function answer, backlog cont-fun-answer).
 - **Known higher-order functions.** `k` passed to `map`, `foreach`,
   `flatMap` or `fold` on the standard collections, `Option` and
   `Either`: the macro knows their meaning and substitutes a trampolined
@@ -980,8 +981,10 @@ E. **Layer 1 B** — FIRST SLICE LANDED 2026-09-26 (cont-stack-layer1-b):
    already runs switch-free. Taken out; the shape stays the opaque
    leaf. The rest — profiling the 24% (or a JS-only expansion if the
    JVM price is refused), non-tail conditionals, the known
-   higher-order functions, visible user functions, `direct` — is
-   backlog cont-stack-layer1-c.
+   higher-order functions, visible user functions, `direct` — was
+   cont-stack-layer1-c, closed 2026-10-02 (changelog.d
+   cont-macro-inline-helpers, cont-macro-collections); the 24% is moot on
+   the frame machine, and the function answer is backlog cont-fun-answer.
 
 F. **The rest, in any order:** cont-stack-ucontext-layouts (LANDED
    2026-09-26 for glibc aarch64/x86_64 and musl's missing symbol,

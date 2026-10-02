@@ -229,19 +229,25 @@ import scala.quoted.*
       case Typed(e, _) => kValue(e)
       case _ => None
 
-    /** the element type of an immutable `Seq` receiver, or None */
+    /**
+     * the element type of an immutable `Iterable` receiver (`Seq`, `Set`, `Map`), or None. A mutable one stays
+     * opaque on purpose: the traversal would read it after the body could have changed it.
+     */
     def elemOf(q: Term): Option[TypeRepr] =
-      val seq = TypeRepr.of[scala.collection.immutable.Seq[Any]].typeSymbol
-      q.tpe.widen.baseType(seq) match
+      val it = TypeRepr.of[scala.collection.immutable.Iterable[Any]].typeSymbol
+      q.tpe.widen.baseType(it) match
         case AppliedType(_, List(x)) => Some(x)
         case _ => None
 
-    /** `bs: List[B]` as the type the original call answered (`List`, `Vector`, `Seq`), or None */
+    /**
+     * `bs: List[B]` as the type the original call answered (`List`, `Vector`, `Seq`, `Set`, a `Map`'s `Iterable`),
+     * or None — a `LazyList`'s lazy `map` among them, which stays opaque
+     */
     def asResult(bs: Term, want: TypeRepr, b: TypeRepr): Option[Term] =
       b.asType match
         case '[bt] =>
           val list = bs.asExprOf[List[bt]]
-          List(bs, '{ $list.toVector }.asTerm).find(_.tpe.widen <:< want)
+          List(bs, '{ $list.toVector }.asTerm, '{ $list.toSet }.asTerm).find(_.tpe.widen <:< want)
 
     /**
      * THE KNOWN TRAVERSALS (cont-stack-layer1-c (2)): `xs.map(f)`, `xs.foreach(f)`, `xs.foldLeft(z)(f)` on an
@@ -335,7 +341,7 @@ import scala.quoted.*
     /**
      * THE KNOWN METHODS (cont-stack-layer1-c (2)): a call whose meaning is fixed, rewritten into a plain `match`
      * or `if` the transform already reads (with its join point) — `Option`'s `getOrElse`, `map`, `flatMap`,
-     * `fold`, `orElse`, `Either`'s `fold` and `getOrElse`, `&&`, `||`. The receiver is evaluated once, as the
+     * `fold`, `orElse`, `Either`'s `fold`, `getOrElse`, `map`, `flatMap`, `Try`'s `getOrElse`, `&&`, `||`. The receiver is evaluated once, as the
      * scrutinee; a by-name argument only in its branch, as the method would. None: not one of them.
      */
     def known(t: Term)(using k: Symbol): Option[Term] =
@@ -345,12 +351,16 @@ import scala.quoted.*
         case _ => None
       def isOption(q: Term) = q.tpe.widen <:< TypeRepr.of[Option[Any]]
       def isEither(q: Term) = q.tpe.widen <:< TypeRepr.of[Either[Any, Any]]
+      def isTry(q: Term) = q.tpe.widen <:< TypeRepr.of[scala.util.Try[Any]]
       // the receiver's element types, read off its own type
       def optionOf(q: Term): Option[TypeRepr] = q.tpe.widen.baseType(TypeRepr.of[Option[Any]].typeSymbol) match
         case AppliedType(_, List(a)) => Some(a)
         case _ => None
       def eitherOf(q: Term): Option[(TypeRepr, TypeRepr)] = q.tpe.widen.baseType(TypeRepr.of[Either[Any, Any]].typeSymbol) match
         case AppliedType(_, List(l, r)) => Some((l, r))
+        case _ => None
+      def tryOf(q: Term): Option[TypeRepr] = q.tpe.widen.baseType(TypeRepr.of[scala.util.Try[Any]].typeSymbol) match
+        case AppliedType(_, List(a)) => Some(a)
         case _ => None
       // each rewrite at the receiver's own element types; `B >: A` (getOrElse, orElse) by the evidence the call
       // already had, summoned here, never a cast
@@ -391,6 +401,24 @@ import scala.quoted.*
             Expr.summon[at <:< b].map(ev => '{ ${ o.asExprOf[Option[at]] } match
               case Some(x) => Some($ev(x))
               case None => ${ here(alt).asExprOf[Option[b]] } }.asTerm) } })
+        case Apply(TypeApply(Select(e, "map"), List(bt)), List(fn)) if isEither(e) =>
+          eitherOf(e).map((l, r) => l.asType match { case '[lt] => r.asType match { case '[rt] => bt.tpe.asType match { case '[b] =>
+            '{ ${ e.asExprOf[Either[lt, rt]] } match
+              case Right(y) => Right(${ applied(fn, 'y.asTerm).get.asExprOf[b] })
+              case Left(x) => Left(x) }.asTerm } } })
+        case Apply(TypeApply(Select(e, "flatMap"), List(at, bt)), List(fn)) if isEither(e) =>
+          eitherOf(e).flatMap((l, r) => l.asType match { case '[lt] => r.asType match { case '[rt] =>
+            at.tpe.asType match { case '[a1] => bt.tpe.asType match { case '[b] =>
+              Expr.summon[lt <:< a1].map(ev => '{ ${ e.asExprOf[Either[lt, rt]] } match
+                case Right(y) => ${ applied(fn, 'y.asTerm).get.asExprOf[Either[a1, b]] }
+                case Left(x) => Left($ev(x)) }.asTerm) } } } })
+        // Try's getOrElse only: its default is not under a catch. Try(...), map, flatMap, fold, recover catch
+        // what their function throws, and with a lazy k that would be the rest — they stay opaque on purpose
+        case Apply(TypeApply(Select(o, "getOrElse"), List(ut)), List(d)) if isTry(o) =>
+          tryOf(o).flatMap(a => a.asType match { case '[at] => ut.tpe.asType match { case '[u] =>
+            Expr.summon[at <:< u].map(ev => '{ ${ o.asExprOf[scala.util.Try[at]] } match
+              case scala.util.Success(x) => $ev(x)
+              case scala.util.Failure(_) => ${ here(d).asExprOf[u] } }.asTerm) } })
         case Apply(TypeApply(Select(e, "fold"), List(ct)), List(fa, fb)) if isEither(e) =>
           eitherOf(e).map((l, r) => l.asType match { case '[lt] => r.asType match { case '[rt] => ct.tpe.asType match { case '[c] =>
             '{ ${ e.asExprOf[Either[lt, rt]] } match

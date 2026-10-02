@@ -180,7 +180,8 @@ deleted.
       nests, and past the room the rest runs on a fresh stack, so no
       depth overflows; answer-using bodies the macro can read run
       without any frame since cont-stack-layer1-b (2026-09-26), the
-      rest of them (cont-stack-layer1-c) still on the switch.
+      rest of them (the opaque ones docs/cont-stack.md lists) still on
+      the switch.
 - [x] Stage 2 — codecs: okay-codec (78) and okay2-codec (15). Json is
       already `Cont`-trampolined; the other formats, Schema walks,
       Compat, Stubs and Policy are not.

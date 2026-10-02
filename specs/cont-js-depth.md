@@ -42,8 +42,8 @@ answer `S` is itself lazy and `k` is not called before the body returns:
 
 The ones that DO nest are state passing through a function answer:
 `Zoom.scala` (okay-optics, 4 sites: `k => s1 => … k(x)(set(s1, a2))`)
-and `PWizard.scala` (okay-ui, 3: `k => s => k(s)(s)`) — shape (6) of
-backlog cont-stack-layer1-c.
+and `PWizard.scala` (okay-ui, 3: `k => s => k(s)(s)`) — backlog
+cont-fun-answer (shape (6) of the closed cont-stack-layer1-c).
 
 ## Stages
 
@@ -126,5 +126,5 @@ backlog cont-stack-layer1-c.
    after `k(a)` run before `k`'s rest (docs/cont-stack.md).
 3. The bridge on Scala.js: the nesting shapes of the census (state
    passing) and user code — candidates: the function answer walked as
-   data on JS only (cont-stack-layer1-c (6)), a link-time IR transform
+   data on JS only (backlog cont-fun-answer), a link-time IR transform
    of the methods on the path of `k`, the Wasm backend with JSPI.

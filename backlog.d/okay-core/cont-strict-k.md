@@ -13,7 +13,8 @@
       `Kept` (+ `Next`), per call a `Return`; the root node is shared now.
       Leads: (1) a Cont leaf as one `Cont0` operation (the clause folded
       into it, ~5% of bytes); (2) the macro's lazy road for more shapes
-      (cont-stack-layer1-c), above all PState's function answer and
+      (closed as cont-stack-layer1-c 2026-10-02), above all PState's
+      function answer (backlog cont-fun-answer) and
       Generate's `put`, re-measured ON THE MACHINE (the 2.8x that kept
       them opaque was the old runner's); (3) contAnswer lost 11% when the
       macro began emitting the program itself (less work, fewer bytes:
