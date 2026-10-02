@@ -8,5 +8,5 @@
       Stages 2–4 (SMC, HMC/NUTS, the Inference facade) after it.
       Stage 1 landed 53219afcb; stage 2a (ch.2: A/B, Challenger,
       adaptive Metropolis) okay-bayes-ch2; 2b SMC okay-bayes-smc; 2c ch.3
-      mixture okay-bayes-ch3. Next:
-      ch.6 Thompson sampling.
+      mixture okay-bayes-ch3; 2d ch.6 Thompson okay-bayes-ch6. Next:
+      stage 3 (HMC/NUTS with automatic differentiation).

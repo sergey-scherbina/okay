@@ -1,6 +1,6 @@
 # okay-bayes — Bayesian inference as effects, without Python
 
-Status: stage 1 landed (2026-10-02); stage 2a (ch.2, adaptive Metropolis) 2b (SMC) and 2c (ch.3) 2026-10-02; specification 2026-10-02 (operator ask: "Bayesian Methods for
+Status: stage 1 landed (2026-10-02); stage 2a (ch.2, adaptive Metropolis) 2b (SMC), 2c (ch.3) and 2d (ch.6) 2026-10-02; specification 2026-10-02 (operator ask: "Bayesian Methods for
 Hackers ... make okay-bayes so we can do without Python; is it very
 hard?"). Builds on the core's `Prob` effect (specs/prob-effect-hansei.md:
 discrete `dist`, boolean `observe`, exact enumeration, rejection).
@@ -127,13 +127,13 @@ Stage 2d — *Bayesian Methods for Hackers* ch.6, Thompson sampling
 Beta posterior; `choose` draws once from every arm's posterior and pulls the
 largest, `observe(arm, won)` is the conjugate update. Immutable: a bandit is
 a value, a run a fold over pulls.
-- [ ] Thompson pulls each arm with the probability that it is the best —
+- [x] Thompson pulls each arm with the probability that it is the best —
       against P(arm is best) by numerical integration over the Betas
-- [ ] regret: on the book's arms (0.85, 0.60, 0.75) the mean regret over
-      many runs grows like log T and lies within a small factor of the
-      Lai–Robbins lower bound Σ Δᵢ / KL(pᵢ, p*) · log T; uniform random play
+- [x] regret: on the book's arms (0.85, 0.60, 0.75) the mean regret over
+      many runs grows like log T and stays under three times the
+      Lai–Robbins rate Σ Δᵢ / KL(pᵢ, p*) · log T; uniform random play
       grows linearly
-- [ ] the posterior concentrates on the best arm: after T pulls its share of
+- [x] the posterior concentrates on the best arm: after T pulls its share of
       pulls tends to 1 Stage 3 — HMC/NUTS with automatic
 differentiation. Stage 4 — `Inference` as a facade (specs/own-or-standard.md):
 ours by default, PyMC/Stan behind an import over an optional dependency.
@@ -247,6 +247,21 @@ Split R-hat over the four chains 1.0005–1.0020; the same sampler's first
 point's assignment as its own Categorical site; summed out by `Mixture`
 the model has five sites instead of 305, and the assignment posterior is
 the expectation above, not a sample.
+
+Stage 2d (2026-10-02), TestBandit — JVM, Scala.js and Native:
+
+| ch.6 | exact | okay-bayes |
+|---|---|---|
+| P(best) for Beta(4, 8), Beta(6, 8), Beta(3, 8) | 0.2546, 0.6098, 0.1357 | Thompson's choice frequency 0.2541, 0.6103, 0.1355 (200 000 draws) |
+| regret on (0.85, 0.60, 0.75), mean of 30 runs, T = 1000 / 10 000 | Lai–Robbins rate 29.8 / 39.8 | 14.3 / 20.9 |
+| uniform random play, T = 10 000 | 1167 | |
+| best arm's share of pulls, T = 10 000 | | 0.983 |
+
+The measured regret is BELOW the Lai–Robbins figure, which is no
+contradiction: the bound is asymptotic, a statement about the coefficient
+of log T as T grows, and the 0.75 arm (KL 0.034 from the best) is far from
+that regime at 10 000 pulls. What the test holds is the shape: ten times
+the pulls cost 1.46 times the regret, not ten.
 
 ## 6. Open questions
 

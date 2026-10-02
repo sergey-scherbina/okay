@@ -107,6 +107,22 @@ and `ps.logEvidence` is log p(y) (-101.706 against -101.616). Two models'
 evidences subtract to a log Bayes factor: a coin with p ~ Uniform against a
 fair one, 0.182 against the closed form's 0.145.
 
+**Bandits: Thompson sampling.** Chapter 6 asks which of several slot
+machines pays best while playing them. `Bandit` keeps a Beta posterior per
+arm; `choose` draws once from each and pulls the largest, so an arm is
+pulled exactly as often as it is likely to be the best — exploration that
+fades as the evidence comes in. A bandit is a value, and a run is a fold:
+
+```scala
+val b1 = b0.observe(1, true).observe(1, false).observe(1, true)
+assertEquals(b1.posterior(1), Distribution.Beta(3, 2))
+val plays = Vector.tabulate(runs)(r => Bandit.play(Bandit(3), 10000, Random(r))(a => world.nextDouble() < p(a)))
+```
+
+On the book's arms (0.85, 0.60, 0.75) the mean regret is 14.3 after 1000
+pulls and 20.9 after 10 000 — logarithmic growth — where playing at random
+costs 1167; the best arm takes 98.3% of the pulls.
+
 **Reading the posterior.** `post.site("lambda_1")` is a site's chain,
 `post.draws` the program's values; `Summary` has the mean, sd, quantiles,
 the highest-density interval, the effective sample size (Geyer's initial
@@ -149,6 +165,7 @@ by `uv` through okay-py, samples the same model as a Live test.
 | `sample(name, d)`, `observe(d, x)`, `observeAll(xs)(d, value)`, `factor(logW)` | the `Model` effect |
 | `prior(p, rng)`, `weighted(p, n, rng)`, `metropolis(p, samples, burn, thin, chains, seed)` | handlers: a forward run, likelihood weighting, lightweight MH |
 | `adaptive(p, samples, burn, thin, chains, seed)` | MH with joint moves under a learnt covariance (Haario 2001) |
+| `Bandit(arms)`, `choose(rng)`, `observe(arm, won)`, `posterior(arm)`, `Bandit.play(b, pulls, rng)(pull)` | Thompson sampling over Bernoulli arms |
 | `smc(p, particles, seed)`, `observeEach(xs)(d, value)` | sequential Monte Carlo: `Particles` with `expect`, `mean(site)`, `ess`, `logEvidence` |
 | `Posterior`: `draws`, `site(name)`, `rhat(name)`, `acceptance` | the posterior, typed |
 | `Summary.mean / sd / quantile / hdi / ess / rhat` | reading it |
@@ -171,6 +188,11 @@ by `uv` through okay-py, samples the same model as a Live test.
   2006); Wood, van de Meent, Mansinghka, *A New Approach to Probabilistic
   Programming Inference* (AISTATS 2014) — SMC as the inference of a
   program suspended at its observations.
+- Thompson, *On the Likelihood that One Unknown Probability Exceeds
+  Another* (Biometrika 1933); Agrawal, Goyal, *Analysis of Thompson Sampling
+  for the Multi-armed Bandit Problem* (COLT 2012); Lai, Robbins,
+  *Asymptotically Efficient Adaptive Allocation Rules* (Adv. Appl. Math.
+  1985) — the bandit, its analysis, the bound.
 - Kiselyov, Shan, *Embedded Probabilistic Programming* (DSL 2009) — a
   model as a program, inference as a handler: the core's `Prob`.
 - Marsaglia, Tsang, *A Simple Method for Generating Gamma Variables* (ACM
