@@ -69,12 +69,15 @@ local function every branch ends in, a join point — and a call inside
 the lambda of `map`, `foreach` or `foldLeft` on a `List`, `Vector` or
 immutable `Seq` (`List(1, 2).map(x => k(x)).sum`, or `k` itself passed:
 `List(1, 2).map(k)`), the traversal a chain of binds the machine runs;
-and an assignment from `k` (`v = k(1)`, `seen += k(x)`). All are
-programs over a lazy `k`, no frame per level.
+an assignment from `k` (`v = k(1)`, `seen += k(x)`); and a `while` loop
+with `k` in its condition or body, each iteration a step the machine
+forces (a million iterations that never call `k` hold no frame either).
+All are programs over a lazy `k`, no frame per level.
 
 **A body the macro cannot read, or should not** — `k` handed to an
 unknown function as a value, in a by-name
-argument, under `try`, in a loop, in a lambda (`PState`'s
+argument, under `try` (on purpose: with a lazy `k` the rest would run
+outside it), in a lambda (`PState`'s
 `s => k(s)(s2)`: a function answer walked measured 2.8x its direct
 cost, so it is left direct on purpose), `k` passed into Java or an
 abstract method, a body passed to `shift` as a value rather than a

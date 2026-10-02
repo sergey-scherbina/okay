@@ -119,6 +119,10 @@ object Cont:
       case Nil => rest(acc)
       case x :: tl => Bind(f(acc, x), (b: Any) => foldFrom[X, B, R](tl, answered[B](b), f, rest))
 
+  /** a step of a loop over the lazy `k` (cont-stack-layer1-c, `while`): deferred to the machine, which forces it
+   * in its own loop — an iteration that never calls `k` holds no host frame either */
+  def later[R](step: () => Lazy[R]): Lazy[R] = Delay[Sig, Any, Any, Any](step)
+
   /** THE CLAIM of `Lazy`: a step's program answers what its lambda's body answers, `B` (the macro built it so) */
   private def answered[B](b: Any): B = b.asInstanceOf[B]
 

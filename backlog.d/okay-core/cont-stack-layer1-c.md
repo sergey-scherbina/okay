@@ -41,8 +41,10 @@
       `-Yretain-trees`), rewritten and cached;
       (4) `direct { !k(…) }` inside a body, through okay-direct's
       machinery;
-      (5) `while` with `k` in its body needs a trampolined local loop (an
-      iteration that never calls `k` must not recurse on the host); `try`
+      (5) `while` DONE 2026-10-02: a local loop function whose iterations
+      are `Cont.later` steps the machine forces; a million on 128 KB with
+      zero switches, and a million iterations that never call `k` (red
+      first: StackOverflowError). `try`
       around `k` stays opaque ON PURPOSE: with a lazy `k` the rest would run
       outside the `try`, and its exceptions would no longer be caught.
       Was: `try` around a call (the `finally` would have to run after

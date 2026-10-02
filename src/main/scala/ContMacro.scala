@@ -301,6 +301,19 @@ object ContMacro:
         case Assign(lhs, rhs) if !mentions(k, lhs) =>
           cps(rhs, Kont(kont.rt, Some(r2 => feed(kont, Assign.copy(t)(lhs, r2)))))
         case Block(stats, e) => cpsStats(stats, e, kont)
+        // A LOOP (cont-stack-layer1-c (5)): `while c do body` with `k` in either, as a local function each of
+        // whose iterations is `Cont.later` — a step the machine forces, so iterations that never call `k` hold
+        // no host frame. The condition false: the rest after the loop, once, inside the loop function
+        case While(c, body) =>
+          fresh += 1
+          val lazyT = kont.rt.asType match { case '[r] => TypeRepr.of[Cont.Lazy[r]] }
+          val loop = Symbol.newMethod(Symbol.spliceOwner, s"loop$$$fresh", MethodType(Nil)(_ => Nil, _ => lazyT))
+          val again = Apply(Ref(loop), Nil)
+          val iteration = cps(c, Kont(kont.rt, Some(c2 =>
+            If(c2, cps(body, Kont(kont.rt, Some(_ => again))), feed(kont, '{ () }.asTerm)))))
+          val rhs = kont.rt.asType match
+            case '[r] => '{ Cont.later[r](() => ${ iteration.changeOwner(Symbol.spliceOwner).asExprOf[Cont.Lazy[r]] }) }.asTerm
+          Block(List(DefDef(loop, _ => Some(rhs.changeOwner(loop)))), again)
         case If(c, a, b) =>
           if mentions(k, a) || mentions(k, b) then
             joined(t, kont)(kb => cps(c, Kont(kont.rt, Some(c2 => If.copy(t)(c2, cps(a, kb), cps(b, kb))))))

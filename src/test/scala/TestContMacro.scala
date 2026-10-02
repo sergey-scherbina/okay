@@ -200,10 +200,35 @@ class TestContMacro extends munit.FunSuite:
       Cont.shift[Int, Int, Int](k => { var v = 0; v = k(z); v * 10 }))), 30)
   }
 
+  test("1M bodies with a while loop calling k, on a 128 KB stack: ZERO switches; a long loop without k holds no frame") {
+    val (a, s) = switchesDuring(SmallStack.run(128)(Cont.reset(row(n)(x =>
+      Cont.shift[Int, Int, Int](k => { var v = 0; var i = 0; while i < 1 do { v = k(x + 1); i += 1 }; v })))))
+    assertEquals(a, n)
+    assertEquals(s, 0L)
+    // a million iterations, k called in the first only: each iteration a trampolined step, not a host frame
+    val (b, s2) = switchesDuring(SmallStack.run(128)(Cont.reset(
+      Cont.shift[Int, Int, Int](k => { var v = 0; var i = 0; while i < 1_000_000 do { if i == 0 then v = k(7); i += 1 }; v + i }))))
+    assertEquals(b, 1_000_007)
+    assertEquals(s2, 0L)
+  }
+
+  test("a while loop with k keeps its meaning: order, the condition calling k, multi-shot") {
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => { var s = 0; var i = 0; while i < 3 do { s += k(i); i += 1 }; s })), 3)
+    // the condition itself calls k
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => { var i = 0; while k(i) < 3 do i += 1; i * 10 })), 30)
+    val log = collection.mutable.ArrayBuffer.empty[String]
+    val m = Cont.shift[Int, Int, Int](k => { var i = 0; while i < 2 do { log += s"it $i"; log += s"k ${k(i)}"; i += 1 }; i })
+      .flatMap(x => { log += s"then $x"; Cont.Pure[Int, Int](x) })
+    assertEquals(Cont.reset(m), 2)
+    assertEquals(log.toList, List("it 0", "then 0", "k 0", "it 1", "then 1", "k 1"))
+    // multi-shot: the outer k resumed twice, the loop runs once per resumption
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k1 => k1(1) + k1(2)).flatMap(z =>
+      Cont.shift[Int, Int, Int](k => { var s = 0; var i = 0; while i < z do { s += k(1); i += 1 }; s }))), 3)
+  }
+
   test("bodies the transform cannot read stay opaque and keep their meaning") {
     assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => try k(1) catch { case _: Exception => 0 })), 1)
     assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => Option.empty[Int].getOrElse(k(4)))), 4)
-    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => { var i = 0; while i < 3 do i += k(1); i })), 3)
     assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => (() => k(1))())), 1)
   }
 
