@@ -161,6 +161,18 @@ one API, one suite over both:
   its type's companion, where its siblings already were. The old
   runners stay.
 
+- **The typeclass door** (effects-shift-reset): `Effects[M]` gains `shift`,
+  `shift0`, `reset`, `handle(m, h)` and `run(m)`. Their default goes
+  through the tree (`reify`, the top-level function, `reflect`), so every
+  encoding has them. `Effects[Free]` overrides them with the top-level
+  functions themselves, so there is one definition. `handle` takes its
+  program and handler in ONE list: the level-2 `handle(m)(ret)(clause)`,
+  used 70 times, is an overload, and `E.handle(p)(State(5))` resolved to
+  it and failed. `Effects.monad[M, F]` makes `M[F, *]` a `Monad` for
+  `direct` in generic code. One program written over `Effects[M]`, in
+  both styles, answers the same in `Free` and in `Eager` (TestEffectsLevel1,
+  TestEffectsLevel1Direct).
+
 ## Results
 
 Probe: `okay-direct/src/test/scala/ShiftFx.scala`,

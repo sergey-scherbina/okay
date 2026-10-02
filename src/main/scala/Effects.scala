@@ -135,6 +135,33 @@ trait Effects[M[_[+_], _]]:
                           (h: F !> M[G, B]): M[G, B] =
     m.foldCont[M[G, B]]([X] => e => split[F, G](e)(e => h(e))(e => Cont.shift(k => perform(e).flatMap(k)))) / ret
 
+  // LEVEL 1 (specs/shift-effect.md): continuations and the ready handlers, in any encoding. The default goes
+  // through the tree (`reify`, the top-level function, `reflect`); `Effects[Free]` is the top-level functions
+  // themselves, so there is one definition of each.
+
+  /** Danvy-Filinski's capture (the top-level `shift`) */
+  def shift[R, A, F[+_]](f: (A => M[Shift % R + F, R]) => M[Shift % R + F, R])(using k: Shift.Key[R], at: At): M[Shift % R + F, A] =
+    reflect[M, Shift % R + F, A](okay.shift[R, A, F](kk =>
+      reify[M, Shift % R + F, R](f(a => reflect[M, Shift % R + F, R](kk(a))(using this)))(using this)))(using this)
+
+  /** the capture whose body runs outside its `reset` (the top-level `shift0`) */
+  def shift0[R, A, F[+_]](f: (A => M[F, R]) => M[F, R])(using k: Shift.Key[R], at: At): M[Shift % R + F, A] =
+    reflect[M, Shift % R + F, A](okay.shift0[R, A, F](kk =>
+      reify[M, F, R](f(a => reflect[M, F, R](kk(a))(using this)))(using this)))(using this)
+
+  /** delimit (the top-level `reset`) */
+  def reset[R, F[+_]](body: M[Shift % R + F, R])(using Shift.Key[R], Distinct[Shift % R + F], Shift.Nesting[F]): M[F, R] =
+    reflect[M, F, R](okay.reset[R, F](reify[M, Shift % R + F, R](body)(using this)))(using this)
+
+  /** take a ready handler's effect off the row (the program's `p.handle(h)`; two arguments in one list, so the
+   * level-2 `handle(m)(ret)(clause)` above stays its own overload) */
+  def handle[A, G[+_], E[+_], I, O[_], N[_[+_]], F[+_]](m: M[G, A], h: Handling[E, I, O, N])
+            (using row: (A ! G) =:= (A ! E + F), ok: A <:< I, d: Distinct[E + F], n: N[F]): M[F, O[A]] =
+    reflect[M, F, O[A]](h.run[A, F](row(reify[M, G, A](m)(using this))))(using this)
+
+  /** a program with no effect left, to its value (the program's `run`) */
+  def run[A](m: M[Pure, A]): A = reify[M, Pure, A](m)(using this).run
+
 /**
  * The freer monad is the initial (defunctionalized) encoding of Effects:
  * Inject is a suspended shift, given its meaning by foldCont's !> interpretation.
@@ -155,6 +182,15 @@ given Effects[Free] with
       Free.fold(m)(Cont.Pure(_))([X] => e => k => h(e).flatMap(k(_).foldCont(h)))
     /** the same answer as the foldCont definition, in one pass instead of two */
     override def runWith(using Handler[F]): A = runFree(m)
+
+  // level 1: the top-level functions themselves
+  override def shift[R, A, F[+_]](f: (A => R ! Shift % R + F) => R ! Shift % R + F)(using k: Shift.Key[R], at: At): A ! Shift % R + F =
+    okay.shift[R, A, F](f)
+  override def shift0[R, A, F[+_]](f: (A => R ! F) => R ! F)(using k: Shift.Key[R], at: At): A ! Shift % R + F =
+    okay.shift0[R, A, F](f)
+  override def reset[R, F[+_]](body: R ! Shift % R + F)(using Shift.Key[R], Distinct[Shift % R + F], Shift.Nesting[F]): R ! F =
+    okay.reset[R, F](body)
+  override def run[A](m: A ! Pure): A = m.runWith
 
   @tailrec private def runFree[F[+_], A](m: Free[F, A])(using H: Handler[F]): A =
     (m.resume: @unchecked) match
@@ -302,6 +338,12 @@ def reflect[M[_[+_], _] : Effects as M, F[+_], A](m: A ! F): M[F, A] =
 
 object Effects {
   export Free.*
+
+  /** level 1, any encoding in direct style: `M[F, *]` as a monad, for `direct[[A] =>> M[F, A]]` over `Effects[M]` */
+  def monad[M[_[+_], _], F[+_]](using E: Effects[M]): Monad[[A] =>> M[F, A]] = new Monad[[A] =>> M[F, A]]:
+    def pure[A](a: A): M[F, A] = E.pure(a)
+    extension [A](a: M[F, A])
+      def flatMap[B](f: A => M[F, B]): M[F, B] = E.flatMap(a)(f)
 
   /** the staging entry for effect programs, as staged is for Control:
    * `Effects[Free]`, `Effects[Eager]`, `Effects[M]` for any M with an
