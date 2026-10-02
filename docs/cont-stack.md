@@ -69,7 +69,12 @@ local function every branch ends in, a join point — and a call inside
 the lambda of `map`, `foreach` or `foldLeft` on a `List`, `Vector` or
 immutable `Seq` (`List(1, 2).map(x => k(x)).sum`, or `k` itself passed:
 `List(1, 2).map(k)`), the traversal a chain of binds the machine runs;
-an assignment from `k` (`v = k(1)`, `seen += k(x)`); and a `while` loop
+an assignment from `k` (`v = k(1)`, `seen += k(x)`); the KNOWN methods —
+`flatMap`, `exists`, `forall` (stopping at the first element that
+decides), `find`, `foldRight` on an immutable `Seq`, and `Option`'s
+`getOrElse`/`map`/`flatMap`/`fold`/`orElse`, `Either`'s
+`fold`/`getOrElse`, `&&`, `||`, rewritten into a `match`/`if` (the
+receiver once, a by-name argument only in its branch); and a `while` loop
 with `k` in its condition or body, each iteration a step the machine
 forces (a million iterations that never call `k` hold no frame either).
 All are programs over a lazy `k`, no frame per level.

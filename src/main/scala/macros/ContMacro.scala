@@ -274,6 +274,53 @@ import scala.quoted.*
                     case None => throw Opaque).asExprOf[List[btp] => Cont.Lazy[rt]]
               cps(q, Kont(kont.rt, Some(q2 =>
                 '{ Cont.traverse[xt, btp, rt](${ q2.asExprOf[Iterable[xt]] }, $f, $rest) }.asTerm))) } } }
+        // flatMap: the traversal, then the answers flattened (their element type by the evidence the call had)
+        case Apply(TypeApply(Select(q, "flatMap"), List(bt)), List(fn)) if !mentions(k, q) =>
+          for
+            x <- elemOf(q)
+            (ps, body) <- lambdaOf(fn) if ps.length == 1 && mentions(k, body)
+            c = body.tpe.widen
+            res <- (kont.rt.asType, x.asType, c.asType, bt.tpe.asType) match
+              case ('[rt], '[xt], '[ct], '[btp]) => Expr.summon[ct <:< IterableOnce[btp]].flatMap { ev =>
+                val f = step(ps, body, List(x), c).asExprOf[xt => Cont.Lazy[ct]]
+                val want = t.tpe.widen
+                try
+                  val rest = lam("bs", TypeRepr.of[List[ct]], kont.rt)(bsv =>
+                    val flat = '{ ${ bsv.asExprOf[List[ct]] }.flatMap(c => $ev(c)) }.asTerm
+                    asResult(flat, want, bt.tpe) match
+                      case Some(r) => feed(kont, r)
+                      case None => throw Opaque).asExprOf[List[ct] => Cont.Lazy[rt]]
+                  Some(cps(q, Kont(kont.rt, Some(q2 =>
+                    '{ Cont.traverse[xt, ct, rt](${ q2.asExprOf[Iterable[xt]] }, $f, $rest) }.asTerm))))
+                catch case Opaque => None
+              }
+              case _ => None
+          yield res
+        // exists / forall / find: stopping at the first element that decides
+        case Apply(Select(q, m @ ("exists" | "forall" | "find")), List(fn)) if !mentions(k, q) =>
+          for
+            x <- elemOf(q)
+            (ps, body) <- lambdaOf(fn) if ps.length == 1 && mentions(k, body)
+          yield kont.rt.asType match { case '[rt] => x.asType match { case '[xt] =>
+            val p = step(ps, body, List(x), TypeRepr.of[Boolean]).asExprOf[xt => Cont.Lazy[Boolean]]
+            m match
+              case "find" =>
+                val rest = lam("found", TypeRepr.of[Option[xt]], kont.rt)(v => feed(kont, v)).asExprOf[Option[xt] => Cont.Lazy[rt]]
+                cps(q, Kont(kont.rt, Some(q2 => '{ Cont.findIn[xt, rt](${ q2.asExprOf[Iterable[xt]] }, $p, $rest) }.asTerm)))
+              case _ =>
+                val want = Expr(m == "exists")
+                val rest = lam("holds", TypeRepr.of[Boolean], kont.rt)(v => feed(kont, v)).asExprOf[Boolean => Cont.Lazy[rt]]
+                cps(q, Kont(kont.rt, Some(q2 => '{ Cont.existsIn[xt, rt](${ q2.asExprOf[Iterable[xt]] }, $p, $want, $rest) }.asTerm))) } }
+        // foldRight: foldIn over the elements reversed, the lambda's parameters swapped
+        case Apply(Apply(TypeApply(Select(q, "foldRight"), List(bt)), List(z)), List(fn)) if !mentions(k, q) && !mentions(k, z) =>
+          for
+            x <- elemOf(q)
+            (ps, body) <- lambdaOf(fn) if ps.length == 2 && mentions(k, body)
+          yield kont.rt.asType match { case '[rt] => x.asType match { case '[xt] => bt.tpe.asType match { case '[btp] =>
+            val f = step(List(ps(1), ps(0)), body, List(bt.tpe, x), bt.tpe).asExprOf[(btp, xt) => Cont.Lazy[btp]]
+            val rest = lam("acc", bt.tpe, kont.rt)(av => feed(kont, av)).asExprOf[btp => Cont.Lazy[rt]]
+            cps(q, Kont(kont.rt, Some(q2 => cps(z, Kont(kont.rt, Some(z2 =>
+              '{ Cont.foldIn[xt, btp, rt](${ q2.asExprOf[Iterable[xt]] }.toList.reverse, ${ z2.asExprOf[btp] }, $f, $rest) }.asTerm)))))) } } }
         case Apply(Apply(TypeApply(Select(q, "foldLeft"), List(bt)), List(z)), List(fn)) if !mentions(k, q) && !mentions(k, z) =>
           for
             x <- elemOf(q)

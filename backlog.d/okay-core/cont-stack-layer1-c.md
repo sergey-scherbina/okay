@@ -34,8 +34,13 @@
       runs, on an immutable list, multi-shot safe); a million on 128 KB
       with zero switches (red first: StackOverflowError). Then (the same
       day) `k` passed as a VALUE (`List(x).map(k)`) and an assignment from
-      `k` (`v = k(1)`, `seen += k(x)`), a million each on 128 KB. LEFT:
-      `flatMap`, `fold`, `Option`, `Either`;
+      `k` (`v = k(1)`, `seen += k(x)`), a million each on 128 KB. Then the
+      KNOWN methods: `flatMap`/`exists`/`forall`/`find`/`foldRight` on an
+      immutable `Seq` (early stop where the method stops), `Option`'s
+      `getOrElse`/`map`/`flatMap`/`fold`/`orElse`, `Either`'s `fold`/
+      `getOrElse`, `&&`, `||` — rewritten into a `match`/`if` the transform
+      reads, `B >: A` by summoned evidence. LEFT: other collections
+      (`Set`, `Map`, mutable), `Either.map`/`flatMap`, `Try`;
       (3) VISIBLE user functions along the path `k` flows (an `inline
       def`, a same-compilation `def` through `Symbol.tree`, TASTy with
       `-Yretain-trees`), rewritten and cached;

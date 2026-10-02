@@ -263,6 +263,39 @@ class TestContMacro extends munit.FunSuite:
       Cont.shift[Int, Int, Int](k => Option(z).map(x => k(x)).getOrElse(0)))), 3)
   }
 
+  test("1M bodies calling k inside Seq.flatMap and exists, on a 128 KB stack: ZERO switches") {
+    val (a, s) = switchesDuring(SmallStack.run(128)(Cont.reset(row(n)(x =>
+      Cont.shift[Int, Int, Int](k => List(x).flatMap(y => List(k(y + 1))).sum)))))
+    assertEquals(a, n)
+    assertEquals(s, 0L)
+    val (a2, s2) = switchesDuring(SmallStack.run(128)(Cont.reset(row(n)(x =>
+      Cont.shift[Int, Int, Int](k => if List(x).exists(y => k(y + 1) > 0) then x + 1 else 0)))))
+    assertEquals(a2, 1)
+    assertEquals(s2, 0L)
+  }
+
+  test("flatMap, exists, forall, find, foldRight with k keep their meaning: early stop, order, types, multi-shot") {
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => List(1, 2).flatMap(x => List(k(x), k(x) * 10)).sum)), 33)
+    val v: Vector[Int] = Cont.reset(Cont.shift[Int, Vector[Int], Vector[Int]](k => Vector(1, 2).flatMap(x => k(x))).map(x => Vector(x, x)))
+    assertEquals(v, Vector(1, 1, 2, 2))
+    // exists stops at the first true: k is not called for the elements after it
+    var calls = 0
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => if List(1, 2, 3).exists(x => { calls += 1; k(x) > 1 }) then 1 else 0)), 1)
+    assertEquals(calls, 2)
+    calls = 0
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => if List(1, 2, 3).forall(x => { calls += 1; k(x) < 2 }) then 1 else 0)), 0)
+    assertEquals(calls, 2)
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => List(1, 2, 3).find(x => k(x) == 2).getOrElse(0))), 2)
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => List(1, 2, 3).find(x => k(x) == 9).getOrElse(0))), 0)
+    // foldRight from the right: the last element first
+    val log = collection.mutable.ArrayBuffer.empty[Int]
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => List(1, 2, 3).foldRight(0)((x, acc) => { log += x; acc * 10 + k(x) }))), 321)
+    assertEquals(log.toList, List(3, 2, 1))
+    // multi-shot across the traversal
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k1 => k1(1) + k1(2)).flatMap(z =>
+      Cont.shift[Int, Int, Int](k => List(z).flatMap(x => List(k(x))).sum))), 3)
+  }
+
   test("bodies the transform cannot read stay opaque and keep their meaning") {
     assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => try k(1) catch { case _: Exception => 0 })), 1)
     assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => (() => k(1))())), 1)
