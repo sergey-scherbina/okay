@@ -157,6 +157,18 @@ enum Freer[G[_, _, +_], S, R, +A] {
     case Delay(t) => t().resume
     case Bind(Delay(t), g) => Bind(t(), g).resume
     case a => a
+
+  /**
+   * `resume` that STOPS at a run — a `Delay` whose thunk is a `Frames.Pending` (a machine run, a handler) — and
+   * answers it, alone or under its `Bind`, instead of forcing it (handle-frames): a loop that can hand itself
+   * to the machine walks with this, so a run nested in it never runs inside it.
+   */
+  @tailrec final def resumeRun: Freer[G, S, R, A] = this match
+    case Bind(Bind(a, f), g) => Bind(a, f(_).flatMap(g)).resumeRun
+    case Bind(Return(a), f) => f(a).resumeRun
+    case Delay(t) => if t.isInstanceOf[Frames.Pending[?, ?, ?, ?, ?]] then this else t().resumeRun
+    case Bind(Delay(t), g) => if t.isInstanceOf[Frames.Pending[?, ?, ?, ?, ?]] then this else Bind(t(), g).resumeRun
+    case a => a
 }
 
 object Freer {

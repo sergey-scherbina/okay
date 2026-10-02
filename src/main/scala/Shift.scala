@@ -47,7 +47,8 @@ object Reset:
         reset[R, F](a.substituteCo[[X] =>> X ! Shift % R + F](p))
 
 /** a delimiter's name: answer type `R`, identity by allocation, labelled for diagnostics */
-final class Prompt[R](val what: String, val where: String):
+/** open for one subclass, a handler frame's delimiter (`Cont0.Handling`, handle-frames) */
+class Prompt[R](val what: String, val where: String):
   /** `what @ where`, joined only when asked */
   def label: String = s"$what @ $where"
   override def toString: String = label

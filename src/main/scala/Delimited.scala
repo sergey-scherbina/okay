@@ -193,25 +193,36 @@ object Frames:
     def apply(): Freer[Cont0.Row[F], S, T, Z] = Frames.enterAt[F, A, S, T, Z](a, k)
 
   /**
-   * A MACHINE RUN AS A VALUE (shift-stacked-key): a `Delay`'s thunk holding the program a run would start. Any
-   * other interpreter forces it, and it runs `program` on a machine of its own (`out` reads the head form back
-   * at the caller's type). A RUNNING machine steps into `program` in its own loop instead, so a run nested in a
-   * run — a keyed `reset` in another's continuation — is one loop, not a stack frame and not a stack switch.
+   * A RUN AS A VALUE (shift-stacked-key, handle-frames): a `Delay`'s thunk holding what a running machine STEPS
+   * INTO (`program`), and what anything else does when it forces it (`apply`). A run nested in a run — a keyed
+   * `reset` in another's continuation, a handler in a handler's — is then one loop, not a stack frame.
    */
+  abstract class Pending[F[_, _, +_], S, T, Z, B] extends (() => B):
+    def program: Freer[Cont0.Row[F], S, T, Z]
+
+  /** a machine run: forced, `program` on a machine of its own (`out` reads the head form back at the caller's type);
+   * made only by the door's `owned` */
   final class Own[F[_, _, +_], S, T, Z, B] private[Frames] (val program: Freer[Cont0.Row[F], S, T, Z],
                                                             out: Freer[Cont0.Row[F], S, T, Z] => B,
-                                                            val flat: Boolean) extends (() => B):
+                                                            val flat: Boolean) extends Pending[F, S, T, Z, B]:
     def apply(): B = out(Frames.run[F, S, T, Z](program))
 
-  /** an `Own` thunk's program at the running machine's row, or null */
+  /** a handler over a program: forced, its own fast loop (`fast`); stepped into, the handler as a FRAME (`frame`) */
+  final class Handled[F[_, _, +_], S, T, Z, B](fast: () => B, frame: () => Freer[Cont0.Row[F], S, T, Z]) extends Pending[F, S, T, Z, B]:
+    def program: Freer[Cont0.Row[F], S, T, Z] = frame()
+    def apply(): B = fast()
+
+  /** a `Pending` thunk's program at the running machine's row, or null */
   private def own[F[_, _, +_], S, T, Z](t: () => Freer[Cont0.Row[F], S, T, Z]): Freer[Cont0.Row[F], S, T, Z] | Null = t match
     // THE ONE CLAIM: the run's program is at the row of the program that holds its Delay (its residual
-    // was typed into that row), and its delimiter indices are its own, closed by the boundary it starts with
+    // was typed into that row), and its delimiter indices are its own, closed by the frame it starts with
     // A FLAT run answers the program that goes on (Cont's program-answered `k`, cont-program-answer): stepped
     // into, the machine runs it and continues into its answer, in the same loop
     case o: Own[?, ?, ?, ?, ?] =>
       if o.flat then Bind(o.program.asInstanceOf[Freer[Cont0.Row[F], S, T, Any]], continueInto[F, S, S, Z])
       else o.program.asInstanceOf[Freer[Cont0.Row[F], S, T, Z]]
+    // any other run (a handler, handle-frames): its program, a frame
+    case o: Pending[?, ?, ?, ?, ?] => o.program.asInstanceOf[Freer[Cont0.Row[F], S, T, Z]]
     case _ => null
 
   /** a flat run's answer, the program itself, continued: one function for every index */
@@ -296,7 +307,9 @@ object Frames:
       case c: Cat[F, C, S0, T2, ?, ?, Z] => cut(sh, all, uncat(c), rev)
       case r: Run[F, C, S0, ?, T2, ?, Z] => cut(sh, all, r.below, Rev.SnocRun(rev, r.frames))
       // the barrier (Flatt et al., ICFP 2007): `Shift.run`'s root, which no capture may cross
-      case d: Dollar[F, C, S0, T2, ?, Z] if d.p eq Cont0.boundary[Any, Any] => throw NoPrompt(sh.at, sh.p.label, installed(all))
+      // ... except an operation on its way to its handler's frame, which an inner run forwarded as well
+      case d: Dollar[F, C, S0, T2, ?, Z] if (d.p eq Cont0.boundary[Any, Any]) && !sh.p.isInstanceOf[Cont0.Handling[?]] =>
+        throw NoPrompt(sh.at, sh.p.label, installed(all))
       case d: Dollar[F, C, S0, T2, y2, Z] =>
         if sh.p eq d.p then
           val same = identical(sh.p, d.p)
@@ -308,6 +321,22 @@ object Frames:
             y.liftCo[[a] =>> Stack[F, a, S0, I, Z]](i.liftCo[[t] =>> Stack[F, y2, S0, t, Z]](d.below)))
         else
           cut(sh, all, d.below, Rev.SnocDollar(rev, d.p, d.ret))
+
+    /** the nearest handler frame on the stack that takes `op`, or null */
+    @tailrec def handlerFor(op: Any, st: Stack[F, ?, ?, ?, ?]): Cont0.Handling[?] | Null = st match
+      case c: Cat[F, ?, ?, ?, ?, ?, ?] @unchecked => handlerFor(op, uncat(c))
+      case Run(_, below) => handlerFor(op, below)
+      case Dollar(p, _, below) => p match
+        case h: Cont0.Handling[?] if h.takes(op) => h
+        case _ => handlerFor(op, below)
+      case _ => null
+
+    /** the operation as the `shift0` to its frame, the clause its body */
+    def asShift0[T, X](h: Cont0.Handling[?], op: Any): Cont0.Shift0[F, Any, Any, T, R, X] =
+      // THE CLAIM handle-frames makes: the frame's answer and index are the handler's own, which built both
+      // the frame and the clause; the machine only carries them
+      Cont0.Shift0[F, Any, Any, T, R, X](Cont0.delimiter[Any, Any](h.asInstanceOf[Prompt[Any]]),
+        k => h.clause(op, k.asInstanceOf[Any => Any]).asInstanceOf[Freer[G, Any, R, Any]], h.label)
 
     /** an operation of `F`, not of `Cont0` */
     def foreign(a: Freer[G, ?, ?, ?]): Boolean = a match
@@ -402,7 +431,13 @@ object Frames:
             case n: Next[x, ?, ?, ?] => loop(n.focus, n.fs, n.st)
             // nobody here answers it: out, over the stack
             case null => Bind(focus, runOf(fs, st))
-          case _ => Bind(focus, runOf(fs, st))
+          // an operation of `F`: a handler frame below takes it, or out
+          case op =>
+            val h = if Cont0.Handling.ever then handlerFor(op, st) else null
+            if h == null then Bind(focus, runOf(fs, st))
+            else capture(asShift0[T, X](h, op), fs, st) match
+              case n: Next[x, ?, ?, ?] => loop(n.focus, n.fs, n.st)
+              case null => Bind(focus, runOf(fs, st))
 
     val n = resume(focus0, st0, noFrames[F, Z, S0], noStack[F, Z, S0])
     loop(n.focus, n.fs, n.st)
@@ -431,6 +466,23 @@ object Cont0:
 
   /** THE INDEX CLAIM, made at the door that knows the index (Shift: Unit, Cont: Any, Stacked: the stack below) */
   def delimiter[Y, I](p: Prompt[Y]): Delimiter[Y, I] = p
+
+  /**
+   * A HANDLER'S DELIMITER (handle-frames, specs/handle-frames.md): the frame `ret $ body` of a handler that
+   * runs on the machine. It says which operations are its own; for one of them the machine makes the
+   * operation a `shift0` to this frame whose body is `clause` — `k` the continuation up to and including the
+   * frame, so a resumption re-installs it (a deep handler). Erased at the boundary: the subclass knows its
+   * types and makes the one claim.
+   */
+  abstract class Handling[Y](name: String) extends Prompt[Y](name, "handler"):
+    // from now on a machine looks for a frame before forwarding an operation
+    if !Handling.ever then Handling.ever = true
+    def takes(op: Any): Boolean
+    def clause(op: Any, k: Any => Any): Any
+
+  object Handling:
+    /** a frame was ever pushed in this process: until then a machine forwards an operation without looking */
+    @volatile private[okay] var ever: Boolean = false
 
   /** the barrier's prompt: `Shift.run` installs it, nobody can name it */
   private val theBoundary = new Prompt[Any]("boundary", "Shift.run")

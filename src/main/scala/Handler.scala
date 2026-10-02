@@ -97,13 +97,19 @@ object Handler:
       def run[A, G[+_]](p: A ! F + G)(using A <:< Any, Distinct[F + G], Nothing[G]): (S, A) ! G =
         // a call from inside flatMap cannot be a jump; `again` takes it, so the walk stays a checked loop
         def again(s: S)(x: A ! F + G): (S, A) ! G = loop(s)(x)
-        @tailrec def loop(s: S)(x: A ! F + G): (S, A) ! G = (x.resume: @unchecked) match
+        // a run nested here (handle-frames): this loop becomes a frame of the machine over the rest
+        def upgrade(s: S)(x: A ! F + G): (S, A) ! G =
+          HandleFrames.pending[(S, A), G](HandleFrames.state[F, S, A, G](f, summon[TypeableK[F]])(s, x))
+        @tailrec def loop(s: S)(x: A ! F + G): (S, A) ! G = (x.resumeRun: @unchecked) match
           case Return(a) => Return((s, a))
           case i @ Inject(e) => split[F, G](e)(op => { val (s2, v) = f(s, op); Return((s2, v)): (S, A) ! G })
                                                (_ => forwarded[F, G](i).map((s, _)))
           case Bind(i @ Inject(e), k) => split[F, G](e)(op => { val (s2, v) = f(s, op); loop(s2)(k(v)) })
                                                        (_ => forwarded[F, G](i).flatMap(x => again(s)(k(x))))
-        loop(init)(p)
+          case y => upgrade(s)(y)
+        // a value: run by whoever forces it, a frame for a machine that meets it
+        HandleFrames.handled[(S, A), G](() => loop(init)(p),
+          () => HandleFrames.state[F, S, A, G](f, summon[TypeableK[F]])(init, p))
 
   /** what `into` needs of the rest of the row: that it holds `G` */
   type Holds[G[+_]] = [R[+_]] =>> Row.Sub[G, R]
