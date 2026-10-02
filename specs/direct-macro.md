@@ -373,7 +373,7 @@ The seam is the `Expr`: `q.reflect.Term` belongs to one Quotes path, so
 what enters the class (the block, a try body's sub-pipeline, a probe)
 enters as an `Expr[Any]` and is `asTerm`ed under the instance's own `q`.
 Inside, the given is declared at `q.type` — not `Quotes` — so a
-dependent method a phase calls (`Direct.stripped`,
+dependent method a phase calls (`DirectMacros.stripped`,
 `DirectCompiler.pipeline`) binds to this `q` and its Term is ours.
 
 A phase is asserted ON ITS OWN through `src/test/scala/DirectProbe.scala`,

@@ -50,14 +50,14 @@ object DirectProbe:
   private[okay] def deferredImpl[F[_] : Type, A: Type](block: Expr[DirectCtx[F] ?=> A], d: Expr[Deferral])
                                                 (using q: Quotes): Expr[String] =
     val eager = { import q.reflect.*; d.asTerm.tpe <:< TypeRepr.of[Deferral.Eager.type] }
-    val body = Direct.blockBody[F, A](block)
+    val body = okay.macros.DirectMacros.blockBody[F, A](block)
     val c = compiler[F](eager)
     import c.q.reflect.*
     Expr(c.deferSelfCalls(body.asTerm.changeOwner(Symbol.spliceOwner)).show)
 
   @scala.annotation.publicInBinary
   private[okay] def marksImpl[F[_] : Type, A: Type](block: Expr[DirectCtx[F] ?=> A])(using Quotes): Expr[Int] =
-    val body = Direct.blockBody[F, A](block)
+    val body = okay.macros.DirectMacros.blockBody[F, A](block)
     val c = compiler[F](false)
     import c.q.reflect.*
     var n = 0
@@ -85,7 +85,7 @@ object DirectProbe:
   @scala.annotation.publicInBinary
   private[okay] def independentRunImpl[F[_] : Type, A: Type](block: Expr[DirectCtx[F] ?=> A])
                                                       (using Quotes): Expr[List[String]] =
-    val body = Direct.blockBody[F, A](block)
+    val body = okay.macros.DirectMacros.blockBody[F, A](block)
     val c = compiler[F](false)
     import c.q.reflect.*
     val stats = c.stripped(body.asTerm) match
@@ -95,7 +95,7 @@ object DirectProbe:
 
   @scala.annotation.publicInBinary
   private[okay] def slotsImpl[F[_] : Type, A: Type](block: Expr[DirectCtx[F] ?=> A])(using Quotes): Expr[List[String]] =
-    val body = Direct.blockBody[F, A](block)
+    val body = okay.macros.DirectMacros.blockBody[F, A](block)
     val c = compiler[F](false)
     import c.q.reflect.*
     // the block's one expression, out of the empty Block the typer may wrap it in

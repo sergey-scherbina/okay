@@ -1,4 +1,5 @@
 package okay
+package macros
 
 import scala.quoted.*
 import scala.annotation.tailrec
@@ -49,11 +50,10 @@ import scala.annotation.tailrec
  * duplication measurable rather than assumed (specs/arrows-plan.md,
  * Decision 3's stage 2 gate).
  */
-object ProcMacro:
-  // PUBLIC, and not because it is an API: an `inline def` in a public
-  // object that reaches a `private[okay]` one makes the compiler
-  // generate an unstable inline accessor (E192). The object is the
-  // implementation of `Proc.direct` and nothing else should call it.
+// private to okay, public in the binary: an `inline def` in a public object that reaches a `private[okay]`
+// one would otherwise get an unstable inline accessor (E192). The implementation of `Proc.direct` and
+// nothing else (okay-macros-package)
+@scala.annotation.publicInBinary private[okay] object ProcMacro:
 
   def impl[F[+_] : Type, X: Type, Y: Type](block: Expr[Proc.ProcCtx[F] ?=> X => Y])
                                           (using q: Quotes): Expr[Proc[F, X, Y]] =

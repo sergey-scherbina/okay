@@ -563,10 +563,10 @@ given opticMarket[A, B]: (Strong[[S, T] =>> Market[A, B, S, T]] & Choice[[S, T] 
 extension [C[_[_, _]], S, T, A, B](inline o: Optic[C, S, T, A, B])
   /** every focus through `f`, fused where the shape allows */
   inline def modify(inline f: A => B)(using fn: C[Function1]): S => T =
-    ${ Fuse.modifyFnImpl('o, 'f, 'fn) }
+    ${ okay.macros.FuseMacros.modifyFnImpl('o, 'f, 'fn) }
   /** every focus replaced, fused where the shape allows */
   inline def set(inline b: B)(using fn: C[Function1]): S => T =
-    ${ Fuse.setFnImpl('o, 'b, 'fn) }
+    ${ okay.macros.FuseMacros.setFnImpl('o, 'b, 'fn) }
 
   // the READ side, fused the same way: a lens chain's `get` is the
   // projection `s.a.b`, and the interpretation it replaces allocates
@@ -574,19 +574,19 @@ extension [C[_[_, _]], S, T, A, B](inline o: Optic[C, S, T, A, B])
   // absent focus is not a value and the interpretation knows that.
   /** the focus of a lens (or an iso) */
   inline def get(inline s: S)(using fn: C[[X, Y] =>> Forget[A, X, Y]]): A =
-    ${ Fuse.getImpl('o, 's, 'fn) }
+    ${ okay.macros.FuseMacros.getImpl('o, 's, 'fn) }
   /** the first focus, if any */
   inline def preview(inline s: S)(using fn: C[[X, Y] =>> Forget[First[A], X, Y]]): Option[A] =
-    ${ Fuse.previewImpl('o, 's, 'fn) }
+    ${ okay.macros.FuseMacros.previewImpl('o, 's, 'fn) }
   /** the foci, combined */
   inline def foldMap[R](inline f: A => R)(inline s: S)(using fn: C[[X, Y] =>> Forget[R, X, Y]]): R =
-    ${ Fuse.foldMapImpl('o, 'f, 's, 'fn) }
+    ${ okay.macros.FuseMacros.foldMapImpl('o, 'f, 's, 'fn) }
   /** the foci, in order */
   inline def toVector(inline s: S)(using fn: C[[X, Y] =>> Forget[Vector[A], X, Y]]): Vector[A] =
-    ${ Fuse.toVectorImpl('o, 's, 'fn) }
+    ${ okay.macros.FuseMacros.toVectorImpl('o, 's, 'fn) }
   /** every focus through an effectful `f`, effects in order */
   inline def traverseOf[F[_]](inline f: A => F[B])(using fn: C[[X, Y] =>> Star[F, X, Y]]): S => F[T] =
-    ${ Fuse.traverseOfImpl('o, 'f, 'fn) }
+    ${ okay.macros.FuseMacros.traverseOfImpl('o, 'f, 'fn) }
 
 extension [C[_[_, _]], S, T, A, B](o: Optic[C, S, T, A, B])
   /** many wholes in, their focuses aggregated by `f`, one whole out */

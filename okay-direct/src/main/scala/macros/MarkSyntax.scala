@@ -35,7 +35,7 @@ private[okay] trait MarkSyntax:
     ++ directSym.methodMember("?") ++ directSym.methodMember("unary_!")).toSet
 
   /** a term with its inlining and ascription wrappers taken off */
-  def stripped(t: Term): Term = Direct.stripped(t)
+  def stripped(t: Term): Term = DirectMacros.stripped(t)
 
   def calleeRoot(t: Term): Symbol = t match
     case Apply(f, _) => calleeRoot(f)

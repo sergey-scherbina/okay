@@ -199,7 +199,7 @@ object Proc:
    * whole difference between this and `direct` — see the spec.
    */
   inline def direct[F[+_], X, Y](inline block: ProcCtx[F] ?=> X => Y): Proc[F, X, Y] =
-    ${ ProcMacro.impl[F, X, Y]('block) }
+    ${ okay.macros.ProcMacro.impl[F, X, Y]('block) }
 
   /**
    * THE CAPABILITY, and it exists only INSIDE a `Proc.direct` block —

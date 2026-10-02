@@ -18,7 +18,7 @@ import scala.quoted.*
  * instance's `q`, so a phase is a trait sharing the instance rather
  * than a function taking a Term; the given below is declared at
  * `q.type`, not `Quotes`, so a dependent method called from a phase
- * (`Direct.stripped`, `DirectCompiler.pipeline`) resolves to THIS q
+ * (`DirectMacros.stripped`, `DirectCompiler.pipeline`) resolves to THIS q
  * and its Term is ours. Whatever crosses from another Quotes — the
  * entry, the try body's sub-pipeline, a test probe — crosses as an
  * `Expr`, which no path owns.
