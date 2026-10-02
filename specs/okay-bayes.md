@@ -213,7 +213,17 @@ Stage 5 — the rest of the book, one lane per chapter:
         true price against its closed form (a linear-Gaussian model)
   - [x] the book's showdown loss: the best bid falls as the risk of
         overbidding grows, and stays under the posterior mean
-- 5c. ch.7, A/B testing by expected revenue (Dirichlet).
+- 5c. ch.7, A/B testing by EXPECTED REVENUE: a visitor buys one of
+  several tiers or nothing; the tier probabilities have a Dirichlet
+  posterior (flat prior + counts), and the revenue per visitor is Σ vᵢ pᵢ.
+  `Dirichlet` (sample, log density, mean, covariance — a posterior helper,
+  not yet a model site: that waits on vector sites, §6) and `AbTest`:
+  posterior draws of each variant's revenue, P(A beats B), the lift.
+  - [ ] Dirichlet's moments against its closed forms
+  - [ ] each variant's revenue: posterior mean and sd against the exact
+        Σ vᵢ E[pᵢ] and √(vᵀ Cov v)
+  - [ ] P(B beats A) stable between two independent runs to MC error, and
+        the decision it supports printed beside the naive one
 
 ## 4. Decisions
 
