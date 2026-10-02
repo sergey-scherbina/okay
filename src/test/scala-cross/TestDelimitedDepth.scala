@@ -15,7 +15,7 @@ object DelimitedDepth:
    * on its resumption's answer — `k(1) + 1` written as data */
   def answerUsing[M[_, _, _]](D: Delimited[M])(n: Int): M[Int, Int, Int] =
     extension [A, S, R](m: M[S, R, A])
-      def map[B](f: A => B): M[S, R, B] = D.bind[A, B, S, S, R](m)(a => D.pure[S, B](f(a)))
+      def map[B](f: A => B): M[S, R, B] = D.bind[A, B, S, S, R](m)(a => D.pure[B, S](f(a)))
     val p = D.delimiter[Int, Int](using At("TestDelimitedDepth"))
     def loop(i: Int): M[Int, Int, Int] =
       if i == 0 then D.pure[Int, Int](0)

@@ -15,4 +15,4 @@
       ((1) of the old list, nesting, landed as reset-nesting-room; (3), the
       type arguments, as shift-in-scope.)
       TRIGGER: a consumer that runs a `reset` per element of a stream, or a
-      profile with `Frames.run`'s start in it.
+      profile with the machine's start (`Delimited.runHead`) in it.

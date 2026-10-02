@@ -102,6 +102,11 @@ backlog cont-stack-layer1-c.
    Where the 1.74x would have to come from, if anyone revisits: the
    rewrite builds a second tree (a `flatMap` per operation), and every
    forwarded operation leaves the machine and re-enters it.
+2c. **One door into the machine** — DONE (delimited-one-door, operator:
+   "Одна дверь в машину … чтобы не использовался Frames напрямую"):
+   `Delimited.runHead` is the only start of the loop; the strict `k`
+   resumes as `runHead(k(x))`; the reference checks that door
+   (specs/delimited.md). A probe of the bridge now has one place to act.
 3. The bridge on Scala.js: the nesting shapes of the census (state
    passing) and user code — candidates: the function answer walked as
    data on JS only (cont-stack-layer1-c (6)), a link-time IR transform

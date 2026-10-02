@@ -464,7 +464,7 @@ object Shift {
 
   /** run without the barrier: a capture with no delimiter goes out, for a machine outside */
   def runNested[R, F[+_]](prog: R ! Shift % ? + F)(using Row.In[Shift % ?, F]): R ! F =
-    Stacked.residual[R, F](Frames.run[Freer.Lift[F], Unit, Unit, R](in(prog)))
+    Stacked.residual[R, F](Delimited.machine[Freer.Lift[F]].runHead[Unit, Unit, R](in(prog)))
 
   /** drop the continuation and answer `value` at `p` */
   def abort[R, A, F[+_]](p: Prompt[R])(value: R)(using At): A ! Shift % ? + F =
@@ -527,9 +527,9 @@ object Shift {
 
     /** under the barrier */
     private[okay] def bounded[R, F[+_]](prog: Freer[Row[F], Unit, Unit, R]): R ! F =
-      // a value: run by whoever forces it, stepped into by a machine already running (Frames.Own)
-      Free.delay(new Frames.Own[Freer.Lift[F], Unit, Unit, R, R ! F](
-        Delimited.machine[Freer.Lift[F]].reset[Unit, Unit, R](Cont0.boundary[R, Unit])(prog), residual[R, F]))
+      // a value: run by whoever forces it, stepped into by a machine already running (the machine's `owned`)
+      Free.delay(Delimited.machine[Freer.Lift[F]].owned[Unit, Unit, R, R ! F](
+        Delimited.machine[Freer.Lift[F]].reset[Unit, Unit, R](Cont0.boundary[R, Unit])(prog))(residual[R, F]))
 
     /** the head form as the residual program */
     private[okay] def residual[R, F[+_]](head: Freer[Row[F], Unit, Unit, R]): R ! F =

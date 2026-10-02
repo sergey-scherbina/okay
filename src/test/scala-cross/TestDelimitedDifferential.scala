@@ -23,6 +23,7 @@ object DelimitedDifferential:
     case Shift0(p: Int, body: Body)
     case Shift(p: Int, body: Body)
     case Abort(p: Int, n: Int)
+    case RunHead(body: Prog)                      // the door: body run to its head form, mid-program
 
   /** what a capture's body does with its continuation */
   enum Body:
@@ -55,6 +56,10 @@ object DelimitedDifferential:
       case Prog.Shift0(i, b) => D.shift0[Int, Int, Int, Int, Int](ps(i))(body(b))
       case Prog.Shift(i, b) => D.shift[Int, Int, Int, Int, Int](ps(i))(body(b))
       case Prog.Abort(i, n) => D.abort[Int, Int, Int](ps(i))(n)
+      // the machine runs its loop here and hands back the head form — a capture to a delimiter OUTSIDE the
+      // body leaves as an operation, and the outer run must place it (delimited-one-door); the reference's
+      // runHead is the body itself, so the two agree only if the door does
+      case Prog.RunHead(b) => D.runHead[Int, Int, Int](go(b))
     go(prog)
 
   /** an answer, or the failure's kind — the two must agree on both */
@@ -79,14 +84,15 @@ object DelimitedDifferential:
       case 6 | 7 => Body.Then(n, gen(r, d - 1))
       case _ => Body.ResumeWith(gen(r, d - 1))
     if depth <= 0 then Prog.Pure(n)
-    else r.nextInt(12) match
+    else r.nextInt(14) match
       case 0 => Prog.Pure(n)
       case 1 | 2 | 3 => Prog.Bind(gen(r, depth - 1), gen(r, depth - 1))
       case 4 | 5 => Prog.Reset(p, gen(r, depth - 1))
       case 6 => Prog.Dollar(p, n, gen(r, depth - 1))
       case 7 | 8 => Prog.Shift0(p, body(depth - 1))
       case 9 | 10 => Prog.Shift(p, body(depth - 1))
-      case _ => Prog.Abort(p, n)
+      case 11 => Prog.Abort(p, n)
+      case _ => Prog.RunHead(gen(r, depth - 1))
 
   /** a program wrapped in delimiters for all three prompts, in a random order */
   def delimited(r: Random, depth: Int): Prog =
@@ -118,3 +124,20 @@ class TestDelimitedDifferential extends munit.FunSuite:
   agree("2000 programs, every prompt delimited", 0 until 2000, depth = 5, wrap = true, minAnswered = 0.6)
   agree("2000 programs, unwrapped — NoPrompt agrees too", 2000 until 4000, depth = 4, wrap = false, minAnswered = 0.1)
   agree("500 deeper programs", 4000 until 4500, depth = 7, wrap = true, minAnswered = 0.6)
+
+  test("the door is reached: generated programs run sub-programs through runHead, captures crossing it included") {
+    val progs = (0 until 2000).map(seed => delimited(Random(seed), 5))
+    def heads(p: Prog): Int = p match
+      case Prog.RunHead(b) => 1 + heads(b)
+      case Prog.Bind(m, rest) => heads(m) + heads(rest)
+      case Prog.Reset(_, b) => heads(b)
+      case Prog.Dollar(_, _, b) => heads(b)
+      case Prog.Shift0(_, b) => bodyHeads(b)
+      case Prog.Shift(_, b) => bodyHeads(b)
+      case _ => 0
+    def bodyHeads(b: Body): Int = b match
+      case Body.Then(_, after) => heads(after)
+      case Body.ResumeWith(m) => heads(m)
+      case _ => 0
+    assert(progs.count(heads(_) > 0) >= 500, "too few programs reach the door")
+  }

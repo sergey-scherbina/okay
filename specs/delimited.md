@@ -90,6 +90,10 @@ delimiter type, `prompt`, `boundary`); the derived operators move to
 - [x] the 24 continuation suites green; `affected master staged` green
 - [x] no lane slower than master by more than noise (an interface over the same nodes: no new allocation, no new step)
 
+- [x] ONE DOOR (delimited-one-door, operator: "Одна дверь в машину"): `runHead` (run to head form) in the trait, `run` is it under a boundary; `Frames.run`/`enterAt`/`uncat` private and `Own`'s constructor closed (`Delimited.Machine` lives in `object Frames`, beside the loop); `Cont`'s bridge (`runHead(k(x))`, `retOf` for its root), `Shift`'s nested runs and `Stacked` (`runHead`, `owned`), `TestKont` and `KontBenchmark` through the interface
+- [x] the reference's `runHead` is the program itself; TestDelimitedDifferential runs sub-programs through it at random points (`Prog.RunHead`), captures crossing it included, on every platform; a mutant `runHead` with a boundary (a crossing capture made `NoPrompt`) fails all three program sets
+- [x] `Delimited[M]` extends `ParaMonad[[A, S, R] =>> M[S, R, A]]`: `pure[A, R]` in Atkey's order, `flatMap` = `bind`
+
 ## Decisions
 
 - Name `Delimited` (operator). Primitive names are λ$'s (`dollar`,

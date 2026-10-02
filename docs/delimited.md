@@ -16,6 +16,21 @@ design \[[JFP 2007](#ref-dpjs-2007)\], in the variant λ$ calls for
 | `shift0(d)(f)` | `withSubCont` | capture the stack up to `d`, `d` included; `f`'s answer takes `d`'s place |
 | `resume(k)(m)` | `pushSubCont` | run the computation `m` inside the captured `k` |
 
+## One door into the machine
+
+Running is part of the interface too, and it is the ONLY way into the
+machine: `runHead(m)` runs `m` to its head form — a value, or the first
+operation the machine does not answer (an operation of the program's
+own signature, or a capture to a delimiter `m` does not hold, which
+leaves for the run outside), with the rest of `m` as its continuation.
+`run(m)` is `runHead` under a boundary, where such a capture is
+`NoPrompt`. The machine's loop itself is closed: `Cont`'s strict `k`,
+`Shift`'s nested runs and `Stacked` all enter through `runHead` (or its
+lazy form, the machine's `owned`), so the reference implementation —
+whose `runHead` is the program itself — checks exactly the door every
+caller uses. `Delimited` is also a `ParaMonad` (Atkey's order, the value
+first): `pure[A, R]`, and `flatMap` is `bind`.
+
 `reset`, `shift` and `abort` are written once, in the trait, over these
 four. One difference from DPJS: their capture leaves the delimiter out
 of `k` (it is `control0`); ours keeps it in, together with `ret`,

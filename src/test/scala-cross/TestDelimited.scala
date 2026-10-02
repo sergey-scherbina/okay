@@ -14,7 +14,7 @@ abstract class DelimitedLaws[M[_, _, _]](name: String, val D: Delimited[M]) exte
   type Str = M[String, String, String]
 
   extension [A, S, R](m: M[S, R, A])
-    def map[B](f: A => B): M[S, R, B] = D.bind[A, B, S, S, R](m)(a => D.pure[S, B](f(a)))
+    def map[B](f: A => B): M[S, R, B] = D.bind[A, B, S, S, R](m)(a => D.pure[B, S](f(a)))
     def flatMap[B, S2](f: A => M[S2, S, B]): M[S2, R, B] = D.bind(m)(f)
 
   def outcome(p: Str): String = try D.run(p) catch case _: NoPrompt => "NoPrompt"

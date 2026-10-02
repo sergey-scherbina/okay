@@ -54,7 +54,7 @@ object Cont:
 
   /** the one leaf: `shift0` to the run's root */
   private def leaf[A, S, R](clause: K => P): Rep[A, S, R] =
-    typed(Delimited.machine[NoEffect].shift0[Any, Any, Any, Any, Any](rootAt)(clause)(using leafAt))
+    typed(M.shift0[Any, Any, Any, Any, Any](rootAt)(clause)(using leafAt))
 
   /** a tail body `k => { stats; k(v) }` as its value `v`; `S <: R` (the evidence) makes the erasure claim sound */
   def tailShift[A, S, R](v: () => A)(using @annotation.unused ev: S <:< R): Rep[A, S, R] =
@@ -96,7 +96,7 @@ object Cont:
   /** apply to a continuation: a root `$` whose `ret` is `k` */
   def run[A, S, R](c: Rep[A, S, R])(k: A => S): R =
     val r = Root(k.asInstanceOf[Any => Any], StackSwitch.firstRoom)
-    answerOf(Frames.run[NoEffect, Any, Any, Any](Delimited.machine[NoEffect].dollar[Any, Any, Any, Any](rootAt)(r)(erased(c)))).asInstanceOf[R]
+    answerOf(M.runHead[Any, Any, Any](M.dollar[Any, Any, Any, Any](rootAt)(r)(erased(c)))).asInstanceOf[R]
 
   // THE RUNNER: a Cont program runs on the frame machine under one root `$` per run; every leaf is a
   // `shift0` to it. A lazy `k` is pushed by the machine; a strict `k` is a nested run, counted, a fresh
@@ -108,6 +108,9 @@ object Cont:
 
   private type P = Freer[Sig, Any, Any, Any]
   private type K = Stack[NoEffect, Any, Any, Any, Any]
+
+  /** the machine, through its one door */
+  private val M: Delimited.Machine[NoEffect] = Delimited.machine[NoEffect]
 
   /** the root prompt: one for every run */
   private val root: Prompt[Any] = new Prompt[Any]("Cont.run", "Cont.scala")
@@ -146,17 +149,13 @@ object Cont:
     r.room = room
     try enter(k, x) finally r.room = saved
 
-  /** `x` into `k`'s nodes, run to a value */
+  /** `x` into `k`'s nodes, run to a value: `k(x)` is the machine's own resumption node, run through the door */
   private def enter(k: K, x: Any): Any =
-    answerOf(Frames.enterAt[NoEffect, Any, Any, Any, Any](x, k))
+    answerOf(M.runHead[Any, Any, Any](k(x)))
 
-  /** the root at the bottom of `k`: a strict `k` always ends at it */
-  @annotation.tailrec
-  private def rootOf(k: Stack[NoEffect, ?, ?, ?, ?]): Root = k match
-    case Stack.Dollar(p, r: Root, _) if p eq root => r
-    case Stack.Dollar(_, _, below) => rootOf(below)
-    case Stack.Run(_, below) => rootOf(below)
-    case c: Stack.Cat[NoEffect, ?, ?, ?, ?, ?, ?] @unchecked => rootOf(Frames.uncat(c))
+  /** the root at the bottom of `k`: a strict `k` always ends at it (the machine reads its own stack) */
+  private def rootOf(k: K): Root = M.retOf(k, root) match
+    case r: Root => r
     case _ => throw IllegalStateException("a strict k without its run's root: only a leaf makes one, and a leaf cuts to the root")
 
 

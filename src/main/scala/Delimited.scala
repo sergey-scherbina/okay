@@ -14,7 +14,7 @@ import scala.annotation.tailrec
  * `shift`, `abort`. Instances: `Delimited.machine` and the tests' reference. `Control` is the one-prompt
  * user level, built on this.
  */
-trait Delimited[M[_, _, _]]:
+trait Delimited[M[_, _, _]] extends ParaMonad[[A, S, R] =>> M[S, R, A]]:
 
   /** a delimiter's name: answer `Y`, installed at index `I` */
   type Delimiter[Y, I]
@@ -25,13 +25,26 @@ trait Delimited[M[_, _, _]]:
   /** a fresh delimiter */
   def delimiter[Y, I](using At): Delimiter[Y, I]
 
-  /** a value */
-  def pure[R, A](a: A): M[R, R, A]
+  // a value: `pure[A, R](a): M[R, R, A]`, ParaMonad's own (the order Atkey writes, the value first)
 
   /** sequencing */
   def bind[A, B, S, T, R](m: M[T, R, A])(f: A => M[S, T, B]): M[S, R, B]
 
-  /** run to a value (`runCC`); a capture without its delimiter is `NoPrompt` */
+  /** ParaMonad's `flatMap` is `bind` */
+  extension [A, S, R](m: M[S, R, A])
+    def flatMap[B, S2](f: A => M[S2, S, B]): M[S2, R, B] = bind[A, B, S2, S, R](m)(f)
+
+  /**
+   * THE DOOR (delimited-one-door, the operator's "одна дверь в машину"): run `m` to its HEAD FORM — a value,
+   * or the first operation the machine does not answer (an operation of the carrier's own signature, or a
+   * capture to a delimiter `m` does not hold, going out), with the rest of `m` as its continuation. Every run
+   * of the machine is this: `run` below, a nested run, a resumed strict `k`. Observationally the identity:
+   * `runHead(m)` computes what `m` computes, in any context (the reference's own `runHead` is `m` itself,
+   * and the differential oracle drives both through it).
+   */
+  def runHead[T, R, A](m: M[T, R, A]): M[T, R, A]
+
+  /** run to a value (`runCC`): `runHead` under a boundary; a capture without its delimiter is `NoPrompt` */
   def run[A](m: M[A, A, A]): A
 
   /** `ret $ body`: `ret` runs outside the delimiter and rides in `k` */
@@ -46,7 +59,7 @@ trait Delimited[M[_, _, _]]:
 
   /** `pure $ body` */
   def reset[T, R, A](d: Delimiter[A, T])(body: M[T, R, A]): M[T, R, A] =
-    dollar[A, A, T, R](d)(a => pure[T, A](a))(body)
+    dollar[A, A, T, R](d)(a => pure[A, T](a))(body)
 
   /** `shift0` with the body under `reset` (S k.e = S0 k.<e>) */
   def shift[Y, I, T, R, X](d: Delimiter[Y, I])(f: SubCont[X, I, T, Y] => M[I, R, Y])(using At): M[T, R, X] =
@@ -54,46 +67,15 @@ trait Delimited[M[_, _, _]]:
 
   /** leave `d` with a value */
   def abort[Y, T, X](d: Delimiter[Y, T])(value: Y)(using At): M[T, T, X] =
-    shift0[Y, T, T, T, X](d)(_ => pure[T, Y](value))
+    shift0[Y, T, T, T, X](d)(_ => pure[Y, T](value))
 
 object Delimited:
 
-  /** the frame machine: `dollar`/`shift0` are its operations, `resume(k)(m)` is `Bind(m, k)` */
-  final class Machine[F[_, _, +_]] private[Delimited] () extends Delimited[[S, R, A] =>> Freer[Cont0.Row[F], S, R, A]]:
-    type Delimiter[Y, I] = Cont0.Delimiter[Y, I]
-    type SubCont[A, S, T, Z] = Stack[F, A, S, T, Z]
-
-    def delimiter[Y, I](using at: At): Cont0.Delimiter[Y, I] = Cont0.delimiter(Cont0.prompt[Y])
-
-    def pure[R, A](a: A): Freer[Cont0.Row[F], R, R, A] = Return(a)
-
-    def bind[A, B, S, T, R](m: Freer[Cont0.Row[F], T, R, A])(f: A => Freer[Cont0.Row[F], S, T, B]): Freer[Cont0.Row[F], S, R, B] =
-      Bind(m, f)
-
-    /** under the barrier; any head form but a value is an unhandled operation of `F` */
-    def run[A](m: Freer[Cont0.Row[F], A, A, A]): A =
-      Frames.run[F, A, A, A](reset[A, A, A](Cont0.boundary[A, A])(m)) match
-        case Return(a) => a
-        case _ => throw IllegalStateException("Delimited.machine.run: an operation of F was left unhandled")
-
-    def dollar[Y, A, T, R](d: Cont0.Delimiter[Y, T])(ret: A => Freer[Cont0.Row[F], T, T, Y])
-                          (body: Freer[Cont0.Row[F], T, R, A]): Freer[Cont0.Row[F], T, R, Y] =
-      Inject[Cont0.Row[F], T, R, Y](Cont0.Dollar0[F, Y, A, T, R](d, ret, body))
-
-    /** a `ret` that captures nothing: one object per call site */
-    override def reset[T, R, A](d: Cont0.Delimiter[A, T])(body: Freer[Cont0.Row[F], T, R, A]): Freer[Cont0.Row[F], T, R, A] =
-      Inject[Cont0.Row[F], T, R, A](Cont0.Dollar0[F, A, A, T, R](d, (a: A) => Return[Cont0.Row[F], T, A](a), body))
-
-    def shift0[Y, I, T, R, X](d: Cont0.Delimiter[Y, I])(f: Stack[F, X, I, T, Y] => Freer[Cont0.Row[F], I, R, Y])
-                             (using at: At): Freer[Cont0.Row[F], T, R, X] =
-      Inject[Cont0.Row[F], T, R, X](Cont0.Shift0[F, Y, I, T, R, X](d, f, at.where))
-
-    def resume[A, S, T, R, Z](k: Stack[F, A, S, T, Z])(m: Freer[Cont0.Row[F], T, R, A]): Freer[Cont0.Row[F], S, R, Z] =
-      Bind[Cont0.Row[F], S, T, R, A, Z](m, k)
+  /** the frame machine (its class in `object Frames`, beside the loop it alone may start) */
+  type Machine[F[_, _, +_]] = Frames.Machine[F]
 
   /** one stateless machine for every `F` (phantom signature) */
-  private val theMachine: Machine[[S, R, X] =>> Nothing] = Machine()
-  def machine[F[_, _, +_]]: Machine[F] = theMachine.asInstanceOf[Machine[F]]
+  def machine[F[_, _, +_]]: Machine[F] = Frames.instance[F]
 
 // ======================================================================
 // THE MACHINE ITSELF (delimited-machine, 2026-10-02): the segmented stack,
@@ -143,6 +125,55 @@ enum Stack[F[_, _, +_], A, S, T, Z] extends (A => Freer[Cont0.Row[F], S, T, Z]):
 object Frames:
   import Stack.{Done, Run, Dollar, Cat}
 
+  /** the frame machine: `dollar`/`shift0` are its operations, `resume(k)(m)` is `Bind(m, k)` */
+  final class Machine[F[_, _, +_]] private[Frames] () extends Delimited[[S, R, A] =>> Freer[Cont0.Row[F], S, R, A]]:
+    type Delimiter[Y, I] = Cont0.Delimiter[Y, I]
+    type SubCont[A, S, T, Z] = Stack[F, A, S, T, Z]
+
+    def delimiter[Y, I](using at: At): Cont0.Delimiter[Y, I] = Cont0.delimiter(Cont0.prompt[Y])
+
+    def pure[A, R](a: A): Freer[Cont0.Row[F], R, R, A] = Return(a)
+
+    def bind[A, B, S, T, R](m: Freer[Cont0.Row[F], T, R, A])(f: A => Freer[Cont0.Row[F], S, T, B]): Freer[Cont0.Row[F], S, R, B] =
+      Bind(m, f)
+
+    /** the loop, the only start of it outside this object */
+    def runHead[T, R, A](m: Freer[Cont0.Row[F], T, R, A]): Freer[Cont0.Row[F], T, R, A] = Frames.run[F, T, R, A](m)
+
+    /** under the barrier; any head form but a value is an unhandled operation of `F` */
+    def run[A](m: Freer[Cont0.Row[F], A, A, A]): A =
+      runHead[A, A, A](reset[A, A, A](Cont0.boundary[A, A])(m)) match
+        case Return(a) => a
+        case _ => throw IllegalStateException("Delimited.machine.run: an operation of F was left unhandled")
+
+    def dollar[Y, A, T, R](d: Cont0.Delimiter[Y, T])(ret: A => Freer[Cont0.Row[F], T, T, Y])
+                          (body: Freer[Cont0.Row[F], T, R, A]): Freer[Cont0.Row[F], T, R, Y] =
+      Inject[Cont0.Row[F], T, R, Y](Cont0.Dollar0[F, Y, A, T, R](d, ret, body))
+
+    /** a `ret` that captures nothing: one object per call site */
+    override def reset[T, R, A](d: Cont0.Delimiter[A, T])(body: Freer[Cont0.Row[F], T, R, A]): Freer[Cont0.Row[F], T, R, A] =
+      Inject[Cont0.Row[F], T, R, A](Cont0.Dollar0[F, A, A, T, R](d, (a: A) => Return[Cont0.Row[F], T, A](a), body))
+
+    def shift0[Y, I, T, R, X](d: Cont0.Delimiter[Y, I])(f: Stack[F, X, I, T, Y] => Freer[Cont0.Row[F], I, R, Y])
+                             (using at: At): Freer[Cont0.Row[F], T, R, X] =
+      Inject[Cont0.Row[F], T, R, X](Cont0.Shift0[F, Y, I, T, R, X](d, f, at.where))
+
+    def resume[A, S, T, R, Z](k: Stack[F, A, S, T, Z])(m: Freer[Cont0.Row[F], T, R, A]): Freer[Cont0.Row[F], S, R, Z] =
+      Bind[Cont0.Row[F], S, T, R, A, Z](m, k)
+
+    /** a run as a VALUE (`Own`): a `Delay`'s thunk any interpreter forces to `runHead(program)`, read back by `out`,
+     * and a running machine steps into in its own loop (shift-stacked-key) — the door's lazy form */
+    def owned[T, R, A, B](program: Freer[Cont0.Row[F], T, R, A])(out: Freer[Cont0.Row[F], T, R, A] => B): () => B =
+      new Own[F, T, R, A, B](program, out)
+
+    /** the `ret` of the nearest delimiter `d` in a captured `k`, or null: how Cont's strict `k` finds its run's
+     * root (`Cont.rootOf`) without walking the machine's stack itself */
+    private[okay] def retOf(k: Stack[F, ?, ?, ?, ?], d: AnyRef): AnyRef | Null = Frames.retOf[F](k, d)
+
+  private val theMachine: Machine[[S, R, X] =>> Nothing] = Machine()
+  /** one stateless machine for every `F` (phantom signature) */
+  private[okay] def instance[F[_, _, +_]]: Machine[F] = theMachine.asInstanceOf[Machine[F]]
+
   /** `k(a)` as a `Delay`'s thunk: pushed by the machine, run by any other interpreter */
   final class Resume[F[_, _, +_], A, S, T, Z](val a: A, val k: Stack[F, A, S, T, Z]) extends (() => Freer[Cont0.Row[F], S, T, Z]):
     def apply(): Freer[Cont0.Row[F], S, T, Z] = Frames.enterAt[F, A, S, T, Z](a, k)
@@ -153,8 +184,8 @@ object Frames:
    * at the caller's type). A RUNNING machine steps into `program` in its own loop instead, so a run nested in a
    * run — a keyed `reset` in another's continuation — is one loop, not a stack frame and not a stack switch.
    */
-  final class Own[F[_, _, +_], S, T, Z, B](val program: Freer[Cont0.Row[F], S, T, Z],
-                                           out: Freer[Cont0.Row[F], S, T, Z] => B) extends (() => B):
+  final class Own[F[_, _, +_], S, T, Z, B] private[Frames] (val program: Freer[Cont0.Row[F], S, T, Z],
+                                                            out: Freer[Cont0.Row[F], S, T, Z] => B) extends (() => B):
     def apply(): B = out(Frames.run[F, S, T, Z](program))
 
   /** an `Own` thunk's program at the running machine's row, or null */
@@ -190,7 +221,7 @@ object Frames:
     case _ => Run(fs, st)
 
   /** a `Cat` head as a non-`Cat` head (the rare paths: cut, installed, rootOf) */
-  @tailrec private[okay] def uncat[F[_, _, +_], A, S, T, Z](st: Stack[F, A, S, T, Z]): Stack[F, A, S, T, Z] = st match
+  @tailrec private def uncat[F[_, _, +_], A, S, T, Z](st: Stack[F, A, S, T, Z]): Stack[F, A, S, T, Z] = st match
     case c: Cat[F, A, S, T, y, s2, Z] => c.k match
       case _: Done[F, A, T] @unchecked => uncat(c.below)
       case r: Run[F, A, `s2`, ?, T, ?, `y`] => Run(r.frames, Cat(r.below, c.below))
@@ -203,6 +234,13 @@ object Frames:
     case _: Done[F, A, T] @unchecked => below
     case _ => Cat(k, below)
 
+  /** the `ret` of the nearest delimiter `d` in `st`, or null */
+  @tailrec private def retOf[F[_, _, +_]](st: Stack[F, ?, ?, ?, ?], d: AnyRef): AnyRef | Null = st match
+    case Dollar(p, ret, below) => if p eq d then ret else retOf(below, d)
+    case Run(_, below) => retOf(below, d)
+    case c: Cat[F, ?, ?, ?, ?, ?, ?] @unchecked => retOf(uncat(c), d)
+    case _ => null
+
   /** the prompts installed, for `NoPrompt` */
   @tailrec private def installed[F[_, _, +_]](st: Stack[F, ?, ?, ?, ?], acc: List[String] = Nil): List[String] = st match
     case c: Cat[F, ?, ?, ?, ?, ?, ?] @unchecked => installed(uncat(c), acc)
@@ -214,11 +252,11 @@ object Frames:
    * THE LOOP: run `p` to a head form — a value, or `Bind(op, stack)` for an operation nobody here answers.
    * Registers: focus, segment, stack.
    */
-  def run[F[_, _, +_], S0, R, Z](p: Freer[Cont0.Row[F], S0, R, Z]): Freer[Cont0.Row[F], S0, R, Z] =
+  private def run[F[_, _, +_], S0, R, Z](p: Freer[Cont0.Row[F], S0, R, Z]): Freer[Cont0.Row[F], S0, R, Z] =
     machine[F, S0, R, Z, Z, S0](p, noStack[F, Z, S0])
 
   /** `k(a)` run now: the value straight into the registers */
-  private[okay] def enterAt[F[_, _, +_], A, S0, R, Z](a: A, k: Stack[F, A, S0, R, Z]): Freer[Cont0.Row[F], S0, R, Z] =
+  private def enterAt[F[_, _, +_], A, S0, R, Z](a: A, k: Stack[F, A, S0, R, Z]): Freer[Cont0.Row[F], S0, R, Z] =
     machine[F, S0, R, Z, A, R](Return[Cont0.Row[F], R, A](a), k)
 
   /** the machine: a focus over a stack */

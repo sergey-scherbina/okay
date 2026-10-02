@@ -204,7 +204,7 @@ object Freer {
 
   /** a bind whose LEFT side is deferred: the thunk is not forced at
    * construction, only when an interpreter's own loop (`fold`,
-   * `runFree`, `resume`, `Frames.run`) reaches this node — which is
+   * `runFree`, `resume`, `Delimited.runHead`) reaches this node — which is
    * what lets two mutually-recursive functions returning `A ! F` call
    * each other in tail position without nesting a JVM stack frame per
    * call (`!.tailcall` is the sugar; `Cont.defer` is the same door on
