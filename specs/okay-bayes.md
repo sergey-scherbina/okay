@@ -203,7 +203,16 @@ Stage 5 — the rest of the book, one lane per chapter:
         slightly lower ratio, and ties in ratio order by evidence
   - [x] the law of large numbers as the book shows it: the spread of a
         mean of n draws falls as 1/√n
-- 5b. ch.5, loss functions and the Bayes action.
+- 5b. ch.5, loss functions and the BAYES ACTION: `Decision.action(draws,
+  lo, hi)(loss)` — the decision minimising the posterior expected loss,
+  over the draws, by a grid then golden-section refinement; `Loss.squared`,
+  `absolute`, `pinball(τ)`.
+  - [ ] the known answers: squared loss → the posterior mean, absolute →
+        the median, pinball(τ) → the τ-quantile, of the same draws
+  - [ ] The Price is Right on the book's numbers: the posterior of the
+        true price against its closed form (a linear-Gaussian model)
+  - [ ] the book's showdown loss: the best bid falls as the risk of
+        overbidding grows, and stays under the posterior mean
 - 5c. ch.7, A/B testing by expected revenue (Dirichlet).
 
 ## 4. Decisions
