@@ -1981,6 +1981,23 @@ lazy val okayRefine = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     ),
   )
 
+/** Bayesian inference as effects (specs/okay-bayes.md): distributions
+ * with densities, a model's named draws and observations as the `Model`
+ * effect, Metropolis–Hastings and likelihood weighting as handlers,
+ * posterior summaries. Pure Scala, cross-built; PyMC is a TEST oracle only
+ * (okay-py, Live), never a dependency */
+lazy val okayBayes = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-bayes"))
+  .dependsOn(okay, okayTest % "test->compile")
+  .settings(
+    name := "okay-bayes",
+    libraryDependencies ++= Seq(
+      "org.scalameta" %%% "munit" % "1.1.1" % Test,
+    ),
+  )
+  .jvmConfigure(_.dependsOn(okayPy % "test->compile"))
+
 /** the document seam: get/put/delete by key with CAS as data,
  * declared-index queries, per-item atomicity — the one new seam of
  * specs/data.md; the own engine is a fold of a compacted topic */
@@ -3635,6 +3652,7 @@ lazy val root = (project in file("."))
     okayParse.jvm, okayParse.js, okayParse.native,
     okayCodec.jvm, okayCodec.js, okayCodec.native, okayLlm.jvm, okayLlm.js,
     okayRefine.jvm, okayRefine.js, okayRefine.native,
+    okayBayes.jvm, okayBayes.js, okayBayes.native,
     okayPersist.jvm, okayPersist.js, okayPersist.native,
     okaySql.jvm, okaySql.js, okaySql.native, okayPg.jvm, okayPg.js,
     okayCrypto.jvm, okayCrypto.js, okayMail,
