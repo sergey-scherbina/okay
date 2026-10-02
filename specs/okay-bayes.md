@@ -287,6 +287,43 @@ Stage 6 — okay-bayes over okay's streams and Bulk (operator, 2026-10-02:
         against the large-n posterior (wide priors: μ ~ N(ȳ, s²/n), σ ~
         N(s, s²/2n)); and `Bayes.observeBulk` by `adaptive` on a small bulk
 
+Stage 7 — samplers as COMBINATORS (operator, 2026-10-02, after the
+typeclass survey: "kernels and resample-move first").
+- 7a. KERNELS. A Markov kernel is a step on a model's trace that leaves
+  the posterior invariant; kernels that do are closed under SEQUENCE and
+  MIXTURE (Tierney 1994), so a sampler is built, not chosen. `Kernel[A]`
+  over a model `A ! Model`, steps on `Trace[A]` (the value, the sites,
+  the log joint):
+  - `Kernel.site(name)` — single-site random-walk MH on one site
+    (Wingate's, the correction for a structure change kept);
+    `Kernel.sites(names*)` and `Kernel.everySite` — a sweep;
+  - `Kernel.nuts(names*)` — a NUTS transition on those continuous sites
+    with every other site HELD (Metropolis-within-Gibbs with a NUTS
+    block), unconstrained through each site's `Support`, gradient by
+    finite differences;
+  - `k1 >>> k2` — one then the other; `Kernel.mixture(w1 -> k1, ...)` —
+    one of them, chosen by weight; `k.times(n)`.
+  Step sizes and proposal scales are tuned during burn-in only (a kernel
+  tuned while sampling is not invariant), as `metropolis` already does.
+  `Bayes.sample(p, kernel, samples, burn, chains, seed): Posterior[A]`.
+  - [ ] invariance, the defining property, tested directly: start from
+        EXACT posterior draws (a conjugate), apply each kernel and each
+        combination once, the moments unchanged
+  - [ ] a mixed model by a composed kernel: the book's ch.1 texting model
+        (τ discrete, λ1 and λ2 continuous) by `nuts("lambda_1",
+        "lambda_2") >>> site("tau")` against the exact posterior
+  - [ ] a mixture kernel on Challenger (single-site and joint NUTS by
+        weight) against the grid
+- 7b. RESAMPLE-MOVE SMC (Gilks & Berzuini 2001; Chopin 2002): after each
+  resampling, every particle is moved by a kernel that targets the
+  posterior GIVEN THE OBSERVATIONS SO FAR — the model re-run with its
+  sites held, stopped at the same factor — so a static parameter's
+  particles are no longer only prior draws. `smc(p, particles, seed,
+  move = kernel)`.
+  - [ ] Beta–Bernoulli observed one at a time: the number of distinct
+        particle values, without and with the move, measured; the mean,
+        sd and log evidence against the closed form with the move
+
 ## 4. Decisions
 
 1. **A new module, not the core's `Prob`.** `Prob` is discrete and exact
