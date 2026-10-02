@@ -49,7 +49,8 @@ class TestHandlerForms extends munit.FunSuite:
       case (m, Find(id)) => (m, m.get(id))
       case (m, Save(id, name)) => (m.updated(id, name), m.get(id))
     }
-    assertEquals(rename(7, "grace").handle(store).run, (Map(7L -> "grace"), Some("ada")))
+    val renamed = rename(7, "grace").handle(store).run   // (Map(7 -> grace), Some(ada))
+    assertEquals(renamed, (Map(7L -> "grace"), Some("ada")))
   }
 
   test("cases over a generic constructor: Env's Get[R] read at Get[Int]") {
@@ -58,9 +59,15 @@ class TestHandlerForms extends munit.FunSuite:
     assert(compileErrors("""Handler.answer[Env % Int] { case Env.Get() => "no" }""").contains("Get answers Int, but this case gives String"))
   }
 
-  test("an answer its own pattern binds (Reader's Asks[R, A]) is refused, pointing at .poly") {
-    val errs = compileErrors("""Handler.answer[Reader % Int] { case Reader.Ask() => 1; case Reader.Asks(g) => g(1) }""")
-    assert(errs.contains("Asks answers a type its own pattern binds"), errs)
+  test("an answer the caller chooses (Reader's Asks[R, A]): only the operation's own data can give it") {
+    val asReader = Handler.answer[Reader % Int] {
+      case Reader.Ask() => 40
+      case Reader.Asks(g) => g(40)
+    }
+    assertEquals(effect[Reader % Int, Int](Reader.Asks[Int, Int](_ + 2)).handle(asReader).run, 42)
+    assertEquals(effect[Reader % Int, String](Reader.Asks[Int, String](_.toString)).handle(asReader).run, "40")
+    val errs = compileErrors("""Handler.answer[Reader % Int] { case Reader.Ask() => 1; case Reader.Asks(g) => "oops" }""")
+    assert(errs.contains("Asks answers what its caller chose"), errs)
   }
 
   test("state: State re-expressed, the same as State(s)") {
@@ -72,6 +79,18 @@ class TestHandlerForms extends munit.FunSuite:
       case State.Update(g) => { val (b, n) = g(s); (n, b) }
     }
     assertEquals(p.handle(asState).run, p.handle(State(5)).run)
+  }
+
+  test("where the case form stops: State's Set(s: S) answers the type its field has, pointing at .poly") {
+    val errs = compileErrors("""
+      Handler.state[State % Int, Int](5) {
+        case (s, State.Get()) => (s, s)
+        case (_, State.Set(n)) => (n, n)
+        case (s, State.Modify(g)) => (s, s)
+        case (s, State.Update(g)) => (s, s)
+      }""")
+    assert(errs.contains("Set answers the type its field `s` has"), errs)
+    assert(errs.contains(".poly"), errs)
   }
 
   test("into: each operation a program in State, which the rest of the row holds") {

@@ -9,9 +9,9 @@ import java.util.concurrent.TimeUnit
  * `maybe`: N operations that resume (Maybe.option vs Handler.control).
  */
 /** an effect whose every operation has a fixed answer, for the `{ case … }` form against `.poly` */
-enum Tick[+A] derives Effect:
-  case Next() extends Tick[Int]
-  case Peek() extends Tick[Int]
+enum FormTick[+A] derives Effect:
+  case Next() extends FormTick[Int]
+  case Peek() extends FormTick[Int]
 
 @JmhState(Scope.Thread)
 @BenchmarkMode(Array(Mode.AverageTime))
@@ -51,24 +51,24 @@ class HandlerFormsBenchmark {
       case Some(x) => resume(x)
       case None => pure[G, Option[A]](None)
 
-  def ticks(n: Int): Int ! Tick =
-    if n == 0 then pure(0) else effect[Tick, Int](Tick.Next()).flatMap(x => !.tailcall(ticks(n - 1)).map(_ + x))
+  def ticks(n: Int): Int ! FormTick =
+    if n == 0 then pure(0) else effect[FormTick, Int](FormTick.Next()).flatMap(x => !.tailcall(ticks(n - 1)).map(_ + x))
 
-  val tickCases = Handler.answer[Tick] {
-    case Tick.Next() => 1
-    case Tick.Peek() => 0
+  val tickCases = Handler.answer[FormTick] {
+    case FormTick.Next() => 1
+    case FormTick.Peek() => 0
   }
-  val tickPoly = Handler.answer[Tick].poly { [X] => (e: Tick[X]) => e match
-    case Tick.Next() => 1
-    case Tick.Peek() => 0
+  val tickPoly = Handler.answer[FormTick].poly { [X] => (e: FormTick[X]) => e match
+    case FormTick.Next() => 1
+    case FormTick.Peek() => 0
   }
-  val countCases = Handler.state[Tick, Int](0) {
-    case (n, Tick.Next()) => (n + 1, n)
-    case (n, Tick.Peek()) => (n, n)
+  val countCases = Handler.state[FormTick, Int](0) {
+    case (n, FormTick.Next()) => (n + 1, n)
+    case (n, FormTick.Peek()) => (n, n)
   }
-  val countPoly = Handler.state[Tick, Int](0).poly { [X] => (n: Int, e: Tick[X]) => e match
-    case Tick.Next() => (n + 1, n)
-    case Tick.Peek() => (n, n)
+  val countPoly = Handler.state[FormTick, Int](0).poly { [X] => (n: Int, e: FormTick[X]) => e match
+    case FormTick.Next() => (n + 1, n)
+    case FormTick.Peek() => (n, n)
   }
 
   @Benchmark def tick_cases(): Int = ticks(N).handle(tickCases).run

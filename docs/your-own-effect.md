@@ -200,6 +200,69 @@ final class InMemory[S](init: S)(using St: Store[S]) extends Answers[Users]:
       was
 ```
 
+### A handler as a value: four forms
+
+An `Answers[Users]` is run with `runWith`, so it must answer the whole row. The constructors on `Handler`
+make a VALUE that takes ONE effect off any program's row, whatever else is in the row, the same way the
+built-in effects do (`p.handle(State(5))`). They are ordered by power. Each form sits on the machinery that
+is already fastest for its case. The examples use `Accounts`, an effect shaped like `Users`
+(`Find`, `Save`), from the test that pins them.
+
+**1. Answer each operation**, and the program goes on:
+
+```scala
+val live: Handler[Accounts, [A] =>> A] = Handler.answer[Accounts] {
+  case Find(id) => db.get(id)
+  case Save(id, name) => db.put(id, name)
+}
+```
+
+**2. Thread a state** through the operations: each case answers `(state', answer)`, and the result
+carries the last state:
+
+```scala
+val store = Handler.state[Accounts, Map[Long, String]](Map(7L -> "ada")) {
+  case (m, Find(id)) => (m, m.get(id))
+  case (m, Save(id, name)) => (m.updated(id, name), m.get(id))
+}
+val renamed = rename(7, "grace").handle(store).run   // (Map(7 -> grace), Some(ada))
+```
+
+**3. Interpret into other effects**: each operation becomes a program in `G`, which the rest of the row
+must hold:
+
+```scala
+val stored = Handler.into[Accounts, State % Map[Long, String]] {
+  case Find(id) => State.get[Map[Long, String]].map(_.get(id))
+  case Save(id, name) => State.update[Map[Long, String], Option[String]](m => (m.get(id), m.updated(id, name)))
+}
+```
+
+**4. Hold the continuation**: call `resume` once, twice or not at all. This is Maybe written by hand:
+
+```scala
+val asMaybe = Handler.control[Maybe, Option]([A] => (a: A) => Some(a)):
+  [X, A, G[+_]] => (e: Maybe[X], resume: X => Option[A] ! G) => e.value match
+    case Some(x) => resume(x)
+    case None => pure[G, Option[A]](None)
+```
+
+**The cases are checked at compile time.** A case answering the wrong type is an error that names the
+operation ("Find answers Option[String], but this case gives Int"). So is a missing operation ("not every
+operation of Accounts is handled: Save") and a `case _` that answers anything but a `throw`.
+
+An operation whose answer its CALLER chooses (`Reader`'s `Asks[R, A](f: R => A)`, `State`'s `Update`) is
+seen at an abstract `Answer`. Only the operation's own data can produce one: `case Asks(g) => g(40)` passes,
+and `case Asks(g) => "oops"` is refused. One shape is beyond the cases: an operation whose answer is the
+type one of its own fields has, like `State`'s `Set(s: S)`. Each case must give its own type to the
+answer, and only a polymorphic function can do that. The macro names the operation and points to `.poly`.
+Forms 1 to 3 take a polymorphic function in place of the cases, `.poly { [X] => (e: Accounts[X]) => … }`,
+which the compiler checks with no macro.
+
+Measured against the built-ins they re-express (specs/handler-forms.md): `answer` is at parity with
+`Reader(r)`, `state` is 1.04x of `State(s)`, `control` is 1.26x of `Maybe.option`. The cases cost what the
+polymorphic form costs.
+
 ## 6. Recording is a decorator
 
 Operations are already data, so "what did this program ask for, and in

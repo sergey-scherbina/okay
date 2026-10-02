@@ -1,5 +1,5 @@
-2026-10-02	671c9cf17	quiet	HandlerFormsBenchmark.reader N=1000	answer 43.67us 461863B	builtin 42.98us 461868B	1.02	Handler.answer over relay: parity
-2026-10-02	671c9cf17	quiet	HandlerFormsBenchmark.state N=1000 get+set	state 18.86us 209992B	builtin 11.78us 182008B	1.60	Handler.state: a tuple per operation and the clause a function value
-2026-10-02	671c9cf17	quiet	HandlerFormsBenchmark.maybe N=1000 Some	control 67.39us 749915B	builtin 31.03us 389875B	2.17	Handler.control: a capture per operation, even a tail resume
-2026-10-02	9fa713b1c	quiet	HandlerFormsBenchmark.state N=1000 get+set	state 12.30us 182040B	builtin 11.78us 182008B	1.04	Handler.state inline: the clause expands into the call site's loop and its pair goes
-2026-10-02	9fa713b1c	quiet	HandlerFormsBenchmark.maybe N=1000 Some	control 38.96us 461909B	builtin 31.03us 389875B	1.26	Handler.control: a tail resume answered with no capture; a Resume and a Delay node an operation remain
+2026-10-02	e5ececefa	quiet	HandlerFormsBenchmark.reader N=1000	answer 43.67us 461863B	builtin 42.98us 461868B	1.02	Handler.answer over relay: parity
+2026-10-02	e5ececefa	quiet	HandlerFormsBenchmark.state N=1000 get+set	state 18.86us 209992B	builtin 11.78us 182008B	1.60	Handler.state: a tuple per operation and the clause a function value
+2026-10-02	e5ececefa	quiet	HandlerFormsBenchmark.maybe N=1000 Some	control 67.39us 749915B	builtin 31.03us 389875B	2.17	Handler.control: a capture per operation, even a tail resume
+2026-10-02	dd78dfe44	quiet	HandlerFormsBenchmark.state N=1000 get+set	state 12.30us 182040B	builtin 11.78us 182008B	1.04	Handler.state inline: the clause expands into the call site's loop and its pair goes
+2026-10-02	dd78dfe44	quiet	HandlerFormsBenchmark.maybe N=1000 Some	control 38.96us 461909B	builtin 31.03us 389875B	1.26	Handler.control: a tail resume answered with no capture; a Resume and a Delay node an operation remain
