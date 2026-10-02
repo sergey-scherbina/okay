@@ -10,5 +10,6 @@
       adaptive Metropolis) okay-bayes-ch2; 2b SMC okay-bayes-smc; 2c ch.3
       mixture okay-bayes-ch3; 2d ch.6 Thompson okay-bayes-ch6. Next:
       stage 3: 3a NUTS + finite differences okay-bayes-nuts; 3b
-      reverse-mode AD (`Real`, `Grad`, `Smooth`) okay-bayes-ad. Next:
-      stage 4, `Inference` as a facade (ours default, PyMC/Stan optional).
+      reverse-mode AD (`Real`, `Grad`, `Smooth`) okay-bayes-ad. Stage 4,
+      the `Sampler` facade with PyMC behind an import, okay-bayes-sampler.
+      The spec's stages are done; what remains is specs/okay-bayes.md §6.
