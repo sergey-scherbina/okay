@@ -9,4 +9,5 @@
       Stage 1 landed 53219afcb; stage 2a (ch.2: A/B, Challenger,
       adaptive Metropolis) okay-bayes-ch2; 2b SMC okay-bayes-smc; 2c ch.3
       mixture okay-bayes-ch3; 2d ch.6 Thompson okay-bayes-ch6. Next:
-      stage 3 (HMC/NUTS with automatic differentiation).
+      stage 3: 3a NUTS + finite differences okay-bayes-nuts; next 3b
+      reverse-mode AD (`Real`) feeding the same `Nuts.sample`.

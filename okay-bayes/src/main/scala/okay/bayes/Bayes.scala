@@ -230,6 +230,52 @@ object Bayes:
     val values = states.map { case Left(a) => a; case Right(_) => throw IllegalStateException("smc: a particle did not finish") }
     Particles(values, sites, lw.map(l => math.exp(l - total)), logZ, resamplings)
 
+  /**
+   * THE NO-U-TURN SAMPLER over an ordinary model (specs/okay-bayes.md
+   * stage 3a): every site moves in unconstrained space through its
+   * distribution's `Support`, the log Jacobian added, and the gradient is
+   * by central finite differences — 2d + 1 runs of the program per
+   * gradient, so this is for models of tens of parameters, not thousands.
+   * A discrete site, a support that changes with another site's value, and
+   * a structure that changes with a draw are refused by name: they need
+   * `metropolis`. The acceptance map carries "(nuts accept)",
+   * "(divergent)" (the share of draws whose trajectory diverged) and
+   * "(tree depth)".
+   */
+  def nuts[A](p: A ! Model, samples: Int, burn: Int = 1000, chains: Int = 1, seed: Long = 42L, delta: Double = 0.8): Posterior[A] =
+    val first = pass(p, Map.empty, new Random(seed))
+    val names = first.trace.keys.toVector.sorted
+    val supports = names.map(n => n -> first.trace(n).dist.support).toMap
+    for n <- names do
+      require(supports(n).continuous, s"nuts: site '$n' is discrete (${first.trace(n).dist}) — sample it with metropolis")
+    val quiet = new Random(0)
+    def at(u: Array[Double]): Option[(Pass[A], Double)] =
+      var logJ = 0.0
+      val fixed = names.indices.map { i =>
+        val (x, j) = supports(names(i)).constrain(u(i))
+        logJ += j
+        names(i) -> (x: Any)
+      }.toMap
+      val r = pass(p, fixed, quiet)
+      if r.trace.keySet != names.toSet then
+        throw IllegalArgumentException(s"nuts: the model's sites changed with a draw (${r.trace.keySet} against $names) — use metropolis")
+      for n <- names do
+        if r.trace(n).dist.support != supports(n) then
+          throw IllegalArgumentException(s"nuts: site '$n' changed its support with another site's value — use metropolis")
+      // a site drawn fresh was handed a value its distribution rules out: rounding at the edge of an interval
+      if r.fresh.nonEmpty then None else Some((r, logJ))
+    val target = Target.finite(names.length) { u =>
+      at(u) match
+        case Some((r, logJ)) if r.logJoint > Distribution.NegInf => r.logJoint + logJ
+        case _ => Distribution.NegInf
+    }
+    Posterior(Vector.tabulate(chains) { c =>
+      val ch = Nuts.sample(target, samples, burn, seed + c, delta)
+      val runs = ch.draws.map(u => at(u.toArray).get._1)
+      Chain(runs.map(_.value), runs.map(_.trace.view.mapValues(_.numeric).toMap),
+        Map("(nuts accept)" -> ch.acceptance, "(divergent)" -> ch.divergences.toDouble / math.max(1, samples), "(tree depth)" -> ch.meanDepth))
+    })
+
   /** the lower Cholesky factor of a symmetric positive-definite matrix */
   private def cholesky(m: Array[Array[Double]]): Array[Array[Double]] =
     val n = m.length

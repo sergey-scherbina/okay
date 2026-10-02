@@ -83,6 +83,24 @@ to the first cluster is an expectation over the draws: 0.149 at x = 175.
 Convergence reads the same way as in the book: split R-hat over four chains
 is 1.70 over their first 100 draws and 1.002 after burn-in.
 
+**Hamiltonian Monte Carlo: `nuts`.** The No-U-Turn sampler (Hoffman &
+Gelman 2014) follows the gradient of the log density along trajectories
+that stop when they turn back, with its step size and a diagonal mass
+matrix tuned in warmup — PyMC's and Stan's default. Each distribution
+declares its `Support`, and sites move in unconstrained space (log for a
+positive parameter, a scaled logit for an interval), so no step leaves the
+support. On an ordinary model the gradient is by finite differences:
+
+```scala
+val post = nuts(Ch2.challenger, samples = 4000, burn = 2000, chains = 2)
+```
+
+Challenger's E[β] 0.2697 against the grid's 0.2693, zero divergences, on
+the raw temperatures where PyMC's NUTS diverges on every draw. A discrete
+site is refused by name; sample it with `metropolis`. Underneath is
+`Nuts.sample(target, ...)` over any `Target` — a dimension, a log density
+and its gradient on ℝᵈ — so a gradient from elsewhere plugs in unchanged.
+
 **Evidence: `smc`.** Sequential Monte Carlo runs many copies of the program
 side by side, each SUSPENDED at its next `observe`; at every observation the
 copies are reweighed and, when a few carry most of the weight, resampled —
@@ -166,6 +184,8 @@ by `uv` through okay-py, samples the same model as a Live test.
 | `prior(p, rng)`, `weighted(p, n, rng)`, `metropolis(p, samples, burn, thin, chains, seed)` | handlers: a forward run, likelihood weighting, lightweight MH |
 | `adaptive(p, samples, burn, thin, chains, seed)` | MH with joint moves under a learnt covariance (Haario 2001) |
 | `Bandit(arms)`, `choose(rng)`, `observe(arm, won)`, `posterior(arm)`, `Bandit.play(b, pulls, rng)(pull)` | Thompson sampling over Bernoulli arms |
+| `nuts(p, samples, burn, chains, seed, delta)` | the No-U-Turn sampler, unconstrained through each site's `Support`, finite-difference gradient |
+| `Target`, `Target.finite(d)(f)`, `Nuts.sample(target, samples, burn, seed, delta, maxDepth)` | NUTS over any log density on ℝᵈ |
 | `smc(p, particles, seed)`, `observeEach(xs)(d, value)` | sequential Monte Carlo: `Particles` with `expect`, `mean(site)`, `ess`, `logEvidence` |
 | `Posterior`: `draws`, `site(name)`, `rhat(name)`, `acceptance` | the posterior, typed |
 | `Summary.mean / sd / quantile / hdi / ess / rhat` | reading it |
@@ -184,6 +204,10 @@ by `uv` through okay-py, samples the same model as a Live test.
   (Gelman, Roberts, Gilks 1996).
 - Dalal, Fowlkes, Hoadley, *Risk Analysis of the Space Shuttle:
   Pre-Challenger Prediction of Failure* (JASA 1989) — the O-ring data.
+- Hoffman, Gelman, *The No-U-Turn Sampler: Adaptively Setting Path
+  Lengths in Hamiltonian Monte Carlo* (JMLR 2014); Neal, *MCMC Using
+  Hamiltonian Dynamics* (Handbook of MCMC, 2011); the Stan Reference
+  Manual, "MCMC Sampling" — warmup windows and the regularised metric.
 - Del Moral, Doucet, Jasra, *Sequential Monte Carlo Samplers* (JRSS B
   2006); Wood, van de Meent, Mansinghka, *A New Approach to Probabilistic
   Programming Inference* (AISTATS 2014) — SMC as the inference of a

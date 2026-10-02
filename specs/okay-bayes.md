@@ -1,6 +1,6 @@
 # okay-bayes — Bayesian inference as effects, without Python
 
-Status: stage 1 landed (2026-10-02); stage 2a (ch.2, adaptive Metropolis) 2b (SMC), 2c (ch.3) and 2d (ch.6) 2026-10-02; specification 2026-10-02 (operator ask: "Bayesian Methods for
+Status: stage 1 landed (2026-10-02); stage 2a (ch.2, adaptive Metropolis) 2b (SMC), 2c (ch.3), 2d (ch.6) and 3a (NUTS) 2026-10-02; specification 2026-10-02 (operator ask: "Bayesian Methods for
 Hackers ... make okay-bayes so we can do without Python; is it very
 hard?"). Builds on the core's `Prob` effect (specs/prob-effect-hansei.md:
 discrete `dist`, boolean `observe`, exact enumeration, rejection).
@@ -147,11 +147,11 @@ sampler, the gradient from a source):
   central finite differences (2d re-runs of the program per gradient);
   a discrete site, or a support that moves with another site, is refused
   by name.
-  - [ ] conjugates (Normal–Normal on ℝ, Gamma–Poisson through the log,
+  - [x] conjugates (Normal–Normal on ℝ, Gamma–Poisson through the log,
         Beta–Bernoulli through the logit) against their closed forms
-  - [ ] the ch.3 mixture against the importance-sampling oracle
-  - [ ] Challenger against the grid, divergences counted and reported
-  - [ ] a discrete site is refused by name
+  - [x] the ch.3 mixture against the importance-sampling oracle
+  - [x] Challenger against the grid, divergences counted and reported
+  - [x] a discrete site is refused by name
 - 3b. Automatic differentiation: models over a differentiable `Real`
   (reverse mode), their `Target` exact — the same `Nuts.sample`. Stage 4 — `Inference` as a facade (specs/own-or-standard.md):
 ours by default, PyMC/Stan behind an import over an optional dependency.
@@ -280,6 +280,24 @@ contradiction: the bound is asymptotic, a statement about the coefficient
 of log T as T grows, and the 0.75 arm (KL 0.034 from the best) is far from
 that regime at 10 000 pulls. What the test holds is the shape: ten times
 the pulls cost 1.46 times the regret, not ten.
+
+Stage 3a (2026-10-02), TestNuts (JVM, Scala.js, Native) and
+TestHackersNuts (JVM), finite-difference gradients throughout:
+
+| | exact | NUTS (ESS of draws) |
+|---|---|---|
+| Normal–Normal | 1.4286 ± 0.4364 | 1.4363 ± 0.4417 (1178 / 3000) |
+| Gamma–Poisson, through the log | 3.3750 ± 0.6495 | 3.3751 ± 0.6427 (1458 / 3000) |
+| Beta–Bernoulli, through the logit | 0.6765 ± 0.0791 | 0.6740 ± 0.0812 (1171 / 3000) |
+| Challenger E[β], sd(β), p31 (grid) | 0.2693, 0.1163, 0.9874 | 0.2697, 0.1168, 0.9870 (512 / 8000) |
+| ch.3 centre 1 (importance sampling) | 199.535 | 199.593 (706 / 4000) |
+
+Zero divergences on every model, Challenger included — on raw
+temperature, the parametrisation PyMC 6.3.2's NUTS diverged on at every
+draw (stage 2a). Per draw NUTS buys far more than single-site MH (ESS(β)
+512 of 8000 against 151 of 120 000) and less than `adaptive` per second on
+a two-parameter model; its case is dimension, which finite differences
+tax (2d + 1 program runs per gradient) and 3b's AD removes.
 
 ## 6. Open questions
 

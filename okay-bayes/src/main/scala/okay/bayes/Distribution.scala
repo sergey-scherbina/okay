@@ -20,6 +20,40 @@ trait Distribution[A] extends Serializable:
   def coerce(v: Any): Option[A]
   /** the value as a number, for summaries */
   def numeric(a: A): Double
+  /** where the values lie — what gradient samplers move through unconstrained;
+   * a distribution that does not say is treated as discrete, and refused by them */
+  def support: Support = Support.Discrete
+
+/**
+ * WHERE A DISTRIBUTION'S VALUES LIE, for a sampler that moves in
+ * unconstrained space (HMC/NUTS): ℝ as it is, positive through the log, an
+ * interval through a scaled logit — `constrain` maps u ∈ ℝ in, with the
+ * log Jacobian of that map.
+ */
+enum Support:
+  case Real, Positive
+  case Interval(lo: Double, hi: Double)
+  case Discrete
+
+  def continuous: Boolean = this != Discrete
+
+  /** (x, log |dx/du|) for an unconstrained u */
+  def constrain(u: Double): (Double, Double) = this match
+    case Real => (u, 0.0)
+    case Positive => (math.exp(u), u)
+    case Interval(lo, hi) =>
+      // σ(u) and log σ(u)(1 − σ(u)) computed stably on both sides of 0
+      val s = 1 / (1 + math.exp(-u))
+      val logJ = math.log(hi - lo) - math.abs(u) - 2 * math.log1p(math.exp(-math.abs(u)))
+      (lo + (hi - lo) * s, logJ)
+    case Discrete => throw IllegalStateException("a discrete support has no unconstrained form")
+
+  /** the u that `constrain` maps to x */
+  def unconstrain(x: Double): Double = this match
+    case Real => x
+    case Positive => math.log(x)
+    case Interval(lo, hi) => val s = (x - lo) / (hi - lo); math.log(s / (1 - s))
+    case Discrete => throw IllegalStateException("a discrete support has no unconstrained form")
 
 object Distribution:
   val NegInf: Double = Double.NegativeInfinity
@@ -91,6 +125,7 @@ object Distribution:
     def propose(a: Double, scale: Double, rng: Random): Double = walk(a, scale * sigma, rng)
     def coerce(v: Any): Option[Double] = double(v)
     def numeric(a: Double): Double = a
+    override def support: Support = Support.Real
 
   final case class Exponential(rate: Double) extends Distribution[Double]:
     require(rate > 0, s"Exponential: rate must be positive, got $rate")
@@ -99,6 +134,7 @@ object Distribution:
     def propose(a: Double, scale: Double, rng: Random): Double = walk(a, scale / rate, rng)
     def coerce(v: Any): Option[Double] = double(v)
     def numeric(a: Double): Double = a
+    override def support: Support = Support.Positive
 
   /** shape α, RATE β (mean α/β), as PyMC's Gamma(alpha, beta) */
   final case class Gamma(shape: Double, rate: Double) extends Distribution[Double]:
@@ -109,6 +145,7 @@ object Distribution:
     def propose(a: Double, scale: Double, rng: Random): Double = walk(a, scale * math.sqrt(shape) / rate, rng)
     def coerce(v: Any): Option[Double] = double(v)
     def numeric(a: Double): Double = a
+    override def support: Support = Support.Positive
 
   final case class Beta(a: Double, b: Double) extends Distribution[Double]:
     require(a > 0 && b > 0, s"Beta: a and b must be positive, got $a, $b")
@@ -118,6 +155,7 @@ object Distribution:
     def propose(v: Double, scale: Double, rng: Random): Double = walk(v, scale * 0.1, rng)
     def coerce(v: Any): Option[Double] = double(v)
     def numeric(v: Double): Double = v
+    override def support: Support = Support.Interval(0, 1)
 
   final case class Uniform(lo: Double, hi: Double) extends Distribution[Double]:
     require(hi > lo, s"Uniform: hi must exceed lo, got [$lo, $hi]")
@@ -126,6 +164,7 @@ object Distribution:
     def propose(a: Double, scale: Double, rng: Random): Double = walk(a, scale * (hi - lo) * 0.1, rng)
     def coerce(v: Any): Option[Double] = double(v)
     def numeric(a: Double): Double = a
+    override def support: Support = Support.Interval(lo, hi)
 
   final case class Poisson(rate: Double) extends Distribution[Int]:
     require(rate > 0, s"Poisson: rate must be positive, got $rate")
@@ -216,3 +255,4 @@ object Distribution:
     def propose(a: A, scale: Double, rng: Random): A = components.head._2.propose(a, scale, rng)
     def coerce(v: Any): Option[A] = components.head._2.coerce(v)
     def numeric(a: A): Double = components.head._2.numeric(a)
+    override def support: Support = components.head._2.support
