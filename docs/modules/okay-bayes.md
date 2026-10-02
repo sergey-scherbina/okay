@@ -199,10 +199,10 @@ book's Price-is-Right showdown, where overbidding loses everything, bids
 far under the estimate:
 
 ```scala
-val bids = Seq(30000.0, 60000.0, 90000.0, 120000.0, 150000.0).map(r => r -> Decision.action(draws, 5000, 40000)(showdown(r)))
+val bids = Seq(30000.0, 60000.0, 90000.0, 120000.0, 150000.0).map(r => r -> Decision.action(draws, 5000, 40000, points = 200)(showdown(r)))
 ```
 
-At a risk of 30 000 the best bid is 14 549, at 150 000 it is 10 703, while
+At a risk of 30 000 the best bid is 14 529, at 150 000 it is 10 668, while
 the posterior mean of the price is 19 876.
 
 **A/B testing by revenue: `AbTest`.** Chapter 7 judges two page variants
