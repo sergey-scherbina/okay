@@ -64,3 +64,37 @@ class TestHandleFramesDifferential extends munit.FunSuite:
       yield s))
     assertEquals(!.run(p), (12, 212))
   }
+
+  // ---- handle-frames-forms: relay and translate, fold against upgraded
+
+  enum Tick[+A] derives Effect:
+    case Now(n: Int) extends Tick[Int]
+
+  type T1 = Tick + Pure
+
+  def ticks(n: Int): Int ! T1 =
+    if n == 0 then pure(0) else effect[Tick, Int](Tick.Now(n)).at[T1].flatMap(x => !.tailcall(ticks(n - 1)).map(_ * 31 + x))
+
+  /** a handler run with nothing to do, inside the Tick row: the form's loop meets it and upgrades */
+  def nestedT: Unit ! T1 = State.handle[String]("x")[Unit, Pure](pure(())).map(_ => ()).at[T1]
+
+  /** the answer, and how many operations the clause was asked: a frame that re-ran the program would ask twice */
+  def relayIt(p: Int ! T1): (Int, Int) =
+    var asked = 0
+    val r = !.run(Effects.relay[Int, Int, Tick, Pure](p)(pure(_))(
+      [X, Y] => (e: Tick[X]) => e match { case Tick.Now(n) => asked += 1; Cont.Pure[X, Y](n * 7) }))
+    (r, asked)
+
+  def translateIt(p: Int ! T1): (Int, Int) =
+    var asked = 0
+    val r = !.run(Effects.translate[Int, Tick, Pure](p)(
+      [X] => (e: Tick[X]) => e match { case Tick.Now(n) => asked += 1; pure[Pure, X](n * 7) }))
+    (r, asked)
+
+  test("relay: the fold and the upgraded frame answer alike, each operation asked once") {
+    assertEquals(relayIt(ticks(300).flatMap(x => nestedT.flatMap(_ => ticks(300).map(_ + x)))), relayIt(ticks(300).flatMap(x => ticks(300).map(_ + x))))
+  }
+
+  test("translate: the fold and the upgraded frame answer alike, each operation asked once") {
+    assertEquals(translateIt(ticks(300).flatMap(x => nestedT.flatMap(_ => ticks(300).map(_ + x)))), translateIt(ticks(300).flatMap(x => ticks(300).map(_ + x))))
+  }
