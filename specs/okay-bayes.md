@@ -106,8 +106,23 @@ factor needs.
 - [x] a resampled particle shares its continuation with its copies, and
       they diverge afterwards (each draws its own future)
 
-Stage 2c — mixtures and convergence (ch.3), Thompson
-sampling for bandits (ch.6). Stage 3 — HMC/NUTS with automatic
+Stage 2c — *Bayesian Methods for Hackers* ch.3, a mixture and its
+convergence:
+- [ ] `Mixture(components)`: a weighted mixture of distributions, its log
+      density the log-sum-exp of the components' (PyMC's `Mixture`); the
+      assignments are summed out, not sampled
+- [ ] the book's two-cluster model on its `mixture_data.csv` (p, two
+      centres, two sds): four `adaptive` chains agree (split R-hat < 1.01)
+      and agree with an INDEPENDENT oracle — importance sampling from a
+      multivariate Student-t, whose estimate is unbiased whatever its
+      proposal and whose error is its own ESS
+- [ ] the book's per-point question, P(x belongs to cluster 1), as a
+      posterior expectation over the draws
+- [ ] the book's convergence lesson, measured: a chain started in the
+      wrong place (centres swapped) is visible in R-hat before burn-in
+      and gone after it
+
+Stage 2d — Thompson sampling for bandits (ch.6). Stage 3 — HMC/NUTS with automatic
 differentiation. Stage 4 — `Inference` as a facade (specs/own-or-standard.md):
 ours by default, PyMC/Stan behind an import over an optional dependency.
 
