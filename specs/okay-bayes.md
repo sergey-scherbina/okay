@@ -1,6 +1,6 @@
 # okay-bayes — Bayesian inference as effects, without Python
 
-Status: stage 1 landed (2026-10-02); stage 2a (ch.2, adaptive Metropolis) 2b (SMC), 2c (ch.3), 2d (ch.6), 3a (NUTS), 3b (AD) and 4 (the sampler facade), 5a (ch.4) 2026-10-02; specification 2026-10-02 (operator ask: "Bayesian Methods for
+Status: stage 1 landed (2026-10-02); stage 2a (ch.2, adaptive Metropolis) 2b (SMC), 2c (ch.3), 2d (ch.6), 3a (NUTS), 3b (AD) and 4 (the sampler facade), 5a (ch.4), 5b (ch.5) 2026-10-02; specification 2026-10-02 (operator ask: "Bayesian Methods for
 Hackers ... make okay-bayes so we can do without Python; is it very
 hard?"). Builds on the core's `Prob` effect (specs/prob-effect-hansei.md:
 discrete `dist`, boolean `observe`, exact enumeration, rejection).
@@ -207,11 +207,11 @@ Stage 5 — the rest of the book, one lane per chapter:
   lo, hi)(loss)` — the decision minimising the posterior expected loss,
   over the draws, by a grid then golden-section refinement; `Loss.squared`,
   `absolute`, `pinball(τ)`.
-  - [ ] the known answers: squared loss → the posterior mean, absolute →
+  - [x] the known answers: squared loss → the posterior mean, absolute →
         the median, pinball(τ) → the τ-quantile, of the same draws
-  - [ ] The Price is Right on the book's numbers: the posterior of the
+  - [x] The Price is Right on the book's numbers: the posterior of the
         true price against its closed form (a linear-Gaussian model)
-  - [ ] the book's showdown loss: the best bid falls as the risk of
+  - [x] the book's showdown loss: the best bid falls as the risk of
         overbidding grows, and stays under the posterior mean
 - 5c. ch.7, A/B testing by expected revenue (Dirichlet).
 
@@ -412,6 +412,14 @@ one of one first; by the exact bound: 999 of 1000, 750 of 1000, 75 of 100,
 3 of 4, one of one. The spread of a mean of n Poisson(4.5) draws:
 0.655 / 0.218 / 0.066 at n = 10 / 100 / 1000 against √(4.5/n) 0.671 /
 0.212 / 0.067.
+
+Stage 5b (2026-10-02), TestDecision: the squared, absolute and pinball(0.9)
+actions equal the mean, median and 0.9-quantile of 2001 draws. The Price is
+Right: true price 19 876 ± 3 767 by `adaptive` against the exact 19 899 ±
+3 712. The showdown's best bid: 14 549 / 13 077 / 11 856 / 10 905 / 10 703 at
+risks 30 000 / 60 000 / 90 000 / 120 000 / 150 000, against a posterior mean
+of 19 876 — the book's shape, a bid far under the estimate and falling with
+the risk.
 
 ## 6. Open questions
 

@@ -190,6 +190,21 @@ val ranked = Rank.sort(items)(_._2).map(_._1)
 (mean − 1.65 sd) is optimistic by 0.054 for a single vote and right to 3e-4
 by 700.
 
+**From a posterior to a decision: `Decision`.** Chapter 5's point is that
+the posterior mean is the right answer only under squared loss.
+`Decision.action(draws, lo, hi)(loss)` finds the decision with the least
+expected loss over the draws — `Loss.squared` gives the mean,
+`Loss.absolute` the median, `Loss.pinball(τ)` the τ-quantile, and the
+book's Price-is-Right showdown, where overbidding loses everything, bids
+far under the estimate:
+
+```scala
+val bids = Seq(30000.0, 60000.0, 90000.0, 120000.0, 150000.0).map(r => r -> Decision.action(draws, 5000, 40000)(showdown(r)))
+```
+
+At a risk of 30 000 the best bid is 14 549, at 150 000 it is 10 703, while
+the posterior mean of the price is 19 876.
+
 **Reading the posterior.** `post.site("lambda_1")` is a site's chain,
 `post.draws` the program's values; `Summary` has the mean, sd, quantiles,
 the highest-density interval, the effective sample size (Geyer's initial
@@ -240,6 +255,7 @@ by `uv` through okay-py, samples the same model as a Live test.
 | `Smooth.target(p)`, `Smooth.nuts(p, samples, burn, chains, seed, delta)` | its exact-gradient `Target`, and NUTS on it |
 | `Sampler`, `Sampler.Okay` (default), `PyMC.given` (JVM, optional okay-py), `Samplers.byName` | which NUTS runs `nuts` |
 | `Beta.cdf`, `Beta.quantile`, `Distribution.incompleteBeta`; `Rank.lowerBound / approxLowerBound / sort` | exact Beta tails; ranking by evidence |
+| `Decision.action(draws, lo, hi)(loss)`, `Decision.expectedLoss`; `Loss.squared / absolute / pinball(τ)` | the Bayes action |
 | `smc(p, particles, seed)`, `observeEach(xs)(d, value)` | sequential Monte Carlo: `Particles` with `expect`, `mean(site)`, `ess`, `logEvidence` |
 | `Posterior`: `draws`, `site(name)`, `rhat(name)`, `acceptance` | the posterior, typed |
 | `Summary.mean / sd / quantile / hdi / ess / rhat` | reading it |
@@ -269,6 +285,8 @@ by `uv` through okay-py, samples the same model as a Live test.
   2006); Wood, van de Meent, Mansinghka, *A New Approach to Probabilistic
   Programming Inference* (AISTATS 2014) — SMC as the inference of a
   program suspended at its observations.
+- Berger, *Statistical Decision Theory and Bayesian Analysis* (Springer
+  1985) — loss, risk and the Bayes action.
 - Thompson, *On the Likelihood that One Unknown Probability Exceeds
   Another* (Biometrika 1933); Agrawal, Goyal, *Analysis of Thompson Sampling
   for the Multi-armed Bandit Problem* (COLT 2012); Lai, Robbins,

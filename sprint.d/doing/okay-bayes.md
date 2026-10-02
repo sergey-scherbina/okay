@@ -12,5 +12,6 @@
       stage 3: 3a NUTS + finite differences okay-bayes-nuts; 3b
       reverse-mode AD (`Real`, `Grad`, `Smooth`) okay-bayes-ad. Stage 4,
       the `Sampler` facade with PyMC behind an import, okay-bayes-sampler.
-      Stage 5, the rest of the book: 5a ch.4 ranking okay-bayes-ch4; next
-      5b ch.5 loss functions, 5c ch.7 A/B by revenue, then §6 (vector sites).
+      Stage 5, the rest of the book: 5a ch.4 ranking okay-bayes-ch4; 5b
+      ch.5 loss functions okay-bayes-ch5; next 5c ch.7 A/B by revenue,
+      then §6 (vector sites).
