@@ -726,44 +726,52 @@ object Effects {
    * that abort or perform G, use Effects.handle instead.
    */
   def relay[A, B, F[+_] : TypeableK, G[+_]](a: A ! F + G)(using Distinct[F + G])(f: A => B ! G)
-                                           (g: [X, Y] => F[X] => X /> Y): B ! G = {
-    /**
-     * The TERMINAL case — a bare operation with no continuation, which
-     * a program reaches at most once — in its own method, so that it
-     * does not occupy the hot loop's bytecode.
-     *
-     * `split` is an `inline def` taking `inline` branches, so both of
-     * its arms expand into whatever encloses them, and this loop is
-     * made of them. It compiles to 305 bytes against HotSpot's
-     * `FreqInlineSize` of 325 (read with -XX:+PrintInlining): twenty
-     * bytes from the cliff where it stops being inlined into `relay`
-     * and the lane loses over 10% at once. That is not a hypothetical
-     * — a sibling branch added 24 bytes here and paid exactly that,
-     * for five measurement sessions, while its allocation stayed
-     * identical to the digit and no data-structure theory fit.
-     * Extracting the cold arm leaves the loop at 244 bytes.
-     */
-    def last(e: F[A] | G[A]): B ! G =
-      split[F, G](e)(e => g(e) / f)(e => Inject(e).flatMap(f))
-
-    // a call from inside flatMap cannot be a jump; `again` takes it
-    def again(d: Int)(x: A ! F + G): B ! G = loop(d)(x)
-
-    def frame(y: A ! F + G): Shift.U[G, B] =
-      HandleFrames.control[F, A, B, G](f, [X] => (e: F[X]) => g[X, B ! G](e), summon[TypeableK[F]])(y)
-
-    @tailrec def loop(d: Int)(x: A ! F + G): B ! G = (x.resumeRun: @unchecked) match
-      // `g(e) / k`, not `g(e)(k)`: the Cont carrier's application is
-      // `/` since Cont became a facade over Free (specs/freer-base.md)
-      case Bind(i @ Inject(e), k) => split[F, G](e)(e => loop(d)(g(e) / k))(_ => forwarded[F, G](i).flatMap(x => again(d)(k(x))))
-      case Inject(e) => last(e)
-      case Return(a) => f(a)
-      case y => loop(d)(HandleFrames.shallow(y, d))
-
+                                           (g: [X, Y] => F[X] => X /> Y): B ! G =
     // a value: run by whoever forces it, a frame for a machine that meets it (handle-frames)
     Free.delay(new HandleFrames.Run[B, G]:
-      def at(d: Int): B ! G = loop(d)(a)
-      def program: Shift.U[G, B] = frame(a))
-  }
+      def at(d: Int): B ! G = new Relaying[A, B, F, G](d, f, g).loop(a)
+      def program: Shift.U[G, B] =
+        HandleFrames.control[F, A, B, G](f, [X] => (e: F[X]) => g[X, B ! G](e), summon[TypeableK[F]])(a))
+
+  /**
+   * `relay`'s walk, an OBJECT per run (handle-frames-loops): its depth for `HandleFrames.shallow` is a field read
+   * in the cold arm only. Threaded through the loop and the forwarding closure as a parameter it cost
+   * relayPrebuilt 1.19x (156 against 131 µs, alternated; the same loop without it 131) — one allocation a run is
+   * the cheaper price.
+   */
+  private final class Relaying[A, B, F[+_], G[+_]](depth: Int, f: A => B ! G, g: [X, Y] => F[X] => X /> Y)
+                                                  (using TypeableK[F]):
+      /**
+       * The TERMINAL case — a bare operation with no continuation, which
+       * a program reaches at most once — in its own method, so that it
+       * does not occupy the hot loop's bytecode.
+       *
+       * `split` is an `inline def` taking `inline` branches, so both of
+       * its arms expand into whatever encloses them, and this loop is
+       * made of them. It compiles to 305 bytes against HotSpot's
+       * `FreqInlineSize` of 325 (read with -XX:+PrintInlining): twenty
+       * bytes from the cliff where it stops being inlined into `relay`
+       * and the lane loses over 10% at once. That is not a hypothetical
+       * — a sibling branch added 24 bytes here and paid exactly that,
+       * for five measurement sessions, while its allocation stayed
+       * identical to the digit and no data-structure theory fit.
+       * Extracting the cold arm leaves the loop at 244 bytes.
+       */
+      def last(e: F[A] | G[A]): B ! G =
+        split[F, G](e)(e => g(e) / f)(e => Inject(e).flatMap(f))
+
+      // a call from inside flatMap cannot be a jump; `again` takes it
+      def again(x: A ! F + G): B ! G = loop(x)
+      def forward[X](i: Free[F + G, X], k: X => A ! F + G): B ! G =
+        forwarded[F, G](i).flatMap(x => again(k(x)))
+
+      @tailrec final def loop(x: A ! F + G): B ! G = (x.resumeRun: @unchecked) match
+        // `g(e) / k`, not `g(e)(k)`: the Cont carrier's application is
+        // `/` since Cont became a facade over Free (specs/freer-base.md)
+        case Bind(i @ Inject(e), k) => split[F, G](e)(e => loop(g(e) / k))(_ => forward(i, k))
+        case Inject(e) => last(e)
+        case Return(a) => f(a)
+        // a run nested here: forced — its fold below HandleFrames.Limit, its frame on a machine at it
+        case y => loop(HandleFrames.shallow(y, depth))
 
 }

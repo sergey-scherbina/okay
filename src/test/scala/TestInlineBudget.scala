@@ -104,9 +104,9 @@ class TestInlineBudget extends munit.FunSuite {
   }
 
   test("relay's loop fits: its body is straight-line, so inlining it is free") {
-    // `.*loop`: since handle-frames-forms the loop is reached from the run object's `apply`, lifted under a
-    // mangled public name, as `handle`'s is
-    within("Effects.relay's loop", sizeOf("Effects$", ".*loop\\$\\d+"), "relayPrebuilt (rows de-*)")
+    // since handle-frames-loops the walk is an object per run (`Effects.Relaying`), its depth a field: threaded
+    // as a parameter it cost relayPrebuilt 1.19x
+    within("Effects.relay's loop", sizeOf("Effects$Relaying", "loop"), "relayPrebuilt (rows de-*)")
   }
 
   test("handle's loop fits: it had to be cut to 318 once resume became inlinable") {
