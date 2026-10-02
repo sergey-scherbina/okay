@@ -28,26 +28,30 @@ object Handler:
   // machinery that is already fastest for its case.
 
   /**
-   * 1 · answer each operation with a value, and the program goes on (`!.relay`):
-   * `Handler.answer { case Find(id) => … }`, or with the effect named `Handler[Users].answer { … }` / `.answer.poly`
+   * The effect named once, and its forms with nothing more to write: `Handler[Accounts] { case Find(id) => … }`
+   * is `Handler.answer[Accounts] { … }`, `Handler[Accounts].state(s0)` is `Handler.state[Accounts, S](s0)` with
+   * `S` read off `s0`. Helpers for type inference only; each form has its one implementation below.
    */
-  /** `Handler[Reader % Int].answer { … }`: the forms with the effect named, for one the cases cannot name */
   def apply[F[+_]]: For[F] = new For[F]
 
   final class For[F[+_]] private[Handler] ():
-    /** 1 · answer each operation: `{ case … }` or `.poly { [X] => … }` */
-    def answer: Answering[F] = new Answering[F]
-    /** 2 · a state threaded through: `{ case (s, op) => (s', answer) }` or `.poly` */
-    def state[S](init: S): Stating[F, S] = new Stating[F, S](init)
-    /** 3 · each operation a program in `G`: `{ case … }` or `.poly` */
-    def into[G[+_]]: Into[F, G] = new Into[F, G]
+    /** the default form, 1: `Handler[Accounts] { case Find(id) => … }`, `Handler.answer[Accounts] { … }` */
+    inline def apply(inline cases: F[Answer] => Any)(using TypeableK[F]): Handler[F, [A] =>> A] = Handler.answer[F](cases)
+    /** `Handler.answer[F]` */
+    def answer: Answering[F] = Handler.answer[F]
+    /** `Handler.state[F, S](init)`, `S` read off `init` */
+    def state[S](init: S): Stating[F, S] = Handler.state[F, S](init)
+    /** `Handler.into[F, G]` */
+    def into[G[+_]]: Into[F, G] = Handler.into[F, G]
+    /** `Handler.control[F, O](ret)(f)` */
+    def control[O[_]](ret: [A] => A => O[A])(f: [X, A, G[+_]] => (F[X], X => O[A] ! G) => O[A] ! G)
+                     (using TypeableK[F]): Handler[F, O] = Handler.control[F, O](ret)(f)
 
-  /** the effect read off the cases: `Handler.answer { case Find(id) => … }` */
-  transparent inline def answer(inline cases: Any => Any): Any = ${ inferImpl('cases, 0) }
-
-  /** the inferred form's handler, its cases checked by `inferImpl` (THE CAST it licenses) */
-  def answerErased[F[+_]](cases: Any => Any)(using TypeableK[F]): Handler[F, [A] =>> A] =
-    answerOf[F]([X] => (e: F[X]) => cases(e).asInstanceOf[X])
+  /**
+   * 1 · answer each operation with a value, and the program goes on (`!.relay`):
+   * `Handler.answer[Users] { case Find(id) => … }`, or `.poly { [X] => (e: Users[X]) => … }`
+   */
+  def answer[F[+_]]: Answering[F] = new Answering[F]
 
   final class Answering[F[+_]] private[Handler] ():
     /** cases, each checked at compile time against its operation's answer type */
@@ -71,6 +75,9 @@ object Handler:
    * effect is named: read off the cases it would leave the pair's second an `Any`, which the compiler's own
    * exhaustiveness check over the tuple cannot see covered
    */
+  /** 2 · a state threaded through the operations */
+  def state[F[+_], S](init: S): Stating[F, S] = new Stating[F, S](init)
+
   final class Stating[F[+_], S] private[Handler] (val init: S):
     /** cases, each checked at compile time: the second of the pair answers the operation's type */
     inline def apply(inline cases: (S, F[Answer]) => Any)(using TypeableK[F]): Handler[F, [A] =>> (S, A)] =
@@ -104,6 +111,9 @@ object Handler:
    * `Handler[Users].into[State % M] { case Find(id) => … }`, or `.poly { [X] => (e: Users[X]) => … }`
    */
 
+  /** 3 · each operation a program in the effects `G` */
+  def into[F[+_], G[+_]]: Into[F, G] = new Into[F, G]
+
   final class Into[F[+_], G[+_]] private[Handler] ():
     /** cases, each checked at compile time: the program's value answers the operation's type */
     inline def apply(inline cases: F[Answer] => Any ! G)(using TypeableK[F]): Full[F, Any, [A] =>> A, Holds[G]] =
@@ -118,7 +128,8 @@ object Handler:
         Effects.translate[A, F, R](p)([X] => (e: F[X]) => f(e).up[R])
 
   /**
-   * 4 · the continuation in hand: `resume` once, twice, or not at all (`Effects.handle`). `ret` shapes a
+   * 4 · the continuation in hand, `Handler[F].control[O](ret) { … }`: `resume` once, twice, or not at all
+   * (`Effects.handle`). `ret` shapes a
    * finished program's answer; the clause is polymorphic in that answer and in the rest of the row.
    */
   def control[F[+_], O[_]](ret: [A] => A => O[A])(f: [X, A, G[+_]] => (F[X], X => O[A] ! G) => O[A] ! G)
@@ -167,47 +178,6 @@ object Handler:
     import q.reflect.*
     checkCore(cases.asTerm, TypeRepr.of[F], TypeRepr.of[S], kind)
     cases
-
-  /** the effect the cases name: the sealed parent every pattern's constructor shares, unary in its answer */
-  def effectOf(using q: Quotes)(cases: q.reflect.Term, kind: Int): q.reflect.TypeRepr =
-    import q.reflect.*
-    val cds = caseDefsOf(cases)
-    def ctorOf(p: Tree): Option[Symbol] = p match
-      case q.reflect.Bind(_, inner) => ctorOf(inner)
-      case TypedOrTest(inner, tpt) => ctorOf(inner).orElse(Some(tpt.tpe.typeSymbol))
-      case Unapply(fun, _, _) => Some(fun.symbol.owner.companionClass).filter(_.exists)
-      case t: Term if t.tpe.termSymbol.exists => Some(t.tpe.termSymbol.moduleClass).filter(_.exists)
-      case _ => None
-    def op(p: Tree): Tree = if kind != 1 then p else p match
-      case Unapply(_, _, List(_, o)) => o
-      case q.reflect.Bind(_, inner) => op(inner)
-      case other => other
-    val ctors = cds.flatMap(cd => ctorOf(op(cd.pattern)))
-    if ctors.isEmpty then
-      report.errorAndAbort("no case names an operation, so the effect cannot be read off them: name it: Handler[F].answer { … }", cases.pos)
-    def parents(c: Symbol): List[Symbol] =
-      c.typeRef.baseClasses.filter(b => b != c && (b.flags.is(Flags.Sealed) || b.flags.is(Flags.Enum)) && b.isClassDef)
-    val shared = parents(ctors.head).filter(b => ctors.forall(c => parents(c).contains(b)))
-    shared.headOption match
-      case None =>
-        report.errorAndAbort(s"these cases name operations of no one effect (${ctors.map(_.name).distinct.mkString(", ")}): name it: Handler[F].answer { … }", cases.pos)
-      case Some(e) =>
-        val tps = e.declaredTypes.filter(_.isTypeParam)
-        if tps.length != 1 then
-          report.errorAndAbort(s"${e.name} has parameters besides its answer, which its operations do not say: " +
-            s"name it: Handler[${e.name} % …].answer { … }", cases.pos)
-        e.typeRef
-
-  def inferImpl(cases: Expr[Any => Any], kind: Int)(using q: Quotes): Expr[Any] =
-    import q.reflect.*
-    val f = effectOf(cases.asTerm, kind)
-    checkCore(cases.asTerm, f, TypeRepr.of[Unit], kind)
-    val typeable = Implicits.search(Symbol.requiredClass("okay.TypeableK").typeRef.appliedTo(f)) match
-      case ok: ImplicitSearchSuccess => ok.tree
-      case no: ImplicitSearchFailure => report.errorAndAbort(no.explanation)
-    val handler = Symbol.requiredModule("okay.Handler")
-    val erased = handler.methodMember("answerErased").head
-    Apply(Apply(TypeApply(Select(Ref(handler), erased), List(Inferred(f))), List(cases.asTerm)), List(typeable)).asExpr
 
   /** the cases of a `{ case … }` lambda */
   def caseDefsOf(using q: Quotes)(cases: q.reflect.Term): List[q.reflect.CaseDef] =

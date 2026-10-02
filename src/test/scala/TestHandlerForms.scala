@@ -23,7 +23,7 @@ class TestHandlerForms extends munit.FunSuite:
 
   test("answer: an answer per operation") {
     val db = scala.collection.mutable.Map(7L -> "ada")
-    val live: Handler[Accounts, [A] =>> A] = Handler.answer {
+    val live: Handler[Accounts, [A] =>> A] = Handler[Accounts] {
       case Find(id) => db.get(id)
       case Save(id, name) => db.put(id, name)
     }
@@ -54,19 +54,19 @@ class TestHandlerForms extends munit.FunSuite:
   }
 
   test("cases over a generic constructor: Env's Get[R] read at Get[Int]") {
-    val asEnv = Handler[Env % Int].answer { case Env.Get() => 40 }
+    val asEnv = Handler[Env % Int] { case Env.Get() => 40 }
     assertEquals(effect[Env % Int, Int](Env.Get()).map(_ + 2).handle(asEnv).run, 42)
-    assert(compileErrors("""Handler[Env % Int].answer { case Env.Get() => "no" }""").contains("Get answers Int, but this case gives String"))
+    assert(compileErrors("""Handler[Env % Int] { case Env.Get() => "no" }""").contains("Get answers Int, but this case gives String"))
   }
 
   test("an answer the caller chooses (Reader's Asks[R, A]): only the operation's own data can give it") {
-    val asReader = Handler[Reader % Int].answer {
+    val asReader = Handler[Reader % Int] {
       case Reader.Ask() => 40
       case Reader.Asks(g) => g(40)
     }
     assertEquals(effect[Reader % Int, Int](Reader.Asks[Int, Int](_ + 2)).handle(asReader).run, 42)
     assertEquals(effect[Reader % Int, String](Reader.Asks[Int, String](_.toString)).handle(asReader).run, "40")
-    val errs = compileErrors("""Handler[Reader % Int].answer { case Reader.Ask() => 1; case Reader.Asks(g) => "oops" }""")
+    val errs = compileErrors("""Handler[Reader % Int] { case Reader.Ask() => 1; case Reader.Asks(g) => "oops" }""")
     assert(errs.contains("Asks answers what its caller chose"), errs)
   }
 
@@ -103,7 +103,7 @@ class TestHandlerForms extends munit.FunSuite:
   }
 
   test("control: Maybe re-expressed (resume dropped), the same as Maybe.option") {
-    val asMaybe = Handler.control[Maybe, Option]([A] => (a: A) => Some(a)):
+    val asMaybe = Handler[Maybe].control[Option]([A] => (a: A) => Some(a)):
       [X, A, G[+_]] => (e: Maybe[X], resume: X => Option[A] ! G) => e.value match
         case Some(x) => resume(x)
         case None => pure[G, Option[A]](None)
@@ -114,7 +114,7 @@ class TestHandlerForms extends munit.FunSuite:
   }
 
   test("control: Choose re-expressed (resume for every branch), the same as Choose.all") {
-    val asChoose = Handler.control[Choose, Seq]([A] => (a: A) => Seq(a)):
+    val asChoose = Handler[Choose].control[Seq]([A] => (a: A) => Seq(a)):
       [X, A, G[+_]] => (e: Choose[X], resume: X => Seq[A] ! G) =>
         !.foldM(e.as)(Seq.empty[A])((acc, x) => resume(x).map(acc ++ _))
     val c: Int ! Choose = choose(1, 2).flatMap(x => choose(10, 20).map(_ + x))
@@ -123,7 +123,7 @@ class TestHandlerForms extends munit.FunSuite:
 
   test("cases are checked: a case answering the wrong type is refused, naming the operation") {
     val errs = compileErrors("""
-      Handler[Accounts].answer {
+      Handler[Accounts] {
         case Accounts.Find(id) => 42
         case Accounts.Save(id, name) => None
       }""")
@@ -138,12 +138,12 @@ class TestHandlerForms extends munit.FunSuite:
 
   test("cases are checked: every operation handled, or a compile error naming the missing one") {
     val errs = compileErrors("""
-      Handler[Accounts].answer {
+      Handler[Accounts] {
         case Accounts.Find(id) => None
       }""")
     assert(errs.contains("not every operation of Accounts is handled: Save"), errs)
     val guarded = compileErrors("""
-      Handler[Accounts].answer {
+      Handler[Accounts] {
         case Accounts.Find(id) => None
         case Accounts.Save(id, _) if id > 0 => None
       }""")
@@ -152,12 +152,12 @@ class TestHandlerForms extends munit.FunSuite:
 
   test("cases are checked: a wildcard may only throw") {
     val errs = compileErrors("""
-      Handler[Accounts].answer {
+      Handler[Accounts] {
         case Accounts.Find(id) => None
         case _ => None
       }""")
     assert(errs.contains("only a `throw` may stand here"), errs)
-    val ok = Handler[Accounts].answer {
+    val ok = Handler[Accounts] {
       case Find(id) => None
       case _ => throw new IllegalStateException("not here")
     }
@@ -179,7 +179,7 @@ class TestHandlerForms extends munit.FunSuite:
         r <- rename(7, "grace").plus[Writer % String]
         _ <- Writer.tell("after").plus[Accounts]
       yield r
-    val live = Handler[Accounts].answer {
+    val live = Handler[Accounts] {
       case Find(_) => Some("ada")
       case Save(_, _) => Some("ada")
     }
@@ -197,7 +197,7 @@ class TestHandlerForms extends munit.FunSuite:
       case (n, Find(_)) => (n + 1, None)
       case (n, Save(_, _)) => (n, None)
     }
-    val c = Handler.control[Accounts, [A] =>> A]([A] => (a: A) => a):
+    val c = Handler[Accounts].control[[A] =>> A]([A] => (a: A) => a):
       [X, A, G[+_]] => (e: Accounts[X], resume: X => A ! G) => e match
         case Find(_) => resume(None)
         case Save(_, _) => resume(None)

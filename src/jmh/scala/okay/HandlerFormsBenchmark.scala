@@ -46,7 +46,7 @@ class HandlerFormsBenchmark {
     case State.Update(g) => { val (b, n) = g(s); (n, b) }
   }
 
-  val maybeForm = Handler.control[Maybe, Option]([A] => (a: A) => Some(a)):
+  val maybeForm = Handler[Maybe].control[Option]([A] => (a: A) => Some(a)):
     [X, A, G[+_]] => (e: Maybe[X], resume: X => Option[A] ! G) => e.value match
       case Some(x) => resume(x)
       case None => pure[G, Option[A]](None)
@@ -54,7 +54,7 @@ class HandlerFormsBenchmark {
   def ticks(n: Int): Int ! FormTick =
     if n == 0 then pure(0) else effect[FormTick, Int](FormTick.Next()).flatMap(x => !.tailcall(ticks(n - 1)).map(_ + x))
 
-  val tickCases = Handler[FormTick].answer {
+  val tickCases = Handler[FormTick] {
     case FormTick.Next() => 1
     case FormTick.Peek() => 0
   }

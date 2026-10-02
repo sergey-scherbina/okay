@@ -211,7 +211,7 @@ is already fastest for its case. The examples use `Accounts`, an effect shaped l
 **1. Answer each operation**, and the program goes on:
 
 ```scala
-val live: Handler[Accounts, [A] =>> A] = Handler.answer {
+val live: Handler[Accounts, [A] =>> A] = Handler[Accounts] {
   case Find(id) => db.get(id)
   case Save(id, name) => db.put(id, name)
 }
@@ -241,7 +241,7 @@ val stored = Handler[Accounts].into[State % Map[Long, String]] {
 **4. Hold the continuation**: call `resume` once, twice or not at all. This is Maybe written by hand:
 
 ```scala
-val asMaybe = Handler.control[Maybe, Option]([A] => (a: A) => Some(a)):
+val asMaybe = Handler[Maybe].control[Option]([A] => (a: A) => Some(a)):
   [X, A, G[+_]] => (e: Maybe[X], resume: X => Option[A] ! G) => e.value match
     case Some(x) => resume(x)
     case None => pure[G, Option[A]](None)
@@ -256,12 +256,13 @@ seen at an abstract `Answer`. Only the operation's own data can produce one: `ca
 and `case Asks(g) => "oops"` is refused. One shape is beyond the cases: an operation whose answer is the
 type one of its own fields has, like `State`'s `Set(s: S)`. Each case must give its own type to the
 answer, and only a polymorphic function can do that. The macro names the operation and points to `.poly`.
-In form 1 the effect is read off the cases: `Find` and `Save` are `Accounts`'s, so `Handler.answer { … }`
-needs no `[Accounts]`. Forms 2 and 3 name it. If form 2 read the effect off its cases, the pair's second
-would be an `Any`, and the compiler's exhaustiveness check over the tuple would warn. An effect with parameters besides its answer (`Reader % Int`) cannot be read off `Ask()` and is
-named: `Handler[Reader % Int].answer { … }`, `Handler[Accounts].into[State % M] { … }`. With the effect named,
-forms 1 to 3 also take a polymorphic function in place of the cases,
-`Handler[Accounts].answer.poly { [X] => (e: Accounts[X]) => … }`, which the compiler checks with no macro.
+The effect is named first, `Handler[Accounts]`, because it is the effect the handler takes off, and form
+1 is what `Handler[Accounts] { … }` means. The others name the effect the same way:
+`Handler[Accounts].state(s0) { … }` and `Handler[Accounts].into[State % M] { … }`. Each also takes a
+polymorphic function in place of the cases, which the compiler checks with no macro:
+`Handler[Accounts].answer.poly { [X] => (e: Accounts[X]) => … }`. `Handler[Accounts]` is only a helper for
+type inference. Each form has one implementation, `Handler.answer[F]`, `Handler.state[F, S](s0)`,
+`Handler.into[F, G]` and `Handler.control[F, O](ret)`, and the helper calls it with the types filled in.
 
 Measured against the built-ins they re-express (specs/handler-forms.md): `answer` is at parity with
 `Reader(r)`, `state` is 1.04x of `State(s)`, `control` is 1.26x of `Maybe.option`. The cases cost what the

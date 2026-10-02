@@ -16,7 +16,7 @@ any of them as `p.handle(h)`, and each sits on the machinery that is already fas
 | `Handler.answer[F](f)` | `[X] => F[X] => X`: an answer, and the program goes on | `Handler[F, [A] =>> A]` | `!.relay` |
 | `Handler.state[F, S](s0)(f)` | `[X] => (S, F[X]) => (S, X)` | `Handler[F, [A] =>> (S, A)]` | State's loop |
 | `Handler.into[F, G](f)` | `[X] => F[X] => X ! G`: each operation a program in G | `F` replaced by G, G in the rest of the row | `!.translate` |
-| `Handler.control[F, O](ret)(f)` | `ret: [A] => A => O[A]`, and `[X, A, G[+_]] => (F[X], X => O[A] ! G) => O[A] ! G`: call `resume` once, twice, or not at all | `Handler[F, O]` | `Effects.handle` |
+| `Handler[F].control[O](ret)(f)` | `ret: [A] => A => O[A]`, and `[X, A, G[+_]] => (F[X], X => O[A] ! G) => O[A] ! G`: call `resume` once, twice, or not at all | `Handler[F, O]` | `Effects.handle` |
 
 An `Answers[F]` becomes form 1 with `Handler.from(answers)`.
 
@@ -75,6 +75,14 @@ An `Answers[F]` becomes form 1 with `Handler.from(answers)`.
   hold both `answer[F]` and `answer(cases)`: Scala calls that overload ambiguous. `state` keeps its effect
   named. Read off its cases, the pair's second would be an `Any`, and the compiler's exhaustiveness check
   over `(S, Any)` warns, which `@unchecked` on the component does not reach.
+
+- **One implementation, its helpers for inference** (handler-apply, the operator: "Пусть реализация
+  будет одна — старая, а новым будет только вывод типов через хелперы"). The forms are `Handler.answer[F]`,
+  `Handler.state[F, S](s0)`, `Handler.into[F, G]` and `Handler.control[F, O](ret)`. `Handler[F]` names the
+  effect once and delegates, filling in the types. `Handler[Accounts] { case … }` is `answer`, the default
+  form, and `.state(s0)` reads `S` off `s0`. Reading the effect off the cases (handler-infer's
+  `Handler.answer { … }`) is gone again: it cannot share the name with `Handler.answer[F]`, and the
+  operator prefers the effect named ("явно указываем эффект который хотим обработать").
 
 ## Results
 
