@@ -1,0 +1,2 @@
+2026-10-02	16528ae5b	quiet	HandlerBenchmark.relayPrebuilt us/op	131.0/128.3	128.6/128.6	1.01	handle-frames-forms: relay lazy + resumeRun + upgrade arm in its own method; alternated vs master, 2 rounds
+2026-10-02	16528ae5b	quiet	HandlerBenchmark.handlePrebuilt us/op	124.9/128.3	126.9/127.4	0.99	handle-frames-forms: control form unchanged here, the control of the pair

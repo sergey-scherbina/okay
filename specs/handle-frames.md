@@ -1,6 +1,6 @@
 # handle-frames — one loop for every handler, so nesting takes no host stack
 
-Status: stage 1 done 2026-10-02 (the state and control forms); stages 2-3 queued. Lane `handle-frames` (operator:
+Status: stages 1 and 2 done 2026-10-02 (the state, control, answer and into forms); stage 3 queued (handle-frames-loops). Lane `handle-frames` (operator:
 "Берись сейчас", after "а зачем вообще вложенные вызовы машины? Почему не
 та же самая?").
 
@@ -126,3 +126,22 @@ active handler per level: the depth comes back, plus O(n^2) work.
   forwarded operation 1.25x though it never ran (now its own method, as
   `last` and `capture` are; TestInlineBudget finds the lifted loop by
   `.*loop$N`). Refuted: one rotation lambda for `resume` and `resumeRun`.
+
+## Results (stage 2, handle-frames-forms)
+
+- `Effects.relay` (the answer form, `Handler.answer`) and `Effects.translate`
+  (the into form, `Handler.into`, `interpret`, `tracing`) are lazy and
+  upgrade; both run on the machine as a control frame (relay's clause
+  `g(e) / k`, translate's `h(e).flatMap(k)`), so no new machine code.
+  Red then green: 100 000 nested of each on Scala.js (RangeError before;
+  TestHandleFramesDepth). The forwarding arm re-enters the loop through
+  `again` instead of calling `relay` again, so a forwarded operation never
+  builds a run object.
+- Differential (cross): fold against upgraded, the answer AND the number
+  of operations the clause was asked — a frame that restarted the program
+  answers the same for a pure handler, so the count is what catches it
+  (a restart mutant reds both).
+- Measured (history.d handle-frames-forms, alternated against master):
+  `relayPrebuilt` 1.01x, `handlePrebuilt` 0.99x. TestInlineBudget finds
+  relay's lifted loop by `.*loop$N`; `relay` itself is now a 22-byte
+  wrapper building its run object.
