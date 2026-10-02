@@ -168,8 +168,26 @@ sampler, the gradient from a source):
         to its truncation error
   - [x] conjugates through the three transforms, via `Smooth.nuts`
   - [x] the cost: at d = 100 a gradient by AD against one by differences,
-        measured (one run against 201) Stage 4 — `Inference` as a facade (specs/own-or-standard.md):
-ours by default, PyMC/Stan behind an import over an optional dependency.
+        measured (one run against 201) Stage 4 — the sampler as a facade (specs/own-or-standard.md). What
+PyMC or Stan cannot do is read a Scala program; what they CAN do is sample
+a log density they call back into. So the facade sits on `Target`, the
+format both sides share: `Sampler` (cross) with `run(target, samples,
+burn, seed, delta)`, OURS the default given (`Sampler.Okay`, `Nuts.sample`),
+and `PyMC` (JVM) behind `import okay.bayes.PyMC.given` over an OPTIONAL
+okay-py: PyMC's own NUTS on a `pm.Potential` whose log density and
+gradient are a black-box pytensor Op calling back into okay
+(`okay.call("logp")`, `okay.call("grad")` — PyMC's documented black-box
+likelihood). `Bayes.nuts` and `Smooth.nuts` take the `Sampler` in scope,
+so a caller's code changes by an import only. `Samplers.byName("okay" |
+"pymc")` for a config value; `PyMC.missing` names okay-py when it is
+absent. Stan needs its own model language and a C++ toolchain: no road from
+a `Target` short of a Stan plugin, recorded, not built.
+- [ ] the default is ours: `nuts` with no import is `Sampler.Okay`
+- [ ] PyMC behind the import samples OUR target and agrees with the closed
+      form (a conjugate) and with the grid (Challenger, over `Grad`) —
+      the two samplers proven on one target, the facade's "reads the
+      other's output"
+- [ ] `Samplers.byName`: the two names, and a third refused naming them
 
 ## 4. Decisions
 
