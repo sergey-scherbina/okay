@@ -165,6 +165,8 @@ object Delim {
 
   object OneMachine {
     implicit def fresh[F <: Row](implicit ev: NoDelim[F]): OneMachine[F] = { val _ = ev; new OneMachine[F]() }
+    /** for a door that decided the row by its own evidence (`Shift.Nesting`): no search, no promise checked */
+    private[okay2] def unchecked[F <: Row]: OneMachine[F] = new OneMachine[F]()
   }
 
   /** `Delim` is not a member of F (`F <:< Delim` fails: the row does

@@ -30,7 +30,7 @@
  *   answer type under a `Bind` and cannot at a bare `Inject`.
  * - No `inline`: the hot paths are ordinary methods for the JIT.
  */
-package object okay2 extends Provides with Monads {
+package object okay2 extends Provides with Monads with Shifts {
 
   /** a computation of A performing the operations of the row R: A ! R.
    * Scala 2 gives every infix TYPE operator one precedence, left-
