@@ -24,12 +24,20 @@ such programs form one final-tagless interface (`src/main/scala/Effects.scala`):
 
 ```scala
 trait Effects[M[_[+_], _]]:
-def pure[F[+_], A](a: A): M[F, A]
-def perform[F[+_], A](e: F[A]): M[F, A]
-def flatMap[B](f: A => M[F, B]): M[F, B]
-def foldCont[S](h: F !> S): A /> S
-def run[A](m: M[Pure, A]): A = reify[M, Pure, A](m)(using this).run
+  def pure[F[+_], A](a: A): M[F, A]
+  def perform[F[+_], A](e: F[A]): M[F, A]
+  ...
+  extension [F[+_], A](m: M[F, A])
+    def flatMap[B](f: A => M[F, B]): M[F, B]
+    ...
+    def foldCont[S](h: F !> S): A /> S
+  ...
+  def run[A](m: M[Pure, A]): A = reify[M, Pure, A](m)(using this).run
 ```
+
+`flatMap` and `foldCont` are extension methods, so their first argument is
+the program itself, `m: M[F, A]`: `flatMap` is `M[F, A] => (A => M[F, B]) =>
+M[F, B]`, and `foldCont` is `M[F, A] => (F !> S) => A /> S`.
 
 Read by what each part gives:
 
@@ -57,9 +65,12 @@ interpretation PRODUCES. One program, three answers
 (`src/test/scala/TestFoldCont.scala`):
 
 ```scala
+enum Op[+A]:
+  case Pick(xs: List[Int]) extends Op[Int]
+
 val pair: (Int, Int) ! Op = for
-a <- effect(Op.Pick(List(1, 2)))
-b <- effect(Op.Pick(List(10, 20)))
+  a <- effect(Op.Pick(List(1, 2)))
+  b <- effect(Op.Pick(List(10, 20)))
 yield (a, b)
 ```
 
@@ -67,7 +78,9 @@ yield (a, b)
 closes it. That is exactly what `runWith` is:
 
 ```scala
-case Op.Pick(xs) => Cont.shift[X, (Int, Int), (Int, Int)](k => k(xs.head))
+val first: Op !> (Int, Int) = [X] => (e: Op[X]) => e match
+  case Op.Pick(xs) => Cont.shift[X, (Int, Int), (Int, Int)](k => k(xs.head))
+
 assertEquals(pair.foldCont(first) / identity, (1, 10))
 ```
 
@@ -75,7 +88,9 @@ assertEquals(pair.foldCont(first) / identity, (1, 10))
 concatenates. The last continuation wraps the one final answer:
 
 ```scala
-case Op.Pick(xs) => Cont.shift[X, List[(Int, Int)], List[(Int, Int)]](k => xs.flatMap(k))
+val all: Op !> List[(Int, Int)] = [X] => (e: Op[X]) => e match
+  case Op.Pick(xs) => Cont.shift[X, List[(Int, Int)], List[(Int, Int)]](k => xs.flatMap(k))
+
 assertEquals(pair.foldCont(all) / (p => List(p)), List((1, 10), (1, 20), (2, 10), (2, 20)))
 ```
 
@@ -84,7 +99,16 @@ cell and passes the next one on. The last continuation pairs the answer
 with the final cell, and the result is applied to the starting state:
 
 ```scala
-case State.Get() => Cont.shift[X, St, St](k => s => k(s)(s))
+type St = Int => (Int, Int)
+val counter: Int ! State % Int = for
+  n <- State.get[Int]
+  _ <- State.set(n + 1)
+  m <- State.get[Int]
+yield n * 100 + m
+val cell: (State % Int) !> St = [X] => (e: State[Int, X]) => e match
+  case State.Get() => Cont.shift[X, St, St](k => s => k(s)(s))
+  case State.Update(f) => Cont.shift[X, St, St](k => s => k(f(s)._1)(f(s)._2))
+
 assertEquals((counter.foldCont(cell) / (a => s => (s, a)))(5), (6, 506))
 ```
 
@@ -99,7 +123,20 @@ operation is translated by a natural transformation into `G`. That is
 `foldMap`, the fold `Static` and `Proc` have too:
 
 ```scala
-def foldMap[G[_]](nt: F ==> G)(using G: Monad[G], R: TailRecM[G]): G[A] =
+extension [F[+_], A](m: M[F, A])
+  def foldMap[G[_]](nt: F ==> G)(using G: Monad[G], R: TailRecM[G]): G[A] =
+    ...
+```
+
+Folding a program into cats-effect's `IO` (okay-cats, `TestCatsClasses`):
+
+```scala
+val p: Int ! Ask = for
+  a <- okay.effect(Ask.Num("a"))
+  b <- okay.effect(Ask.Num("bb"))
+yield a * 10 + b
+val toIO: Ask ==> IO = [X] => (e: Ask[X]) => e match
+  case Ask.Num(k) => IO(k.length)
 assertEquals(p.foldMap(toIO).unsafeRunSync(), 12)
 ```
 
@@ -146,11 +183,19 @@ interface (`src/main/scala/Monad.scala`):
 
 ```scala
 trait Applicative[F[_]] extends Functor[F]:
-def pure[A](a: A): F[A]
-def app(a: F[A]): F[B]
+  def pure[A](a: A): F[A]
+  extension [A, B](f: F[A => B])
+    def app(a: F[A]): F[B]
+
 trait Selective[F[_]] extends Applicative[F]:
-def select(f: => F[A => B]): F[B]
+  extension [A, B](fe: F[Either[A, B]])
+    def select(f: => F[A => B]): F[B]
 ```
+
+The first argument of each is the value it extends: `app` is `F[A => B] =>
+F[A] => F[B]`, McBride and Paterson's `<*>`, and `select` is `F[Either[A,
+B]] => F[A => B] => F[B]`, Mokhov's. The second argument of `select` is by
+name: it runs only when the first answers a `Left`.
 
 Three carriers use it:
 
