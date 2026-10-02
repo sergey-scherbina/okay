@@ -42,6 +42,11 @@ object Maybe:
   /** handle Maybe into Option, forwarding the effects F. `Some` is
    * answered in place (tail-resumptive, nothing captured); `None`
    * drops the rest of the program. */
+  /** the handler as a value: `p.handle(Maybe.option)` answers `Option[A]` */
+  def option: Handling.Plain[Maybe, Any, Option] = new Handling.Plain[Maybe, Any, Option]:
+    def run[A, F[+_]](p: A ! Maybe + F)(using A <:< Any, Distinct[Maybe + F], Handling.Nothing[F]): Option[A] ! F =
+      Maybe.run(p)
+
   def run[A, F[+_]](p: A ! Maybe + F): Option[A] ! F =
     Effects[Free].handle[Maybe, F](p)(a => pure[F, Option[A]](Some(a))):
       [X] => m => m.value match

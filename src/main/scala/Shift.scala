@@ -24,6 +24,13 @@ def reset[R, F[+_]](body: R ! Shift % R + F)(using k: Shift.Key[R], d: Distinct[
   // a row that still holds a capture's effect is run by the machine outside
   if n.inner then Shift.inner(pushed) else Delim.run[R, F](pushed)
 
+/** `reset` as a value: `p.handle(Reset[R])` */
+object Reset:
+  def apply[R](using k: Shift.Key[R]): Handling[Shift % R, R, [A] =>> R, Shift.Nesting] =
+    new Handling[Shift % R, R, [A] =>> R, Shift.Nesting]:
+      def run[A, F[+_]](p: A ! Shift % R + F)(using a: A <:< R, d: Distinct[Shift % R + F], n: Shift.Nesting[F]): R ! F =
+        reset[R, F](a.substituteCo[[X] =>> X ! Shift % R + F](p))
+
 object Shift:
 
   // THE ONE CLAIM: a `Shift % R` program is a `Delim` program at the same erasure (only the machine reads

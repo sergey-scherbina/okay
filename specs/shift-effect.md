@@ -146,6 +146,21 @@ one API, one suite over both:
   { … })`, `shift(k => direct { … })`, with `.?` or with auto-colouring
   (`Free.directColor`). The probe's `ShiftDirect` is gone.
 
+- **One `handle`, its handlers values** (handle-handler-values,
+  operator's "Да"): `trait Handling[E, I, O, Needs]` (I bounds the
+  answer, O shapes the result, Needs is what the handler needs of the
+  rest of the row; `Handling.Plain` needs nothing), and `p.handle(h)` in
+  `Freer`'s companion. The rest of the row is inferred by the `=:=`
+  evidence between the program's row and `E + F`, which unifies the
+  union as the effects' own runners do. A path-dependent `h.Needs[F]`
+  failed: the argument `State(5)` has no stable path, so `Needs` is a
+  type parameter. Ready: `State(s)`, `Reader(r)`, `Writer.log`,
+  `Throws.either`, `Choose.all`, `Maybe.option`, `Reset[R]`; `p.run` for
+  a program with no effect left. The `A throws E` extension that held
+  the name `handle` at the package level moved into `object throws`,
+  its type's companion, where its siblings already were. The old
+  runners stay.
+
 ## Results
 
 Probe: `okay-direct/src/test/scala/ShiftFx.scala`,

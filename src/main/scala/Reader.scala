@@ -175,6 +175,11 @@ object Reader {
   def unlift[E, A, F[+_]](p: A ! Reader % E + F)(using Distinct[Reader % E + F]): E ?=> A ! F = run[E, A, F](summon[E])(p)
 
   /** answer every Ask with r, forwarding the effects F */
+  /** the handler as a value: `p.handle(Reader(r))` answers `A` */
+  def apply[R](r: R): Handling.Plain[Reader % R, Any, [A] =>> A] = new Handling.Plain[Reader % R, Any, [A] =>> A]:
+    def run[A, F[+_]](p: A ! Reader % R + F)(using A <:< Any, Distinct[Reader % R + F], Handling.Nothing[F]): A ! F =
+      Reader.run(r)(p)
+
   def run[R, A, F[+_]](r: R)(a: A ! Reader % R + F)(using Distinct[Reader % R + F]): A ! F =
     relay[A, A, Reader % R, F](a)(pure(_)):
       [X, Y] => e => e match

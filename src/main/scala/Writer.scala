@@ -179,6 +179,12 @@ object Writer {
   }
 
   /** collect everything told, in order, forwarding the effects F */
+  /** the handler as a value: `p.handle(Writer.log)` answers what was told, in order, and `A` */
+  def log[W](using t: TypeableK[Writer % W]): Handling.Plain[Writer % W, Any, [A] =>> (Seq[W], A)] =
+    new Handling.Plain[Writer % W, Any, [A] =>> (Seq[W], A)]:
+      def run[A, F[+_]](p: A ! Writer % W + F)(using A <:< Any, Distinct[Writer % W + F], Handling.Nothing[F]): (Seq[W], A) ! F =
+        Writer.run(p)
+
   def run[W, A, F[+_]](a: A ! Writer % W + F)(using Distinct[Writer % W + F])
                       (using TypeableK[Writer % W]): (Seq[W], A) ! F =
     // a List built by prepending and reversed ONCE at the end, not a

@@ -119,6 +119,11 @@ object State {
   /** run from an initial state to (final state, value) */
   inline def run[S, A](s: S)(a: A ! State % S): (S, A) = !.run(handle(s)(a))
 
+  /** the handler as a value: `p.handle(State(s))` answers `(S, A)` */
+  def apply[S](s: S): Handling.Plain[State % S, Any, [A] =>> (S, A)] = new Handling.Plain[State % S, Any, [A] =>> (S, A)]:
+    def run[A, F[+_]](p: A ! State % S + F)(using A <:< Any, Distinct[State % S + F], Handling.Nothing[F]): (S, A) ! F =
+      handle(s)(p)
+
   /**
    * the handler: a bespoke tail-recursive loop that threads the state
    * through itself. It cannot be a relay handler — the answer-

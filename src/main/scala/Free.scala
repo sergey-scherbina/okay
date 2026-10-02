@@ -232,6 +232,17 @@ object Freer {
    * push. */
   def delay[G[_, _, +_], S, R, A](thunk: () => Freer[G, S, R, A]): Freer[G, S, R, A] = Delay(thunk)
 
+  // level 1 (specs/shift-effect.md): in the companion, so `p.handle` and `p.run` need no import
+  extension [A, G[+_]](p: A ! G)
+    /** take the handler's effect off the row: `F`, the rest of the row, is what remains */
+    def handle[E[+_], I, O[_], N[_[+_]], F[+_]](h: Handling[E, I, O, N])
+                                               (using row: (A ! G) =:= (A ! E + F), ok: A <:< I, d: Distinct[E + F], n: N[F]): O[A] ! F =
+      h.run[A, F](row(p))
+
+  extension [A](p: A ! Pure)
+    /** a program with no effect left, run to its value */
+    inline def run: A = p.runWith
+
   /**
    * A program value as its answer, INSIDE a `direct` block: the
    * auto-colouring `Direct.selfColor` provides for any monad, given
