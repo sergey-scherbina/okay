@@ -204,14 +204,10 @@ class TestLexicalStacked extends munit.FunSuite:
       def ret(a: Int): Under[P, Ans[St], St] = Freer.Return((s: Int) => Freer.Return((s, a)))
       def op[X](e: State[Int, X], k: X => Under[P, Ans[St], St]): Under[P, Ans[St], St] = e match
         case State.Get() => Freer.Return((s: Int) => k(s).flatMap(f => f(s)))
-        case State.Set(s1) => Freer.Return((_: Int) => k(s1).flatMap(f => f(s1)))
-        case State.Modify(g) => Freer.Return((s: Int) => { val s1 = g(s); k(s1).flatMap(f => f(s1)) })
         case State.Update(g) => Freer.Return((s: Int) => { val (b, s1) = g(s); k(b).flatMap(f => f(s1)) })
     val tail = new Lexical.TailClauses[State % Int, Int]:
       def op[X](e: State[Int, X], s: Int): (Int, X) = e match
         case State.Get() => (s, s)
-        case State.Set(s1) => (s1, s1)
-        case State.Modify(g) => { val s1 = g(s); (s1, s1) }
         case State.Update(g) => { val (b, s1) = g(s); (s1, b) }
 
   test("stacked deep and tail instances, one inside the other: each operation reaches its own") {
@@ -224,7 +220,7 @@ class TestLexicalStacked extends munit.FunSuite:
           for
             x <- a.perform(State.Get[Int, Int]())
             y <- b.perform(State.Get[Int, Int]())
-            _ <- a.perform(State.Set[Int, Int](x + 5))
+            _ <- a.perform(State.Update[Int, Int](_ => (x + 5, x + 5)))
           yield x + y
         }.flatMap(f => f(10)).map(_._2)
       }
@@ -311,8 +307,6 @@ class TestLexicalDefault extends munit.FunSuite:
     val counter = new Lexical.TailClauses[State % Int, Int]:
       def op[X](e: State[Int, X], s: Int): (Int, X) = e match
         case State.Get() => (s, s)
-        case State.Set(s1) => (s1, s1)
-        case State.Modify(g) => { val s1 = g(s); (s1, s1) }
         case State.Update(g) => { val (b, s1) = g(s); (s1, b) }
     assertEquals(run(Lexical.handle(7)(counter)(s => s.get.flatMap(v => s.set(v * 2)))), (14, 14))
   }

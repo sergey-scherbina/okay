@@ -59,15 +59,11 @@ object Fused {
         // otherwise R is inferred from the branches as `S | Unit`
         case Inject(e) => split[State % S, Writer % W](e) {
             case State.Get() => ((s, w), s): ((S, Vector[W]), A)
-            case State.Set(s2) => ((s2, w), s2): ((S, Vector[W]), A)
-            case State.Modify(f) => { val s2 = f(s); ((s2, w), s2): ((S, Vector[W]), A) }
             case State.Update(f) => { val (b, s2) = f(s); ((s2, w), b): ((S, Vector[W]), A) }
           } { w0 => (w0: @unchecked) match   // Say is the one constructor; the checker cannot see it at the program's answer type (Writer.scala says why)
               case Writer.Say(v) => ((s, w :+ v), ()): ((S, Vector[W]), A) }
         case Bind(Inject(e), k) => split[State % S, Writer % W](e) {
             case State.Get() => loop(s, w)(k(s))
-            case State.Set(s2) => loop(s2, w)(k(s2))
-            case State.Modify(f) => { val s2 = f(s); loop(s2, w)(k(s2)) }
             case State.Update(f) => { val (b, s2) = f(s); loop(s2, w)(k(b)) }
           } { w0 =>
             // `Say` is Writer's ONLY constructor, but under a Bind the
@@ -101,8 +97,6 @@ object Fused {
             case Throws(err) => Left(err): Either[E, ((S, Vector[W]), A)]
           } { e => split[State % S, Writer % W](e) {
             case State.Get() => Right(((s, w), s)): Either[E, ((S, Vector[W]), A)]
-            case State.Set(s2) => Right(((s2, w), s2)): Either[E, ((S, Vector[W]), A)]
-            case State.Modify(f) => { val s2 = f(s); Right(((s2, w), s2)): Either[E, ((S, Vector[W]), A)] }
             case State.Update(f) => { val (b, s2) = f(s); Right(((s2, w), b)): Either[E, ((S, Vector[W]), A)] }
           } { w0 => (w0: @unchecked) match
               case Writer.Say(v) => Right(((s, w :+ v), ())): Either[E, ((S, Vector[W]), A)] } }
@@ -110,8 +104,6 @@ object Fused {
             case Throws(err) => Left(err)
           } { e => split[State % S, Writer % W](e) {
             case State.Get() => loop(s, w)(k(s))
-            case State.Set(s2) => loop(s2, w)(k(s2))
-            case State.Modify(f) => { val s2 = f(s); loop(s2, w)(k(s2)) }
             case State.Update(f) => { val (b, s2) = f(s); loop(s2, w)(k(b)) }
           } { w0 => (w0: @unchecked) match
                 case Writer.Say(v) => loop(s, w :+ v)(k(())) } }
@@ -156,8 +148,6 @@ object Fused {
     // the shift must be typed at X for the branches to meet at C[X, R, R]
     [X] => e => split[State % S, Writer % W](e) {
         case State.Get() => C.shift[X, Answer[S, W, A], Answer[S, W, A]](k => acc => k(acc._1)(acc))
-        case State.Set(s2) => C.shift[X, Answer[S, W, A], Answer[S, W, A]](k => acc => k(s2)((s2, acc._2)))
-        case State.Modify(f) => C.shift[X, Answer[S, W, A], Answer[S, W, A]](k => acc => { val s2 = f(acc._1); k(s2)((s2, acc._2)) })
         case State.Update(f) => C.shift[X, Answer[S, W, A], Answer[S, W, A]](k => acc => { val (b, s2) = f(acc._1); k(b)((s2, acc._2)) })
       } { case Writer.Say(v) => C.shift[X, Answer[S, W, A], Answer[S, W, A]](k => acc => k(())((acc._1, acc._2 :+ v))) }
 

@@ -71,9 +71,9 @@ class TestState extends munit.FunSuite {
 
   // effect-row-cost D1: a counter that pays two operations per update
   // pays them twice again when forwarded (specs/effect-row-cost.md)
-  test("modify is ONE operation: a single injected Modify, not get then set") {
+  test("modify is ONE operation: a single injected Update, not get then set") {
     State.modify[Int](_ + 1) match
-      case Free.Inject(State.Modify(_)) => ()
+      case Free.Inject(State.Update(_)) => ()
       case other => fail(s"modify is not one operation: $other")
   }
 

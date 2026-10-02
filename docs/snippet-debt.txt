@@ -1125,7 +1125,7 @@ docs/tutorial.md	given Answers[Model] = Handlers.scripted(Seq(Reply("hi", Nil)))
 docs/tutorial.md	given Answers[Model] = Provider.openAi(Transports.http(), key, "gpt-4o-mini")
 docs/tutorial.md	given Answers[Tool] = session.handler          // the only line that changes
 docs/tutorial.md	guard[[A] =>> A ! Choose](a*a + b*b == c*c).map(_ => (a, b, c)))))
-docs/tutorial.md	if n < 0 then effect(Throws("negative")) else effect(State.Set(n))
+docs/tutorial.md	if n < 0 then effect(Throws("negative")) else effect(State.Update[Int, Int](_ => (n, n)))
 docs/tutorial.md	if n < 2 then n.toLong else fib(n - 1) + fib(n - 2)   // or !fib(n - 1) + !fib(n - 2)
 docs/tutorial.md	import okay.Direct.parallelBinds.given
 docs/tutorial.md	layout = Layout.Braces)

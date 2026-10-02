@@ -40,8 +40,6 @@ class TestHandlersAsDollar extends munit.FunSuite:
     val p = Delim.prompt[Ans]
     val op = [X] => (e: State[Int, X]) => (e match
       case State.Get() => Delim.shift0[Ans, Int, W](p)(k => okay.pure((s: Int) => k(s).flatMap(f => f(s))))
-      case State.Set(s1) => Delim.shift0[Ans, Int, W](p)(k => okay.pure((_: Int) => k(s1).flatMap(f => f(s1))))
-      case State.Modify(g) => Delim.shift0[Ans, Int, W](p)(k => okay.pure((s: Int) => { val s1 = g(s); k(s1).flatMap(f => f(s1)) }))
       case State.Update(g) => Delim.shift0[Ans, X, W](p)(k => okay.pure((s: Int) => { val (b, s1) = g(s); k(b).flatMap(f => f(s1)) }))
     ): X ! Delim + W
     val ret: A => Ans ! Delim + W = a => okay.pure((s: Int) => okay.pure((s, a)))
@@ -82,8 +80,6 @@ class TestHandlersAsDollar extends munit.FunSuite:
     val p = Delim.prompt[Ans]
     val op = [X] => (e: State[Int, X]) => (e match
       case State.Get() => Delim.shift0[Ans, Int, W](p)(k => okay.pure((s: Int) => k(s).flatMap(f => f(s))))
-      case State.Set(s1) => Delim.shift0[Ans, Int, W](p)(k => okay.pure((s: Int) => k(s1).flatMap(f => f(s))))
-      case State.Modify(g) => Delim.shift0[Ans, Int, W](p)(k => okay.pure((s: Int) => { val s1 = g(s); k(s1).flatMap(f => f(s1)) }))
       case State.Update(g) => Delim.shift0[Ans, X, W](p)(k => okay.pure((s: Int) => { val (b, s1) = g(s); k(b).flatMap(f => f(s1)) }))
     ): X ! Delim + W
     val ret: Int => Ans ! Delim + W = a => okay.pure((s: Int) => okay.pure((s, a)))

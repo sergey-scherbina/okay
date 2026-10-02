@@ -85,7 +85,6 @@ with the final cell, and the result is applied to the starting state:
 
 ```scala
 case State.Get() => Cont.shift[X, St, St](k => s => k(s)(s))
-case State.Set(s1) => Cont.shift[X, St, St](k => _ => k(s1)(s1))
 assertEquals((counter.foldCont(cell) / (a => s => (s, a)))(5), (6, 506))
 ```
 

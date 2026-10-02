@@ -81,7 +81,7 @@ through `Indexed.unary`, the door that moves no index, and
   given TypeableI[PSt] = TypeableI.derived
   def rget[S, Z]: Freer[Row, S => Z, S => Z, S] = Indexed.effect[Row, S => Z, S => Z, S](PSt.Get())
   def rput[S, T, Z](t: T): Freer[Row, T => Z, S => Z, S] = Indexed.effect[Row, T => Z, S => Z, S](PSt.Put(t))
-  def tick[R]: Freer[Row, R, R, Int] = Indexed.unary[Row, R, Int](State.Modify[Int, Int](_ + 1))
+  def tick[R]: Freer[Row, R, R, Int] = Indexed.unary[Row, R, Int](State.Update[Int, Int](n => (n + 1, n + 1)))
 ```
 
 `State.handleIndexed` is the reference handler over such a row: its

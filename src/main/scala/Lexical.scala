@@ -128,8 +128,6 @@ object Lexical:
         def ret(a: A): Ans[S, A, G] ! G = okay.pure((s: S) => okay.pure((s, a)))
         def op[X](e: okay.State[S, X], k: X => Ans[S, A, G] ! G): Ans[S, A, G] ! G = e match
           case okay.State.Get() => okay.pure((s: S) => k(s).flatMap(f => f(s)))
-          case okay.State.Set(s1) => okay.pure((_: S) => k(s1).flatMap(f => f(s1)))
-          case okay.State.Modify(g) => okay.pure((s: S) => { val s1 = g(s); k(s1).flatMap(f => f(s1)) })
           case okay.State.Update(g) => okay.pure((s: S) => { val (b, s1) = g(s); k(b).flatMap(f => f(s1)) })
       )(body).flatMap(f => f(s0))
 
@@ -142,8 +140,6 @@ object Lexical:
       Lexical.tail[okay.State % S, S, A, G](s0)(new TailClauses[okay.State % S, S]:
         def op[X](e: okay.State[S, X], s: S): (S, X) = e match
           case okay.State.Get() => (s, s)
-          case okay.State.Set(s1) => (s1, s1)
-          case okay.State.Modify(g) => { val s1 = g(s); (s1, s1) }
           case okay.State.Update(g) => { val (b, s1) = g(s); (s1, b) }
       )(body)
 
@@ -153,18 +149,16 @@ object Lexical:
       Lexical.walk[okay.State % S, S, A, G](s0)(new TailClauses[okay.State % S, S]:
         def op[X](e: okay.State[S, X], s: S): (S, X) = e match
           case okay.State.Get() => (s, s)
-          case okay.State.Set(s1) => (s1, s1)
-          case okay.State.Modify(g) => { val s1 = g(s); (s1, s1) }
           case okay.State.Update(g) => { val (b, s1) = g(s); (s1, b) }
       )(body)
 
     extension [S, G[+_]](i: Inst[okay.State % S, G])
       def get: S ! G = i.perform(okay.State.Get[S, S]())
-      def set(s: S): S ! G = i.perform(okay.State.Set[S, S](s))
+      def set(s: S): S ! G = i.perform(okay.State.Update[S, S](_ => (s, s)))
       /** `modify` */
-      def modify(f: S => S): S ! G = i.perform(okay.State.Modify[S, S](f))
+      def modify(f: S => S): S ! G = i.perform(okay.State.Update[S, S](s => { val n = f(s); (n, n) }))
       /** `set` as a statement */
-      def put(s: S): Unit ! G = i.perform(okay.State.Set[S, S](s)).map(_ => ())
+      def put(s: S): Unit ! G = i.perform(okay.State.Update[S, Unit](_ => ((), s)))
 
   /**
    * STACKED INSTANCES: the instance is its delimiter on the typed stack, so using it outside its

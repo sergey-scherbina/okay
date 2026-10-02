@@ -146,7 +146,7 @@ class TestFreerPara extends munit.FunSuite:
 
   def rget[S, Z]: Freer[Row, S => Z, S => Z, S] = Indexed.effect[Row, S => Z, S => Z, S](PSt.Get())
   def rput[S, T, Z](t: T): Freer[Row, T => Z, S => Z, S] = Indexed.effect[Row, T => Z, S => Z, S](PSt.Put(t))
-  def tick[R]: Freer[Row, R, R, Int] = Indexed.unary[Row, R, Int](State.Modify[Int, Int](_ + 1))
+  def tick[R]: Freer[Row, R, R, Int] = Indexed.unary[Row, R, Int](State.Update[Int, Int](n => (n + 1, n + 1)))
 
   test("an indexed effect in a ROW beside State: State.handleIndexed forwards the index it does not own") {
     type Z = (List[String], (Int, Int))
@@ -171,10 +171,10 @@ class TestFreerPara extends munit.FunSuite:
   }
 
   test("the door refuses a unary operation off the diagonal: the Unary member is stuck there") {
-    val errors = compileErrors("Indexed.effect[Row, Int => Unit, String => Unit, Int](State.Modify[Int, Int](_ + 1))")
+    val errors = compileErrors("Indexed.effect[Row, Int => Unit, String => Unit, Int](State.Update[Int, Int](n => (n + 1, n + 1)))")
     assert(errors.nonEmpty, "a State operation at a moving index must not type")
     // and on the diagonal the same operation is accepted, through either door
-    val ok: Freer[Row, Int => Unit, Int => Unit, Int] = Indexed.unary[Row, Int => Unit, Int](State.Modify[Int, Int](_ + 1))
+    val ok: Freer[Row, Int => Unit, Int => Unit, Int] = Indexed.unary[Row, Int => Unit, Int](State.Update[Int, Int](n => (n + 1, n + 1)))
     assert(ok.isInstanceOf[Freer.Diag[?, ?, ?]])
   }
 

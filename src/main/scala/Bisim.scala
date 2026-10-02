@@ -61,13 +61,10 @@ object Bisim:
         def apply[X](op: F[X] | G[X]): List[X] = split[F, G](op)(f(_))(g(_))
 
   object Answers:
-    /** every `get` answered by each sample in turn; a `set` by what it set */
+    /** every `get` answered by each sample in turn; an `update` by what its function says of each */
     def state[S](samples: S*): Answers[State % S] = new Answers[State % S]:
       def apply[X](op: State[S, X]): List[X] = op match
         case State.Get() => samples.toList
-        case State.Set(s) => List(s)
-        // a modify answers the new state: each sample, modified
-        case State.Modify(f) => samples.toList.map(f)
         // an update answers what its function says from each sample
         case State.Update(f) => samples.toList.map(s => f(s)._1)
 

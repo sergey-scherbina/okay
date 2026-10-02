@@ -41,8 +41,6 @@ class TestFoldCont extends munit.FunSuite:
     yield n * 100 + m
     val cell: (State % Int) !> St = [X] => (e: State[Int, X]) => e match
       case State.Get() => Cont.shift[X, St, St](k => s => k(s)(s))
-      case State.Set(s1) => Cont.shift[X, St, St](k => _ => k(s1)(s1))
-      case State.Modify(f) => Cont.shift[X, St, St](k => s => k(f(s))(f(s)))
       case State.Update(f) => Cont.shift[X, St, St](k => s => k(f(s)._1)(f(s)._2))
     assertEquals((counter.foldCont(cell) / (a => s => (s, a)))(5), (6, 506))
   }

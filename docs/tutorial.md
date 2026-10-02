@@ -21,7 +21,7 @@ Nothing ran until `run`. Signatures union freely:
 ```scala
 type F = State % Int + Throws % String
 def risky(n: Int): Int ! F =
-  if n < 0 then effect(Throws("negative")) else effect(State.Set(n))
+  if n < 0 then effect(Throws("negative")) else effect(State.Update[Int, Int](_ => (n, n)))
 
 runEither(State.handle(0)(risky(5)))   // handle State, then Throws
 ```
