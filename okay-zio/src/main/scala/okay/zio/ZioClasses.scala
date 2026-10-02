@@ -20,6 +20,10 @@ given zstreamMonad[R, E]: okay.Monad[[A] =>> ZStream[R, E, A]] with
   extension [A](a: ZStream[R, E, A])
     def flatMap[B](f: A => ZStream[R, E, B]): ZStream[R, E, B] = a.flatMap(f)
 
+/** ZStream's `flatMap` builds a stream and calls nothing, so the
+ * `flatMap` recursion is its loop (specs/eager-carrier-depth.md) */
+given zstreamTailRecM[R, E]: okay.TailRecM[[A] =>> ZStream[R, E, A]] = okay.TailRecM.deferring
+
 object ZioClasses:
 
   /**

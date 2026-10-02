@@ -134,19 +134,23 @@ trait Effects[M[_[+_], _]]:
     /**
      * The program folded into any `Monad` G, each operation translated by
      * `nt` (`Static.foldMap` into a `Selective`, `Proc.foldMap` into a
-     * `Monad`, the same fold). DERIVED: `foldCont` with `S = G[A]`, so
-     * every encoding has it (specs/effects-foldmap.md).
+     * `Monad`, the same fold).
      *
-     * STACK-SAFE FOR AN EAGER G TOO, measured rather than assumed: the
-     * spec expected `Option`'s `flatMap`, which calls its continuation at
-     * once, to grow the host stack per operation, and TestFoldMap folds a
-     * million operations through `Option` in both shapes (left-nested
-     * binds, non-tail recursion). The continuation `k` handed to each
-     * operation is resumed by `Cont`'s own machine, which is data, not a
-     * host-stack call chain.
+     * IT IS G's `tailRecM`, as cats' `Free.foldMap` is: each step resumes
+     * the tree once and answers `Left(the rest)` or `Right(the value)`,
+     * so the fold is exactly as stack-safe as `TailRecM[G]` — which is
+     * the carrier's own loop, never a derivation
+     * (specs/eager-carrier-depth.md). The first cut folded through
+     * `foldCont`, and an eager G's `flatMap` nested the host stack per
+     * operation: 1 000 operations overflowed a 128 KB thread.
      */
-    def foldMap[G[_]](nt: F ==> G)(using G: Monad[G]): G[A] =
-      m.foldCont[G[A]]([X] => e => Cont.shift(k => G.flatMap(nt(e))(k))) / G.pure
+    def foldMap[G[_]](nt: F ==> G)(using G: Monad[G], R: TailRecM[G]): G[A] =
+      R.tailRecM[A ! F, A](reify[M, F, A](m)(using Effects.this)) { p =>
+        (p.resume: @unchecked) match
+          case Free.Return(a) => G.pure(Right(a))
+          case Free.Inject(e) => G.fmap(nt(e), a => Right(a))
+          case Free.Bind(Free.Inject(e), k) => G.fmap(nt(e), x => Left(k(x)))
+      }
 
   /** handle the effect F by h (and the values by ret), forwarding the
    * effects G; for mass tail-resumption prefer !.relay (measured) */
@@ -326,29 +330,12 @@ inline def convert[M[_[+_], _] : Effects,
     N.perform(e).flatMap(k))) / (a => N.pure(a))
 
 /**
- * `tailRecM` for ANY okay `Monad` (specs/monad-tailrecm.md): iterate `f`
- * from `a`, a `Left` continues, a `Right` answers. The programs' own
- * loop is `!.loop`; this is the same loop for a monad that is not a
- * program, written as an extension on the instance: `M.tailRecM(a)(f)`.
- *
- * STACK-SAFE FOR EVERY CARRIER, eager ones included, with nothing asked
- * of the instance: each iteration is a `Cont.shift` whose body hands the
- * continuation to the monad's `flatMap`, and the `Left` case loops inside
- * `Cont`'s own `flatMap`. `Cont` is data and resumes a continuation in
- * its own machine, so an `Option`, whose `flatMap` calls the
- * continuation at once, adds no host frames per iteration (measured: a
- * million, TestTailRecM; `foldMap` above found it first). TRAMPOLINED in
- * `Cont` (AGENTS.md, no unbounded stack recursion): `step` is called
- * from a `Cont` continuation, never from itself.
+ * `M.tailRecM(a)(f)`: the loop of `TailRecM[F]`, spelled on the monad
+ * instance. The instance is the CARRIER's (Monad.scala,
+ * specs/eager-carrier-depth.md); there is none to derive.
  */
 extension [F[_]](M: Monad[F])
-  def tailRecM[A, B](a: A)(f: A => F[Either[A, B]]): F[B] =
-    def step(s: A): Cont[B, F[B], F[B]] =
-      Cont.shift[Either[A, B], F[B], F[B]](k => M.flatMap(f(s))(k)).flatMap {
-        case Left(next) => step(next)
-        case Right(b) => Cont.Pure(b)
-      }
-    step(a) / (b => M.pure(b))
+  def tailRecM[A, B](a: A)(f: A => F[Either[A, B]])(using R: TailRecM[F]): F[B] = R.tailRecM(a)(f)
 
 /**
  * any Effects program materializes back as a Free tree: building

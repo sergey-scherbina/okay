@@ -1,6 +1,6 @@
 # eager-carrier-depth — `tailRecM` and `foldMap` with no stack overflow, in principle
 
-Status: in progress, 2026-10-02. Owner lane: `eager-carrier-depth`.
+Status: done, 2026-10-02. Owner lane: `eager-carrier-depth`.
 Operator's bar: "полный трамплининг — чтобы не было никакого переполнения
 в принципе". Supersedes the stack claims of effects-foldmap and
 monad-tailrecm.
@@ -48,15 +48,35 @@ point in *Stack Safety for Free* (2015) and the reason PureScript has
 
 ## Behavior
 
-- [ ] every claimed carrier: a million iterations on a 128 KB JVM thread
-      (`SmallStack(128)`), and on Scala.js and Native (scala-cross)
-- [ ] `foldMap` into `Option` and into a program: a million operations
-      on `SmallStack(128)` and on JS
-- [ ] a strict monad with no `TailRecM` does not compile `tailRecM`/
-      `foldMap`/`ToCats.monad`, and the error names `TailRecM`
-- [ ] cats' laws (`MonadTests`, its stack-safety law) on `ToCats.monad`
-      from `Monad[Option]`, on all three platforms
+- [x] every claimed carrier: a million iterations on a 128 KB JVM thread
+      (`Option`, `Either`, `LazyList`, the context monad, a program, ZIO,
+      kyo pure and under `Env`; ZStream a hundred thousand), and core's
+      on Scala.js and Native (TestStackSafeLoops)
+- [x] `foldMap` into `Option`: a million operations, left-nested and
+      non-tail, on a 128 KB thread and on Scala.js/Native
+- [x] a strict monad with no `TailRecM` does not compile `tailRecM`, and
+      the error names `TailRecM` (compileErrors)
+- [x] cats' laws (`MonadTests`, its stack-safety law) on `ToCats.monad`
+      from `Monad[Option]`, on all three platforms; an eager okay monad
+      that brings its own loop: a million through cats' `tailRecM` on JS
 
 ## Decisions
 
+- **The kyo instance is `Loop`, not `deferring`.** A pure kyo value maps
+  at once (`<` is `A | Kyo`), so kyo's `flatMap` is eager on pure
+  values; `Loop` is kyo's own constant-stack loop. Its inline expansion
+  carries kyo's E221 ("recursive call used a default argument"),
+  silenced on that one method with the reason.
+- **What stays bounded, deliberately out of this lane:** `Cont`'s runner
+  itself nests the host stack for nested OPAQUE bodies and on Scala.js
+  has no fresh stack (specs/cont-stack.md, "JS: the bound"). TailRecM and
+  foldMap no longer go through it for an eager carrier.
+
 ## Results
+
+- core: TestTailRecM 7, TestFoldMap 4 (SmallStack 128 KB), and
+  TestStackSafeLoops 2 on JVM, Scala.js and Native; okay-cats JVM 323,
+  JS 253, Native 253 (TestToCatsDepth back in the cross set); okay-zio
+  TestZioTailRecM 2; okay-kyo TestKyoTailRecM 2.
+- Mutant: `TailRecM[Option]` as `deferring` (the flatMap recursion)
+  fails both 128 KB tests with StackOverflowError.

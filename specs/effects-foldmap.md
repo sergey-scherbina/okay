@@ -44,3 +44,11 @@ on every `Effects` encoding, DERIVED (not a primitive): `foldCont` with
   at once adds no host frames per operation. TestFoldMap pins the
   million in both shapes; the method's comment says so instead of a
   bound.
+
+- **CORRECTED by eager-carrier-depth (2026-10-02).** The probe above ran
+  on sbt's `-Xss8m` and a forked main thread, where `Cont` moves to a
+  fresh stack when one runs out; the explanation ("resumed by `Cont`'s
+  data machine, adds no host frames") was wrong. On a 128 KB JVM thread
+  `foldMap` into `Option` overflowed at 1 000 operations, on Scala.js at
+  300-1 000. `foldMap` is now `TailRecM[G]` (the carrier's loop), and
+  holds a million on a 128 KB thread and on JS.

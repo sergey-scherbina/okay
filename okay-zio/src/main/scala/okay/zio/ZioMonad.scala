@@ -15,6 +15,11 @@ given zioMonad[R, E]: okay.Monad[[A] =>> ZIO[R, E, A]] with
   extension [A](a: ZIO[R, E, A])
     def flatMap[B](f: A => ZIO[R, E, B]): ZIO[R, E, B] = a.flatMap(f)
 
+/** ZIO's `flatMap` builds a ZIO and calls nothing — its run loop
+ * reaches the continuation — so the `flatMap` recursion is its loop
+ * (specs/eager-carrier-depth.md) */
+given zioTailRecM[R, E]: okay.TailRecM[[A] =>> ZIO[R, E, A]] = okay.TailRecM.deferring
+
 extension [A](p: => A ! Async)
   /** the okay program as a Task — [[ZioInterop.toZIO]], right for any
    * program, a blocking `Async.Run` included */

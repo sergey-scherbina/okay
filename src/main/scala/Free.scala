@@ -275,6 +275,12 @@ object Freer {
     extension [A](a: Free[F, A])
       override inline def flatMap[B](f: A => Free[F, B]): Free[F, B] = a.flatMap(f)
 
+  /** a program's loop is `!.loop`: the recursion sits in a `Bind` the
+   * interpreter resumes, never on the caller's stack
+   * (specs/eager-carrier-depth.md) */
+  given [F[+_]]: TailRecM[Free[F, *]] with
+    def tailRecM[A, B](a: A)(f: A => Free[F, Either[A, B]]): Free[F, B] = Effects.loop(a)(f)
+
   /**
    * The tree in `ParaMonad`'s order — value first, then the indexes
    * (freer-paramonad, 2026-09-30). `Freer` keeps `A` LAST for inference

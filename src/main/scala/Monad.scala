@@ -1,6 +1,7 @@
 package okay
 
 import scala.annotation.implicitNotFound
+import scala.annotation.tailrec
 
 /**
  * Robert Atkey. Parameterised notions of computation. (2009)
@@ -155,18 +156,73 @@ trait Monad[F[_]] extends Selective[F]:
 /**
  * Iteration in F that does not grow the stack: from `a`, a `Left`
  * continues and a `Right` answers. cats calls it `tailRecM`, PureScript's
- * class is `MonadRec`. Every okay `Monad` has one: the instance is
- * derived in Effects.scala, beside `!.loop` and `foldMap`
- * (specs/monad-tailrecm.md).
+ * class is `MonadRec` (Freeman, *Stack Safety for Free*, 2015).
+ *
+ * PROVIDED BY THE CARRIER, NEVER DERIVED FROM `flatMap`
+ * (specs/eager-carrier-depth.md). An eager carrier's `flatMap` calls its
+ * continuation before it returns, and may need that continuation's
+ * result to build its own (an eager Writer appends after `k`, a List
+ * runs it many times), so no wrapper turns `flatMap` recursion into a
+ * loop without the carrier's help. A derivation through `Cont` was tried
+ * (monad-tailrecm) and overflowed a 128 KB thread at 1 000 iterations and
+ * Scala.js at 300-1 000. So a monad without an instance here has no
+ * `tailRecM` at all — a compile error, never an overflow.
  */
+@implicitNotFound("no TailRecM[${F}]: a stack-safe loop is the carrier's to provide (specs/eager-carrier-depth.md).\nA carrier whose flatMap does not call its continuation before returning may say so: given TailRecM[${F}] = TailRecM.deferring\nAn eager one writes its own loop.")
 trait TailRecM[F[_]]:
   def tailRecM[A, B](a: A)(f: A => F[Either[A, B]]): F[B]
 
 object TailRecM:
-  /** every okay `Monad`, through the extension in Effects.scala — in the
-   * companion so it is found with no import */
-  given derived[F[_]](using M: Monad[F]): TailRecM[F] with
-    def tailRecM[A, B](a: A)(f: A => F[Either[A, B]]): F[B] = okay.tailRecM(M)(a)(f)
+
+  /**
+   * The `flatMap` recursion, for a carrier whose `flatMap` does NOT call
+   * its continuation before returning (a program, `IO`, `Eval`, ZIO): the
+   * recursive call is a value the carrier's own run loop will reach, so
+   * no host frame is held across iterations. An explicit claim, made at
+   * the instance and checked there by a depth test; wrong for `Option`.
+   */
+  def deferring[F[_]](using M: Monad[F]): TailRecM[F] = new:
+    def tailRecM[A, B](a: A)(f: A => F[Either[A, B]]): F[B] =
+      M.flatMap(f(a)) {
+        case Left(next) => tailRecM(next)(f)
+        case Right(b) => M.pure(b)
+      }
+
+  /** a while loop: a `None` stops it */
+  given option: TailRecM[Option] with
+    def tailRecM[A, B](a: A)(f: A => Option[Either[A, B]]): Option[B] =
+      @tailrec def loop(s: A): Option[B] = f(s) match
+        case None => None
+        case Some(Left(next)) => loop(next)
+        case Some(Right(b)) => Some(b)
+      loop(a)
+
+  /** a while loop: a `Left` error stops it */
+  given either[E]: TailRecM[[X] =>> Either[E, X]] with
+    def tailRecM[A, B](a: A)(f: A => Either[E, Either[A, B]]): Either[E, B] =
+      @tailrec def loop(s: A): Either[E, B] = f(s) match
+        case Left(e) => Left(e)
+        case Right(Left(next)) => loop(next)
+        case Right(Right(b)) => Right(b)
+      loop(a)
+
+  /**
+   * Depth-first over every branch, LAZILY: an explicit stack of the
+   * branches still to expand, and a tail loop that expands until the next
+   * `Right` and emits it with the rest suspended. A run of `Left`s costs
+   * no frames; the next answer is computed only when it is asked for.
+   */
+  given lazyList: TailRecM[LazyList] with
+    def tailRecM[A, B](a: A)(f: A => LazyList[Either[A, B]]): LazyList[B] =
+      @tailrec def next(stack: List[LazyList[Either[A, B]]]): LazyList[B] = stack match
+        case Nil => LazyList.empty
+        case head :: rest =>
+          if head.isEmpty then next(rest)
+          else head.head match
+            case Right(b) => b #:: go(head.tail :: rest)
+            case Left(s) => next(f(s) :: head.tail :: rest)
+      def go(stack: List[LazyList[Either[A, B]]]): LazyList[B] = LazyList.empty #::: next(stack)
+      go(f(a) :: Nil)
 
 /** choice with a neutral element */
 trait Alternative[F[_]] extends Applicative[F]:

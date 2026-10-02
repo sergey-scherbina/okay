@@ -47,12 +47,15 @@ class TestFoldMap extends munit.FunSuite:
     assertEquals(!.run(Reader.run[Int, Int, Nothing](1)(long.foldMap[[X] =>> X ! Reader % Int](toReader))), n)
   }
 
-  test("an eager G is stack-safe too: a million operations through Option, both shapes") {
+  test("an eager G on a 128 KB thread: a million operations through Option, both shapes") {
+    // foldMap is Option's own loop (TailRecM), so the stack it is given
+    // does not matter; the first cut, through foldCont, overflowed this
+    // at 1 000 (specs/eager-carrier-depth.md)
     val n = 1000000
     val left: Int ! Op = (1 to n).foldLeft(pure[Op, Int](0))((p, _) =>
       p.flatMap(s => effect(Op.Lookup("x")).map(_ + s)))
     def nonTail(i: Int): Int ! Op =
       if i == 0 then pure(0) else effect(Op.Lookup("x")).flatMap(x => nonTail(i - 1).map(_ + x))
-    assertEquals(left.foldMap(table(Map("x" -> 1))), Some(n))
-    assertEquals(nonTail(n).foldMap(table(Map("x" -> 1))), Some(n))
+    assertEquals(SmallStack.run(128)(left.foldMap(table(Map("x" -> 1)))), Some(n))
+    assertEquals(SmallStack.run(128)(nonTail(n).foldMap(table(Map("x" -> 1)))), Some(n))
   }

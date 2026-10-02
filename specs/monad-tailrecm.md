@@ -52,3 +52,10 @@ each iteration a `Cont.shift` whose body is `flatMap(f(s))(k)`, the
   fails both `Option` tests with a StackOverflowError; the program
   case passes under it, as it should, since a program's `flatMap`
   defers.
+
+- **SUPERSEDED by eager-carrier-depth (2026-10-02).** The derivation
+  through `Cont` is gone: it held a host frame per iteration on an eager
+  carrier (128 KB JVM thread: overflow at 1 000; Scala.js: 300-1 000),
+  and the million measured here ran on an 8 MB stack. `TailRecM` is now
+  provided by each carrier, never derived; the class and `ToCats.monad`
+  stay.

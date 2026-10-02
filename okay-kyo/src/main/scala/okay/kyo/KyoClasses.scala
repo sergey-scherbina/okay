@@ -37,6 +37,24 @@ given kyoMonad[S]: okay.Monad[[A] =>> A < S] with
     // the name would resolve to the extension being defined
     def flatMap[B](f: A => B < S): B < S = _root_.kyo.kernel.`<`.flatMap(a)(x => f(x))
 
+/**
+ * kyo's own `Loop` as okay's `TailRecM` (specs/eager-carrier-depth.md).
+ * NOT `TailRecM.deferring`: a pure kyo value maps at once — `<`'s
+ * `flatMap` calls its continuation before returning — so the `flatMap`
+ * recursion would nest exactly like `Option`'s.
+ */
+given kyoTailRecM[S]: okay.TailRecM[[A] =>> A < S] with
+  // E221 is kyo's, not ours: `Loop.apply` is inline and its own @tailrec
+  // `loop(i1)(v = run(i1))` recurses with that default argument; the
+  // warning surfaces at whatever call site inlines it
+  @annotation.nowarn("id=E221")
+  def tailRecM[A, B](a: A)(f: A => Either[A, B] < S): B < S =
+    import WeakFlat.unsafe.bypass
+    _root_.kyo.Loop[A, B, S](a)(s => _root_.kyo.kernel.`<`.map(f(s)) {
+      case Left(next) => _root_.kyo.Loop.continue[A, B, S](next)
+      case Right(b) => _root_.kyo.Loop.done[A, B](b)
+    })
+
 object KyoClasses:
 
   /**

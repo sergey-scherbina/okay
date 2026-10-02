@@ -86,12 +86,11 @@ either. A given in lexical scope is found before the type's own
 instance, so a default `FromCats` would reroute okay's own
 `Monad[A ! F]` through cats.
 
-cats' `Monad` needs a stack-safe `tailRecM`. Every okay `Monad` has
-one, `TailRecM` (specs/monad-tailrecm.md), and it is safe even on an
-eager carrier, because each iteration's continuation is resumed by
-`Cont`'s data machine and not by the host stack. So `ToCats` gives
-cats' `Monad` too, and cats' own laws hold for it, their `tailRecM`
-stack-safety law included.
+cats' `Monad` needs a stack-safe `tailRecM`. okay's is `TailRecM`, the
+carrier's own loop (specs/eager-carrier-depth.md). So `ToCats` gives
+cats' `Monad` exactly for the okay monads that have one, and cats' own
+laws hold for it, their `tailRecM` stack-safety law included, on all
+three platforms.
 
 ### An okay program as cats-effect's `F`
 

@@ -124,6 +124,10 @@ given okayIO: okay.Monad[IO] with
   extension [A](a: IO[A])
     def flatMap[B](f: A => IO[B]): IO[B] = a.flatMap(f)
 
+/** IO's own loop as okay's `TailRecM` (specs/eager-carrier-depth.md) */
+given okayIOTailRecM: okay.TailRecM[IO] with
+  def tailRecM[A, B](a: A)(f: A => IO[Either[A, B]]): IO[B] = IO.asyncForIO.tailRecM(a)(f)
+
 /** cats' `Eval` under okay's Monad — cats' own trampoline, so a deep
  * `okay.traverse` over it is stack-safe */
 given okayEval: okay.Monad[Eval] with
@@ -131,6 +135,10 @@ given okayEval: okay.Monad[Eval] with
   override def fmap[A, B](a: Eval[A], f: A => B): Eval[B] = a.map(f)
   extension [A](a: Eval[A])
     def flatMap[B](f: A => Eval[B]): Eval[B] = a.flatMap(f)
+
+/** Eval's own loop as okay's `TailRecM` */
+given okayEvalTailRecM: okay.TailRecM[Eval] with
+  def tailRecM[A, B](a: A)(f: A => Eval[Either[A, B]]): Eval[B] = Eval.catsBimonadForEval.tailRecM(a)(f)
 
 /**
  * Any cats class as okay's (`import okay.cats.FromCats.given`):
@@ -142,6 +150,11 @@ given okayEval: okay.Monad[Eval] with
  * own, and a search that can go round that loop diverges.
  */
 object FromCats extends FromCatsMonad:
+  /** every cats `Monad` carries a stack-safe `tailRecM` by contract:
+   * okay's `TailRecM` is that loop (specs/eager-carrier-depth.md) */
+  given tailRecM[F[_]](using M: _root_.cats.Monad[F]): okay.TailRecM[F] with
+    def tailRecM[A, B](a: A)(f: A => F[Either[A, B]]): F[B] = M.tailRecM(a)(f)
+
   given monadPlus[F[_]](using M: _root_.cats.Monad[F], A: _root_.cats.Alternative[F]): okay.MonadPlus[F] with
     def pure[A](a: A): F[A] = M.pure(a)
     override def fmap[A, B](a: F[A], f: A => B): F[B] = M.map(a)(f)
@@ -186,10 +199,9 @@ trait FromCatsFunctor:
  * Any okay class as cats' (`import okay.cats.ToCats.given`): cats'
  * `traverse`, `mapN`, `flatMap`, `combineK` over every type okay has an
  * instance for. Monad, Alternative, Applicative, Functor, in that
- * priority. cats' `Monad` demands a stack-safe `tailRecM`; okay's
- * `TailRecM` is one for every okay `Monad`, eager ones included
- * (derived in Effects.scala, specs/monad-tailrecm.md), and the bridge
- * passes it through.
+ * priority. cats' `Monad` demands a stack-safe `tailRecM`; okay's is the
+ * carrier's own `TailRecM` (specs/eager-carrier-depth.md), so cats'
+ * `Monad` exists exactly for the okay monads that can loop safely.
  *
  * NOT together with [[FromCats]] — see there.
  */

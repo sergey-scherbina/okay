@@ -95,18 +95,22 @@ on as operations, and `/ ret` gives the program that remains. So
 `foldCont` is the one primitive under all of them. `runWith`, `handle`
 and every ready handler are choices of `S` and of the last continuation.
 
-One more choice of `S` has its own name. With `S = G[A]` for a monad
-`G`, each operation is translated by a natural transformation and bound
-with `G`'s `flatMap`. That is `foldMap`, the fold `Static` and `Proc`
-have too:
+One more interpretation has its own name. With a monad `G`, each
+operation is translated by a natural transformation into `G`. That is
+`foldMap`, the fold `Static` and `Proc` have too:
 
 ```scala
-def foldMap[G[_]](nt: F ==> G)(using G: Monad[G]): G[A] =
+def foldMap[G[_]](nt: F ==> G)(using G: Monad[G], R: TailRecM[G]): G[A] =
 assertEquals(p.foldMap(toIO).unsafeRunSync(), 12)
 ```
 
-It is stack-safe for an eager `G` as well: a million operations fold
-through `Option` (specs/effects-foldmap.md).
+It is `G`'s own loop, `TailRecM[G]`, as cats' `Free.foldMap` is. Each
+step resumes the program once and answers "continue with the rest" or
+"done". So a fold is exactly as stack-safe as the carrier's loop.
+Every `TailRecM` in okay is a real loop: a million operations fold
+through `Option` on a 128 KB thread and on Scala.js
+(specs/eager-carrier-depth.md). A monad with no `TailRecM` cannot be
+folded into: that is a compile error, not an overflow.
 
 You call it yourself only to write an interpretation the ready handlers
 do not have. To USE an effect, `handle` and `run` are the words.
