@@ -7,6 +7,8 @@
       src/main/scala/macros/ — ContMacro (git mv), ShiftMacros, AnswersMacros,
       DistinctMacros, IndexedMacros, ProvideMacros, each `@publicInBinary
       private[okay]` (a private object reached from a public inline is an
-      unstable accessor otherwise, E192); 19 inventory rows re-filed. Stage 3, separately: the
+      unstable accessor otherwise, E192); 19 inventory rows re-filed. STAGE 2 DONE
+      2026-10-02: Handler's (seenImpl, checkImpl, caseDefsOf, checkCore) in
+      macros/HandlerMacros.scala, 3 inventory rows re-filed. Stage 3, separately: the
       satellites (okay-direct's macros/ is package `okay` today). A move: no
       behaviour changes. (2026-10-02)
