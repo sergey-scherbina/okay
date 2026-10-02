@@ -36,7 +36,10 @@ object Handler:
     answer[F]([X] => (e: F[X]) => a.handle(e))
 
   /** 2 · a state threaded through the operations: `(s, op) => (s', answer)`; the result carries the last state */
-  def state[F[+_], S](init: S)(f: [X] => (S, F[X]) => (S, X))(using TypeableK[F]): Handler[F, [A] =>> (S, A)] =
+  @scala.annotation.nowarn("msg=New anonymous class definition will be duplicated")
+  inline def state[F[+_], S](init: S)(inline f: [X] => (S, F[X]) => (S, X))(using TypeableK[F]): Handler[F, [A] =>> (S, A)] =
+    // a class per call site is the point: the clause expands into that site's own loop, where the JIT can
+    // drop the pair it answers (handler-forms: 1.60x with the clause a function value)
     new Handler[F, [A] =>> (S, A)]:
       def run[A, G[+_]](p: A ! F + G)(using A <:< Any, Distinct[F + G], Nothing[G]): (S, A) ! G =
         // a call from inside flatMap cannot be a jump; `again` takes it, so the walk stays a checked loop
@@ -66,4 +69,25 @@ object Handler:
                           (using TypeableK[F]): Handler[F, O] = new Handler[F, O]:
     def run[A, G[+_]](p: A ! F + G)(using A <:< Any, Distinct[F + G], Nothing[G]): O[A] ! G =
       Effects[Free].handle[F, G](p)(a => pure[G, O[A]](ret(a)))(
-        [X] => (e: F[X]) => Cont.shift[X, O[A] ! G, O[A] ! G](k => f[X, A, G](e, k)))
+        [X] => (e: F[X]) =>
+          val resume = new Resume[X, O[A], G]
+          val out = f[X, A, G](e, resume)
+          // `resume(x)` once, as the clause's answer: the program goes on, nothing to capture
+          if resume.calls == 1 && (out eq resume.last) then Cont.Pure[X, O[A] ! G](resume.arg)
+          else Cont.shift[X, O[A] ! G, O[A] ! G](k => { resume.k = k; out }))
+
+  /**
+   * The `resume` a `control` clause gets. Called once and returned as the clause's answer, it is a tail
+   * resume, answered with no capture; otherwise each call is a program that enters the captured `k`, which
+   * the capture fills in before any of them runs.
+   */
+  private final class Resume[X, B, G[+_]] extends (X => B ! G):
+    var k: X => B ! G = scala.compiletime.uninitialized
+    var arg: X = scala.compiletime.uninitialized
+    var last: B ! G = scala.compiletime.uninitialized
+    var calls: Int = 0
+    def apply(x: X): B ! G =
+      calls += 1
+      arg = x
+      last = Free.delay[G, B](() => k(x))
+      last
