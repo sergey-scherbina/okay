@@ -74,7 +74,7 @@ trait Effects[M[_, _]] {
   }
 
   /** delimit (the top-level `reset`) */
-  def reset[R, F <: Row](body: M[Shift[R] + F, R])(implicit k: Shift.Key[R], n: Shift.Nesting[F]): M[F, R] =
+  def reset[R, F <: Row](body: M[Shift[R] + F, R])(implicit k: Shift.Key[R], n: Shift.Machine[F]): M[F, R] =
     Effects.reflect[M, F, R](okay2.reset[R, F](Effects.reify[M, Shift[R] + F, R](body)(this))(k, n))(this)
 
   /** take a ready handler's effect off the row (the program's `p.handle(h)`; two arguments in one list, so the
@@ -150,7 +150,7 @@ object Effects extends Conversions {
       okay2.shift[R, A, F](f)(k, at)
     override def shift0[R, A, F <: Row](f: (A => R ! F) => R ! F)(implicit k: Shift.Key[R], at: At): A ! (Shift[R] + F) =
       okay2.shift0[R, A, F](f)(k, at)
-    override def reset[R, F <: Row](body: R ! (Shift[R] + F))(implicit k: Shift.Key[R], n: Shift.Nesting[F]): R ! F =
+    override def reset[R, F <: Row](body: R ! (Shift[R] + F))(implicit k: Shift.Key[R], n: Shift.Machine[F]): R ! F =
       okay2.reset[R, F](body)(k, n)
     override def handle[A, E <: Row, I, O[_], N[_ <: Row], F <: Row](m: Free[E with F, A], h: Handler.Full[E, I, O, N])
                                                                     (implicit ok: A <:< I, d: Distinct[E with F], n: N[F]): O[A] ! F =

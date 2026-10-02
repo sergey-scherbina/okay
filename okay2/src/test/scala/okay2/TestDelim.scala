@@ -256,10 +256,13 @@ class TestDelim extends munit.FunSuite {
     assertEquals(prog((_, i) => Shift.shift[Int, Int](i)(_ => pure[Row, Int](5))), 1005)
   }
 
-  test("the second machine is a COMPILE error, and the message names the fix") {
-    val e = compileErrors("okay2.Shift.collect[Int, okay2.Shift[Any] + okay2.Pure](_ => okay2.pure[okay2.Shift[Any] + (okay2.Shift[Any] + okay2.Pure), Unit](()))")
-    assert(e.nonEmpty, "the second machine compiled")
-    assert(e.contains("collecting"), s"the message does not name the fix: $e")
+  test("a second machine NESTS on the first (shift-merge-guard): collect inside a running machine is collecting") {
+    // until okay2-shift-merge-guard this shape was a compile error naming `collecting`; the row says a machine
+    // runs, so the door pushes its delimiter on it instead
+    val r: List[Int] ! P = Shift.delimited[List[Int], P] { _ =>
+      Shift.collect[Int, Shift[Any] + P](em => Shift.emit(em)(1).flatMap(_ => Shift.emit(em)(2)))
+    }
+    assertEquals(!.run(r), List(1, 2))
   }
 }
 

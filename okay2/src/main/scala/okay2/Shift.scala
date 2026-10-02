@@ -129,7 +129,7 @@ trait Shifts {
     Shift.out[A, R, F](Shift.shift0[R, A, F](k.prompt)(Shift.clause[R, A, F, F](f))(at))
 
   /** delimit, and answer every capture of answer `R` */
-  def reset[R, F <: Row](body: R ! (Shift[R] + F))(implicit k: Shift.Key[R], n: Shift.Nesting[F]): R ! F = {
+  def reset[R, F <: Row](body: R ! (Shift[R] + F))(implicit k: Shift.Key[R], n: Shift.Machine[F]): R ! F = {
     val pushed = Shift.push[R, F](k.prompt)(Shift.in[R, R, F](body))
     // a row that still holds a capture's effect is run by the machine outside
     if (n.inner) Shift.inner[R, F](pushed) else Shift.runReset[R, F](pushed)
@@ -176,39 +176,6 @@ object Shift {
   /** a prompt is its own typed token: the same prompt has the same
    * answer type — the witness the machine uses to cut its stack */
   implicit val samePrompt: Same[Prompt] = Same.byIdentity[Prompt]
-
-  /**
-   * THE ROW HAS NO MACHINE YET. A machine owns one prompt stack, so
-   * starting a SECOND one inside a row that already has a `Shift` (of any key) is the
-   * mistake that reads like ordinary code and fails at run time:
-   * `resumable` around `collect`. Every combinator that RUNS a machine
-   * asks for this; the ones that only install a delimiter (`push`,
-   * `scope`, `collecting`, `pausing`) do not. An ABSTRACT `F` reads as
-   * absent, as in the Scala 3 core: a guard against the shape people
-   * write, not a proof.
-   */
-  @implicitNotFound("this row already contains a Shift, so this would start a SECOND machine, and a capture cannot cross from one machine's prompt stack to another's.\nUse the nested form, which installs a delimiter on the machine already running:\n  delimited -> scope,   collect -> collecting,   resumable -> pausing")
-  final class OneMachine[F <: Row] private[Shift] ()
-
-  object OneMachine {
-    implicit def fresh[F <: Row](implicit ev: NoMachine[F]): OneMachine[F] = { val _ = ev; new OneMachine[F]() }
-    /** for a door that decided the row by its own evidence (`Shift.Nesting`): no search, no promise checked */
-    private[okay2] def unchecked[F <: Row]: OneMachine[F] = new OneMachine[F]()
-  }
-
-  /** no `Shift` of ANY key is a member of F (`F <:< Shift.AnyKey` fails: the
-   * row does not require one) — ONE machine guard for the static and the
-   * dynamic form, as the core's `OneMachine` reads `Shift[?, Any]`
-   * (okay2-shift-merge; it was `Delim` alone). The usual Scala 2 absence
-   * witness: one instance always, two more when the member IS there, so
-   * the search is ambiguous exactly when a Shift is in the row */
-  sealed trait NoMachine[F <: Row]
-  object NoMachine {
-    private val inst: NoMachine[Pure] = new NoMachine[Pure] {}
-    implicit def yes[F <: Row]: NoMachine[F] = inst.asInstanceOf[NoMachine[F]]
-    implicit def no1[F <: Row](implicit m: F <:< Shift.AnyKey): NoMachine[F] = { val _ = m; inst.asInstanceOf[NoMachine[F]] }
-    implicit def no2[F <: Row](implicit m: F <:< Shift.AnyKey): NoMachine[F] = { val _ = m; inst.asInstanceOf[NoMachine[F]] }
-  }
 
   /** a fresh delimiter tag, labelled with the line that asked for it */
   def prompt[R](implicit at: At): Prompt[R] = named[R]("prompt")(at)
@@ -270,7 +237,7 @@ object Shift {
     shift0[R, A, F](p)(_ => pure[Shift[Any] + F, R](value))(at)
 
   /** the common shape: a fresh prompt, a block under it, run */
-  def reset[R, F <: Row](body: Prompt[R] => R ! (Shift[Any] + F))(implicit om: OneMachine[F], at: At): R ! F = {
+  def reset[R, F <: Row](body: Prompt[R] => R ! (Shift[Any] + F))(implicit om: Machine[F], at: At): R ! F = {
     val p = named[R]("reset")(at)
     run[R, F](push[R, F](p)(body(p)))(om)
   }
@@ -330,7 +297,7 @@ object Shift {
   /** install a fresh delimiter, run the body under it with the
    * evidence in hand, and handle the machine — the OUTERMOST form;
    * `scope` is the one that nests */
-  def delimited[R, F <: Row](body: Prompted.Aux[R, F] => R ! (Shift[Any] + F))(implicit om: OneMachine[F], at: At): R ! F =
+  def delimited[R, F <: Row](body: Prompted.Aux[R, F] => R ! (Shift[Any] + F))(implicit om: Machine[F], at: At): R ! F =
     run[R, F](scopeAs[R, F]("delimited")(body)(at))(om)
 
   /** capture up to the delimiter the evidence names — the same word as
@@ -429,7 +396,7 @@ object Shift {
   /** run `body`, which emits, and answer with everything it emitted, in
    * order — the producer stays an ordinary walk, the consumer gets a
    * list */
-  def collect[A, F <: Row](body: Emitting.Aux[A, F] => Unit ! (Shift[Any] + F))(implicit om: OneMachine[F], at: At): List[A] ! F =
+  def collect[A, F <: Row](body: Emitting.Aux[A, F] => Unit ! (Shift[Any] + F))(implicit om: Machine[F], at: At): List[A] ! F =
     run[List[A], F](collectAs[A, F]("collect")(body)(at))(om)
 
   /** the same collection, NESTED: it installs its delimiter and leaves
@@ -449,7 +416,7 @@ object Shift {
    * built. `done(init)` runs no body at all.
    */
   def collectUntil[A, S, R, F <: Row](fo: FoldUntil[A, S, R])(body: Emitting.Aux[A, F] => Unit ! (Shift[Any] + F))
-                                     (implicit om: OneMachine[F], at: At): R ! F =
+                                     (implicit om: Machine[F], at: At): R ! F =
     if (fo.done(fo.init)) pure[F, R](fo.end(fo.init))
     else run[R, F](collectUntilAs[A, S, R, F]("collectUntil")(fo)(body)(at))(om)
 
@@ -529,7 +496,7 @@ object Shift {
    * state machine with a `step` column, replaced by straight-line code
    * whose record is the continuation */
   def resumable[Q, A, R, F <: Row](body: Asking.Aux[Q, A, R, F] => R ! (Shift[Any] + F))
-                                  (implicit om: OneMachine[F], at: At): Dialogue[Q, A, R, F] ! F =
+                                  (implicit om: Machine[F], at: At): Dialogue[Q, A, R, F] ! F =
     run[Dialogue[Q, A, R, F], F](pausingAs[Q, A, R, F]("resumable")(body)(at))(om)
 
   /** the same, NESTED: the dialogue's delimiter goes on the machine
@@ -547,7 +514,7 @@ object Shift {
 
   /** answer every question until the dialogue is done — the driver for
    * the common case where the answers are available now */
-  def drive[Q, A, R, F <: Row](p: Dialogue[Q, A, R, F])(answer: Q => A ! F)(implicit om: OneMachine[F]): R ! F =
+  def drive[Q, A, R, F <: Row](p: Dialogue[Q, A, R, F])(answer: Q => A ! F)(implicit om: Machine[F]): R ! F =
     p match {
       case Paused.Done(r) => pure[F, R](r)
       case Paused.Ask(q, resume, _) =>
@@ -565,7 +532,7 @@ object Shift {
 
   /** answer the question a dialogue is asking, and keep the answer:
    * the pair is what you persist after every step */
-  def answer[Q, A, R, F <: Row](p: Dialogue[Q, A, R, F], j: Journal[A])(a: A)(implicit om: OneMachine[F]): (Dialogue[Q, A, R, F], Journal[A]) ! F =
+  def answer[Q, A, R, F <: Row](p: Dialogue[Q, A, R, F], j: Journal[A])(a: A)(implicit om: Machine[F]): (Dialogue[Q, A, R, F], Journal[A]) ! F =
     p match {
       case Paused.Ask(_, resume, _) => run[Dialogue[Q, A, R, F], F](resume(a))(om).map(next => (next, j :+ a))
       case done => pure[F, (Dialogue[Q, A, R, F], Journal[A])]((done, j))
@@ -574,7 +541,7 @@ object Shift {
   /** where the dialogue stands, from its program and its journal —
    * what replaces persisting a continuation */
   def replay[Q, A, R, F <: Row](body: Asking.Aux[Q, A, R, F] => R ! (Shift[Any] + F))(j: Journal[A])
-                               (implicit om: OneMachine[F], rp: Replayable[Shift[Any] + F], at: At): Dialogue[Q, A, R, F] ! F = {
+                               (implicit om: Machine[F], rp: Replayable[Shift[Any] + F], at: At): Dialogue[Q, A, R, F] ! F = {
     val _ = rp
     j.foldLeft(resumable[Q, A, R, F](body)(om, at)) { (acc, a) =>
       acc.flatMap {
@@ -710,10 +677,9 @@ object Shift {
    * the row's other half F is not the operation's to name — re-typed
    * here, at their two lines, where F is known.
    */
-  def run[R, F <: Row](prog: Free[Shift[Any] with F, R])(implicit om: OneMachine[F]): R ! F = {
-    val _ = om
-    machine[R, F](prog, None)
-  }
+  def run[R, F <: Row](prog: Free[Shift[Any] with F, R])(implicit om: Machine[F]): R ! F =
+    // a machine outside runs the program, its captures included (shift-merge-guard)
+    if (om.inner) inner[R, F](prog) else machine[R, F](prog, None)
 
   /**
    * THE MACHINE THAT FORWARDS INSTEAD OF THROWING — for a row that
@@ -1041,7 +1007,7 @@ object Shift {
     /** the root: a fresh prompt on an EMPTY stack, the body under it,
      * the machine run — `Shift.delimited`'s job, with the stack in the
      * type. Every stacked program starts here. */
-    def delimited[R, F <: Row](body: In[R, Empty] => R ! (Shift[Any] + F))(implicit om: OneMachine[F], at: At): R ! F = {
+    def delimited[R, F <: Row](body: In[R, Empty] => R ! (Shift[Any] + F))(implicit om: Machine[F], at: At): R ! F = {
       val in = new In[R, Empty](named[R]("delimited")(at))
       run[R, F](push[R, F](in.p)(body(in)))(om)
     }
@@ -1057,7 +1023,7 @@ object Shift {
   // delimiter its captures target, which their prompt already names
   private def toDyn[A, K, F <: Row](p: A ! (Shift[K] + F)): A ! (Shift[Any] + F) = p.asInstanceOf[A ! (Shift[Any] + F)]
 
-  /** every `Shift[K]`, whatever the key: what `Nesting` and the one machine guard look for in a row */
+  /** every `Shift[K]`, whatever the key: what the one machine guard looks for in a row */
   sealed trait AnyKey extends Row
 
   // THE NAMED PATTERNS (shift-patterns): the captures most programs want, so an early exit and a generator
@@ -1070,7 +1036,7 @@ object Shift {
   /** a generator: run `body`, and answer everything it `emit`ted, in order. The core's static `collect`; here
    * its own name, because an overload beside the dynamic `collect(body: Emitting => …)` costs that one's lambda
    * its parameter type in Scala 2 (measured: "missing parameter type") */
-  def gather[W, F <: Row](body: Unit ! (Shift[List[W]] + F))(implicit k: Key[List[W]], n: Nesting[F]): List[W] ! F =
+  def gather[W, F <: Row](body: Unit ! (Shift[List[W]] + F))(implicit k: Key[List[W]], n: Machine[F]): List[W] ! F =
     okay2.reset[List[W], F](body.map(_ => Nil))
 
   /** inside `gather`: hand `w` out, and go on */
@@ -1078,10 +1044,10 @@ object Shift {
     okay2.shift0[List[W], Unit, F](k => k(()).map(w :: _))
 
   /** `reset` as a value, for the handler-value doors */
-  def handle[R, F <: Row](p: R ! (Shift[R] + F))(implicit k: Key[R], n: Nesting[F]): R ! F = okay2.reset[R, F](p)
+  def handle[R, F <: Row](p: R ! (Shift[R] + F))(implicit k: Key[R], n: Machine[F]): R ! F = okay2.reset[R, F](p)
 
   /** level 2: the program as a `Cont` whose answers are programs: `c / k` is `reset(q >>= k)` */
-  def cont[A, R, F <: Row](q: A ! (Shift[R] + F))(implicit k: Key[R], n: Nesting[F]): Cont[A, R ! F, R ! F] =
+  def cont[A, R, F <: Row](q: A ! (Shift[R] + F))(implicit k: Key[R], n: Machine[F]): Cont[A, R ! F, R ! F] =
     Cont.shift[A, R ! F, R ! F](kk => okay2.reset[R, F](q.flatMap[Shift[R] + F, R](a => kk(a))))
 
   /** level 2: a whole `Cont` as one capture */
@@ -1116,8 +1082,8 @@ object Shift {
     }
   }
 
-  // `run`'s `OneMachine` asks the row to be free of any Shift, which `Nesting` already decided at the door
-  private def machineFor[R, F <: Row](pushed: R ! (Shift[Any] + F)): R ! F = run[R, F](pushed)(OneMachine.unchecked[F])
+  // the keyed `reset` read the row at its own door: its machine is the outermost
+  private def machineFor[R, F <: Row](pushed: R ! (Shift[Any] + F)): R ! F = run[R, F](pushed)(Machine.outermost[F])
 
   // THE ONE CLAIM: a `Shift[R]` program is a `Shift[Any]` program at the same erasure (only the machine reads its
   // operations), and a capture of answer `R` reaches only the prompt of `R`'s key, where its `k` and body are
@@ -1161,21 +1127,54 @@ object Shift {
   }
 
   /**
-   * Whether a row still holds a capture's effect (a `Shift` or `Shift[Any]`): a `reset` over such a row pushes its
-   * prompt on the machine an outer one runs. An abstract row reads as none, so code generic in the row and
-   * nested in another `reset` passes its `Nesting` on.
+   * THE ONE MACHINE GUARD (the core's shift-merge-guard, specs/shift-merge.md): whether a machine already runs
+   * in the row `F` — `F` holds a `Shift` of any key — read off the row at compile time. Every door that runs a
+   * machine takes it: outermost, it runs its own; inside one, it pushes its delimiter on the machine already
+   * running (what `scope`, `collecting` and `pausing` spell by hand), so a capture never meets a second
+   * machine's prompt stack. A row that cannot be read — an abstract part and no `Shift` — is a compile error
+   * asking for this evidence as a parameter, so a generic helper passes the obligation on to the caller who
+   * knows the row. `OneMachine` (a refusal) and `Nesting` (this answer, for the keyed `reset` only) were two
+   * answers to the one question.
    */
-  final class Nesting[F <: Row] private[okay2] (val inner: Boolean)
+  final class Machine[F <: Row] private[okay2] (val inner: Boolean)
 
-  object Nesting extends PlainNesting {
-    implicit def shifting[F <: Row](implicit ev: F <:< Shift.AnyKey): Nesting[F] = { val _ = ev; new Nesting[F](true) }
-  }
-  trait PlainNesting {
-    implicit def plain[F <: Row]: Nesting[F] = new Nesting[F](false)
+  object Machine {
+    implicit def of[F <: Row]: Machine[F] = macro ShiftMacro.machine[F]
+    /** what the macro expands to, at the caller's site: call it through the macro, which read the row */
+    def decided[F <: Row](inner: Boolean): Machine[F] = new Machine[F](inner)
+    /** for a door that has already read the row (a keyed `reset`'s own machine): no reading again */
+    private[okay2] def outermost[F <: Row]: Machine[F] = new Machine[F](false)
   }
 }
 
 object ShiftMacro {
+  /** `Shift.Machine.of[F]`: the core's `machineImpl` — the row's members flattened by a worklist; `inner` when
+   * one is a `Shift` of any key; a compile error when none is and a member is abstract (it may hold one) */
+  def machine[F: c.WeakTypeTag](c: blackbox.Context): c.Tree = {
+    import c.universe._
+    val f = weakTypeOf[F]
+    val shift = typeOf[Shift[Any]].typeSymbol
+    val anyKey = typeOf[Shift.AnyKey].typeSymbol
+    val out = List.newBuilder[Type]
+    var todo = List(f)
+    while (todo.nonEmpty) {
+      val x = todo.head
+      todo = todo.tail
+      x.dealias match {
+        case RefinedType(ps, _) => todo = ps ++ todo
+        case other => out += other
+      }
+    }
+    val members = out.result()
+    val inner = members.exists(m => m.typeSymbol == shift || m.typeSymbol == anyKey)
+    val unread = members.filterNot(_.typeSymbol.isClass)
+    if (!inner && unread.nonEmpty)
+      c.abort(c.enclosingPosition,
+        s"whether a machine already runs in the row $f cannot be read here: ${unread.mkString(", ")} is abstract, and it may hold a Shift.\n" +
+          "Pass the obligation on to the caller, who knows the row: take `(implicit m: Shift.Machine[F])`")
+    q"_root_.okay2.Shift.Machine.decided[$f]($inner)"
+  }
+
   def key[R: c.WeakTypeTag](c: blackbox.Context): c.Tree = {
     import c.universe._
     val r = weakTypeOf[R]

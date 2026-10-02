@@ -481,7 +481,7 @@ and on the order the effects happened in, over twelve bind-tree shapes
 (specs/shift-effect.md, the Scala 3 core's `Shift % R`). The answer type
 is the prompt: `Shift.Key[R]` is made at compile time, one per type, and
 a `reset` nested in a row that still holds a capture pushes its prompt
-on the machine outside it (`Shift.Nesting`):
+on the machine outside it (`Shift.Machine`, the one guard):
 
 ```scala
     val p: Int ! Shift[Int] = shift[Int, Int, P](k => for { a <- k(1); b <- k(10) } yield a + b).map(_ * 2)
@@ -1095,9 +1095,16 @@ drop, to keep. It was okay2's own effect `Delim` until
 okay2-shift-merge, the twin of the Scala 3 core's shift-merge: ONE
 effect `Shift[K]` keyed three ways — by the answer type (`Shift[R]`,
 §6), by a prompt value (`Shift[Any]`, the core's `Shift % ?`, the
-operator's "Shift % Any"), every door a member of `object Shift`, one
+operator's "Shift % Any"), every door a member of `object Shift`, ONE
 machine guard over any key, and `Shift.dynamic` to widen a static
-program into the dynamic row. The static generator is `Shift.gather`
+program into the dynamic row. The guard is `Shift.Machine[F]`, read off
+the row by a macro (okay2-shift-merge-guard, the core's
+shift-merge-guard): every door that runs a machine (`run`, `delimited`,
+`collect`, `collectUntil`, `resumable`, `drive`, `answer`, `replay`, the
+keyed `reset`) NESTS on a machine already running in its row — what
+`scope`, `collecting` and `pausing` spell by hand — instead of a
+compile error, and a row with an abstract part and no `Shift` is a
+compile error naming the fix: take `(implicit m: Shift.Machine[F])`. The static generator is `Shift.gather`
 here, not `collect`: an overload beside the dynamic `collect` would
 cost that one's lambda its parameter type in Scala 2.
 

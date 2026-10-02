@@ -116,7 +116,8 @@ different keys mix in one `flatMap`. `Shift.dynamic(p)` names it.
 - [x] stage 2: the satellites' suites green; no `Delim` left in code
       (okay2, a separate Scala 2 build with its own `Delim`, untouched;
       its twin landed as okay2-shift-merge, specs/okay2.md stage 52:
-      `Delim` is `Shift[Any]` there, the operator's "Shift % Any")
+      `Delim` is `Shift[Any]` there, the operator's "Shift % Any"; the
+      one guard as okay2-shift-merge-guard, stage 53)
 - [x] the differential oracle and the machine's depth suite unchanged and
       green — this lane changed the front, not the machine
 - [x] stage 4: every `Delim` in docs/ moved (docs/okay2.md excepted, it

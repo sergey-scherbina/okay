@@ -236,7 +236,7 @@ trait Relay[F <: Row] { def apply[X, Y](e: F#Op[X]): X /> Y }
  * any program's row and answers `O[A]` — `p.handle(State(5))`, `p.handle(State(5), Throws.either[String]).run`.
  * `Handler[E, O]` (the package object's alias) is the usual one: any answer, nothing needed of the rest of the
  * row. `Full` bounds the answer by `I` and needs `Needs[F]` of the rest `F` (`Reset[R]`: the answer is `R`,
- * the rest's `Nesting`). An answer per operation and no more is `Answers[F]`. The Scala 3 core's twin; Scala 2
+ * the rest's `Shift.Machine`). An answer per operation and no more is `Answers[F]`. The Scala 3 core's twin; Scala 2
  * has no type lambdas, so an answer shape is a projection: `Handler.Pair[S]#L`, `Handler.Or[E]#L`.
  */
 object Handler {
@@ -536,9 +536,9 @@ sealed trait CasesMarker
 
 /** `reset` as a value: `p.handle(Reset[R])` */
 object Reset {
-  def apply[R](implicit k: Shift.Key[R]): Handler.Full[Shift[R], R, Handler.Const[R]#L, Shift.Nesting] =
-    new Handler.Full[Shift[R], R, Handler.Const[R]#L, Shift.Nesting] {
-      def run[A, F <: Row](p: Free[Shift[R] with F, A])(implicit a: A <:< R, @unused d: Distinct[Shift[R] with F], n: Shift.Nesting[F]): R ! F =
+  def apply[R](implicit k: Shift.Key[R]): Handler.Full[Shift[R], R, Handler.Const[R]#L, Shift.Machine] =
+    new Handler.Full[Shift[R], R, Handler.Const[R]#L, Shift.Machine] {
+      def run[A, F <: Row](p: Free[Shift[R] with F, A])(implicit a: A <:< R, @unused d: Distinct[Shift[R] with F], n: Shift.Machine[F]): R ! F =
         Shift.handle[R, F](a.liftCo[({ type L[+x] = Free[Shift[R] with F, x] })#L](p))(k, n)
     }
 }

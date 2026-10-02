@@ -2637,3 +2637,24 @@ Operator: picked "okay2: shift-merge's twin" — specs/shift-merge.md's stages
   and in the first parameter's type).
 - **Left for the twin of shift-merge-guard** (the core's next lane): the one
   evidence for both guards, and `Stacked` read as `Shift[p.type]`.
+
+## Stage 53 — okay2-shift-merge-guard: one machine guard, and it nests (2026-10-02)
+
+Operator: "продолжай" — the core's shift-merge-guard (83a0b7084) in the twin.
+
+- **ONE evidence, `Shift.Machine[F]`**: `OneMachine` (a refusal through the
+  `NoMachine` ambiguity trick) and `Nesting` (the keyed `reset`'s answer, by
+  implicit priority) are gone. A blackbox macro reads the row — its members
+  flattened by a worklist — `inner` when one is a `Shift` of any key.
+- **Every machine-starting door nests**: `Shift.run` is `inner(prog)` when a
+  machine runs outside, so `delimited`, `collect`, `collectUntil`,
+  `resumable`, `drive`, `answer`, `replay`, `Stacked.delimited` and the keyed
+  `reset` all stand on the running machine. TestDelim's "second machine is a
+  COMPILE error" now asserts the same shape nests and answers.
+- **An abstract row asks for the evidence**: a part that is not a class and
+  no `Shift` is "cannot be read here … take `(implicit m:
+  Shift.Machine[F])`" — the hole the old priority fallback had (an abstract
+  `F` read as outermost) closed, as in the core. Main code compiled without
+  the macro expanding in its own run: every door passes the evidence on.
+- **Left**: stage 3, `Stacked` read as `Shift[p.type]` (the core's
+  shift-stacked-key, queued there).

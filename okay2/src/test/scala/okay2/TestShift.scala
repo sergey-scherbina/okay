@@ -97,18 +97,22 @@ class TestShift extends munit.FunSuite {
     assert(implicitly[Shift.Key[List[Int]]] ne implicitly[Shift.Key[List[Long]]])
   }
 
-  test("nesting: a row holding Shift or Shift[Any] is inner; a plain or abstract one is not") {
-    assert(implicitly[Shift.Nesting[Shift[Int]]].inner)
-    assert(implicitly[Shift.Nesting[Shift[Int] + S]].inner)
-    assert(implicitly[Shift.Nesting[Shift[Any] + S]].inner)
-    assert(implicitly[Shift.Nesting[Shift[Any] + Shift[Int]]].inner)
-    assert(!implicitly[Shift.Nesting[S]].inner)
-    assert(!implicitly[Shift.Nesting[P]].inner)
-    def generic[F <: Row]: Boolean = implicitly[Shift.Nesting[F]].inner
-    assert(!generic[Shift[Int]])
+  test("the one machine guard reads the row: a Shift of any key is a machine running; none is outermost") {
+    assert(implicitly[Shift.Machine[Shift[Int]]].inner)
+    assert(implicitly[Shift.Machine[Shift[Int] + S]].inner)
+    assert(implicitly[Shift.Machine[Shift[Any] + S]].inner)
+    assert(implicitly[Shift.Machine[Shift[Any] + Shift[Int]]].inner)
+    assert(!implicitly[Shift.Machine[S]].inner)
+    assert(!implicitly[Shift.Machine[P]].inner)
+    // a Shift AND an abstract part: the Shift is certain
+    def withShift[F <: Row]: Boolean = implicitly[Shift.Machine[Shift[Int] + F]].inner
+    assert(withShift[S])
+    // an abstract part and no Shift: the row cannot be read, and the error names the fix
+    val errs = compileErrors("def generic[F <: Row]: Boolean = implicitly[Shift.Machine[F]].inner")
+    assert(errs.contains("cannot be read here") && errs.contains("Shift.Machine[F]"), errs)
   }
 
-  test("a reset inside Shift[Any]'s own reset block runs on Shift[Any]'s machine") {
+  test("a keyed reset inside a dynamic Shift.reset block runs on the one machine") {
     val r: Int ! P = Shift.reset[Int, P] { p =>
       for {
         n <- reset[Int, Shift[Any]](shift0[Int, Int, Shift[Any]](k => k(4).map(_ * 10)).map(_ + 1))
@@ -146,11 +150,16 @@ class TestShift extends munit.FunSuite {
     assertEquals(!.run(Shift.run[Int, P](prog)), 12)
   }
 
-  test("one machine guard: a row holding a Shift of ANY key cannot start a second machine") {
-    val errs = compileErrors("Shift.run[Int, Shift[Int]](pure[Shift[Any] + Shift[Int], Int](1))")
-    assert(errs.contains("SECOND machine"), errs)
-    val dyn = compileErrors("Shift.run[Int, Shift[Any]](pure[Shift[Any], Int](1))")
-    assert(dyn.contains("SECOND machine"), dyn)
+  test("one machine guard: a door inside a running machine nests on it instead of refusing") {
+    type D = Shift[Any] + P
+    val r: Int ! P = Shift.delimited[Int, P] { in =>
+      Shift.collect[Int, D](em => Shift.emit(em)(1).flatMap(_ => Shift.emit(em)(2)))
+        .flatMap(xs => Shift.exit[Int](in)(xs.sum * 10).map(_ => 0))
+    }
+    assertEquals(!.run(r), 30)
+    // `Shift.run` itself, at a row already holding a Shift: it runs nothing of its own
+    val nested: Int ! Shift[Int] = Shift.run[Int, Shift[Int]](pure[Shift[Any] + Shift[Int], Int](1))
+    assertEquals(!.run(reset[Int, P](nested)), 1)
   }
 
   test("level 2: cont and embed round-trip on the diagonal") {

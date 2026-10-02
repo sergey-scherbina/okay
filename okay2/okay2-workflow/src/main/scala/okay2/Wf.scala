@@ -230,21 +230,21 @@ object Wf {
   }
 
   /** start a program that may ask the runtime as well as the world */
-  def resumable[Q, A, R, F <: Row](body: Asks[Q, A, R, F] => R ! (Shift[Any] + F))(implicit om: Shift.OneMachine[F], at: At): Paused[Q, A, R, F] ! F =
+  def resumable[Q, A, R, F <: Row](body: Asks[Q, A, R, F] => R ! (Shift[Any] + F))(implicit om: Shift.Machine[F], at: At): Paused[Q, A, R, F] ! F =
     Shift.resumable[Ask[Q], Ans[A], R, F](in => body(new Asks[Q, A, R, F](in)))(om, at)
 
   /** run to the end: the library's questions by the runtime, the
    * author's by the oracle, every answer handed back for the journal */
-  def drive[Q, A, R, F <: Row](p: Paused[Q, A, R, F])(oracle: Q => A ! F)(implicit rt: Runtime, om: Shift.OneMachine[F]): (Step[Q, R], Journal[A]) ! F =
+  def drive[Q, A, R, F <: Row](p: Paused[Q, A, R, F])(oracle: Q => A ! F)(implicit rt: Runtime, om: Shift.Machine[F]): (Step[Q, R], Journal[A]) ! F =
     loop[Q, A, R, F](p, Nil)(q => Some(oracle(q)))
 
   /** THE WORKER'S PRIMITIVE: advance as far as the runtime alone can
    * take it; the author's questions come back as `Asking` */
-  def advance[Q, A, R, F <: Row](p: Paused[Q, A, R, F])(implicit rt: Runtime, om: Shift.OneMachine[F]): (Step[Q, R], Journal[A]) ! F =
+  def advance[Q, A, R, F <: Row](p: Paused[Q, A, R, F])(implicit rt: Runtime, om: Shift.Machine[F]): (Step[Q, R], Journal[A]) ! F =
     loop[Q, A, R, F](p, Nil)(_ => None)
 
   private def loop[Q, A, R, F <: Row](p: Paused[Q, A, R, F], acc: Journal[A])(own: Q => Option[A ! F])
-                                     (implicit rt: Runtime, om: Shift.OneMachine[F]): (Step[Q, R], Journal[A]) ! F =
+                                     (implicit rt: Runtime, om: Shift.Machine[F]): (Step[Q, R], Journal[A]) ! F =
     p match {
       case Shift.Paused.Done(r) => pure[F, (Step[Q, R], Journal[A])]((Step.Done(r), acc))
       case Shift.Paused.Ask(Left(q), _, _) =>
@@ -267,14 +267,14 @@ object Wf {
   /** where a program stands, from its journal — takes NO runtime: the
    * journal is the only source it has */
   def replay[Q, A, R, F <: Row](body: Asks[Q, A, R, F] => R ! (Shift[Any] + F))(j: Journal[A])
-                               (implicit om: Shift.OneMachine[F], rp: Replayable[Shift[Any] + F], at: At): Paused[Q, A, R, F] ! F =
+                               (implicit om: Shift.Machine[F], rp: Replayable[Shift[Any] + F], at: At): Paused[Q, A, R, F] ! F =
     replaying[Q, A, R, F](body)(j).map(_._1)
 
   /** the same walk, saying what it answered on the way: a patch's id
    * lives in the QUESTION, so only running the program pairs answers
    * with the branches they decided */
   def replaying[Q, A, R, F <: Row](body: Asks[Q, A, R, F] => R ! (Shift[Any] + F))(j: Journal[A])
-                                  (implicit om: Shift.OneMachine[F], rp: Replayable[Shift[Any] + F], at: At): (Paused[Q, A, R, F], List[(Ask[Q], Ans[A])]) ! F = {
+                                  (implicit om: Shift.Machine[F], rp: Replayable[Shift[Any] + F], at: At): (Paused[Q, A, R, F], List[(Ask[Q], Ans[A])]) ! F = {
     val _ = rp
     def go(p: Paused[Q, A, R, F], left: Journal[A], seen: List[(Ask[Q], Ans[A])]): (Paused[Q, A, R, F], List[(Ask[Q], Ans[A])]) ! F = p match {
       case Shift.Paused.Done(_) => pure[F, (Paused[Q, A, R, F], List[(Ask[Q], Ans[A])])]((p, seen.reverse))
