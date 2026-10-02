@@ -1,6 +1,5 @@
 package okay
 
-import scala.annotation.tailrec
 
 /**
  * The installer half of the capability pair
@@ -86,7 +85,6 @@ inline def provide[A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, A11, A12, A13, A14, 
 
 inline def provide[A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, A11, A12, A13, A14, A15, A16, A17, A18, A19, A20, A21, A22, B](a1: A1, a2: A2, a3: A3, a4: A4, a5: A5, a6: A6, a7: A7, a8: A8, a9: A9, a10: A10, a11: A11, a12: A12, a13: A13, a14: A14, a15: A15, a16: A16, a17: A17, a18: A18, a19: A19, a20: A20, a21: A21, a22: A22)(inline body: (A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, A11, A12, A13, A14, A15, A16, A17, A18, A19, A20, A21, A22) ?=> B): B =
   body(using a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17, a18, a19, a20, a21, a22)
-
 
 /**
  * The COMPOSABLE half of provide (specs/context-functions.md, E16):
@@ -426,7 +424,7 @@ def moduleAs[A, R <: A](acquire: => R)(release: R => Unit): Module[[X] =>> A ?=>
  * as itself, which the erased class could not do.
  */
 extension [F[_]](m: Module[F])
-  inline def plan: Vector[String] = ${ Module.planImpl[F] }
+  inline def plan: Vector[String] = ${ okay.macros.ProvideMacros.planImpl[F] }
 
 /**
  * What a module installed, for a container that wants values BY CLASS
@@ -440,7 +438,7 @@ extension [F[_]](m: Module[F])
 final case class Installed(name: String, cls: Class[?], value: Any)
 
 extension [F[_]](m: Module[F])
-  inline def exports: Vector[Installed] ! Resource = ${ Module.exportsImpl[F]('m) }
+  inline def exports: Vector[Installed] ! Resource = ${ okay.macros.ProvideMacros.exportsImpl[F]('m) }
   /**
    * Capabilities this chain installs MORE THAN ONCE — read off the
    * plan, so nothing is built to find out. The second install wins
@@ -476,59 +474,6 @@ object Module:
   /** the contributor's one-liner: install nothing, declare one fact */
   def contributing[V](k: Fact[V])(v: V): Module[[X] =>> X] = nothing.declare(k)(v)
 
-  import scala.quoted.*
-  /** `F[Marker]` dealiased is `ContextFunction1[A, ContextFunction1[B, … Marker]]`;
-   * walk it to the marker, naming each parameter */
-  /** the chain `A ?=> B ?=> … ?=> End` as its parameters, outer first,
-   * each with the type that remains after it */
-  private def chain(using q: Quotes)(t: q.reflect.TypeRepr, end: q.reflect.TypeRepr)
-      : List[(q.reflect.TypeRepr, q.reflect.TypeRepr)] =
-    import q.reflect.*
-    @tailrec def walk(t: TypeRepr, acc: List[(TypeRepr, TypeRepr)]): List[(TypeRepr, TypeRepr)] = t.dealias match
-      case AppliedType(fn, List(a, rest)) if fn.typeSymbol.name.startsWith("ContextFunction") =>
-        walk(rest, (a, rest) :: acc)
-      case t if t =:= end => acc.reverse
-      case other => report.errorAndAbort(
-        s"Module: expected a chain of context functions ending in ${end.show}, found ${other.show}")
-    walk(t, Nil)
 
-  def planImpl[F[_] : Type](using Quotes): Expr[Vector[String]] =
-    import quotes.reflect.*
-    // an APPLIED capability keeps its argument: a prototype reads as
-    // `New[Conn]`, not `New`, which is the difference between a plan
-    // and a list of type constructors (di-prototype)
-    def name(using q: Quotes)(t: q.reflect.TypeRepr): String =
-      import q.reflect.*
-      t.dealias match
-        case AppliedType(tc, args) =>
-          s"${tc.typeSymbol.name}[${args.map(a => a.typeSymbol.name).mkString(", ")}]"
-        case other => other.typeSymbol.name
-    val names = chain(TypeRepr.of[F[Module.Marker]], TypeRepr.of[Module.Marker]).map(t => name(t._1))
-    val list = Expr(names)
-    '{ $list.toVector }
-
-  /**
-   * Generates `m.build.map(p => p((a: A) ?=> (b: B) ?=> … List(Installed(…, a), Installed(…, b)).toVector))`.
-   * Each level is quoted with its own parameter type and ascribed to
-   * the type the chain says remains — `asExprOf` is a CHECK at
-   * expansion time, not a runtime cast, and it fails the expansion
-   * if the generated body's type ever disagrees with the chain's.
-   */
-  def exportsImpl[F[_] : Type](m: Expr[Module[F]])(using Quotes): Expr[Vector[Installed] ! Resource] =
-    import quotes.reflect.*
-    val end = TypeRepr.of[Vector[Installed]]
-    val levels = chain(TypeRepr.of[F[Vector[Installed]]], end)
-    def body(ls: List[(TypeRepr, TypeRepr)], acc: List[Expr[Installed]]): Expr[Any] = ls match
-      case Nil => '{ ${ Expr.ofList(acc.reverse) }.toVector }
-      case (a, rest) :: more =>
-        val name = Expr(a.typeSymbol.name)
-        // the erased class: an opaque type's is its underlying's
-        val cls = Literal(ClassOfConstant(a.dealias)).asExprOf[Class[?]]
-        a.asType match
-          case '[at] => rest.asType match
-            case '[rt] =>
-              '{ (x: at) ?=> ${ body(more, '{ Installed($name, $cls, x) } :: acc).asExprOf[rt] } }
-    val collect = body(levels, Nil).asExprOf[F[Vector[Installed]]]
-    '{ $m.build.map(p => p[Vector[Installed]]($collect)) }
   /** the end of the chain the plan walks to; never inhabited */
   sealed trait Marker

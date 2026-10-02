@@ -82,27 +82,7 @@ object TypeableI:
   /** `TypeableK.derived`'s twin for a three-ary signature: the
    * signature's class with every argument a wildcard, emitted as a
    * class of its own per site so the test is a constant `instanceof` */
-  inline def derived[F[_, _, +_]]: TypeableI[F] = ${ derivedImpl[F] }
-
-  def derivedImpl[F[_, _, +_] : Type](using Quotes): Expr[TypeableI[F]] =
-    import quotes.reflect.*
-    val body = TypeRepr.of[F].dealias match
-      case tl: TypeLambda => tl.resType.dealias
-      case other => other.appliedTo(List(TypeRepr.of[Any], TypeRepr.of[Any], TypeRepr.of[Any])).dealias
-    body match
-      case OrType(_, _) =>
-        report.errorAndAbort(
-          "TypeableI.derived is for ONE signature, and this is a row (F +~ G).\n" +
-          "The erasure of a union is its LUB, a class every operation matches; let each\n" +
-          "signature derive its own instance, and splitI will find it.")
-      case _ =>
-        val erased = body match
-          case AppliedType(tycon, args) => AppliedType(tycon, args.map(_ => TypeBounds.empty))
-          case other => other
-        if !erased.typeSymbol.isClassDef then
-          report.errorAndAbort(s"TypeableI.derived needs a class to test for, and ${erased.show} is not one (a match-typed member such as Unary[F] has none: write `new TypeableI[...] { def test(x: Any) = x.isInstanceOf[F[?]] }`)")
-        erased.asType match
-          case '[t] => '{ new TypeableI[F] { def test(x: Any): Boolean = x.isInstanceOf[t] } }
+  inline def derived[F[_, _, +_]]: TypeableI[F] = ${ okay.macros.IndexedMacros.derivedImpl[F] }
 
 /**
  * `split` over an indexed row: the left member by its test, the right

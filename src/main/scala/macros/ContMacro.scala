@@ -1,4 +1,5 @@
 package okay
+package macros
 
 import scala.quoted.*
 
@@ -8,7 +9,7 @@ import scala.quoted.*
  * `k`'s answer is CPS-transformed selectively (Rompf, Maier & Odersky, ICFP 2009) into a program over a lazy
  * `k` (`lazyLeaf`); anything else stays the opaque leaf (`shiftLeaf`). Public for the expansions; not an API.
  */
-object ContMacro:
+@scala.annotation.publicInBinary private[okay] object ContMacro:
 
   /** the transform's "cannot read this" — caught once, at the top */
   private object Opaque extends scala.util.control.ControlThrowable

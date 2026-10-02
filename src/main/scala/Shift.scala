@@ -53,7 +53,6 @@ class Prompt[R](val what: String, val where: String):
   def label: String = s"$what @ $where"
   override def toString: String = label
 
-
 /** a capture naming a prompt not installed on this machine, with the ones that are */
 final class NoPrompt(val from: String, val wanted: String, val installed: List[String])
   extends RuntimeException(NoPrompt.say(from, wanted, installed))
@@ -86,19 +85,7 @@ object At:
   val unknown: At = At("<unknown>")
 
   /** the call site's file and line */
-  inline given here: At = ${ hereImpl }
-
-  // the macro behind `here`
-  def hereImpl(using scala.quoted.Quotes): scala.quoted.Expr[At] =
-    import scala.quoted.*
-    import quotes.reflect.*
-    val pos = Position.ofMacroExpansion
-    val name =
-      try pos.sourceFile.name
-      catch case _: Throwable => "<unknown>"
-    val line = pos.startLine + 1
-    val where = Expr(s"$name:$line")
-    '{ At($where) }
+  inline given here: At = ${ okay.macros.ShiftMacros.hereImpl }
 
 /**
  * ONE EFFECT, `Shift % K` (specs/shift-merge.md): what was `Shift` — prompts as values, any number, run by one
@@ -135,7 +122,6 @@ object Shift {
   /** `ret $ body` at `p`: `ret` runs outside, a `shift0` to `p` takes it along */
   def dollar[R0, R, F[+_]](p: Prompt[R])(ret: R0 => R ! Shift % ? + F)(body: R0 ! Shift % ? + F): R ! Shift % ? + F =
     out(Delimited.machine[Freer.Lift[F]].dollar[R, R0, Unit, Unit](atUnit(p))(inF(ret))(in(body)))
-
 
   /** capture to `p`; the body runs under `p`, `k` re-installs it */
   def shift[R, A, F[+_]](p: Prompt[R])
@@ -471,7 +457,6 @@ object Shift {
   def abort[R, A, F[+_]](p: Prompt[R])(value: R)(using At): A ! Shift % ? + F =
     out(Delimited.machine[Freer.Lift[F]].abort[R, Unit, A](atUnit(p))(value))
 
-
   // THE PROMPT STACK IN THE TYPE: the installed prompts are a lexical given, so a shift to a prompt not on
   // it (none, foreign, escaped) is a compile error, not `NoPrompt`.
   object Stacked:
@@ -508,7 +493,6 @@ object Shift {
     /** a program under the stack `S` */
     type Under[F[+_], A, S <: Tuple] = Freer[Row[F], S, S, A]
 
-
     /** THE EMBEDDINGS ARE IDENTITIES: the same nodes at two types, so crossing costs nothing */
     inline def under[F[+_], A](p: A ! Shift % ? + F)(using st: Stack[?]): Under[F, A, st.S] = at[F, A, st.S](p)
 
@@ -539,7 +523,6 @@ object Shift {
     /** run a program written under the empty stack */
     def run[R, F[+_]](prog: Under[F, R, EmptyTuple])(using m: Machine[F]): R ! F =
       if m.inner then innerDyn[R, F](erase(prog)) else bounded[R, F](rebase(prog))
-
 
     /** a fresh prompt on the empty stack, the body under it, run */
     def delimited[R, F[+_]](body: (s: Reset[R, EmptyTuple]) => Under[F, R, s.p.type *: EmptyTuple])
@@ -579,7 +562,6 @@ object Shift {
                             (using at: At): Under[F, R, st.S] =
       val s = new In[R, st.S](named[R]("dollar")(using at))
       Delimited.machine[Freer.Lift[F]].dollar[R, R0, st.S, st.S](Cont0.delimiter(s.p))(ret)(rebase(body(s)))
-
 
   /** a program keyed STATICALLY (by an answer type) as a dynamic one, to mix with captures to prompts by
    * value in one `flatMap`: rows are invariant, so this is the written row coercion (widen-is-a-coercion) */
@@ -631,27 +613,7 @@ object Shift {
       // one key per id, made at `Any` and read back at the type the id names
       (if k != null then k else keys.computeIfAbsent(id, i => new Key[Any](i, new Prompt[Any]("reset", i)))).asInstanceOf[Key[R]]
 
-    inline given of[R]: Key[R] = ${ keyImpl[R] }
-
-  def keyImpl[R: Type](using q: Quotes): Expr[Key[R]] =
-    import q.reflect.*
-    def parts(t: TypeRepr, or: Boolean): List[TypeRepr] = t.dealias match
-      case OrType(a, b) if or => parts(a, or) ++ parts(b, or)
-      case AndType(a, b) if !or => parts(a, or) ++ parts(b, or)
-      case other => List(other)
-    // bounded by the type's own nesting, which the compiler has already walked
-    def norm(t: TypeRepr): String = t.dealias.simplified match
-      case o: OrType => parts(o, or = true).map(norm).distinct.sorted.mkString("(", " | ", ")")
-      case a: AndType => parts(a, or = false).map(norm).distinct.sorted.mkString("(", " & ", ")")
-      case AppliedType(c, args) => norm(c) + args.map(norm).mkString("[", ", ", "]")
-      case c: ConstantType => c.show
-      case other =>
-        val s = other.typeSymbol
-        if s.isClassDef || s.flags.is(Flags.Opaque) then s.fullName
-        else report.errorAndAbort(
-          s"the answer type ${Type.show[R]} is abstract here (${other.show}), so a reset or shift of it has no key; " +
-            s"take a `Shift.Key[${other.show}]` as a parameter where the type is known")
-    '{ Key.intern[R](${ Expr(norm(TypeRepr.of[R])) }) }
+    inline given of[R]: Key[R] = ${ okay.macros.ShiftMacros.keyImpl[R] }
 
   /**
    * THE ONE MACHINE GUARD (specs/shift-merge.md): whether a machine already runs in the row `F` — `F` holds a
@@ -664,34 +626,8 @@ object Shift {
   final class Machine[F[+_]] @scala.annotation.publicInBinary private[okay] (val inner: Boolean)
 
   object Machine:
-    inline given of[F[+_]]: Machine[F] = ${ machineImpl[F] }
+    inline given of[F[+_]]: Machine[F] = ${ okay.macros.ShiftMacros.machineImpl[F] }
     /** for a door that has already read the row (a keyed `reset`'s own machine): no reading again */
     private[okay] def outermost[F[+_]]: Machine[F] = new Machine[F](false)
 
-  def machineImpl[F[+_]: Type](using q: Quotes): Expr[Machine[F]] =
-    import q.reflect.*
-    val shift = TypeRepr.of[Shift[Any, Any]].typeSymbol
-    val delim = TypeRepr.of[Cont0[?, ?, ?, Any]].typeSymbol
-    // bounded by the row's own nesting, which the compiler has already walked
-    def members(t: TypeRepr): List[TypeRepr] = t.dealias.simplified match
-      case OrType(a, b) => members(a) ++ members(b)
-      case other => List(other)
-    // an alias of a type lambda (`State % Int`, `Instances.Of[G]`) applied: one beta step per alias, at most
-    // as many as the source wrote
-    @scala.annotation.tailrec
-    def reduce(t: TypeRepr, fuel: Int): TypeRepr = t.dealias.simplified match
-      case r @ AppliedType(tc, args) if fuel > 0 =>
-        val d = tc.dealias
-        if d == tc then r else reduce(d.appliedTo(args), fuel - 1)
-      case other => other
-    val ms = members(TypeRepr.of[F].appliedTo(TypeRepr.of[Any])).map(reduce(_, 64)).flatMap(members)
-    val inner = ms.exists(m => m.typeSymbol == shift || m.typeSymbol == delim)
-    val unread = ms.filterNot(m => m.typeSymbol.isClassDef)
-    if !inner && unread.nonEmpty then
-      report.errorAndAbort(
-        s"whether a machine already runs in the row ${Type.show[F]} cannot be read here: " +
-          s"${unread.map(_.show).mkString(", ")} is abstract, and it may hold a Shift.\n" +
-          "Pass the obligation on to the caller, who knows the row: take `(using Shift.Machine[F])`\n" +
-          "(docs/continuations/12-one-machine.md)")
-    '{ new Machine[F](${ Expr(inner) }) }
 }

@@ -42,7 +42,7 @@ object Cont:
    * a tail body is a value (`tailShift`/`tailPure`), an answer-using body a program over a lazy `k`
    * (`lazyLeaf`), anything else gets a strict `k` (`shiftLeaf`).
    */
-  inline def shift[A, S, R](inline f: (A => S) => R): Rep[A, S, R] = ${ ContMacro.shift('f) }
+  inline def shift[A, S, R](inline f: (A => S) => R): Rep[A, S, R] = ${ okay.macros.ContMacro.shift('f) }
 
   /** delimit and run: `c / identity` */
   inline def reset[A, R](c: Rep[A, A, R]): R = run(c)(identity)
@@ -207,7 +207,6 @@ object Cont:
     case r: Root => r
     case _ => throw IllegalStateException("a strict k without its run's root: only a leaf makes one, and a leaf cuts to the root")
 
-
   /**
    * is `c` already an answer? then go on from it with a tail call instead of a continuation node
    * (`Effects.handle`: a node a forwarded operation otherwise)
@@ -260,7 +259,6 @@ object Cont:
     /** back into the monad */
     inline def reify[F[_], A, B](p: Cont[A, F[A], F[B]])(using M: Monad[F]): F[B] =
       p / (a => M.pure(a))
-
 
 /** the stack-safe data instance */
 given Control[Cont] with
