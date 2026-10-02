@@ -118,7 +118,7 @@ different keys mix in one `flatMap`. `Shift.dynamic(p)` names it.
       its twin landed as okay2-shift-merge, specs/okay2.md stage 52:
       `Delim` is `Shift[Any]` there, the operator's "Shift % Any"; the
       one guard as okay2-shift-merge-guard, stage 53)
-- [ ] a machine run OUTERMOST is a value a running machine ABSORBS
+- [x] a machine run OUTERMOST is a value a running machine ABSORBS
       (shift-stacked-key): `Shift.run` (and so every door, the keyed `reset`
       included) answers `Delay(Frames.Own(program))`, which the machine
       steps into in its own loop (as it does `Frames.Resume`) and any other
@@ -128,6 +128,13 @@ different keys mix in one `flatMap`. `Shift.dynamic(p)` names it.
       `ThreadLocal.withInitial`), and 100 000 nested resets run on a
       128 KB JVM stack with NO stack switch (TestResetSmallStack: it
       switched before)
+      MEASURED (src/jmh/history.d, shift-reset-own, two alternating rounds,
+      jmh-lane quiet): `shift0_seq` (a tailcall `Delay` per step, the new
+      type test on every one) 1.00x; `shift0_twoShot` (100 outermost resets
+      an op) 1.18x — a `Delay` and an `Own` per run, ~15 ns a reset, the
+      price of no room and no `ThreadLocal`. Accepted: the room cost a
+      `ThreadLocal` read and a try/finally per reset and still switched
+      stacks; this is a constant per run that a nested run does not pay.
 - [x] the differential oracle and the machine's depth suite unchanged and
       green — this lane changed the front, not the machine
 - [x] stage 4: every `Delim` in docs/ moved (docs/okay2.md excepted, it
