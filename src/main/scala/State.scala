@@ -111,9 +111,12 @@ object State {
   inline def run[S, A](s: S)(a: A ! State % S): (S, A) = !.run(handle(s)(a))
 
   /** the handler as a value: `p.handle(State(s))` answers `(S, A)` */
-  def apply[S](s: S): Handler[State % S, [A] =>> (S, A)] = new Handler[State % S, [A] =>> (S, A)]:
-    def run[A, F[+_]](p: A ! State % S + F)(using A <:< Any, Distinct[State % S + F], Handler.Nothing[F]): (S, A) ! F =
-      handle(s)(p)
+  // ONE implementation (builtins-through-forms): State's handler IS the author's form 2, its clause expanding
+  // into the loop `Handler.stateOf` writes
+  def apply[S](s: S): Handler[State % S, [A] =>> (S, A)] =
+    Handler.stateOf[State % S, S](s)([X] => (st: S, e: State[S, X]) => e match
+      case Get() => (st, st)
+      case Update(f) => { val (b, next) = f(st); (next, b) })
 
   /**
    * the handler: a bespoke tail-recursive loop that threads the state
@@ -129,26 +132,9 @@ object State {
    * program. `State.handle[Int](0)(p)` rather than the three
    * arguments every call site used to spell out.
    */
-  def handle[S](s: S)[A, F[+_]](a: A ! State % S + F)(using Distinct[State % S + F]): (S, A) ! F = {
-    def _loop(s: S)(x: A ! State % S + F): (S, A) ! F = loop(s)(x)
+  def handle[S](s: S)[A, F[+_]](a: A ! State % S + F)(using Distinct[State % S + F]): (S, A) ! F =
+    State(s).run(a)
 
-    // `split`, not `<|>` (split-without-either): the two branches
-    // beta-reduce into this match, no Either per operation. A
-    // returning arm ascribes the loop's answer inside the branch,
-    // where the constructor has refined the answer type to S.
-    @tailrec def loop(s: S)(x: A ! State % S + F): (S, A) ! F = (x.resume: @unchecked) match
-      case Return(a) => Return((s, a))
-      case i @ Inject(e) => split[State[S, *], F](e) {
-          case Get() => Return((s, s)): (S, A) ! F
-          case Update(f) => { val (b, next) = f(s); Return((next, b)): (S, A) ! F }
-        } { _ => forwarded[State[S, *], F](i).map((s, _)) }
-      case Bind(i @ Inject(e), k) => split[State[S, *], F](e) {
-          case Get() => loop(s)(k(s))
-          case Update(f) => { val (b, next) = f(s); loop(next)(k(b)) }
-        } { _ => forwarded[State[S, *], F](i).flatMap(x => _loop(s)(k(x))) }
-
-    loop(s)(a)
-  }
 
   /**
    * A program written against a PART of the state, run against the

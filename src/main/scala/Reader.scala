@@ -176,15 +176,14 @@ object Reader {
 
   /** answer every Ask with r, forwarding the effects F */
   /** the handler as a value: `p.handle(Reader(r))` answers `A` */
-  def apply[R](r: R): Handler[Reader % R, [A] =>> A] = new Handler[Reader % R, [A] =>> A]:
-    def run[A, F[+_]](p: A ! Reader % R + F)(using A <:< Any, Distinct[Reader % R + F], Handler.Nothing[F]): A ! F =
-      Reader.run(r)(p)
+  // ONE implementation (builtins-through-forms): Reader's handler IS the author's form 1, over `relay`
+  def apply[R](r: R): Handler[Reader % R, [A] =>> A] =
+    Handler.answerOf[Reader % R]([X] => (e: Reader[R, X]) => e match
+      case Ask() => r
+      case Asks(f) => f(r))
 
   def run[R, A, F[+_]](r: R)(a: A ! Reader % R + F)(using Distinct[Reader % R + F]): A ! F =
-    relay[A, A, Reader % R, F](a)(pure(_)):
-      [X, Y] => e => e match
-        case Ask() => Cont.Pure(r)
-        case Asks(f) => Cont.Pure(f(r))
+    Reader(r).run(a)
 
   /**
    * SCOPED override: `p`'s own asks answer `f(r)`, `r` the AMBIENT
