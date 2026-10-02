@@ -127,6 +127,13 @@ only the laws.
       field, where two asks inside a captured continuation's own
       re-invocations answer the true ambient, `local`'s override never
       applied
+      — LIFTED ON THE MACHINE (handle-frames, 2026-10-02): a handler is a
+      value a running machine steps into as a FRAME, so `local` under the
+      machine that runs the push is a frame below the body, and the
+      body's asks reach it (TestScopedEffects: 5 -> 23). The fold still
+      treats the payload as opaque; it runs as the fold only where no
+      machine is around it, i.e. where there is no push to reach into
+      (or an unconverted loop forces it — specs/handle-frames.md stage 3)
 - [x] THE SECOND DOCUMENTED LIMIT: a Reader program VALUE carries no
       memory of where it was built — `local` wraps whoever hands it a
       tree, regardless of that tree's own textual origin (the

@@ -1,6 +1,6 @@
 # handle-frames — one loop for every handler, so nesting takes no host stack
 
-Status: FINDING, 2026-10-02; design open. Lane `handle-frames` (operator:
+Status: stage 1 done 2026-10-02 (the state and control forms); stages 2-3 queued. Lane `handle-frames` (operator:
 "Берись сейчас", after "а зачем вообще вложенные вызовы машины? Почему не
 та же самая?").
 
@@ -89,11 +89,40 @@ active handler per level: the depth comes back, plus O(n^2) work.
 
 ## Behavior
 
-- [ ] stage 1: 100 000 nested `State.handle` on 128 KB, no `reset`
+- [x] stage 1: 100 000 nested `State.handle` on 128 KB, no `reset`
       (TestHandleInMachineSmallStack)
-- [ ] stage 1: 100 000 levels of reset / `State.handle` / reset on 128 KB
-- [ ] stage 1: the same two on Scala.js (cross)
-- [ ] stage 1: nested `Effects.handle` (a control clause resuming twice)
+- [x] stage 1: 100 000 levels of reset / `State.handle` / reset on 128 KB
+- [x] stage 1: the same two on Scala.js (cross)
+- [x] stage 1: nested `Effects.handle` (a control clause resuming twice)
       on 128 KB, and its answers equal the fold's on a multi-shot program
-- [ ] the fold's own cost unchanged where nothing nests (HandlerBenchmark
+- [x] the fold's own cost unchanged where nothing nests (HandlerBenchmark
       / the State lanes, alternated); the nested road priced
+
+## Results (stage 1)
+
+- Red, then green: 100 000 nested `State.handle` (no reset), 100 000
+  reset / `State.handle` / reset, 100 000 nested `Effects.handle`, on a
+  128 KB JVM stack (TestHandleInMachineSmallStack) and on Scala.js and
+  Native (TestHandleFramesDepth). The `Effects.handle` one watched red
+  with the control form reverted.
+- The frame agrees with the fold (TestHandleFramesDifferential, cross):
+  with no `Shift`, the fold against the same program upgraded mid-way;
+  with a multi-shot capture, both orders of `State` and `reset`, against
+  the answer worked by hand. A mutant in the frame's state threading
+  reds four of the five.
+- **A SEMANTICS CHANGE, and the principled one.** `Reader.local` under the
+  machine that runs a `Shift.push` now reaches the asks INSIDE the push's
+  body: it is a frame below the body on the one stack. The fold treated
+  that body as an opaque payload of an operation (scoped-effects-laws'
+  first documented limit, TestScopedEffects 5 -> 23); deep handlers act on
+  their whole dynamic extent, and the frame is that.
+- **Measured** (history.d handle-frames, alternated with the lane's
+  parent, quiet box): `handlePrebuilt` 0.97x, `stateEffect` 1.00x,
+  `stateSmall` (100 small `State.run`s) 1.18x — a `Delay` and one run
+  object a handler run, ~2 ns. Two traps on the way, both recorded:
+  `resumeRun` written as `resume`'s five flat cases was 345 bytes, past
+  FreqInlineSize, and lost its inlining (cut to 282 by testing `Bind`
+  once); the control form's upgrade written IN the loop's arm cost every
+  forwarded operation 1.25x though it never ran (now its own method, as
+  `last` and `capture` are; TestInlineBudget finds the lifted loop by
+  `.*loop$N`). Refuted: one rotation lambda for `resume` and `resumeRun`.

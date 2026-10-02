@@ -127,7 +127,12 @@ class TestScopedEffects extends munit.FunSuite:
       ("touched", 11), "State forwarded through local untouched")
   }
 
-  test("A SECOND, MORE FUNDAMENTAL LIMIT — local does NOT reach inside an OPAQUE payload like Shift.push's body") {
+  test("THE OPAQUE-PAYLOAD LIMIT, LIFTED ON THE MACHINE — local reaches inside Shift.push's body when it runs as a frame") {
+    // handle-frames (specs/handle-frames.md): the history below is what
+    // the FOLD does and still does; since handlers became values a
+    // machine runs as frames, `local` here runs on the machine that
+    // runs the push — its frame is on the stack under the body, and
+    // the body's asks find it. The fold answered 5; the frame 23.
     // the FIRST guess for this test claimed local composes through a
     // captured continuation's OWN re-invocations; measured, it does
     // not, and the reason is more basic than the multi-shot story:
@@ -155,8 +160,8 @@ class TestScopedEffects extends munit.FunSuite:
       Shift.push(prompt)(body).at[Reader % Int + (Shift % ? + okay.Pure)])
     val driven: Int ! F =
       Shift.run[Int, F](localized.at[Shift % ? + F])
-    assertEquals(!.run(Reader.run[Int, Int, okay.Pure](1)(driven)), 5,
-      "the *10 never reached body's asks at all: k(1)=1+1=2, k(2)=1+2=3, 2+3=5 — the TRUE ambient, unaffected by local")
+    assertEquals(!.run(Reader.run[Int, Int, okay.Pure](1)(driven)), 23,
+      "local's frame answers the body's asks: 1 * 10 = 10; k(1) = 10 + 1 = 11, k(2) = 10 + 2 = 12, 11 + 12 = 23")
   }
 
   test("THE DOCUMENTED TRAP: a Reader program VALUE carries no memory of where it was built") {
