@@ -122,7 +122,19 @@ convergence:
       first draw (each starts at a prior draw, far from the others) read
       a split R-hat well above 1; the same chains after burn-in, under 1.01
 
-Stage 2d — Thompson sampling for bandits (ch.6). Stage 3 — HMC/NUTS with automatic
+Stage 2d — *Bayesian Methods for Hackers* ch.6, Thompson sampling
+(Thompson 1933; Agrawal & Goyal 2012): `Bandit` — Bernoulli arms, each a
+Beta posterior; `choose` draws once from every arm's posterior and pulls the
+largest, `observe(arm, won)` is the conjugate update. Immutable: a bandit is
+a value, a run a fold over pulls.
+- [ ] Thompson pulls each arm with the probability that it is the best —
+      against P(arm is best) by numerical integration over the Betas
+- [ ] regret: on the book's arms (0.85, 0.60, 0.75) the mean regret over
+      many runs grows like log T and lies within a small factor of the
+      Lai–Robbins lower bound Σ Δᵢ / KL(pᵢ, p*) · log T; uniform random play
+      grows linearly
+- [ ] the posterior concentrates on the best arm: after T pulls its share of
+      pulls tends to 1 Stage 3 — HMC/NUTS with automatic
 differentiation. Stage 4 — `Inference` as a facade (specs/own-or-standard.md):
 ours by default, PyMC/Stan behind an import over an optional dependency.
 
