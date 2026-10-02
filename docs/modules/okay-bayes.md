@@ -237,7 +237,14 @@ _ <- observeAll(theta.indices)(j => Normal(theta(j), sigma(j)), y)
 galaxies: it shears their ellipticities tangentially around itself. The
 data is a simulation, so the true halo is known; on ten skies the posterior
 of the halo's position holds it inside its 95% region every time, a median
-39 units off on a 4200-unit sky. One lesson came with it: the posterior has
+42 units off on a 4200-unit sky. The sky is a `Bulk` — read by `Bulk.csv`,
+observed by `observeBulk` — so the model is written once over any
+`Bulk[D]`, `Chunks` in one JVM or an RDD with Spark's instance in scope:
+
+```scala
+_ <- observeBulk(gs)(galaxyLogLik(_, x, y, m))
+```
+ One lesson came with it: the posterior has
 local hills, and NUTS from a random start stays on the one it lands on.
 Start it at a coarse search's best point:
 

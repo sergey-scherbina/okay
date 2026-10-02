@@ -234,6 +234,15 @@ Stage 5 — the rest of the book, one lane per chapter:
   the mode. Started at a coarse search's best point (`Smooth.nuts(...,
   init = ...)`, added here) it is right on every sky. The grid's coarse
   pass is the same search, so the start costs nothing new.
+  REWRITTEN OVER BULK (darkworlds-bulk, operator: "why Vectors, not streams
+  or better Bulk?"): a sky is read by `Bulk.csv`, mapped to galaxies and
+  cached; both model forms observe it with `observeBulk`, written over any
+  `Bulk[D]`. The grid oracle keeps its own Vector reading, and the Bulk
+  model's density equals it in both forms at points across the sky. After
+  the rewrite: Sky 3 by AD NUTS x 2323.9 (grid 2324.1); ten skies 10 of
+  10, median distance 42. A stream is the wrong shape here: the
+  likelihood is an unordered sum NUTS re-reads per gradient, which is what
+  a Bulk aggregate is; the online filter is the stream example.
 - 5c. ch.7, A/B testing by EXPECTED REVENUE: a visitor buys one of
   several tiers or nothing; the tier probabilities have a Dirichlet
   posterior (flat prior + counts), and the revenue per visitor is Σ vᵢ pᵢ.
