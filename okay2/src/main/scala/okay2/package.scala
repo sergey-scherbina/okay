@@ -162,6 +162,8 @@ package object okay2 extends Provides with Monads with Shifts {
     def flatMap[B](f: A => M[F, B])(implicit E: Effects[M]): M[F, B] = E.flatMap(m)(f)
     def map[B](f: A => B)(implicit E: Effects[M]): M[F, B] = E.map(m)(f)
     def runWith(implicit E: Effects[M], H: Answers[F]): A = E.runWith(m)
+    /** `foldMap` into `Cont`: the program's fold, each operation answered by `h` as a continuation */
+    def foldCont[S](h: F !> S)(implicit E: Effects[M]): A /> S = E.foldCont(m)(h)
   }
 
   /** a Loop: the body of an open-recursive function A => R whose

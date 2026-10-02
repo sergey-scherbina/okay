@@ -30,6 +30,86 @@ trait Effects[M[_, _]] {
   /** run every effect by a comonadic Answers; encodings may override
    * with an equivalent fast path */
   def runWith[F <: Row, A](m: M[F, A])(implicit H: Answers[F]): A = foldCont[F, A, A](m)(Interpr.of[F, A]) / identity
+
+  /** handle the effect F by h (and the values by ret), forwarding the
+   * effects G; for mass tail-resumption prefer `!.relay` (measured). The
+   * definition goes through the tree; `Effects[Free]` is `!.handleWith`,
+   * the loop that enters `Cont` only for an operation it claims. One
+   * parameter list where Scala 3 has two type clauses: name all four */
+  def handle[F <: Row, G <: Row, A, B](m: M[F with G, A])(ret: A => M[G, B])(h: F !> M[G, B])
+                                     (implicit T: TypeableK[F], d: Distinct[F with G]): M[G, B] = {
+    val E = this
+    // each claimed operation answered in M, read back as the tree's: the definition, at one capture apiece
+    val inTree: F !> (B ! G) = new Interpr[F, B ! G] {
+      def apply[X](e: F#Op[X]): Cont[X, B ! G, B ! G] =
+        Cont.shift[X, B ! G, B ! G](k => Effects.reify[M, G, B](h[X](e) / (x => Effects.reflect[M, G, B](k(x))(E)))(E))
+    }
+    Effects.reflect[M, G, B](Effects.handleWith[A, B, F, G](Effects.reify[M, F with G, A](m)(E))(a => Effects.reify[M, G, B](ret(a))(E))(inTree)(T, d))(E)
+  }
+
+  // LEVEL 1 (specs/shift-effect.md): continuations and the ready handlers, in any encoding. The default goes
+  // through the tree (`reify`, the top-level function, `reflect`); `Effects[Free]` is the top-level functions
+  // themselves, so there is one definition of each. The Scala 3 core's trait, member for member.
+
+  /** Danvy-Filinski's capture (the top-level `shift`) */
+  def shift[R, A, F <: Row](f: (A => M[Shift[R] + F, R]) => M[Shift[R] + F, R])(implicit k: Shift.Key[R], at: At): M[Shift[R] + F, A] = {
+    val E = this
+    Effects.reflect[M, Shift[R] + F, A](okay2.shift[R, A, F](kk =>
+      Effects.reify[M, Shift[R] + F, R](f(a => Effects.reflect[M, Shift[R] + F, R](kk(a))(E)))(E))(k, at))(E)
+  }
+
+  /** the capture whose body runs outside its `reset` (the top-level `shift0`) */
+  def shift0[R, A, F <: Row](f: (A => M[F, R]) => M[F, R])(implicit k: Shift.Key[R], at: At): M[Shift[R] + F, A] = {
+    val E = this
+    Effects.reflect[M, Shift[R] + F, A](okay2.shift0[R, A, F](kk =>
+      Effects.reify[M, F, R](f(a => Effects.reflect[M, F, R](kk(a))(E)))(E))(k, at))(E)
+  }
+
+  /** delimit (the top-level `reset`) */
+  def reset[R, F <: Row](body: M[Shift[R] + F, R])(implicit k: Shift.Key[R], n: Shift.Nesting[F]): M[F, R] =
+    Effects.reflect[M, F, R](okay2.reset[R, F](Effects.reify[M, Shift[R] + F, R](body)(this))(k, n))(this)
+
+  /** take a ready handler's effect off the row (the program's `p.handle(h)`; two arguments in one list, so the
+   * level-2 `handle(m)(ret)(h)` above stays its own overload). The row is written `E with F`, so a call names
+   * the rest where scalac cannot take E off by inference */
+  def handle[A, E <: Row, I, O[_], N[_ <: Row], F <: Row](m: M[E with F, A], h: Handler.Full[E, I, O, N])
+                                                        (implicit ok: A <:< I, d: Distinct[E with F], n: N[F]): M[F, O[A]] =
+    Effects.reflect[M, F, O[A]](h.run[A, F](Effects.reify[M, E with F, A](m)(this))(ok, d, n))(this)
+
+  /** a program with no effect left, to its value (the program's `run`) */
+  def run[A](m: M[Pure, A]): A = Effects.run(Effects.reify[M, Pure, A](m)(this))
+}
+
+/**
+ * Any Effects program in ANY other Effects encoding, and the two ends of it: the Scala 3 core's top-level
+ * `convert`, `reify`, `reflect`, here members of `object Effects` (`!.reify`, `Effects.reflect`) — at the
+ * package level Scala 2 would let them shadow monadic reflection's `Layered.reify` in a file importing it.
+ */
+trait Conversions {
+  /**
+   * The initiality of the interface made a function: an encoding is fixed by `pure` and `perform`, `foldCont`
+   * is the fold, and so there is exactly one structure-preserving way across. The handler rebuilds each
+   * operation in the target, `N.perform(e)`, and the values land through `N.pure`.
+   */
+  def convert[M[_, _], N[_, _], F <: Row, A](m: M[F, A])(implicit M: Effects[M], N: Effects[N]): N[F, A] =
+    M.foldCont[F, A, N[F, A]](m)(new Interpr[F, N[F, A]] {
+      def apply[X](e: F#Op[X]): Cont[X, N[F, A], N[F, A]] = Cont.shift[X, N[F, A], N[F, A]](k => N.flatMap(N.perform[F, X](e))(k))
+    }) / (a => N.pure[F, A](a))
+
+  /** any Effects program materialized as a Free tree: building the syntax is itself an interpretation */
+  def reify[M[_, _], F <: Row, A](m: M[F, A])(implicit M: Effects[M]): A ! F =
+    convert[M, Free, F, A](m)(M, Effects.free)
+
+  /**
+   * The other direction: a Free tree read INTO any encoding. `reify` observes an encoding as syntax, which is
+   * what a debugger or a rewriter wants; `reflect` spends syntax at an encoding, which is what running it fast
+   * wants. Together a round trip (TestReflect). A tree is already syntax, so it folds straight into the target
+   * with no continuation reified on the way.
+   */
+  def reflect[M[_, _], F <: Row, A](m: Free[F, A])(implicit M: Effects[M]): M[F, A] =
+    m.fold[F, A, M[F, A]](a => M.pure[F, A](a))(new Free.Step[F, A, M[F, A]] {
+      def apply[X](e: Any, k: X => Free[F, A]): M[F, A] = M.flatMap[F, X, A](M.perform[F, X](Split.only[F, X](e)))(x => reflect[M, F, A](k(x)))
+    })
 }
 
 /**
@@ -39,7 +119,7 @@ trait Effects[M[_, _]] {
  * Aliased as `!` in the package object, as in the Scala 3 core. Also
  * the companion of `trait Effects`, holding its `Free` instance.
  */
-object Effects {
+object Effects extends Conversions {
 
   def apply[M[_, _]](implicit E: Effects[M]): Effects[M] = E
 
@@ -53,6 +133,21 @@ object Effects {
     override def map[F <: Row, A, B](m: Free[F, A])(f: A => B): Free[F, B] = m.map(f)
     def foldCont[F <: Row, A, S](m: Free[F, A])(h: F !> S): A /> S = foldContFree(m)(h)
     override def runWith[F <: Row, A](m: Free[F, A])(implicit H: Answers[F]): A = runFree(m)
+    override def handle[F <: Row, G <: Row, A, B](m: Free[F with G, A])(ret: A => B ! G)(h: F !> (B ! G))
+                                                 (implicit T: TypeableK[F], d: Distinct[F with G]): B ! G =
+      handleWith[A, B, F, G](m)(ret)(h)(T, d)
+
+    // level 1: the top-level functions themselves
+    override def shift[R, A, F <: Row](f: (A => R ! (Shift[R] + F)) => R ! (Shift[R] + F))(implicit k: Shift.Key[R], at: At): A ! (Shift[R] + F) =
+      okay2.shift[R, A, F](f)(k, at)
+    override def shift0[R, A, F <: Row](f: (A => R ! F) => R ! F)(implicit k: Shift.Key[R], at: At): A ! (Shift[R] + F) =
+      okay2.shift0[R, A, F](f)(k, at)
+    override def reset[R, F <: Row](body: R ! (Shift[R] + F))(implicit k: Shift.Key[R], n: Shift.Nesting[F]): R ! F =
+      okay2.reset[R, F](body)(k, n)
+    override def handle[A, E <: Row, I, O[_], N[_ <: Row], F <: Row](m: Free[E with F, A], h: Handler.Full[E, I, O, N])
+                                                                    (implicit ok: A <:< I, d: Distinct[E with F], n: N[F]): O[A] ! F =
+      h.run[A, F](m)(ok, d, n)
+    override def run[A](m: A ! Pure): A = runFree(m)
   }
 
   /** a program reflected into Cont: each operation by `h`, the rest of
