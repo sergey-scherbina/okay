@@ -31,6 +31,14 @@ trait Effects[M[_, _]] {
    * with an equivalent fast path */
   def runWith[F <: Row, A](m: M[F, A])(implicit H: Answers[F]): A = foldCont[F, A, A](m)(Interpr.of[F, A]) / identity
 
+  /**
+   * The program folded into any `Monad` G, each operation translated by `nt`. IT IS G's `tailRecM`, as cats'
+   * `Free.foldMap` is: each step resumes the tree once and answers `Left(the rest)` or `Right(the value)`, so
+   * the fold is exactly as stack-safe as `TailRecM[G]` — the carrier's own loop (specs/eager-carrier-depth.md).
+   */
+  def foldMap[F <: Row, A, G[_]](m: M[F, A])(nt: Static.To[F, G])(implicit G: Monad[G], R: TailRecM[G]): G[A] =
+    Effects.foldMapFree[F, A, G](Effects.reify[M, F, A](m)(this))(nt)(G, R)
+
   /** handle the effect F by h (and the values by ret), forwarding the
    * effects G; for mass tail-resumption prefer `!.relay` (measured). The
    * definition goes through the tree; `Effects[Free]` is `!.handleWith`,
@@ -148,7 +156,20 @@ object Effects extends Conversions {
                                                                     (implicit ok: A <:< I, d: Distinct[E with F], n: N[F]): O[A] ! F =
       h.run[A, F](m)(ok, d, n)
     override def run[A](m: A ! Pure): A = runFree(m)
+    override def foldMap[F <: Row, A, G[_]](m: Free[F, A])(nt: Static.To[F, G])(implicit G: Monad[G], R: TailRecM[G]): G[A] =
+      foldMapFree[F, A, G](m)(nt)(G, R)
   }
+
+  /** `foldMap` over the tree itself: one resume per step of G's loop */
+  def foldMapFree[F <: Row, A, G[_]](m: Free[F, A])(nt: Static.To[F, G])(implicit G: Monad[G], R: TailRecM[G]): G[A] =
+    R.tailRecM[A ! F, A](m) { p =>
+      Free.resume(p) match {
+        case Return(a) => G.pure[Either[A ! F, A]](Right(a))
+        case Inject(e) => G.fmap(nt[A](Split.only[F, A](e)), (a: A) => Right(a): Either[A ! F, A])
+        case Bind(Inject(e), k) => G.fmap(nt[Any](Split.only[F, Any](e)), (x: Any) => Left(k(x)): Either[A ! F, A])
+        case other => throw new IllegalStateException("resume left a non-head form: " + other)
+      }
+    }
 
   /** a program reflected into Cont: each operation by `h`, the rest of
    * the program deferred into Cont's own trampoline */

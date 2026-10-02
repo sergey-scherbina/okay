@@ -120,6 +120,25 @@ class TestHandler extends munit.FunSuite {
     assertEquals(p.handle(viaState, State(Map(7L -> "ada"))).run, (Map(7L -> "grace"), Some("ada")))
   }
 
+  test("control: a clause that resumes once, in tail position, captures nothing — 100 000 asks deep") {
+    val asReader = Handler[Reader[Int]].control[Handler.Id](new Handler.Ret[Handler.Id] { def apply[A](a: A): A = a })(
+      new Handler.Control[Reader[Int], Handler.Id] {
+        def apply[X, A, G <: Row](e: Reader.Op[Int, X], k: X => A ! G): A ! G = k(answer[X](7))
+      })
+    def asks(k: Int): Int ! Reader[Int] = if (k == 0) pure[Reader[Int], Int](0) else Reader.ask[Int].flatMap(r => asks(k - 1).map(_ + r))
+    assertEquals(asks(100000).handle(asReader).run, 700000)
+    assertEquals(asks(3).handle(asReader).run, asks(3).handle(Reader(7)).run)
+  }
+
+  test("control: a clause that resumes and then works on the answer still captures, and is right") {
+    val twice = Handler[Reader[Int]].control[Handler.Id](new Handler.Ret[Handler.Id] { def apply[A](a: A): A = a })(
+      new Handler.Control[Reader[Int], Handler.Id] {
+        def apply[X, A, G <: Row](e: Reader.Op[Int, X], k: X => A ! G): A ! G = k(answer[X](1)).flatMap(_ => k(answer[X](2)))
+      })
+    val p: Int ! Reader[Int] = Reader.ask[Int].map(_ * 10)
+    assertEquals(p.handle(twice).run, 20)
+  }
+
   test("control: abort, and resume many times") {
     val maybe = Handler[Abort].control[Option](new Handler.Ret[Option] { def apply[A](a: A): Option[A] = Some(a) })(
       new Handler.Control[Abort, Option] {

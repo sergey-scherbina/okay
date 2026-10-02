@@ -164,6 +164,8 @@ package object okay2 extends Provides with Monads with Shifts {
     def runWith(implicit E: Effects[M], H: Answers[F]): A = E.runWith(m)
     /** `foldMap` into `Cont`: the program's fold, each operation answered by `h` as a continuation */
     def foldCont[S](h: F !> S)(implicit E: Effects[M]): A /> S = E.foldCont(m)(h)
+    /** the program folded into any `Monad` G through G's own loop */
+    def foldMap[G[_]](nt: Static.To[F, G])(implicit E: Effects[M], G: Monad[G], R: TailRecM[G]): G[A] = E.foldMap(m)(nt)
   }
 
   /** a Loop: the body of an open-recursive function A => R whose

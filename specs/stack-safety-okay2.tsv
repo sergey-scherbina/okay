@@ -47,3 +47,4 @@ okay2-workflow/src/main/scala/okay2/Proc.scala	369	nodes	lambda	List.foreach	BOU
 src/main/scala/okay2/Distinct.scala	84	parts	lambda	List.flatMap	BOUNDED: per member of a row TYPE — its width, written in the program's types — during derivation, never per value
 src/main/scala/okay2/Distinct.scala	96	identityOf	direct		BOUNDED: per member of a row TYPE — its width, written in the program's types — during derivation, never per value
 src/main/scala/okay2/Replayable.scala	60	parts	lambda	List.flatMap	BOUNDED: per member of a row TYPE — its width, written in the program's types — during derivation, never per value
+src/main/scala/okay2/Monad.scala	144	tailRecM	lambda	Monad.flatMap	DEFERRED: TailRecM.deferring, for a carrier whose flatMap does not call its continuation before returning (a program); an explicit claim at the instance, checked by a SmallStack(128) depth test (TestStackSafeLoopsSmall; specs/eager-carrier-depth.md)

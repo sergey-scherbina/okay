@@ -37,6 +37,14 @@
 set -u
 here="$(cd "$(dirname "$0")" && pwd)"
 root="$(cd "$here/.." && pwd)"
+# THE BUILD sbt runs in: the caller's, when it is a separate build inside the repository (okay2/, its own
+# build.sbt — `cd okay2 && sh ../scripts/jmh-lane.sh "okay2/Jmh/run …"`); the root otherwise. Everything
+# else (the lock, quiet, the bench window) is the box's and the root's (jmh-lane-sub-build, 2026-10-02)
+build="$root"
+caller="$(pwd)"
+case "$caller" in
+  "$root"/*) [ -f "$caller/build.sbt" ] && build="$caller" ;;
+esac
 cd "$root"
 . "$here/quiet.sh"
 # sbt on .sdkmanrc's JDK, as gate.sh runs it (jdk-pin.sh; jmh-lane-jdk-pin)
@@ -91,7 +99,8 @@ noisy_rows() { # $1 = the run's output; prints each offending row
 # the moment it is queued, so new gates hold their start (running ones
 # finish), and it runs only when no gate token is live. Filed before
 # the lock wait, so a queue of lanes keeps the gates held for all of it.
-. "$(cd "$(dirname "$0")" && pwd)/bench-window.sh"
+# through `$here`: after the cd above, a relative `$0` no longer resolves (jmh-lane-sub-build)
+. "$here/bench-window.sh"
 
 take_lock() {
   if mkdir "$LOCKDIR" 2>/dev/null; then
@@ -192,7 +201,7 @@ while [ "$i" -le "$ATTEMPTS" ]; do
   # tee's (memory pipe-masks-exit-status)
   runlog=$(mktemp); rcfile=$(mktemp)
   # shellcheck disable=SC2086
-  { $SBT -batch "$CMD"; echo $? > "$rcfile"; } 2>&1 | tee "$runlog" &
+  { ( cd "$build" && $SBT -batch "$CMD" ); echo $? > "$rcfile"; } 2>&1 | tee "$runlog" &
   wait $!
   rc=$(cat "$rcfile"); rm -f "$rcfile"
   # ANOTHER JMH HOLDS JMH'S OWN LOCK (jmh-lane-foreign-jmh-lock): a run

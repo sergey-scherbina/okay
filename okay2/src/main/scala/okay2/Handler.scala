@@ -338,9 +338,36 @@ object Handler {
     new Full[F, Any, O, Nothing] {
       def run[A, G <: Row](p: Free[F with G, A])(implicit @unused ev: A <:< Any, d: Distinct[F with G], @unused n: Nothing[G]): O[A] ! G =
         Effects.handleWith[A, O[A], F, G](p)(a => pure[G, O[A]](ret[A](a)))(new Interpr[F, O[A] ! G] {
-          def apply[X](e: F#Op[X]): Cont[X, O[A] ! G, O[A] ! G] = Cont.shift[X, O[A] ! G, O[A] ! G](k => c[X, A, G](e, k))
+          def apply[X](e: F#Op[X]): Cont[X, O[A] ! G, O[A] ! G] = {
+            val resume = new Resume[X, O[A], G]
+            val out = c[X, A, G](e, resume)
+            // `resume(x)` once, as the clause's answer: the program goes on, nothing to capture
+            if (resume.calls == 1 && (out eq resume.last)) Cont.Pure[X, O[A] ! G](resume.arg)
+            else Cont.shift[X, O[A] ! G, O[A] ! G] { k => resume.k = k; out }
+          }
         })(T, d)
     }
+
+  /**
+   * The `resume` a `control` clause gets (the Scala 3 core's, okay2-handler-control-resume). Called once and
+   * returned as the clause's answer, it is a tail resume, answered with no capture; otherwise each call is a
+   * program that enters the captured `k`, which the capture fills in before any of them runs.
+   */
+  private final class Resume[X, B, G <: Row] extends (X => B ! G) with (() => B ! G) {
+    var k: X => B ! G = _
+    var arg: X = _
+    var last: B ! G = _
+    var calls: Int = 0
+    def apply(x: X): B ! G = {
+      calls += 1
+      // the first call's node defers to this object itself (its `arg` is that call's, and only a second call
+      // could change it, which gets a closure of its own): one allocation less a resumed operation
+      last = if (calls == 1) { arg = x; Free.delay[G, B](this) } else Free.delay[G, B](() => k(x))
+      last
+    }
+    /** the first call's resumption */
+    def apply(): B ! G = k(arg)
+  }
 }
 
 /** `reset` as a value: `p.handle(Reset[R])` */

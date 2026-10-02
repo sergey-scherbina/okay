@@ -377,7 +377,9 @@ with `Handler[F]` naming the effect once (an inference helper; each
 form has one implementation): `answer` (an `Answers[F]`), `state`
 (a `Handler.StateClause[F, S]`), `into[G]` (an `Interpret[F, G]`, the
 rest of the row holding `G`) and `control[O]` (a `Handler.Ret[O]` and
-a `Handler.Control[F, O]`, which gets the rest of the program as `k`).
+a `Handler.Control[F, O]`, which gets the rest of the program as `k`;
+a clause that returns `k(x)` as its answer is a tail resume, answered
+with no capture, as in the Scala 3 core).
 Scala 2 has no polymorphic function literal, so each clause is an
 anonymous class:
 
@@ -1417,6 +1419,30 @@ instances are bounded type parameters and resolve at any concrete row:
 An `if` filters the generator right before it, so that generator's row
 is the one that must carry `Choose` — `.plus[Choose]` puts it there.
 
+A stack-safe loop is `TailRecM[F]`, and it is the CARRIER's, never
+derived from `flatMap` (specs/eager-carrier-depth.md, the Scala 3 core's
+design): an eager carrier's `flatMap` calls its continuation before it
+returns, so a loop through it holds a frame per iteration. `Option`,
+`Either`, `LazyList` and programs have their own loops; a monad without
+one has no `tailRecM`, a compile error that names `TailRecM`.
+`TailRecM.deferring` is the `flatMap` recursion, for a carrier that
+says its `flatMap` defers:
+
+```scala
+    assertEquals(TailRecM[Option].tailRecM(0)(countTo[Option](n)(Some(_))), Some(n))
+    assertEquals(TailRecM[LazyList].tailRecM(0)(countTo[LazyList](n)(LazyList(_))).toList, List(n))
+```
+
+`foldMap` folds a program into any `Monad` G, each operation translated
+by a `Static.To[F, G]`, and it IS G's `tailRecM`, as cats' `Free.foldMap`
+is: a million operations, left-nested or not, on a 128 KB thread and on
+Scala.js:
+
+```scala
+    val left: Int ! Produce = (1 to n).foldLeft(pure[Produce, Int](0))((m, _) => m.flatMap(x => produce(x + 1)))
+    assertEquals(Effects.free.foldMap(left)(asOption), Some(n))
+```
+
 ## 17. Several instances of one signature
 
 A split tests one signature and takes the rest by exclusion, and a
@@ -1609,8 +1635,8 @@ a self-referential one diverges before it is run, and a value that is
 itself a `Free` would be read as a program.
 
 `Effects` has the Scala 3 core's shape: besides the fold it carries
-`handle(m)(ret)(h)` and level 1 (`shift`, `shift0`, `reset`,
-`handle(m, h)`, `run`), each defined once through the tree, with
+`foldMap` (§16), `handle(m)(ret)(h)` and level 1 (`shift`, `shift0`,
+`reset`, `handle(m, h)`, `run`), each defined once through the tree, with
 `Effects[Free]` overriding them by the functions themselves.
 `Effects.reify` and `Effects.reflect` are the two ends of the round trip
 between any two encodings (`Effects.convert`); they live in

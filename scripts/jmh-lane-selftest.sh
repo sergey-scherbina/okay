@@ -21,6 +21,7 @@ new_fixture() {
   export JMH_LANE_LOCK="$tmp/.work/jmh/lock"   # the fixture's own lock, not the box's
   export OKAY_BENCH_DIR="$tmp/.work/bench"     # and its own bench window
   export JMH_LANE_LOCK_POLL=1 JMH_LANE_QUIET_POLL=1
+  export JMH_LANE_FIXTURE_QUEUE="$tmp/.work/queue"
   cp "$here/jmh-lane.sh" "$tmp/scripts/jmh-lane.sh"
   cp "$here/bench-window.sh" "$tmp/scripts/bench-window.sh"
   cp "$here/jdk-pin.sh" "$tmp/scripts/jdk-pin.sh"   # sourced by jmh-lane.sh; no .sdkmanrc in the fixture, so it pins nothing
@@ -36,7 +37,7 @@ EOF
   # does not care about a given call does not have to pad the queue
   cat > "$tmp/scripts/quiet.sh" <<'EOF'
 #!/bin/sh
-Q="$(cd "$(dirname "$0")/.." && pwd)/.work/queue"
+Q="$JMH_LANE_FIXTURE_QUEUE"   # exported by new_fixture: `$0` is the CALLER's, relative from a sub-build
 quiet() {
   L=1; H=0; F=99
   if [ -s "$Q" ]; then
@@ -313,6 +314,23 @@ kill "$a" "$b" 2>/dev/null
 first=$(head -1 "$tmp/.work/order" 2>/dev/null)
 [ "$first" = old ] && ok "the older lane ran first" || bad "ran first: '${first}' (order: $(tr '\n' ' ' < "$tmp/.work/order" 2>/dev/null))"
 [ "$(wc -l < "$tmp/.work/order" 2>/dev/null | tr -d ' ')" = 2 ] && ok "both lanes ran" || bad "not both ran: $(cat "$tmp/out14a" "$tmp/out14b")"
+rm -rf "$tmp"
+
+say "15. called from a sub-build by a relative path: it runs, and sbt runs in that build (okay2/)"
+new_fixture
+# 2026-10-02: `cd okay2 && sh ../scripts/jmh-lane.sh …` died at once — bench-window.sh was sourced through the
+# relative $0 after the cd to the root — and the lane would have run sbt at the root, which has no okay2 project
+mkdir -p "$tmp/sub" && : > "$tmp/sub/build.sbt"
+cat > "$tmp/scripts/fake-sbt.sh" <<'EOF2'
+#!/bin/sh
+pwd > "$(cd "$(dirname "$0")/.." && pwd)/.work/where"
+exit 0
+EOF2
+chmod +x "$tmp/scripts/fake-sbt.sh"
+( cd "$tmp/sub" && SBT="$tmp/scripts/fake-sbt.sh" sh ../scripts/jmh-lane.sh "Bench.sub" 1 > "$tmp/out15" 2>&1 ); rc=$?
+[ "$rc" -eq 0 ] && ok "the lane ran (exit 0)" || bad "exit $rc: $(cat "$tmp/out15")"
+where=$(cat "$tmp/.work/where" 2>/dev/null)
+[ "$where" = "$(cd "$tmp/sub" && pwd -P)" ] || [ "$where" = "$(cd "$tmp/sub" && pwd)" ] && ok "sbt ran in the sub-build" || bad "sbt ran in '${where}'"
 rm -rf "$tmp"
 
 say ""
