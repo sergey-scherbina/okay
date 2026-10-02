@@ -46,6 +46,13 @@ assertEquals(s.leaves.toList, List(Op.Get("a"), Op.Get("b"), Op.Get("c")))
 val p: List[Boolean] ! Async = List(1, 2, 3, 4).parTraverse(_ => leaf(latch, 10000))
 ```
 
+Both `Validated`s combine their errors with whichever semigroup you
+hold, okay's or cats-kernel's (`Combine`, okay's first). The general
+bridges for `Semigroup`, `Monoid` and `Group` are their own imports,
+`FromCatsKernel` and `ToCatsKernel`: import one only where a type has
+just one side's instance. Next to `okay.given` they tie with okay's own
+numeric instances.
+
 In the other direction, cats' `Validated` gets the rung cats does not
 have: `select` runs its handler only for a valid `Left`. `IO` and
 `Eval` get okay's `Monad`:

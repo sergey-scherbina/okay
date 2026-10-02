@@ -29,9 +29,11 @@ import _root_.cats.effect.IO
 
 /** okay's accumulating `Validated` under cats' Applicative: `ap` keeps
  * EVERY error (`okay.Validated.selective`), so `List(...).traverse`
- * from cats reports all of them */
-given catsValidated[E](using S: okay.Semigroup[E]): _root_.cats.Applicative[[A] =>> Validated[E, A]] with
-  private val V = Validated.selective[E]
+ * from cats reports all of them — combined by okay's semigroup or
+ * cats-kernel's ([[Combine]]) */
+given catsValidated[E](using C: Combine[E]): _root_.cats.Applicative[[A] =>> Validated[E, A]] with
+  // okay's semigroup or cats-kernel's, whichever the caller holds (CatsKernel.scala)
+  private val V = Validated.selective[E](using (x, y) => C.combine(x, y))
   def pure[A](a: A): Validated[E, A] = V.pure(a)
   override def map[A, B](fa: Validated[E, A])(f: A => B): Validated[E, B] = V.fmap(fa, f)
   def ap[A, B](ff: Validated[E, A => B])(fa: Validated[E, A]): Validated[E, B] = V.app(ff)(fa)
@@ -95,9 +97,9 @@ object CatsClasses:
 /**
  * cats' `Validated` with the rung cats does not have: `select` runs the
  * handler only for a valid `Left` (Mokhov et al.'s instance for
- * `Validation`), `app` accumulates through cats' own `Semigroup`.
+ * `Validation`), `app` accumulates through either library's semigroup ([[Combine]]).
  */
-given okayCatsValidated[E](using S: _root_.cats.Semigroup[E]): okay.Selective[[A] =>> _root_.cats.data.Validated[E, A]] with
+given okayCatsValidated[E](using S: Combine[E]): okay.Selective[[A] =>> _root_.cats.data.Validated[E, A]] with
   import _root_.cats.data.Validated.{Valid, Invalid}
   def pure[A](a: A): _root_.cats.data.Validated[E, A] = Valid(a)
   override def fmap[A, B](a: _root_.cats.data.Validated[E, A], f: A => B): _root_.cats.data.Validated[E, B] = a.map(f)

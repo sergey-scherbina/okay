@@ -32,11 +32,11 @@ anything that existed:
 
 | given | class | for |
 |---|---|---|
-| `catsValidated[E: okay.Semigroup]` | `cats.Applicative` | `okay.Validated[E, *]` — `ap` ACCUMULATES |
+| `catsValidated[E: Combine]` (either library's semigroup since cats-kernel-bridge) | `cats.Applicative` | `okay.Validated[E, *]` — `ap` ACCUMULATES |
 | `catsStatic[F]` | `cats.Applicative` | `okay.Static[F, *]` — stays static |
 | `catsPar(using Scheduler)` | `cats.Parallel.Aux` | `A ! Async` ↔ `Par` — `parTraverse` forks |
 | `catsChoose` | `cats.MonoidK` | `A ! Choose` (full `Alternative`: `CatsClasses.chooseAlternative`, explicit) |
-| `okayCatsValidated[E: cats.Semigroup]` | `okay.Selective` | `cats.data.Validated[E, *]` — real `select` |
+| `okayCatsValidated[E: Combine]` | `okay.Selective` | `cats.data.Validated[E, *]` — real `select` |
 | `okayIO`, `okayEval` | `okay.Monad` | `cats.effect.IO`, `cats.Eval` |
 
 Conversions: `CatsInterop.toCatsValidated` / `fromCatsValidated`.
