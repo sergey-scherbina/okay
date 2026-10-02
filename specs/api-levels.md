@@ -55,3 +55,13 @@ TestDocExamplesLevel1 and TestDocExamplesLevel1Direct.
 ## Open
 
 - None left of level 1's own. Inside `reset { … }` a `shift` names its value type only (shift-in-scope).
+
+## In okay2 (Scala 2.13), 2026-10-02
+
+The same three levels (okay2-level1-api, specs/okay2.md stage 49): `Shift[R]`
+with `shift`/`reset`, handler values with `p.handle(h)`, the four forms and
+`Effects` with level 1 in the trait. What Scala 2 changes: `p.handle` is a
+whitebox macro (an intersection's rest cannot be inferred), a clause is an
+anonymous class (no polymorphic function literal), a `shift` names its
+answer, value and row (no context functions), and `reify`/`reflect` are
+`Effects.` members. docs/okay2.md §4, §6, §23.

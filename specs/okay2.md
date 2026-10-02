@@ -2519,3 +2519,46 @@ the Overview. What follows from it, and was done the same day
   door's `A` cannot come from the lambda), every expected value matched
   on the first run that compiled; the whole okay2 gate GREEN before
   landing.
+
+## Stage 49 — okay2-level1-api: level 1 in Scala 2 (2026-10-02)
+
+Operator: "Делай okay2" — the Scala 3 core's level-1 API (specs/api-levels.md,
+shift-effect.md, handler-forms.md), then "А можем в окей2 класс Effects
+сделать таким же как в okay?" — the trait, member for member.
+
+- **`Cont.shift`/`Cont.reset`**: the package-level `shift`/`reset` were
+  Cont's; they are `Cont`'s members now and the top-level names belong to
+  `Shift[R]`, as in the core. Seventeen files moved by the compiler.
+- **`Shift[R]`** (Shift.scala): a Row whose operations are Delim's;
+  `shift`/`shift0`/`reset` at the package level (trait `Shifts`), `Shift.Key`
+  by a blackbox macro (one key per normalized type, an intersection in any
+  order one key; an abstract type aborts), `Shift.Nesting` by implicit
+  priority (a row `<:` `Shift.Any` or `Delim` is inner; abstract is not),
+  the per-thread room and `StackSwitch.fresh` for nested resets,
+  `exit`/`collect`/`emit`, `cont`/`embed`. No short `shift[A]`: Scala 2 has
+  no context functions. TestShift has the core's values; 100 000 nested
+  resets and 100 000 captures pass.
+- **`Handler[F]` is `Answers[F]`**; `Handler[E, O]` is the package alias of
+  `Handler.Full[E, Any, O, Handler.Nothing]`, the value. Answer shapes are
+  projections (`Handler.Pair[S]#L`, `Or[E]#L`, `Const[R]#L`, `Holds[G]#L`).
+- **`p.handle(h[, h2[, h3]])` is a whitebox macro** (HandleMacro). MEASURED
+  reason: Scala 2 solves the rest `F` of `Free[E with F, A]` from an
+  implicit search as the whole row, so nothing but a macro takes `E` off.
+  It flattens the row, removes the handler's effect, refuses one the row
+  does not hold ("does not hold"), and expands to `h.run[A, Rest](p)` —
+  the program, not its wrapper, so nothing is allocated.
+- **Forms**: `answer` (`Answers[F]`), `state` (`StateClause`), `into[G]`
+  (`Interpret`, needs `R <:< G`), `control[O]` (`Ret` + `Control`);
+  `Handler[F]` is the inference helper. Ready values: `State(s)`,
+  `Reader(r)`, `Throws.either`/`option`, `Choose.all`, `Writer.log`,
+  `Once.memo`, `Resource.region` (needs `Failing`), `Reset[R]`.
+- **State is `Get` + `Update(f)`** (`Put`/`Modified` transitions as data),
+  for parity with state-get-update; `modify` and `update` are one operation.
+- **`Effects` in the core's shape**: `handle(m)(ret)(h)` in the trait
+  (`Free`: `handleWith`), level 1 in the trait with defaults through the
+  tree and `Free`'s own as overrides, `Effects.convert`/`reify`/`reflect`
+  (in `object Effects`: at the package level they shadow `Layered.reify`
+  under a wildcard import), `foldCont` on the syntax. TestReflect: round
+  trip, 100 000 operations, every default agrees with `Free`.
+- **Left** (okay2/backlog.d): `foldMap` + `TailRecM`, the `control` form's
+  tail resume, the case-form macro, the `modify` measurement.
