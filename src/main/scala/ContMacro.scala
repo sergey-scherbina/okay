@@ -220,6 +220,14 @@ object ContMacro:
       case Block(Nil, e) => lambdaOf(e)
       case _ => None
 
+    /** `k` itself, passed as a function value (under any wrapping), or None */
+    @scala.annotation.tailrec
+    def kValue(t: Term)(using k: Symbol): Option[Term] = t match
+      case i: Ident if i.symbol == k => Some(i)
+      case Inlined(_, Nil, e) => kValue(e)
+      case Typed(e, _) => kValue(e)
+      case _ => None
+
     /** the element type of an immutable `Seq` receiver, or None */
     def elemOf(q: Term): Option[TypeRepr] =
       val seq = TypeRepr.of[scala.collection.immutable.Seq[Any]].typeSymbol
@@ -248,11 +256,15 @@ object ContMacro:
         case Apply(TypeApply(Select(q, m @ ("map" | "foreach")), List(bt)), List(fn)) if !mentions(k, q) =>
           for
             x <- elemOf(q)
-            (ps, body) <- lambdaOf(fn) if ps.length == 1 && mentions(k, body)
+            // the lambda, or `k` itself passed as the function: `xs.map(k)` is `xs.map(x => k(x))`
+            g <- lambdaOf(fn).filter((ps, body) => ps.length == 1 && mentions(k, body)).map(Left(_))
+                   .orElse(kValue(fn).map(_ => Right(())))
             b = bt.tpe
             r <- if m == "foreach" then Some(None) else Some(Some(t.tpe.widen))
           yield kont.rt.asType match { case '[rt] => x.asType match { case '[xt] => b.asType match { case '[btp] =>
-              val f = step(ps, body, List(x), b).asExprOf[xt => Cont.Lazy[btp]]
+              val f = (g match
+                case Left((ps, body)) => step(ps, body, List(x), b)
+                case Right(()) => lam("x", x, b)(xv => call(xv, Kont(b, None)))).asExprOf[xt => Cont.Lazy[btp]]
               val rest = lam("bs", TypeRepr.of[List[btp]], kont.rt)(bsv =>
                 r match
                   case None => feed(kont, '{ () }.asTerm)
@@ -284,6 +296,10 @@ object ContMacro:
           if bindings.exists(mentions(k, _)) then throw Opaque
           Inlined.copy(t)(call0, bindings, cps(e, kont))
         case Typed(e, _) => cps(e, kont)
+        // an assignment whose value calls `k` (`v = k(1)`, `seen += k(x)`): the value first, in its own order
+        // (a variable read on the right is bound before the call, as the strict road reads it), then the store
+        case Assign(lhs, rhs) if !mentions(k, lhs) =>
+          cps(rhs, Kont(kont.rt, Some(r2 => feed(kont, Assign.copy(t)(lhs, r2)))))
         case Block(stats, e) => cpsStats(stats, e, kont)
         case If(c, a, b) =>
           if mentions(k, a) || mentions(k, b) then

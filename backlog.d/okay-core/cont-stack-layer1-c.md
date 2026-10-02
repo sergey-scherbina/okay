@@ -32,16 +32,20 @@
       (`List`, `Vector`, `Seq`) — the lambda's body a program over the lazy
       `k`, the traversal `Cont.traverse`/`Cont.foldIn` (binds the machine
       runs, on an immutable list, multi-shot safe); a million on 128 KB
-      with zero switches (red first: StackOverflowError). LEFT: `k` passed
-      as a VALUE (`List(x).map(k)`), `flatMap`, `fold`, `Option`, `Either`,
-      and a lambda body the transform cannot read (an assignment:
-      `seen += k(x)`);
+      with zero switches (red first: StackOverflowError). Then (the same
+      day) `k` passed as a VALUE (`List(x).map(k)`) and an assignment from
+      `k` (`v = k(1)`, `seen += k(x)`), a million each on 128 KB. LEFT:
+      `flatMap`, `fold`, `Option`, `Either`;
       (3) VISIBLE user functions along the path `k` flows (an `inline
       def`, a same-compilation `def` through `Symbol.tree`, TASTy with
       `-Yretain-trees`), rewritten and cached;
       (4) `direct { !k(…) }` inside a body, through okay-direct's
       machinery;
-      (5) `try` around a call (the `finally` would have to run after
+      (5) `while` with `k` in its body needs a trampolined local loop (an
+      iteration that never calls `k` must not recurse on the host); `try`
+      around `k` stays opaque ON PURPOSE: with a lazy `k` the rest would run
+      outside the `try`, and its exceptions would no longer be caught.
+      Was: `try` around a call (the `finally` would have to run after
       the rest, which the pending stack can hold as a part), `while`
       with a call in the body, a lambda that is not the whole answer.
       NOT (6), unless for Scala.js alone: a FUNCTION answer (PState's

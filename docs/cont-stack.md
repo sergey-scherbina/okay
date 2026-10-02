@@ -67,12 +67,13 @@ conditional that is not in tail position (`1 + (if c then k(1) else
 2)`, a `match` feeding an expression) — the rest after it becomes one
 local function every branch ends in, a join point — and a call inside
 the lambda of `map`, `foreach` or `foldLeft` on a `List`, `Vector` or
-immutable `Seq` (`List(1, 2).map(x => k(x)).sum`), the traversal a
-chain of binds the machine runs. Both are programs over a lazy `k`, no
-frame per level.
+immutable `Seq` (`List(1, 2).map(x => k(x)).sum`, or `k` itself passed:
+`List(1, 2).map(k)`), the traversal a chain of binds the machine runs;
+and an assignment from `k` (`v = k(1)`, `seen += k(x)`). All are
+programs over a lazy `k`, no frame per level.
 
-**A body the macro cannot read, or should not** — `k` handed to `map`
-or any other function as a value, in a by-name
+**A body the macro cannot read, or should not** — `k` handed to an
+unknown function as a value, in a by-name
 argument, under `try`, in a loop, in a lambda (`PState`'s
 `s => k(s)(s2)`: a function answer walked measured 2.8x its direct
 cost, so it is left direct on purpose), `k` passed into Java or an
@@ -86,8 +87,8 @@ stay where they are until the answer comes back. Multi-shot bodies
 keep working across the switch.
 
 ```scala
-val opaque = (1 to 20_000).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => Cont.shift[Int, Int, Int](k => List(x + 1).map(k).sum)))
-Cont.reset(opaque) // 20000 — `k` handed to `map`: each level a frame; past the room the rest runs on a fresh stack
+val opaque = (1 to 20_000).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => Cont.shift[Int, Int, Int](k => try k(x + 1) catch { case _: ArithmeticException => 0 })))
+Cont.reset(opaque) // 20000 — `k` under `try`: each level a frame; past the room the rest runs on a fresh stack
 ```
 
 ## How much room, per platform

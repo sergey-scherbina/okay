@@ -175,6 +175,31 @@ class TestContMacro extends munit.FunSuite:
       Cont.shift[Int, Int, Int](k => List(z, z).map(x => k(x)).sum))), 6)
   }
 
+  test("1M bodies passing k itself to List.map, and assigning from k, on a 128 KB stack: ZERO switches") {
+    val (a, s) = switchesDuring(SmallStack.run(128)(Cont.reset(row(n)(x =>
+      Cont.shift[Int, Int, Int](k => List(x + 1).map(k).sum)))))
+    assertEquals(a, n)
+    assertEquals(s, 0L)
+    val (a2, s2) = switchesDuring(SmallStack.run(128)(Cont.reset(row(n)(x =>
+      Cont.shift[Int, Int, Int](k => { var v = 0; v = k(x + 1); v })))))
+    assertEquals(a2, n)
+    assertEquals(s2, 0L)
+  }
+
+  test("k as a value to map/foreach, and assignment from k, keep their meaning: order and multi-shot") {
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => List(1, 2).map(k).sum)), 3)
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => Vector(1, 2, 3).map(k).sum)), 6)
+    var acc = 0
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => { List(1, 2).foreach(x => acc += k(x)); acc })), 3)
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => { var v = 0; v = k(5); v + 1 })), 6)
+    // the variable is read BEFORE the call of k, as in the strict road
+    var w = 10
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => { w += k(1); w }).flatMap(x => { w = 100; Cont.Pure[Int, Int](x) })), 11)
+    // multi-shot: each resumption assigns again
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k1 => k1(1) + k1(2)).flatMap(z =>
+      Cont.shift[Int, Int, Int](k => { var v = 0; v = k(z); v * 10 }))), 30)
+  }
+
   test("bodies the transform cannot read stay opaque and keep their meaning") {
     assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => try k(1) catch { case _: Exception => 0 })), 1)
     assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => Option.empty[Int].getOrElse(k(4)))), 4)

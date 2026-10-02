@@ -26,8 +26,8 @@ class TestDocExamplesContStack extends munit.FunSuite:
   }
 
   test("twenty thousand opaque shifts: each level a frame, the rest on a fresh stack") {
-    val opaque = (1 to 20_000).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => Cont.shift[Int, Int, Int](k => List(x + 1).map(k).sum)))
+    val opaque = (1 to 20_000).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => Cont.shift[Int, Int, Int](k => try k(x + 1) catch { case _: ArithmeticException => 0 })))
     val answer = SmallStack.run(2048):
-      Cont.reset(opaque) // 20000 — `k` handed to `map`: each level a frame; past the room the rest runs on a fresh stack
+      Cont.reset(opaque) // 20000 — `k` under `try`: each level a frame; past the room the rest runs on a fresh stack
     assertEquals(answer, 20000)
   }
