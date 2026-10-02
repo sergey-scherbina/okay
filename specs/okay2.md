@@ -2592,3 +2592,20 @@ Operator: "Продолжай", after stage 49 — its two follow-ups that close
   root, which has no okay2 project. It sources through `$here` and runs sbt
   in the caller's directory when that has its own `build.sbt` (selftest 15,
   red first).
+
+## Stage 51 — okay2-handler-case-form, and modify's price (2026-10-02)
+
+Operator: "Продолжай" — the last two okay2 follow-ups of stage 49.
+
+- **The case forms** (specs/handler-forms.md, "In okay2"): `Handler[F] {
+  case … }` and `.answer`/`.state(s0)`/`.into[G]` with `{ case … }`, checked
+  by `HandlerCases` against each constructor's declared answer; `.poly`
+  takes the clause traits. Typed at `F#Op[Any]` because scalac 2 refuses a
+  constructor pattern against an opaque answer (measured), so a
+  caller-chosen or field-tied answer is refused by name. The expansion goes
+  to `Handler.Cases`, where the one cast the check licenses lives. The
+  four refusals are compileErrors tests; exhaustiveness is scalac's.
+- **`modify` is one operation, measured** (ProbeRowCost twin, exact bytes,
+  N = 100 000): 112 B a level against 240 for get-then-set (0.47x), at
+  `set`'s 112; `get` 80, a bare tailcall 40. The core reads 96 for both
+  (history.d `okay2-state-modify-op`).

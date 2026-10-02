@@ -61,7 +61,9 @@ TestDocExamplesLevel1 and TestDocExamplesLevel1Direct.
 The same three levels (okay2-level1-api, specs/okay2.md stage 49): `Shift[R]`
 with `shift`/`reset`, handler values with `p.handle(h)`, the four forms and
 `Effects` with level 1 in the trait. What Scala 2 changes: `p.handle` is a
-whitebox macro (an intersection's rest cannot be inferred), a clause is an
-anonymous class (no polymorphic function literal), a `shift` names its
+whitebox macro (an intersection's rest cannot be inferred), `{ case … }` is
+checked at `F#Op[Any]` and refuses a caller-chosen answer by name, whose
+handler is a `.poly` clause, an anonymous class (no polymorphic function
+literal; okay2-handler-case-form), a `shift` names its
 answer, value and row (no context functions), and `reify`/`reflect` are
 `Effects.` members. docs/okay2.md §4, §6, §23.

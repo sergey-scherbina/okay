@@ -374,31 +374,40 @@ row does not hold is a compile error, "does not hold".
 
 Your own effect gets a handler value from one of four forms, by power,
 with `Handler[F]` naming the effect once (an inference helper; each
-form has one implementation): `answer` (an `Answers[F]`), `state`
-(a `Handler.StateClause[F, S]`), `into[G]` (an `Interpret[F, G]`, the
-rest of the row holding `G`) and `control[O]` (a `Handler.Ret[O]` and
-a `Handler.Control[F, O]`, which gets the rest of the program as `k`;
-a clause that returns `k(x)` as its answer is a tail resume, answered
-with no capture, as in the Scala 3 core).
-Scala 2 has no polymorphic function literal, so each clause is an
-anonymous class:
+form has one implementation): `answer`, the default, `state(s0)`,
+`into[G]` (the rest of the row holding `G`) and `control[O]` (a
+`Handler.Ret[O]` and a `Handler.Control[F, O]`, which gets the rest of
+the program as `k`; a clause that returns `k(x)` as its answer is a tail
+resume, answered with no capture, as in the Scala 3 core). The first
+three take `{ case … }`, each case checked by a macro against what its
+constructor declares:
 
 ```scala
-    val store = Handler[Accounts].state(Map(7L -> "ada"))(new Handler.StateClause[Accounts, Map[Long, String]] {
-      def apply[X](m: Map[Long, String], e: Op[X]): (Map[Long, String], X) = e match {
-        case Find(id) => (m, answer[X](m.get(id)))
-        case Save(id, name) => (m.updated(id, name), answer[X](m.get(id)))
-      }
-    })
+    val live: Handler[Accounts, Handler.Id] = Handler[Accounts] {
+      case Find(id) => db.get(id)
+      case Save(id, name) => db.put(id, name)
+    }
+    val store = Handler[Accounts].state(Map(7L -> "ada")) {
+      case (m, Find(id)) => (m, m.get(id))
+      case (m, Save(id, name)) => (m.updated(id, name), m.get(id))
+    }
     assertEquals(rename(7, "grace").handle(store).run, (Map(7L -> "grace"), Some("ada")))
 ```
 
-`answer[X]` there is the test's one-line assertion of the case's
-answer type: scalac 2 does not refine `X` from `Find <: Op[Option[String]]`
-in a match, which the Scala 3 core's case macro checks instead. An
-answer per operation, the old `Handler[F]`, is `Answers[F]` (renamed in
-okay2-level1-api, as in the Scala 3 core); and `State` is two operations,
-`Get` and `Update`, with `set` and `modify` building an `Update`.
+`Find extends Op[Option[String]]`, so `case Find(id) => id.toString` is
+a compile error, "Find answers Option[String], but this case gives
+String"; a missing constructor is scalac's own exhaustiveness error; a
+`case _` may only throw. Scala 2 refuses a constructor pattern against
+an opaque answer type, so the cases are typed at `F#Op[Any]`, where an
+answer its CALLER chooses (State's `Update[S, B]`) or the operation's
+own field ties (`Emit[A](a: A)`) cannot be checked: such a case is
+refused by name, pointing at `.poly`, which takes the clause as a trait
+(`Answers[F]`, `Handler.StateClause[F, S]`, `Interpret[F, G]`) typed by
+the compiler with no macro. An answer per operation, the old
+`Handler[F]`, is `Answers[F]` (renamed in okay2-level1-api, as in the
+Scala 3 core); and `State` is two operations, `Get` and `Update`, with
+`set` and `modify` building an `Update` — so `modify` costs what `set`
+does, 112 B a level against the 240 of a get and a set (ProbeRowCost).
 
 ## 5. Failure
 

@@ -70,37 +70,46 @@ class TestHandler extends munit.FunSuite {
     assertEquals(p.handle(Reset[Int]).run, 22)
   }
 
-  test("answer: an answer per operation") {
+  test("answer: an answer per operation, `{ case … }` checked by the macro") {
     val db = scala.collection.mutable.Map(7L -> "ada")
-    val live: Handler[Accounts, Handler.Id] = Handler[Accounts](new Answers[Accounts] {
-      def handle[X](e: Op[X]): X = e match {
-        case Find(id) => answer[X](db.get(id))
-        case Save(id, name) => answer[X](db.put(id, name))
-      }
-    })
+    val live: Handler[Accounts, Handler.Id] = Handler[Accounts] {
+      case Find(id) => db.get(id)
+      case Save(id, name) => db.put(id, name)
+    }
     assertEquals(rename(7, "grace").handle(live).run, Some("ada"))
     assertEquals(db(7L), "grace")
   }
 
-  test("answer: Reader re-expressed, the same as Reader(r)") {
-    val asReader = Handler[Reader[Int]].answer(new Answers[Reader[Int]] {
+  test("answer: Reader re-expressed, the same as Reader(r); `.poly` takes an Answers") {
+    val asReader = Handler[Reader[Int]] { case Reader.Ask() => 40 }
+    assertEquals(counter.handle(asReader, State(2)).run, counter.handle(Reader(40), State(2)).run)
+    val viaPoly = Handler[Reader[Int]].answer.poly(new Answers[Reader[Int]] {
       def handle[X](e: Reader.Op[Int, X]): X = answer[X](40)
     })
-    assertEquals(counter.handle(asReader, State(2)).run, counter.handle(Reader(40), State(2)).run)
+    assertEquals(counter.handle(viaPoly, State(2)).run, counter.handle(Reader(40), State(2)).run)
   }
 
-  test("state: the store as the state") {
-    val store = Handler[Accounts].state(Map(7L -> "ada"))(new Handler.StateClause[Accounts, Map[Long, String]] {
-      def apply[X](m: Map[Long, String], e: Op[X]): (Map[Long, String], X) = e match {
-        case Find(id) => (m, answer[X](m.get(id)))
-        case Save(id, name) => (m.updated(id, name), answer[X](m.get(id)))
-      }
-    })
+  test("the cases are checked: a wrong answer, a caller-chosen answer, a wildcard that answers") {
+    val wrong = compileErrors("""Handler[Accounts] { case Find(id) => id.toString; case Save(_, n) => Option(n) }""")
+    assert(wrong.contains("Find answers Option[String], but this case gives String"), wrong)
+    val chosen = compileErrors("""Handler[State[Int]].state(0) { case (s, State.Get()) => (s, s); case (s, State.Update(f)) => (s, 1) }""")
+    assert(chosen.contains("Update answers what its caller chose"), chosen)
+    val wild = compileErrors("""Handler[Accounts] { case Find(id) => Option("x"); case _ => None }""")
+    assert(wild.contains("it may only throw"), wild)
+    val generic = compileErrors("""Handler[Reader[Int]] { case Reader.Ask() => "40" }""")
+    assert(generic.contains("Ask answers Int, but this case gives String"), generic)
+  }
+
+  test("state: the store as the state, `{ case (s, op) => … }`") {
+    val store = Handler[Accounts].state(Map(7L -> "ada")) {
+      case (m, Find(id)) => (m, m.get(id))
+      case (m, Save(id, name)) => (m.updated(id, name), m.get(id))
+    }
     assertEquals(rename(7, "grace").handle(store).run, (Map(7L -> "grace"), Some("ada")))
   }
 
-  test("state: State re-expressed by its two operations, the same as State(s)") {
-    val asState = Handler[State[Int]].state(1)(new Handler.StateClause[State[Int], Int] {
+  test("state: State re-expressed by its two operations (Update's answer is its caller's: `.poly`)") {
+    val asState = Handler[State[Int]].state(1).poly(new Handler.StateClause[State[Int], Int] {
       def apply[X](s: Int, e: State.Op[Int, X]): (Int, X) = e match {
         case _: State.Get[_] => (s, answer[X](s))
         case State.Update(f) => val (b, s2) = f(s); (s2, b)
@@ -110,14 +119,19 @@ class TestHandler extends munit.FunSuite {
   }
 
   test("into: each operation a program in effects the rest of the row holds") {
-    val viaState = Handler[Accounts].into[State[Map[Long, String]]](new Interpret[Accounts, State[Map[Long, String]]] {
+    val viaState = Handler[Accounts].into[State[Map[Long, String]]] {
+      case Find(id) => State.get[Map[Long, String]].map(_.get(id))
+      case Save(id, name) => State.update[Map[Long, String], Option[String]](m => (m.get(id), m.updated(id, name)))
+    }
+    val p: Option[String] ! (Accounts + State[Map[Long, String]]) = rename(7, "grace")
+    assertEquals(p.handle(viaState, State(Map(7L -> "ada"))).run, (Map(7L -> "grace"), Some("ada")))
+    val viaPoly = Handler[Accounts].into[State[Map[Long, String]]].poly(new Interpret[Accounts, State[Map[Long, String]]] {
       def apply[X](e: Op[X]): X ! State[Map[Long, String]] = e match {
         case Find(id) => State.get[Map[Long, String]].map(m => answer[X](m.get(id)))
         case Save(id, name) => State.update[Map[Long, String], X](m => (answer[X](m.get(id)), m.updated(id, name)))
       }
     })
-    val p: Option[String] ! (Accounts + State[Map[Long, String]]) = rename(7, "grace")
-    assertEquals(p.handle(viaState, State(Map(7L -> "ada"))).run, (Map(7L -> "grace"), Some("ada")))
+    assertEquals(p.handle(viaPoly, State(Map(7L -> "ada"))).run, (Map(7L -> "grace"), Some("ada")))
   }
 
   test("control: a clause that resumes once, in tail position, captures nothing — 100 000 asks deep") {

@@ -104,3 +104,20 @@ JMH (history.d `handler-forms`, one lane at a time, quiet box):
 | `{ case … }` vs `.poly` (Tick, 1000) | — | answer 46.1 vs 46.6 µs, state 33.5 vs 33.2 µs, same bytes |
 
 `control`'s remaining 1.26x is a `Resume` and a `Delay` node per operation.
+
+## In okay2 (Scala 2.13), 2026-10-02
+
+okay2-handler-case-form ported the case forms: `Handler[F] { case … }`,
+`.answer { … }`, `.state(s0) { case (s, op) => … }`, `.into[G] { … }`, each
+checked by a blackbox macro (`HandlerCases`) against the constructor's
+declared answer, with the effect's parameters substituted, and `.poly(clause)`
+beside each for the trait. One difference, MEASURED: scalac 2 refuses a
+constructor pattern against an opaque answer ("constructor cannot be
+instantiated to expected type", ProbeCaseForm, deleted after it answered),
+so the core's `Answer` road is closed and the cases are typed at
+`F#Op[Any]`, the core's `Seen = Any` road for every effect. There a
+caller-chosen answer (`Update[S, B]`) or one tied to the operation's own
+field (`Emit[A](a: A)`) has no type to check, and the macro refuses such a
+case by name, pointing at `.poly`. Exhaustiveness is scalac's own warning,
+an error under `-Werror` (checked by hand: "It would fail on the following
+input: Save(_, _)"). specs/okay2.md stage 51.
