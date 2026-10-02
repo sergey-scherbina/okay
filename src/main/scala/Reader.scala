@@ -176,8 +176,8 @@ object Reader {
 
   /** answer every Ask with r, forwarding the effects F */
   /** the handler as a value: `p.handle(Reader(r))` answers `A` */
-  def apply[R](r: R): Handling.Plain[Reader % R, Any, [A] =>> A] = new Handling.Plain[Reader % R, Any, [A] =>> A]:
-    def run[A, F[+_]](p: A ! Reader % R + F)(using A <:< Any, Distinct[Reader % R + F], Handling.Nothing[F]): A ! F =
+  def apply[R](r: R): Handler[Reader % R, [A] =>> A] = new Handler[Reader % R, [A] =>> A]:
+    def run[A, F[+_]](p: A ! Reader % R + F)(using A <:< Any, Distinct[Reader % R + F], Handler.Nothing[F]): A ! F =
       Reader.run(r)(p)
 
   def run[R, A, F[+_]](r: R)(a: A ! Reader % R + F)(using Distinct[Reader % R + F]): A ! F =

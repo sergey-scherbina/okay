@@ -235,7 +235,7 @@ object Freer {
   // level 1 (specs/shift-effect.md): in the companion, so `p.handle` and `p.run` need no import
   extension [A, G[+_]](p: A ! G)
     /** take the handler's effect off the row: `F`, the rest of the row, is what remains */
-    def handle[E[+_], I, O[_], N[_[+_]], F[+_]](h: Handling[E, I, O, N])
+    def handle[E[+_], I, O[_], N[_[+_]], F[+_]](h: Handler.Full[E, I, O, N])
                                                (using row: (A ! G) =:= (A ! E + F), ok: A <:< I, d: Distinct[E + F], n: N[F]): O[A] ! F =
       h.run[A, F](row(p))
 

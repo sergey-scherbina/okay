@@ -30,8 +30,8 @@ case class Throws[E, +A](e: E) extends Final derives Effect
 
 object Throws:
   /** the handler as a value: `p.handle(Throws.either)` answers `Either[E, A]` */
-  def either[E]: Handling.Plain[Throws % E, Any, [A] =>> Either[E, A]] = new Handling.Plain[Throws % E, Any, [A] =>> Either[E, A]]:
-    def run[A, F[+_]](p: A ! Throws % E + F)(using A <:< Any, Distinct[Throws % E + F], Handling.Nothing[F]): Either[E, A] ! F =
+  def either[E]: Handler[Throws % E, [A] =>> Either[E, A]] = new Handler[Throws % E, [A] =>> Either[E, A]]:
+    def run[A, F[+_]](p: A ! Throws % E + F)(using A <:< Any, Distinct[Throws % E + F], Handler.Nothing[F]): Either[E, A] ! F =
       runEither(p)
 
 /** perform the failure */

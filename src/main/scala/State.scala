@@ -120,8 +120,8 @@ object State {
   inline def run[S, A](s: S)(a: A ! State % S): (S, A) = !.run(handle(s)(a))
 
   /** the handler as a value: `p.handle(State(s))` answers `(S, A)` */
-  def apply[S](s: S): Handling.Plain[State % S, Any, [A] =>> (S, A)] = new Handling.Plain[State % S, Any, [A] =>> (S, A)]:
-    def run[A, F[+_]](p: A ! State % S + F)(using A <:< Any, Distinct[State % S + F], Handling.Nothing[F]): (S, A) ! F =
+  def apply[S](s: S): Handler[State % S, [A] =>> (S, A)] = new Handler[State % S, [A] =>> (S, A)]:
+    def run[A, F[+_]](p: A ! State % S + F)(using A <:< Any, Distinct[State % S + F], Handler.Nothing[F]): (S, A) ! F =
       handle(s)(p)
 
   /**

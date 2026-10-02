@@ -51,8 +51,8 @@ given [F[+_]]: MonadPlus[[A] =>> A ! Choose + F] with
 
 object Choose:
   /** the handler as a value: `p.handle(Choose.all)` answers every branch's result, in order */
-  def all: Handling.Plain[Choose, Any, Seq] = new Handling.Plain[Choose, Any, Seq]:
-    def run[A, F[+_]](p: A ! Choose + F)(using A <:< Any, Distinct[Choose + F], Handling.Nothing[F]): Seq[A] ! F =
+  def all: Handler[Choose, Seq] = new Handler[Choose, Seq]:
+    def run[A, F[+_]](p: A ! Choose + F)(using A <:< Any, Distinct[Choose + F], Handler.Nothing[F]): Seq[A] ! F =
       runChoice(p)
 
 /** all the results of all the branches, forwarding the effects F */

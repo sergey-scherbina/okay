@@ -3,7 +3,7 @@ package okay
 import okay.Row.*
 
 /** level 1: one `handle` for every ready effect, its handler a value */
-class TestHandling extends munit.FunSuite:
+class TestHandler extends munit.FunSuite:
 
   test("State as a value: p.handle(State(5))") {
     val p: Int ! State % Int = State.get[Int].flatMap(s => State.set(s + 1).map(_ => s * 2))

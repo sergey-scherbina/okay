@@ -155,7 +155,7 @@ trait Effects[M[_[+_], _]]:
 
   /** take a ready handler's effect off the row (the program's `p.handle(h)`; two arguments in one list, so the
    * level-2 `handle(m)(ret)(clause)` above stays its own overload) */
-  def handle[A, G[+_], E[+_], I, O[_], N[_[+_]], F[+_]](m: M[G, A], h: Handling[E, I, O, N])
+  def handle[A, G[+_], E[+_], I, O[_], N[_[+_]], F[+_]](m: M[G, A], h: Handler.Full[E, I, O, N])
             (using row: (A ! G) =:= (A ! E + F), ok: A <:< I, d: Distinct[E + F], n: N[F]): M[F, O[A]] =
     reflect[M, F, O[A]](h.run[A, F](row(reify[M, G, A](m)(using this))))(using this)
 

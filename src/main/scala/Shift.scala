@@ -38,8 +38,8 @@ def reset[R, F[+_]](body: Shift.In.Aux[R, F] ?=> R ! Shift % R + F)
 
 /** `reset` as a value: `p.handle(Reset[R])` */
 object Reset:
-  def apply[R](using k: Shift.Key[R]): Handling[Shift % R, R, [A] =>> R, Shift.Nesting] =
-    new Handling[Shift % R, R, [A] =>> R, Shift.Nesting]:
+  def apply[R](using k: Shift.Key[R]): Handler.Full[Shift % R, R, [A] =>> R, Shift.Nesting] =
+    new Handler.Full[Shift % R, R, [A] =>> R, Shift.Nesting]:
       def run[A, F[+_]](p: A ! Shift % R + F)(using a: A <:< R, d: Distinct[Shift % R + F], n: Shift.Nesting[F]): R ! F =
         reset[R, F](a.substituteCo[[X] =>> X ! Shift % R + F](p))
 

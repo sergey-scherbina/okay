@@ -13,7 +13,8 @@ specs/shift-effect.md.
 2. **The effect author** declares a signature and writes its handler. This level sees `Cont` (a handler's
    clause is a `Cont[X, B ! G, B ! G]`, and `Cont.shift`/`Cont.reset` are its capture and delimiter, with
    answer-type modification), `Effects.handle(m)(ret)(clause)`, `!.relay`, `split`, `Delim`'s named prompts,
-   `Handling` (to make a handler a level-1 value) and `Shift.cont`/`Shift.embed`.
+   `Handler[E, O]` / `Handler.Full` (a handler as a level-1 value), `Answers[F]` (an answer per operation) and
+   `Shift.cont`/`Shift.embed`.
 3. **The library** is `Freer`, `Cont0`, `Delimited`, `Frames`/`Stack`, `StackSwitch`, `ContMacro` and the
    `direct` macro.
 
@@ -45,6 +46,10 @@ TestDocExamplesLevel1 and TestDocExamplesLevel1Direct.
   `runEither`, …) stay beside it.
 - **`perform(op)` is `op.perform`**: an extension method is a function too, so the top level needs no second
   definition (a second one is a double definition, E120). TestDocExamplesLevel1 calls it both ways.
+
+- **The name `Handler` is the literature's** (handler-rename): the value that takes an effect off the row,
+  `Handler[E, O]` (`Handler.Full[E, I, O, N]` in full; it was `Handling`). An answer per operation with no
+  continuation, `F ~> Id`, which held the name before, is `Answers[F]`.
 
 ## Open
 
