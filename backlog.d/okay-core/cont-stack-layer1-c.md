@@ -41,11 +41,15 @@
       `getOrElse`, `&&`, `||` — rewritten into a `match`/`if` the transform
       reads, `B >: A` by summoned evidence. LEFT: other collections
       (`Set`, `Map`, mutable), `Either.map`/`flatMap`, `Try`;
-      (3) VISIBLE user functions along the path `k` flows (an `inline
-      def`, a same-compilation `def` through `Symbol.tree`, TASTy with
-      `-Yretain-trees`), rewritten and cached;
-      (4) `direct { !k(…) }` inside a body, through okay-direct's
-      machinery;
+      (3) `inline def` helpers DONE 2026-10-02: an Inlined node's binding
+      that IS `k` is an alias substituted by `k`, the others vals in order
+      (a million on 128 KB, red first). LEFT: a non-inline `def` (through
+      `Symbol.tree` / TASTy with `-Yretain-trees`) — or the documented rule
+      "pass k only to helpers written in Cont style";
+      (4) ANSWERED 2026-10-02, no change needed: a `direct { … !k(…) … }`
+      body over a program answer is binds by the time `shift` reads it, so
+      `k` is called later from the interpreter loop (TestContDirectDepth, a
+      million on 128 KB, green on unchanged code);
       (5) `while` DONE 2026-10-02: a local loop function whose iterations
       are `Cont.later` steps the machine forces; a million on 128 KB with
       zero switches, and a million iterations that never call `k` (red

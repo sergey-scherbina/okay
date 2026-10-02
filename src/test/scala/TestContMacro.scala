@@ -9,6 +9,12 @@ package okay
  * apart from the runtime layer, which would also ANSWER correctly (by
  * switching): each test here was red on that count first.
  */
+/** inline helpers a shift body calls with `k` on their path (cont-stack-layer1-c (3)) */
+object ContInlineHelpers:
+  inline def applyTo(f: Int => Int, x: Int): Int = f(x)
+  inline def plusOne(v: Int): Int = v + 1
+  inline def twice(f: Int => Int, x: Int): Int = f(x) + f(x)
+
 class TestContMacro extends munit.FunSuite:
 
   val n = 1_000_000
@@ -294,6 +300,24 @@ class TestContMacro extends munit.FunSuite:
     // multi-shot across the traversal
     assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k1 => k1(1) + k1(2)).flatMap(z =>
       Cont.shift[Int, Int, Int](k => List(z).flatMap(x => List(k(x))).sum))), 3)
+  }
+
+  test("1M bodies calling k through inline helpers, on a 128 KB stack: ZERO switches") {
+    import ContInlineHelpers.*
+    for (label, body) <- List[(String, Int => Int /> Int)](
+        "k passed to an inline helper" -> (x => Cont.shift[Int, Int, Int](k => applyTo(k, x + 1))),
+        "k's answer passed to an inline helper" -> (x => Cont.shift[Int, Int, Int](k => plusOne(k(x + 1)) - 1))) do
+      val (a, s) = switchesDuring(SmallStack.run(128)(Cont.reset(row(n)(body))))
+      assertEquals(a, n, label)
+      assertEquals(s, 0L, label)
+  }
+
+  test("inline helpers keep their meaning: order and multi-shot") {
+    import ContInlineHelpers.*
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => twice(k, 3))), 6)
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => plusOne(k(4)))), 5)
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k1 => k1(1) + k1(2)).flatMap(z =>
+      Cont.shift[Int, Int, Int](k => applyTo(k, z)))), 3)
   }
 
   test("bodies the transform cannot read stay opaque and keep their meaning") {

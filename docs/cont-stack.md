@@ -74,13 +74,20 @@ an assignment from `k` (`v = k(1)`, `seen += k(x)`); the KNOWN methods —
 decides), `find`, `foldRight` on an immutable `Seq`, and `Option`'s
 `getOrElse`/`map`/`flatMap`/`fold`/`orElse`, `Either`'s
 `fold`/`getOrElse`, `&&`, `||`, rewritten into a `match`/`if` (the
-receiver once, a by-name argument only in its branch); and a `while` loop
+receiver once, a by-name argument only in its branch); an `inline def`
+helper with `k`, or `k`'s answer, among its arguments (`applyTo(k, x)`,
+`plusOne(k(x))`); and a `while` loop
 with `k` in its condition or body, each iteration a step the machine
 forces (a million iterations that never call `k` hold no frame either).
 All are programs over a lazy `k`, no frame per level.
 
+A `direct { }` block as a body whose answer is a program
+(`k => direct { !k(x) + 0 }`) never needed reading: the block is binds
+by the time `shift` sees it, so `k` is called later, from the
+interpreter's loop (TestContDirectDepth, a million on 128 KB).
+
 **A body the macro cannot read, or should not** — `k` handed to an
-unknown function as a value, in a by-name
+unknown (not `inline`) function as a value, in a by-name
 argument, under `try` (on purpose: with a lazy `k` the rest would run
 outside it), in a lambda (`PState`'s
 `s => k(s)(s2)`: a function answer walked measured 2.8x its direct

@@ -407,9 +407,18 @@ import scala.quoted.*
         case _ if traversal(t, kont).isDefined => traversal(t, kont).get
         case Apply(fun, args) =>
           cpsFun(fun, Kont(kont.rt, Some(f2 => cpsArgs(args, params(fun), kont.rt)(as => feed(kont, Apply.copy(t)(f2, as))))))
+        // AN INLINE HELPER (cont-stack-layer1-c (3)): its arguments are bindings. One that IS `k`
+        // (`val f$proxy = k`) is an alias, replaced by `k` in the helper's body so its calls read as `k(…)`; the
+        // others are vals in their order, as a block's — a call of `k` among them is read like any `val x = k(…)`
         case Inlined(call0, bindings, e) =>
-          if bindings.exists(mentions(k, _)) then throw Opaque
-          Inlined.copy(t)(call0, bindings, cps(e, kont))
+          if !bindings.exists(mentions(k, _)) then Inlined.copy(t)(call0, bindings, cps(e, kont))
+          else
+            val (aliases, vals) = bindings.partition {
+              case v: ValDef => v.rhs.exists(r => kValue(r).isDefined)
+              case _ => false
+            }
+            val body = aliases.foldLeft(e)((acc, b) => subst(acc, b.symbol, Ref(k)))
+            Inlined.copy(t)(call0, Nil, cpsStats(vals, body, kont))
         case Typed(e, _) => cps(e, kont)
         // an assignment whose value calls `k` (`v = k(1)`, `seen += k(x)`): the value first, in its own order
         // (a variable read on the right is bound before the call, as the strict road reads it), then the store
