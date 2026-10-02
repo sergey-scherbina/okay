@@ -68,10 +68,10 @@ object Wf {
   type Ans[A] = Either[SysA, A]
 
   /** the dialogue evidence such a program runs under */
-  type Asking[Q, A, R, F <: Row] = Delim.Asking.Aux[Ask[Q], Ans[A], R, F]
+  type Asking[Q, A, R, F <: Row] = Shift.Asking.Aux[Ask[Q], Ans[A], R, F]
 
   /** where such a program stands */
-  type Paused[Q, A, R, F <: Row] = Delim.Dialogue[Ask[Q], Ans[A], R, F]
+  type Paused[Q, A, R, F <: Row] = Shift.Dialogue[Ask[Q], Ans[A], R, F]
 
   /** the journal of such a program */
   type Journal[A] = List[Ans[A]]
@@ -86,63 +86,63 @@ object Wf {
    */
   final class Asks[Q, A, R, F <: Row] private[okay2] (private[okay2] val in: Asking[Q, A, R, F]) {
     /** ask the outside world, through the author's own question type */
-    def pause(q: Q)(implicit at: At): A ! (Delim + F) = Wf.pause[Q, A, R, F](q)(in, at)
+    def pause(q: Q)(implicit at: At): A ! (Shift[Any] + F) = Wf.pause[Q, A, R, F](q)(in, at)
     /** the same under the name the literature uses: an activity */
-    def perform(cmd: Q)(implicit at: At): A ! (Delim + F) = pause(cmd)
+    def perform(cmd: Q)(implicit at: At): A ! (Shift[Any] + F) = pause(cmd)
     /** the wall clock, once, remembered */
-    def now(implicit at: At): Long ! (Delim + F) = Wf.now[Q, A, R, F](in, at)
+    def now(implicit at: At): Long ! (Shift[Any] + F) = Wf.now[Q, A, R, F](in, at)
     /** a fresh id, once, remembered */
-    def uuid(implicit at: At): String ! (Delim + F) = Wf.uuid[Q, A, R, F](in, at)
+    def uuid(implicit at: At): String ! (Shift[Any] + F) = Wf.uuid[Q, A, R, F](in, at)
     /** a die, once, remembered */
-    def random(implicit at: At): Double ! (Delim + F) = Wf.random[Q, A, R, F](in, at)
+    def random(implicit at: At): Double ! (Shift[Any] + F) = Wf.random[Q, A, R, F](in, at)
     /** is this branch on for THIS run? */
-    def patch(id: String)(implicit at: At): Boolean ! (Delim + F) = Wf.patch[Q, A, R, F](id)(in, at)
+    def patch(id: String)(implicit at: At): Boolean ! (Shift[Any] + F) = Wf.patch[Q, A, R, F](id)(in, at)
     /** has somebody asked this run to stop, and why? */
-    def cancelled(implicit at: At): Option[String] ! (Delim + F) = Wf.cancelled[Q, A, R, F](in, at)
+    def cancelled(implicit at: At): Option[String] ! (Shift[Any] + F) = Wf.cancelled[Q, A, R, F](in, at)
     /** SLEEP, DURABLY: the deadline is computed from `now`, so it is
      * JOURNALLED and a replay wakes at the instant the first run chose */
-    def sleep(millis: Long)(implicit at: At): Unit ! (Delim + F) = now.flatMap(t => Wf.timer[Q, A, R, F](t + millis)(in, at))
+    def sleep(millis: Long)(implicit at: At): Unit ! (Shift[Any] + F) = now.flatMap(t => Wf.timer[Q, A, R, F](t + millis)(in, at))
     /** wait for a named signal from outside; the payload is its value */
-    def awaitSignal(name: String)(implicit at: At): String ! (Delim + F) = Wf.signal[Q, A, R, F](name)(in, at)
+    def awaitSignal(name: String)(implicit at: At): String ! (Shift[Any] + F) = Wf.signal[Q, A, R, F](name)(in, at)
     /** wait for a child dialogue to finish, and take its answer */
-    def awaitChild(id: String)(implicit at: At): String ! (Delim + F) = Wf.child[Q, A, R, F](id)(in, at)
+    def awaitChild(id: String)(implicit at: At): String ! (Shift[Any] + F) = Wf.child[Q, A, R, F](id)(in, at)
   }
 
   // ── the author's doors ───────────────────────────────────────────
 
-  def pause[Q, A, R, F <: Row](q: Q)(implicit s: Asking[Q, A, R, F], at: At): A ! (Delim + F) =
-    Delim.pause(s)(Right(q): Ask[Q]).map {
+  def pause[Q, A, R, F <: Row](q: Q)(implicit s: Asking[Q, A, R, F], at: At): A ! (Shift[Any] + F) =
+    Shift.pause(s)(Right(q): Ask[Q]).map {
       case Right(a) => a
       case other => throw new Mismatched(q, other)
     }
 
-  def perform[Q, A, R, F <: Row](cmd: Q)(implicit s: Asking[Q, A, R, F], at: At): A ! (Delim + F) = pause(cmd)
+  def perform[Q, A, R, F <: Row](cmd: Q)(implicit s: Asking[Q, A, R, F], at: At): A ! (Shift[Any] + F) = pause(cmd)
 
-  def now[Q, A, R, F <: Row](implicit s: Asking[Q, A, R, F], at: At): Long ! (Delim + F) =
+  def now[Q, A, R, F <: Row](implicit s: Asking[Q, A, R, F], at: At): Long ! (Shift[Any] + F) =
     sys[Q, A, R, F, Long](Sys.Now) { case SysA.Millis(v) => v }
 
-  def uuid[Q, A, R, F <: Row](implicit s: Asking[Q, A, R, F], at: At): String ! (Delim + F) =
+  def uuid[Q, A, R, F <: Row](implicit s: Asking[Q, A, R, F], at: At): String ! (Shift[Any] + F) =
     sys[Q, A, R, F, String](Sys.Uuid) { case SysA.Text(v) => v }
 
-  def random[Q, A, R, F <: Row](implicit s: Asking[Q, A, R, F], at: At): Double ! (Delim + F) =
+  def random[Q, A, R, F <: Row](implicit s: Asking[Q, A, R, F], at: At): Double ! (Shift[Any] + F) =
     sys[Q, A, R, F, Double](Sys.Random) { case SysA.Dice(v) => v }
 
   /** is this branch on for THIS run? both decisions live in the journal */
-  def patch[Q, A, R, F <: Row](id: String)(implicit s: Asking[Q, A, R, F], at: At): Boolean ! (Delim + F) =
+  def patch[Q, A, R, F <: Row](id: String)(implicit s: Asking[Q, A, R, F], at: At): Boolean ! (Shift[Any] + F) =
     sys[Q, A, R, F, Boolean](Sys.Patch(id)) { case SysA.Flag(v) => v }
 
   /** the three that suspend: ordinary `Sys` questions the runtime
    * declines to answer in place */
-  def timer[Q, A, R, F <: Row](untilMillis: Long)(implicit s: Asking[Q, A, R, F], at: At): Unit ! (Delim + F) =
+  def timer[Q, A, R, F <: Row](untilMillis: Long)(implicit s: Asking[Q, A, R, F], at: At): Unit ! (Shift[Any] + F) =
     sys[Q, A, R, F, Unit](Sys.Timer(untilMillis)) { case SysA.Elapsed => () }
 
-  def signal[Q, A, R, F <: Row](name: String)(implicit s: Asking[Q, A, R, F], at: At): String ! (Delim + F) =
+  def signal[Q, A, R, F <: Row](name: String)(implicit s: Asking[Q, A, R, F], at: At): String ! (Shift[Any] + F) =
     sys[Q, A, R, F, String](Sys.Signal(name)) { case SysA.Got(v) => v }
 
-  def child[Q, A, R, F <: Row](id: String)(implicit s: Asking[Q, A, R, F], at: At): String ! (Delim + F) =
+  def child[Q, A, R, F <: Row](id: String)(implicit s: Asking[Q, A, R, F], at: At): String ! (Shift[Any] + F) =
     sys[Q, A, R, F, String](Sys.Child(id)) { case SysA.Got(v) => v }
 
-  def cancelled[Q, A, R, F <: Row](implicit s: Asking[Q, A, R, F], at: At): Option[String] ! (Delim + F) =
+  def cancelled[Q, A, R, F <: Row](implicit s: Asking[Q, A, R, F], at: At): Option[String] ! (Shift[Any] + F) =
     sys[Q, A, R, F, Option[String]](Sys.Cancelled) {
       case SysA.Text(why) => Some(why)
       case SysA.Flag(false) => None
@@ -151,8 +151,8 @@ object Wf {
   /** one library question, and the shape of answer it accepts — the
    * partial function IS the expected shape, so a wrong answer is a loud
    * `Mismatched` rather than a cast */
-  private def sys[Q, A, R, F <: Row, X](q: Sys)(f: PartialFunction[SysA, X])(implicit s: Asking[Q, A, R, F], at: At): X ! (Delim + F) =
-    Delim.pause(s)(Left(q): Ask[Q]).map {
+  private def sys[Q, A, R, F <: Row, X](q: Sys)(f: PartialFunction[SysA, X])(implicit s: Asking[Q, A, R, F], at: At): X ! (Shift[Any] + F) =
+    Shift.pause(s)(Left(q): Ask[Q]).map {
       case Left(a) if f.isDefinedAt(a) => f(a)
       case other => throw new Mismatched(q, other)
     }
@@ -230,63 +230,63 @@ object Wf {
   }
 
   /** start a program that may ask the runtime as well as the world */
-  def resumable[Q, A, R, F <: Row](body: Asks[Q, A, R, F] => R ! (Delim + F))(implicit om: Delim.OneMachine[F], at: At): Paused[Q, A, R, F] ! F =
-    Delim.resumable[Ask[Q], Ans[A], R, F](in => body(new Asks[Q, A, R, F](in)))(om, at)
+  def resumable[Q, A, R, F <: Row](body: Asks[Q, A, R, F] => R ! (Shift[Any] + F))(implicit om: Shift.OneMachine[F], at: At): Paused[Q, A, R, F] ! F =
+    Shift.resumable[Ask[Q], Ans[A], R, F](in => body(new Asks[Q, A, R, F](in)))(om, at)
 
   /** run to the end: the library's questions by the runtime, the
    * author's by the oracle, every answer handed back for the journal */
-  def drive[Q, A, R, F <: Row](p: Paused[Q, A, R, F])(oracle: Q => A ! F)(implicit rt: Runtime, om: Delim.OneMachine[F]): (Step[Q, R], Journal[A]) ! F =
+  def drive[Q, A, R, F <: Row](p: Paused[Q, A, R, F])(oracle: Q => A ! F)(implicit rt: Runtime, om: Shift.OneMachine[F]): (Step[Q, R], Journal[A]) ! F =
     loop[Q, A, R, F](p, Nil)(q => Some(oracle(q)))
 
   /** THE WORKER'S PRIMITIVE: advance as far as the runtime alone can
    * take it; the author's questions come back as `Asking` */
-  def advance[Q, A, R, F <: Row](p: Paused[Q, A, R, F])(implicit rt: Runtime, om: Delim.OneMachine[F]): (Step[Q, R], Journal[A]) ! F =
+  def advance[Q, A, R, F <: Row](p: Paused[Q, A, R, F])(implicit rt: Runtime, om: Shift.OneMachine[F]): (Step[Q, R], Journal[A]) ! F =
     loop[Q, A, R, F](p, Nil)(_ => None)
 
   private def loop[Q, A, R, F <: Row](p: Paused[Q, A, R, F], acc: Journal[A])(own: Q => Option[A ! F])
-                                     (implicit rt: Runtime, om: Delim.OneMachine[F]): (Step[Q, R], Journal[A]) ! F =
+                                     (implicit rt: Runtime, om: Shift.OneMachine[F]): (Step[Q, R], Journal[A]) ! F =
     p match {
-      case Delim.Paused.Done(r) => pure[F, (Step[Q, R], Journal[A])]((Step.Done(r), acc))
-      case Delim.Paused.Ask(Left(q), _, _) =>
+      case Shift.Paused.Done(r) => pure[F, (Step[Q, R], Journal[A])]((Step.Done(r), acc))
+      case Shift.Paused.Ask(Left(q), _, _) =>
         rt.answer(q) match {
           case Left(w) => pure[F, (Step[Q, R], Journal[A])]((Step.Waiting(w), acc))
           case Right(sa) =>
             val a: Ans[A] = Left(sa)
-            Delim.answer[Ask[Q], Ans[A], R, F](p, Nil)(a)(om).flatMap { case (next, _) => loop[Q, A, R, F](next, acc :+ a)(own) }
+            Shift.answer[Ask[Q], Ans[A], R, F](p, Nil)(a)(om).flatMap { case (next, _) => loop[Q, A, R, F](next, acc :+ a)(own) }
         }
-      case Delim.Paused.Ask(Right(q), _, _) =>
+      case Shift.Paused.Ask(Right(q), _, _) =>
         own(q) match {
           case None => pure[F, (Step[Q, R], Journal[A])]((Step.Asking(q), acc))
           case Some(prog) => prog.flatMap { v =>
             val a: Ans[A] = Right(v)
-            Delim.answer[Ask[Q], Ans[A], R, F](p, Nil)(a)(om).flatMap { case (next, _) => loop[Q, A, R, F](next, acc :+ a)(own) }
+            Shift.answer[Ask[Q], Ans[A], R, F](p, Nil)(a)(om).flatMap { case (next, _) => loop[Q, A, R, F](next, acc :+ a)(own) }
           }
         }
     }
 
   /** where a program stands, from its journal — takes NO runtime: the
    * journal is the only source it has */
-  def replay[Q, A, R, F <: Row](body: Asks[Q, A, R, F] => R ! (Delim + F))(j: Journal[A])
-                               (implicit om: Delim.OneMachine[F], rp: Replayable[Delim + F], at: At): Paused[Q, A, R, F] ! F =
+  def replay[Q, A, R, F <: Row](body: Asks[Q, A, R, F] => R ! (Shift[Any] + F))(j: Journal[A])
+                               (implicit om: Shift.OneMachine[F], rp: Replayable[Shift[Any] + F], at: At): Paused[Q, A, R, F] ! F =
     replaying[Q, A, R, F](body)(j).map(_._1)
 
   /** the same walk, saying what it answered on the way: a patch's id
    * lives in the QUESTION, so only running the program pairs answers
    * with the branches they decided */
-  def replaying[Q, A, R, F <: Row](body: Asks[Q, A, R, F] => R ! (Delim + F))(j: Journal[A])
-                                  (implicit om: Delim.OneMachine[F], rp: Replayable[Delim + F], at: At): (Paused[Q, A, R, F], List[(Ask[Q], Ans[A])]) ! F = {
+  def replaying[Q, A, R, F <: Row](body: Asks[Q, A, R, F] => R ! (Shift[Any] + F))(j: Journal[A])
+                                  (implicit om: Shift.OneMachine[F], rp: Replayable[Shift[Any] + F], at: At): (Paused[Q, A, R, F], List[(Ask[Q], Ans[A])]) ! F = {
     val _ = rp
     def go(p: Paused[Q, A, R, F], left: Journal[A], seen: List[(Ask[Q], Ans[A])]): (Paused[Q, A, R, F], List[(Ask[Q], Ans[A])]) ! F = p match {
-      case Delim.Paused.Done(_) => pure[F, (Paused[Q, A, R, F], List[(Ask[Q], Ans[A])])]((p, seen.reverse))
-      case Delim.Paused.Ask(q, _, _) =>
+      case Shift.Paused.Done(_) => pure[F, (Paused[Q, A, R, F], List[(Ask[Q], Ans[A])])]((p, seen.reverse))
+      case Shift.Paused.Ask(q, _, _) =>
         (q, left) match {
           case (_, Nil) => pure[F, (Paused[Q, A, R, F], List[(Ask[Q], Ans[A])])]((p, seen.reverse))
           case (Left(Sys.Patch(_)), Right(_) :: _) =>
             // this run predates the branch: false, and the entry is kept
             val no: Ans[A] = Left(SysA.Flag(false))
-            Delim.answer[Ask[Q], Ans[A], R, F](p, Nil)(no)(om).flatMap { case (next, _) => go(next, left, (q, no) :: seen) }
+            Shift.answer[Ask[Q], Ans[A], R, F](p, Nil)(no)(om).flatMap { case (next, _) => go(next, left, (q, no) :: seen) }
           case (_, a :: rest) =>
-            Delim.answer[Ask[Q], Ans[A], R, F](p, Nil)(a)(om).flatMap { case (next, _) => go(next, rest, (q, a) :: seen) }
+            Shift.answer[Ask[Q], Ans[A], R, F](p, Nil)(a)(om).flatMap { case (next, _) => go(next, rest, (q, a) :: seen) }
         }
     }
     resumable[Q, A, R, F](body).flatMap(go(_, j, Nil))
@@ -313,7 +313,7 @@ object Wf {
     /** the question as the monadic door that already exists — spelled
      * `Free[...]`: the `!` alias is invariant to the variance check,
      * where Free itself is covariant in its answer */
-    private[okay2] def door[Rr](w: Asks[Q, A, Rr, Pure])(implicit at: At): Free[Delim + Pure, R]
+    private[okay2] def door[Rr](w: Asks[Q, A, Rr, Pure])(implicit at: At): Free[Shift[Any] + Pure, R]
     private[okay2] def isPatch: Boolean = false
     protected def no(a: Ans[A]): Either[String, Nothing] = Left(s"$this cannot take $a")
   }
@@ -322,43 +322,43 @@ object Wf {
     final case class Ask[Q, A](q: Q) extends Question[Q, A, A] {
       def tag: Wf.Ask[Q] = Right(q)
       private[okay2] def read(a: Ans[A]): Either[String, A] = a match { case Right(v) => Right(v); case _ => no(a) }
-      private[okay2] def door[Rr](w: Asks[Q, A, Rr, Pure])(implicit at: At): A ! (Delim + Pure) = w.pause(q)
+      private[okay2] def door[Rr](w: Asks[Q, A, Rr, Pure])(implicit at: At): A ! (Shift[Any] + Pure) = w.pause(q)
     }
     final case class Now[Q, A]() extends Question[Q, A, Long] {
       def tag: Wf.Ask[Q] = Left(Sys.Now)
       private[okay2] def read(a: Ans[A]): Either[String, Long] = a match { case Left(SysA.Millis(v)) => Right(v); case _ => no(a) }
-      private[okay2] def door[Rr](w: Asks[Q, A, Rr, Pure])(implicit at: At): Long ! (Delim + Pure) = w.now
+      private[okay2] def door[Rr](w: Asks[Q, A, Rr, Pure])(implicit at: At): Long ! (Shift[Any] + Pure) = w.now
     }
     final case class Uuid[Q, A]() extends Question[Q, A, String] {
       def tag: Wf.Ask[Q] = Left(Sys.Uuid)
       private[okay2] def read(a: Ans[A]): Either[String, String] = a match { case Left(SysA.Text(v)) => Right(v); case _ => no(a) }
-      private[okay2] def door[Rr](w: Asks[Q, A, Rr, Pure])(implicit at: At): String ! (Delim + Pure) = w.uuid
+      private[okay2] def door[Rr](w: Asks[Q, A, Rr, Pure])(implicit at: At): String ! (Shift[Any] + Pure) = w.uuid
     }
     final case class Random[Q, A]() extends Question[Q, A, Double] {
       def tag: Wf.Ask[Q] = Left(Sys.Random)
       private[okay2] def read(a: Ans[A]): Either[String, Double] = a match { case Left(SysA.Dice(v)) => Right(v); case _ => no(a) }
-      private[okay2] def door[Rr](w: Asks[Q, A, Rr, Pure])(implicit at: At): Double ! (Delim + Pure) = w.random
+      private[okay2] def door[Rr](w: Asks[Q, A, Rr, Pure])(implicit at: At): Double ! (Shift[Any] + Pure) = w.random
     }
     final case class Patched[Q, A](id: String) extends Question[Q, A, Boolean] {
       def tag: Wf.Ask[Q] = Left(Sys.Patch(id))
       private[okay2] def read(a: Ans[A]): Either[String, Boolean] = a match { case Left(SysA.Flag(v)) => Right(v); case _ => no(a) }
-      private[okay2] def door[Rr](w: Asks[Q, A, Rr, Pure])(implicit at: At): Boolean ! (Delim + Pure) = w.patch(id)
+      private[okay2] def door[Rr](w: Asks[Q, A, Rr, Pure])(implicit at: At): Boolean ! (Shift[Any] + Pure) = w.patch(id)
       private[okay2] override def isPatch: Boolean = true
     }
     final case class Timer[Q, A](untilMillis: Long) extends Question[Q, A, Unit] {
       def tag: Wf.Ask[Q] = Left(Sys.Timer(untilMillis))
       private[okay2] def read(a: Ans[A]): Either[String, Unit] = a match { case Left(SysA.Elapsed) => Right(()); case _ => no(a) }
-      private[okay2] def door[Rr](w: Asks[Q, A, Rr, Pure])(implicit at: At): Unit ! (Delim + Pure) = Wf.timer[Q, A, Rr, Pure](untilMillis)(w.in, at)
+      private[okay2] def door[Rr](w: Asks[Q, A, Rr, Pure])(implicit at: At): Unit ! (Shift[Any] + Pure) = Wf.timer[Q, A, Rr, Pure](untilMillis)(w.in, at)
     }
     final case class Signalled[Q, A](name: String) extends Question[Q, A, String] {
       def tag: Wf.Ask[Q] = Left(Sys.Signal(name))
       private[okay2] def read(a: Ans[A]): Either[String, String] = a match { case Left(SysA.Got(v)) => Right(v); case _ => no(a) }
-      private[okay2] def door[Rr](w: Asks[Q, A, Rr, Pure])(implicit at: At): String ! (Delim + Pure) = w.awaitSignal(name)
+      private[okay2] def door[Rr](w: Asks[Q, A, Rr, Pure])(implicit at: At): String ! (Shift[Any] + Pure) = w.awaitSignal(name)
     }
     final case class Childed[Q, A](id: String) extends Question[Q, A, String] {
       def tag: Wf.Ask[Q] = Left(Sys.Child(id))
       private[okay2] def read(a: Ans[A]): Either[String, String] = a match { case Left(SysA.Got(v)) => Right(v); case _ => no(a) }
-      private[okay2] def door[Rr](w: Asks[Q, A, Rr, Pure])(implicit at: At): String ! (Delim + Pure) = w.awaitChild(id)
+      private[okay2] def door[Rr](w: Asks[Q, A, Rr, Pure])(implicit at: At): String ! (Shift[Any] + Pure) = w.awaitChild(id)
     }
     final case class Cancelled[Q, A]() extends Question[Q, A, Option[String]] {
       def tag: Wf.Ask[Q] = Left(Sys.Cancelled)
@@ -367,7 +367,7 @@ object Wf {
         case Left(SysA.Flag(false)) => Right(None)
         case _ => no(a)
       }
-      private[okay2] def door[Rr](w: Asks[Q, A, Rr, Pure])(implicit at: At): Option[String] ! (Delim + Pure) = w.cancelled
+      private[okay2] def door[Rr](w: Asks[Q, A, Rr, Pure])(implicit at: At): Option[String] ! (Shift[Any] + Pure) = w.cancelled
     }
   }
 
@@ -405,11 +405,11 @@ object Wf {
 
     /** THE BRIDGE: a term becomes an ordinary durable program, so every
      * driver, timer, signal and replay works on it unchanged */
-    def program[Q, A, R, X, Y](p: Wf.Proc[Q, A, X, Y])(x: X)(implicit w: Asks[Q, A, R, Pure], at: At): Y ! (Delim + Pure) = {
-      type L[Z] = Free[Delim + Pure, Z]
+    def program[Q, A, R, X, Y](p: Wf.Proc[Q, A, X, Y])(x: X)(implicit w: Asks[Q, A, R, Pure], at: At): Y ! (Shift[Any] + Pure) = {
+      type L[Z] = Free[Shift[Any] + Pure, Z]
       p.foldMap[L](new Static.To[Asked[Q, A], L] {
-        def apply[Z](q: Question[Q, A, Z]): Free[Delim + Pure, Z] = q.door(w)
-      })(Free.monad[Delim + Pure]).apply(x)
+        def apply[Z](q: Question[Q, A, Z]): Free[Shift[Any] + Pure, Z] = q.door(w)
+      })(Free.monad[Shift[Any] + Pure]).apply(x)
     }
 
     /** a question in the journal's own spelling */

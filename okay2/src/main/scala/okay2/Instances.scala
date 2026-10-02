@@ -15,7 +15,7 @@ package okay2
  *     any effect   | `Tag[K, F]`           | `Instances[F]`
  *     one Writer   | `Writer.byValue`      |
  *
- * plus the one Delim already offers: a fresh prompt per handler
+ * plus the one Shift[Any] already offers: a fresh prompt per handler
  * installation, the most scoped and the most invasive.
  *
  * `Tag` keys an operation with a LITERAL, so the row lists the instances

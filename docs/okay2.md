@@ -243,7 +243,7 @@ of a row asks for it: `Answers.union`, `Into.union`, `IntoZ.union`, the
 handlers of `State`, `Reader`, `Writer` and `Throws` (with
 `recover`/`orElse`), the kernels `relay`, `translate`, `interpret` and
 `handle`, and `toFs2`/`toZStream`. A signature with no type parameter —
-`Delim`, `Once`, `Resource`, `Choose`, `Async` — cannot occur twice
+`Shift[Any]`, `Once`, `Resource`, `Choose`, `Async` — cannot occur twice
 with different types, so its handlers need no check. The same part
 written twice, distinct classes and an abstract part in generic code
 all pass:
@@ -477,7 +477,7 @@ and on the order the effects happened in, over twelve bind-tree shapes
 ### A continuation as an effect: `Shift[R]`
 
 `Cont` is level 2. At level 1 a capture is an EFFECT in the row,
-`Shift[R]`, and `reset` is its handler, on Delim's machine
+`Shift[R]`, and `reset` is its handler, on the one machine
 (specs/shift-effect.md, the Scala 3 core's `Shift % R`). The answer type
 is the prompt: `Shift.Key[R]` is made at compile time, one per type, and
 a `reset` nested in a row that still holds a capture pushes its prompt
@@ -495,7 +495,7 @@ The named patterns live in `object Shift`:
 ```scala
     val e: Int ! Shift[Int] = Shift.exit[Int, Int, P](7).map(_ + 1000)
     assertEquals(!.run(reset[Int, P](e)), 7)
-    assertEquals(!.run(Shift.collect[Int, P](g)), List(1, 2, 3))
+    assertEquals(!.run(Shift.gather[Int, P](g)), List(1, 2, 3))
 ```
 
 ## 7. Interpreting one effect into others
@@ -1087,14 +1087,23 @@ run twice replays:
     assertEquals(hits, 1)
 ```
 
-**Delim** is multi-prompt delimited control as an effect: a prompt is
-a typed tag, `push` installs it, `shift` captures up to the NAMED
-prompt and hands the rest of the program over as a value — to invoke
-twice, to drop, to keep:
+**Shift[Any]**, the dynamic form of the one `Shift` effect, is
+multi-prompt delimited control: a prompt is a typed tag made at run
+time, `push` installs it, `shift` captures up to the NAMED prompt and
+hands the rest of the program over as a value — to invoke twice, to
+drop, to keep. It was okay2's own effect `Delim` until
+okay2-shift-merge, the twin of the Scala 3 core's shift-merge: ONE
+effect `Shift[K]` keyed three ways — by the answer type (`Shift[R]`,
+§6), by a prompt value (`Shift[Any]`, the core's `Shift % ?`, the
+operator's "Shift % Any"), every door a member of `object Shift`, one
+machine guard over any key, and `Shift.dynamic` to widen a static
+program into the dynamic row. The static generator is `Shift.gather`
+here, not `collect`: an overload beside the dynamic `collect` would
+cost that one's lambda its parameter type in Scala 2.
 
 ```scala
-    val r = !.run(Delim.reset[Int, P] { p =>
-      Delim.shift[Int, Int, P](p) { k =>
+    val r = !.run(Shift.reset[Int, P] { p =>
+      Shift.shift[Int, Int, P](p) { k =>
         k(1).flatMap(a => k(2).map(b => a + b))
       }.map(_ * 10)
     })
@@ -1105,7 +1114,7 @@ twice, to drop, to keep:
     val prog: Int ! Row =
       push[Int, P](outer) {
         push[Int, P](inner) {
-          Delim.shift[Int, Int, P](outer)(_ => pure[Row, Int](99))
+          Shift.shift[Int, Int, P](outer)(_ => pure[Row, Int](99))
         }.map { x => innerFinished = true; x + 1 }
       }.map(_ + 1000)
 ```
@@ -1117,23 +1126,23 @@ apart from any prompt and runs only where a delimiter is in force.
 Scala 2 has no context functions, so the evidence is passed first:
 
 ```scala
-    def banner(in: Delim.Prompted.Aux[Int, W]): Int ! (Delim + W) =
-      Writer.tell("hello").at[Delim + W].flatMap(_ => Delim.shift[Int, Int](in)(k => k(5)).map(_ + 1))
-    assertEquals(!.run(Writer.run(Delim.delimited[Int, W](banner))), (Seq("hello"), 6))
+    def banner(in: Shift.Prompted.Aux[Int, W]): Int ! (Shift[Any] + W) =
+      Writer.tell("hello").at[Shift[Any] + W].flatMap(_ => Shift.shift[Int, Int](in)(k => k(5)).map(_ + 1))
+    assertEquals(!.run(Writer.run(Shift.delimited[Int, W](banner))), (Seq("hello"), 6))
 ```
 
 The four patterns are names over that door. `collect`/`emit` reads a
 push producer as a pull — the walk stays a walk:
 
 ```scala
-  def walk(t: Tree)(e: Delim.Emitting.Aux[Int, P]): Unit ! R = t match {
-    case Leaf(a) => Delim.emit(e)(a)
+  def walk(t: Tree)(e: Shift.Emitting.Aux[Int, P]): Unit ! R = t match {
+    case Leaf(a) => Shift.emit(e)(a)
     case Node(l, r) => walk(l)(e).flatMap(_ => walk(r)(e))
   }
 ```
 
 ```scala
-    assertEquals(!.run(Delim.collect[Int, P](walk(t))), List(1, 2, 3))
+    assertEquals(!.run(Shift.collect[Int, P](walk(t))), List(1, 2, 3))
 ```
 
 `pause`/`resumable` stops in the middle and hands the rest back as a
@@ -1142,20 +1151,20 @@ exactly when the row is `Replayable` (a `Writer` in it is refused at
 compile time):
 
 ```scala
-  def booking(s: Delim.Asking.Aux[String, String, String, P]): String ! R = for {
-    city <- Delim.pause(s)("Which city?")
-    nights <- Delim.pause(s)(s"How many nights in $city?")
-    pay <- Delim.pause(s)(s"Pay ${nights.toInt * 90} for $city?")
+  def booking(s: Shift.Asking.Aux[String, String, String, P]): String ! R = for {
+    city <- Shift.pause(s)("Which city?")
+    nights <- Shift.pause(s)(s"How many nights in $city?")
+    pay <- Shift.pause(s)(s"Pay ${nights.toInt * 90} for $city?")
   } yield if (pay == "yes") s"Booked $city for $nights nights" else "Cancelled"
 ```
 
 ```scala
-    val start = !.run(Delim.resumable[String, String, String, P](booking))
+    val start = !.run(Shift.resumable[String, String, String, P](booking))
     assertEquals(start.asking, Some("Which city?"))
 ```
 
 ```scala
-    val back = !.run(Delim.replay[String, String, String, P](booking)(j2))
+    val back = !.run(Shift.replay[String, String, String, P](booking)(j2))
     assertEquals(back.asking, Some("Pay 270 for Kyiv?"))
 ```
 
@@ -1169,7 +1178,7 @@ macro at the call site. A lexical `At` overrides it:
     assert(door.startsWith("TestDelim.scala:"), door)
 ```
 
-The prompt stack can also be a TYPE. `Delim.Stacked` hands the body a
+The prompt stack can also be a TYPE. `Shift.Stacked` hands the body a
 stack value whose doors ask for evidence that the prompt is on it, so
 a shift with no reset, a shift to a foreign prompt of the same answer
 type, and a shift to a prompt whose reset has returned are compile
@@ -1459,7 +1468,7 @@ parameterised signature's test is its CLASS: `State[Int] +
 State[String]` is two types to the row and one to the split, and
 `Distinct` refuses it (§8). Give each instance an identity the split
 can see — the same three ways the Scala 3 core has
-(docs/many-instances.md), plus Delim's prompts:
+(docs/many-instances.md), plus `Shift[Any]`'s prompts:
 
 | | named at compile time | made at run time |
 |---|---|---|
@@ -1753,7 +1762,7 @@ program does if it runs to the end, so an abort inside a block that
 promises a transition drops the transition.
 
 Atkey, "Parameterised notions of computation" (§16) is the shape. Not
-ported: Scala 3's `Delim.Stacked` over `Prog` — its body needs a
+ported: Scala 3's `Shift.Stacked` over `Prog` — its body needs a
 dependent function type (stage 7).
 
 ## 27. Sketches, clocks and ids
@@ -2096,11 +2105,11 @@ Three things the Scala 3 core took from Biernacki's line of work
 (APLAS 2012, POPL 2018/2020, FSCD 2019), ported here with the same
 tests (specs/okay2.md stages 46-48).
 
-**`Delim.dollar(p)(ret)(body)`** is λ$'s delimiter: run the body, and
+**`Shift.dollar(p)(ret)(body)`** is λ$'s delimiter: run the body, and
 when it returns leave through `ret`. It is not `push(body).flatMap(ret)`:
 a `shift0` captures the delimiter TOGETHER with `ret`, so a capture that
 drops `k` never runs `ret` and one that resumes twice runs it twice.
-`push` is `dollar` with the unit as `ret`. `Delim.dollarResumed` is the
+`push` is `dollar` with the unit as `ret`. `Shift.dollarResumed` is the
 same delimiter told each time the machine enters it, which is what a
 handler keeping its state in a cell needs to refuse a second run.
 
@@ -2109,7 +2118,7 @@ it through the instance value — two `State[Int]` in one program are two
 names, and an operation addressed to the outer one passes through the
 inner untouched. Every strategy is a name: `deep` (shift0 under a
 dollar), `shallow` (control0 under a push), `tail` (a cell, guarded),
-`tailPure` (no `Delim` in the row: a walk), `walk` (over `Instances`).
+`tailPure` (no `Shift[Any]` in the row: a walk), `walk` (over `Instances`).
 `Lexical.State` has every one with typed `get`/`set`/`put`:
 
 ```scala
@@ -2224,7 +2233,7 @@ compare values.
   and why no Functor is needed.
 - R. Kent Dybvig, Simon Peyton Jones and Amr Sabry, "A monadic
   framework for delimited continuations" (JFP 2007) — the
-  multi-prompt design `Delim` follows: prompts as first-class tags,
+  multi-prompt design `Shift[Any]` follows: prompts as first-class tags,
   `push` and `shift` as operations of one machine.
 - Oleg Kiselyov, Chung-chieh Shan, Daniel Friedman and Amr Sabry,
   "Backtracking, Interleaving, and Terminating Monad Transformers"

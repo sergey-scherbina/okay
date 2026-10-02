@@ -5,7 +5,7 @@ package okay2
  * key constructor K, `same(a: K[A], b: K[B])` answers whether a and b
  * are one and the same key — and when they are, hands over the witness
  * `A =:= B`, because one key holds one type. The structure that asks
- * (the `Delim` machine cutting its prompt stack, `Facts` keyed by
+ * (the `Shift[Any]` machine cutting its prompt stack, `Facts` keyed by
  * `Fact`) applies the witness and never casts.
  */
 trait Same[K[_]] {

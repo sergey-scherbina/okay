@@ -102,13 +102,13 @@ class HandlerBenchmark {
   // okay2-split-at-rest: one lane per loop moved onto Split.at, each
   // M = 1000 operations deep, answer checked in buildOnce
 
-  /** the Delim machine: 1000 shifts to one prompt, each resumed once */
+  /** the Shift[Any] machine: 1000 shifts to one prompt, each resumed once */
   @Benchmark
   def delimShift(): Int = {
-    def deep(p: Prompt[Int], n: Int): Int ! (Delim + Pure) =
-      if (n == 0) pure[Delim + Pure, Int](0)
-      else Delim.shift[Int, Int, Pure](p)(k => k(n)).flatMap(x => deep(p, n - 1).map(_ + x))
-    !.run(Delim.reset[Int, Pure](p => deep(p, M)))
+    def deep(p: Prompt[Int], n: Int): Int ! (Shift[Any] + Pure) =
+      if (n == 0) pure[Shift[Any] + Pure, Int](0)
+      else Shift.shift[Int, Int, Pure](p)(k => k(n)).flatMap(x => deep(p, n - 1).map(_ + x))
+    !.run(Shift.reset[Int, Pure](p => deep(p, M)))
   }
 
   private var produced: Unit ! Produce = _

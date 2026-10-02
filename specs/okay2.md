@@ -2609,3 +2609,31 @@ Operator: "Продолжай" — the last two okay2 follow-ups of stage 49.
   N = 100 000): 112 B a level against 240 for get-then-set (0.47x), at
   `set`'s 112; `get` 80, a bare tailcall 40. The core reads 96 for both
   (history.d `okay2-state-modify-op`).
+
+## Stage 52 — okay2-shift-merge: Delim folded into Shift (2026-10-02)
+
+Operator: picked "okay2: shift-merge's twin" — specs/shift-merge.md's stages
+1, 2 and 4 in the Scala 2.13 twin.
+
+- **One effect `Shift[K]`**: `Shift[R]` keyed by the answer type (stage 49),
+  `Shift[Any]` keyed by a prompt value at run time — okay2's `Delim` until
+  now, the core's `Shift % ?`, the operator's "Shift % Any". `Delim` is gone,
+  not aliased: 606 uses in 22 files moved (`Delim.x` → `Shift.x`, the type →
+  `Shift[Any]`), Delim.scala `git mv`'d to Shift.scala and the static form's
+  members merged into the one `object Shift`. The key macro refuses `Any`,
+  the dynamic key.
+- **One machine guard** over any key: `NoMachine[F]` (was `NoDelim`) asks
+  `F <:< Shift.AnyKey`, as the core's `OneMachine` reads `Shift[?, Any]`; a
+  row holding `Shift[Int]` cannot start a second machine (compileErrors).
+  `Nesting` stays beside it, as in the core until shift-merge-guard.
+- **`Shift.dynamic`** widens a static program into `Shift[Any]` (a written
+  coercion; one claim function), and the core's test passes: a keyed
+  capture and an exit from a dynamic scope in one program, 12.
+- **Names that differ, measured:** the static generator is `Shift.gather`,
+  not `collect`. An overload beside the dynamic `collect(body: Emitting =>
+  …)` cost every lambda and eta-expanded method passed to it its parameter
+  type ("missing parameter type", TestDelim's three call sites). `exit` and
+  `emit` overload cleanly (their alternatives differ in type-argument count
+  and in the first parameter's type).
+- **Left for the twin of shift-merge-guard** (the core's next lane): the one
+  evidence for both guards, and `Stacked` read as `Shift[p.type]`.

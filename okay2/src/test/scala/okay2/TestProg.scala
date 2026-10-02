@@ -2,7 +2,7 @@ package okay2
 
 /**
  * The indexed program (the Scala 3 core's TestProg, its facade half):
- * sequencing checked by the compiler at zero cost. The Delim.Stacked
+ * sequencing checked by the compiler at zero cost. The Shift.Stacked
  * half is not ported — it needs a dependent function type for its body
  * (specs/okay2.md, stage 7).
  */

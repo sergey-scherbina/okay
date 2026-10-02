@@ -1,6 +1,6 @@
 package okay2
 
-import Delim.Stacked
+import Shift.Stacked
 
 /**
  * The prompt stack in the type: the positive shapes run through the
@@ -35,7 +35,7 @@ class TestDelimStacked extends munit.FunSuite {
     type F = Reader[Int]
     val r = !.run(Reader.run(41)(Stacked.delimited[Int, F] { s =>
       for {
-        a <- Reader.ask[Int].at[Delim + F]
+        a <- Reader.ask[Int].at[Shift[Any] + F]
         b <- s.stack.shift[Int, Int, F](s.p)(k => k(a + 1))
       } yield b
     }))
@@ -56,7 +56,7 @@ class TestDelimStacked extends munit.FunSuite {
   test("5. a reset as a step of a larger program, its value from the head") {
     val r = !.run(Stacked.delimited[Int, P] { s =>
       for {
-        a <- pure[Delim + P, Int](5)
+        a <- pure[Shift[Any] + P, Int](5)
         b <- s.stack.reset[Int, P] { s2 =>
                s2.stack.shift[Int, Int, P](s2.p)(k => k(a))
              }
@@ -84,17 +84,17 @@ class TestDelimStacked extends munit.FunSuite {
 
   test("6. a shift with NO reset is a compile error: there is no stack to call it on") {
     val e = compileErrors("""
-      { val loose = okay2.Delim.prompt[Int]
-        okay2.Delim.Stacked.shift[Int, Int, okay2.Pure](loose)(k => k(1)) }""")
+      { val loose = okay2.Shift.prompt[Int]
+        okay2.Shift.Stacked.shift[Int, Int, okay2.Pure](loose)(k => k(1)) }""")
     assert(e.nonEmpty, "a shift with no reset compiled")
-    val e2 = compileErrors("new okay2.Delim.Stacked.Stack[okay2.Delim.Stacked.Empty]()")
+    val e2 = compileErrors("new okay2.Shift.Stacked.Stack[okay2.Shift.Stacked.Empty]()")
     assert(e2.nonEmpty, "a stack was constructible outside the object")
   }
 
   test("7. a shift to a FOREIGN prompt of the same answer type is a compile error") {
     val e = compileErrors("""
-      okay2.Delim.Stacked.delimited[Int, okay2.Pure] { s =>
-        val stolen = okay2.Delim.prompt[Int]
+      okay2.Shift.Stacked.delimited[Int, okay2.Pure] { s =>
+        val stolen = okay2.Shift.prompt[Int]
         s.stack.shift[Int, Int, okay2.Pure](stolen)(k => k(1))
       }""")
     assert(e.nonEmpty, "a shift to a foreign prompt compiled")
@@ -106,7 +106,7 @@ class TestDelimStacked extends munit.FunSuite {
     // returns, the stack in force is the OUTER one, and the leaked
     // prompt is not on it
     val e = compileErrors("""
-      okay2.Delim.Stacked.delimited[Int, okay2.Pure] { outer =>
+      okay2.Shift.Stacked.delimited[Int, okay2.Pure] { outer =>
         var leaked: okay2.Prompt[Int] = null
         outer.stack.reset[Int, okay2.Pure] { inner =>
           leaked = inner.p
@@ -121,13 +121,13 @@ class TestDelimStacked extends munit.FunSuite {
   }
 
   test("the hole, said: a PROGRAM built under an inner stack and run after its reset is still a run-time NoPrompt") {
-    var leaked: Int ! (Delim + P) = null
+    var leaked: Int ! (Shift[Any] + P) = null
     // a `def`: on a Pure row the machine runs while the program is
     // being BUILT, so the throw lands here rather than inside `!.run`
     def prog = Stacked.delimited[Int, P] { outer =>
       outer.stack.reset[Int, P] { inner =>
         leaked = inner.stack.shift[Int, Int, P](inner.p)(k => k(1))
-        pure[Delim + P, Int](0)
+        pure[Shift[Any] + P, Int](0)
       }.flatMap(_ => leaked)
     }
     val _ = intercept[NoPrompt](!.run(prog))

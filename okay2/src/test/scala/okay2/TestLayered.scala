@@ -10,10 +10,10 @@ import Layered._
 class TestLayered extends munit.FunSuite {
 
   type P = Pure
-  type DP = Delim + P
+  type DP = Shift[Any] + P
   type EitherS[A] = Either[String, A]
 
-  def run[A](p: A ! DP): A = !.run(Delim.run[A, P](p))
+  def run[A](p: A ! DP): A = !.run(Shift.run[A, P](p))
 
   // ------------------------------------------------ one layer: Filinski's laws
 

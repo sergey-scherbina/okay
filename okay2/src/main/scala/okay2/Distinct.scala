@@ -38,7 +38,7 @@ import scala.annotation.tailrec
  * WHY A MACRO: an inductive implicit over an intersection diverges in
  * scalac 2 (stage 8, `Replayable`), so the row is read whole.
  */
-@implicitNotFound("the row ${R} holds two members no runtime test can tell apart.\nGive the instances an identity the split can see: a key (Tag[\"a\", F]), a run-time handle (Instances[F]), for Writer the finer test (import okay2.Writer.byValue._), or a Delim prompt.\ndocs/okay2.md, \"Several instances of one signature\", chooses between them.")
+@implicitNotFound("the row ${R} holds two members no runtime test can tell apart.\nGive the instances an identity the split can see: a key (Tag[\"a\", F]), a run-time handle (Instances[F]), for Writer the finer test (import okay2.Writer.byValue._), or a Shift[Any] prompt.\ndocs/okay2.md, \"Several instances of one signature\", chooses between them.")
 final class Distinct[R <: Row] private ()
 
 object Distinct {
@@ -136,7 +136,7 @@ object DistinctMacro {
           "  Tag[\"a\", F] + Tag[\"b\", F]     a key named at compile time; Tag.tag/untag move a program in and out\n" +
           "  Instances[F]                   a handle made at run time, one row member for all of them\n" +
           "  import okay2.Writer.byValue._  for Writer: test the told value's class as well\n" +
-          "  a Delim prompt                 a fresh identity per handler installation\n" +
+          "  a Shift[Any] prompt                 a fresh identity per handler installation\n" +
           "docs/okay2.md, \"Several instances of one signature\", chooses between them.\n" +
           "If your signature's own TypeableK reads the operation's VALUE, declare it TypeableK.ByValue[YourSig].")
     q"_root_.okay2.Distinct.unchecked[$row]"

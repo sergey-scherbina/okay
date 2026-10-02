@@ -1,6 +1,6 @@
 package okay2
 
-/** specs/shift-effect.md: `Shift[R]`, the continuation as an effect, on Delim's machine — the Scala 3 core's
+/** specs/shift-effect.md: `Shift[R]`, the continuation as an effect, on Shift[Any]'s machine — the Scala 3 core's
  * TestShift, with the same expected values */
 class TestShift extends munit.FunSuite {
 
@@ -97,22 +97,22 @@ class TestShift extends munit.FunSuite {
     assert(implicitly[Shift.Key[List[Int]]] ne implicitly[Shift.Key[List[Long]]])
   }
 
-  test("nesting: a row holding Shift or Delim is inner; a plain or abstract one is not") {
+  test("nesting: a row holding Shift or Shift[Any] is inner; a plain or abstract one is not") {
     assert(implicitly[Shift.Nesting[Shift[Int]]].inner)
     assert(implicitly[Shift.Nesting[Shift[Int] + S]].inner)
-    assert(implicitly[Shift.Nesting[Delim + S]].inner)
-    assert(implicitly[Shift.Nesting[Delim + Shift[Int]]].inner)
+    assert(implicitly[Shift.Nesting[Shift[Any] + S]].inner)
+    assert(implicitly[Shift.Nesting[Shift[Any] + Shift[Int]]].inner)
     assert(!implicitly[Shift.Nesting[S]].inner)
     assert(!implicitly[Shift.Nesting[P]].inner)
     def generic[F <: Row]: Boolean = implicitly[Shift.Nesting[F]].inner
     assert(!generic[Shift[Int]])
   }
 
-  test("a reset inside Delim's own reset block runs on Delim's machine") {
-    val r: Int ! P = Delim.reset[Int, P] { p =>
+  test("a reset inside Shift[Any]'s own reset block runs on Shift[Any]'s machine") {
+    val r: Int ! P = Shift.reset[Int, P] { p =>
       for {
-        n <- reset[Int, Delim](shift0[Int, Int, Delim](k => k(4).map(_ * 10)).map(_ + 1))
-        m <- Delim.shift[Int, Int, P](p)(k => k(n).map(_ + 1))
+        n <- reset[Int, Shift[Any]](shift0[Int, Int, Shift[Any]](k => k(4).map(_ * 10)).map(_ + 1))
+        m <- Shift.shift[Int, Int, P](p)(k => k(n).map(_ + 1))
       } yield m
     }
     assertEquals(!.run(r), 51)
@@ -129,12 +129,28 @@ class TestShift extends munit.FunSuite {
     assertEquals(!.run(reset[Int, P](loop(100000))), 100000)
   }
 
-  test("named patterns: exit leaves its reset, collect answers what emit handed out") {
+  test("named patterns: exit leaves its reset, gather answers what emit handed out") {
     val e: Int ! Shift[Int] = Shift.exit[Int, Int, P](7).map(_ + 1000)
     assertEquals(!.run(reset[Int, P](e)), 7)
     val g: Unit ! Shift[List[Int]] =
       for { _ <- Shift.emit[Int, P](1); _ <- Shift.emit[Int, P](2); _ <- Shift.emit[Int, P](3) } yield ()
-    assertEquals(!.run(Shift.collect[Int, P](g)), List(1, 2, 3))
+    assertEquals(!.run(Shift.gather[Int, P](g)), List(1, 2, 3))
+  }
+
+  test("Shift.dynamic: a capture keyed by its answer type and one to a prompt by value, in one program") {
+    // the keyed capture reaches the Int key's prompt; the scope's exit leaves the scope only
+    val keyed: Int ! Shift[Int] = shift[Int, Int, P](k => k(1).map(_ + 10))
+    val mixed: Int ! Shift[Any] =
+      Shift.dynamic[Int, Int, P](keyed).flatMap(x => Shift.scope[Int, P](in => Shift.exit[Int](in)(x * 2).map(_ => 0)))
+    val prog = Shift.push[Int, P](implicitly[Shift.Key[Int]].prompt)(mixed)
+    assertEquals(!.run(Shift.run[Int, P](prog)), 12)
+  }
+
+  test("one machine guard: a row holding a Shift of ANY key cannot start a second machine") {
+    val errs = compileErrors("Shift.run[Int, Shift[Int]](pure[Shift[Any] + Shift[Int], Int](1))")
+    assert(errs.contains("SECOND machine"), errs)
+    val dyn = compileErrors("Shift.run[Int, Shift[Any]](pure[Shift[Any], Int](1))")
+    assert(dyn.contains("SECOND machine"), dyn)
   }
 
   test("level 2: cont and embed round-trip on the diagonal") {

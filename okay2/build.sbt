@@ -362,7 +362,7 @@ lazy val okay2Jdbc: Project = (project in file("okay2-jdbc"))
   )
 
 /** okay-workflow for the Scala 2 core: `Wf`, the durable program's
- * own questions over `Delim`'s dialogue, and `Proc`, the free arrow
+ * own questions over `Shift`'s dialogue, and `Proc`, the free arrow
  * over a row, with the static workflow over it (`Wf.Proc`) —
  * specs/okay2.md stage 27 */
 lazy val okay2Workflow = crossProject(JVMPlatform, JSPlatform, NativePlatform)
