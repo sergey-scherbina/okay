@@ -36,6 +36,14 @@ object HandleFrames:
       Cont0.delimiter[Ans, Unit](frame), ret, x.asInstanceOf[Shift.U[G, A]]))
       .flatMap(g => g(s0))
 
+  /** the control form (`Effects[Free].handle`, `Handler.control`) as a frame over `x`: the clause gets `k` */
+  def control[F[+_], A, B, G[+_]](ret: A => Free[G, B], h: F !> Free[G, B], t: TypeableK[F])(x: Free[F + G, A]): Shift.U[G, B] =
+    val frame = new Cont0.Handling[B]("handle"):
+      def takes(op: Any): Boolean = t.test(op)
+      def clause(op: Any, k: Any => Any): Any = h(op.asInstanceOf[F[Any]]) / k.asInstanceOf[Any => Free[G, B]]
+    Freer.Inject[Shift.Ro[G], Unit, Unit, B](Cont0.Dollar0[Freer.Lift[G], B, A, Unit, Unit](
+      Cont0.delimiter[B, Unit](frame), ret.asInstanceOf[A => Shift.U[G, B]], x.asInstanceOf[Shift.U[G, A]]))
+
   /** a frame program as a value: stepped into by a running machine, else run on a machine of its own */
   def pending[B, G[+_]](program: Shift.U[G, B]): B ! G =
     Free.delay(new Frames.Own[Freer.Lift[G], Unit, Unit, B, B ! G](program, Shift.Stacked.residual[B, G]))

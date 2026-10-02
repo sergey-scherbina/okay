@@ -46,3 +46,21 @@ class TestHandleInMachineSmallStack extends munit.FunSuite:
       case Right(v) => assertEquals(v, 100000)
       case Left(e) => fail(e.getStackTrace.take(60).map(f => s"${f.getClassName}.${f.getMethodName}").distinct.mkString("frames:\n  ", "\n  ", ""), e)
   }
+
+  /** the control form: a handler per level, its clause resuming (and once more on the way) */
+  enum Tick[+A] derives Effect:
+    case Now extends Tick[Int]
+
+  def controlled(n: Int): Int ! Pure =
+    if n == 0 then pure(0)
+    else Effects[Free].handle[Tick, Pure](
+      !.tailcall(controlled(n - 1)).at[Tick + Pure].flatMap(x => effect[Tick, Int](Tick.Now).map(_ + x)))(pure(_))(
+      [X] => (e: Tick[X]) => e match
+        case Tick.Now => Cont.shift[X, Int ! Pure, Int ! Pure](k => k(1)))
+
+  test("100 000 nested Effects.handle on 128 KB") {
+    assertEquals(!.run(controlled(3)), 3)
+    SmallStack(128)(!.run(controlled(100000))) match
+      case Right(v) => assertEquals(v, 100000)
+      case Left(e) => fail(e.getStackTrace.take(60).map(f => s"${f.getClassName}.${f.getMethodName}").distinct.mkString("frames:\n  ", "\n  ", ""), e)
+  }

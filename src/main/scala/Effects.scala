@@ -296,7 +296,7 @@ given Effects[Free] with
     // a call from inside flatMap cannot be a jump; `again` takes it, so
     // the walk itself stays a checked loop
     def again(x: Free[F + G, A]): Free[G, B] = loop(x)
-    @tailrec def loop(x: Free[F + G, A]): Free[G, B] = (x.resume: @unchecked) match
+    @tailrec def loop(x: Free[F + G, A]): Free[G, B] = (x.resumeRun: @unchecked) match
       case Free.Return(a) => ret(a)
       case Free.Inject(e) => last(e)
       case Free.Bind(i @ Free.Inject(e), k) =>
@@ -308,8 +308,11 @@ given Effects[Free] with
               Cont.onAnswer(c)(a => loop(k(a)))(capture(c, k))
             })
           (_ => forwarded[F, G](i).flatMap(x => again(k(x))))
+      // a run nested here (handle-frames): this loop becomes a frame of the machine over the rest
+      case y => HandleFrames.pending[B, G](HandleFrames.control[F, A, B, G](ret, h, summon[TypeableK[F]])(y))
 
-    loop(m)
+    // a value: run by whoever forces it, a frame for a machine that meets it
+    HandleFrames.handled[B, G](() => loop(m), () => HandleFrames.control[F, A, B, G](ret, h, summon[TypeableK[F]])(m))
 
 /**
  * Any Effects program in ANY other Effects encoding.
