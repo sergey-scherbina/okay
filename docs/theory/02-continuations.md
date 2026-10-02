@@ -34,7 +34,7 @@ sentence.
 ```scala
 // Cont.scala, object Cont — capture the current continuation
 // (Danvy–Filinski, with answer-type modification): Cont.shift
-inline def shift[A, S, R](inline f: (A => S) => R): Rep[A, S, R] = ${ ContMacro.shift('f) }
+inline def shift[A, S, R](inline f: (A => S) => R): Rep[A, S, R] = ${ okay.macros.ContMacro.shift('f) }
 // delimit: run with the identity continuation: Cont.reset
 inline def reset[A, R](c: Rep[A, A, R]): R = run(c)(identity)
 ```

@@ -135,7 +135,7 @@ no workaround.
 Chapter 12's rule, as evidence:
 
 ```scala
-inline given of[F[+_]]: Machine[F] = ${ machineImpl[F] }
+inline given of[F[+_]]: Machine[F] = ${ okay.macros.ShiftMacros.machineImpl[F] }
 ```
 
 "Tell me whether `F` already contains a `Shift`." The answer is read
