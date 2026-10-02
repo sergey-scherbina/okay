@@ -1,6 +1,6 @@
 # cont-js-depth — the machine apart, and no stack overflow in principle
 
-Status: stage 1 done, 2026-10-02. Owner lane: `cont-js-depth`.
+Status: stages 1-2 done, 2026-10-02. Owner lane: `cont-js-depth`.
 Sprint item of the same name; follows specs/cont-stack.md and
 specs/freer-kont.md.
 
@@ -52,9 +52,18 @@ backlog cont-stack-layer1-c.
    its delimiters, and `Rev` moved verbatim from Cont.scala to
    Delimited.scala; Cont.scala is the one-prompt facade and the
    strict-`k` bridge. No behaviour changed.
-2. The machine's own suite: the DPJS laws as identities, and depth —
-   a million nested captures and resumptions on a 128 KB JVM thread, on
-   Scala.js and on Native.
+2. **The machine's own suite** — DONE: the DPJS law suite
+   (TestDelimited, on the machine and the reference) moved to
+   scala-cross, so it runs on JVM, Scala.js and Native; TestDelimitedDepth
+   (scala-cross) through `Delimited` alone — a million captures whose
+   bodies USE their continuation's answer (`k(1)` then `+ 1`, as data), a
+   million nested delimiters, a million left-nested binds, and every one
+   of 20 levels resumed twice (2^20 runs) — green on all three, and on a
+   128 KB JVM thread (TestDelimitedDepthSmallStack). The answers are
+   formulas checked on the reference first; the reference is CPS with no
+   trampoline (its host stack grows per STEP of a run), so it checks them
+   at small sizes only. MEASURED: with `k` as data the machine holds no
+   host frame per level on any platform — the bound is the bridge's.
 3. The bridge on Scala.js: the nesting shapes of the census (state
    passing) and user code — candidates: the function answer walked as
    data on JS only (cont-stack-layer1-c (6)), a link-time IR transform
