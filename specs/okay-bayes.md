@@ -118,9 +118,9 @@ convergence:
       proposal and whose error is its own ESS
 - [ ] the book's per-point question, P(x belongs to cluster 1), as a
       posterior expectation over the draws
-- [ ] the book's convergence lesson, measured: a chain started in the
-      wrong place (centres swapped) is visible in R-hat before burn-in
-      and gone after it
+- [ ] the book's convergence lesson, measured: chains kept from their
+      first draw (each starts at a prior draw, far from the others) read
+      a split R-hat well above 1; the same chains after burn-in, under 1.01
 
 Stage 2d — Thompson sampling for bandits (ch.6). Stage 3 — HMC/NUTS with automatic
 differentiation. Stage 4 — `Inference` as a facade (specs/own-or-standard.md):
