@@ -59,28 +59,40 @@ final case class NutsChain(draws: Vector[Vector[Double]], stepSize: Double, inve
 object Nuts:
   private val DeltaMax = 1000.0
 
-  private final class Point(val q: Array[Double], val p: Array[Double], val logp: Double, val grad: Array[Double])
+  private[bayes] final class Point(val q: Array[Double], val p: Array[Double], val logp: Double, val grad: Array[Double])
 
-  def sample(target: Target, samples: Int, burn: Int = 1000, seed: Long = 42L, delta: Double = 0.8, maxDepth: Int = 10): NutsChain =
-    val rng = new Random(seed)
-    val d = target.dim
-    var minv = Array.fill(d)(1.0)
+  /** one transition's outcome: where it went, its acceptance statistic, its depth, whether it diverged */
+  private[bayes] final case class Step(to: Point, stat: Double, depth: Int, diverged: Boolean)
 
-    def kinetic(p: Array[Double]): Double =
+  /**
+   * THE DYNAMICS of one target under one inverse mass matrix: leapfrog,
+   * the doubling tree, and ONE NUTS transition (Algorithm 6). Shared by
+   * `sample` (a whole chain) and `Adapting` (a kernel's transition, one at
+   * a time); every random draw is taken in the order Algorithm 6 takes it.
+   */
+  private[bayes] final class Dynamics(target: Target, rng: Random):
+    private val d = target.dim
+    var minv: Array[Double] = Array.fill(d)(1.0)
+
+    def at(q: Array[Double]): Point =
+      val (lp, g) = target.gradient(q)
+      Point(q, new Array[Double](d), lp, g)
+
+    private def kinetic(p: Array[Double]): Double =
       var k = 0.0
       var i = 0
       while i < d do { k += p(i) * p(i) * minv(i); i += 1 }
       0.5 * k
-    def momentum(): Array[Double] = Array.tabulate(d)(i => rng.nextGaussian() / math.sqrt(minv(i)))
-    def leapfrog(x: Point, eps: Double): Point =
+    private def momentum(): Array[Double] = Array.tabulate(d)(i => rng.nextGaussian() / math.sqrt(minv(i)))
+    private def leapfrog(x: Point, eps: Double): Point =
       val p = Array.tabulate(d)(i => x.p(i) + 0.5 * eps * x.grad(i))
       val q = Array.tabulate(d)(i => x.q(i) + eps * minv(i) * p(i))
       val (lp, g) = target.gradient(q)
       if lp.isNaN || lp == Double.NegativeInfinity then Point(q, p, Double.NegativeInfinity, g)
       else Point(q, Array.tabulate(d)(i => p(i) + 0.5 * eps * g(i)), lp, g)
-    def joint(x: Point): Double = x.logp - kinetic(x.p)
+    private def joint(x: Point): Double = x.logp - kinetic(x.p)
     // (q⁺ − q⁻) · M⁻¹ p ≥ 0 at both ends: the trajectory has not turned back
-    def noUTurn(minus: Point, plus: Point): Boolean =
+    private def noUTurn(minus: Point, plus: Point): Boolean =
       var a = 0.0
       var b = 0.0
       var i = 0
@@ -91,16 +103,8 @@ object Nuts:
         i += 1
       a >= 0 && b >= 0
 
-    // a start with a finite density
-    var start = target.init(rng)
-    var tries = 1
-    while target.logp(start) == Double.NegativeInfinity && tries < 1000 do { start = target.init(rng); tries += 1 }
-    require(target.logp(start) > Double.NegativeInfinity, "nuts: no starting point with a finite density in 1000 tries")
-    var cur: Point =
-      val (lp, g) = target.gradient(start)
-      Point(start, new Array[Double](d), lp, g)
-
-    def reasonableStep(): Double =
+    /** a step size whose leapfrog moves the acceptance across 1/2, by doubling or halving (Hoffman & Gelman, Alg. 4) */
+    def reasonableStep(cur: Point): Double =
       var eps = 1.0
       def ratio(): Double =
         val x = Point(cur.q, momentum(), cur.logp, cur.grad)
@@ -115,10 +119,10 @@ object Nuts:
         halvings += 1
       eps
 
-    final case class Tree(minus: Point, plus: Point, chosen: Point, n: Int, ok: Boolean, alpha: Double, nAlpha: Int, diverged: Boolean)
+    private final case class Tree(minus: Point, plus: Point, chosen: Point, n: Int, ok: Boolean, alpha: Double, nAlpha: Int, diverged: Boolean)
 
     // recursion BOUNDED by maxDepth (default 10): `build` calls itself at depth − 1
-    def build(x: Point, logu: Double, v: Int, depth: Int, eps: Double, joint0: Double): Tree =
+    private def build(x: Point, logu: Double, v: Int, depth: Int, eps: Double, joint0: Double): Tree =
       if depth == 0 then
         val y = leapfrog(x, v * eps)
         val j = joint(y)
@@ -135,30 +139,8 @@ object Nuts:
           val chosen = if total > 0 && rng.nextDouble() < u.n.toDouble / total then u.chosen else t.chosen
           Tree(minus, plus, chosen, total, u.ok && noUTurn(minus, plus), t.alpha + u.alpha, t.nAlpha + u.nAlpha, t.diverged || u.diverged)
 
-    // dual averaging (Nesterov 2009, as Hoffman & Gelman §3.2)
-    val (gamma, t0, kappa) = (0.05, 10.0, 0.75)
-    var eps = reasonableStep()
-    var mu = math.log(10 * eps)
-    var hBar = 0.0
-    var logEpsBar = 0.0
-    var m = 0
-    def restartAdaptation(): Unit =
-      eps = reasonableStep()
-      mu = math.log(10 * eps)
-      hBar = 0.0
-      logEpsBar = 0.0
-      m = 0
-
-    // the mass window: draws from 15% to 75% of warmup, then the step tuned again on the new metric
-    val (windowStart, windowEnd) = ((burn * 0.15).toInt, (burn * 0.75).toInt)
-    val window = scala.collection.mutable.ArrayBuffer.empty[Array[Double]]
-    val draws = Vector.newBuilder[Vector[Double]]
-    var divergences = 0
-    var acceptSum = 0.0
-    var depthSum = 0.0
-
-    var it = 0
-    while it < burn + samples do
+    /** ONE NUTS transition from `cur` with step `eps` */
+    def transition(cur: Point, eps: Double, maxDepth: Int): Step =
       val x0 = Point(cur.q, momentum(), cur.logp, cur.grad)
       val joint0 = joint(x0)
       val logu = joint0 + math.log(rng.nextDouble())
@@ -182,29 +164,114 @@ object Nuts:
         nAlpha = t.nAlpha
         diverged = diverged || t.diverged
         depth += 1
-      cur = next
-      val stat = alpha / nAlpha
+      Step(next, alpha / nAlpha, depth, diverged)
+
+  /** dual averaging of the log step size toward an acceptance statistic `delta` (Nesterov 2009; Hoffman & Gelman §3.2) */
+  private[bayes] final class DualAveraging(delta: Double, start: Double):
+    private val (gamma, t0, kappa) = (0.05, 10.0, 0.75)
+    private val mu = math.log(10 * start)
+    private var hBar = 0.0
+    private var logEpsBar = 0.0
+    private var m = 0
+    var eps: Double = start
+    def learn(stat: Double): Unit =
+      m += 1
+      hBar = (1 - 1.0 / (m + t0)) * hBar + (delta - stat) / (m + t0)
+      val logEps = mu - math.sqrt(m.toDouble) / gamma * hBar
+      val w = math.pow(m.toDouble, -kappa)
+      logEpsBar = w * logEps + (1 - w) * logEpsBar
+      eps = math.exp(logEps)
+    /** the averaged step, for sampling once tuning ends */
+    def averaged: Double = if m == 0 then eps else math.exp(logEpsBar)
+
+  /** Stan's regularised variance of a window of draws, per coordinate */
+  private def regularised(window: collection.Seq[Array[Double]], d: Int): Array[Double] =
+    val k = window.length.toDouble
+    Array.tabulate(d) { i =>
+      val mean = window.iterator.map(_(i)).sum / k
+      val variance = window.iterator.map(q => (q(i) - mean) * (q(i) - mean)).sum / (k - 1)
+      (k / (k + 5)) * variance + 1e-3 * (5 / (k + 5))
+    }
+
+  /**
+   * NUTS as a KERNEL's transition, one call at a time, for a target whose
+   * other coordinates may have moved between calls: while `tuning`, the
+   * step size is dual-averaged and the diagonal metric re-estimated on
+   * doubling windows (50, 100, 200, … draws, Stan's shape), the step tuned
+   * again after each; once a call comes with tuning off, the step is
+   * frozen at its average.
+   */
+  private[bayes] final class Adapting(delta: Double, maxDepth: Int):
+    private var dual: DualAveraging = null
+    private var frozen = false
+    private val window = scala.collection.mutable.ArrayBuffer.empty[Array[Double]]
+    private var windowSize = 50
+    private var minv: Array[Double] = null
+    var lastStat = 0.0
+    var lastDiverged = false
+    def step(target: Target, q: Array[Double], tuning: Boolean, rng: Random): Array[Double] =
+      val dyn = Dynamics(target, rng)
+      if minv == null then minv = Array.fill(target.dim)(1.0)
+      dyn.minv = minv
+      val cur = dyn.at(q)
+      if cur.logp == Double.NegativeInfinity then q
+      else
+        if dual == null then dual = DualAveraging(delta, dyn.reasonableStep(cur))
+        if !tuning && !frozen then { frozen = true; dual.eps = dual.averaged }
+        val s = dyn.transition(cur, dual.eps, maxDepth)
+        lastStat = s.stat
+        lastDiverged = s.diverged
+        if tuning then
+          dual.learn(s.stat)
+          window += s.to.q.clone(): Unit
+          if window.length >= windowSize then
+            minv = regularised(window, target.dim)
+            window.clear()
+            windowSize *= 2
+            dyn.minv = minv
+            dual = DualAveraging(delta, dyn.reasonableStep(s.to))
+        s.to.q
+
+  def sample(target: Target, samples: Int, burn: Int = 1000, seed: Long = 42L, delta: Double = 0.8, maxDepth: Int = 10): NutsChain =
+    val rng = new Random(seed)
+    val d = target.dim
+    val dyn = Dynamics(target, rng)
+
+    // a start with a finite density
+    var start = target.init(rng)
+    var tries = 1
+    while target.logp(start) == Double.NegativeInfinity && tries < 1000 do { start = target.init(rng); tries += 1 }
+    require(target.logp(start) > Double.NegativeInfinity, "nuts: no starting point with a finite density in 1000 tries")
+    var cur = dyn.at(start)
+
+    var dual = DualAveraging(delta, dyn.reasonableStep(cur))
+    var eps = dual.eps
+
+    // the mass window: draws from 15% to 75% of warmup, then the step tuned again on the new metric
+    val (windowStart, windowEnd) = ((burn * 0.15).toInt, (burn * 0.75).toInt)
+    val window = scala.collection.mutable.ArrayBuffer.empty[Array[Double]]
+    val draws = Vector.newBuilder[Vector[Double]]
+    var divergences = 0
+    var acceptSum = 0.0
+    var depthSum = 0.0
+
+    var it = 0
+    while it < burn + samples do
+      val s = dyn.transition(cur, eps, maxDepth)
+      cur = s.to
       if it < burn then
-        m += 1
-        hBar = (1 - 1.0 / (m + t0)) * hBar + (delta - stat) / (m + t0)
-        val logEps = mu - math.sqrt(m.toDouble) / gamma * hBar
-        val w = math.pow(m.toDouble, -kappa)
-        logEpsBar = w * logEps + (1 - w) * logEpsBar
-        eps = math.exp(logEps)
+        dual.learn(s.stat)
+        eps = dual.eps
         if it >= windowStart && it < windowEnd then window += cur.q.clone(): Unit
         if it == windowEnd - 1 && window.length > 10 then
-          val k = window.length.toDouble
-          minv = Array.tabulate(d) { i =>
-            val mean = window.iterator.map(_(i)).sum / k
-            val variance = window.iterator.map(q => (q(i) - mean) * (q(i) - mean)).sum / (k - 1)
-            (k / (k + 5)) * variance + 1e-3 * (5 / (k + 5))
-          }
-          restartAdaptation()
-        if it == burn - 1 then eps = math.exp(logEpsBar)
+          dyn.minv = regularised(window, d)
+          dual = DualAveraging(delta, dyn.reasonableStep(cur))
+          eps = dual.eps
+        if it == burn - 1 then eps = dual.averaged
       else
         draws += cur.q.toVector
-        if diverged then divergences += 1
-        acceptSum += stat
-        depthSum += depth
+        if s.diverged then divergences += 1
+        acceptSum += s.stat
+        depthSum += s.depth
       it += 1
-    NutsChain(draws.result(), eps, minv.toVector, divergences, acceptSum / math.max(1, samples), depthSum / math.max(1, samples))
+    NutsChain(draws.result(), eps, dyn.minv.toVector, divergences, acceptSum / math.max(1, samples), depthSum / math.max(1, samples))

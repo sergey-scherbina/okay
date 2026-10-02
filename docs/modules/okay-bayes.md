@@ -136,6 +136,19 @@ val post = Smooth.nuts(bb, samples = 2000, burn = 1000)
 That is how ours is checked against the reference on one and the same
 density. `Samplers.byName("okay" | "pymc")` picks one from a config value.
 
+**Samplers as combinators: `Kernel`.** A sampler step that leaves the
+posterior invariant is a Markov kernel, and such kernels stay invariant
+when run one after another or chosen at random (Tierney 1994) — so a
+sampler is built, not picked. A model with a discrete switch point and two
+continuous rates takes NUTS on the rates and a random walk on the switch:
+
+```scala
+val post = Bayes.sample(Ch1.texting, Kernel.nuts("lambda_1", "lambda_2") >>> Kernel.site("tau"), samples = 4000, burn = 1500, chains = 2)
+```
+
+`Kernel.site`, `sites`, `everySite`, `nuts(names*)`, `>>>`,
+`mixture(w -> k, …)`, `times(n)`; each tunes during burn-in only.
+
 **Evidence: `smc`.** Sequential Monte Carlo runs many copies of the program
 side by side, each SUSPENDED at its next `observe`; at every observation the
 copies are reweighed and, when a few carry most of the weight, resampled —
@@ -323,6 +336,7 @@ by `uv` through okay-py, samples the same model as a Live test.
 | `Decision.action(draws, lo, hi)(loss)`, `Decision.expectedLoss`; `Loss.squared / absolute / pinball(τ)` | the Bayes action |
 | `Dirichlet(alpha)` (`sample`, `logPdf`, `mean`, `covariance`); `AbTest.Variant`, `revenue`, `compare` | A/B testing by expected revenue |
 | `Online.filter(start, step, particles, seed)`: `push`, `particles`, `stage`; `Bayes.observeBulk(rows)(logLik)`, `Smooth.observeBulk(rows, params)(f)` | streams and Bulk |
+| `Bayes.sample(p, kernel, samples, burn, thin, chains, seed)`; `Kernel.site / sites / everySite / nuts`, `>>>`, `mixture`, `times`; `Trace` | samplers built from kernels |
 | `smc(p, particles, seed)`, `observeEach(xs)(d, value)` | sequential Monte Carlo: `Particles` with `expect`, `mean(site)`, `ess`, `logEvidence` |
 | `Posterior`: `draws`, `site(name)`, `vector(name)`, `rhat(name)`, `acceptance` | the posterior, typed |
 | `Summary.mean / sd / quantile / hdi / ess / rhat` | reading it |
@@ -341,6 +355,8 @@ by `uv` through okay-py, samples the same model as a Live test.
   (Gelman, Roberts, Gilks 1996).
 - Dalal, Fowlkes, Hoadley, *Risk Analysis of the Space Shuttle:
   Pre-Challenger Prediction of Failure* (JASA 1989) — the O-ring data.
+- Tierney, *Markov Chains for Exploring Posterior Distributions* (Ann.
+  Statist. 1994) — kernels composed by cycles and mixtures stay invariant.
 - Hoffman, Gelman, *The No-U-Turn Sampler: Adaptively Setting Path
   Lengths in Hamiltonian Monte Carlo* (JMLR 2014); Neal, *MCMC Using
   Hamiltonian Dynamics* (Handbook of MCMC, 2011); the Stan Reference

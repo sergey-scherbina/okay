@@ -306,14 +306,26 @@ typeclass survey: "kernels and resample-move first").
   Step sizes and proposal scales are tuned during burn-in only (a kernel
   tuned while sampling is not invariant), as `metropolis` already does.
   `Bayes.sample(p, kernel, samples, burn, chains, seed): Posterior[A]`.
-  - [ ] invariance, the defining property, tested directly: start from
+  - [x] invariance, the defining property, tested directly: start from
         EXACT posterior draws (a conjugate), apply each kernel and each
         combination once, the moments unchanged
-  - [ ] a mixed model by a composed kernel: the book's ch.1 texting model
+  - [x] a mixed model by a composed kernel: the book's ch.1 texting model
         (τ discrete, λ1 and λ2 continuous) by `nuts("lambda_1",
         "lambda_2") >>> site("tau")` against the exact posterior
-  - [ ] a mixture kernel on Challenger (single-site and joint NUTS by
+  - [x] a mixture kernel on Challenger (single-site and joint NUTS by
         weight) against the grid
+  Measured (TestKernels on JVM, Scala.js and Native; TestKernelsHackers):
+  from 20 000 exact posterior draws of a Normal mean and a Poisson rate,
+  one step of each kernel — sites, everySite, nuts(m, l), nuts(m) >>>
+  site(l), a mixture, site(l).times(3) — moves 48–96% of them and leaves
+  both means within 4 standard errors and both sds within 3% (nuts(m, l):
+  m 1.4285 against 1.4286). The texting model by nuts(λ1, λ2) >>>
+  site(τ): E[λ1] 17.752 (exact 17.758), E[λ2] 22.705 (22.689), P(τ ∈ {44,
+  45}) 0.864 (0.851), ESS(λ1) 8000 of 8000. Challenger by mixture(
+  everySite, nuts(α, β)): E[β] 0.2663 (grid 0.2693), p31 0.9908 (0.9874).
+  The NUTS transition was taken out of `Nuts.sample` into a `Dynamics`
+  both use, every random draw in the same order: `Nuts.sample`'s numbers
+  are unchanged to the last digit.
 - 7b. RESAMPLE-MOVE SMC (Gilks & Berzuini 2001; Chopin 2002): after each
   resampling, every particle is moved by a kernel that targets the
   posterior GIVEN THE OBSERVATIONS SO FAR — the model re-run with its

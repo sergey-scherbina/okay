@@ -99,7 +99,7 @@ object Bayes:
 
   /** a site's value and its distribution, held at ONE type — so a value is
    * proposed and re-scored by its own distribution, with no cast */
-  private final class Site[X](val dist: Distribution[X], val value: X):
+  private[bayes] final class Site[X](val dist: Distribution[X], val value: X):
     val logp: Double = dist.logPdf(value)
     def numeric: Double = dist.numeric(value)
     def proposed(scale: Double, rng: Random): Site[X] = Site(dist, dist.propose(value, scale, rng))
@@ -111,11 +111,11 @@ object Bayes:
    * (`reused`), else draws it fresh. Answers the value, the trace, the log
    * likelihood, and which sites were drawn fresh.
    */
-  private final case class Pass[A](value: A, trace: Map[String, Site[?]], logLik: Double, fresh: Set[String]):
+  private[bayes] final case class Pass[A](value: A, trace: Map[String, Site[?]], logLik: Double, fresh: Set[String]):
     def logPrior: Double = trace.valuesIterator.map(_.logp).sum
     def logJoint: Double = logPrior + logLik
 
-  private def pass[A](p: A ! Model, fixed: Map[String, Any], rng: Random): Pass[A] =
+  private[bayes] def pass[A](p: A ! Model, fixed: Map[String, Any], rng: Random): Pass[A] =
     var trace = Map.empty[String, Site[?]]
     var fresh = Set.empty[String]
     var logLik = 0.0
@@ -304,6 +304,33 @@ object Bayes:
       val runs = ch.draws.map(u => at(u.toArray).get._1)
       Chain(runs.map(_.value), runs.map(_.trace.view.mapValues(_.numeric).toMap),
         Map("(nuts accept)" -> ch.acceptance, "(divergent)" -> ch.divergences.toDouble / math.max(1, samples), "(tree depth)" -> ch.meanDepth))
+    })
+
+  /**
+   * SAMPLE WITH A KERNEL built from `Kernel`'s parts (specs/okay-bayes.md
+   * 7a): `kernel` is evaluated once per chain, so each chain tunes its own;
+   * it tunes during `burn` and is frozen after. Chains start, as
+   * `metropolis`'s do, at a prior draw the observations allow.
+   */
+  def sample[A](p: A ! Model, kernel: => Kernel, samples: Int, burn: Int = 1000, thin: Int = 1, chains: Int = 1, seed: Long = 42L): Posterior[A] =
+    Posterior(Vector.tabulate(chains) { c =>
+      val rng = new Random(seed + c)
+      val k = kernel
+      var cur = pass(p, Map.empty, rng)
+      var tries = 1
+      while cur.logJoint == Distribution.NegInf && tries < 10000 do { cur = pass(p, Map.empty, rng); tries += 1 }
+      require(cur.logJoint > Distribution.NegInf, "sample: no prior draw the observations allow in 10 000 tries")
+      var t = Trace(p, cur)
+      val draws = Vector.newBuilder[A]
+      val sites = Vector.newBuilder[Map[String, Double]]
+      var i = 0
+      while i < burn + samples * thin do
+        t = k.step(t, i < burn, rng)
+        if i >= burn && (i - burn) % thin == 0 then
+          draws += t.value
+          sites += t.sites
+        i += 1
+      Chain(draws.result(), sites.result(), k.acceptance)
     })
 
   /** the lower Cholesky factor of a symmetric positive-definite matrix */
