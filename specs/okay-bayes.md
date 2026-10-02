@@ -1,6 +1,6 @@
 # okay-bayes — Bayesian inference as effects, without Python
 
-Status: stage 1 landed (2026-10-02); stage 2a (ch.2, adaptive Metropolis) 2b (SMC), 2c (ch.3), 2d (ch.6), 3a (NUTS), 3b (AD) and 4 (the sampler facade), 5a (ch.4), 5b (ch.5), 5c (ch.7), 5d (Dark Worlds), §6 vectors 2026-10-02; specification 2026-10-02 (operator ask: "Bayesian Methods for
+Status: stage 1 landed (2026-10-02); stage 2a (ch.2, adaptive Metropolis) 2b (SMC), 2c (ch.3), 2d (ch.6), 3a (NUTS), 3b (AD) and 4 (the sampler facade), 5a (ch.4), 5b (ch.5), 5c (ch.7), 5d (Dark Worlds), §6 vectors, 6 (streams and Bulk) 2026-10-02; specification 2026-10-02 (operator ask: "Bayesian Methods for
 Hackers ... make okay-bayes so we can do without Python; is it very
 hard?"). Builds on the core's `Prob` effect (specs/prob-effect-hansei.md:
 discrete `dist`, boolean `observe`, exact enumeration, rejection).
@@ -255,7 +255,7 @@ Stage 6 — okay-bayes over okay's streams and Bulk (operator, 2026-10-02:
   evidence accumulated. `filter.stage` is a `Stage[O, Particles[S], …]`
   (`Stage.mapAccumulate`): a stream of observations in, a posterior per
   observation out.
-  - [ ] a Gaussian random walk observed through a stream: the filtering
+  - [x] a Gaussian random walk observed through a stream: the filtering
         mean at EVERY step and the final log evidence against the Kalman
         filter
 - BULK. `Bayes.observeBulk(rows)(logLik)` and
@@ -265,10 +265,11 @@ Stage 6 — okay-bayes over okay's streams and Bulk (operator, 2026-10-02:
   for AD per-row gradients (a small tape per row, the parameters' values
   as its inputs), entered on the model's own tape as one linear node with
   that value and gradient. NUTS pays one pass over the data per gradient.
-  - [ ] the same model over a Bulk and over a Vector: the same log density
+  - [x] the same model over a Bulk and over a Vector: the same log density
         and the same gradient at random points
-  - [ ] Normal mean and sd from 100 000 rows by AD NUTS over `Bulk[Chunks]`,
-        against the closed-form posterior (flat-ish priors, large n)
+  - [x] Normal mean and sd from 20 000 rows by AD NUTS over `Bulk[Chunks]`,
+        against the large-n posterior (wide priors: μ ~ N(ȳ, s²/n), σ ~
+        N(s, s²/2n)); and `Bayes.observeBulk` by `adaptive` on a small bulk
 
 ## 4. Decisions
 
@@ -482,6 +483,17 @@ $49 / $25 / nothing; A 10 / 46 / 80 / 864 of 1000 visitors, B 45 / 84 / 200
 0.451), B 6.397 ± 0.365 (exact 6.399 ± 0.365). P(B beats A) 0.9809 and
 0.9812 in two independent runs; the lift 1.23 per visitor, its 95% HDI
 from 0.10 to 2.37.
+
+Stage 6 (2026-10-02), TestStreams (JVM, Scala.js, Native) and
+TestBulkNuts (JVM). The online filter over 50 observations through a
+`Stage`, 4000 particles: the worst step's filtering mean 0.078 Kalman sds
+off, log p(y) −101.508 against −101.616. Over a Bulk and over a Vector the
+same model's log density and gradient agree to 1e-9 at ten random points.
+`Bayes.observeBulk` by `adaptive` on 2000 rows: μ 3.0746 against the
+large-n 3.0720 ± 0.0430. AD NUTS over a `Bulk[Chunks]` of 20 000 rows:
+μ 3.0156 ± 0.0144 (large-n 3.0150 ± 0.0142), σ 2.0044 ± 0.0101 (2.0040 ±
+0.0100), 17.7 s on the JVM — one aggregate per gradient. Spark and Flink
+run the same `Aggregator`; that it serialises there is not yet tested.
 
 ## 6. Open questions
 

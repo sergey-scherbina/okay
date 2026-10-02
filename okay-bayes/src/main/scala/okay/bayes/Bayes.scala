@@ -74,6 +74,21 @@ object Bayes:
   def observeAll[X, A](xs: Iterable[X])(d: X => Distribution[A], value: X => A): Unit ! Model =
     factor(xs.iterator.map(x => d(x).logPdf(value(x))).sum)
 
+  /**
+   * observe a BULK — rows too many for one place (Chunks in one JVM, an RDD
+   * on Spark): the log-likelihood is one `aggregate` of `logLik` over the
+   * rows, a commutative sum, so it runs where the rows are
+   */
+  def observeBulk[D[_], R](rows: D[R])(logLik: R => Double)(using bulk: okay.Bulk[D]): Unit ! Model =
+    factor(bulk.aggregate(rows)(Bayes.sumOf(logLik)))
+
+  /** Σ f(row), as an Aggregator */
+  private[bayes] def sumOf[R](f: R => Double): okay.Aggregator[R, Double, Double] = new okay.Aggregator[R, Double, Double]:
+    def init: Double = 0.0
+    def add(acc: Double, r: R): Double = acc + f(r)
+    def merge(a: Double, b: Double): Double = a + b
+    def present(acc: Double): Double = acc
+
   /** observe every element as its OWN factor — SMC reweighs between them; to MCMC it is `observeAll` */
   def observeEach[X, A](xs: Iterable[X])(d: X => Distribution[A], value: X => A): Unit ! Model =
     val v = xs.toVector

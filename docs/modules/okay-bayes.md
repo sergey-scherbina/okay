@@ -6,7 +6,7 @@
 > is a handler over it. The book *Bayesian Methods for Hackers* is the
 > yardstick: its models, its data, its answers.
 
-Depends on: `okay` (core). Pure Scala — cross-built for JVM, JS and
+Depends on: `okay` (core), `okay-stream` (Stage, Bulk). Pure Scala — cross-built for JVM, JS and
 Native. Spec: `specs/okay-bayes.md`. PyMC appears only as a test oracle.
 
 ## Guide
@@ -245,6 +245,24 @@ Start it at a coarse search's best point:
 val nuts = Smooth.nuts(haloAd(sky3), samples = 1500, burn = 700, chains = 2, init = Map("x" -> sx, "y" -> sy, "mass" -> sm))
 ```
 
+**Streams and Bulk.** A filter over a stream is a value: `Online.filter(start,
+step, particles)` holds particles of a hidden state, `push` takes one
+observation, and `filter.stage` is a `Stage` — observations in, a posterior
+per observation out — so tracking runs inside any okay pipeline:
+
+```scala
+val posteriors = okay.!.run(Writer.run(through(observations)(f.stage)))._1.toVector
+```
+
+Data too large for one place is a `Bulk` (Chunks in one JVM, Spark,
+Flink). `observeBulk` makes the likelihood ONE `aggregate` over its rows,
+and over `Grad` the gradient too, row by row, summed where the rows are —
+so NUTS pays one pass over the data per gradient:
+
+```scala
+_ <- Smooth.observeBulk(rows, Vector(mu, sigma))((p, y) => Smooth.Normal(p(0), p(1)).logPdf(y))
+```
+
 **Reading the posterior.** `post.site("lambda_1")` is a site's chain,
 `post.draws` the program's values; `Summary` has the mean, sd, quantiles,
 the highest-density interval, the effective sample size (Geyer's initial
@@ -297,6 +315,7 @@ by `uv` through okay-py, samples the same model as a Live test.
 | `Beta.cdf`, `Beta.quantile`, `Distribution.incompleteBeta`; `Rank.lowerBound / approxLowerBound / sort` | exact Beta tails; ranking by evidence |
 | `Decision.action(draws, lo, hi)(loss)`, `Decision.expectedLoss`; `Loss.squared / absolute / pinball(τ)` | the Bayes action |
 | `Dirichlet(alpha)` (`sample`, `logPdf`, `mean`, `covariance`); `AbTest.Variant`, `revenue`, `compare` | A/B testing by expected revenue |
+| `Online.filter(start, step, particles, seed)`: `push`, `particles`, `stage`; `Bayes.observeBulk(rows)(logLik)`, `Smooth.observeBulk(rows, params)(f)` | streams and Bulk |
 | `smc(p, particles, seed)`, `observeEach(xs)(d, value)` | sequential Monte Carlo: `Particles` with `expect`, `mean(site)`, `ess`, `logEvidence` |
 | `Posterior`: `draws`, `site(name)`, `vector(name)`, `rhat(name)`, `acceptance` | the posterior, typed |
 | `Summary.mean / sd / quantile / hdi / ess / rhat` | reading it |
@@ -322,6 +341,9 @@ by `uv` through okay-py, samples the same model as a Live test.
 - Griewank, Walther, *Evaluating Derivatives* (SIAM, 2nd ed. 2008) —
   reverse mode and the tape; Carpenter et al., *The Stan Math Library:
   Reverse-Mode Automatic Differentiation in C++* (2015).
+- Gordon, Salmond, Smith, *Novel Approach to Nonlinear/Non-Gaussian
+  Bayesian State Estimation* (IEE Proc. F, 1993) — the bootstrap particle
+  filter.
 - Del Moral, Doucet, Jasra, *Sequential Monte Carlo Samplers* (JRSS B
   2006); Wood, van de Meent, Mansinghka, *A New Approach to Probabilistic
   Programming Inference* (AISTATS 2014) — SMC as the inference of a

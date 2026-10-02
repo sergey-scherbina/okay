@@ -81,6 +81,34 @@ object Smooth:
   def observeAll[X, Y](xs: Iterable[X])(d: X => Density[Y], value: X => Y): Unit ! Grad =
     score(sum(xs.map(x => d(x).logPdf(value(x)))))
 
+  /**
+   * observe a BULK with exact gradients: `f(params, row)` is a row's log
+   * density. ONE `aggregate` over the rows sums the values and, row by
+   * row, the gradient with respect to `params` (a small tape per row, the
+   * parameters' current values as its inputs); the sum enters the model's
+   * own tape as one linear node with that value and that gradient. NUTS
+   * pays one pass over the data per gradient.
+   */
+  def observeBulk[D[_], R](rows: D[R], params: Vector[Real])(f: (Vector[Real], R) => Real)(using bulk: okay.Bulk[D]): Unit ! Grad =
+    val at = params.map(_.value)
+    val (lp, g) = bulk.aggregate(rows)(gradientSum(at, f))
+    // value lp, d/dparamᵢ = gᵢ: the constant lp − Σ gᵢ·atᵢ plus Σ gᵢ·paramᵢ
+    score(Real.const(lp - at.indices.map(i => g(i) * at(i)).sum) + sum(params.indices.map(i => g(i) * params(i))))
+
+  /** Σ over rows of (log density, its gradient at `at`) — commutative, so any platform may split and merge it */
+  private def gradientSum[R](at: Vector[Double], f: (Vector[Real], R) => Real): okay.Aggregator[R, (Double, Vector[Double]), (Double, Vector[Double])] =
+    new okay.Aggregator[R, (Double, Vector[Double]), (Double, Vector[Double])]:
+      def init: (Double, Vector[Double]) = (0.0, Vector.fill(at.length)(0.0))
+      def add(acc: (Double, Vector[Double]), r: R): (Double, Vector[Double]) =
+        val tape = new Tape(16)   // one row's density: a few dozen nodes, grown by doubling if more
+        val in = at.map(tape.variable)
+        val out = f(in, r)
+        val g = tape.gradient(out, in)
+        (acc._1 + out.value, acc._2.indices.map(i => acc._2(i) + g(i)).toVector)
+      def merge(a: (Double, Vector[Double]), b: (Double, Vector[Double])): (Double, Vector[Double]) =
+        (a._1 + b._1, a._2.zip(b._2).map(_ + _))
+      def present(acc: (Double, Vector[Double])): (Double, Vector[Double]) = acc
+
   /** (x, log |dx/du|) on the tape */
   def constrain(s: Support, u: Real): (Real, Real) = s match
     case Support.Real => (u, Real.const(0.0))

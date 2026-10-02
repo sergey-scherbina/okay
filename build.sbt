@@ -2013,7 +2013,8 @@ lazy val okayRefine = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 lazy val okayBayes = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-bayes"))
-  .dependsOn(okay, okayTest % "test->compile")
+  // okay-stream: the online filter is a Stage, the likelihood over big data a Bulk aggregate
+  .dependsOn(okay, okayStream, okayTest % "test->compile")
   .settings(
     name := "okay-bayes",
     libraryDependencies ++= Seq(

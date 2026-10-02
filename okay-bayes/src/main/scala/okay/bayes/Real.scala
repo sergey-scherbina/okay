@@ -81,12 +81,12 @@ extension (d: Double)
  * THE TAPE: per node, up to two operands and the partial derivative with
  * respect to each. Grows by doubling; one tape per gradient evaluation.
  */
-final class Tape:
+final class Tape(capacity: Int = 256):
   private var size = 0
-  private var pa = new Array[Int](256)
-  private var da = new Array[Double](256)
-  private var pb = new Array[Int](256)
-  private var db = new Array[Double](256)
+  private var pa = new Array[Int](math.max(1, capacity))
+  private var da = new Array[Double](math.max(1, capacity))
+  private var pb = new Array[Int](math.max(1, capacity))
+  private var db = new Array[Double](math.max(1, capacity))
 
   private[bayes] def push(a: Int, dA: Double, b: Int, dB: Double): Int =
     if size == pa.length then
