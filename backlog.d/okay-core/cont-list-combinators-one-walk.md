@@ -6,8 +6,12 @@
       `Bind(step(x), b => next(rest))` with an early exit or not. One
       deferred list walk with an early exit can hold all four; the
       public names, which ContMacro calls, become one-liners (~50 lines
-      to ~15). WAIT FOR cont-stack-layer1-c: that lane (claimed
-      2026-10-02) adds Either/Try/Set/Map lowerings beside these, and
-      the unification should take them in too rather than race them.
-      Pinned already by cont-stack-layer1-c's tests (a million on
-      128 KB, the order of `k`'s resumptions); no new behaviour.
+      to ~15). cont-stack-layer1-c's rest (32d30c2ad) landed first and
+      made one difference load-bearing: `existsIn`/`findIn` walk a
+      MEMOISED LazyList (an infinite receiver answers at the first hit),
+      `traverse`/`foldIn` a strict List. One walk over the LazyList keeps
+      both, `traverse`/`fold` simply never stopping early. Its Set/Map
+      traversals reach these four (Either/Try are rewritten to a match,
+      not walked). Pinned by
+      that lane's tests (a million each on 128 KB, the infinite
+      receiver, the order of `k`'s resumptions); no new behaviour.
