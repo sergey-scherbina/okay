@@ -23,9 +23,9 @@ given ioToOkay[A](using IORuntime): okay.ToOkay[IO[A], A] = io => CatsInterop.fr
 
 extension [A](p: => A ! Async)
   /** this okay program as an IO — [[CatsInterop.toIO]], right for any
-   * program, a blocking `Async.Run` included */
-  def asIO: IO[A] = CatsInterop.toIO(p)
+   * program, a blocking `Async.Run` included; JVM and Native (it parks) */
+  def asIO(using okay.Answers[Async]): IO[A] = CatsInterop.toIO(p)
 
 extension [A, B](f: A => B ! Async)
-  /** this okay function as an IO one */
-  def asIO: A => IO[B] = a => CatsInterop.toIO(f(a))
+  /** this okay function as an IO one; JVM and Native (it parks) */
+  def asIO(using okay.Answers[Async]): A => IO[B] = a => CatsInterop.toIO(f(a))

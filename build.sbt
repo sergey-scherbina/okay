@@ -866,24 +866,48 @@ lazy val okayStm = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
   )
 
-/** interop with cats: instances and conversions, nothing more (P3) */
-lazy val okayCats = (project in file("okay-cats"))
+/**
+ * interop with cats: instances and conversions, nothing more (P3).
+ *
+ * CROSS-BUILT (okay-cats-cross, 2026-10-02): cats, cats-effect and okay's
+ * core all are, and nothing in the bridges is JVM-only. The doors that
+ * PARK a thread (`toIO`, `asIO`, `scheduler`) ask `Answers[Async]`, which
+ * exists exactly where parking does, so on JS they are a compile error at
+ * the call, not a missing method. cats-effect is 3.7: the first with
+ * Scala Native 0.5 artifacts (3.5.7 has 0.4 only); CE3 stays binary
+ * compatible across minors, so fs2/compare built on 3.5 run on it. Tests:
+ * `src/test/scala-cross` runs on all three, `src/test/scala` on the JVM
+ * (they block on `unsafeRunSync`, latches and sleeps).
+ */
+lazy val okayCats = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-cats"))
   // okay-direct for the tests only: an IO marked inside a direct block
   // (specs/direct-foreign-mark.md)
-  .dependsOn(okayAsync.jvm, okayPlatform.jvm, okayDirect.jvm % "test->compile", okayTest.jvm % "test->compile")
+  .dependsOn(okayAsync, okayPlatform, okayDirect % "test->compile", okayTest % "test->compile")
   .settings(
     name := "okay-cats",
     libraryDependencies ++= Seq(
-      "org.typelevel" %% "cats-free" % "2.12.0",
-      "org.typelevel" %% "cats-effect" % "3.5.7",
-      "org.scalameta" %% "munit" % "1.1.1" % Test,
-      "org.typelevel" %% "cats-laws" % "2.12.0" % Test,
+      "org.typelevel" %%% "cats-free" % "2.13.0",
+      "org.typelevel" %%% "cats-effect" % "3.7.1",
+      "org.scalameta" %%% "munit" % "1.1.1" % Test,
+      "org.typelevel" %%% "cats-laws" % "2.13.0" % Test,
       // cats-effect-instances: the Async laws, the deterministic Ticker and
       // the generic program generators the laws are run over
-      "org.typelevel" %% "cats-effect-laws" % "3.5.7" % Test,
-      "org.typelevel" %% "cats-effect-testkit" % "3.5.7" % Test,
-      "org.scalameta" %% "munit-scalacheck" % "1.1.0" % Test,
+      "org.typelevel" %%% "cats-effect-laws" % "3.7.1" % Test,
+      "org.typelevel" %%% "cats-effect-testkit" % "3.7.1" % Test,
+      "org.scalameta" %%% "munit-scalacheck" % "1.1.0" % Test,
     ),
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-cross",
+  )
+  .jsSettings(
+    Test / unmanagedSourceDirectories :=
+      Seq(baseDirectory.value.getParentFile / "src" / "test" / "scala-cross"),
+  )
+  .nativeSettings(
+    Test / unmanagedSourceDirectories :=
+      Seq(baseDirectory.value.getParentFile / "src" / "test" / "scala-cross"),
   )
 
 /** interop with ZIO: Async <-> ZIO, ZStream <-> Chunks (P3) */
@@ -905,7 +929,7 @@ lazy val okayKyo = (project in file("okay-kyo"))
   // okay-cats and okay-zio for the tests only: TestMixed composes all
   // three libraries with okay in one expression (specs/interop-compose.md)
   .dependsOn(okayAsync.jvm, okayPlatform.jvm, compare % "test->compile", okayTest.jvm % "test->compile",
-    okayCats % "test->compile", okayZio % "test->compile", okayDirect.jvm % "test->compile")
+    okayCats.jvm % "test->compile", okayZio % "test->compile", okayDirect.jvm % "test->compile")
   .settings(
     name := "okay-kyo",
     libraryDependencies ++= Seq(
@@ -1257,7 +1281,7 @@ lazy val okayScala2Probe = (project in file("scala2/okay-scala2/probe"))
 lazy val okayFs2 = (project in file("okay-fs2"))
   // okay-cats for the tests only: an fs2 stream compiled AT an okay
   // program (specs/fs2-effectful.md)
-  .dependsOn(okay.jvm, okayStream.jvm, compare % "test->compile", okayCats % "test->compile",
+  .dependsOn(okay.jvm, okayStream.jvm, compare % "test->compile", okayCats.jvm % "test->compile",
     okayTest.jvm % "test->compile")
   .settings(
     name := "okay-fs2",
@@ -3646,7 +3670,7 @@ lazy val gtkProjects: Seq[ProjectReference] = if (gtkAvailable) Seq(okayUiGtk) e
 
 lazy val root = (project in file("."))
   .aggregate(gtkProjects: _*)
-  .aggregate(okay.jvm, okay.js, okay.native, okayJdk22, okayAsync.jvm, okayAsync.js, okayAsync.native, okayDirect.jvm, okayDirect.js, okayDirect.native, okayPlatform.jvm, okayPlatform.js, okayPlatform.native, okayPlatformJdk25, okayStream.jvm, okayStream.js, okayStream.native, okayWorkflow.jvm, okayWorkflow.js, okayWorkflow.native, okayData.jvm, okayData.js, okayData.native, okayOptics.jvm, okayOptics.js, okayOptics.native, okayStm.jvm, okayStm.js, okayStm.native, okayStaging, okayCats, okayZio, okayKyo, okayFs2, okayReactive, okayActor.jvm, okayActor.js, okayActor.native, okayKafka,
+  .aggregate(okay.jvm, okay.js, okay.native, okayJdk22, okayAsync.jvm, okayAsync.js, okayAsync.native, okayDirect.jvm, okayDirect.js, okayDirect.native, okayPlatform.jvm, okayPlatform.js, okayPlatform.native, okayPlatformJdk25, okayStream.jvm, okayStream.js, okayStream.native, okayWorkflow.jvm, okayWorkflow.js, okayWorkflow.native, okayData.jvm, okayData.js, okayData.native, okayOptics.jvm, okayOptics.js, okayOptics.native, okayStm.jvm, okayStm.js, okayStm.native, okayStaging, okayCats.jvm, okayCats.js, okayCats.native, okayZio, okayKyo, okayFs2, okayReactive, okayActor.jvm, okayActor.js, okayActor.native, okayKafka,
     okayJava, okayClojure, okayFrege, okayScala2, okayScala2Codec, okayScala2Http, okayScala2Sql, okayScala2Agent, okayScala2Ui, okayScala2Ws, okayScala2Resilience, okayScala2Persist, okayScala2Stm, okayScala2Stores, okayScala2Llm, okayScala2Rag, okayScala2Mcp, okayScala2Optics, okayScala2Workflow, okayScala2Services, okayScala2Prelude, okayScala2Probe, okaySpark, okayFlink, okayJdbc, okayR2dbc, okayDelta,
     okayLex.jvm, okayLex.js, okayLex.native, okayCrdt.jvm, okayCrdt.js, okayCrdt.native, okayChain.jvm, okayChain.js, okayChain.native, okayScalus, okayScalusSpark, okayScalusFlink, okayX402.jvm, okayX402.js, okayX402Evm, okayX402Cdp, okayX402Signers, okayX402Mcp.jvm, okayX402Mcp.js,
     okayParse.jvm, okayParse.js, okayParse.native,

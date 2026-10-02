@@ -60,7 +60,7 @@ object CatsInterop {
    * blocks. Bring it into scope to run okay fibers, parMap, merge and
    * supervision on the cats-effect runtime.
    */
-  def scheduler(using rt: IORuntime): okay.Scheduler = new:
+  def scheduler(using rt: IORuntime, parks: okay.Answers[Async]): okay.Scheduler = new:
     def fork[A](prog: () => A ! okay.Async): okay.Fiber[A] =
       val (fut, cancelIO) = IO.blocking(prog().runWith).unsafeToFutureCancelable()
       new okay.Fiber[A]:
@@ -69,8 +69,11 @@ object CatsInterop {
         def cancel(): Unit = { val _ = cancelIO() }
         def answered: Boolean = fut.isCompleted
 
-  /** run an okay Async program as an IO (it may park — IO.blocking) */
-  def toIO[A](p: => A ! Async): IO[A] = IO.blocking(p.runWith)
+  /** run an okay Async program as an IO (it may park — IO.blocking).
+   * `Answers[Async]` is the evidence that this platform can park: given
+   * on the JVM and Native (`import okay.given`), absent on JS, where
+   * [[toIOAsync]] is the door */
+  def toIO[A](p: => A ! Async)(using okay.Answers[Async]): IO[A] = IO.blocking(p.runWith)
 
   /** Run a callback-driven okay Async program as an IO without parking a
    * thread while an Await is pending (specs/cats-io-async.md); cancelling

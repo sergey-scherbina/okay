@@ -3,7 +3,10 @@
 > Instances inward, conversions outward, nothing more — and the
 > ecosystem's own law suites proving the instances.
 
-Depends on: `okay` (JVM), cats-free, cats-effect.
+Depends on: `okay`, cats-free 2.13, cats-effect 3.7. Cross-built: JVM,
+Scala.js and Scala Native. The doors that PARK a thread (`toIO`, `asIO`,
+`scheduler`) ask `Answers[Async]`, which exists on the JVM and Native
+only; on JS use `toIOAsync`, `fromIO` and `CatsEffect.toIO`.
 
 ## Guide
 
