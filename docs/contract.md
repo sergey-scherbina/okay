@@ -42,6 +42,62 @@ Read by what each part gives:
 | `defer`, `tailcall` | stack safety for any bind shape, mutual recursion included |
 | `run` | a program with an empty row, to its value |
 
+### `foldCont`, and what to do with its result
+
+`p.foldCont(h)` is `foldMap` into `Cont`. It folds the program's tree and
+answers each operation with `h`, a handler written as a continuation
+(`F !> S` is `F ==> ([X] =>> X /> S)`). `Static.foldMap` is the same fold
+into any `Selective`.
+
+The result, `A /> S`, is `(A => S) => S` held as data: a computation
+that has done everything except decide what happens to its final
+answer. You finish it by giving it that last continuation with `/`. What
+you get is an `S`, and `S` is your choice. It decides what the
+interpretation PRODUCES. One program, three answers
+(`src/test/scala/TestFoldCont.scala`):
+
+```scala
+val pair: (Int, Int) ! Op = for
+a <- effect(Op.Pick(List(1, 2)))
+b <- effect(Op.Pick(List(10, 20)))
+yield (a, b)
+```
+
+**`S` is the answer.** The handler resumes `k` once, and `/ identity`
+closes it. That is exactly what `runWith` is:
+
+```scala
+case Op.Pick(xs) => Cont.shift[X, (Int, Int), (Int, Int)](k => k(xs.head))
+assertEquals(pair.foldCont(first) / identity, (1, 10))
+```
+
+**`S` is every answer.** The handler resumes `k` once per choice and
+concatenates. The last continuation wraps the one final answer:
+
+```scala
+case Op.Pick(xs) => Cont.shift[X, List[(Int, Int)], List[(Int, Int)]](k => xs.flatMap(k))
+assertEquals(pair.foldCont(all) / (p => List(p)), List((1, 10), (1, 20), (2, 10), (2, 20)))
+```
+
+**`S` is a function of the state.** Each operation receives the current
+cell and passes the next one on. The last continuation pairs the answer
+with the final cell, and the result is applied to the starting state:
+
+```scala
+case State.Get() => Cont.shift[X, St, St](k => s => k(s)(s))
+case State.Set(s1) => Cont.shift[X, St, St](k => _ => k(s1)(s1))
+assertEquals((counter.foldCont(cell) / (a => s => (s, a)))(5), (6, 506))
+```
+
+The fourth choice is the one `handle` makes: `S` is another PROGRAM,
+`M[G, B]`. The handled effect is answered, the rest of the row is passed
+on as operations, and `/ ret` gives the program that remains. So
+`foldCont` is the one primitive under all of them. `runWith`, `handle`
+and every ready handler are choices of `S` and of the last continuation.
+
+You call it yourself only to write an interpretation the ready handlers
+do not have. To USE an effect, `handle` and `run` are the words.
+
 Two encodings implement it. `Free` is a tree you can step, inspect and
 relay. `Eager` binds pure steps as they are built. Code written against
 `Effects[M]` runs on either, and programs move between them (`reflect`,

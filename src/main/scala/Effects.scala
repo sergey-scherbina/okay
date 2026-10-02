@@ -123,7 +123,11 @@ trait Effects[M[_[+_], _]]:
   extension [F[+_], A](m: M[F, A])
     def flatMap[B](f: A => M[F, B]): M[F, B]
     inline def map[B](f: A => B): M[F, B] = m.flatMap(a => pure(f(a)))
-    /** interpret the operations, i.e. reflect the computation into Cont */
+    /** `foldMap` into `Cont`: the program's fold, each operation answered by
+     * `h` as a continuation (`Static.foldMap` is the same fold into any
+     * `Selective`). The result is still waiting for its LAST continuation:
+     * `/ identity` when `S` is the answer (`runWith`), `/ ret` to finish
+     * into `S` (`handle`). TestFoldCont and docs/contract.md show three `S`. */
     def foldCont[S](h: F !> S): A /> S
     /** run all the effects by a comonadic Answers (the foldCont definition; encodings may override with an equivalent fast path) */
     def runWith(using Answers[F]): A = m.foldCont(handler[F, A]) / identity
