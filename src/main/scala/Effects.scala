@@ -690,14 +690,25 @@ object Effects {
     // `split`, not `<|>`: no Either per operation (core-cleanup); the
     // recursion is not a loop, so the inlined arms cost no inlining
     // budget the way they would inside `relay`
-    (prog.resume: @unchecked) match
+    def go(p: A ! F + G): A ! G = (p.resumeRun: @unchecked) match
       case Return(a) => Return(a)
       case i @ Inject(e) => split[F, G](e)(f => h(f))(_ => forwarded[F, G](i))
       case Bind(i @ Inject(e), k) =>
         // the Bind node types e and k together
         split[F, G](e)
-          (f => h(f).flatMap(x => translate[A, F, G](k(x))(h)))
-          (_ => forwarded[F, G](i).flatMap(x => translate[A, F, G](k(x))(h)))
+          (f => h(f).flatMap(x => go(k(x))))
+          (_ => forwarded[F, G](i).flatMap(x => go(k(x))))
+      // a run nested here (handle-frames): the rest as a frame of the machine
+      case y => HandleFrames.pending[A, G](intoFrame[A, F, G](h)(y))
+    // a value: run by whoever forces it, a frame for a machine that meets it (handle-frames)
+    Free.delay(new HandleFrames.Run[A, G]:
+      def apply(): A ! G = go(prog)
+      def program: Shift.U[G, A] = intoFrame[A, F, G](h)(prog))
+
+  /** `translate` as a frame: an operation is its program, then the continuation */
+  private def intoFrame[A, F[+_] : TypeableK, G[+_]](h: F ==> ([X] =>> X ! G))(x: A ! F + G): Shift.U[G, A] =
+    HandleFrames.control[F, A, A, G](pure(_), [X] => (e: F[X]) => Cont.shift[X, A ! G, A ! G](k => h(e).flatMap(k)),
+      summon[TypeableK[F]])(x)
 
   /**
    * handle_relay (Kiselyov): tail-resumptive handling. It was 1.51x
@@ -735,14 +746,27 @@ object Effects {
     def last(e: F[A] | G[A]): B ! G =
       split[F, G](e)(e => g(e) / f)(e => Inject(e).flatMap(f))
 
-    @tailrec def loop(x: A ! F + G): B ! G = (x.resume: @unchecked) match
+    // a call from inside flatMap cannot be a jump; `again` takes it
+    def again(x: A ! F + G): B ! G = loop(x)
+
+    // a run nested here (handle-frames): the rest as a frame of the machine. Its own method, as `last` is:
+    // the loop's arm stays a call (handle-frames measured an arm that built the frame in place at 1.25x)
+    def nested(y: A ! F + G): B ! G = HandleFrames.pending[B, G](frame(y))
+    def frame(y: A ! F + G): Shift.U[G, B] =
+      HandleFrames.control[F, A, B, G](f, [X] => (e: F[X]) => g[X, B ! G](e), summon[TypeableK[F]])(y)
+
+    @tailrec def loop(x: A ! F + G): B ! G = (x.resumeRun: @unchecked) match
       // `g(e) / k`, not `g(e)(k)`: the Cont carrier's application is
       // `/` since Cont became a facade over Free (specs/freer-base.md)
-      case Bind(i @ Inject(e), k) => split[F, G](e)(e => loop(g(e) / k))(_ => forwarded[F, G](i).flatMap(x => relay[A, B, F, G](k(x))(f)(g)))
+      case Bind(i @ Inject(e), k) => split[F, G](e)(e => loop(g(e) / k))(_ => forwarded[F, G](i).flatMap(x => again(k(x))))
       case Inject(e) => last(e)
       case Return(a) => f(a)
+      case y => nested(y)
 
-    loop(a)
+    // a value: run by whoever forces it, a frame for a machine that meets it (handle-frames)
+    Free.delay(new HandleFrames.Run[B, G]:
+      def apply(): B ! G = loop(a)
+      def program: Shift.U[G, B] = frame(a))
   }
 
 }

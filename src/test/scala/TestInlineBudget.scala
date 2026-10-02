@@ -104,7 +104,9 @@ class TestInlineBudget extends munit.FunSuite {
   }
 
   test("relay's loop fits: its body is straight-line, so inlining it is free") {
-    within("Effects.relay's loop", sizeOf("Effects$", "loop\\$\\d+"), "relayPrebuilt (rows de-*)")
+    // `.*loop`: since handle-frames-forms the loop is reached from the run object's `apply`, lifted under a
+    // mangled public name, as `handle`'s is
+    within("Effects.relay's loop", sizeOf("Effects$", ".*loop\\$\\d+"), "relayPrebuilt (rows de-*)")
   }
 
   test("handle's loop fits: it had to be cut to 318 once resume became inlinable") {
@@ -117,7 +119,8 @@ class TestInlineBudget extends munit.FunSuite {
   test("the budget is read from real bytecode, not assumed") {
     // the instrument's own control: a method known to be tiny reads tiny,
     // and the measured hot methods are in the range Effects.scala records (resume 323, handle loop 318)
-    assert(sizeOf("Effects$", "relay") < 20, "relay is a one-call wrapper around its loop")
+    // since handle-frames-forms `relay` builds its run object (a `Delay` of a `HandleFrames.Run`) around the loop
+    assert(sizeOf("Effects$", "relay") < 40, "relay is a small wrapper around its loop")
     assert(sizeOf("Freer", "resume") > 250, "resume read implausibly small: is this the right method?")
   }
 }

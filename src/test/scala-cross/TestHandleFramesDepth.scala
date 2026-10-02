@@ -44,3 +44,27 @@ class TestHandleFramesDepth extends munit.FunSuite:
   test("nested Effects.handle") {
     assertEquals(!.run(controlled(n)), n)
   }
+
+  // ---- handle-frames-forms: the answer form (relay) and the into form (translate)
+
+  def relayed(n: Int): Int ! Pure =
+    if n == 0 then pure(0)
+    else Effects.relay[Int, Int, Tick, Pure](
+      !.tailcall(relayed(n - 1)).at[Tick + Pure].flatMap(x => effect[Tick, Int](Tick.Now).map(_ + x)))(pure(_))(
+      [X, Y] => (e: Tick[X]) => e match
+        case Tick.Now => Cont.Pure[X, Y](1))
+
+  test("nested Effects.relay") {
+    assertEquals(!.run(relayed(n)), n)
+  }
+
+  def translated(n: Int): Int ! Pure =
+    if n == 0 then pure(0)
+    else Effects.translate[Int, Tick, Pure](
+      !.tailcall(translated(n - 1)).at[Tick + Pure].flatMap(x => effect[Tick, Int](Tick.Now).map(_ + x)))(
+      [X] => (e: Tick[X]) => e match
+        case Tick.Now => pure[Pure, X](1))
+
+  test("nested Effects.translate") {
+    assertEquals(!.run(translated(n)), n)
+  }
