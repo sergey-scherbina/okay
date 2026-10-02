@@ -1,6 +1,6 @@
 # okay-bayes — Bayesian inference as effects, without Python
 
-Status: stage 1 landed (2026-10-02); stage 2a (ch.2, adaptive Metropolis) 2b (SMC), 2c (ch.3), 2d (ch.6), 3a (NUTS), 3b (AD) and 4 (the sampler facade), 5a (ch.4), 5b (ch.5) 2026-10-02; specification 2026-10-02 (operator ask: "Bayesian Methods for
+Status: stage 1 landed (2026-10-02); stage 2a (ch.2, adaptive Metropolis) 2b (SMC), 2c (ch.3), 2d (ch.6), 3a (NUTS), 3b (AD) and 4 (the sampler facade), 5a (ch.4), 5b (ch.5), 5c (ch.7) 2026-10-02; specification 2026-10-02 (operator ask: "Bayesian Methods for
 Hackers ... make okay-bayes so we can do without Python; is it very
 hard?"). Builds on the core's `Prob` effect (specs/prob-effect-hansei.md:
 discrete `dist`, boolean `observe`, exact enumeration, rejection).
@@ -219,10 +219,10 @@ Stage 5 — the rest of the book, one lane per chapter:
   `Dirichlet` (sample, log density, mean, covariance — a posterior helper,
   not yet a model site: that waits on vector sites, §6) and `AbTest`:
   posterior draws of each variant's revenue, P(A beats B), the lift.
-  - [ ] Dirichlet's moments against its closed forms
-  - [ ] each variant's revenue: posterior mean and sd against the exact
+  - [x] Dirichlet's moments against its closed forms
+  - [x] each variant's revenue: posterior mean and sd against the exact
         Σ vᵢ E[pᵢ] and √(vᵀ Cov v)
-  - [ ] P(B beats A) stable between two independent runs to MC error, and
+  - [x] P(B beats A) stable between two independent runs to MC error, and
         the decision it supports printed beside the naive one
 
 ## 4. Decisions
@@ -430,6 +430,13 @@ Right: true price 19 876 ± 3 767 by `adaptive` against the exact 19 899 ±
 risks 30 000 / 60 000 / 90 000 / 120 000 / 150 000, against a posterior mean
 of 19 876 — the book's shape, a bid far under the estimate and falling with
 the risk.
+
+Stage 5c (2026-10-02), TestAbTest — JVM, Scala.js and Native. Tiers $79 /
+$49 / $25 / nothing; A 10 / 46 / 80 / 864 of 1000 visitors, B 45 / 84 / 200
+/ 1671 of 2000. Revenue per visitor: A 5.173 ± 0.450 (exact 5.176 ±
+0.451), B 6.397 ± 0.365 (exact 6.399 ± 0.365). P(B beats A) 0.9809 and
+0.9812 in two independent runs; the lift 1.23 per visitor, its 95% HDI
+from 0.10 to 2.37.
 
 ## 6. Open questions
 

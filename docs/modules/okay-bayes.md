@@ -205,6 +205,20 @@ val bids = Seq(30000.0, 60000.0, 90000.0, 120000.0, 150000.0).map(r => r -> Deci
 At a risk of 30 000 the best bid is 14 549, at 150 000 it is 10 703, while
 the posterior mean of the price is 19 876.
 
+**A/B testing by revenue: `AbTest`.** Chapter 7 judges two page variants
+by what a visitor is worth, not by whether they bought: each variant's
+purchase tiers get a Dirichlet posterior, and the revenue per visitor is a
+draw per Dirichlet draw.
+
+```scala
+val a = Variant(values, Vector(10, 46, 80, 864))
+val (p1, diff) = AbTest.compare(a, b, 100000, Random(1))
+```
+
+`p1` is P(B's revenue per visitor beats A's), 0.981 here; `diff` is the
+posterior of the lift (1.23 per visitor). `Variant.exact` gives the
+posterior mean and sd in closed form.
+
 **Reading the posterior.** `post.site("lambda_1")` is a site's chain,
 `post.draws` the program's values; `Summary` has the mean, sd, quantiles,
 the highest-density interval, the effective sample size (Geyer's initial
@@ -256,6 +270,7 @@ by `uv` through okay-py, samples the same model as a Live test.
 | `Sampler`, `Sampler.Okay` (default), `PyMC.given` (JVM, optional okay-py), `Samplers.byName` | which NUTS runs `nuts` |
 | `Beta.cdf`, `Beta.quantile`, `Distribution.incompleteBeta`; `Rank.lowerBound / approxLowerBound / sort` | exact Beta tails; ranking by evidence |
 | `Decision.action(draws, lo, hi)(loss)`, `Decision.expectedLoss`; `Loss.squared / absolute / pinball(τ)` | the Bayes action |
+| `Dirichlet(alpha)` (`sample`, `logPdf`, `mean`, `covariance`); `AbTest.Variant`, `revenue`, `compare` | A/B testing by expected revenue |
 | `smc(p, particles, seed)`, `observeEach(xs)(d, value)` | sequential Monte Carlo: `Particles` with `expect`, `mean(site)`, `ess`, `logEvidence` |
 | `Posterior`: `draws`, `site(name)`, `rhat(name)`, `acceptance` | the posterior, typed |
 | `Summary.mean / sd / quantile / hdi / ess / rhat` | reading it |
