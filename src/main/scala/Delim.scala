@@ -6,7 +6,7 @@ import scala.util.NotGiven
 /**
  * Delimited control as an effect, multi-prompt (Dybvig, Peyton Jones & Sabry, JFP 2007): a prompt is a
  * first-class tag carrying its answer type; captures name it. The doors here build `Cont0` operations;
- * the machine is `Delimited.machine` (Cont.scala, Delimited.scala).
+ * the machine is `Delimited.machine` (Delimited.scala).
  */
 
 /** a delimiter's name: answer type `R`, identity by allocation, labelled for diagnostics */
