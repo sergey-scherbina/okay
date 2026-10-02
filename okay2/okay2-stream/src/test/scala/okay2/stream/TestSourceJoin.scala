@@ -45,10 +45,11 @@ class TestSourceJoin extends munit.FunSuite {
     val produced = new AtomicInteger(0)
     val endless: Source[(Int, Int)] = Source.of(LazyList.from(0).map { i => produced.incrementAndGet(); (i, i) })
     assertEquals(rows(Source.joinSorted(Source.of(List((1, "a"))), endless, capacity = 4)), Vector((1, ("a", 1))))
-    assert(produced.get <= 3 + 4 + 1 + 1, s"the endless side ran on after the join ended: ${produced.get}")
-    val settled = produced.get
-    Thread.sleep(50)
-    assertEquals(produced.get, settled, "the endless side is still producing after the join ended")
+    // the feeder may still be filling its buffer when the join returns: wait for it to park (Settle), then
+    // bound it — a fixed 50 ms sleep raced the catch-up on a loaded box (okay2-joinwithin-settle-flake)
+    val (still, last) = Settle.await(produced)
+    assert(still, s"the endless side was still producing 10 s after the join ended ($last elements)")
+    assert(last <= 3 + 4 + 1 + 1, s"the endless side ran on after the join ended: $last")
     val endlessL: Source[(Int, String)] = Source.of(LazyList.from(0).map(i => (i, s"l$i")))
     assertEquals(rows(Source.joinSorted(endlessL, Source.of(List((0, "x"), (2, "y"))), capacity = 4)),
       Vector((0, ("l0", "x")), (2, ("l2", "y"))))

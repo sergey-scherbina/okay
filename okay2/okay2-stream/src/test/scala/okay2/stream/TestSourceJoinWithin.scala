@@ -52,9 +52,10 @@ class TestSourceJoinWithin extends munit.FunSuite {
     // the left row at 5 reaches the right at 3..7; once the right has passed 7 the left row is
     // evicted, the left side has ended, nothing can be produced: the stage returns
     assertEquals(out.sorted, Vector.tabulate(5)(i => ("k", "l5", s"r${3 + i}")))
-    // no scope to release the feeder, but its buffer is full and it is parked: production settles
-    val settled = produced.get
-    Thread.sleep(50)
-    assertEquals(produced.get, settled, "the endless side is still producing after the join ended")
+    // no scope to release the feeder, but its buffer fills and it parks: production is BOUNDED — what the join
+    // read, plus the buffer, plus the element in hand (15-17 measured, 5 runs). Waited for, not slept on (Settle)
+    val (still, last) = Settle.await(produced)
+    assert(still, s"the endless side was still producing 10 s after the join ended ($last elements)")
+    assert(last <= 32, s"the endless side produced $last elements, past what the join read plus its buffer")
   }
 }
