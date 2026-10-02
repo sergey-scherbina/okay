@@ -20,7 +20,7 @@ class TestPyEnv extends munit.FunSuite {
     assertEquals(java.nio.file.Files.getLastModifiedTime(ready), builtAt, "a rebuild")
     val w = env.start()
     try
-      given okay.Handler[PyEval] = w.handler
+      given okay.Answers[PyEval] = w.handler
       assert(w.pythonVersion.startsWith("3.12"), w.pythonVersion)
       assertEquals(Py.fn[String]("six:ensure_str")("installed").runWith, Right("installed"))
     finally w.close()

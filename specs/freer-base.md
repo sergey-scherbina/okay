@@ -157,7 +157,7 @@ object Delim.Stacked:   // spelled `Delim.Stacked` in Delim.scala
 Unchanged by this spec: `Control[M]` and its `Cont`/`Func` instances,
 `/>`, `^`, `Loop`, `answer`, `tailcall`; `Effects[M]` with its three
 instances — `Eff` is a function into `Cont` and `Eager` is a union
-`A | (A ! F)` over the alias, neither touches the tree; `Handler`,
+`A | (A ! F)` over the alias, neither touches the tree; `Answers`,
 `TypeableK`, `<|>`, `split`, the row algebra `+`/`%`; every handler
 signature in the library (they take `A ! F`, which is still one alias).
 

@@ -12,7 +12,7 @@ import okay.codec.{Json, Schema}
  * The test runs the SAME program twice — once against a local tool
  * table, once against an MCP server over a wire — and asserts the two
  * answers are identical. Nothing in the program mentions MCP; the
- * only difference between the runs is which `Handler[Tool]` was in
+ * only difference between the runs is which `Answers[Tool]` was in
  * scope, which is the whole thesis of handlers as policy.
  */
 class TestAgentOverMcp extends munit.FunSuite {
@@ -36,17 +36,17 @@ class TestAgentOverMcp extends munit.FunSuite {
     Reply("let me look", Seq(call)),
     Reply("done", Nil)))
 
-  def run[A](prog: A ! Agent)(tool: Handler[Tool]): A =
-    given Handler[Model] = script
-    given Handler[Tool] = tool
-    given Handler[Context] = Handlers.context(Compact.all)._2
-    given rowCA: Handler[Context + Async] = Handler.union[Context, Async]
-    given rowTCA: Handler[Tool + (Context + Async)] = Handler.union[Tool, Context + Async]
-    given rowAll: Handler[Agent] = Handler.union[Model, Tool + (Context + Async)]
+  def run[A](prog: A ! Agent)(tool: Answers[Tool]): A =
+    given Answers[Model] = script
+    given Answers[Tool] = tool
+    given Answers[Context] = Handlers.context(Compact.all)._2
+    given rowCA: Answers[Context + Async] = Answers.union[Context, Async]
+    given rowTCA: Answers[Tool + (Context + Async)] = Answers.union[Tool, Context + Async]
+    given rowAll: Answers[Agent] = Answers.union[Model, Tool + (Context + Async)]
     prog.runWith
 
   /** an MCP server of the same tools, on a fiber, and a session to it */
-  def mcpTools: Handler[Tool] =
+  def mcpTools: Answers[Tool] =
     val up = Channel[String]()
     val down = Channel[String]()
     def link(out: Channel[String], in: Channel[String]): Link = new Link:
@@ -65,12 +65,12 @@ class TestAgentOverMcp extends munit.FunSuite {
   test("what the model saw came back through the wire, verbatim") {
     val seen = scala.collection.mutable.Buffer[ToolCall]()
     val (state, ctx) = Handlers.context(Compact.all)
-    given Handler[Model] = script
-    given Handler[Tool] = Handlers.recording(mcpTools)(seen)
-    given Handler[Context] = ctx
-    given rowCA: Handler[Context + Async] = Handler.union[Context, Async]
-    given rowTCA: Handler[Tool + (Context + Async)] = Handler.union[Tool, Context + Async]
-    given rowAll: Handler[Agent] = Handler.union[Model, Tool + (Context + Async)]
+    given Answers[Model] = script
+    given Answers[Tool] = Handlers.recording(mcpTools)(seen)
+    given Answers[Context] = ctx
+    given rowCA: Answers[Context + Async] = Answers.union[Context, Async]
+    given rowTCA: Answers[Tool + (Context + Async)] = Answers.union[Tool, Context + Async]
+    given rowAll: Answers[Agent] = Answers.union[Model, Tool + (Context + Async)]
     val _ = program.runWith
 
     assertEquals(seen.map(_.name).toList, List("search"))

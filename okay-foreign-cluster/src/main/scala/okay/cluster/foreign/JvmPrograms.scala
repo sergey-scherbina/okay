@@ -77,7 +77,7 @@ private[foreign] object JvmPrograms:
 
   /** the handler of a row with no operations: what is left once the
    * caller has handled its callbacks' effects */
-  val none: okay.Handler[[A] =>> Nothing] = new:
+  val none: okay.Answers[[A] =>> Nothing] = new:
     def handle[A](e: Nothing): A = e
 
   /** the program's answer, read at the type the caller asked for */

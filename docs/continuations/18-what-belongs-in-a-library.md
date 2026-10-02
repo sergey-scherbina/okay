@@ -38,11 +38,11 @@ object Ticks:
 And here are the two interpreters, which is the part that matters:
 
 ```scala
-val live: Handler[Ticks] = new:
+val live: Answers[Ticks] = new:
   def handle[A](e: Ticks[A]): A = e match
     case Millis => System.currentTimeMillis()
 
-def fixed(at: Long): Handler[Ticks] = new:
+def fixed(at: Long): Answers[Ticks] = new:
   def handle[A](e: Ticks[A]): A = e match
     case Millis => at
 ```
@@ -53,7 +53,7 @@ One program, run both ways, unmodified:
 def stamped(msg: String): String ! Ticks = direct:
   s"$msg@${!Ticks.millis}"
 
-given Handler[Ticks] = Ticks.fixed(7L)
+given Answers[Ticks] = Ticks.fixed(7L)
 stamped("hi").runWith        // "hi@7"     -- exactly, every time
 ```
 

@@ -11,7 +11,7 @@ import Value.*
 class TestPyProgramShape extends munit.FunSuite {
 
   /** `choose [1,2]` then `choose [10,20]`, then their sum: kept by id */
-  private final class Far extends okay.Handler[PyEval]:
+  private final class Far extends okay.Answers[PyEval]:
     var continued = Vector.empty[Long]
     private val konts = scala.collection.mutable.Map.empty[Long, Value => PyNode]
     private var next = 0L

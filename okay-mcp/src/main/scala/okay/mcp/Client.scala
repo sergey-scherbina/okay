@@ -224,7 +224,7 @@ final class Session private[mcp] (link: Link, peer: Duplex.Peer)(using Scheduler
       // upcast, not an assertion
       case Tool.Call(c) => call(c).map(s => (s: X))
 
-  def handler(using CanBlock): Handler[Tool] = new:
+  def handler(using CanBlock): Answers[Tool] = new:
     def handle[A](e: Tool[A]): A = e match
       case Tool.Call(c) => call(c).runWith
 

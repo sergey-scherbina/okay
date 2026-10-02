@@ -16,7 +16,7 @@ import okay.Chunks.elements
  * each read by `flatMap` where it lands — one fibre per partition, in
  * parallel). The engine runs where the seam asks for a VALUE:
  * `aggregate` folds through `Flows.fold`, `cache` and `toChunks` collect
- * through `Flows.collect`, under the `Scheduler` and `Handler[Async]`
+ * through `Flows.collect`, under the `Scheduler` and `Answers[Async]`
  * given at construction — `Bulk` answers plain values, so the instance
  * is where the program's `Async` ends.
  *
@@ -36,7 +36,7 @@ import okay.Chunks.elements
 final class FlowBulk(parts: Int,
                      lines: String => Iterator[String] = _ => Iterator.empty,
                      bytes: String => Option[Long] = _ => None)
-                    (using Scheduler, Handler[Async]) extends Bulk[Flow]:
+                    (using Scheduler, Answers[Async]) extends Bulk[Flow]:
   require(parts >= 1, "a FlowBulk has at least one partition")
 
   private def force[X](p: X ! Async): X = p.runWith

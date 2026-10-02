@@ -433,7 +433,7 @@ module with its own page under docs/modules:
   that replays from its record, a memory fold, a safetensors
   checkpoint — with every word and rule the caller's (`okay-dlm`).
 - **MCP** (`okay-mcp`) — both ends of the Model Context Protocol: a
-  server is another `Handler[Tool]`, our tools are another server,
+  server is another `Answers[Tool]`, our tools are another server,
   resources are documents, prompts are conversation openings,
   sampling is the `Model` effect; stdio and streamable HTTP (with
   server push over the GET stream), verified live against the

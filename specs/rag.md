@@ -271,7 +271,7 @@ a black box we already do better inside.
       symbol index
 - [x] (P10f) grounded recall uses ALL THREE retrieval sides, not two:
       `Retrieve.handled` discharges a retriever's own row so the
-      vector side can live inside the comonadic `Handler[Context]`
+      vector side can live inside the comonadic `Answers[Context]`
       when the embedder is pure — and an embedder that must do I/O
       still cannot, which is the seam saying so out loud
 - [x] (P10f) grounding also exists as a NATURAL TRANSFORMATION,

@@ -31,7 +31,7 @@ class TestOverlay extends munit.FunSuite:
     Json.JObj(Vector("amount" -> Json.JNum(100))))
 
   /** a tool that touches the "world" once and answers */
-  private def payTool: okay.Handler[Tool] = new okay.Handler[Tool]:
+  private def payTool: okay.Answers[Tool] = new okay.Answers[Tool]:
     def handle[A](e: Tool[A]): A = e match
       case Tool.Call(_) => "receipt-1"
 

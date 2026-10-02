@@ -95,7 +95,7 @@ class TestSqlPure extends munit.FunSuite {
 
   /** the told chunks, walked purely: `Say` is Writer's only
    * constructor, so the match refines the chunk — no cast, no
-   * Handler, which is what lets this run on all three platforms */
+   * Answers, which is what lets this run on all three platforms */
   def decoded[A: Schema](db: Sql): Vector[Either[Bad, A]] =
     import okay.!.*
     def go(rest: Source[Chunk[Either[Bad, A]]], acc: Vector[Either[Bad, A]]): Vector[Either[Bad, A]] =

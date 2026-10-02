@@ -108,7 +108,7 @@ okay.bracket[Int, Int, okay.Delim + okay.Pure](1)(_ => ())(r => okay.pure(r))
 ```
 
 `bracket` runs its body to completion inside one suspension, which is
-exactly what a capture breaks. It needs a `Handler` for the row, and
+exactly what a capture breaks. It needs a `Answers` for the row, and
 `Delim` has none.
 
 ```scala

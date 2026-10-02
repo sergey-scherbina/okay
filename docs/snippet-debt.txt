@@ -691,10 +691,10 @@ docs/modules/okay-mail.md	send(Mail(from, Seq(Address("ada@example.org")), "Ва
 docs/modules/okay-mail.md	val send: Mail.Send = m => Smtp.blocking(server, Secrets.env, m)
 docs/modules/okay-mail.md	val server = Smtp.Server("smtp.example.com", 587, Address("noreply@example.com"),
 docs/modules/okay-mcp.md	Agent.converse("...", session.tools.runWith)   // its tools, discovered
-docs/modules/okay-mcp.md	given Handler[Tool] = session.handler          // the only line that changes
+docs/modules/okay-mcp.md	given Answers[Tool] = session.handler          // the only line that changes
 docs/modules/okay-mcp.md	pushes.resourceUpdated("okay://a")       // to every subscriber, and only them
 docs/modules/okay-mcp.md	roots = Seq(Mcp.Root("file:///work")),
-docs/modules/okay-mcp.md	sample = Some(modelHandler)))          // the SAME Handler[Model] an agent uses
+docs/modules/okay-mcp.md	sample = Some(modelHandler)))          // the SAME Answers[Model] an agent uses
 docs/modules/okay-mcp.md	session.notifications.toLazyList.foreach(n => ...)   // updates, progress, list-changed
 docs/modules/okay-mcp.md	session.subscribe("okay://a").runWith
 docs/modules/okay-mcp.md	val (program, pushes) = Server.duplex(link, serving)
@@ -705,7 +705,7 @@ docs/modules/okay-mcp.md	val session = Client.connect(link, Mcp.Info("okay", "1"
 docs/modules/okay-mcp.md	val session = Client.connect(link, Mcp.Info("okay", "1"), Duplex.Peer(
 docs/modules/okay-obs.md	_ <- Log.info("order placed", "id" -> o.id)         // no ids, no clock, no logger
 docs/modules/okay-obs.md	def place(o: Order): Receipt ! (Log.Says + Async) =
-docs/modules/okay-obs.md	given Handler[Log.Says] = Log.console(min = Log.Level.Info, tracer = Some(tracer))
+docs/modules/okay-obs.md	given Answers[Log.Says] = Log.console(min = Log.Level.Info, tracer = Some(tracer))
 docs/modules/okay-obs.md	r <- charge(o)
 docs/modules/okay-openapi.md	router.bytes(Method.Get, Route / "app.js", "text/javascript")(_ => pure(bundle))
 docs/modules/okay-openapi.md	router.events(Method.Get, Route / "events" / "board")(_ => pure(feed))
@@ -777,8 +777,8 @@ docs/modules/okay-rag.md	Split.structural(cfg, Yaml.cst(cfg.text), 200)(_.length
 docs/modules/okay-rag.md	Split.structural(doc, Markdown.parse(doc.text), 800)(countTokens)
 docs/modules/okay-rag.md	Split.windows(doc, bpe, budget = 512, overlap = 64)   // the classic shape, exact
 docs/modules/okay-rag.md	definers = Set("fun", "class", "object", "val", "var", "interface"),
-docs/modules/okay-rag.md	given Handler[Embed] = Vectors.hashingHandler()      // or a provider
-docs/modules/okay-rag.md	given Handler[Embed] = Vectors.hashingHandler()      // or any pure one
+docs/modules/okay-rag.md	given Answers[Embed] = Vectors.hashingHandler()      // or a provider
+docs/modules/okay-rag.md	given Answers[Embed] = Vectors.hashingHandler()      // or any pure one
 docs/modules/okay-rag.md	idx.definition("hello").map(Symbols.segment(_, src))   // the code, exactly
 docs/modules/okay-rag.md	idx.mentions("Greeter")                                // where it is used
 docs/modules/okay-rag.md	layout = Layout.Braces)
@@ -1121,9 +1121,9 @@ docs/tutorial.md	f.cancel()          // stops the drive AND unregisters the park
 docs/tutorial.md	f.joinAsync         // the effect-world join: an Await, good anywhere
 docs/tutorial.md	fib.iterator.drop(10).next()                  // 55 — and the body has run exactly 11 steps
 docs/tutorial.md	gammaNode(re.tree) eq gammaNode(session.tree)   // true
-docs/tutorial.md	given Handler[Model] = Handlers.scripted(Seq(Reply("hi", Nil)))
-docs/tutorial.md	given Handler[Model] = Provider.openAi(Transports.http(), key, "gpt-4o-mini")
-docs/tutorial.md	given Handler[Tool] = session.handler          // the only line that changes
+docs/tutorial.md	given Answers[Model] = Handlers.scripted(Seq(Reply("hi", Nil)))
+docs/tutorial.md	given Answers[Model] = Provider.openAi(Transports.http(), key, "gpt-4o-mini")
+docs/tutorial.md	given Answers[Tool] = session.handler          // the only line that changes
 docs/tutorial.md	guard[[A] =>> A ! Choose](a*a + b*b == c*c).map(_ => (a, b, c)))))
 docs/tutorial.md	if n < 0 then effect(Throws("negative")) else effect(State.Set(n))
 docs/tutorial.md	if n < 2 then n.toLong else fib(n - 1) + fib(n - 2)   // or !fib(n - 1) + !fib(n - 2)

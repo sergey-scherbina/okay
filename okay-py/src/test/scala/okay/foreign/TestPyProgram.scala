@@ -27,7 +27,7 @@ class TestPyProgram extends munit.FunSuite {
   override def munitIgnore: Boolean = TestPy.python.isEmpty
 
   private lazy val w = PySubprocess.start(TestPy.python.get, modules = Seq(progs))
-  private given okay.Handler[PyEval] = w.handler
+  private given okay.Answers[PyEval] = w.handler
   override def afterAll(): Unit = if TestPy.python.nonEmpty then w.close()
 
   private val choose = Py.callback[Vector[Long], Long]("choose")(xs => effect[Choose, Long](Choose(xs)))

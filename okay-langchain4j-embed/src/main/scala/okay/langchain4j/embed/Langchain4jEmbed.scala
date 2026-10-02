@@ -1,6 +1,6 @@
 package okay.langchain4j.embed
 
-import okay.Handler
+import okay.Answers
 import okay.rag.{Embed, Embedding, embedding}
 import dev.langchain4j.model.embedding.EmbeddingModel
 
@@ -23,7 +23,7 @@ object Langchain4jEmbed {
 
   /** their model as okay-rag's effect handler — one call per text,
    * the same as their own API (no batch endpoint to prefer) */
-  def handler(model: EmbeddingModel): Handler[Embed] = new:
+  def handler(model: EmbeddingModel): Answers[Embed] = new:
     private val f = embed(model)
     def handle[A](e: Embed[A]): A = e match
       case Embed.Of(texts) => texts.map(f)

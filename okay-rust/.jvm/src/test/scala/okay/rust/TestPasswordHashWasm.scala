@@ -1,7 +1,7 @@
 package okay.rust
 
 import java.nio.file.{Files, Path}
-import okay.{Handler, given}
+import okay.{Answers, given}
 
 /** polyglot-rust stage 3 against a LIVE cargo with the wasm32-wasip1 target: the kernel under Chicory */
 class TestPasswordHashWasm extends munit.FunSuite {
@@ -28,7 +28,7 @@ class TestPasswordHashWasm extends munit.FunSuite {
     assert(p.waitFor() == 0, said)
     WasmLib.load(Files.readAllBytes(target.resolve("wasm32-wasip1/release/okay_argon2.wasm")))
 
-  private def wasm: Handler[PasswordHash] = PasswordHash.wasm(lib)
+  private def wasm: Answers[PasswordHash] = PasswordHash.wasm(lib)
 
   test("THE LAW, as WebAssembly: the kernel's bytes under Chicory are BouncyCastle's") {
     val cases = for

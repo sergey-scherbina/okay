@@ -25,7 +25,7 @@ object ProvideProbe:
    * `A`, so a raw case constructor is too precise for G to infer */
   def ask: ProvideProbe[Int] = Ask()
 
-  given handler: Handler[ProvideProbe] with
+  given handler: Answers[ProvideProbe] with
     def handle[A](a: ProvideProbe[A]): A = a match
       case Ask() => 41
 

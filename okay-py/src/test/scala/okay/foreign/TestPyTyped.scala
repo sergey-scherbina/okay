@@ -56,7 +56,7 @@ class TestPyTyped extends munit.FunSuite {
     val dir = java.nio.file.Files.createTempDirectory("okay-py-typed")
     java.nio.file.Files.writeString(dir.resolve("okaytyped.py"), module): Unit
     PySubprocess.start(TestPy.python.get, Map("PYTHONPATH" -> dir.toString))
-  private given okay.Handler[PyEval] = w.handler
+  private given okay.Answers[PyEval] = w.handler
   override def afterAll(): Unit = if TestPy.python.nonEmpty then w.close()
 
   test("a dict answered by a plain call reaches okay as a dict") {

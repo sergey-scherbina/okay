@@ -1,6 +1,6 @@
 package okay.demo
 
-import okay.Handler
+import okay.Answers
 import okay.given
 import okay.agent.{Conversation, Durable, Handlers, Tool}
 import okay.agent.Conversation.{Intake, Outcome, Reply, Say}
@@ -57,7 +57,7 @@ class TestWalk extends munit.FunSuite {
 
   private def drive(in: Intake[String], j: Durable.Journal, opening: String)
   : Either[Durable.Awaiting, Outcome[String]] =
-    given Handler[Tool] = Durable.tools(
+    given Answers[Tool] = Durable.tools(
       Handlers.tools(Map(Conversation.AskOp ->
         (_ => fail("the inner handler answered a question meant for a person")))),
       j)(Conversation.policy())

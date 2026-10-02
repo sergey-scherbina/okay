@@ -30,13 +30,13 @@ class TestX402McpAgent extends munit.FunSuite:
   /** the program: ask twice, answer what the tools said */
   private def program: String ! Agent = Agent.converse("analyse", Nil)
 
-  private def run(tool: Handler[Tool], replies: Reply*): String =
-    given Handler[Model] = Handlers.scripted(replies)
-    given Handler[Tool] = tool
-    given Handler[Context] = Handlers.context(Compact.all)._2
-    given rowCA: Handler[Context + Async] = Handler.union[Context, Async]
-    given rowTCA: Handler[Tool + (Context + Async)] = Handler.union[Tool, Context + Async]
-    given rowAll: Handler[Agent] = Handler.union[Model, Tool + (Context + Async)]
+  private def run(tool: Answers[Tool], replies: Reply*): String =
+    given Answers[Model] = Handlers.scripted(replies)
+    given Answers[Tool] = tool
+    given Answers[Context] = Handlers.context(Compact.all)._2
+    given rowCA: Answers[Context + Async] = Answers.union[Context, Async]
+    given rowTCA: Answers[Tool + (Context + Async)] = Answers.union[Tool, Context + Async]
+    given rowAll: Answers[Agent] = Answers.union[Model, Tool + (Context + Async)]
     program.runWith
 
   private val anyUsdc = Policy.upTo(BigInt(20000), Set(price.network), Set(usdc))

@@ -13,7 +13,7 @@ class TestPyFacade extends munit.FunSuite {
   private lazy val moduleDir =
     java.nio.file.Paths.get(getClass.getResource("/okay/py/golden/facadedemo.py").toURI).getParent
   private lazy val w = PySubprocess.start(TestPy.python.get, Map("PYTHONPATH" -> moduleDir.toString))
-  private given okay.Handler[PyEval] = w.handler
+  private given okay.Answers[PyEval] = w.handler
   override def afterAll(): Unit = if TestPy.python.nonEmpty then w.close()
 
   private def golden: String =

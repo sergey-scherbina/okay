@@ -19,14 +19,14 @@ object Ticks:
   inline def millis: Long ! Ticks = effect(Millis)
 
   /** interpreter one: the real clock. */
-  val live: Handler[Ticks] = new:
+  val live: Answers[Ticks] = new:
     def handle[A](e: Ticks[A]): A = e match
       case Millis => System.currentTimeMillis()
 
   /** interpreter two: a clock that does not move. This is the one
    *  that decides the question -- it exists, therefore Ticks is an
    *  effect rather than a call to System.currentTimeMillis(). */
-  def fixed(at: Long): Handler[Ticks] = new:
+  def fixed(at: Long): Answers[Ticks] = new:
     def handle[A](e: Ticks[A]): A = e match
       case Millis => at
 
@@ -38,12 +38,12 @@ class TestBookLibrary extends munit.FunSuite {
     s"$msg@${!Ticks.millis}"
 
   test("the same program is deterministic under one handler and live under the other") {
-    given Handler[Ticks] = Ticks.fixed(7L)
+    given Answers[Ticks] = Ticks.fixed(7L)
     assertEquals(stamped("hi").runWith, "hi@7")
   }
 
   test("and the live interpreter is the same program, unmodified") {
-    given Handler[Ticks] = Ticks.live
+    given Answers[Ticks] = Ticks.live
     val out = stamped("hi").runWith
     assert(out.startsWith("hi@"), out)
     val t = out.drop(3).toLong

@@ -1,6 +1,6 @@
 package okay.agent
 
-import okay.{!, ==>, Aggregator, Handler}
+import okay.{!, ==>, Aggregator, Answers}
 import okay.given
 import okay.rag.{Retriever, Scored}
 
@@ -47,7 +47,7 @@ object Grounded {
                  // noticed within a minute (it printed the
                  // conversation and wondered where the code went)
                  onRecall: Seq[Turn] => Unit = _ => ())
-                (size: Turn => Int): (Handlers.ContextState[S], Handler[Context]) =
+                (size: Turn => Int): (Handlers.ContextState[S], Answers[Context]) =
     val st = Handlers.ContextState(policy)
     val forRetrieval = (budget * share).toInt
 
@@ -63,7 +63,7 @@ object Grounded {
         if used + cost <= forRetrieval then (kept :+ t, used + cost) else acc
       }._1
 
-    (st, new Handler[Context]:
+    (st, new Answers[Context]:
       def handle[A](e: Context[A]): A = e match
         case Context.Remember(t) => st.remember(t)
         case Context.Recall() =>
@@ -91,7 +91,7 @@ object Grounded {
    *
    *     Context ==> ([X] =>> X ! F)
    *
-   * `Handler[Context]` is `Context ==> Id`, and `Id` is precisely
+   * `Answers[Context]` is `Context ==> Id`, and `Id` is precisely
    * where a suspension cannot go: a comonadic handler must ANSWER, so
    * it must finish, so its retriever must already be pure. That is
    * the constraint `context` above carries, and it is a real one — it

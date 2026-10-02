@@ -94,7 +94,7 @@ class TestForeignActivityGo extends munit.FunSuite:
     var server = first
     var restarted = false
     val w = ForeignWorker.supervised(ForeignWorker.connect("127.0.0.1", port))
-    given okay.Handler[ForeignEval] = w.handler
+    given okay.Answers[ForeignEval] = w.handler
     val topic = MemoryStore().topic("orders")
     try
       val oracle = (q: ForeignCall) =>
@@ -122,7 +122,7 @@ class TestForeignActivityGo extends munit.FunSuite:
     val (port, first) = listen(0, secret)
     first.destroyForcibly().waitFor(): Unit          // nobody is listening now
     val w = ForeignWorker.supervised(ForeignWorker.connect("127.0.0.1", port))
-    given okay.Handler[ForeignEval] = w.handler
+    given okay.Answers[ForeignEval] = w.handler
     val topic = MemoryStore().topic("orders")
     def run = Dialogue.workflow[ForeignCall, String, String, Pure](topic, "order-down", "order/1")(order("cake"))
       .runWorkflowIn(q => ForeignActivity.oracle(q))

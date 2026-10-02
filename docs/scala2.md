@@ -1641,7 +1641,7 @@ Postgres' own, with numbered placeholders (`$1, $2`) where JDBC writes
 | `Route / "users" / Route[Int]("id")` + `Router` | `Routes { case GET(Path("users", id)) => ... }` |
 | `okay.http.Response`, `Server.serve` under `Resource` | `okay.scala2.Response`, `Server.use` / `Server.start` |
 | `Typed.rows(db, sql)`, `Typed.transact(db)(...)` | `Db.jdbc(conn).rows[A](sql)` / `.all[A]`, `db.transaction()(tx => ...)` |
-| `Agent.converse(...)` under `Handler.union` of model, tool and context handlers | `Chat(model, tools, policy).say(message)` |
+| `Agent.converse(...)` under `Answers.union` of model, tool and context handlers | `Chat(model, tools, policy).say(message)` |
 | `Ui.run(init)(view)(update)(host)` | `UiApp.run(init)(view)(update)(host)`, hosts from `UiHost` |
 | `direct { ... }` blocks | not available: use `for` |
 

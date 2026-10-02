@@ -118,7 +118,7 @@ inline def splitI[F[_, _, +_], G[_, _, +_]](using T: TypeableI[F])[S, R, X, B]
 
 /** the doors of an indexed program, beside `!`'s */
 /**
- * THE INDEXED `forwarded` (Handler.scala): a node whose operation
+ * THE INDEXED `forwarded` (Answers.scala): a node whose operation
  * `splitI` has just proven to be `F`'s, read at `F` — the row narrowed
  * by the test that was made a line above, the same cast for the same
  * reason. A handler that forwards the node it holds allocates nothing

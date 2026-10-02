@@ -1,7 +1,7 @@
 package okay.scala2
 
 import scala.collection.immutable.ArraySeq
-import okay.{+, Handler}
+import okay.{+, Answers}
 import okay.given
 import okay.rag.{Embed, Fusion, Ingest, Keyword, MemoryStore, PgVector, Postings, Retrieve, Scored, VectorStore, Vectors}
 
@@ -22,13 +22,13 @@ final class VectorIndex private[scala2] (body: IndexBody) {
 
   /** split, embed in batches of `batch`, store; what was done */
   def add(sources: Seq[okay.rag.Source], budget: Int = 400, batch: Int = 32): Ingest.Progress = {
-    given Handler[Embed] = body.embedding.handler
+    given Answers[Embed] = body.embedding.handler
     Ingest.run[okay.Pure](body.store, sources, budget, batch)(_.length).runWith
   }
 
   /** the `k` segments nearest to `query` */
   def search(query: String, k: Int): Seq[Scored] = {
-    given Handler[Embed] = body.embedding.handler
+    given Answers[Embed] = body.embedding.handler
     Retrieve.vector[okay.Pure](body.store).retrieve(query, k).runWith
   }
 
@@ -52,16 +52,16 @@ final class PgIndex private[scala2] (body: PgBody) {
    * source replaces its segments) */
   def add(sources: Seq[okay.rag.Source], budget: Int = 400, batch: Int = 32): Eff[Async, Ingest.Progress] =
     Async {
-      given Handler[Embed] = body.embedding.handler
-      given Handler[Embed + okay.Async] = Handler.union[okay.Async, Embed] // Async is the side tested: Embed has no TypeableK
+      given Answers[Embed] = body.embedding.handler
+      given Answers[Embed + okay.Async] = Answers.union[okay.Async, Embed] // Async is the side tested: Embed has no TypeableK
       Ingest.run[okay.Async](body.store, sources, budget, batch)(_.length).runWith
     }
 
   /** the `k` segments nearest to `query`, scored on okay-rag's scale */
   def search(query: String, k: Int): Eff[Async, Seq[Scored]] =
     Async {
-      given Handler[Embed] = body.embedding.handler
-      given Handler[Embed + okay.Async] = Handler.union[okay.Async, Embed]
+      given Answers[Embed] = body.embedding.handler
+      given Answers[Embed + okay.Async] = Answers.union[okay.Async, Embed]
       Retrieve.vector[okay.Async](body.store).retrieve(query, k).runWith
     }
 
@@ -81,7 +81,7 @@ private[scala2] final class IndexBody(val store: VectorStore[okay.Pure], val emb
 
 /** the embedding model as the `Embed` handler okay-rag asks for */
 private[scala2] final class Embedder(embed: Seq[String] => Seq[Array[Float]]) {
-  val handler: Handler[Embed] = new Handler[Embed] {
+  val handler: Answers[Embed] = new Answers[Embed] {
     def handle[A](e: Embed[A]): A = e match {
       case Embed.Of(texts) => embed(texts).map(v => ArraySeq.unsafeWrapArray(v))
     }

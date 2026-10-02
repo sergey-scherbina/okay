@@ -1,6 +1,6 @@
 package okay.r
 
-import okay.Handler
+import okay.Answers
 import okay.codec.{WireAuth, WireCompression, WireDeadline, WireFormat, WireSecurity}
 import okay.foreign.{ForeignWorker, SupervisedWorker, WireLink, WireSession}
 
@@ -52,7 +52,7 @@ final class RSubprocess private (plain: Option[ForeignWorker], supervised: Optio
   val rVersion: String = plain.map(_.pythonVersion).getOrElse("?")
 
   /** the one foreign handler, over R */
-  def handler: Handler[REval] = supervised.fold(plain.get.handler)(_.handler)
+  def handler: Answers[REval] = supervised.fold(plain.get.handler)(_.handler)
 
   /** what the handshake settled on: "json/none" (JSON lines),
    * "json/zlib", "cbor/zlib", "cbor/none", "+arrow" where frames cross so */

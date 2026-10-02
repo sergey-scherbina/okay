@@ -59,15 +59,15 @@ class TestDocExamplesX402Mcp extends munit.FunSuite:
     // ---- snippet: x402-mcp-agent
     // the AGENT: at most 0.05 USDC over the whole conversation, asked of nobody
     val budget = Consent.budget(BigInt(50000), Network.base, usdcOnBase)
-    val tools: Handler[Tool] = X402Mcp.Paying(session, Policy.upTo(BigInt(10000), Set(Network.base), Set(usdcOnBase)), payer, budget).handler
+    val tools: Answers[Tool] = X402Mcp.Paying(session, Policy.upTo(BigInt(10000), Set(Network.base), Set(usdcOnBase)), payer, budget).handler
     // ... Agent.converse(task, specs) with `tools` in scope; budget.remaining is what is left
     // ---- snippet ends
-    given Handler[Model] = Handlers.scripted(Seq(Reply("", Seq(ToolCall("1", "report", Rpc.obj()))), Reply("read it", Nil)))
-    given Handler[Tool] = tools
-    given Handler[Context] = Handlers.context(Compact.all)._2
-    given rowCA: Handler[Context + Async] = Handler.union[Context, Async]
-    given rowTCA: Handler[Tool + (Context + Async)] = Handler.union[Tool, Context + Async]
-    given rowAll: Handler[Agent] = Handler.union[Model, Tool + (Context + Async)]
+    given Answers[Model] = Handlers.scripted(Seq(Reply("", Seq(ToolCall("1", "report", Rpc.obj()))), Reply("read it", Nil)))
+    given Answers[Tool] = tools
+    given Answers[Context] = Handlers.context(Compact.all)._2
+    given rowCA: Answers[Context + Async] = Answers.union[Context, Async]
+    given rowTCA: Answers[Tool + (Context + Async)] = Answers.union[Tool, Context + Async]
+    given rowAll: Answers[Agent] = Answers.union[Model, Tool + (Context + Async)]
     assertEquals(Agent.converse("summarise the report", serving.tools).runWith, "read it")
     assertEquals(budget.remaining, BigInt(40000))
   }

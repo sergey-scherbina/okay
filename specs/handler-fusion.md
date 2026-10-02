@@ -4,8 +4,8 @@
 
 A program over a row `F1 + F2 + … + Fk` is run today in one of two
 ways, and they are not the same cost. If every effect has a comonadic
-`Handler` (an operation answers with a plain value), `runWith` already
-runs ONE pass: `Handler.union` assembles a composite handler and
+`Answers` (an operation answers with a plain value), `runWith` already
+runs ONE pass: `Answers.union` assembles a composite handler and
 `runFree` is a single tail-recursive loop. But the effects that need
 the continuation — `Writer`, `State`, `Throws`, `Choice`, `Reader`'s
 `local` — are run ONE AT A TIME: `Throws.run(State.handle(s)(Writer.run(p)))`
@@ -80,13 +80,13 @@ and two hazards that must not:
 Nothing existing changes signature or meaning. Added:
 
 ```scala
-// 1. flat dispatch for comonadic rows: the same Handler[R] as the
-//    nested Handler.union chain, assembled by a macro over the row's
+// 1. flat dispatch for comonadic rows: the same Answers[R] as the
+//    nested Answers.union chain, assembled by a macro over the row's
 //    members so the tests run as ONE chain of ifs over the operation
 //    classes with no handler object between a test and its answer
 //    (as shipped, handler-fusion-flat: over the whole row R, not two
 //    members at a time — the members are read off the applied row)
-inline def Handler.flat[R[+_]](using Distinct[R]): Handler[R]
+inline def Answers.flat[R[+_]](using Distinct[R]): Answers[R]
 
 // 2. an effect's contribution to a fused loop: what it does to ONE
 //    operation given the accumulated state it owns. Tail-resumptive
@@ -126,8 +126,8 @@ absent — they are not work waiting to be picked up. What IS built and
 proven: the hand-written `Fused` loops of stage 0, and stages A and B
 of the reordered arc (see "After stage 0").
 
-- [ ] (GATED OFF, stage 2 — `Handler.flat` is not built; see Results)
-      `Handler.flat` agrees with `Handler.union` on every operation of
+- [ ] (GATED OFF, stage 2 — `Answers.flat` is not built; see Results)
+      `Answers.flat` agrees with `Answers.union` on every operation of
       a four-effect row (the agent's `Model + (Tool + (Context + Async))`
       shape), for all four positions.
 - [x] `Fused.run(s, Vector())(p)` over `State % S + Writer % W` agrees
@@ -173,40 +173,40 @@ of the reordered arc (see "After stage 0").
       two-effect one (the win grows with k, as the cost model says).
 - [x] (BUILT — handler-fusion-flat, 2026-09-22, ba295482; see the end
       of this box for the shipped number)
-      MEASURED: `Handler.flat` on the four-effect agent row is not
-      slower than `Handler.union` at any position, and faster at the
+      MEASURED: `Answers.flat` on the four-effect agent row is not
+      slower than `Answers.union` at any position, and faster at the
       last (the position that pays four tests today).
       CEILING LANE FIRST (staged-block-lanes, 2026-09-22):
       `FlatDispatchBenchmark` — a hand-written one-`match` handler
-      over a four-effect row (what `Handler.flat` would unroll to)
-      against the nested `Handler.union` chain, 10 000 right-nested
+      over a four-effect row (what `Answers.flat` would unroll to)
+      against the nested `Answers.union` chain, 10 000 right-nested
       operations all at position 4 and all at position 1. This is the
-      README's row shape (`Handler.union[Model, Tool + (Context +
+      README's row shape (`Answers.union[Model, Tool + (Context +
       Async)]` in okay-security's TestReadmes, TestStepper), not a
       production hot path — no main source in any module builds a
       union of four. Prediction: after stage A a test is a bare class
       check and the nested `handle` calls are monomorphic, so under
       5% at position 4 and parity at position 1. Threshold: build
-      `Handler.flat` only if the ceiling reads ≥ 1.1x at position 4.
+      `Answers.flat` only if the ceiling reads ≥ 1.1x at position 4.
       MEASURED (7e228aa1, two rounds × two forks, minima, `-prof gc`,
       rows `sbl-flat*`): position 4 — `union4` 108.6 µs, `flat4`
       87.9, **1.24x**; position 1 — `union1` 95.7, `flat1` 88.4,
       **1.08x**; B/op identical to the byte (957 904) on all four, so
       the difference is dispatch and nothing else. The prediction
       ("under 5%") is refuted; the threshold is cleared and
-      `Handler.flat` is worth building — promoted to the sprint queue
+      `Answers.flat` is worth building — promoted to the sprint queue
       as `handler-fusion-flat`, with the hand-written `flat` in
       `FlatDispatchBenchmark` as the ceiling it is held to (within
       10%, the stage-1 rule).
       BUILT AND MEASURED (ba295482, two rounds × two forks, minima,
-      rows `hff-flat-*`): `Handler.flat[R]` is a macro over the
+      rows `hff-flat-*`): `Answers.flat[R]` is a macro over the
       applied row (Distinct's trick), handlers and tests bound to vals
       outside the object. Position 4: `union4` 108.4, `inline4`
       **100.2** (1.08x), `flatCalls4` 94.9, `flat4` 88.2; position 1:
       95.4 / 94.8 / 94.7 / 88.2; bytes identical on all eight lanes.
       THE CEILING LIED BY OMISSION: `flat` inlines the handlers'
       BODIES as well as flattening the dispatch; a macro over opaque
-      `Handler` givens can only flatten, so the reachable ceiling is
+      `Answers` givens can only flatten, so the reachable ceiling is
       `flatCalls` (1.14x) and the macro lands within 5.6% of it — the
       10% rule holds. What the first cut got wrong, and it cost the
       whole win: the givens spliced straight into `handle`, and a
@@ -320,12 +320,12 @@ than left to whoever reads the tuple. A user who wants the other
 meaning names the other row; nothing reorders.
 
 **Flat dispatch for comonadic rows** is the small win and the first
-thing to build, because it stands alone: `Handler.union` is a left-
+thing to build, because it stands alone: `Answers.union` is a left-
 nested chain of `<|>` tests, so the k-th effect's operations pay k
 `TypeableK` checks. Assembled `inline`, the chain unrolls into one
 `match` whose cases are the row's operation classes in order; the JIT
 sees one type switch. The agent row is the measuring case because it
-is the row that motivated `Handler.union` in the first place.
+is the row that motivated `Answers.union` in the first place.
 
 **What `Eff` gets.** `Eff`'s program is its `foldCont`; a composite
 `!>` built the same inline way (flat dispatch + product state carried
@@ -452,7 +452,7 @@ removes that. So the order changes; the numbers, not the plan, decide:
   the F branch must survive (matching `Get()`/`Say(v)` refines the
   answer type; that is what keeps the runners cast-free).
   - [x] the HOT loops split with `split` — `State.handle`,
-        `Writer.foldWith`, `relay`, `Effects.handle`, `Handler.union`
+        `Writer.foldWith`, `relay`, `Effects.handle`, `Answers.union`
         (every `runWith` over a row) — and answer identically on the
         existing suites. The WALKS (`Writer.map`/`widen`, Pipe's
         transducers, the 50-odd other `<|>` sites) stay on `<|>`, which
@@ -479,7 +479,7 @@ removes that. So the order changes; the numbers, not the plan, decide:
   same day, specs/eff-stack-safety.md), so this was the
   road for for-comprehension-shaped programs; `foldLeft`-built ones
   stay on `Free`.
-- Stages 1–2 (`Step`/`Fused.run` over `Free`, `Handler.flat`) stay
+- Stages 1–2 (`Step`/`Fused.run` over `Free`, `Answers.flat`) stay
   GATED OFF with stage 0's numbers.
 - Follow-up, its own spec after B has a number: `direct` blocks emit
   `Free` binds today; targeting `Eff` would give direct-style programs
@@ -496,7 +496,7 @@ DELETED on 2026-09-11, see generalized-method-syntax below, and the
 casts live in `split` itself now), `<|>` itself on
 `test` (so every one of its 50-odd walk sites loses the Option with no
 churn), and the hot loops on `split`: `State.handle`, `Writer.foldWith`,
-`relay`, `Effects.handle`, `Handler.union`, `Fused.*`.
+`relay`, `Effects.handle`, `Answers.union`, `Fused.*`.
 
 The box was never quiet (load 20–80, four sibling gates and docker);
 numbers are minima across rounds, B/op from `-prof gc` is load-proof:

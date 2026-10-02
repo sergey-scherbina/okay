@@ -42,7 +42,7 @@ forever; ScalaCheck is allowed in test scope only.
       suite runs on the JVM
 - [x] the blocking API is absent from the JS platform at compile time
       (not failing at runtime) — blocking is gated by CanBlock
-      evidence, which JS does not define; Handler[Async], Fiber.join
+      evidence, which JS does not define; Answers[Async], Fiber.join
       and Async.run simply do not resolve there
 - [x] CI: test on all three platforms + Jmh/compile on push;
       publishLocal dry-runs green for okay_3, okay_sjs1_3 and

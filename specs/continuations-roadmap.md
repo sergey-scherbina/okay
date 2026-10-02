@@ -115,7 +115,7 @@ object either way, which is what the one-tree design makes possible.
 
 **Interface sketch.** `Handlers[R]`: a typed vector of `F !> S` for
 the members of the row `R`, built by the compiler from the parts as
-`Handler.union` builds a comonadic one; `!.runAll(prog)(using
+`Answers.union` builds a comonadic one; `!.runAll(prog)(using
 Handlers[R])`. Rows are unions, so the split is a chain of
 `TypeableK` tests in declared order — the same tests the layers make
 today, once instead of `N` times each.
@@ -315,7 +315,7 @@ because a survey that lives in a chat is not a record:
 |---|---|---|
 | tagless programs | `staged[M]` inline over `Control` (staged-tagless) | 1.9x at `Func` |
 | effects | `runIn[Func]` REFUTED; the inline program shape wins (staged-effects) | 263 vs 429 ns |
-| handlers | `Handler.flat`, the arm chosen at compile time (handler-fusion) | 1.08–1.24x; arc closed |
+| handlers | `Answers.flat`, the arm chosen at compile time (handler-fusion) | 1.08–1.24x; arc closed |
 | direct blocks | `Direct.staged` + loops v2 + stagers (direct-staged, direct-stagers) | 2.24x / 2.56x |
 | codecs | three CBOR decoders, JSON (codecs, schema-fold) | closed |
 | optics | `Fuse` (optics) | byte-for-byte with the hand-written update |

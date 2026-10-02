@@ -19,7 +19,7 @@ class TestREnv extends munit.FunSuite {
     assertEquals(java.nio.file.Files.getLastModifiedTime(lib.resolve(".okay-ready")), builtAt, "a rebuild")
     val r = env.start()
     try
-      given okay.Handler[REval] = r.handler
+      given okay.Answers[REval] = r.handler
       val word = R.fn[String]("praise::praise")("${Adjective}").runWith
       assert(word.exists(_.nonEmpty), s"$word")
     finally r.close()

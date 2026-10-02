@@ -37,7 +37,7 @@ object Structured {
    * bit: false means the stream ended first).
    */
   def cut[A](tokens: Unit ! Writer % String + Async)
-            (using s: Schema[A], h: okay.Handler[Async]): Cut[A] =
+            (using s: Schema[A], h: okay.Answers[Async]): Cut[A] =
     import okay.!.*
     type F = Writer % String + Async
 
@@ -75,6 +75,6 @@ object Structured {
 
   /** the value alone, for callers who do not care what it cost */
   def first[A](tokens: Unit ! Writer % String + Async)
-              (using Schema[A], okay.Handler[Async]): Option[A] =
+              (using Schema[A], okay.Answers[Async]): Option[A] =
     cut[A](tokens).value
 }

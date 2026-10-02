@@ -627,7 +627,7 @@ green. Across the whole build's tests, five errors in two files:
   else in this file. A composite test would have to be passed
   explicitly.
 
-Nothing in the library needs a composite one: `Handler.union[F, G]`
+Nothing in the library needs a composite one: `Answers.union[F, G]`
 tests only its LEFT side, so nesting to the right keeps every tested
 signature atomic — `union[Tool, Context + (Model + Async)]` asks for
 `TypeableK[Tool]`.
@@ -670,7 +670,7 @@ that was checked rather than assumed.
 | `Typeable[F[Nothing]]`-derived `TypeableK` | sound as written | needs a cast |
 | `TypeableK` for a composite row | found (that instance) | found (same instance, with the cast) |
 | operations built at `Nothing` (`Choose(Seq.empty)`) | = | = (inference, not variance) |
-| unions, `Pure`, `Handler`, `<|>` | = | = (`<|>` wants one explicit type argument) |
+| unions, `Pure`, `Answers`, `<|>` | = | = (`<|>` wants one explicit type argument) |
 | `A ! F` subtyping in A | invariant either way | invariant either way |
 | cost to switch | — | 2 kernel edits + `[+_]`→`[_]` churn; 83 tests pass |
 

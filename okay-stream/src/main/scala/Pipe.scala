@@ -633,7 +633,7 @@ def through[W, M, G[+_], A, B](p: A ! Writer % W + G)
  * consumer still drives, and the G-operations met between elements
  * are carried into the answer — the result is a program in G.
  * (Structured effects are handled over the producer first — handlers
- * are stream transformers; the Handler-able residue is what remains.)
+ * are stream transformers; the Answers-able residue is what remains.)
  */
 def pipe[W, A, B, G[+_] : TypeableK](p: A ! Writer % W + G)(c: B ! Take % W): B ! G = {
   def loop(p: A ! Writer % W + G, c: B ! Take % W): B ! G = (c.resume: @unchecked) match

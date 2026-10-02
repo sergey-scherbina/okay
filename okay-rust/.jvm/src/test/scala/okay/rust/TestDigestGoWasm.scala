@@ -1,7 +1,7 @@
 package okay.rust
 
 import java.nio.file.{Files, Path}
-import okay.{!, Handler, given}
+import okay.{!, Answers, given}
 
 /** polyglot-go stage 2 against a LIVE Go toolchain: a Go plugin as WebAssembly, under Chicory */
 class TestDigestGoWasm extends munit.FunSuite {
@@ -33,7 +33,7 @@ class TestDigestGoWasm extends munit.FunSuite {
     Digest.sha256(text.getBytes("UTF-8")).map(_.map(hex))
 
   test("THE LAW: the Go plugin's SHA-256, under Chicory, is the JDK's") {
-    given Handler[Digest] = Digest.wasm(lib)
+    given Answers[Digest] = Digest.wasm(lib)
     val rnd = scala.util.Random(24)
     val sizes = (0 to 130) ++ Vector(1000, 4096, 65536)
     val differ = sizes.filter { n =>

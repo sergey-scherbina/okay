@@ -53,7 +53,7 @@ inline def await[A](register: (A => Unit) => Unit): A ! Async =
 /**
  * Evidence that this platform can park a thread of control until a
  * callback fires. Given on JVM and Native; absent on JS, so every
- * blocking door (Handler[Async], Fiber.join, Async.run) is closed
+ * blocking door (Answers[Async], Fiber.join, Async.run) is closed
  * there by the compiler.
  */
 /** a computation that PARKS a thread, as a first-class VALUE
@@ -105,7 +105,7 @@ trait Timer:
 
 /** execute each operation on the current (ideally virtual) thread;
  * an Await parks it until the callback fires */
-given (using cb: CanBlock, w: Wait, p: Pause): Handler[Async] = new:
+given (using cb: CanBlock, w: Wait, p: Pause): Answers[Async] = new:
   def handle[A](e: Async[A]): A = e match
     case Async.Run(f) => f()
     case Async.Await(reg, poll) => Async.pollThenBlock(reg, poll).fold(e => throw e, identity)
@@ -309,7 +309,7 @@ object Async {
    * ~150 B on EVERY Loom fork for the ThreadLocalMap a fresh virtual thread
    * creates (7.49 MB against 5.97 per 10 000 fork/joins).
    */
-  private final class FiberHandler(cb: CanBlock) extends Handler[Async]:
+  private final class FiberHandler(cb: CanBlock) extends Answers[Async]:
     private var open: List[CancelScope] = Nil
     def handle[X](e: Async[X]): X = e match
       case Run(f) =>

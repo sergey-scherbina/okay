@@ -1,6 +1,6 @@
 package okay.rag
 
-import okay.{!, +, Choose, Handler, Logic, TypeableK, effect, pure, runChoice}
+import okay.{!, +, Choose, Answers, Logic, TypeableK, effect, pure, runChoice}
 import okay.given
 
 /**
@@ -28,7 +28,7 @@ object Retrieve {
   /**
    * Discharge a retriever's own effects, giving one that runs in no
    * row at all. That is not a convenience: `Grounded.context` builds
-   * a COMONADIC `Handler[Context]`, which cannot suspend, so a
+   * a COMONADIC `Answers[Context]`, which cannot suspend, so a
    * retriever used for grounded recall must already be pure. With a
    * pure embedder (`Vectors.hashingHandler`) or an in-process store
    * this makes the vector side usable there beside symbols and BM25;
@@ -36,7 +36,7 @@ object Retrieve {
    * that retrieval belongs in the agent's row, through the search
    * tool, where it can park.
    */
-  def handled[F[+_]](r: Retriever[F])(using Handler[F]): Retriever[okay.Pure] =
+  def handled[F[+_]](r: Retriever[F])(using Answers[F]): Retriever[okay.Pure] =
     new Retriever[okay.Pure]:
       def retrieve(query: String, k: Int): Seq[Scored] ! okay.Pure =
         pure(r.retrieve(query, k).runWith)

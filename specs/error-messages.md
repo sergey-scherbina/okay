@@ -24,7 +24,7 @@ No API. Annotations and messages only.
 - [x] a missing `Monad[F]` names the given import (`import
   okay.given`) and the program-monad case (`A ! Row` has its
   instance in Free's companion — check the row for Choose overlap)
-- [x] a missing `Handler[F]` says what a handler is and points at
+- [x] a missing `Answers[F]` says what a handler is and points at
   the union builder for rows
 - [x] a missing `TypeableK[F]` explains the total-split requirement
   and the one-class-carries-the-signature pattern (annotation only —

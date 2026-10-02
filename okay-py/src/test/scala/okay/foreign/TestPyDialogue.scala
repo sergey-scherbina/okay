@@ -14,7 +14,7 @@ import Value.*
 class TestPyDialogue extends munit.FunSuite {
 
   /** a scripted Python: what it asks and what it answers, in order */
-  private final class Script extends okay.Handler[PyEval]:
+  private final class Script extends okay.Answers[PyEval]:
     var seen = Vector.empty[String]
     private var got = Vector.empty[Long]
     def handle[A](op: PyEval[A]): A = op match

@@ -534,7 +534,7 @@ merge. `Wait` and `Pause` move DOWN to okay-async, where the runners
 live (the `PlatformPause` seam with them; okay-async gains a
 `scala-js` source dir). Two runners, two rules:
 
-- the BLOCKING runner (`Async.run`, the `Handler[Async]` under
+- the BLOCKING runner (`Async.run`, the `Answers[Async]` under
   `runWith`, `toLazyList`): its thread is its own, so an Await with a
   poll is asked by the given `Wait` on it and parks only when the wait
   gave up (`Async.pollThenBlock`);

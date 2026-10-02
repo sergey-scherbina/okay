@@ -30,7 +30,7 @@ class TestPyShop extends munit.FunSuite {
   override def munitIgnore: Boolean = TestPy.python.isEmpty
 
   private lazy val w = PySubprocess.start(TestPy.python.get, modules = Seq(shop))
-  private given okay.Handler[PyEval] = w.handler
+  private given okay.Answers[PyEval] = w.handler
   override def afterAll(): Unit = if TestPy.python.nonEmpty then w.close()
 
   private val catalog = Catalog(Map("tea" -> 4.0), Map("UA" -> 0.2))

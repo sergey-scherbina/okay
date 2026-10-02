@@ -251,9 +251,9 @@ def bracket[R, A, F[+_]](acquire: => R)(release: R => Unit)(use: R => A ! F)(usi
   Free.delay(() => Resource.run[A, F](Resource.acquire(acquire)(release).plus[F].flatMap(r => use(r).plus[Resource])))
 
 /**
- * Bracket over any Handler-able row F (Async, Produce, Pure, ...), RUN
+ * Bracket over any Answers-able row F (Async, Produce, Pure, ...), RUN
  * NOW: acquire, use, release — the use-program runs to completion inside
- * one suspension, by the row's comonadic `Handler`, so no outer handler
+ * one suspension, by the row's comonadic `Answers`, so no outer handler
  * can skip or repeat the release; a fiber's cancellation is an interrupt
  * exception, and the finally sees it. The price of that guarantee is
  * that nothing in `use` reaches an outer handler: every effect of F is
@@ -261,7 +261,7 @@ def bracket[R, A, F[+_]](acquire: => R)(release: R => Unit)(use: R => A ! F)(usi
  * use `bracket` above (it was this function's name until
  * bracket-forwards-no-effects, 2026-09-26).
  */
-def bracketNow[R, A, F[+_] : Handler](acquire: => R)(release: R => Unit)(use: R => A ! F): A ! F =
+def bracketNow[R, A, F[+_] : Answers](acquire: => R)(release: R => Unit)(use: R => A ! F): A ! F =
   pure[F, Unit](()).flatMap: _ =>
     val r = acquire
     // not `try … finally release(r)`: a release that throws from a

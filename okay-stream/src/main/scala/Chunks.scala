@@ -17,7 +17,7 @@ import scala.collection.immutable.ArraySeq
  * (2026-09-19): the identity signature put the chunk in the ANSWER
  * position, so `pure(c)` type-checked as a chunk and emitted nothing.
  * On the writer carrier a chunk is `Writer.tell(c)` — a `Say` node the
- * walk matches, `Handler[Pure]` only — and the stream instance is
+ * walk matches, `Answers[Pure]` only — and the stream instance is
  * `Stream[[W] =>> Unit ! Writer % W, Pure]` (Writer.scala), whose
  * hand-specialized `iterator` measured at parity with the producer
  * walk (specs/producer-to-writer-carrier.md, Results).
@@ -383,7 +383,7 @@ object Chunks {
   /**
    * `fold` for a G-effectful chunked writer stream, dispatched on a
    * `Fold` instance the way `Chunks.fold` is — JVM and Native only:
-   * it walks `writerStreamIn`'s eager `iterator` under `Handler[Async]`
+   * it walks `writerStreamIn`'s eager `iterator` under `Answers[Async]`
    * (needs `CanBlock`, which JS does not have) and wraps the walk in
    * `async { ... }`, so the answer is still a suspended program. The
    * eager walk is the point: it gives the per-chunk loop its own small

@@ -122,7 +122,7 @@ justifies it.
 
 ## Handlers are still handlers
 
-A Scala 2 `Handler[F, R, B]` receives an operation and its continuation
+A Scala 2 `Answers[F, R, B]` receives an operation and its continuation
 `k`, as in chapter 5:
 
 ```scala

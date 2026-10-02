@@ -66,7 +66,7 @@ the tool's answer, `error: 402 …`, which it can read and work around.
 ```scala
 // the AGENT: at most 0.05 USDC over the whole conversation, asked of nobody
 val budget = Consent.budget(BigInt(50000), Network.base, usdcOnBase)
-val tools: Handler[Tool] = X402Mcp.Paying(session, Policy.upTo(BigInt(10000), Set(Network.base), Set(usdcOnBase)), payer, budget).handler
+val tools: Answers[Tool] = X402Mcp.Paying(session, Policy.upTo(BigInt(10000), Set(Network.base), Set(usdcOnBase)), payer, budget).handler
 // ... Agent.converse(task, specs) with `tools` in scope; budget.remaining is what is left
 ```
 

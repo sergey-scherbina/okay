@@ -1,6 +1,6 @@
 package okay.foreign
 
-import okay.Handler
+import okay.Answers
 import Value.*
 
 /**
@@ -24,7 +24,7 @@ class TestPyWorkers extends munit.FunSuite {
     p
   override def afterAll(): Unit = pools.foreach(_.close())
 
-  def call(h: Handler[PyEval], fn: String, args: Value*) =
+  def call(h: Answers[PyEval], fn: String, args: Value*) =
     h.handle(PyEval.Call(fn, args.toVector))
 
   test("N workers are N real processes: concurrent calls land on distinct pids") {
@@ -72,7 +72,7 @@ class TestPyWorkers extends munit.FunSuite {
   }
 
   test("the two-engine acceptance: one program, both engines, unchanged") {
-    def program(h: Handler[PyEval]): Vector[String] =
+    def program(h: Answers[PyEval]): Vector[String] =
       val out = Vector.newBuilder[String]
       out += call(h, "math:sqrt", F64(9)).toString
       out += call(h, "no_such:f").left.map(_.kind).toString

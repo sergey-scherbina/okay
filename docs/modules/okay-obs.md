@@ -34,7 +34,7 @@ def place(o: Order): Receipt ! (Log.Says + Async) =
     r <- charge(o)
   yield r
 
-given Handler[Log.Says] = Log.console(min = Log.Level.Info, tracer = Some(tracer))
+given Answers[Log.Says] = Log.console(min = Log.Level.Info, tracer = Some(tracer))
 ```
 
 The line the collector receives:

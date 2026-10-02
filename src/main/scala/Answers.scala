@@ -11,8 +11,8 @@ import scala.quoted.*
  * (`DirectEffect`/`DirectCtx`) `Effect` carries so that `okay` stays
  * usable without `okay-direct`: no macro or runtime implementation
  * lives here, only the capability `okay-direct`'s bridge exposes this
- * same evidence through. `Handler`, below, is what actually PERFORMS
- * an effect once split — the two live in one file because `Handler
+ * same evidence through. `Answers`, below, is what actually PERFORMS
+ * an effect once split — the two live in one file because `Answers
  * .union` reaches for `TypeableK`/`split` directly, not just by
  * convention.
  */
@@ -63,7 +63,7 @@ def typeableK[F[_]](cls: Class[?]): TypeableK[F] = Effect.ByClass[F](cls)
  * PARAMETER leaves no runtime trace (`Reader % R`, `State % S`,
  * `Take % V`) the test says only "this is a Reader", not "this is a
  * Reader of Int". So a row may hold ONE instance of such a signature,
- * and `Distinct[R]`, which `Handler.union` requires, refuses the row
+ * and `Distinct[R]`, which `Answers.union` requires, refuses the row
  * at COMPILE time rather than leaving it to the first wrong answer. A
  * test that is finer than the class says so in its declared type
  * (`TypeableK.ByValue`) and is allowed to repeat; `Writer.byValue.writerK`
@@ -96,7 +96,7 @@ def typeableK[F[_]](cls: Class[?]): TypeableK[F] = Effect.ByClass[F](cls)
  * own companion, where implicit search finds it with no import and
  * nothing can shadow it. What was lost with the fallback: a COMPOSITE
  * row can no longer be given a test implicitly. Nothing needs one —
- * `Handler.union[F, G]` and `<|>` test one side and take the other by
+ * `Answers.union[F, G]` and `<|>` test one side and take the other by
  * exclusion, so every tested signature is atomic.
  */
 object TypeableK:
@@ -357,11 +357,11 @@ type Interpr[F[_], C[_, _, _], S] = F ==> C[*, S, S]
 infix type !>[F[_], S] = Interpr[F, Cont, S]
 
 /** A comonadic handler interprets each operation by its own value */
-@implicitNotFound("no Handler[${F}].\nA Handler answers each operation with a plain value (trait Handler: def handle[A](a: F[A]): A).\nFor a ROW, build the union from the parts: given Handler[F + G] = Handler.union[F, G]\n(each part needs its own Handler in scope first).")
-trait Handler[F[_]]:
+@implicitNotFound("no Answers[${F}].\nAn Answers[F] answers each operation of F with a plain value (trait Answers: def handle[A](a: F[A]): A).\nFor a ROW, build the union from the parts: given Answers[F + G] = Answers.union[F, G]\n(each part needs its own Answers in scope first).")
+trait Answers[F[_]]:
   def handle[A](a: F[A]): A
 
-extension [F[_]](h: Handler[F])
+extension [F[_]](h: Answers[F])
   /**
    * Every handler can be a recording one, without being written
    * twice.
@@ -374,15 +374,15 @@ extension [F[_]](h: Handler[F])
    * sees exactly what the real one sees, because it IS the real one
    * with a line in front.
    */
-  def tracing(log: Any => Unit): Handler[F] = new:
+  def tracing(log: Any => Unit): Answers[F] = new:
     def handle[A](a: F[A]): A = { log(a); h.handle(a) }
 
-/** A comonadic (per-operation) Handler at every answer type. */
-inline def handler[F[_] : Handler as H, S]: F !> S =
+/** A comonadic (per-operation) Answers at every answer type. */
+inline def handler[F[_] : Answers as H, S]: F !> S =
   [X] => e => Cont.Pure(H.handle(e))
 
 /** the same, at any Control carrier */
-inline def interpr[C[_, _, _] : Control as C, F[_] : Handler as H, S]: Interpr[F, C, S] =
+inline def interpr[C[_, _, _] : Control as C, F[_] : Answers as H, S]: Interpr[F, C, S] =
   [X] => e => C.pure(H.handle(e))
 
 /** named, with a PUBLIC `C`, for the same binary-compatibility reason
@@ -390,13 +390,13 @@ inline def interpr[C[_, _, _] : Control as C, F[_] : Handler as H, S]: Interpr[F
  * given makes the compiler synthesize an accessor with an unstable
  * name, and a downstream JAR compiled against it breaks when this
  * library is recompiled. */
-final class ComonadHandler[F[_]](val C: Comonad[F]) extends Handler[F]:
+final class ComonadAnswers[F[_]](val C: Comonad[F]) extends Answers[F]:
   inline def handle[A](a: F[A]): A = C.extract(a)
 
-given [F[_] : Comonad as C]: Handler[F] = ComonadHandler[F](C)
+given [F[_] : Comonad as C]: Answers[F] = ComonadAnswers[F](C)
 
 /** Pure has no operations left to handle */
-given Handler[Pure] with
+given Answers[Pure] with
   inline def handle[A](a: Pure): A = a
 
 /**
@@ -406,20 +406,20 @@ given Handler[Pure] with
  * an agent's `Model + (Tool + (Context + Async))` needs no bespoke
  * interpreter, only its four handlers in scope.
  */
-object Handler {
+object Answers {
   /**
    * Handlers compose along the union: split the operation by the F
    * test and delegate — one handler per effect, one row. Spelled as
    * an EXPLICIT combinator, not a given, on purpose: a given whose
    * subject is a union type lambda enters implicit scope for every
-   * Handler query and crashes the 3.7.1 type comparer ("Failure to
+   * Answers query and crashes the 3.7.1 type comparer ("Failure to
    * join alternatives F and G") while it is being compared against
    * unrelated handlers. Called by name, the same code is fine — the
    * types at a call site are concrete.
    */
-  def union[F[+_], G[+_]](using T: TypeableK[F], hf: Handler[F], hg: Handler[G])
+  def union[F[+_], G[+_]](using T: TypeableK[F], hf: Answers[F], hg: Answers[G])
                          (using Distinct[F + G])
-  : Handler[F + G] = new Handler[F + G]:
+  : Answers[F + G] = new Answers[F + G]:
     def handle[A](a: F[A] | G[A]): A =
       // the split is the kernel's (`split`), the one place the
       // union's excluded middle is claimed — and with no Either on
@@ -440,21 +440,21 @@ object Handler {
    * 1.08x over the nested chain at position 4 and at parity at
    * position 1; the hand-written flat match that CALLS the four
    * handlers is 1.14x, and the one that inlines their bodies 1.24x —
-   * which no macro over opaque `Handler` givens can reach. The 5%
+   * which no macro over opaque `Answers` givens can reach. The 5%
    * between this and the calling form is the test: `Class.isInstance`
    * through a field against a constant-class `instanceof`
    * (specs/handler-fusion.md, and BACKLOG typeablek-instanceof).
    *
-   * Every member needs a `Handler` in scope and every member but the
+   * Every member needs a `Answers` in scope and every member but the
    * last a `TypeableK`; a missing one is a compile error naming the
    * member. `Distinct[R]` is required as for `union`, for the same
    * reason: a class test cannot tell two `Reader % _` apart.
    */
-  inline def flat[R[+_]](using Distinct[R]): Handler[R] = ${ flatImpl[R] }
+  inline def flat[R[+_]](using Distinct[R]): Answers[R] = ${ flatImpl[R] }
 
   /** public because an inline def's splice reaches it from outside
    * (E192, "unstable inline accessor"), as `Distinct.impl` */
-  def flatImpl[R[+_] : Type](using q: Quotes): Expr[Handler[R]] =
+  def flatImpl[R[+_] : Type](using q: Quotes): Expr[Answers[R]] =
     import q.reflect.*
 
     def members(t: TypeRepr): List[TypeRepr] = t.dealias match
@@ -471,11 +471,11 @@ object Handler {
         else TypeLambda(List("A"), _ => List(TypeBounds.empty),
           tl => AppliedType(tc, args.init :+ tl.param(0)))
       case other =>
-        report.errorAndAbort(s"Handler.flat: ${other.show} is not an effect signature applied to Any")
+        report.errorAndAbort(s"Answers.flat: ${other.show} is not an effect signature applied to Any")
 
     val parts = members(TypeRepr.of[R[Any]]).map(constructor)
     if parts.sizeIs < 2 then
-      report.errorAndAbort(s"Handler.flat: ${TypeRepr.of[R].show} is not a row (one member — use its Handler directly)")
+      report.errorAndAbort(s"Answers.flat: ${TypeRepr.of[R].show} is not a row (one member — use its Answers directly)")
 
     /** a member, its handler and (all but the last) its test, BOUND to
      * vals outside the handler object so that each is evaluated once
@@ -495,28 +495,28 @@ object Handler {
     def chain[A: Type](a: Expr[R[A]], bs: List[Bound]): Expr[A] = bs match
       case (m, hT, tO) :: rest => m.asType match
         case '[type f[x]; f] =>
-          val h = hT.asExprOf[Handler[f]]
+          val h = hT.asExprOf[Answers[f]]
           tO match
             case None => '{ $h.handle($a.asInstanceOf[f[A]]) }
             case Some(tT) =>
               val t = tT.asExprOf[TypeableK[f]]
               '{ if $t.test($a) then $h.handle($a.asInstanceOf[f[A]]) else ${ chain[A](a, rest) } }
-      case Nil => report.errorAndAbort("Handler.flat: empty row")
+      case Nil => report.errorAndAbort("Answers.flat: empty row")
 
-    def build(ms: List[TypeRepr], bound: List[Bound]): Expr[Handler[R]] = ms match
+    def build(ms: List[TypeRepr], bound: List[Bound]): Expr[Answers[R]] = ms match
       case m :: rest => m.asType match
         case '[type f[x]; f] =>
-          val h = Expr.summon[Handler[f]].getOrElse(
-            report.errorAndAbort(s"Handler.flat: no Handler[${m.show}] in scope"))
+          val h = Expr.summon[Answers[f]].getOrElse(
+            report.errorAndAbort(s"Answers.flat: no Answers[${m.show}] in scope"))
           if rest.isEmpty then
-            '{ val hv: Handler[f] = $h; ${ build(Nil, bound :+ (m, 'hv.asTerm, None)) } }
+            '{ val hv: Answers[f] = $h; ${ build(Nil, bound :+ (m, 'hv.asTerm, None)) } }
           else
             val t = Expr.summon[TypeableK[f]].getOrElse(
-              report.errorAndAbort(s"Handler.flat: no TypeableK[${m.show}] in scope"))
-            '{ val hv: Handler[f] = $h; val tv: TypeableK[f] = $t
+              report.errorAndAbort(s"Answers.flat: no TypeableK[${m.show}] in scope"))
+            '{ val hv: Answers[f] = $h; val tv: TypeableK[f] = $t
                ${ build(rest, bound :+ (m, 'hv.asTerm, Some('tv.asTerm))) } }
       case Nil =>
-        '{ new Handler[R] { def handle[A](a: R[A]): A = ${ chain[A]('a, bound) } } }
+        '{ new Answers[R] { def handle[A](a: R[A]): A = ${ chain[A]('a, bound) } } }
 
     build(parts, Nil)
 }

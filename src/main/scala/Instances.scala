@@ -109,7 +109,7 @@ object Instances:
    * `Refs` cell each, a connection per tenant. What it does not do is
    * thread state for you; that is `only` plus the effect's own runner.
    */
-  def handler[F[+_]](pick: Handle => Handler[F]): Handler[Of[F]] = new:
+  def handler[F[+_]](pick: Handle => Answers[F]): Answers[Of[F]] = new:
     def handle[A](e: Instances[F, A]): A = pick(e.at).handle(e.op)
 
   /**
@@ -243,5 +243,5 @@ object Tag:
     !.interpret[A, Of[K, F], F, G](p)([X] => (e: Tag[K, F, X]) => effect[F + G, X](e.op))
 
   /** a comonadic handler for one key, out of the effect's own */
-  def handler[K, F[+_]](h: Handler[F]): Handler[Of[K, F]] = new:
+  def handler[K, F[+_]](h: Answers[F]): Answers[Of[K, F]] = new:
     def handle[A](e: Tag[K, F, A]): A = h.handle(e.op)

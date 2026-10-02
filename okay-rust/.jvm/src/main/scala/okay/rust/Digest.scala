@@ -1,6 +1,6 @@
 package okay.rust
 
-import okay.{!, Handler}
+import okay.{!, Answers}
 
 /**
  * Hashing as an okay EFFECT (specs/polyglot-go.md, stage 2): a program asks
@@ -18,17 +18,17 @@ object Digest:
     okay.effect[Digest, Either[String, Array[Byte]]](Sha256(bytes))
 
   /** the operations answered by `f` */
-  def using(f: Sha256 => Either[String, Array[Byte]]): Handler[Digest] = new:
+  def using(f: Sha256 => Either[String, Array[Byte]]): Answers[Digest] = new:
     def handle[A](e: Digest[A]): A = e match
       case op: Sha256 => f(op)
 
   /** the JDK's own SHA-256 */
-  def jdk: Handler[Digest] =
+  def jdk: Answers[Digest] =
     using(op => Right(java.security.MessageDigest.getInstance("SHA-256").digest(op.bytes)))
 
   /** a plugin exporting `okay_sha256(in, n, out)` (the Go plugin in
    * okay-rust/kernels/sha256-go), under Chicory */
-  def wasm(lib: WasmLib): Handler[Digest] =
+  def wasm(lib: WasmLib): Answers[Digest] =
     using(op => lib.withBuffers { b =>
       val out = b.out(32)
       lib.call("okay_sha256", b.in(op.bytes), op.bytes.length.toLong, out).flatMap { code =>

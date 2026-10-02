@@ -139,11 +139,11 @@ handler per call, so wrap the smallest piece that can fail.
 
 ## 5. Handlers
 
-A `Handler[F]` answers each operation with a value. Production talks
+A `Answers[F]` answers each operation with a value. Production talks
 to SQLite in plain JDBC:
 
 ```scala
-def live(c: Connection): Handler[Users] = new:
+def live(c: Connection): Answers[Users] = new:
   def handle[A](e: Users[A]): A = e match
     case Users.Find(id) => selectName(c, id)
     case Users.Save(id, name) =>
@@ -189,7 +189,7 @@ mutation in it — a handler must answer with a value, so something has
 to remember:
 
 ```scala
-final class InMemory[S](init: S)(using St: Store[S]) extends Handler[Users]:
+final class InMemory[S](init: S)(using St: Store[S]) extends Answers[Users]:
   private var s = init
   def state: S = s
   def handle[A](e: Users[A]): A = e match
@@ -349,7 +349,7 @@ told. `Tag` and `Refs` above are the general fixes, and
 the three routes — key, cell or prompt — fits which shape of problem,
 and what each costs.
 
-**A `Handler` cannot get or tell.** If your interpretation needs other
+**A `Answers` cannot get or tell.** If your interpretation needs other
 effects, it is an interpreter (`!.interpret`), not a handler.
 
 **Covariance is per case.** A case that declares its own type
@@ -392,7 +392,7 @@ final case class Put(key: String, value: String) extends KV[Unit]
 object KV extends Effect[KV]
 ```
 
-- **Handlers.** A handler is a `Handler[KV, R, B]` that gets each
+- **Handlers.** A handler is a `Answers[KV, R, B]` that gets each
   operation together with its continuation, and it has the full
   power of section 5's handlers: resume, abort, or resume more than
   once.

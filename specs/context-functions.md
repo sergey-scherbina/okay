@@ -352,7 +352,7 @@ Doors added by this sweep (all additive, explicit forms stay):
   `McpAuth.discover/connect` — `using Http` overloads: the one
   recurring environment of the security flows
 - `Tls.serverSocket` — ambient `Secrets` (client already defaults)
-- `Langchain4j.wired` — `ChatModel ?=> Handler[Model]`: the
+- `Langchain4j.wired` — `ChatModel ?=> Answers[Model]`: the
   handler-awaiting-environment form, first of the wiring family
 - `S3.wired` — `Http ?=> S3`
 - `Configs.ambient` — `Store ?=> Configs`
@@ -374,7 +374,7 @@ Doors added by this sweep (all additive, explicit forms stay):
   environment went ambient (`using MatchStore` on seven functions,
   provide at the edges) — the forgot-to-thread bug class gone
   structurally. The factory half (`Http ?=> Secrets ?=>
-  Handler[Model]`-shaped module factories) found NO consumer: the
+  Answers[Model]`-shaped module factories) found NO consumer: the
   demo builds its provider once from env vars, tests use scripted,
   nobody swaps Http under a factory; where the factory shape pays,
   the doors already shipped (`S3.wired`, `Langchain4j.wired`,

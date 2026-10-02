@@ -8,13 +8,13 @@ import Stepper.*
 /** specs/llm-agentic.md, "The stepper" — one test per box */
 class TestStepper extends munit.FunSuite {
 
-  def runRest[A](prog: A ! Rest)(model: Handler[Model], ctx: Handler[Context]): A =
-    given Handler[Model] = model
-    given Handler[Context] = ctx
-    given rowAll: Handler[Rest] = Handler.flat[Rest]
+  def runRest[A](prog: A ! Rest)(model: Answers[Model], ctx: Answers[Context]): A =
+    given Answers[Model] = model
+    given Answers[Context] = ctx
+    given rowAll: Answers[Rest] = Answers.flat[Rest]
     prog.runWith
 
-  def freshCtx: Handler[Context] = Handlers.context(Compact.all)._2
+  def freshCtx: Answers[Context] = Handlers.context(Compact.all)._2
 
   val search = ToolCall("1", "search", Json.JObj(Vector("q" -> Json.JStr("okay"))))
   val fetch = ToolCall("2", "fetch", Json.JObj(Vector("u" -> Json.JStr("x"))))
@@ -35,10 +35,10 @@ class TestStepper extends munit.FunSuite {
 
     // unstepped, for the baseline
     val direct =
-      given Handler[Model] = model
-      given Handler[Tool] = Handlers.tools(table)
-      given Handler[Context] = freshCtx
-      given r: Handler[Agent] = Handler.flat[Agent]
+      given Answers[Model] = model
+      given Answers[Tool] = Handlers.tools(table)
+      given Answers[Context] = freshCtx
+      given r: Answers[Agent] = Answers.flat[Agent]
       agent.runWith
 
     // stepped: collect what paused, answer from the same table
@@ -86,10 +86,10 @@ class TestStepper extends munit.FunSuite {
     val table = Map[String, ToolCall => String]("search" -> (_ => "found"))
     def model = Handlers.scripted(Seq(Reply("", Seq(search)), Reply("fin", Nil)))
     val direct =
-      given Handler[Model] = model
-      given Handler[Tool] = Handlers.tools(table)
-      given Handler[Context] = freshCtx
-      given r: Handler[Agent] = Handler.flat[Agent]
+      given Answers[Model] = model
+      given Answers[Tool] = Handlers.tools(table)
+      given Answers[Context] = freshCtx
+      given r: Answers[Agent] = Answers.flat[Agent]
       agent.runWith
     assertEquals(runRest(transparent(stepped(agent))(table))(model, freshCtx), direct)
   }
@@ -101,10 +101,10 @@ class TestStepper extends munit.FunSuite {
     val table = Map[String, ToolCall => String]("search" -> (_ => "found"))
     def model = Handlers.scripted(Seq(Reply("", Seq(search)), Reply("fin", Nil)))
     val direct =
-      given Handler[Model] = model
-      given Handler[Tool] = Handlers.tools(table)
-      given Handler[Context] = freshCtx
-      given r: Handler[Agent] = Handler.flat[Agent]
+      given Answers[Model] = model
+      given Answers[Tool] = Handlers.tools(table)
+      given Answers[Context] = freshCtx
+      given r: Answers[Agent] = Answers.flat[Agent]
       agent.runWith
     assertEquals(runRest(transparentF(stepped(agent))(tableF))(model, freshCtx), direct)
     assertEquals(performed, 1)

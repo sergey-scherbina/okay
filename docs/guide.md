@@ -35,7 +35,7 @@ same freer tree at the signature "a function of the continuation"
 ([theory ch. 11](theory/11-one-tree.md)): a program and its meaning
 are made of the same nodes. Three ways to run:
 
-- `runWith` — a per-operation `Handler[F]` (comonadic: each operation
+- `runWith` — a per-operation `Answers[F]` (comonadic: each operation
   answers with a value);
 - `!.relay` — tail-resumptive handling: the answer-polymorphic handler
   must resume exactly once, so the loop is tail-recursive; the fastest
@@ -387,10 +387,10 @@ cheaper. Likewise prefer `State.modify(f)` to a `get` then a `set`: it
 is ONE operation (since effect-row-recursion-cost, 2026-09-26), where
 the pair is two operations, two forwards, and a closure between them.
 
-**Handling.** `runWith(using h)` for a per-operation `Handler[F]`;
+**Handling.** `runWith(using h)` for a per-operation `Answers[F]`;
 `h.tracing(log)` makes any handler a recording one, since the
 operations are already data; `!.translate` interprets each operation
-into a PROGRAM in another row (a `Handler` answers with a value, so it
+into a PROGRAM in another row (a `Answers` answers with a value, so it
 cannot itself tell or get), and `!.interpret` is the same with the
 widening done for you, for when the target row is BIGGER than the
 source's:
@@ -592,7 +592,7 @@ that no consumer pays a `Left` per element. One instance runs on every
 carrier: `Stream.foldUntil` (any `Stream`), `xs.foldUntilTo` (any
 `Foldable` — a `List`, an `Iterator` left positioned after the stop, a
 `Producer`), `program.foldUntil` (a writer program — pure, or
-effectful with its `Handler` in scope), `Chunks.foldUntil`,
+effectful with its `Answers` in scope), `Chunks.foldUntil`,
 `Take.foldUntil` (the fold as an iteratee, §5), and `Writer.foldUntil`,
 `Producer.foldUntil`, `Source.runFoldUntil` (the effectful ones,
 answering `R ! F`):

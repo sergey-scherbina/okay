@@ -22,9 +22,9 @@ class TestErrorMessages extends munit.FunSuite {
     assert(e.contains("Choose"), e)
   }
 
-  test("missing Handler shows the union recipe") {
-    val e = compileErrors("summon[okay.Handler[Option]] ")
-    assert(e.contains("Handler.union"), e)
+  test("missing Answers shows the union recipe") {
+    val e = compileErrors("summon[okay.Answers[Option]] ")
+    assert(e.contains("Answers.union"), e)
   }
 
   // TypeableK and CanBlock cannot be PINNED from inside package okay:

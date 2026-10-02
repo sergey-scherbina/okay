@@ -19,7 +19,7 @@ server"), so where the encoder is in process the probe is the
 cheapest tier and not the dearest.
 
 **As okay-rag's effect.** `Langchain4jEmbed.handler(model):
-Handler[Embed]` wraps the same call as an `Embed` handler, for a
+Answers[Embed]` wraps the same call as an `Embed` handler, for a
 program built against `Retrieve.vector` — one call per text, matching
 the model's own API (no batch endpoint to prefer).
 

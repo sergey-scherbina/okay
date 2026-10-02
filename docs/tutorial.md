@@ -450,10 +450,10 @@ unit test or a production agent depending on what you install:
 
 ```scala
 // a test
-given Handler[Model] = Handlers.scripted(Seq(Reply("hi", Nil)))
+given Answers[Model] = Handlers.scripted(Seq(Reply("hi", Nil)))
 // a live model — OpenAI-compatible, so most providers and every
 // local runtime; Provider.anthropic speaks the Messages API instead
-given Handler[Model] = Provider.openAi(Transports.http(), key, "gpt-4o-mini")
+given Answers[Model] = Provider.openAi(Transports.http(), key, "gpt-4o-mini")
 ```
 
 The conversation is compacted by an `Aggregator`, so staying inside a
@@ -541,7 +541,7 @@ the world untouched.
 val link = Stdio.of(Stdio.spawn(Seq("npx", "-y", "@modelcontextprotocol/server-everything")))
 val session = Client.connect(link, Mcp.Info("okay", "1")).runWith
 
-given Handler[Tool] = session.handler          // the only line that changes
+given Answers[Tool] = session.handler          // the only line that changes
 Agent.converse("...", session.tools.runWith)   // its tools, discovered
 ```
 
@@ -553,7 +553,7 @@ what a server serves (`Server.run(Stdio.std, info, tools, table)` —
 `RepoMcp` serves this repository that way), a server's resources
 become a `Corpus` the retriever indexes (`session.corpus`), its
 prompts become the `Seq[Turn]` an agent starts from, and
-`sampling/createMessage` is answered by whatever `Handler[Model]` you
+`sampling/createMessage` is answered by whatever `Answers[Model]` you
 already had — an MCP server borrows your model. Transports: stdio, or
 streamable HTTP (`McpHttp.link`), with server push on the GET stream.
 All of it verified live against the protocol's reference server

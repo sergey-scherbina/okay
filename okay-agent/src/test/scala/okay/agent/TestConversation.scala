@@ -1,6 +1,6 @@
 package okay.agent
 
-import okay.Handler
+import okay.Answers
 import okay.given
 import okay.codec.Json.*
 import okay.agent.Conversation.*
@@ -46,7 +46,7 @@ class TestConversation extends munit.FunSuite {
   def start(in: Intake[String], j: Durable.Journal, opening: String = "it broke",
             touched: mutable.Buffer[ToolCall] = mutable.Buffer())
   : Either[Durable.Awaiting, Outcome[String]] =
-    given Handler[Tool] = Durable.tools(
+    given Answers[Tool] = Durable.tools(
       Handlers.recording(Handlers.tools(Map(
         AskOp -> (_ => "THE INNER HANDLER ANSWERED, WHICH IT MUST NOT"))))(touched),
       j)(Conversation.policy())

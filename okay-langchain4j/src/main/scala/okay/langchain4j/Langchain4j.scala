@@ -1,6 +1,6 @@
 package okay.langchain4j
 
-import okay.Handler
+import okay.Answers
 import okay.agent.{Model, Reply, ToolCall, ToolSpec, Turn}
 import okay.codec.Json
 import dev.langchain4j.data.message as M
@@ -13,7 +13,7 @@ import scala.jdk.CollectionConverters.*
 
 /**
  * The interop sentence's Model half (specs/llm-agentic.md): their
- * `ChatModel` becomes a `Handler[Model]`, so every program written
+ * `ChatModel` becomes a `Answers[Model]`, so every program written
  * against the effect — compaction, search, grounding, the durable
  * journal — runs over langchain4j's provider breadth unchanged. The
  * mappings are pure and tested against a SCRIPTED ChatModel; the
@@ -94,7 +94,7 @@ object Langchain4j {
    * Provider.counting(bpe)) — the compaction budget never costs a
    * round trip, and their Tokenizer is deliberately not consulted.
    */
-  def model(chat: ChatModel, count: String => Int = _.length / 4): Handler[Model] = new:
+  def model(chat: ChatModel, count: String => Int = _.length / 4): Answers[Model] = new:
     def handle[A](e: Model[A]): A = e match
       case Model.Complete(context, tools) =>
         val b = ChatRequest.builder().messages(context.map(message).asJava)
@@ -104,6 +104,6 @@ object Langchain4j {
 
   /** the wiring form (ctx-everywhere): the handler awaiting its
    * environment — store it, ship it, provide(chatModel){ use it } */
-  def wired(count: String => Int = _.length / 4): dev.langchain4j.model.chat.ChatModel ?=> Handler[Model] =
+  def wired(count: String => Int = _.length / 4): dev.langchain4j.model.chat.ChatModel ?=> Answers[Model] =
     model(summon[dev.langchain4j.model.chat.ChatModel], count)
 }

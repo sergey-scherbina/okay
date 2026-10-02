@@ -42,7 +42,7 @@ abstract class WireConformance extends munit.FunSuite:
 
   /** the engine over this suite's link, made once */
   def engine: ForeignWorker
-  private given okay.Handler[ForeignEval] = engine.handler
+  private given okay.Answers[ForeignEval] = engine.handler
 
   private val choose = Foreign.callback[Vector[Long], Long]("choose")(xs => effect[Choose, Long](Choose(xs)))
   private val priceOf = Foreign.callback[String, Double]("price_of")(sku => Reader.ask[Map[String, Double]].map(_(sku)))

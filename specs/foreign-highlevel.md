@@ -65,7 +65,7 @@ Each stage is its own lane and appends its Decisions and Results here.
 ### Decisions
 
 - **Why move the trait rather than add a bridge module.** The trait needs
-  `Handler` (core) and `Json` (okay-codec) and nothing of okay-agent; its
+  `Answers` (core) and `Json` (okay-codec) and nothing of okay-agent; its
   one agent-specific part is the `Tool` INSTANCE, which belongs in
   `Tool`'s companion anyway (implicit scope finds it there). A bridge
   module `okay-py-durable` would be one more artifact for users to know

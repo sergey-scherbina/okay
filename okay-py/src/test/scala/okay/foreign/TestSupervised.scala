@@ -51,13 +51,13 @@ class TestSupervised extends munit.FunSuite:
 
   /** kill the worker's PROCESS from inside a program: the engine finds out
    * on its next read, exactly as it would after a crash */
-  private def crash(using okay.Handler[ForeignEval]): Unit =
+  private def crash(using okay.Answers[ForeignEval]): Unit =
     val _ = Foreign.fn[Long]("os:_exit")(0).runWith
 
   test("a call past its deadline answers timeout as DATA, and the worker is dead after it") {
     given WireDeadline = WireDeadline.after(500.millis)
     val w = fresh()
-    given okay.Handler[ForeignEval] = w.handler
+    given okay.Answers[ForeignEval] = w.handler
     val t0 = System.nanoTime
     val late = Foreign.fn[Long]("rel:slow")().runWith
     assert((System.nanoTime - t0) < 5.seconds.toNanos, "the deadline, not the sleep, decided")
@@ -69,7 +69,7 @@ class TestSupervised extends munit.FunSuite:
   test("supervised: after a timeout the next call runs on a fresh worker") {
     given WireDeadline = WireDeadline.after(500.millis)
     val w = ForeignWorker.supervised(fresh())
-    given okay.Handler[ForeignEval] = w.handler
+    given okay.Answers[ForeignEval] = w.handler
     assert(Foreign.fn[Long]("rel:slow")().runWith.left.exists(_.kind == "timeout"))
     assertEquals(Foreign.fn[Long]("rel:fast")(21L).runWith, Right(42L))
     assertEquals(w.restarts, 1)
@@ -78,7 +78,7 @@ class TestSupervised extends munit.FunSuite:
 
   test("MULTI-SHOT across a CRASH: the worker dies between two choices, and every branch still comes back") {
     val w = ForeignWorker.supervised(fresh())
-    given okay.Handler[ForeignEval] = w.handler
+    given okay.Answers[ForeignEval] = w.handler
     var crashed = false
     val choose = Foreign.callback[Vector[Long], Long]("choose") { xs =>
       if !crashed && xs == Vector(10L, 20L) then { crashed = true; crash }
@@ -94,7 +94,7 @@ class TestSupervised extends munit.FunSuite:
 
   test("a far side that is not a pure function of its answers is caught on replay, not answered wrongly") {
     val w = ForeignWorker.supervised(fresh())
-    given okay.Handler[ForeignEval] = w.handler
+    given okay.Answers[ForeignEval] = w.handler
     var crashed = false
     val choose = Foreign.callback[Vector[Long], Long]("choose")(xs => effect[Choose, Long](Choose(xs)))
     val anyStep = (name: String) => Foreign.callback[Long, Long](name) { x =>
@@ -112,7 +112,7 @@ class TestSupervised extends munit.FunSuite:
 
   test("a direct-style call caught mid-ask answers WorkerDied: its far-side frame is gone") {
     val w = ForeignWorker.supervised(fresh())
-    given okay.Handler[ForeignEval] = w.handler
+    given okay.Answers[ForeignEval] = w.handler
     val priceOf = Foreign.callback[String, Double]("price_of") { _ => crash; okay.Free.pure(4.0) }
     val got = Foreign.fn[Double]("rel:quote").calling(Foreign.callbacks(priceOf))("tea").runWith
     assert(got.left.exists(_.kind == "WorkerDied"), got.toString)
@@ -122,7 +122,7 @@ class TestSupervised extends munit.FunSuite:
 
   test("a held object from before a restart is refused by name, never re-pointed") {
     val w = ForeignWorker.supervised(fresh())
-    given okay.Handler[ForeignEval] = w.handler
+    given okay.Answers[ForeignEval] = w.handler
     val c = Foreign.hold("rel:counter")().runWith.toOption.get
     assertEquals(c.call[Long]("add")(3L).runWith, Right(3L))
     crash

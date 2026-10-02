@@ -1,6 +1,6 @@
 package okay.r
 
-import okay.Handler
+import okay.Answers
 import okay.agent.Durable
 import RValue.*
 import java.util.concurrent.atomic.AtomicInteger
@@ -12,7 +12,7 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 class TestRJournal extends munit.FunSuite {
 
-  private def canned(ran: AtomicInteger): Handler[REval] = new Handler[REval]:
+  private def canned(ran: AtomicInteger): Answers[REval] = new Answers[REval]:
     def handle[A](op: REval[A]): A = op match
       case REval.Call(okay.foreign.Address.Fn(fn), _, _) =>
         ran.incrementAndGet(): Unit

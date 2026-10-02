@@ -1,6 +1,6 @@
 package okay.rust
 
-import okay.{!, Handler}
+import okay.{!, Answers}
 
 /**
  * Password hashing as an okay EFFECT (specs/polyglot-rust.md, stage 1): a
@@ -24,7 +24,7 @@ object PasswordHash extends PasswordHashPlatform:
     okay.effect[PasswordHash, Either[String, Array[Byte]]](Argon2id(password, salt, memoryKb, iterations, parallelism, length))
 
   /** the operations answered by `f` */
-  def using(f: Argon2id => Either[String, Array[Byte]]): Handler[PasswordHash] = new:
+  def using(f: Argon2id => Either[String, Array[Byte]]): Answers[PasswordHash] = new:
     def handle[A](e: PasswordHash[A]): A = e match
       case op: Argon2id => f(op)
 

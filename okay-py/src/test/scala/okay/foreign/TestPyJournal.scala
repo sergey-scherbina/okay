@@ -1,6 +1,6 @@
 package okay.foreign
 
-import okay.Handler
+import okay.Answers
 import okay.agent.Durable
 import Value.*
 import java.util.concurrent.atomic.AtomicInteger
@@ -14,7 +14,7 @@ import java.util.concurrent.atomic.AtomicInteger
 class TestPyJournal extends munit.FunSuite {
 
   /** answers by address; counts every call that reached "Python" */
-  private def canned(ran: AtomicInteger): Handler[PyEval] = new Handler[PyEval]:
+  private def canned(ran: AtomicInteger): Answers[PyEval] = new Answers[PyEval]:
     def handle[A](op: PyEval[A]): A = op match
       case PyEval.Call(Address.Fn(fn), args, false) =>
         ran.incrementAndGet(): Unit

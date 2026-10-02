@@ -1,6 +1,6 @@
 package okay.agent
 
-import okay.Handler
+import okay.Answers
 import okay.codec.Json
 
 /**
@@ -198,11 +198,11 @@ object Rerun {
    * caller's MODEL must be live from that point: see the mode's own
    * note above.
    */
-  def live(base: Version, inner: Handler[Tool],
+  def live(base: Version, inner: Answers[Tool],
            mode: OnDiverge = OnDiverge.Loud,
            provenance: Provenance = Provenance(),
            versions: Versions = MemoryVersions())
-  : (Run, Handler[Tool]) =
+  : (Run, Answers[Tool]) =
     val run = new Run(base, mode, provenance, versions)
     (run, run.handler(inner))
 
@@ -237,7 +237,7 @@ object Rerun {
         versions.put(v)
         Outcome(v, Some(d))
 
-    private[agent] def handler(inner: Handler[Tool]): Handler[Tool] = new Handler[Tool]:
+    private[agent] def handler(inner: Answers[Tool]): Answers[Tool] = new Answers[Tool]:
       def handle[A](e: Tool[A]): A = e match
         case Tool.Call(c) =>
           val n = seq

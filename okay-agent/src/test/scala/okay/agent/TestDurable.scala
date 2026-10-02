@@ -1,6 +1,6 @@
 package okay.agent
 
-import okay.{!, +, Async, Handler}
+import okay.{!, +, Async, Answers}
 import okay.given
 import okay.codec.Json
 import okay.agent.Durable.OnRepeat
@@ -13,22 +13,22 @@ import scala.collection.mutable
  */
 class TestDurable extends munit.FunSuite {
 
-  def run[A](prog: A ! Agent)(model: Handler[Model], tool: Handler[Tool],
-                              ctx: Handler[Context]): A =
-    given Handler[Model] = model
-    given Handler[Tool] = tool
-    given Handler[Context] = ctx
-    given rowMA: Handler[Model + Async] = okay.Handler.union[Model, Async]
-    given rowCMA: Handler[Context + (Model + Async)] =
-      okay.Handler.union[Context, Model + Async]
-    given rowAll: Handler[Agent] = okay.Handler.union[Tool, Context + (Model + Async)]
+  def run[A](prog: A ! Agent)(model: Answers[Model], tool: Answers[Tool],
+                              ctx: Answers[Context]): A =
+    given Answers[Model] = model
+    given Answers[Tool] = tool
+    given Answers[Context] = ctx
+    given rowMA: Answers[Model + Async] = okay.Answers.union[Model, Async]
+    given rowCMA: Answers[Context + (Model + Async)] =
+      okay.Answers.union[Context, Model + Async]
+    given rowAll: Answers[Agent] = okay.Answers.union[Tool, Context + (Model + Async)]
     prog.runWith
 
   val charge = ToolCall("c1", "charge",
     Json.JObj(Vector("amount" -> Json.JNum(100))))
 
   /** a payment tool that counts how many times the world was touched */
-  def payments(log: mutable.Buffer[ToolCall]): Handler[Tool] =
+  def payments(log: mutable.Buffer[ToolCall]): Answers[Tool] =
     Handlers.recording(Handlers.tools(Map(
       "charge" -> (_ => "receipt-1"),
       "read" -> (_ => "data"))))(log)
@@ -239,7 +239,7 @@ class TestDurable extends munit.FunSuite {
 
   /** a table that would answer the question if it were ever reached —
    * which is the point: it must not be */
-  def answering(log: mutable.Buffer[ToolCall]): Handler[Tool] =
+  def answering(log: mutable.Buffer[ToolCall]): Answers[Tool] =
     Handlers.recording(Handlers.tools(Map(
       "ask" -> (_ => "THE INNER HANDLER ANSWERED, WHICH IT MUST NOT"),
       "charge" -> (_ => "receipt-1"))))(log)

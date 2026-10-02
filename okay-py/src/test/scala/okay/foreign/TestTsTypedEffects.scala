@@ -39,7 +39,7 @@ class TestTsTypedEffects extends munit.FunSuite {
     Files.writeString(d.resolve("typed.ts"), typed): Unit
     d
   private lazy val w = TsWorker.start(dir, modules = Seq("typed"))
-  private given okay.Handler[PyEval] = w.handler
+  private given okay.Answers[PyEval] = w.handler
   override def afterAll(): Unit = if node then w.close()
 
   test("the operations' TypeScript type is generated from the Scala callbacks") {

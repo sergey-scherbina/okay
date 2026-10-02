@@ -207,7 +207,7 @@ trait MonadPlus[F[_]]
 
 /**
  * extract a value from a context — the basis of pure per-operation
- * effect handlers: given [F: Comonad]: Handler[F] handles by extract
+ * effect handlers: given [F: Comonad]: Answers[F] handles by extract
  */
 trait Comonad[F[_]] extends Functor[F]:
   extension [A](a: F[A])
@@ -226,7 +226,7 @@ object Comonad:
    * (`Static` became a class for it; `Cont` and `Prog` needed an
    * explicit `import ….{flatMap, map}`), contested the throws union's
    * `.map` and hijacked kyo's. In the companion it is still in the
-   * implicit scope of `Comonad[Id]` — `summon`, and the `Handler[Id]`
+   * implicit scope of `Comonad[Id]` — `summon`, and the `Answers[Id]`
    * derived from it, find it unchanged — but not in the lexical scope
    * of a bare value.
    */

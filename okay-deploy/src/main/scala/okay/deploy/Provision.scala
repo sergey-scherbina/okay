@@ -1,6 +1,6 @@
 package okay.deploy
 
-import okay.Handler
+import okay.Answers
 import java.nio.file.Path
 
 /**
@@ -57,7 +57,7 @@ object Provision:
    * `Needs.provisioned` runs with nothing else said; a test that
    * wants the volume in a temporary directory brings its own.
    */
-  given local: Handler[Provision] = new:
+  given local: Answers[Provision] = new:
     def handle[A](p: Provision[A]): A = p match
       case Volume(path, _, _) => Path.of(path)
       case Port(n, _) => n

@@ -1,6 +1,6 @@
 package okay.agent
 
-import okay.Handler
+import okay.Answers
 import okay.codec.Json
 
 /**
@@ -34,7 +34,7 @@ class TestDurableAnyOp extends munit.FunSuite {
     // framework that journalled the answer itself instead of asking
     // the instance would pass every test below. The `=` prefix is
     // there so the journal's contents prove whose codec ran.
-    def perform[A](op: Calc[A], inner: Handler[Calc]): (A, String) = op match
+    def perform[A](op: Calc[A], inner: Answers[Calc]): (A, String) = op match
       case Calc.Add(x, y) =>
         val answer: Int = inner.handle(Calc.Add(x, y))
         (answer, s"=$answer")
@@ -42,8 +42,8 @@ class TestDurableAnyOp extends munit.FunSuite {
       case Calc.Add(_, _) => written.stripPrefix("=").toInt
 
   /** counts what actually reached the world */
-  private def adder(ran: java.util.concurrent.atomic.AtomicInteger): Handler[Calc] =
-    new Handler[Calc]:
+  private def adder(ran: java.util.concurrent.atomic.AtomicInteger): Answers[Calc] =
+    new Answers[Calc]:
       def handle[A](op: Calc[A]): A = op match
         case Calc.Add(x, y) => ran.incrementAndGet(); x + y
 

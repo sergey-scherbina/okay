@@ -1,6 +1,6 @@
 package okay.deploy
 
-import okay.{Handler, Module, Static, module, moduleAs, wire}
+import okay.{Answers, Module, Static, module, moduleAs, wire}
 import okay.given
 import Needs.needs
 
@@ -109,7 +109,7 @@ class TestNeeds extends munit.FunSuite:
     val store = Needs.provisioned[FileStore, FileStore](
       Static.op(Provision.Volume("/app/data")).map(d => FileStore(d.resolve("board.log").toString)))(_ => ())(
       // a test's place: the volume lives in a temporary directory
-      using new Handler[Provision]:
+      using new Answers[Provision]:
         def handle[A](p: Provision[A]): A = p match
           case Provision.Volume(path, _, _) => java.nio.file.Path.of("/tmp/vol-test").resolve(path.stripPrefix("/"))
           case other => Provision.local.handle(other))

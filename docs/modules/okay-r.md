@@ -316,7 +316,7 @@ okay-codec, for the `Schema` at the edge.
 
 A correction that arrived with the implementation (2026-09-07): both
 this spec and specs/py.md used to say an R step is "journalable by
-`Durable`", and it is not. `Durable.tools` wraps a `Handler[Tool]` and
+`Durable`", and it is not. `Durable.tools` wraps a `Answers[Tool]` and
 `Tool.Call` carries a `ToolCall`; there is no generic
 journal-any-operation. An R call reached THROUGH a tool is journalled
 because the tool is — journaling an `REval` itself was filed as

@@ -88,7 +88,7 @@ object Log:
   def to(write: Line => Unit, min: Level = Level.Info,
          tracer: Option[Tracer] = None,
          clock: () => Long = () => System.currentTimeMillis,
-         logger: String = ""): Handler[Says] = new:
+         logger: String = ""): Answers[Says] = new:
     def handle[A](op: Writer[Line, A]): A = op match
       case Writer.Say(l) =>
         if l.level.atLeast(min) then write(stamp(l, tracer, clock, logger))
@@ -103,7 +103,7 @@ object Log:
   def console(min: Level = Level.Info, out: String => Unit = println,
               tracer: Option[Tracer] = None,
               clock: () => Long = () => System.currentTimeMillis,
-              logger: String = ""): Handler[Says] =
+              logger: String = ""): Answers[Says] =
     to(l => out(json(l)), min, tracer, clock, logger)
 
   /**
@@ -116,7 +116,7 @@ object Log:
             tracer: Option[Tracer] = None,
             clock: () => Long = () => System.currentTimeMillis,
             logger: String = "",
-            ack: Ack = Ack.Received): Handler[Says] =
+            ack: Ack = Ack.Received): Answers[Says] =
     to({ l =>
       val key = l.traceId.getOrElse("").getBytes("UTF-8")
       t.append(key, okay.codec.Cbor.write(l), ack): Unit
@@ -126,7 +126,7 @@ object Log:
   def collecting(min: Level = Level.Debug,
                  tracer: Option[Tracer] = None,
                  clock: () => Long = () => 0L,
-                 logger: String = ""): (Handler[Says], () => Vector[Line]) =
+                 logger: String = ""): (Answers[Says], () => Vector[Line]) =
     var seen = Vector.empty[Line]
     (to(l => seen :+= l, min, tracer, clock, logger), () => seen)
 

@@ -66,7 +66,7 @@ class FoldConsumersBenchmark {
   // a tuple and a program built and run each time — written out here
   // verbatim as the control rows, so each pair alternates in one run.
 
-  private def foldControl[S[_], F[+_], A, B](s: S[A])(using f: Fold[A, B])(using St: Stream[S, F], H: Handler[F]): B = {
+  private def foldControl[S[_], F[+_], A, B](s: S[A])(using f: Fold[A, B])(using St: Stream[S, F], H: Answers[F]): B = {
     @annotation.tailrec def loop(b: B, x: S[A]): B = St.uncons(x).runWith match
       case None => b
       case Some((a, t)) => loop(f.add(b, a), t)

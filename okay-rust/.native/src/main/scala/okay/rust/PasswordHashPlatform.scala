@@ -3,7 +3,7 @@ package okay.rust
 import scala.scalanative.libc.stdlib
 import scala.scalanative.unsafe.*
 import scala.scalanative.unsigned.*
-import okay.Handler
+import okay.Answers
 
 /**
  * The argon2 kernel's C function, as Scala Native sees it
@@ -20,7 +20,7 @@ import okay.Handler
 trait PasswordHashPlatform:
 
   /** the staticlib, linked in: every buffer malloc'd here and freed after the call */
-  def native: Handler[PasswordHash] = PasswordHash.using { op =>
+  def native: Answers[PasswordHash] = PasswordHash.using { op =>
     def copy(a: Array[Byte]): Ptr[Byte] =
       val p = stdlib.malloc(math.max(1, a.length).toCSize)
       var i = 0

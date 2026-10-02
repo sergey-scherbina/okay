@@ -15,7 +15,7 @@ class TestRHandles extends munit.FunSuite {
   override def munitIgnore: Boolean = TestR.rscript.isEmpty
 
   private lazy val r = RSubprocess.start(rscript = TestR.rscript.get)
-  private given okay.Handler[REval] = r.handler
+  private given okay.Answers[REval] = r.handler
   override def afterAll(): Unit = if TestR.rscript.nonEmpty then r.close()
 
   test("an lm fit held in R, predicted on new data through the handle") {

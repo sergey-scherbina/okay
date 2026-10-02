@@ -87,7 +87,7 @@ Async.par(async(1), async(2)).runWith          // fibers on cats-effect
 - `import okay.given` is required in every satellite for the
   extension methods of Okay's package-level givens (`runWith` above
   all); `import okay.cats.given` brings the instances.
-- A row containing `Throws` has no `Handler` — `runEither` before
+- A row containing `Throws` has no `Answers` — `runEither` before
   `runWith`.
 - discipline-munit 2.0.0 is inline-incompatible with munit 1.1 —
   the law suites unfold `RuleSet.all.properties` into plain

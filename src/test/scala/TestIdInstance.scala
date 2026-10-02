@@ -37,6 +37,6 @@ class TestIdInstance extends munit.FunSuite:
     assertEquals(C.extract(7), 7)
   }
 
-  test("... and so is the Handler it derives") {
-    assert(summon[Handler[Id]].isInstanceOf[ComonadHandler[?]])
+  test("... and so is the Answers it derives") {
+    assert(summon[Answers[Id]].isInstanceOf[ComonadAnswers[?]])
   }

@@ -22,7 +22,7 @@ class TestStatic extends munit.FunSuite {
       calls += 1
       ks.map(k => k -> answers.getOrElse(k, 0)).toMap
 
-  private def handler(st: Store, flag: Boolean, log: collection.mutable.Buffer[String]): Handler[Fetch] =
+  private def handler(st: Store, flag: Boolean, log: collection.mutable.Buffer[String]): Answers[Fetch] =
     new:
       def handle[A](e: Fetch[A]): A = e match
         case Get(k) => log += s"get:$k"; st.one(k)
@@ -43,7 +43,7 @@ class TestStatic extends munit.FunSuite {
 
     val st = Store(Map("a" -> 1, "b" -> 2))
     val log = collection.mutable.Buffer.empty[String]
-    given Handler[Fetch] = handler(st, true, log)
+    given Answers[Fetch] = handler(st, true, log)
     assertEquals(prog.toFree.runWith, 1)
     assertEquals(log.toList, List("flag:f", "get:a"))  // two, not three
   }

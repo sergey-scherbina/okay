@@ -30,7 +30,7 @@ class TestRCallbacks extends munit.FunSuite {
     val engine = RSubprocess.start(rscript = TestR.rscript.get)
     val _ = engine.handler.handle(REval.Call("base::source", Vector(RValue.Str(file.toString))))
     engine
-  private given okay.Handler[REval] = r.handler
+  private given okay.Answers[REval] = r.handler
   override def afterAll(): Unit = if TestR.rscript.nonEmpty then r.close()
 
   private val inc = R.callback[Long, Long]("inc")(x => State.modify[Int](_ + 1).map(_ => x + 1))

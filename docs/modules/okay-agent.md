@@ -226,9 +226,9 @@ reason).
 
 ## Gotchas
 
-- `Handler.flat[Agent]` (core) assembles one handler per effect into
+- `Answers.flat[Agent]` (core) assembles one handler per effect into
   the row handler in one expression — the four-row is exactly the
-  shape where the nested `Handler.union` chain paid 24% at the last
+  shape where the nested `Answers.union` chain paid 24% at the last
   position (handler-fusion-flat). Both are explicit combinators, not
   givens, because a given over a union type lambda crashes the 3.7.1
   type comparer.
@@ -250,7 +250,7 @@ accident you discover in production. Costs no tool call per turn.
 
 ## Two providers, and the portable form
 
-`Provider.openAi` and `Provider.anthropic` are both `Handler[Model]`,
+`Provider.openAi` and `Provider.anthropic` are both `Answers[Model]`,
 speaking protocols that differ in every way that could have leaked
 into the effect (system as a field or a message, content as blocks or
 a string, `input_schema` or `parameters`, arguments as an object or a
@@ -268,7 +268,7 @@ suites run.
 
 ## A live model
 
-`Provider.openAi(transport, key, model)` is a `Handler[Model]`
+`Provider.openAi(transport, key, model)` is a `Answers[Model]`
 speaking the OpenAI-compatible protocol, so the same agent programs
 run against OpenAI, Groq, Together, OpenRouter or a local runtime
 with no change above the effect. Swap it for `Handlers.scripted` and
@@ -318,7 +318,7 @@ shipped, and the list is kept because it is a good index of them:
 ## Tools from an MCP server
 
 A tool call is an effect and the handler decides what it means — so an
-MCP server plugs in as `session.handler: Handler[Tool]` and the agent
+MCP server plugs in as `session.handler: Answers[Tool]` and the agent
 program does not change by one character. Discovery included: the
 `ToolSpec`s a model is told about can come from `session.tools`,
 schemas and all. See [okay-mcp](okay-mcp.md); `TestAgentOverMcp` runs

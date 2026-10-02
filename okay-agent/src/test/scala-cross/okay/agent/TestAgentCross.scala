@@ -9,7 +9,7 @@ import scala.collection.mutable
  * The cross-platform policy applied to the agent: ONE source, run by
  * the JVM suite and by the JS suite under Node.
  *
- * The finding that shaped it: a `Handler[Model]` must ANSWER with a
+ * The finding that shaped it: a `Answers[Model]` must ANSWER with a
  * value, so it runs the request to completion inside itself — which
  * needs a thread that can park, and JS has none. The portable shape
  * is therefore peeling rather than handling. Tools and context are

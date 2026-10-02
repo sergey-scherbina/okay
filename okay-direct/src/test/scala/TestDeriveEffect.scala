@@ -16,7 +16,7 @@ class TestDeriveEffect extends munit.FunSuite {
     case Get(k: String) extends Db[Option[Int]]
     case Put(k: String, v: Int) extends Db[Unit]
 
-  val handler: Handler[Db] = new:
+  val handler: Answers[Db] = new:
     var store = Map("a" -> 1)
     def handle[A](e: Db[A]): A = e match
       case Db.Get(k)    => store.get(k)
@@ -53,7 +53,7 @@ class TestDeriveEffect extends munit.FunSuite {
   test("a row has no instance of its own, and needs none") {
     // the erasure-based fallback is gone: every signature declares its
     // test with `derives Effect`, and a ROW is split by testing its
-    // PARTS — `Handler.union[F, G]` and `<|>` ask only about the left
+    // PARTS — `Answers.union[F, G]` and `<|>` ask only about the left
     // side, so a composite instance is never needed. It is also not
     // available, deliberately:
     assert(!scala.compiletime.testing.typeChecks(

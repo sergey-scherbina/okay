@@ -42,7 +42,7 @@ final class Session:
   def tools: Seq[ToolSpec] ! Async               // tools/list, cursor followed
   def call(c: ToolCall): String ! Async          // tools/call
   def interpret: Tool ==> ([X] =>> X ! Async)    // the cross-platform handler
-  def handler(using CanBlock): Handler[Tool]     // the blocking one, JVM/Native
+  def handler(using CanBlock): Answers[Tool]     // the blocking one, JVM/Native
 
 // the server: our tools, as an MCP server. A pure Stage — no I/O
 object Server:
@@ -99,7 +99,7 @@ Four files, in the layering the library already uses:
 - `Stdio.scala` (JVM) — the process transport: lines out of a pipe are
   a `Source[String]`, which is what the rest already consumes.
 
-The blocking `Handler[Tool]` and the cross-platform `interpret` are
+The blocking `Answers[Tool]` and the cross-platform `interpret` are
 the same door as everywhere else: a comonadic handler must ANSWER, so
 it needs `CanBlock`; `translate` forwards into `Async` instead and
 works where nothing may park.
@@ -182,7 +182,7 @@ Session.templates: Seq[Mcp.Template] ! Async
 - serving over anything but a byte-line link
 
 ## Decisions
-- **An MCP server is a `Handler[Tool]`, not a new effect** — chosen
+- **An MCP server is a `Answers[Tool]`, not a new effect** — chosen
   because the agent program must not know. A new `Mcp` effect would
   make every agent that wants MCP tools mention MCP.
 - **The server is a pure `Stage`, the transport is separate** — the
@@ -323,14 +323,14 @@ And the one that is more than plumbing:
 
 - **`sampling/createMessage` IS the `Model` effect.** A server asking
   the client for a completion is `Model.Complete(context, tools)`,
-  answered by whatever `Handler[Model]` the client already has. An MCP
+  answered by whatever `Answers[Model]` the client already has. An MCP
   server can use YOUR model, and in our vocabulary that is not new
   machinery — it is the handler that was already in scope.
 
 ```scala
 // what a client answers when a server asks
 final case class Peer(roots: Seq[Root] = Nil,
-                      sample: Option[Handler[Model]] = None)
+                      sample: Option[Answers[Model]] = None)
 final case class Root(uri: String, name: String = "")
 
 final class Session:
@@ -356,7 +356,7 @@ object Server:
 - [x] a server that asks `roots/list` gets the client's roots, and a
       client whose roots change notifies the server
 - [x] `sampling/createMessage` is answered by the client's
-      `Handler[Model]` — the SAME handler an agent uses, with the
+      `Answers[Model]` — the SAME handler an agent uses, with the
       conversation carried as `Seq[Turn]`
 - [x] a client that declares no sampling handler refuses the request
       rather than hanging, and the server reads the refusal

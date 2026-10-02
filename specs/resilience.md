@@ -18,7 +18,7 @@ that travels with a request instead of restarting at every hop.
 
 These five are one family, and the family already has a house shape:
 a HANDLER around one operation, with the program blind to it. That is
-how `Tracer.traced` wraps any `Handler[F]`, how `Secure.bearer` wraps
+how `Tracer.traced` wraps any `Answers[F]`, how `Secure.bearer` wraps
 a route, how `Durable` wraps a tool call. The program says
 `http.send(r)`; the edge decides what stands between that and the
 wire. This spec adds the five, keeps their state as VALUES (a

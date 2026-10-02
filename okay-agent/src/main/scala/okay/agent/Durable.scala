@@ -1,6 +1,6 @@
 package okay.agent
 
-import okay.Handler
+import okay.Answers
 import okay.codec.Json
 
 /**
@@ -112,7 +112,7 @@ object Durable {
    *
    * A control transfer rather than an error, for the same reason
    * `Drift` and `Unresolved` are thrown from a handler that must
-   * otherwise produce an `A`: `Handler.handle` has no way to leave
+   * otherwise produce an `A`: `Answers.handle` has no way to leave
    * without one. `NoStackTrace` because being parked is the normal
    * state of a conversation, not an incident — a stack trace per
    * question is a cost paid on every turn for nothing.
@@ -198,7 +198,7 @@ object Durable {
    * both answer in the journal's own written form, which is what the
    * far end can be asked for and what the journal must record.
    */
-  def over[Op[_]](inner: Handler[Op], journal: Journal)
+  def over[Op[_]](inner: Answers[Op], journal: Journal)
                  (policy: String => OnRepeat = _ => OnRepeat.Fail,
                   // POLYMORPHIC, not `Op[?]`: an abstract type
                   // constructor cannot be applied to a wildcard, and
@@ -217,7 +217,7 @@ object Durable {
                   replayed: [X] => (Op[X], X) => Unit =
                     [X] => (_: Op[X], _: X) => ())
                  (using J: Journalled[Op])
-  : Handler[Op] = new Handler[Op]:
+  : Answers[Op] = new Answers[Op]:
 
     private var seq = 0
     private val recorded = journal.all
@@ -299,12 +299,12 @@ object Durable {
    * the `Awaiting` carrying the call's arguments — so this is a
    * spelling, not a second implementation.
    */
-  def tools(inner: Handler[Tool], journal: Journal)
+  def tools(inner: Answers[Tool], journal: Journal)
            (policy: String => OnRepeat = _ => OnRepeat.Fail,
             reconcile: (ToolCall, String) => Option[String] = (_, _) => None,
             escalate: (ToolCall, String) => Option[String] = (_, _) => None,
             trace: Option[OpTrace] = None)
-  : Handler[Tool] =
+  : Answers[Tool] =
     def onCall(f: (ToolCall, String) => Option[String]): [X] => (Tool[X], String) => Option[String] =
       [X] => (op: Tool[X], key: String) => op match { case Tool.Call(c) => f(c, key) }
     over[Tool](inner, journal)(policy, onCall(reconcile), onCall(escalate), trace)
@@ -316,7 +316,7 @@ object Durable {
    * durability that is worth as much as the recovery.
    */
   def replayingOver[Op[_]](journal: Journal, trace: Option[OpTrace] = None)
-                          (using J: Journalled[Op]): Handler[Op] = new Handler[Op]:
+                          (using J: Journalled[Op]): Answers[Op] = new Answers[Op]:
     private var seq = 0
     private val recorded = journal.all
     def handle[A](op: Op[A]): A =
@@ -335,6 +335,6 @@ object Durable {
       }
 
   /** replay at `Tool`, the spelling the callers had */
-  def replaying(journal: Journal, trace: Option[OpTrace] = None): Handler[Tool] =
+  def replaying(journal: Journal, trace: Option[OpTrace] = None): Answers[Tool] =
     replayingOver[Tool](journal, trace)
 }

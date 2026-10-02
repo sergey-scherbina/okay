@@ -313,7 +313,7 @@ for a benchmark, not for a guard.
 ## Stage 5 — bracket-forwards-no-effects (2026-09-26)
 
 `bracket` used to run `use` to the end INSIDE, by the row's comonadic
-`Handler` under `try/finally`. So `use` could perform only effects that
+`Answers` under `try/finally`. So `use` could perform only effects that
 have such a handler (`Async`, `Produce`, `Pure`), and nothing in it
 reached an outer handler. That is a strong release guarantee under a name
 that promises the other thing. Every other library's `bracket` is the

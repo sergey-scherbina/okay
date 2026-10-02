@@ -1,6 +1,6 @@
 package okay.agent
 
-import okay.{!, +, Async, Handler}
+import okay.{!, +, Async, Answers}
 import okay.given
 import okay.codec.{Json, Schema}
 import okay.lex.Bpe
@@ -10,15 +10,15 @@ import scala.collection.mutable
 class TestAgent extends munit.FunSuite {
 
   // the row's handlers, assembled per test
-  def run[A](prog: A ! Agent)(model: Handler[Model], tool: Handler[Tool],
-                              ctx: Handler[Context]): A =
+  def run[A](prog: A ! Agent)(model: Answers[Model], tool: Answers[Tool],
+                              ctx: Answers[Context]): A =
     // one handler per effect, assembled along the row
-    given Handler[Model] = model
-    given Handler[Tool] = tool
-    given Handler[Context] = ctx
-    given rowCA: Handler[Context + Async] = Handler.union[Context, Async]
-    given rowTCA: Handler[Tool + (Context + Async)] = Handler.union[Tool, Context + Async]
-    given rowAll: Handler[Agent] = Handler.union[Model, Tool + (Context + Async)]
+    given Answers[Model] = model
+    given Answers[Tool] = tool
+    given Answers[Context] = ctx
+    given rowCA: Answers[Context + Async] = Answers.union[Context, Async]
+    given rowTCA: Answers[Tool + (Context + Async)] = Answers.union[Tool, Context + Async]
+    given rowAll: Answers[Agent] = Answers.union[Model, Tool + (Context + Async)]
     prog.runWith
 
   case class SearchArgs(query: String, limit: Option[Int])

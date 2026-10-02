@@ -9,7 +9,7 @@ import okay.Free.{Bind, Return}
  * circuit breaker, a bulkhead, a keyed token-bucket limiter, hedged
  * requests and a travelling deadline. The program stays blind to
  * them — `http.send(r)` is what it says — and the edge composes them
- * around the seam, the way `Tracer.traced` wraps a Handler and
+ * around the seam, the way `Tracer.traced` wraps an Answers and
  * `Secure.bearer` wraps a route.
  *
  * Shared by all five: state is ONE cell moved by one `modify`; time

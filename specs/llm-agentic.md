@@ -642,7 +642,7 @@ tree nobody audits. A file that does not parse is skipped, not fatal
 
 ## A live provider (shipped)
 
-`Provider.openAi` is a `Handler[Model]` speaking the
+`Provider.openAi` is a `Answers[Model]` speaking the
 OpenAI-compatible protocol — the one OpenAI, Groq, Together,
 OpenRouter, Fireworks and the local runtimes (Ollama, vLLM,
 llama.cpp) all serve, so one handler reaches most of the market.
@@ -792,7 +792,7 @@ handler, and its JSON-RPC framing is our total parser plus `Schema`.
 ### agent-langchain4j (the Model half) — SHIPPED
 
 `okay-langchain4j` (JVM, dev.langchain4j:langchain4j-core): their
-blocking `ChatModel.chat` is exactly the comonadic `Handler[Model]`
+blocking `ChatModel.chat` is exactly the comonadic `Answers[Model]`
 shape Provider.openAi already has — the virtual thread parks in
 their client, the row above stays a program. Three pure mappings and
 one handler:
@@ -805,7 +805,7 @@ one handler:
   field stays unrequired — codec-defaults holds across the interop)
 - `reply(ChatResponse) => Reply` — text + tool requests, arguments
   parsed by our total Json
-- `model(chat: ChatModel, count) : Handler[Model]` — count stays
+- `model(chat: ChatModel, count) : Answers[Model]` — count stays
   LOCAL (chars/4 or a Bpe), the compaction budget never costs a
   round trip; their Tokenizer is not consulted
 
@@ -855,7 +855,7 @@ upgrade from a hash to a real embedding. Two functions:
 - `embed(model: EmbeddingModel): String => Embedding` — the exact
   shape `MemoryMatch`'s constructor already accepts; a consumer wires
   it with zero `okay-match` changes
-- `handler(model: EmbeddingModel): Handler[Embed]` — the same model,
+- `handler(model: EmbeddingModel): Answers[Embed]` — the same model,
   fitting `okay-rag`'s effect for a program built against
   `Retrieve.vector`
 
@@ -925,7 +925,7 @@ Behavior:
       tested by counting what was actually demanded
 - [x] the same agent program runs on the JVM and under Node — and
       the finding that made it possible is worth more than the box: a
-      `Handler[Model]` must ANSWER with a value, so it runs the
+      `Answers[Model]` must ANSWER with a value, so it runs the
       request to completion inside itself, which needs a thread that
       can park; JS has none. The portable shape is PEELING rather
       than handling — tools by a relay, context by the

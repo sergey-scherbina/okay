@@ -64,7 +64,7 @@ class TestResource extends munit.FunSuite {
     assertEquals(released, true)
   }
 
-  test("bracketNow over any Handler-able row, not only Async") {
+  test("bracketNow over any Answers-able row, not only Async") {
     var released = 0
     assertEquals(bracketNow(41)(_ => released += 1)(r => async(r + 1)).runWith, 42)
     assertEquals(bracketNow(1)(_ => released += 1)(r => produce(r + 1)).runWith, 2)

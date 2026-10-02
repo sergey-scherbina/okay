@@ -145,7 +145,7 @@ class ProducerWriterCarrierBenchmark {
   // is `Producer[Chunk[A]]` — PURE, no G — so what `Chunks.fold` will
   // do once `Chunks[A] = Feed[Chunk[A]]` is exactly `Chunks.fold`'s
   // own loop over the PURE writer stream's `.iterator` (Writer.scala,
-  // the override added in this lane), `Handler[Pure]` only, no
+  // the override added in this lane), `Answers[Pure]` only, no
   // `CanBlock`, no `TypeableK`. Every earlier writer row in this file
   // walks the G-effectful `writerStreamIn`; these two are the honest
   // pair for `chunksFoldProducer` / `chunksFoldLeftProducerDirect`.

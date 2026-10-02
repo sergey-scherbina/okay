@@ -94,7 +94,7 @@ abstract class TlsConformance extends WireConformance:
       given WireAuth = WireAuth.secret("tea for two".getBytes)
       val both = ForeignWorker.connect("127.0.0.1", port)
       try
-        given okay.Handler[ForeignEval] = both.handler
+        given okay.Answers[ForeignEval] = both.handler
         val priceOf = Foreign.callback[String, Double]("price_of")(_ => okay.Free.pure(4.0))
         val discount = Foreign.callback[Double, Double]("discount")(a => okay.Free.pure(a / 2))
         assertEquals(Foreign.fn[Double](address("quote")).calling(Foreign.callbacks(priceOf, discount))("tea", 3L).runWith, Right(6.0))

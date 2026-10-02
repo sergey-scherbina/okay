@@ -28,7 +28,7 @@ class TestLangchain4jEmbed extends munit.FunSuite {
 
   test("embed and handler agree: the same model wrapped either way answers the same vector") {
     val direct = Langchain4jEmbed.embed(model)("окей")
-    given okay.Handler[Embed] = Langchain4jEmbed.handler(model)
+    given okay.Answers[Embed] = Langchain4jEmbed.handler(model)
     val viaHandler = embed(Seq("окей")).runWith
     assertEquals(viaHandler.head, direct)
   }

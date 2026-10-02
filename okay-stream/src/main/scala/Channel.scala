@@ -800,7 +800,7 @@ object Channel {
   /** unfold a stream into the channel as an Async program; stops
    * early if the channel refuses (closed under the producer) */
   private def feed[A, U[_], H[+_]](c: Channel[A], u: U[A])
-                                  (using St: Stream[U, H], HH: Handler[H]): Unit ! Async =
+                                  (using St: Stream[U, H], HH: Answers[H]): Unit ! Async =
     // the linear view, for the same reason as `feedBatched` above
     val it = St.iterator(u)
     // OFFER FIRST, as `sendBlocking` does, and for the same reason: the
@@ -877,7 +877,7 @@ object Channel {
    * that asymmetry, built.
    */
   private def feedBatched[A, U[_], H[+_]](c: Channel[Chunk[A]], u: U[A], size: Int)
-                                         (using St: Stream[U, H], HH: Handler[H]): Unit ! Async =
+                                         (using St: Stream[U, H], HH: Answers[H]): Unit ! Async =
     // THE LINEAR VIEW, not a recursion through uncons. Feeding a
     // channel is a consume-once walk, and `Stream.iterator` is
     // exactly that view -- its default IS `uncons(_).runWith`, so an
@@ -908,7 +908,7 @@ object Channel {
 
   private def feedChunked[A, U[_], H[+_]](c: Channel[Chunk[A]], u: U[A], size: Int,
                                           buf: TRef[ChunkBuffer[A]])
-                                         (using St: Stream[U, H], HH: Handler[H]): Unit ! Async =
+                                         (using St: Stream[U, H], HH: Answers[H]): Unit ! Async =
     def take(full: Boolean): Option[Chunk[A]] = takeChunk(buf, size, full)
     def go(x: U[A]): Unit ! Async =
       async(St.uncons(x).runWith).flatMap:
@@ -1133,7 +1133,7 @@ object Channel {
 
   /** a chunked side over an ordinary stream (`feedChunked`) */
   private[okay] def chunkedSideOf[A, S[_], F[+_]](s: S[A], capacity: Int, size: Int, within: Option[Long])
-                                                 (using Stream[S, F], Handler[F])
+                                                 (using Stream[S, F], Answers[F])
                                                  (using Scheduler, Timer): Channel[Chunk[A]] =
     chunkedSide(capacity, size, within)((c, buf) => feedChunked(c, s, size, buf))
 
@@ -1147,8 +1147,8 @@ object Channel {
    * routing measured 11% dearer (see `feedFlushing`) */
   def mergeChunked[A, S[_], F[+_], T[_], G[+_]](s: S[A], t: T[A], capacity: Int, size: Int,
                                                 within: Option[Long])
-                                               (using Stream[S, F], Handler[F],
-                                                Stream[T, G], Handler[G])
+                                               (using Stream[S, F], Answers[F],
+                                                Stream[T, G], Answers[G])
                                                (using Scheduler, Timer): Channel[Chunk[A]] =
     chunkedMerge(capacity, size, within)(
       (c, buf) => feedChunked(c, s, size, buf), (c, buf) => feedChunked(c, t, size, buf))
@@ -1161,7 +1161,7 @@ object Channel {
    * a source that fails is recorded (fail) and the other still feeds.
    */
   def merge[A, S[_], F[+_], T[_], G[+_]](s: S[A], t: T[A], capacity: Int = Int.MaxValue)
-                                        (using Stream[S, F], Handler[F], Stream[T, G], Handler[G])
+                                        (using Stream[S, F], Answers[F], Stream[T, G], Answers[G])
                                         (using sch: Scheduler): Channel[A] =
     val c = forProducers[A](2, capacity)
     val alive = AtomicInteger(2)
@@ -1194,7 +1194,7 @@ object Channel {
    * or `.drained.unchunked` for elements again at the far end.
    */
   def bufferChunked[A, S[_], F[+_]](capacity: Int, size: Int = Source.ChunkSize)(s: S[A])
-                                   (using Stream[S, F], Handler[F])
+                                   (using Stream[S, F], Answers[F])
                                    (using sch: Scheduler): Channel[Chunk[A]] =
     val c = forProducers[Chunk[A]](1, capacity)
     sch.forkLong(() => feedBatched(c, s, size)).onComplete { r =>
@@ -1204,7 +1204,7 @@ object Channel {
     c
 
   def buffer[A, S[_], F[+_]](capacity: Int)(s: S[A])
-                            (using Stream[S, F], Handler[F])(using sch: Scheduler): Channel[A] =
+                            (using Stream[S, F], Answers[F])(using sch: Scheduler): Channel[A] =
     val c = forProducers[A](1, capacity)
     // `fork`, not `forkLong`: the elementwise feed on `adaptive` read
     // 1.25x Loom at capacity 64 with `forkLong` against 1.16x without —

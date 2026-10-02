@@ -160,7 +160,7 @@ delimited(..))`, never a loop between a program and its machine).
 ## What is NOT in the foundation, and why
 
 - **No `Kont` wrapper**: the stack is the continuation.
-- **No `Mark`/`Seam`/segments, no `Handler` (`Tail`/`Control`), no
+- **No `Mark`/`Seam`/segments, no `Answers` (`Tail`/`Control`), no
   `Step`**: those existed only for HANDLERS WITH STATE as marks (a
   `State.handle` without its loop). They are an extension — one more
   smart frame plus a tail-resumption rule — measured on their own if

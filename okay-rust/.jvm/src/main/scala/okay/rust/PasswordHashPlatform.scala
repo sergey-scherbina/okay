@@ -2,7 +2,7 @@ package okay.rust
 
 import java.lang.foreign.{Arena, FunctionDescriptor, MemorySegment, ValueLayout}
 import java.lang.invoke.MethodHandle
-import okay.Handler
+import okay.Answers
 
 /** the JVM's roads to the kernel (specs/polyglot-rust.md stages 1 and 3) */
 trait PasswordHashPlatform:
@@ -14,12 +14,12 @@ trait PasswordHashPlatform:
     ValueLayout.ADDRESS, ValueLayout.JAVA_LONG)
 
   /** the Rust kernel (okay-rust/kernels/argon2), or why it cannot be bound */
-  def rust(lib: NativeLib): Either[String, Handler[PasswordHash]] =
+  def rust(lib: NativeLib): Either[String, Answers[PasswordHash]] =
     lib.function("okay_argon2id", signature).map(mh => PasswordHash.using(call(mh, _)))
 
   /** the SAME kernel as WebAssembly, under Chicory: no native code in the
    * process (stage 3). The answers are the native road's, word for word */
-  def wasm(lib: WasmLib): Handler[PasswordHash] =
+  def wasm(lib: WasmLib): Answers[PasswordHash] =
     PasswordHash.using(op => lib.withBuffers { b =>
       val out = b.out(op.length)
       lib.call("okay_argon2id",

@@ -125,8 +125,8 @@ trait Effects[M[_[+_], _]]:
     inline def map[B](f: A => B): M[F, B] = m.flatMap(a => pure(f(a)))
     /** interpret the operations, i.e. reflect the computation into Cont */
     def foldCont[S](h: F !> S): A /> S
-    /** run all the effects by a comonadic Handler (the foldCont definition; encodings may override with an equivalent fast path) */
-    def runWith(using Handler[F]): A = m.foldCont(handler[F, A]) / identity
+    /** run all the effects by a comonadic Answers (the foldCont definition; encodings may override with an equivalent fast path) */
+    def runWith(using Answers[F]): A = m.foldCont(handler[F, A]) / identity
 
   /** handle the effect F by h (and the values by ret), forwarding the
    * effects G; for mass tail-resumption prefer !.relay (measured) */
@@ -181,7 +181,7 @@ given Effects[Free] with
     override def foldCont[S](h: F !> S): A /> S =
       Free.fold(m)(Cont.Pure(_))([X] => e => k => h(e).flatMap(k(_).foldCont(h)))
     /** the same answer as the foldCont definition, in one pass instead of two */
-    override def runWith(using Handler[F]): A = runFree(m)
+    override def runWith(using Answers[F]): A = runFree(m)
 
   // level 1: the top-level functions themselves
   override def shift[R, A, F[+_]](f: (A => R ! Shift % R + F) => R ! Shift % R + F)(using k: Shift.Key[R], at: At): A ! Shift % R + F =
@@ -192,7 +192,7 @@ given Effects[Free] with
     okay.reset[R, F](body)
   override def run[A](m: A ! Pure): A = m.runWith
 
-  @tailrec private def runFree[F[+_], A](m: Free[F, A])(using H: Handler[F]): A =
+  @tailrec private def runFree[F[+_], A](m: Free[F, A])(using H: Answers[F]): A =
     (m.resume: @unchecked) match
       case Free.Return(a) => a
       case Free.Inject(e) => H.handle(e)
@@ -366,8 +366,8 @@ object Effects {
      * are documented together. A member wins resolution, so every
      * `.resume` in the library reaches that one loop. */
 
-    /** step through the next n operations by the Handler */
-    @tailrec def next(steps: Long = 1)(using H: Handler[F]): A ! F = (self.resume: @unchecked) match
+    /** step through the next n operations by the Answers */
+    @tailrec def next(steps: Long = 1)(using H: Answers[F]): A ! F = (self.resume: @unchecked) match
       case Bind(Inject(e), k) if steps > 0 => k(H.handle(e)).next(steps - 1)
       case a => a
 
@@ -376,21 +376,21 @@ object Effects {
      * handled.
      *
      * A WORD, not a glyph, since unwrap-glyph: this method RUNS
-     * operations through the `Handler`, which is a great deal to hide
+     * operations through the `Answers`, which is a great deal to hide
      * behind one character — and the character was wanted by the
      * thing users write far more often, the `direct` block's mark.
      * It was `?` until 2026-09-17, and every call site it had was in
      * the core's own tests and benchmarks, which is most of the
      * argument for which spelling gave way (specs/unwrap-glyph.md).
      */
-    @tailrec def peek: Handler[F] ?=> ? = self match
+    @tailrec def peek: Answers[F] ?=> ? = self match
       case Bind(a, _) => a.peek
-      case Inject(e) => summon[Handler[F]].handle(e)
+      case Inject(e) => summon[Answers[F]].handle(e)
       // at `Unit` a diagonal node holds the same `F[A]` an `Inject` does
       // (freer-diag-leaf); no door here builds one, and this is the one
       // match over the erased tree that is exhaustive rather than
       // `@unchecked`, so it says so
-      case Freer.Diag(e) => summon[Handler[F]].handle(e)
+      case Freer.Diag(e) => summon[Answers[F]].handle(e)
       case Return(a) => a
       // a peek forces the thunk too, same as `Bind(a, _) => a.peek`
       // discards its own continuation without applying it
@@ -569,7 +569,7 @@ object Effects {
   /**
    * Interpret F into ANOTHER ROW rather than into a value.
    *
-   * `Handler[F]` is `F ==> Id`, and Id is exactly where a suspension
+   * `Answers[F]` is `F ==> Id`, and Id is exactly where a suspension
    * cannot go — which is why a comonadic handler can never do I/O on
    * a platform with no thread to park (it must ANSWER, so it must
    * finish). The general form is the natural transformation this

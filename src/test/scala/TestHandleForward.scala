@@ -31,7 +31,7 @@ class TestHandleForward extends munit.FunSuite {
   /** run a forwarded program, recording every operation it performs */
   def trace(p: Int ! Produce): (Int, List[Any]) =
     val log = List.newBuilder[Any]
-    val h = summon[Handler[Produce]].tracing(log += _)
+    val h = summon[Answers[Produce]].tracing(log += _)
     val a = p.runWith(using h)
     (a, log.result())
 

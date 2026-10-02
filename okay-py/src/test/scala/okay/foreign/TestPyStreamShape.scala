@@ -10,7 +10,7 @@ class TestPyStreamShape extends munit.FunSuite {
   test("pull-driven: each call happens when its chunk is full, not after the whole source") {
     var produced = 0
     var seenAtCall = Vector.empty[Int]
-    val mock = new okay.Handler[PyEval]:
+    val mock = new okay.Answers[PyEval]:
       def handle[A](op: PyEval[A]): A = op match
         case PyEval.Call(_, Vector(Arr(xs)), _) =>
           seenAtCall :+= produced

@@ -45,7 +45,7 @@ class TestForeignProc extends munit.FunSuite:
   given Wf.Runtime = Wf.Runtime.scripted(millis = 1_700_000_000_000L, id = "id-1", dice = 0.25)
 
   private lazy val worker = ForeignWorker.start(TestPy.python.get, modules = Seq(Shop.module))
-  private given okay.Handler[ForeignEval] = worker.handler
+  private given okay.Answers[ForeignEval] = worker.handler
   override def afterAll(): Unit = if TestPy.python.nonEmpty then worker.close()
 
   private def wf(topic: okay.persist.Topic, id: String)

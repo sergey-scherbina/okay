@@ -9,8 +9,8 @@ case class Fc[+A](a: A) derives Effect
 case class Fd[+A](a: A) derives Effect
 
 /**
- * `Handler.flat` agrees with `Handler.union` — specs/handler-fusion.md,
- * the `Handler.flat` box. The handlers are identities that RECORD, so
+ * `Answers.flat` agrees with `Answers.union` — specs/handler-fusion.md,
+ * the `Answers.flat` box. The handlers are identities that RECORD, so
  * "agrees" is checked on which handler saw which operation, in what
  * order, not only on the answer (four identity handlers would answer
  * the same value even if every operation went to the wrong one).
@@ -21,21 +21,21 @@ class TestFlat extends munit.FunSuite:
 
   class Logs:
     val a, b, c, d = List.newBuilder[Any]
-    given ha: Handler[Fa] = new Handler[Fa]:
+    given ha: Answers[Fa] = new Answers[Fa]:
       def handle[A](e: Fa[A]): A = { a += e.a; e.a }
-    given hb: Handler[Fb] = new Handler[Fb]:
+    given hb: Answers[Fb] = new Answers[Fb]:
       def handle[A](e: Fb[A]): A = { b += e.a; e.a }
-    given hc: Handler[Fc] = new Handler[Fc]:
+    given hc: Answers[Fc] = new Answers[Fc]:
       def handle[A](e: Fc[A]): A = { c += e.a; e.a }
-    given hd: Handler[Fd] = new Handler[Fd]:
+    given hd: Answers[Fd] = new Answers[Fd]:
       def handle[A](e: Fd[A]): A = { d += e.a; e.a }
     def seen: (List[Any], List[Any], List[Any], List[Any]) = (a.result(), b.result(), c.result(), d.result())
 
-    val union: Handler[Row] =
-      given h34: Handler[Fc + Fd] = Handler.union[Fc, Fd]
-      given h234: Handler[Fb + (Fc + Fd)] = Handler.union[Fb, Fc + Fd]
-      Handler.union[Fa, Fb + (Fc + Fd)]
-    val flat: Handler[Row] = Handler.flat[Row]
+    val union: Answers[Row] =
+      given h34: Answers[Fc + Fd] = Answers.union[Fc, Fd]
+      given h234: Answers[Fb + (Fc + Fd)] = Answers.union[Fb, Fc + Fd]
+      Answers.union[Fa, Fb + (Fc + Fd)]
+    val flat: Answers[Row] = Answers.flat[Row]
 
   /** one operation at every position, twice, interleaved */
   def mixed: Int ! Row =
@@ -76,7 +76,7 @@ class TestFlat extends munit.FunSuite:
     type L = (Fa + Fb) + (Fc + Fd)
     val f = Logs()
     import f.given
-    val h: Handler[L] = Handler.flat[L]
+    val h: Answers[L] = Answers.flat[L]
     val p: Int ! L = effect[L, Int](Fd(4)).flatMap(x => effect[L, Int](Fa(x + 1)))
     assertEquals(p.runWith(using h), 5)
     assertEquals(f.seen, (List(5), Nil, Nil, List(4)))
@@ -88,19 +88,19 @@ class TestFlat extends munit.FunSuite:
     type T = Fa + Tag.Of["t", Fb]
     val f = Logs()
     import f.given
-    given Handler[Tag.Of["t", Fb]] = Tag.handler["t", Fb](f.hb)
-    val h: Handler[T] = Handler.flat[T]
+    given Answers[Tag.Of["t", Fb]] = Tag.handler["t", Fb](f.hb)
+    val h: Answers[T] = Answers.flat[T]
     val p: Int ! T =
       effect[T, Int](Fa(1)).flatMap(x => Tag.one["t", Fb](Fb(x + 1)).at[T])
     assertEquals(p.runWith(using h), 2)
     assertEquals(f.seen, (List(1), List(2), Nil, Nil))
   }
 
-  test("a member without a Handler in scope is refused at compile time, naming the member") {
+  test("a member without an Answers in scope is refused at compile time, naming the member") {
     val e = compileErrors("""
-      given Handler[Fa] = new Handler[Fa] { def handle[A](e: Fa[A]): A = e.a }
-      Handler.flat[Fa + Fb]
+      given Answers[Fa] = new Answers[Fa] { def handle[A](e: Fa[A]): A = e.a }
+      Answers.flat[Fa + Fb]
     """)
-    assert(e.contains("no Handler"), e)
+    assert(e.contains("no Answers"), e)
     assert(e.contains("Fb"), e)
   }

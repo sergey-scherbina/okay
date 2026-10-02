@@ -94,18 +94,18 @@ same material with the measurements attached.
 - **`!.translate`** — a handler valued in ANOTHER ROW:
   `F ==> ([X] =>> X ! G)`, so an operation answers with a PROGRAM
   rather than a value. This is the general shape the other two are
-  ends of — `Handler[F]` is `F ==> Id` (and `Id` is exactly where a
+  ends of — `Answers[F]` is `F ==> Id` (and `Id` is exactly where a
   suspension cannot go, which is why a comonadic handler cannot do
   I/O where nothing may park), `F !> S` is the Cont-valued handler
   `Effects.handle` takes (abort and multi-shot, through Cont), and
   `translate` is the tail-resumptive middle: one walk, no Cont, the
   rest of the row forwarded. `Free.run(f: F ==> M)` is the same idea
   when the row is handled entirely.
-- **`Handler[F]`** — the comonadic (per-operation) handler;
-  `runWith` runs with it. **`Handler.flat[R]`** composes one handler
+- **`Answers[F]`** — the comonadic (per-operation) handler;
+  `runWith` runs with it. **`Answers.flat[R]`** composes one handler
   per effect into a row handler as ONE dispatch expression (a macro
   over the row's members; 1.24x over the nested form at position 4 of
-  a four-row, handler-fusion-flat); **`Handler.union[F, G]`** is the
+  a four-row, handler-fusion-flat); **`Answers.union[F, G]`** is the
   two-member combinator it generalises, kept for a row built one
   member at a time. Both are explicit, not givens: a given over a
   union type lambda crashes the 3.7.1 type comparer. **`TypeableK[F]`** — the runtime test that
@@ -330,7 +330,7 @@ same material with the measurements attached.
 
 - **`Functor` → `Applicative` → `Selective` → `Monad`**, plus
   **`Alternative` → `MonadPlus`** and **`Comonad`** (the basis of
-  per-operation handlers: `given [F: Comonad]: Handler[F]`).
+  per-operation handlers: `given [F: Comonad]: Answers[F]`).
   `ParaMonad` founds the Cont layer; every diagonal is a `Monad`, and
   the tree `Freer` is the instance for every signature (`Freer.Para`).
 - The GENERIC combinators the classes exist for — written once, they
@@ -530,7 +530,7 @@ same material with the measurements attached.
 ## Streams and consumption
 
 - **`Stream[S[_], F[+_]]`** — codata: `uncons: Option[(A, S[A])] ! F`.
-  Consumers need `Handler[F]` (free for `Pure`; Async pulls park).
+  Consumers need `Answers[F]` (free for `Pure`; Async pulls park).
   `toLazyList` (memoized bridge), `iterator` (linear, fused;
   specialized per instance). Combinators (`filter/take/zip/++/...`)
   land in LazyList; `Stream.map/flatMap/fold` are spelled explicitly —
@@ -574,7 +574,7 @@ same material with the measurements attached.
   `Writer.foldUntil` (answers `R` alone — an early stop never sees the
   program's answer), `Source.runFoldUntil`, `Producer.foldUntil` (the
   `Produce + G` road, same early `pure`), `.foldUntil(using fo)` on
-  a writer program — pure, or effectful with the `Handler[G]` in scope —
+  a writer program — pure, or effectful with the `Answers[G]` in scope —
   `xs.foldUntilTo` on any `Foldable` (`Foldable.foldUntil` is on the
   trait; an `Iterator` is left after the satisfying element), and
   `Take.foldUntil(using fo): R ! Take % W`, the fold as an iteratee
@@ -819,7 +819,7 @@ same material with the measurements attached.
 - **`Similarity`** (okay-rag) — a function, not a typeclass, and the
   general rule for this layer: a typeclass asserts canonicity, and a
   program holds several stores, several retrievers and possibly two
-  metrics. `Handler` is a typeclass precisely because a row IS
+  metrics. `Answers` is a typeclass precisely because a row IS
   canonical where it is discharged.
 - **`Language`** (okay-rag) — a language as DATA: comments, strings,
   the words that introduce a definition, and `Layout.Braces` or
@@ -840,7 +840,7 @@ same material with the measurements attached.
   recovery decision is per operation (`Redo`, `WithKey`, `Reconcile`,
   `Escalate`, `Fail`); `replaying` re-runs an incident offline.
 - **`Provider`** (okay-agent) — `openAi` and `anthropic` are both
-  `Handler[Model]`; `relay`/`openAiRelay` are the PORTABLE form,
+  `Answers[Model]`; `relay`/`openAiRelay` are the PORTABLE form,
   since a comonadic handler cannot do I/O where nothing may park.
 - **`Chunks.ofChars`** — a string as chunks without boxing (a
   primitive `Array[Char]`); see the benchmark note about what it did
@@ -881,7 +881,7 @@ blanket suppression; the categories and what each turned out to be:
   mattered for publishing: an `inline` method reaching a privately
   captured given makes the compiler synthesize an accessor whose name
   is unstable across compiler versions, so a downstream JAR could
-  break on a mere recompile. `DiagonalMonad` and `ComonadHandler` are
+  break on a mere recompile. `DiagonalMonad` and `ComonadAnswers` are
   named classes with a public member instead — the `inline` is kept.
 - **178 unused imports → 0**, mechanically.
 - Two lints are filtered in build.sbt with the reason written there:
@@ -920,7 +920,7 @@ and nothing else in the library casts for that reason:
   and holds the union's two casts; `<|>` is `split` at
   `Left`/`Right` (either-via-split), the `Either` form for drains and
   tests. `split` is what every walker in this library uses (`State.handle`,
-  `Writer.foldWith`, `relay`, `Effects.handle`, `Handler.union`,
+  `Writer.foldWith`, `relay`, `Effects.handle`, `Answers.union`,
   `Resource.run` in the core, and the stream walkers in okay-stream;
   split-without-either,
   2026-09-09, measured to the byte in specs/handler-fusion.md). In a
@@ -1072,7 +1072,7 @@ is [modules/okay-scala2.md](modules/okay-scala2.md).
   is a phantom capability trait, and its companion holds the operations
   and the handler. `X.run(...)` removes `X` from the row and leaves the
   rest.
-- **`Op[+A]`, `Effect[F]`, `Handler[F, R, B]`** — a Scala 2 user's own
+- **`Op[+A]`, `Effect[F]`, `Answers[F, R, B]`** — a Scala 2 user's own
   effect. The operations extend `Op`, and `object KV extends
   Effect[KV]` stands in for `derives Effect`; the capability is
   `Effect[KV]`. A handler receives each operation and its continuation.
@@ -1259,16 +1259,16 @@ silently uses the stale context; there is no error.
 ## The row-typeclass recipe: a typeclass over `F + G` (row-typeclass-recipe)
 
 A typeclass indexed by a ROW — `Failing[F]` is the worked example, and
-`Handler` is the older one — cannot be derived the obvious way, and the
+`Answers` is the older one — cannot be derived the obvious way, and the
 reasons are measured rather than argued:
 
 - **An unanchored `given [F[+_], G[+_]]: TC[F + G]` does not work.**
   dotty selects it and then cannot pin `F`: splitting needs
   `TypeableK[F]`, and against a free `F` that query is ambiguous
-  (`TypeableK[Vector]` and `TypeableK[Op]` both match). `Handler`
+  (`TypeableK[Vector]` and `TypeableK[Op]` both match). `Answers`
   meets the same wall one step earlier and worse — an implicit row
-  given enters scope for EVERY `Handler` query and crashes the 3.7.1
-  type comparer — which is why `Handler.union[F, G]` is called BY
+  given enters scope for EVERY `Answers` query and crashes the 3.7.1
+  type comparer — which is why `Answers.union[F, G]` is called BY
   NAME at a concrete call site and never given implicitly.
 - **Anchor the instance on the CONCRETE effect instead.**
   `given [G]: TC[Async + G]` and `given [F]: TC[F + Async]` pin

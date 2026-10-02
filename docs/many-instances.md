@@ -93,7 +93,7 @@ State.run(0)(Tag.untag["small", State % Int](twice))
 
 `untag` strips one key and hands the plain signature back to the
 effect's own runner. There is also `Tag.handler`, which lifts a
-comonadic `Handler[F]` to `Handler[Of[K, F]]` for the same reason.
+comonadic `Answers[F]` to `Answers[Of[K, F]]` for the same reason.
 
 **Cost:** none at run time beyond one wrapper object per operation,
 and nothing casts. The row lists the instances, so the compiler knows
@@ -120,7 +120,7 @@ parameter erased before anything could compare it.
 
 The compiler checks it: `Distinct[R]` (below) refuses a row with two
 members that cannot be told apart, and the runners that split such a
-row (`Reader.run`, `Handler.union`, …) require it (tag-distinct-keys,
+row (`Reader.run`, `Answers.union`, …) require it (tag-distinct-keys,
 2026-09-11). Keys are literals, so the collision is also easy to see
 by eye in the type alias block.
 
@@ -346,7 +346,7 @@ summon[Distinct[Tag.Of["a", Reader % Int] + Tag.Of["b", Reader % Int]]]  // fine
 summon[Distinct[Reader % Int + Reader % String]]        // refused
 ```
 
-**Where it is asked.** `Handler.union` and `Handler.flat` compose a
+**Where it is asked.** `Answers.union` and `Answers.flat` compose a
 split, so they require it; and since distinct-on-handlers (2026-09-24)
 so does every handler that splits a PARAMETERISED signature out of an
 open row — `State.handle`/`zoomWith`, `Reader.run`/`unlift`/`local`,

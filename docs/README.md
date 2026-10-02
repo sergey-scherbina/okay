@@ -348,7 +348,7 @@ API reference, gotchas.
 | [`okay-ui-gtk`](modules/okay-ui-gtk.md) | GTK 4 on Scala Native over the same Backend seam; aggregated only where pkg-config finds gtk4; one live backend per process, patches marshalled through g_idle_add |
 | [`okay-desktop`](modules/okay-desktop.md) | the app's own window for an installed product: its pages in the system's web engine, its menus as data, a Save dialog for downloads, the system browser for outside links, one copy running; JavaFX provided |
 | [`okay-telegram`](modules/okay-telegram.md) | the Telegram Bot API over okay-http as values: a call answers `Either[Refused, Json]`, an update is one total enum, long polling one loop, `Chats` the performer for okay-ui's chat host, Stars payments |
-| [`okay-mcp`](modules/okay-mcp.md) | the Model Context Protocol, both ends: a server is a `Handler[Tool]`, our tools are a server, and the protocol is a pure Stage |
+| [`okay-mcp`](modules/okay-mcp.md) | the Model Context Protocol, both ends: a server is a `Answers[Tool]`, our tools are a server, and the protocol is a pure Stage |
 | [`okay-mcp-http`](modules/okay-mcp-http.md) | MCP over okay-http's wires: a socket IS a `Link` (`WsLink`, `NioLink`), streamable HTTP (`McpHttp`) and its OAuth door (`McpAuth`) |
 | [`okay-persist`](modules/okay-persist.md) | the durable log: one primitive, staged — segments and recovery, offsets, compaction, replication's core, Sql/Kafka store engines, the Doctor |
 | [`okay-ops`](modules/okay-ops.md) | health, stats and Prometheus over the persist log's own values: /healthz, /readyz, /stats, /metrics — no SDK, the manifest is the Kubernetes integration |
@@ -376,8 +376,8 @@ API reference, gotchas.
 | [`okay-foreign-workflow`](modules/okay-foreign-workflow.md) | foreign calls as the ACTIVITIES of okay's durable workflows, in do-notation: journalled, crash-resumed, the function's failure remembered and the wire's retried |
 | [`okay-foreign-cluster`](modules/okay-foreign-cluster.md) | the MAP of a cluster job in Python or R: a `Flow` stage whose chunks cross to a pooled interpreter as one Arrow frame each, the reduce staying the JVM `Wire` |
 | [`okay-script`](modules/okay-script.md) | markdown files as Scala source: fenced blocks through the real Scala 3 compiler in-process, errors pointing at the original `.md` line |
-| [`okay-langchain4j`](modules/okay-langchain4j.md) | their ChatModel as a `Handler[Model]` — their provider breadth behind our effect |
-| [`okay-langchain4j-embed`](modules/okay-langchain4j-embed.md) | their EmbeddingModel as `String => Embedding` and as okay-rag's `Handler[Embed]` |
+| [`okay-langchain4j`](modules/okay-langchain4j.md) | their ChatModel as a `Answers[Model]` — their provider breadth behind our effect |
+| [`okay-langchain4j-embed`](modules/okay-langchain4j-embed.md) | their EmbeddingModel as `String => Embedding` and as okay-rag's `Answers[Embed]` |
 | [`okay-onnx`](modules/okay-onnx.md) | the direct ONNX session: the pooled vector AND the token vectors with their characters, from one forward pass — the door `okay.intent.Spans` reads through |
 | [`okay-demo-e2e-browser`](modules/okay-demo-e2e-browser.md) | one chat round through a real headless browser — the fetch/ReadableStream glue a JVM test cannot reach |
 | [`okay-security-argon2`](modules/okay-security-argon2.md) | the one satellite that buys a dependency: Argon2id in the PHC form, RFC-vector-pinned |

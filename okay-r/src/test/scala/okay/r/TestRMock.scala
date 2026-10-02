@@ -1,6 +1,6 @@
 package okay.r
 
-import okay.Handler
+import okay.Answers
 import RValue.*
 
 /**
@@ -16,7 +16,7 @@ import RValue.*
 class TestRMock extends munit.FunSuite:
 
   /** the mock, and there is nothing else to it: a handler is the seam */
-  private def canned(answers: Map[String, RValue]): Handler[REval] = new:
+  private def canned(answers: Map[String, RValue]): Answers[REval] = new:
     def handle[A](e: REval[A]): A = e match
       case REval.Call(okay.foreign.Address.Fn(fn), _, _) =>
         answers.get(fn).toRight(Condition("simpleError", s"no canned answer for '$fn'"))
@@ -33,7 +33,7 @@ class TestRMock extends munit.FunSuite:
 
   test("a program written against REval cannot tell which engine answered") {
     // the whole program: it names operations and nothing else
-    def program(h: Handler[REval]): Either[Condition, RValue] =
+    def program(h: Answers[REval]): Either[Condition, RValue] =
       h.handle(REval.Call("mean", Vector(Vec(Vector(F64(1), F64(3))))))
     assertEquals(program(canned(Map("mean" -> Vec(Vector(F64(2)))))), Right(Vec(Vector(F64(2)))))
   }

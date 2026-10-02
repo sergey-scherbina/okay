@@ -1,6 +1,6 @@
 package okay.mcp
 
-import okay.Handler
+import okay.Answers
 import okay.agent.{Model, Reply, Turn}
 import okay.codec.Json
 
@@ -17,10 +17,10 @@ object Duplex {
   /**
    * What a client answers when a server asks. Both fields are things
    * the client already had lying around: a list of roots, and the
-   * `Handler[Model]` an agent in this process is already using.
+   * `Answers[Model]` an agent in this process is already using.
    */
   final case class Peer(roots: Seq[Mcp.Root] = Nil,
-                        sample: Option[Handler[Model]] = None,
+                        sample: Option[Answers[Model]] = None,
                         elicit: Option[(String, Json) => Answer] = None)
 
   /** what a human said to an elicitation — accept carries the value,

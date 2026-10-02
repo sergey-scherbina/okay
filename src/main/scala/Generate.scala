@@ -7,7 +7,7 @@ package okay
  * LazyList materializes the stream by laziness (the continuation is
  * captured in the #:: tail, no effect runtime at all), and Producer
  * materializes it by effects (each put is an operation of the freer
- * tree, stepped by next and interpreted by a Handler, e.g.
+ * tree, stepped by next and interpreted by an Answers, e.g.
  * Producer.log).
  */
 
@@ -43,7 +43,7 @@ inline def take[A, R]: A Loop R = Cont.shift(identity)
 
 /** the first n elements of a stream (lives here to overload with the
  * Loop take above — toplevel overloads must share a file) */
-extension [S[_], F[+_], A](s: S[A])(using Stream[S, F], Handler[F])
+extension [S[_], F[+_], A](s: S[A])(using Stream[S, F], Answers[F])
   def take(n: Int): LazyList[A] = s.toLazyList.take(n)
 /** tie the knot: the fixpoint of the loop body, with a memoized stepper */
 inline def loop[A, R](f: A Loop R): A => R =
@@ -235,8 +235,8 @@ object Producer {
           (w => { f(produced[W](w)); loop(k(w)) })
     loop(p)
 
-  /** a Handler printing each produced value on the way through */
-  def log(prefix: String = "", suffix: String = "\n"): Handler[Produce] = new:
+  /** an Answers printing each produced value on the way through */
+  def log(prefix: String = "", suffix: String = "\n"): Answers[Produce] = new:
     inline def handle[A](a: A): A = a.tap(_.pipe(prefix + _ + suffix).tap(print))
 
 }
@@ -263,7 +263,7 @@ given Stream[Producer, okay.Pure] with
   /** the specialized linear view: a direct walk of the freer tree —
    * no Option, no tuple per element (measured; the generic default
    * pays both). What remains per element is the stepping itself. */
-  override def iterator[A](p: Producer[A])(using Handler[okay.Pure]): Iterator[A] =
+  override def iterator[A](p: Producer[A])(using Answers[okay.Pure]): Iterator[A] =
     new Iterator[A]:
       private var cur: Producer[A] = p
       private var ready = false
@@ -304,7 +304,7 @@ given Foldable[Producer] with
  * the way — uncons steps to the next element, carrying the performed
  * G-operations in its answer. With G = Async this is the asynchronous
  * stream: the next element may have to be awaited, and on Loom the
- * consumer's Handler[Async] just blocks a virtual thread for it. G is
+ * consumer's Answers[Async] just blocks a virtual thread for it. G is
  * split from the elements by its runtime class (TypeableK), so G's
  * operations must be class-distinct from the element values.
  */
@@ -326,13 +326,13 @@ given [G[+_] : TypeableK]: Stream[[A] =>> A ! Produce + G, G] with
    * (Writer.scala) and the pure instance's above: no `Option`, no
    * `Either`, no program built and run per step — the DEFAULT
    * `Iterator.unfold(s)(uncons(_).runWith)` pays all three per
-   * element. A forwarded `G`-operation is answered by `Handler[G].
+   * element. A forwarded `G`-operation is answered by `Answers[G].
    * handle` directly (producer-effectful-stream-iterator; the writer
    * twin measured 6.29 -> 5.43 us and 32,952 -> 12,688 B/op on 157
    * chunks for the same move). The `produced` casts are the identity
    * signature's own, as in `uncons` above.
    */
-  override def iterator[A](p: A ! Produce + G)(using H: Handler[G]): Iterator[A] =
+  override def iterator[A](p: A ! Produce + G)(using H: Answers[G]): Iterator[A] =
     import scala.annotation.tailrec
     new Iterator[A]:
       private var cur: A ! Produce + G = p
