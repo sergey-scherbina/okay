@@ -185,3 +185,39 @@ LEFT AS FOLDS, on purpose — each stays correct and nests as before:
   the outermost thing in its program.
 - Runners that answer a VALUE (Prob, Bayes, runFree, the steppers'
   `uncons`/`advance`): top level by type, nothing nests them.
+
+## Decision: no fold upgrades itself — depth-bounded forcing (handle-frames-loops, measured)
+
+SUPERSEDES "Upgrade" in the design above and in stages 1-2. The first
+cut handed a fold to the machine at the FIRST nested run it met. That
+is every composition of handlers: `State.run(Writer.run(p))` meets the
+lazy `Writer.run` at its head, and ran entirely as machine frames —
+SplitBenchmark.mixedList 87 µs against 12, 7.4x, a capture per
+tail-resumptive operation. Stages 1-2 had already landed that road for
+State over `handle`/`relay`/`translate`.
+
+Now: a fold that meets a nested run FORCES it — `HandleFrames.shallow`,
+the nested fold on this one's stack, the old behaviour — counting how
+deep it is (`Run.at(depth)`); at `HandleFrames.Limit` (32) the nested
+run runs as its FRAME on a machine of its own, and inside a machine
+every handler is a frame, so nothing nests past it. The host stack is
+bounded by 32 folds (+ one machine) whatever the program's handler
+nesting — 100 000 nested on 128 KB and Scala.js still green — and a
+composition of handlers never leaves the folds. The loop's arm is one
+tail call, `loop(d)(HandleFrames.shallow(y, d))`; each loop threads its
+depth, so a forwarded operation's continuation re-enters at the depth
+it left.
+
+Measured (history.d handle-frames-loops, alternated against master):
+mixedList 0.95x, writerShip 0.76x, stateSmall 1.02x, handlePrebuilt
+1.02x, relayPrebuilt 0.89x. Two traps on the way, both recorded:
+`handle`'s loop with the depth was 356 bytes, past FreqInlineSize
+(its forwarding arm moved to a method: back under); `relay` with the
+depth threaded as a parameter read 1.19x though its size and inlining
+were unchanged — an extra arm without the back-edge read the same 156,
+the same loop without the parameter 131 — so its walk is an object per
+run (`Effects.Relaying`) whose depth is a field.
+
+The differential now runs the frame INSIDE a machine (`Shift.run`
+around the handler), since a fold no longer turns into one: a mutant
+in the state frame reds four.
