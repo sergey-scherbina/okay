@@ -296,6 +296,11 @@ given Effects[Free] with
     // a call from inside flatMap cannot be a jump; `again` takes it, so
     // the walk itself stays a checked loop
     def again(x: Free[F + G, A]): Free[G, B] = loop(x)
+
+    // ITS OWN METHOD, as `last` and `capture` are: written in the loop's arm it cost every forwarded operation
+    // 1.25x (handlePrebuilt 156 vs 124 µs) though the arm never ran — bytes in the loop, not work
+    def nested(y: Free[F + G, A]): Free[G, B] =
+      HandleFrames.pending[B, G](HandleFrames.control[F, A, B, G](ret, h, summon[TypeableK[F]])(y))
     @tailrec def loop(x: Free[F + G, A]): Free[G, B] = (x.resumeRun: @unchecked) match
       case Free.Return(a) => ret(a)
       case Free.Inject(e) => last(e)
@@ -309,7 +314,7 @@ given Effects[Free] with
             })
           (_ => forwarded[F, G](i).flatMap(x => again(k(x))))
       // a run nested here (handle-frames): this loop becomes a frame of the machine over the rest
-      case y => HandleFrames.pending[B, G](HandleFrames.control[F, A, B, G](ret, h, summon[TypeableK[F]])(y))
+      case y => nested(y)
 
     // a value: run by whoever forces it, a frame for a machine that meets it
     HandleFrames.handled[B, G](() => loop(m), () => HandleFrames.control[F, A, B, G](ret, h, summon[TypeableK[F]])(m))
