@@ -65,6 +65,30 @@ Same budget, effective sample size of β: 151 with `metropolis`, 6879 with
 on every draw here and answers β with the wrong sign; it agrees only after
 temperature is standardised by hand. `adaptive` needs no such rewrite.
 
+**Evidence: `smc`.** Sequential Monte Carlo runs many copies of the program
+side by side, each SUSPENDED at its next `observe`; at every observation the
+copies are reweighed and, when a few carry most of the weight, resampled —
+a copy chosen twice resumes ONE continuation twice, and each copy draws its
+own future. Besides the posterior it answers `logEvidence`, log p(data),
+which MCMC cannot: the number that compares two models. Observations go in
+one at a time with `observeEach` (to MCMC it is the same as `observeAll`).
+A random walk tracked through noisy readings, whose exact answer is the
+Kalman filter's:
+
+```scala
+def track(ys: Vector[Double]): Double ! Model =
+def step(t: Int, x: Double): Double ! Model =
+if t == ys.length then okay.pure[Model, Double](x)
+else sample(s"x$t", Normal(x, q)).flatMap(x1 => observe(Normal(x1, r), ys(t)).flatMap(_ => step(t + 1, x1)))
+step(0, 0.0)
+val ps = smc(track(ys), particles = 4000)
+```
+
+`ps.expect(identity)` is E[x(49) | y] (1.9735, the Kalman filter's 1.9735)
+and `ps.logEvidence` is log p(y) (-101.706 against -101.616). Two models'
+evidences subtract to a log Bayes factor: a coin with p ~ Uniform against a
+fair one, 0.182 against the closed form's 0.145.
+
 **Reading the posterior.** `post.site("lambda_1")` is a site's chain,
 `post.draws` the program's values; `Summary` has the mean, sd, quantiles,
 the highest-density interval, the effective sample size (Geyer's initial
@@ -105,6 +129,7 @@ by `uv` through okay-py, samples the same model as a Live test.
 | `sample(name, d)`, `observe(d, x)`, `observeAll(xs)(d, value)`, `factor(logW)` | the `Model` effect |
 | `prior(p, rng)`, `weighted(p, n, rng)`, `metropolis(p, samples, burn, thin, chains, seed)` | handlers: a forward run, likelihood weighting, lightweight MH |
 | `adaptive(p, samples, burn, thin, chains, seed)` | MH with joint moves under a learnt covariance (Haario 2001) |
+| `smc(p, particles, seed)`, `observeEach(xs)(d, value)` | sequential Monte Carlo: `Particles` with `expect`, `mean(site)`, `ess`, `logEvidence` |
 | `Posterior`: `draws`, `site(name)`, `rhat(name)`, `acceptance` | the posterior, typed |
 | `Summary.mean / sd / quantile / hdi / ess / rhat` | reading it |
 
@@ -122,6 +147,10 @@ by `uv` through okay-py, samples the same model as a Live test.
   (Gelman, Roberts, Gilks 1996).
 - Dalal, Fowlkes, Hoadley, *Risk Analysis of the Space Shuttle:
   Pre-Challenger Prediction of Failure* (JASA 1989) — the O-ring data.
+- Del Moral, Doucet, Jasra, *Sequential Monte Carlo Samplers* (JRSS B
+  2006); Wood, van de Meent, Mansinghka, *A New Approach to Probabilistic
+  Programming Inference* (AISTATS 2014) — SMC as the inference of a
+  program suspended at its observations.
 - Kiselyov, Shan, *Embedded Probabilistic Programming* (DSL 2009) — a
   model as a program, inference as a handler: the core's `Prob`.
 - Marsaglia, Tsang, *A Simple Method for Generating Gamma Variables* (ACM

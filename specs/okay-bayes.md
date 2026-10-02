@@ -1,6 +1,6 @@
 # okay-bayes — Bayesian inference as effects, without Python
 
-Status: stage 1 landed (2026-10-02); stage 2a (ch.2, adaptive Metropolis) 2026-10-02; specification 2026-10-02 (operator ask: "Bayesian Methods for
+Status: stage 1 landed (2026-10-02); stage 2a (ch.2, adaptive Metropolis) and 2b (SMC) 2026-10-02; specification 2026-10-02 (operator ask: "Bayesian Methods for
 Hackers ... make okay-bayes so we can do without Python; is it very
 hard?"). Builds on the core's `Prob` effect (specs/prob-effect-hansei.md:
 discrete `dist`, boolean `observe`, exact enumeration, rejection).
@@ -95,15 +95,15 @@ continuation twice — multi-shot, sound because a program value is
 immutable. The result is the weighted particles and an unbiased estimate of
 the log EVIDENCE, log p(data) — what MCMC does not give and what a Bayes
 factor needs.
-- [ ] a state-space model (a Gaussian random walk observed with noise),
+- [x] a state-space model (a Gaussian random walk observed with noise),
       sampled step by step: the filtering mean and the log evidence against
       the Kalman filter's exact answers
-- [ ] a static model observed one point at a time (`observeEach`):
+- [x] a static model observed one point at a time (`observeEach`):
       Beta–Bernoulli posterior mean and log evidence against the closed
       forms
-- [ ] the evidence COMPARES models: two hypotheses on one data set, the
+- [x] the evidence COMPARES models: two hypotheses on one data set, the
       log Bayes factor against the closed form
-- [ ] a resampled particle shares its continuation with its copies, and
+- [x] a resampled particle shares its continuation with its copies, and
       they diverge afterwards (each draws its own future)
 
 Stage 2c — mixtures and convergence (ch.3), Thompson
@@ -183,6 +183,24 @@ temperature; constant Jacobian; the book's priors kept as a Potential)
 samples with no divergence and agrees with the grid, and that is the
 oracle the Live test runs. okay-bayes needs no reparametrisation: the
 adaptive sampler learns the correlation itself.
+
+Stage 2b (2026-10-02), TestSmc — the same on JVM, Scala.js and Native:
+
+| | exact | okay-bayes SMC (4000 particles) |
+|---|---|---|
+| random walk, 50 steps: E[x49 given y] | 1.9735 (Kalman) | 1.9735 |
+| random walk: log p(y) | -101.616 (Kalman) | -101.706 (27 resamplings) |
+| Beta(2, 2)–Bernoulli, 40 flips: E[p] | 0.6364 | 0.6370 |
+| Beta–Bernoulli: log p(y) | -27.2845 | -27.2978 |
+| log Bayes factor, Uniform p against a fair coin | 0.1446 | 0.1823 |
+
+A model with no draw is weighed exactly (its evidence is the likelihood
+to 1e-9). Resampling after a factor of -50x² leaves 144 values of x held
+by several particles, up to 11 copies of one, and every copy drew its own
+y: a shared continuation, separate futures. No rejuvenation step yet: for a
+static parameter the particles only ever hold values drawn from the prior,
+so the posterior is as rich as 4000 prior draws can make it (resample-move,
+Chopin 2002, is the next step when a model needs it).
 
 ## 6. Open questions
 

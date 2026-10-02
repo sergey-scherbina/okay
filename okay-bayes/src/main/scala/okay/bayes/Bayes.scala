@@ -32,6 +32,20 @@ final case class Posterior[A](chains: Vector[Chain[A]]):
   def acceptance: Map[String, Double] =
     chains.flatMap(_.acceptance).groupMapReduce(_._1)(_._2)(_ + _).view.mapValues(_ / chains.length).toMap
 
+/**
+ * what SMC ends with: each particle's value and sites, its normalized
+ * weight, and the estimate of the log evidence log p(data)
+ */
+final case class Particles[A](values: Vector[A], sites: Vector[Map[String, Double]], weights: Vector[Double], logEvidence: Double, resamplings: Int):
+  /** E[f(value)] under the weighted particles */
+  def expect(f: A => Double): Double = values.iterator.zip(weights).map((a, w) => f(a) * w).sum
+  /** a site's weighted mean, over the particles that drew it */
+  def mean(name: String): Double =
+    val held = sites.iterator.zip(weights).collect { case (s, w) if s.contains(name) => (s(name), w) }.toVector
+    held.map((x, w) => x * w).sum / held.map(_._2).sum
+  /** the effective number of particles, 1 / Σ w² */
+  def ess: Double = 1 / weights.map(w => w * w).sum
+
 object Bayes:
   /** draw `name` from `d` */
   inline def sample[A](name: String, d: Distribution[A]): A ! Model = effect(Model.Sample(name, d))
@@ -45,6 +59,14 @@ object Bayes:
   /** observe every element, each under the distribution `d` gives it */
   def observeAll[X, A](xs: Iterable[X])(d: X => Distribution[A], value: X => A): Unit ! Model =
     factor(xs.iterator.map(x => d(x).logPdf(value(x))).sum)
+
+  /** observe every element as its OWN factor — SMC reweighs between them; to MCMC it is `observeAll` */
+  def observeEach[X, A](xs: Iterable[X])(d: X => Distribution[A], value: X => A): Unit ! Model =
+    val v = xs.toVector
+    // recursion deferred into the program's flatMap: one step per element, trampolined by the handler loop
+    def from(i: Int): Unit ! Model =
+      if i == v.length then okay.pure[Model, Unit](()) else observe(d(v(i)), value(v(i))).flatMap(_ => from(i + 1))
+    from(0)
 
   /** a site's value and its distribution, held at ONE type — so a value is
    * proposed and re-scored by its own distribution, with no cast */
@@ -124,6 +146,89 @@ object Bayes:
    */
   def adaptive[A](p: A ! Model, samples: Int, burn: Int = 2000, thin: Int = 1, chains: Int = 1, seed: Long = 42L): Posterior[A] =
     Posterior(Vector.tabulate(chains)(i => chain(p, samples, burn, thin, new Random(seed + i), joint = true)))
+
+  /**
+   * RUN a suspended program to its next `Factor`, drawing every `Sample`
+   * on the way from its prior: answers what is left of the program (its
+   * value when it ended), the factor's log weight, and the sites so far.
+   */
+  private def advance[A](x: A ! Model, sites0: Map[String, Double], rng: Random): (Either[A, A ! Model], Double, Map[String, Double]) =
+    var sites = sites0
+    def draw[X](name: String, d: Distribution[X]): X =
+      val v = d.sample(rng)
+      sites = sites.updated(name, d.numeric(v))
+      v
+    def last(op: Model[A]): (A, Double) = op match
+      case Model.Sample(name, d) => (draw(name, d), 0.0)
+      case Model.Factor(w) => ((), w)
+    def step[X](op: Model[X], k: X => A ! Model): Either[A ! Model, (A ! Model, Double)] = op match
+      case Model.Sample(name, d) => Left(k(draw(name, d)))
+      case Model.Factor(w) => Right((k(()), w))
+    @tailrec def loop(x: A ! Model): (Either[A, A ! Model], Double) = (x.resume: @unchecked) match
+      case Free.Return(a) => (Left(a), 0.0)
+      case Free.Inject(op: Model[A] @unchecked) =>
+        val (a, w) = last(op)
+        (Left(a), w)
+      case Free.Bind(Free.Inject(op: Model[x] @unchecked), k) => step(op, k) match
+        case Left(more) => loop(more)
+        case Right((rest, w)) => (Right(rest), w)
+    val (next, w) = loop(x)
+    (next, w, sites)
+
+  private def logSumExp(xs: Vector[Double]): Double =
+    val top = xs.max
+    if top == Distribution.NegInf then top else top + math.log(xs.iterator.map(x => math.exp(x - top)).sum)
+
+  /**
+   * SEQUENTIAL MONTE CARLO (Del Moral, Doucet & Jasra 2006; as a
+   * probabilistic-programming inference, Wood, van de Meent & Mansinghka
+   * 2014). Each particle is the program SUSPENDED at its next `Factor`,
+   * the samples before it drawn from their priors on the way; at every
+   * factor the particles are reweighed, and when the effective sample size
+   * falls under half they are resampled (systematic resampling). A particle
+   * chosen twice RESUMES ONE CONTINUATION TWICE — multi-shot, sound because
+   * a program value is immutable: each copy draws its own future. Answers
+   * the weighted particles and log p(data), the product of the mean
+   * incremental weights (unbiased for the evidence).
+   */
+  def smc[A](p: A ! Model, particles: Int, seed: Long = 42L): Particles[A] =
+    require(particles > 0, "smc: at least one particle")
+    val rng = new Random(seed)
+    val n = particles
+    var states = Vector.fill[Either[A, A ! Model]](n)(Right(p))
+    var sites = Vector.fill(n)(Map.empty[String, Double])
+    var lw = Vector.fill(n)(0.0)
+    var logZ = 0.0
+    var resamplings = 0
+    while states.exists(_.isRight) do
+      val stepped = states.indices.map(i => states(i) match
+        case Right(x) => advance(x, sites(i), rng)
+        case left => (left, 0.0, sites(i))).toVector
+      states = stepped.map(_._1)
+      sites = stepped.map(_._3)
+      lw = lw.zip(stepped).map((l, s) => l + s._2)
+      val total = logSumExp(lw)
+      require(total > Distribution.NegInf, "smc: every particle has weight zero — the observations rule out all of them")
+      val ws = lw.map(l => math.exp(l - total))
+      if states.exists(_.isRight) && 1 / ws.map(w => w * w).sum < n / 2.0 then
+        logZ += total - math.log(n)
+        // systematic: one uniform, n evenly spaced pointers into the cumulative weights
+        val u = rng.nextDouble() / n
+        val cum = ws.scanLeft(0.0)(_ + _).tail
+        var j = 0
+        val idx = Vector.tabulate(n) { i =>
+          val at = u + i.toDouble / n
+          while j < n - 1 && cum(j) < at do j += 1
+          j
+        }
+        states = idx.map(states)
+        sites = idx.map(sites)
+        lw = Vector.fill(n)(0.0)
+        resamplings += 1
+    val total = logSumExp(lw)
+    logZ += total - math.log(n)
+    val values = states.map { case Left(a) => a; case Right(_) => throw IllegalStateException("smc: a particle did not finish") }
+    Particles(values, sites, lw.map(l => math.exp(l - total)), logZ, resamplings)
 
   /** the lower Cholesky factor of a symmetric positive-definite matrix */
   private def cholesky(m: Array[Array[Double]]): Array[Array[Double]] =

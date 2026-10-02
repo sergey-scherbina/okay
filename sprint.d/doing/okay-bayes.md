@@ -7,5 +7,5 @@
       book's ch.1 texting model on its data, PyMC via okay-py (Live).
       Stages 2–4 (SMC, HMC/NUTS, the Inference facade) after it.
       Stage 1 landed 53219afcb; stage 2a (ch.2: A/B, Challenger,
-      adaptive Metropolis) okay-bayes-ch2. Next: 2b SMC (multi-shot),
+      adaptive Metropolis) okay-bayes-ch2; 2b SMC okay-bayes-smc. Next:
       ch.3 mixtures, ch.6 Thompson sampling.
