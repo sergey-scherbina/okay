@@ -135,10 +135,10 @@ object State {
  */
 object PState {
   /** read the state, leaving its type unchanged */
-  def get[S, R]: Cont[S, S => R, S => R] = shift[S, S => R, S => R](k => s => k(s)(s))
+  def get[S, R]: Cont[S, S => R, S => R] = Cont.shift[S, S => R, S => R](k => s => k(s)(s))
 
   /** write a state of a possibly different type; the old state is the value */
-  def set[S, S2, R](s2: S2): Cont[S, S2 => R, S => R] = shift[S, S2 => R, S => R](k => s => k(s)(s2))
+  def set[S, S2, R](s2: S2): Cont[S, S2 => R, S => R] = Cont.shift[S, S2 => R, S => R](k => s => k(s)(s2))
 
   /** a typestate transition read as a two-parameter carrier in its
    * state, `L[A, B] = Cont[X, B => R, A => R]` — what okay2-optics

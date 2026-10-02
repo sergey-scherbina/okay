@@ -1,7 +1,7 @@
 package okay2.codec
 
 import scala.language.experimental.macros
-import okay2.{Cont, reset, />}
+import okay2.{Cont, />}
 
 /**
  * A type's shape as data (okay-codec's Schema.scala): the scalars, the
@@ -247,7 +247,7 @@ object Schema extends SchemaDerivation {
     def walk[E, A, R](s: Step[E, A, R], e: E, a: A): R = s.run(e, a, 0)
 
     private def child[E, X, R](s: Step[E, X, R], e: E, x: X, open: Int): R =
-      if (open >= Codecs.NativeThreshold) reset(s.cont(e, x, open))
+      if (open >= Codecs.NativeThreshold) Cont.reset(s.cont(e, x, open))
       else s.run(e, x, open)
 
     def leaf[E, A, R](f: (E, A) => R): Step[E, A, R] = new Step[E, A, R] {

@@ -2,7 +2,7 @@ package okay2.codec
 
 import scala.language.experimental.macros
 import scala.language.implicitConversions
-import okay2.{Cont, reset, />}
+import okay2.{Cont, />}
 import okay2.lex.{Json => JsonLex}
 import okay2.lex.Json.K
 import okay2.parse.{Cst, JsonParse, Parse}
@@ -66,7 +66,7 @@ object Json {
   }
 
   private def printInto(j: Json, sb: StringBuilder, open: Int): Unit =
-    if (open >= Codecs.NativeThreshold) reset(printIntoC[Unit](j, sb, open))
+    if (open >= Codecs.NativeThreshold) Cont.reset(printIntoC[Unit](j, sb, open))
     else printIntoNative(j, sb, open)
 
   private def printIntoNative(j: Json, sb: StringBuilder, open: Int): Unit = j match {
@@ -140,7 +140,7 @@ object Json {
   def mergePatch(target: Json, patch: Json): Json = mergePatchAt(target, patch, 0)
 
   private def mergePatchAt(target: Json, patch: Json, open: Int): Json =
-    if (open >= Codecs.NativeThreshold) reset(mergePatchC[Json](target, patch, open))
+    if (open >= Codecs.NativeThreshold) Cont.reset(mergePatchC[Json](target, patch, open))
     else mergePatchNative(target, patch, open)
 
   private def mergePatchNative(target: Json, patch: Json, open: Int): Json = patch match {
@@ -238,7 +238,7 @@ object Json {
   }
 
   private def into(c: Cst[K], out: Out, open: Int): Unit =
-    if (open >= Codecs.NativeThreshold) reset(intoC[Unit](c, out, open))
+    if (open >= Codecs.NativeThreshold) Cont.reset(intoC[Unit](c, out, open))
     else intoNative(c, out, open)
 
   private def leaf(t: okay2.lex.Token[K], out: Out): Unit = t.kind match {
@@ -285,7 +285,7 @@ object Json {
   }
 
   private def pairs(kids: Vector[Cst[K]], open: Int): Vector[(String, Json)] =
-    if (open >= Codecs.NativeThreshold) reset(pairsC[Vector[(String, Json)]](kids, open))
+    if (open >= Codecs.NativeThreshold) Cont.reset(pairsC[Vector[(String, Json)]](kids, open))
     else {
       val vs = Vector.newBuilder[Json]
       kids.foreach(into(_, vs, open))
@@ -395,7 +395,7 @@ object Json {
   def decode[A](s: Schema[A])(j: Json): Either[String, A] = decodeAt(s, j, 0)
 
   private def decodeAt[A](s: Schema[A], j: Json, depth: Int): Either[String, A] =
-    if (depth >= Codecs.NativeThreshold) reset(decodeC[A, Either[String, A]](s, j))
+    if (depth >= Codecs.NativeThreshold) Cont.reset(decodeC[A, Either[String, A]](s, j))
     else decodeNative(s, j, depth)
 
   private[codec] def kindOf(s: Schema[_]): String = s match {

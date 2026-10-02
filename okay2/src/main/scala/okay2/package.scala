@@ -89,10 +89,8 @@ package object okay2 extends Provides with Monads {
   /** what reset can delimit: the value and its inner answer coincide */
   type ^[A, R] = Cont[A, A, R]
 
-  /** capture the current continuation (Danvy–Filinski, with answer-type modification) */
-  def shift[A, S, R](f: (A => S) => R): Cont[A, S, R] = Cont.shift(f)
-  /** delimit: run the computation with the identity continuation */
-  def reset[A, R](c: A ^ R): R = Cont.run(c)(identity)
+  // Cont's capture and delimiter are `Cont.shift` / `Cont.reset` (cont-shift-rename's twin): the top-level
+  // names belong to level 1's `Shift[R]` (specs/api-levels.md)
 
   /** the function encoding: the reference implementation of Control,
    * fast, fused, NOT stack-safe */

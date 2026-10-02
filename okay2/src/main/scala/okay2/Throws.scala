@@ -29,7 +29,7 @@ object Throws {
     Effects.handle[Throws[E], F](a)(a => pure[F, Either[E, A]](Right(a)))(
       new Interpr[Throws[E], Either[E, A] ! F] {
         def apply[X](e: Op[E, X]): Cont[X, Either[E, A] ! F, Either[E, A] ! F] = e match {
-          case Raise(err) => shift[X, Either[E, A] ! F, Either[E, A] ! F](_ => pure[F, Either[E, A]](Left(err)))
+          case Raise(err) => Cont.shift[X, Either[E, A] ! F, Either[E, A] ! F](_ => pure[F, Either[E, A]](Left(err)))
         }
       })
 
@@ -46,7 +46,7 @@ object Throws {
     Effects.handle[Throws[E], F](a)(a => pure[F, A](a))(
       new Interpr[Throws[E], A ! F] {
         def apply[X](e: Op[E, X]): Cont[X, A ! F, A ! F] = e match {
-          case Raise(err) => shift[X, A ! F, A ! F](_ => throw err)
+          case Raise(err) => Cont.shift[X, A ! F, A ! F](_ => throw err)
         }
       })
 }

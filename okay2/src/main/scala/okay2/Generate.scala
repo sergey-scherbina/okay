@@ -135,18 +135,18 @@ trait Put[S[_]] {
 
 object Put {
   implicit val lazyList: Put[LazyList] = new Put[LazyList] {
-    def put[W](w: W): Unit /> LazyList[W] = shift[Unit, LazyList[W], LazyList[W]](k => w #:: k(()))
+    def put[W](w: W): Unit /> LazyList[W] = Cont.shift[Unit, LazyList[W], LazyList[W]](k => w #:: k(()))
   }
 
   implicit val producer: Put[Producer] = new Put[Producer] {
     def put[W](w: W): Unit /> Producer[W] =
-      shift[Unit, Producer[W], Producer[W]](k => Produce.produce(w).flatMap(_ => k(())))
+      Cont.shift[Unit, Producer[W], Producer[W]](k => Produce.produce(w).flatMap(_ => k(())))
   }
 }
 
 object Generate {
   /** the input of the current iteration */
-  def take[A, R]: Loop[A, R] = shift[A, R, A => R](identity)
+  def take[A, R]: Loop[A, R] = Cont.shift[A, R, A => R](identity)
 
   /** tie the knot: the body's continuation is the next iteration */
   def loop[A, R](f: Loop[A, R]): A => R = {

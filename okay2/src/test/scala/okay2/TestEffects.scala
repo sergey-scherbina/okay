@@ -52,7 +52,7 @@ class TestEffects extends munit.FunSuite {
     def run(b: Boolean): Int =
       !.handle[Throws[String], Produce](calc(b))(a => pure(a))(new Interpr[Throws[String], Int ! Produce] {
         def apply[X](e: Throws.Op[String, X]): Cont[X, Int ! Produce, Int ! Produce] =
-          shift[X, Int ! Produce, Int ! Produce](_ => pure(-1))
+          Cont.shift[X, Int ! Produce, Int ! Produce](_ => pure(-1))
       }).runWith
 
     assertEquals(run(false), 5)
@@ -68,7 +68,7 @@ class TestEffects extends munit.FunSuite {
     val both: List[Int] ! Produce =
       !.handle[Op, Produce](p)(a => pure(List(a)))(new Interpr[Op, List[Int] ! Produce] {
         def apply[X](e: Op.Val[X]): Cont[X, List[Int] ! Produce, List[Int] ! Produce] =
-          shift[X, List[Int] ! Produce, List[Int] ! Produce](k => k(e.a).flatMap(a => k(e.a).map(b => a ++ b)))
+          Cont.shift[X, List[Int] ! Produce, List[Int] ! Produce](k => k(e.a).flatMap(a => k(e.a).map(b => a ++ b)))
       })
     assertEquals(both.runWith, List(11, 11))
   }
