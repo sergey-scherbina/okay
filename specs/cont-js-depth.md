@@ -1,6 +1,6 @@
 # cont-js-depth — the machine apart, and no stack overflow in principle
 
-Status: stages 1-2 done, 2026-10-02. Owner lane: `cont-js-depth`.
+Status: stages 1-2 done, differential oracle landed, 2026-10-02. Owner lane: `cont-js-depth`.
 Sprint item of the same name; follows specs/cont-stack.md and
 specs/freer-kont.md.
 
@@ -64,6 +64,17 @@ backlog cont-stack-layer1-c.
    trampoline (its host stack grows per STEP of a run), so it checks them
    at small sizes only. MEASURED: with `k` as data the machine holds no
    host frame per level on any platform — the bound is the bridge's.
+2b. **The reference as an ORACLE** (operator: "что он даёт?" — it gave
+   little while it only re-ran hand-written laws): TestDelimitedDifferential
+   (scala-cross) generates programs over `Delimited` — three prompts,
+   `reset`/`dollar` with a `ret`, `shift`/`shift0`/`abort`, bodies that
+   resume `k` once, twice, never, then continue, or resume with a
+   computation — runs each on the machine and on the reference and
+   compares the outcome, `NoPrompt` included: 4 500 programs a run, green
+   on JVM, Scala.js and Native. MEASURED its worth: a type-correct mutant
+   of the machine's fast path (capture at ANY delimiter right under the
+   live segment, its prompt unchecked) passes the hand-written laws and
+   the depth suite (15 of 15) and fails all three differential sets.
 3. The bridge on Scala.js: the nesting shapes of the census (state
    passing) and user code — candidates: the function answer walked as
    data on JS only (cont-stack-layer1-c (6)), a link-time IR transform
