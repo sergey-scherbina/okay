@@ -163,11 +163,15 @@ enum Freer[G[_, _, +_], S, R, +A] {
    * answers it, alone or under its `Bind`, instead of forcing it (handle-frames): a loop that can hand itself
    * to the machine walks with this, so a run nested in it never runs inside it.
    */
+  // ONE test for `Bind`, its head matched once: the four `Bind` cases of `resume` written flat measured 345
+  // bytes, past HotSpot's FreqInlineSize (325) that `resume`'s 322 sit under — the loops lost its inlining, 1.32x
   @tailrec final def resumeRun: Freer[G, S, R, A] = this match
-    case Bind(Bind(a, f), g) => Bind(a, f(_).flatMap(g)).resumeRun
-    case Bind(Return(a), f) => f(a).resumeRun
+    case Bind(h, g) => h match
+      case Bind(a, f) => Bind(a, f(_).flatMap(g)).resumeRun
+      case Return(a) => g(a).resumeRun
+      case Delay(t) => if t.isInstanceOf[Frames.Pending[?, ?, ?, ?, ?]] then this else Bind(t(), g).resumeRun
+      case _ => this
     case Delay(t) => if t.isInstanceOf[Frames.Pending[?, ?, ?, ?, ?]] then this else t().resumeRun
-    case Bind(Delay(t), g) => if t.isInstanceOf[Frames.Pending[?, ?, ?, ?, ?]] then this else Bind(t(), g).resumeRun
     case a => a
 }
 
