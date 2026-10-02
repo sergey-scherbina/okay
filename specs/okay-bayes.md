@@ -134,8 +134,26 @@ a value, a run a fold over pulls.
       Lai–Robbins rate Σ Δᵢ / KL(pᵢ, p*) · log T; uniform random play
       grows linearly
 - [x] the posterior concentrates on the best arm: after T pulls its share of
-      pulls tends to 1 Stage 3 — HMC/NUTS with automatic
-differentiation. Stage 4 — `Inference` as a facade (specs/own-or-standard.md):
+      pulls tends to 1 Stage 3 — HMC/NUTS (operator, 2026-10-02: "Both: AD optional" — ONE
+sampler, the gradient from a source):
+- 3a. `Target` (a dimension, log density and gradient on ℝᵈ) and
+  `Nuts.sample(target, ...)`: the No-U-Turn sampler (Hoffman & Gelman 2014,
+  Algorithm 6: slice NUTS with dual-averaging step size), a diagonal mass
+  matrix learnt in warmup. Each distribution declares its `Support` (ℝ,
+  positive, an interval, discrete) and a model's sites move in
+  UNCONSTRAINED space (log for positive, scaled logit for an interval, the
+  Jacobian added), so no step leaves the support. `Bayes.nuts(model, ...)`
+  builds the target from an ordinary `Double` model, the gradient by
+  central finite differences (2d re-runs of the program per gradient);
+  a discrete site, or a support that moves with another site, is refused
+  by name.
+  - [ ] conjugates (Normal–Normal on ℝ, Gamma–Poisson through the log,
+        Beta–Bernoulli through the logit) against their closed forms
+  - [ ] the ch.3 mixture against the importance-sampling oracle
+  - [ ] Challenger against the grid, divergences counted and reported
+  - [ ] a discrete site is refused by name
+- 3b. Automatic differentiation: models over a differentiable `Real`
+  (reverse mode), their `Target` exact — the same `Nuts.sample`. Stage 4 — `Inference` as a facade (specs/own-or-standard.md):
 ours by default, PyMC/Stan behind an import over an optional dependency.
 
 ## 4. Decisions
