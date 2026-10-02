@@ -42,6 +42,8 @@ object Bayes:
   def weighted[A](p: => A ! Model, n, rng): Vector[(A, Double)]    // likelihood weighting
   def metropolis[A](p: A ! Model, samples, burn, thin, chains, seed): Posterior[A]   // single-site
   def adaptive[A](p: A ! Model, samples, burn, thin, chains, seed): Posterior[A]     // + joint moves, learnt covariance
+  def smc[A](p: A ! Model, particles, seed): Particles[A]          // weighted particles + log evidence
+  def observeEach[X, A](xs)(d, value): Unit ! Model               // one factor per observation (observeAll: one in all)
 
 final case class Posterior[A](chains: Vector[Chain[A]]):   // Chain(draws: Vector[A], sites: Vector[Map[String, Double]], acceptance)
   def draws: Vector[A]; def site(name: String): Vector[Double]; def rhat(name: String): Double
@@ -83,7 +85,28 @@ Stage 2a — *Bayesian Methods for Hackers* ch.2:
 - [x] PyMC as an oracle for Challenger (Live) — see Results for why the
       book's own parametrisation cannot be that oracle
 
-Stage 2b — SMC (multi-shot), mixtures and convergence (ch.3), Thompson
+Stage 2b — SMC (Del Moral, Doucet & Jasra 2006; the probabilistic-programming
+form of Wood, van de Meent & Mansinghka 2014): `smc(p, particles, seed)`.
+Each particle is the program SUSPENDED at its next `Factor`; the samples
+before it are drawn from their priors on the way. At every factor the
+particles are reweighed, and when the effective sample size falls under
+half they are resampled (systematic): a particle chosen twice resumes ONE
+continuation twice — multi-shot, sound because a program value is
+immutable. The result is the weighted particles and an unbiased estimate of
+the log EVIDENCE, log p(data) — what MCMC does not give and what a Bayes
+factor needs.
+- [ ] a state-space model (a Gaussian random walk observed with noise),
+      sampled step by step: the filtering mean and the log evidence against
+      the Kalman filter's exact answers
+- [ ] a static model observed one point at a time (`observeEach`):
+      Beta–Bernoulli posterior mean and log evidence against the closed
+      forms
+- [ ] the evidence COMPARES models: two hypotheses on one data set, the
+      log Bayes factor against the closed form
+- [ ] a resampled particle shares its continuation with its copies, and
+      they diverge afterwards (each draws its own future)
+
+Stage 2c — mixtures and convergence (ch.3), Thompson
 sampling for bandits (ch.6). Stage 3 — HMC/NUTS with automatic
 differentiation. Stage 4 — `Inference` as a facade (specs/own-or-standard.md):
 ours by default, PyMC/Stan behind an import over an optional dependency.
