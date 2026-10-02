@@ -21,3 +21,7 @@
       the bound and require a native tailRecM for eager carriers (cats'
       answer). TestCatsBridges' "a million through an eager okay monad"
       is JVM-only until then.
+      OPERATOR'S BAR (2026-10-02): "полный трамплининг — чтобы не было
+      никакого переполнения в принципе". Not "deep enough on a big
+      stack", not "survives by Cont's stack switch": constant host stack
+      per iteration on JVM (SmallStack 128 KB), Native and JS.
