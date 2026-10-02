@@ -60,7 +60,8 @@ class TestDistributions extends Diagnosed:
     val k = Poisson(10).propose(10, 1, rng)
     assert(k != 10)
     assertEquals(Poisson(3).coerce(5), Some(5))
-    assertEquals(Poisson(3).coerce(5.0), None)
+    // 5.5, not 5.0: on Scala.js there is one number type, and an integral Double IS an Int there
+    assertEquals(Poisson(3).coerce(5.5), None)
     assertEquals(Normal(0, 1).coerce(0.5), Some(0.5))
     assertEquals(Normal(0, 1).coerce("x"), None)
   }
