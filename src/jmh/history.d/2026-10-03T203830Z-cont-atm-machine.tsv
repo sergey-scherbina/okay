@@ -1,0 +1,9 @@
+2026-10-03	4f6faa097	quiet	statePara_delimited	42.075	57.444	0.73	min of 2 alternating rounds vs master 83b8c1e96 (jmh-lane.sh, -prof gc); 501344 vs 437279 B/op
+2026-10-03	4f6faa097	quiet	stateSmall_delimited	1.302	1.325	0.98	min of 2 alternating rounds vs master 83b8c1e96 (jmh-lane.sh, -prof gc); 19200 vs 19200 B/op
+2026-10-03	4f6faa097	quiet	handlePrebuilt_delimited	128.529	129.315	0.99	min of 2 alternating rounds vs master 83b8c1e96 (jmh-lane.sh, -prof gc); 1674889 vs 1674889 B/op
+2026-10-03	4f6faa097	quiet	relayPrebuilt_delimited	118.741	116.739	1.02	min of 2 alternating rounds vs master 83b8c1e96 (jmh-lane.sh, -prof gc); 1527739 vs 1527739 B/op
+2026-10-03	4f6faa097	quiet	contAnswer_delimited	30.994	34.951	0.89	min of 2 alternating rounds vs master 83b8c1e96 (jmh-lane.sh, -prof gc); 382136 vs 342104 B/op
+2026-10-03	4f6faa097	quiet	mixedList_delimited	11.3	11.116	1.02	min of 2 alternating rounds vs master 83b8c1e96 (jmh-lane.sh, -prof gc); 132816 vs 132816 B/op
+2026-10-03	4f6faa097	quiet	delimGenerator_delimited	70.73	54.358	1.30	min of 2 alternating rounds vs master 83b8c1e96 (jmh-lane.sh, -prof gc); 814510 vs 518313 B/op
+2026-10-03	4f6faa097	quiet	stateForeign_delimited	31.728	34.686	0.91	min of 2 alternating rounds vs master 83b8c1e96 (jmh-lane.sh, -prof gc); 438656 vs 390392 B/op
+2026-10-03	4f6faa097	quiet	fib100_delimited	4681.704	6359.387	0.74	min of 2 alternating rounds vs master 83b8c1e96 (jmh-lane.sh, -prof gc); 44320 vs 39472 B/op; ns/op

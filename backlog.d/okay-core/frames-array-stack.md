@@ -27,3 +27,6 @@
       real necessity". Needs the operator's call on a typing approach
       (typed accessors, one isolated claim per kind of cell) before a
       probe is built.
+      SINCE cont-atm (2026-10-03) the machine is `Delimited` (Delimited.scala):
+      the λ$ `Stack`/`Frames` above are gone; the question stands for its
+      `Frames`/`Stack`.

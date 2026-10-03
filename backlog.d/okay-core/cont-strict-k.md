@@ -53,3 +53,8 @@
       inlined there (cont-frames-register-pressure, its fourth place). A road
       that keeps the clause call OUT of the loop and still carries no `Next`
       is the open question; nothing portable pins a call site out of line.
+      SINCE cont-atm (2026-10-03) Cont runs on `Delimited`, not the λ$
+      machine: everything above is that machine's history. On the new one
+      (history.d cont-atm-machine) statePara 0.73x, fib100 0.74x,
+      contAnswer 0.89x master's; the strict `k` is `Delimited.force`, a
+      nested run counted by `StackSwitch`.
