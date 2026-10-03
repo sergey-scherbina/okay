@@ -219,6 +219,22 @@ cont-core-remaining-costs.
 | `identical` | two prompts that are one object are one type: the generative-prompt axiom (DPJS's `eqPrompt` is the same `unsafeCoerce`) |
 | `splice`'s `Done` case | GADT refinement does not reach through the `@unchecked` test; small, open |
 
+And the facade over it, Cont.scala, claims through ONE function,
+`claim` (cont-typed-claim, 2026-10-03, operator: "в Cont много кастов и
+Any — убрать"). It had grown back from the two lines of
+cont-facade-over-free to eleven casts, and `Lazy` had erased its answer.
+Now `Lazy[R]` is a program answering `R`, the lazy `k` is a typed stack
+`LazyK[A, S]` (ContMacro's `cpsBody` parameter, which only `call`
+applies), `Resumption`/`Later`/`Root` are generic, and `walk`'s steps
+answer their own `B`. What `claim` still says, and why it cannot go: ONE
+root prompt serves every leaf at that leaf's own answer types, and a
+typed `Delimiter[Y, I]` holds one `Y`, so a leaf's clause and node, a
+tail body's value (`S <: R`, not `S = R`), a program answer (`Later`: the
+machine's `Delay` standing for the user's `S`) and a run's tree and answer
+cross through it. A cast-free Cont is a different runner (its own indexed
+operation and a typed interpreter, not a `shift0` to the root); the
+operator chose this road over that one.
+
 ### Found on the way
 
 - **`Resume` is the core's, not an optimization.** A resumption must be

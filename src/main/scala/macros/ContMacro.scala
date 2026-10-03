@@ -141,10 +141,13 @@ import scala.quoted.*
         case Apply(i: Ident, List(e)) if i.symbol == k => Some(e)
         case _ => None
 
+    /** the lazy `k` a transformed body's calls go to: `cpsBody`'s parameter, typed `Cont.LazyK[A, S]` */
+    var lazyK: Option[Expr[Cont.LazyK[A, S]]] = None
+
     /** `Cont.call(k, e, s => rest)` */
     def call(e: Term, kont: Kont)(using k: Symbol): Term = kont.rt.asType match
       case '[r] =>
-        '{ Cont.call[A, S, r](${ Ref(k).asExprOf[A => S] }, ${ e.asExprOf[A] },
+        '{ Cont.call[A, S, r](${ lazyK.get }, ${ e.asExprOf[A] },
              ${ lam("s", TypeRepr.of[S], kont.rt)(sv => feed(kont, sv)).asExprOf[S => Cont.Lazy[r]] }) }.asTerm
 
     /** the parameter types a function term's arguments are matched against */
@@ -479,10 +482,11 @@ import scala.quoted.*
         case _ => throw Opaque
 
     /** the body as a program over a lazy `k`, or None where the transform cannot read it */
-    def cpsBody(body: Term)(using k: Symbol): Option[Expr[(A => S) => Cont.Lazy[R]]] =
+    def cpsBody(body: Term)(using k: Symbol): Option[Expr[Cont.LazyK[A, S] => Cont.Lazy[R]]] =
       try
-        val b = cps(body, Kont(TypeRepr.of[R], None))
-        Some('{ (k2: A => S) => ${ subst(b, k, 'k2.asTerm).changeOwner(Symbol.spliceOwner).asExprOf[Cont.Lazy[R]] } })
+        Some('{ (k2: Cont.LazyK[A, S]) => ${
+          lazyK = Some('k2)
+          cps(body, Kont(TypeRepr.of[R], None)).changeOwner(Symbol.spliceOwner).asExprOf[Cont.Lazy[R]] } })
       catch case Opaque => None
 
     // a tail body's types say `S <: R`; searched here, where `S` and `R` are concrete. Not found: the body
