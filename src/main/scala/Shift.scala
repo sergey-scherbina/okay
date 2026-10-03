@@ -138,11 +138,12 @@ object Shift {
    * a machine for the row already running — the piece back on its stack, the value to whoever resumed — and run by
    * a machine of its own when forced by anyone else (a `k` that outlived its run). No barrier either way.
    */
-  final class Resumption[A, R, F[+_]] private[Shift] (p: Prompt[R], piece: Delimited.Piece[Freer.Lift[Shift % ? + F], A, Unit, R, Unit])
+  final class Resumption[A, R, F[+_]] private[Shift] (p: Prompt[R], piece: Delimited.Piece[Freer.Lift[Shift % ? + F], A, Unit, R, Unit],
+                                                       held: Int)
     extends (A => R ! Shift % ? + F):
     def apply(x: A): R ! Shift % ? + F = resumeWith(okay.pure(x))
     def resumeWith(m: A ! Shift % ? + F): R ! Shift % ? + F =
-      claim[R ! Shift % ? + F](Free.delay(Nested[R, F](op[R, F](Resume[Any, A, R, F](p, piece, m)), nested = true)))
+      claim[R ! Shift % ? + F](Free.delay(Nested[R, F](op[R, F](Resume[Any, A, R, F](p, piece, m, held)), nested = true)))
 
   /** an operation of `Shift` as a node of its row */
   private def op[A, F[+_]](o: Shift[Any, A]): A ! Shift % ? + F = Freer.Inject[Freer.Lift[Shift % ? + F], Unit, Unit, A](o)
@@ -162,9 +163,9 @@ object Shift {
   /** leave `p`'s place with `value` */
   private[okay] final case class Abort[K, A, R](p: Prompt[R], value: R, at: String) extends Shift[K, A]
   /** a captured continuation resumed: its segments and boundaries, `p`'s and `ret`'s included, back on top, and
-   * `body` run inside them */
+   * `body` run inside them; `held` what kinds of frame the run that captured it had installed (`Steps.held`) */
   private[okay] final case class Resume[K, A, R, F[+_]](p: Prompt[R], k: Delimited.Piece[Freer.Lift[Shift % ? + F], A, Unit, R, Unit],
-                                                        body: A ! Shift % ? + F)
+                                                        body: A ! Shift % ? + F, held: Int)
     extends Shift[K, R]
 
   /** the prompt an operation names */
@@ -183,6 +184,10 @@ object Shift {
    * `eqPrompt`).
    */
   private def claim[X](x: Any): X = x.asInstanceOf[X]
+
+  /** `Steps.held`'s bits */
+  private final val Framed = 1
+  private final val Catches = 2
 
   /** a nested run's value boundary: no capture crosses it (a handler's operation and a throw do) */
   private object Barrier extends Delimited.Mark
@@ -212,8 +217,17 @@ object Shift {
     private type L[S, R, A] = Freer.Lift[Shift % ? + F][S, R, A]
     private type U = Unit
 
-    /** a handler frame was installed in this run: until then an operation of `F` leaves without a look */
-    private var framed = false
+    /**
+     * what kinds of frame this run has installed: `Framed` (a handler's — until then an operation of `F` leaves
+     * without a look) and `Catches` (a catch frame's — until then user code runs with no `try`). A captured `k`
+     * carries the bits of the run it was captured in, and the run that resumes it — perhaps another, a dialogue
+     * driven later — takes them on with the frames its piece puts back
+     */
+    private var held = 0
+    private def framed: Boolean = (held & Framed) != 0
+    private def hold(bits: Int, machine: Delimited[L]): Unit =
+      if (bits & Catches) != 0 && (held & Catches) == 0 then machine.guarding()
+      held |= bits
     /** the frame `apply` found for the operation it kept, for `step` to cut to */
     private var taker: HandleFrames.Handling[?] | Null = null
 
@@ -255,10 +269,10 @@ object Shift {
                             machine: Delimited[L]): Delimited.Next[L, Z] = op match
       case d: Dollar[?, r0, r, ?] =>
         d.p match
-          case _: HandleFrames.Handling[?] => framed = true
+          case _: HandleFrames.Handling[?] => hold(Framed, machine)
           case _ => ()
         d.p match
-          case _: HandleFrames.Catching => machine.guarding()
+          case _: HandleFrames.Catching => hold(Catches, machine)
           case _ => ()
         val ret = claim[r0 => Freer[L, U, U, r]](d.ret)
         val outside = machine.delim(d.p.close, claim[Frames[L, r, B, U, U]](k), m)
@@ -266,11 +280,12 @@ object Shift {
       case s: Shift0[?, a, r, ?] =>
         val c = claim[Cut[a, r, Z]](cutOrFail(s.p, s.at, k, m, machine))
         val body = claim[Resumption[a, r, F] => Freer[L, U, U, r]](s.body)
-        machine.next(body(Resumption[a, r, F](s.p, c.piece)), c.out, c.rest)
+        machine.next(body(Resumption[a, r, F](s.p, c.piece, held)), c.out, c.rest)
       case ab: Abort[?, a, r] =>
         val c = claim[Cut[a, r, Z]](cutOrFail(ab.p, ab.at, k, m, machine))
         machine.next(Freer.Return[L, U, r](ab.value), c.out, c.rest)
       case rs: Resume[?, a, r, ?] =>
+        hold(rs.held, machine)
         machine.reinstall(claim[Delimited.Piece[L, a, U, r, U]](rs.k), claim[Freer[L, U, U, a]](rs.body), claim[Frames[L, r, B, U, U]](k), m)
       // an operation of `F` a frame takes (`apply` kept it): a capture to the frame, the clause its body
       case _ =>
@@ -281,7 +296,7 @@ object Shift {
     /** the clause of frame `h` for `op` in the frame's place, `k` resuming the piece cut to it */
     private def handled[A, Y, Z](h: HandleFrames.Handling[Y], op: Any, c: Cut[A, Any, Z], machine: Delimited[L]): Delimited.Next[L, Z] =
       val piece = claim[Delimited.Piece[L, Any, U, Y, U]](c.piece)
-      machine.next(claim[Freer[L, U, U, Any]](h.clause(op, Resumption[Any, Y, F](h, piece))), c.out, c.rest)
+      machine.next(claim[Freer[L, U, U, Any]](h.clause(op, Resumption[Any, Y, F](h, piece, held))), c.out, c.rest)
 
     /** a throw: the nearest catch frame answers it in its place, the frames above it dropped; one that declines
      * (null) or throws passes it, or what it threw, to the frames below; none takes it — thrown on */

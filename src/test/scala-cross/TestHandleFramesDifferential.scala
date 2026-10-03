@@ -95,6 +95,20 @@ class TestHandleFramesDifferential extends munit.FunSuite:
         [X] => (e: Tick[X]) => e match { case Tick.Now(n) => asked += 1; pure[Pure, X](n * 7) }))
     (r, asked)
 
+  /** a translate whose clause PAUSES (a dialogue, okay-agent's Stepper): each pause's `resume` puts the frame's
+   * continuation back on ANOTHER run — the one `Shift.drive` starts — which must take the frame on with it
+   * (cont-atm: a run that had not installed the frame itself forwarded the operation out, uncaught) */
+  def pausedIt(p: Int ! T1): Int =
+    type D = Shift.Dialogue[Int, Int, Int, Pure]
+    val stepped: D ! Pure = Shift.resumable[Int, Int, Int, Pure]:
+      Effects.translate[Int, Tick, SD](!.widen[Int, T1, Shift % ?](p))(
+        [X] => (e: Tick[X]) => e match { case Tick.Now(n) => Shift.ask[Int, Int, Int, Pure](n).map(a => a: X) })
+    !.run(stepped.flatMap(Shift.drive[Int, Int, Int, Pure](_)(n => pure(n * 7))))
+
+  test("a frame's continuation resumed on another run keeps the frame: a translate that pauses, driven later") {
+    assertEquals(pausedIt(ticks(50)), translateIt(ticks(50), machine = false)._1)
+  }
+
   test("relay: the fold and the frame answer alike, each operation asked once") {
     assertEquals(relayIt(ticks(600), machine = true), relayIt(ticks(600), machine = false))
   }
