@@ -429,15 +429,6 @@ object Frames:
         case kr: Run[F, A, S2, s3, T, y1, Y] => Next[A, T, s3, y1](focus, kr.frames, over(kr.below, live))
         case _ => Next[A, T, T, A](focus, noFrames[F, A, T], over(k, live))
 
-    /** `resume` as the loop's own arm: its three parts are the loop's arguments, a tail call, no `Next` a resumption
-     * (cont-strict-k) */
-    inline def resumeHere[A, T, S2, Y, S1, W](focus: Freer[G, T, R, A], k: Stack[F, A, S2, T, Y],
-                                             fs: Frames[F, Y, S1, S2, W], st: Stack[F, W, S0, S1, Z]): Freer[G, S0, R, Z] =
-      val live = runOf(fs, st)
-      k match
-        case kr: Run[F, A, S2, s3, T, y1, Y] => loop[A, T, s3, y1](focus, kr.frames, over(kr.below, live))
-        case _ => loop[A, T, T, A](focus, noFrames[F, A, T], over(k, live))
-
     /** `k` over the live stack */
     def over[A, S2, T, Y](k: Stack[F, A, S2, T, Y], live: Stack[F, Y, S0, S2, Z]): Stack[F, A, S0, T, Z] = live match
       case _: Done[F, Y, S0] @unchecked => k
@@ -455,7 +446,9 @@ object Frames:
               case _ => loop(a, Frame(b.f, fs), st)
             case _ => loop(a, Frame(b.f, fs), st)
         // a stack as continuation: a resumption
-        case ks => resumeHere(b.a, ks, fs, st)
+        case ks =>
+          val n = resume(b.a, ks, fs, st)
+          loop(n.focus, n.fs, n.st)
       // a throw from user code, on its way to a catch frame (handle-frames-catch)
       case r: Return[G, R, X] if Cont0.Catching.ever && r.a.isInstanceOf[Cont0.Thrown] =>
         val n = caught(r.a.asInstanceOf[Cont0.Thrown].t, runOf(fs, st))
@@ -479,7 +472,9 @@ object Frames:
         case null => own[F, T, R, X](d.thunk) match
           case null => loop(Cont0.guard(d.thunk()), fs, st)
           case p: Freer[G, T, R, X] @unchecked => loop(p, fs, st)
-        case r: Resume[F, a, T, R, X] => resumeHere(Return[G, R, a](r.a), r.k, fs, st)
+        case r: Resume[F, a, T, R, X] =>
+          val n = resume(Return[G, R, a](r.a), r.k, fs, st)
+          loop(n.focus, n.fs, n.st)
       // the two operations, by class
       case _ =>
         val e: G[T, R, X] = (focus: @unchecked) match
