@@ -231,6 +231,11 @@ object Frames:
   private[okay] def noFrames[F[_, _, +_], A, S]: Frames[F, A, S, S, A] = theEnd.asInstanceOf[Frames[F, A, S, S, A]]
   private[okay] def noStack[F[_, _, +_], A, S]: Stack[F, A, S, S, A] = theDone.asInstanceOf[Stack[F, A, S, S, A]]
 
+  /** a delimiter over nothing: `d` itself when it is one (the GADT: over `Done`, its indexes meet), else a copy */
+  private def detached[F[_, _, +_], Y, S, S1, Y2, Z](d: Stack.Dollar[F, Y, S, S1, Y2, Z]): Stack[F, Y, S1, S1, Y2] = d.below match
+    case _: Stack.Done[F, Y2, S] @unchecked => d
+    case _ => Stack.Dollar[F, Y, S1, S1, Y2, Y2](d.p, d.ret, noStack[F, Y2, S1])
+
   /** a bind's continuation that is a `Stack`, or null */
   private[okay] def as[F[_, _, +_], A, S, T, Z](f: A => Freer[Cont0.Row[F], S, T, Z]): Stack[F, A, S, T, Z] = f match
     case st: Stack[?, ?, ?, ?, ?] => st.asInstanceOf[Stack[F, A, S, T, Z]]
@@ -370,7 +375,7 @@ object Frames:
     def framed[X, T, S1, Y](h: Cont0.Handling[?], op: Any, fs: Frames[F, X, S1, T, Y], st: Stack[F, Y, S0, S1, Z]): Next[?, ?, ?, ?] = st match
       case d: Dollar[F, Y, S0, S1, y2, Z] if h eq d.p => nearest(frameAt(h), clauseAt[T, X](h, op), fs, d.p, d.ret, d.below)
       case c: Cat[F, Y, S0, S1, y, s2, Z] => c.k match
-        case d: Dollar[F, Y, `s2`, S1, y2, `y`] if h eq d.p => nearest(frameAt(h), clauseAt[T, X](h, op), fs, d.p, d.ret, cat(d.below, c.below))
+        case d: Dollar[F, Y, `s2`, S1, y2, `y`] if h eq d.p => nearestAt(frameAt(h), clauseAt[T, X](h, op), fs, d, cat(d.below, c.below))
         case _ => capture(asShift0[T, X](h, op), fs, st)
       case _ => capture(asShift0[T, X](h, op), fs, st)
 
@@ -385,7 +390,7 @@ object Frames:
       case d: Dollar[F, Y, S0, S1, y2, Z] if sh.p eq d.p => nearest(sh.p, sh.f, fs, d.p, d.ret, d.below)
       // or at the head of a resumed `k`
       case c: Cat[F, Y, S0, S1, y, s2, Z] => c.k match
-        case d: Dollar[F, Y, `s2`, S1, y2, `y`] if sh.p eq d.p => nearest(sh.p, sh.f, fs, d.p, d.ret, cat(d.below, c.below))
+        case d: Dollar[F, Y, `s2`, S1, y2, `y`] if sh.p eq d.p => nearestAt(sh.p, sh.f, fs, d, cat(d.below, c.below))
         case _ => walk(sh, fs, st)
       case _ => walk(sh, fs, st)
 
@@ -399,6 +404,13 @@ object Frames:
                                          p: Cont0.Delimiter[y2, S1], ret: Y => Freer[G, S1, S1, y2],
                                          below: Stack[F, y2, S0, S1, Z]): Next[?, ?, ?, ?] =
       found(p0, f, p, runOf(fs, Dollar[F, Y, S1, S1, y2, y2](p, ret, noStack[F, y2, S1])), below)
+
+    /** `nearest` at a resumed `k`'s head delimiter `d`: `k` is the live segment over `d`'s copy over nothing, which
+     * `d` itself is when it is one already — a `k` resumed and captured again, the steady state of a strict `k` */
+    inline def nearestAt[Y0, I0, X, T, S1, Y, y2, s2, y](p0: Cont0.Delimiter[Y0, I0], f: Stack[F, X, I0, T, Y0] => Freer[G, I0, R, Y0],
+                                                       fs: Frames[F, X, S1, T, Y], d: Dollar[F, Y, s2, S1, y2, y],
+                                                       below: Stack[F, y2, S0, S1, Z]): Next[?, ?, ?, ?] =
+      found(p0, f, d.p, runOf(fs, detached(d)), below)
 
     /**
      * A capture that found its delimiter `p`, in both of its roads (`nearest`, the general `cut`): `k` — the
