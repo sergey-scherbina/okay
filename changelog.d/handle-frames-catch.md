@@ -22,8 +22,8 @@ wrong value, because it caught its own overflow).
   (`HandleFrames.handling`): the alternatives not yet run are handed out
   as `pending` programs.
 
-Commits: 9875aa385 (catch frames, Throws), 25f72144e (Resource),
-e3383bba7 (Logic). Spec: specs/handle-frames.md, "Catch frames, Resource,
+Commits: 47a2cf6fe (catch frames, Throws), 835c5941f (Resource),
+958fabd03 (Logic). Spec: specs/handle-frames.md, "Catch frames, Resource,
 the search".
 
 Cost, measured with alternating arms against the merge-base (history.d,
