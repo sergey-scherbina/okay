@@ -16,22 +16,27 @@ class TestDelimitedNested extends munit.FunSuite:
 
   sealed trait D[S, R, +A]
   final case class Strict[S, R, A](body: (A => S) => R) extends D[S, R, A]
-  final case class Lazily[S, R, A](body: Frames[H, A, S] => Freer[H, R, R, R]) extends D[S, R, A]
-  final case class Resume[A, S, T](k: Frames[H, A, S], a: A) extends D[T, T, S]
+  final case class Lazily[S, R, A](body: Delimited.Kont[H, A, S] => Freer[H, R, R, R]) extends D[S, R, A]
+  final case class Resume[A, S, T](k: Delimited.Kont[H, A, S], a: A) extends D[T, T, S]
 
   object Steps extends Step[D, H]:
-    def step[A, S, T, R](op: D[S, T, A], k: Frames[H, A, S], m: Stack[H, T, R], machine: Delimited[H]): Delimited.Next[H, R] =
-      op match
-        case Strict(body) => machine.next(Return(body(x => machine.force(k, x))), machine.end, m)
-        case Lazily(body) => machine.next(body(k), machine.end, m)
-        case Resume(k1, a) => machine.next(Return(a), k1, machine.bound(null, k, m))
+    def step[A, B, S, T, R, Z](op: D[T, R, A], k: Frames[H, A, B, S, T], m: Stack[H, B, S, R, Z],
+                               machine: Delimited[H]): Delimited.Next[H, Z] = op match
+      case Resume(k1, a) => machine.next(Return(a), k1.k, machine.bound(null, k, m))
+      case leaf =>
+        val c = machine.closed(k, m)
+        if c == null then throw IllegalStateException("a shift with no reset around it")
+        leaf match
+          case Strict(body) => c.answer(body(x => machine.force(c.k, x)))
+          case Lazily(body) => c.instead(body(c))
+          case Resume(_, _) => throw IllegalStateException("unreachable")
 
   private def own[A, S, R](op: D[S, R, A]): Freer[H, S, R, A] = Inject(Sum.Own[D, E, S, R, A](op))
   private def ask[X]: Freer[H, X, X, Int] = Inject(Sum.Fwd[D, E, X, Int](Reader.Ask[Int, Int]()))
   private def pure[A, R](a: A): Freer[H, R, R, A] = Return(a)
   private def strict[A, S, R](body: (A => S) => R): Freer[H, S, R, A] = own(Strict(body))
-  private def lazily[A, S, R](body: Frames[H, A, S] => Freer[H, R, R, R]): Freer[H, S, R, A] = own(Lazily(body))
-  private def call[A, S, X](k: Frames[H, A, S], a: A): Freer[H, X, X, S] = own(Resume[A, S, X](k, a))
+  private def lazily[A, S, R](body: Delimited.Kont[H, A, S] => Freer[H, R, R, R]): Freer[H, S, R, A] = own(Lazily(body))
+  private def call[A, S, X](k: Delimited.Kont[H, A, S], a: A): Freer[H, X, X, S] = own(Resume[A, S, X](k, a))
   extension [A, S, R](c: Freer[H, S, R, A])
     private def andThen[B, S2](f: A => Freer[H, S2, S, B]): Freer[H, S2, R, B] = Bind(c, f)
 

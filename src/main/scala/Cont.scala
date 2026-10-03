@@ -56,7 +56,7 @@ object Cont:
    * The contract it changes: host side effects written after `k(a)` in the body run before `k`'s rest.
    */
   def programLeaf[A, S, R](f: (A => S) => R)(using p: Later[S]): Rep[A, S, R] =
-    Inject[Sig, S, R, A](Op.Program(k => f(x => p.later(() => Delimited(Steps).force(k, x)))))
+    Inject[Sig, S, R, A](Op.Program(k => f(x => p.later(() => Delimited(Steps).force(k.k, x)))))
 
   /** `S` a program that can stand for itself unbuilt: a `Delay` of any `Freer`, `A ! F` among them */
   trait Later[S]:
@@ -74,12 +74,13 @@ object Cont:
   def tailPureSame[A, S, R](v: A)(using ev: S =:= R): Rep[A, S, R] =
     ev.flip.substituteCo[[s] =>> Rep[A, s, R]](Return(v))
 
-  /** a tail body whose `S` is a proper subtype of `R`: `k`'s answer leaves as the body's (`Delimited.Tail`) */
+  /** a tail body whose `S` is a proper subtype of `R`: `k`'s answer leaves as the body's */
   def tailShift[A, S, R](v: () => A)(using ev: S <:< R): Rep[A, S, R] =
-    Freer.delay[Sig, S, R, A](() => Inject(Op.Tail(v(), ev)))
+    Freer.delay[Sig, S, R, A](() => tailPure(v()))
 
   /** the same with no thunk */
-  def tailPure[A, S, R](v: A)(using ev: S <:< R): Rep[A, S, R] = Inject(Op.Tail(v, ev))
+  def tailPure[A, S, R](v: A)(using ev: S <:< R): Rep[A, S, R] =
+    lazyLeaf[A, S, R](k => Bind(Inject[Sig, R, R, S](Op.Resume[A, S, R](k, v)), (s: S) => Return[Sig, R, R](ev(s))))
 
   /**
    * an answer-using body (`k(1) + k(10)`) after `ContMacro`'s selective CPS transform (Rompf, Maier & Odersky,
@@ -89,7 +90,7 @@ object Cont:
   opaque type Lazy[T, B] = Freer[Sig, T, T, B]
 
   /** the lazy `k` of an answer-using body: its captured continuation, from `A` to `S`, which only `call` applies */
-  opaque type LazyK[A, S] = Frames[Sig, A, S]
+  opaque type LazyK[A, S] = Delimited.Kont[Sig, A, S]
 
   /** the body's answer */
   def done[T, R](r: R): Lazy[T, R] = Return(r)
@@ -177,13 +178,11 @@ object Cont:
     /** an opaque body, given a strict `k`: a nested run, counted */
     final case class Strict[S, R, A](body: (A => S) => R) extends Op[S, R, A]
     /** a body answering a program, given `k` itself, from which it builds its lazy `k` */
-    final case class Program[S, R, A](body: Frames[Op, A, S] => R) extends Op[S, R, A]
+    final case class Program[S, R, A](body: Delimited.Kont[Op, A, S] => R) extends Op[S, R, A]
     /** an answer-using body after the CPS transform: a program over the lazy `k`, answering `R` at its level */
-    final case class Lazily[S, R, A](body: Frames[Op, A, S] => Freer[Op, R, R, R]) extends Op[S, R, A]
+    final case class Lazily[S, R, A](body: Delimited.Kont[Op, A, S] => Freer[Op, R, R, R]) extends Op[S, R, A]
     /** `k(a)` as a node: `k` under a boundary of its own, which takes its `S` back here */
-    final case class Resume[A, S, T](k: Frames[Op, A, S], a: A) extends Op[T, T, S]
-    /** a tail body `k => k(v)` whose `S` is a proper subtype of `R`: `k`'s answer leaves as the body's */
-    final case class Tail[S, R, A](v: A, ev: S <:< R) extends Op[S, R, A]
+    final case class Resume[A, S, T](k: Delimited.Kont[Op, A, S], a: A) extends Op[T, T, S]
 
   /**
    * WHAT EACH DOES: Danvy & Filinski's shift/reset with answer-type modification. A body's answer leaves its
@@ -191,13 +190,18 @@ object Cont:
    * comes back to it.
    */
   private object Steps extends Step[Op, Op]:
-    def step[A, S, T, R](op: Op[S, T, A], k: Frames[Op, A, S], m: Stack[Op, T, R], machine: Delimited[Op]): Delimited.Next[Op, R] =
+    def step[A, B, S, T, R, Z](op: Op[T, R, A], k: Frames[Op, A, B, S, T], m: Stack[Op, B, S, R, Z],
+                               machine: Delimited[Op]): Delimited.Next[Op, Z] =
       op match
-        case Op.Strict(body) => machine.next(Return(body(x => machine.force(k, x))), machine.end, m)
-        case Op.Program(body) => machine.next(Return(body(k)), machine.end, m)
-        case Op.Lazily(body) => machine.next(body(k), machine.end, m)
-        case Op.Resume(k1, a) => machine.next(Return(a), k1, machine.bound(null, k, m))
-        case Op.Tail(v, ev) => machine.next(Return(v), k, machine.bound(null, machine.frame((s: S) => Return(ev(s)), machine.end), m))
+        case Op.Resume(k1, a) => machine.next(Return(a), k1.k, machine.bound(null, k, m))
+        case leaf =>
+          val c = machine.closed(k, m)
+          if c == null then throw IllegalStateException("a shift with no reset around it")
+          leaf match
+            case Op.Strict(body) => c.answer(body(x => machine.force(c.k, x)))
+            case Op.Program(body) => c.answer(body(c))
+            case Op.Lazily(body) => c.instead(body(c))
+            case Op.Resume(_, _) => throw IllegalStateException("unreachable: Resume is answered above")
 
   /**
    * is `c` already an answer? then go on from it with a tail call instead of a continuation node

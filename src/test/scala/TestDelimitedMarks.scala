@@ -15,28 +15,33 @@ class TestDelimitedMarks extends munit.FunSuite:
 
   sealed trait Op[S, R, +A]
   final case class Strict[S, R, A](body: (A => S) => R) extends Op[S, R, A]
-  final case class Lazily[S, R, A](body: Frames[Op, A, S] => Freer[Op, R, R, R]) extends Op[S, R, A]
-  final case class Resume[A, S, T](k: Frames[Op, A, S], a: A) extends Op[T, T, S]
+  final case class Lazily[S, R, A](body: Delimited.Kont[Op, A, S] => Freer[Op, R, R, R]) extends Op[S, R, A]
+  final case class Resume[A, S, T](k: Delimited.Kont[Op, A, S], a: A) extends Op[T, T, S]
   /** `body` with `env` for its environment: TRANSPARENT — the same answer pair inside as outside */
   final case class Local[S, R, A](env: Int, body: Freer[Op, S, R, A]) extends Op[S, R, A]
   final case class Ask[X]() extends Op[X, X, Int]
 
   object Steps extends Step[Op, Op]:
-    def step[A, S, T, R](op: Op[S, T, A], k: Frames[Op, A, S], m: Stack[Op, T, R], machine: Delimited[Op]): Delimited.Next[Op, R] =
-      op match
-        case Strict(body) => machine.next(Return(body(x => machine.force(k, x))), machine.end, m)
-        case Lazily(body) => machine.next(body(k), machine.end, m)
-        case Resume(k1, a) => machine.next(Return(a), k1, machine.bound(null, k, m))
-        case Local(env, body) => machine.next(body, machine.mark(Env(env), k), m)
-        case Ask() => machine.find(k, m, _.isInstanceOf[Env]) match
-          case e: Env => machine.next(Return(e.value), k, m)
-          case _ => throw IllegalStateException("ask outside any local")
+    def step[A, B, S, T, R, Z](op: Op[T, R, A], k: Frames[Op, A, B, S, T], m: Stack[Op, B, S, R, Z],
+                               machine: Delimited[Op]): Delimited.Next[Op, Z] = op match
+      case Resume(k1, a) => machine.next(Return(a), k1.k, machine.bound(null, k, m))
+      case Local(env, body) => machine.next(body, machine.mark(Env(env), k), m)
+      case Ask() => machine.find(k, m, _.isInstanceOf[Env]) match
+        case e: Env => machine.next(Return(e.value), k, m)
+        case _ => throw IllegalStateException("ask outside any local")
+      case leaf =>
+        val c = machine.closed(k, m)
+        if c == null then throw IllegalStateException("a shift with no reset around it")
+        leaf match
+          case Strict(body) => c.answer(body(x => machine.force(c.k, x)))
+          case Lazily(body) => c.instead(body(c))
+          case _ => throw IllegalStateException("unreachable")
 
   private def run[A, S, R](c: Freer[Op, S, R, A])(k: A => S): R = Delimited(Steps).run(c, k)
   private def pure[A, R](a: A): Freer[Op, R, R, A] = Return(a)
   private def strict[A, S, R](body: (A => S) => R): Freer[Op, S, R, A] = Inject(Strict(body))
-  private def lazily[A, S, R](body: Frames[Op, A, S] => Freer[Op, R, R, R]): Freer[Op, S, R, A] = Inject(Lazily(body))
-  private def call[A, S, X](k: Frames[Op, A, S], a: A): Freer[Op, X, X, S] = Inject(Resume[A, S, X](k, a))
+  private def lazily[A, S, R](body: Delimited.Kont[Op, A, S] => Freer[Op, R, R, R]): Freer[Op, S, R, A] = Inject(Lazily(body))
+  private def call[A, S, X](k: Delimited.Kont[Op, A, S], a: A): Freer[Op, X, X, S] = Inject(Resume[A, S, X](k, a))
   private def local[S, R, A](env: Int)(body: Freer[Op, S, R, A]): Freer[Op, S, R, A] = Inject(Local(env, body))
   private def ask[X]: Freer[Op, X, X, Int] = Inject(Ask[X]())
   extension [A, S, R](c: Freer[Op, S, R, A])

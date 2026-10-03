@@ -11,74 +11,80 @@ import scala.annotation.tailrec
  * An interpreter of `Freer` written directly is correct and typed by `Freer`'s own indexes, but grows the host
  * stack in two places: the continuations of `Bind` (opaque lambdas) and the interpreter's own nested runs. The
  * machine is that host stack made DATA (the functional correspondence: Ager, Biernacki, Danvy & Midtgaard 2003;
- * Biernacka, Biernacki & Danvy 2005), two entities for the two joins:
+ * Biernacka, Biernacki & Danvy 2005):
  *
- *  - `Frames`, a SEGMENT: `Bind`'s continuations, joined as `Bind` joins — a value flows to the next frame;
- *  - `Stack`: segments joined by BOUNDARIES — a level's ANSWER flows to the segment outside it as its value.
+ *  - `Frames`, a SEGMENT, the operator's `A => F[B, S, R]`: `Bind`'s continuations as data, joined as `Bind` joins.
+ *    A MARK in it is transparent — a value passes it, its answer types chain through — and is what an effect finds
+ *    again: a continuation mark (an environment) or a VALUE BOUNDARY (a prompt: a capture to it stops there).
+ *  - `Stack`: segments joined by ANSWER BOUNDARIES — a level closes, and its answer flows to the segment outside
+ *    as its value. Each has its own answer type, so answer-type modification is typed with no claim.
  *
- * Every boundary has its own answer type, so answer-type modification is typed with no claim. `Delimited` is the
- * interface — the machine's primitives, which an effect's `Step` answers its operations with. A machine runs ONE
- * effect; effects nest as machines (`Delimited.under`): an inner machine answers its own operations and leaves
- * the rest's in the program it answers, which the machine outside runs. Nothing here names an effect.
+ * `Delimited` is the interface — the machine's primitives, which an effect's `Step` answers its operations with.
+ * Nothing here names an effect.
  */
 trait Delimited[G[_, _, +_]]:
-  import Delimited.{Tag, Mark, Next, Found, Cap}
+  import Delimited.{Mark, Tag, Next, Split, Closed}
 
-  /** a segment from `x` to its answer, NOW: a nested run */
-  def force[A, S](k: Frames[G, A, S], x: A): S
+  /** a closed segment from `x` to its answer, NOW: a nested run */
+  def force[A, S, T](k: Frames[G, A, S, S, T], x: A): T
 
   /** the next state: a program, its segment, the stack under it */
-  def next[A, S, T, R](c: Freer[G, S, T, A], k: Frames[G, A, S], m: Stack[G, T, R]): Next[G, R]
+  def next[A, B, S, T, R, Z](c: Freer[G, T, R, A], k: Frames[G, A, B, S, T], m: Stack[G, B, S, R, Z]): Next[G, Z]
 
-  /** the empty segment: a value is its level's answer */
-  def end[A]: Frames[G, A, A]
+  /** the empty segment */
+  def end[A, S]: Frames[G, A, A, S, S]
 
   /** a frame on a segment: `f`'s value flows into `rest` */
-  def frame[A, B, S, T](f: A => Freer[G, S, T, B], rest: Frames[G, B, S]): Frames[G, A, T]
+  def frame[A, X, B, S, T, R](f: A => Freer[G, T, R, X], rest: Frames[G, X, B, S, T]): Frames[G, A, B, S, R]
 
-  /** a boundary over the stack `rest`: the level inside answers `T`, and `out` takes that on; `tag` marks it */
-  def bound[T, U, R](tag: Tag[T] | Null, out: Frames[G, T, U], rest: Stack[G, U, R]): Stack[G, T, R]
+  /** a mark on a segment: transparent — the segment's types are its own */
+  def mark[A, B, S, R](m: Mark, rest: Frames[G, A, B, S, R]): Frames[G, A, B, S, R]
 
-  /** a continuation mark on a segment: transparent — the segment's types are its own */
-  def mark[A, S](m: Mark, rest: Frames[G, A, S]): Frames[G, A, S]
+  /** an answer boundary over the stack `rest`: the level inside closes and answers `R`; `out` takes that on */
+  def bound[S, R, B2, S2, X, Z](tag: Tag[R] | Null, out: Frames[G, R, B2, S2, X], rest: Stack[G, B2, S2, X, Z]): Stack[G, S, S, R, Z]
 
-  /** the nearest continuation mark `is` holds for, from a segment out through every boundary; null when none */
-  def find[A, S, T, R](k: Frames[G, A, S], m: Stack[G, T, R], is: Mark => Boolean): Mark | Null
+  /** the nearest mark `is` holds for, from a segment out through every boundary; null when none */
+  def find[A, B, S, T, R, Z](k: Frames[G, A, B, S, T], m: Stack[G, B, S, R, Z], is: Mark => Boolean): Mark | Null
 
-  /** walk out from a segment and its stack to the nearest boundary whose mark `is` holds for: the capture up to
-   * and including it, and what lies outside it; null when there is none */
-  def cut[A, T, R](k: Frames[G, A, T], m: Stack[G, T, R], is: Tag[?] => Boolean): Found[G, A, R] | Null
+  /** a segment cut at its nearest mark `is` holds for: the frames above it, the mark, the frames below; null when
+   * the segment has none */
+  def split[A, B, S, T](k: Frames[G, A, B, S, T], is: Mark => Boolean): Split[G, A, B, S, T] | Null
 
-  /** a captured continuation put back over `out` and `m`, its boundaries outermost first, `a` into the innermost */
-  def reinstall[A0, Y, U, R](cap: Cap[G, A0, Y], a: A0, out: Frames[G, Y, U], m: Stack[G, U, R]): Next[G, R]
+  /** the frames `above` put on top of the segment `below`: one segment again */
+  def join[A, Y, S1, T, B, S](above: Frames[G, A, Y, S1, T], below: Frames[G, Y, B, S, S1]): Frames[G, A, B, S, T]
+
+  /** the nearest boundary as an ANSWER boundary, the segment up to it closed by it: null when the level ends
+   * by value (the run's own end) */
+  def closed[A, B, S, T, R, Z](k: Frames[G, A, B, S, T], m: Stack[G, B, S, R, Z]): Closed[G, A, T, R, Z] | Null
 
 /**
  * A STEP: what the machine does with one of effect `G`'s operations in a program over the row `H` — given the
  * segment up to the nearest boundary and the stack under it, the next state, built with the machine's
- * primitives. `G[S, T, A]` is the operation at the program's indexes; the equations its own GADT match supplies
- * type the state it answers. Alone, `H` is `G`; under other effects, `Delimited.Row[G, F]`.
+ * primitives. `G[T, R, A]` is the operation at the program's indexes; the equations its own GADT match supplies
+ * type the state it answers.
  */
 trait Step[G[_, _, +_], H[_, _, +_]]:
-  def step[A, S, T, R](op: G[S, T, A], k: Frames[H, A, S], m: Stack[H, T, R], machine: Delimited[H]): Delimited.Next[H, R]
+  def step[A, B, S, T, R, Z](op: G[T, R, A], k: Frames[H, A, B, S, T], m: Stack[H, B, S, R, Z],
+                             machine: Delimited[H]): Delimited.Next[H, Z]
 
-/** a SEGMENT: `Bind`'s continuations up to the nearest boundary, as data — from a value `A` to the answer `S`
- * of its level. Contravariant in `A`: it consumes a value. */
-enum Frames[G[_, _, +_], -A, S]:
-  case End[G[_, _, +_], A]() extends Frames[G, A, A]
-  case Frame[G[_, _, +_], A, B, S, T](f: A => Freer[G, S, T, B], rest: Frames[G, B, S]) extends Frames[G, A, T]
-  /** a CONTINUATION MARK (Clements & Felleisen's `with-continuation-mark`; Kiselyov, Shan & Sabry's delimited
-   * dynamic binding): not a boundary — a value passes it unchanged, a capture carries it, no answer type moves —
-   * only something an effect finds by walking (`find`) */
-  case Marked[G[_, _, +_], A, S](mark: Delimited.Mark, rest: Frames[G, A, S]) extends Frames[G, A, S]
+/** a SEGMENT, `A => Freer[G, S, R, B]` as data: frames joined as `Bind` joins them, and transparent marks.
+ * Contravariant in `A`: it consumes a value. */
+enum Frames[G[_, _, +_], -A, B, S, R]:
+  case End[G[_, _, +_], A, S]() extends Frames[G, A, A, S, S]
+  case Frame[G[_, _, +_], A, X, B, S, T, R](f: A => Freer[G, T, R, X], rest: Frames[G, X, B, S, T])
+    extends Frames[G, A, B, S, R]
+  /** a mark: a value passes it unchanged, a capture carries it, no answer type moves */
+  case Marked[G[_, _, +_], A, B, S, R](mark: Delimited.Mark, rest: Frames[G, A, B, S, R]) extends Frames[G, A, B, S, R]
 
-/** THE STACK: segments joined by boundaries, from the innermost level's answer `T` to the whole run's `R`. A
- * boundary takes its level's answer to the segment outside it, as that segment's value. */
-enum Stack[G[_, _, +_], T, R]:
-  case Done[G[_, _, +_], R]() extends Stack[G, R, R]
-  /** a boundary: the level inside answers `T`; outside it, `out` takes that on to the levels below. An effect may
-   * mark it (`tag`) to find it again. */
-  case Bound[G[_, _, +_], T, U, R](tag: Delimited.Tag[T] | Null, out: Frames[G, T, U], rest: Stack[G, U, R])
-    extends Stack[G, T, R]
+/** THE STACK: what closes a level computing `Freer[G, S, R, B]` into the run's result `Z` */
+enum Stack[G[_, _, +_], B, S, R, Z]:
+  /** the run's end by VALUE: the level's value is the result, its answers diagonal */
+  case Done[G[_, _, +_], B, X]() extends Stack[G, B, X, X, B]
+  /** the run's end by ANSWER: the level closes (its value is its answer index) and its answer is the result */
+  case Answered[G[_, _, +_], S, R]() extends Stack[G, S, S, R, R]
+  /** an ANSWER boundary: the level closes and answers `R`; outside it, `out` takes that on as its value */
+  case Bound[G[_, _, +_], S, R, B2, S2, X, Z](tag: Delimited.Tag[R] | Null, out: Frames[G, R, B2, S2, X],
+                                               rest: Stack[G, B2, S2, X, Z]) extends Stack[G, S, S, R, Z]
 
 object Delimited:
 
@@ -88,8 +94,6 @@ object Delimited:
   /** a machine for effect `G` under the effects `F`: it answers `G`'s operations and leaves `F`'s in the program
    * it answers, for the machine outside */
   def under[G[_, _, +_], F[+_]](steps: Step[G, Row[G, F]]): Under[G, F] = Under(steps)
-
-  // ---- the row of a machine under others ----
 
   /**
    * an operation of a program over effect `G` under the effects `F`: one of `G`'s, at any indexes (`Own`), or one
@@ -104,105 +108,50 @@ object Delimited:
 
   // ---- what the primitives speak of ----
 
-  /** a boundary's mark, opaque to the machine, which an effect finds a boundary by: `T` the answer of its level */
-  trait Tag[T]
-
-  /** a continuation mark's content, opaque to the machine: what an effect hangs on the stack to find again */
+  /** what an effect hangs on a segment to find again; opaque to the machine */
   trait Mark
 
+  /** a mark that marks a boundary's place — a prompt — with `T` the value or answer at that place */
+  trait Tag[T] extends Mark
+
   /** the machine's state, which a step answers: a program, its segment, the stack under it */
-  sealed abstract class Next[G[_, _, +_], R]:
+  sealed abstract class Next[G[_, _, +_], Z]:
     type A
+    type B
     type S
     type T
-    def c: Freer[G, S, T, A]
-    def k: Frames[G, A, S]
-    def m: Stack[G, T, R]
+    type R
+    def c: Freer[G, T, R, A]
+    def k: Frames[G, A, B, S, T]
+    def m: Stack[G, B, S, R, Z]
 
-  /** the boundaries a capture crossed, innermost first, the last outermost */
-  enum Rev[G[_, _, +_], A0, A]:
-    case Nil[G[_, _, +_], A0]() extends Rev[G, A0, A0]
-    case Snoc[G[_, _, +_], A0, A, T](prev: Rev[G, A0, A], k: Frames[G, A, T], tag: Tag[T] | Null) extends Rev[G, A0, T]
-
-  /** a captured continuation, from `A0` up to and including a marked boundary whose level answers `Y`: the
-   * boundaries crossed, the marked level's own segment, its mark */
-  sealed abstract class Cap[G[_, _, +_], A0, Y]:
-    type A
-    def rev: Rev[G, A0, A]
-    def k: Frames[G, A, Y]
-    def tag: Tag[Y]
-
-  /** what a capture found: the continuation up to the marked boundary, and what lies outside it */
-  sealed abstract class Found[G[_, _, +_], A0, R]:
+  /** a segment cut at a mark: `above` from the hole to the mark's place `Y`, then `below` from there on */
+  sealed abstract class Split[G[_, _, +_], A, B, S, T]:
     type Y
-    type U
-    def cap: Cap[G, A0, Y]
-    def out: Frames[G, Y, U]
-    def m: Stack[G, U, R]
+    type S1
+    def above: Frames[G, A, Y, S1, T]
+    def mark: Mark
+    def below: Frames[G, Y, B, S, S1]
 
-  // ---- the implementations ----
+  /** a CAPTURED continuation: a segment closed by its answer boundary, from `A` to the answer `T` */
+  sealed abstract class Kont[G[_, _, +_], -A, T]:
+    type S
+    def k: Frames[G, A, S, S, T]
 
-  /** the primitives over `Frames` and `Stack`, shared by every machine */
-  abstract class Primitives[G[_, _, +_]] extends Delimited[G]:
+  /** the nearest boundary seen as an answer boundary: the segment closed by it, and its two ways on */
+  sealed abstract class Closed[G[_, _, +_], A, T, R, Z] extends Kont[G, A, T]:
+    /** the level answers `r`: it goes to the boundary, and on outside it */
+    def answer(r: R): Next[G, Z]
+    /** `c` runs in the level's place, closed by the same boundary */
+    def instead(c: Freer[G, R, R, R]): Next[G, Z]
 
-    def end[A]: Frames[G, A, A] = Frames.End()
-    def frame[A, B, S, T](f: A => Freer[G, S, T, B], rest: Frames[G, B, S]): Frames[G, A, T] = Frames.Frame(f, rest)
-    def bound[T, U, R](tag: Tag[T] | Null, out: Frames[G, T, U], rest: Stack[G, U, R]): Stack[G, T, R] =
-      Stack.Bound(tag, out, rest)
-    def mark[A, S](m: Mark, rest: Frames[G, A, S]): Frames[G, A, S] = Frames.Marked(m, rest)
+  // ---- the implementation ----
 
-    @tailrec final def find[A, S, T, R](k: Frames[G, A, S], m: Stack[G, T, R], is: Mark => Boolean): Mark | Null = k match
-      case Frames.Marked(mk, rest) => if is(mk) then mk else find(rest, m, is)
-      case Frames.Frame(_, rest) => find(rest, m, is)
-      case Frames.End() => m match
-        case Stack.Done() => null
-        case Stack.Bound(_, out, rest) => find(out, rest, is)
-
-    def next[A0, S0, T0, R](c0: Freer[G, S0, T0, A0], k0: Frames[G, A0, S0], m0: Stack[G, T0, R]): Next[G, R] =
-      new Next[G, R]:
-        type A = A0
-        type S = S0
-        type T = T0
-        def c = c0
-        def k = k0
-        def m = m0
-
-    def cut[A, T, R](k: Frames[G, A, T], m: Stack[G, T, R], is: Tag[?] => Boolean): Found[G, A, R] | Null =
-      cutFrom(Rev.Nil[G, A](), k, m, is)
-
-    @tailrec private def cutFrom[A0, A, T, R](rev: Rev[G, A0, A], k: Frames[G, A, T], m: Stack[G, T, R],
-                                              is: Tag[?] => Boolean): Found[G, A0, R] | Null = m match
-      case Stack.Done() => null
-      case b: Stack.Bound[G, T, u, R] =>
-        val t = b.tag
-        if t != null && is(t) then found(rev, k, t.nn, b.out, b.rest)
-        else cutFrom(Rev.Snoc(rev, k, t), b.out, b.rest, is)
-
-    private def found[A0, A1, Y0, U0, R](r: Rev[G, A0, A1], k1: Frames[G, A1, Y0], t: Tag[Y0],
-                                         out0: Frames[G, Y0, U0], m0: Stack[G, U0, R]): Found[G, A0, R] =
-      new Found[G, A0, R]:
-        type Y = Y0
-        type U = U0
-        def cap = new Cap[G, A0, Y0]:
-          type A = A1
-          def rev = r
-          def k = k1
-          def tag = t
-        def out = out0
-        def m = m0
-
-    def reinstall[A0, Y, U, R](cap: Cap[G, A0, Y], a: A0, out: Frames[G, Y, U], m: Stack[G, U, R]): Next[G, R] =
-      link(cap.rev, cap.k, Stack.Bound(cap.tag, out, m), a)
-
-    @tailrec private def link[A0, A, T, R](rev: Rev[G, A0, A], k: Frames[G, A, T], m: Stack[G, T, R], a: A0): Next[G, R] =
-      rev match
-        case Rev.Nil() => next(Return(a), k, m)
-        case Rev.Snoc(prev, k0, tag) => link(prev, k0, Stack.Bound(tag, k, m), a)
-
-    /** this run's room for nested runs (`StackSwitch`): the depth left on this stack */
+  /** the primitives over `Frames` and `Stack`, shared by every machine, and its room for nested runs */
+  abstract class Core[G[_, _, +_]] extends Delimited[G]:
     private var room: Int = StackSwitch.firstRoom
 
-    /** `body` one level deeper, on a fresh stack when there is no room left here */
+    /** `body` one level deeper, on a fresh stack when there is no room left here (`StackSwitch`) */
     protected final def deeper[X](body: => X): X =
       val here = room - 1
       if here > 0 then within(here, body)
@@ -213,65 +162,166 @@ object Delimited:
       room = left
       try body finally room = saved
 
-  /** the machine for one effect, alone: every operation is its own */
-  final class Machine[G[_, _, +_]](steps: Step[G, G]) extends Primitives[G]:
+    def next[A0, B0, S0, T0, R0, Z](c0: Freer[G, T0, R0, A0], k0: Frames[G, A0, B0, S0, T0], m0: Stack[G, B0, S0, R0, Z]): Next[G, Z] =
+      new Next[G, Z]:
+        type A = A0
+        type B = B0
+        type S = S0
+        type T = T0
+        type R = R0
+        def c = c0
+        def k = k0
+        def m = m0
 
-    /** run `c` with `k` as the last frame of its continuation */
-    def run[A, S, R](c: Freer[G, S, R, A], k: A => S): R =
-      go(c, frame((a: A) => Return[G, S, S](k(a)), end[S]), Stack.Done[G, R]())
+    def end[A, S]: Frames[G, A, A, S, S] = Frames.End()
+    def frame[A, X, B, S, T, R](f: A => Freer[G, T, R, X], rest: Frames[G, X, B, S, T]): Frames[G, A, B, S, R] =
+      Frames.Frame(f, rest)
+    def mark[A, B, S, R](m: Mark, rest: Frames[G, A, B, S, R]): Frames[G, A, B, S, R] = Frames.Marked(m, rest)
+    def bound[S, R, B2, S2, X, Z](tag: Tag[R] | Null, out: Frames[G, R, B2, S2, X], rest: Stack[G, B2, S2, X, Z]): Stack[G, S, S, R, Z] =
+      Stack.Bound(tag, out, rest)
 
-    def force[A, S](k: Frames[G, A, S], x: A): S = deeper(go(Return[G, S, A](x), k, Stack.Done[G, S]()))
-
-    @tailrec private def go[A, S, T, R](c: Freer[G, S, T, A], k: Frames[G, A, S], m: Stack[G, T, R]): R = c match
-      case Return(a) => k match
+    @tailrec final def find[A, B, S, T, R, Z](k: Frames[G, A, B, S, T], m: Stack[G, B, S, R, Z], is: Mark => Boolean): Mark | Null =
+      k match
+        case Frames.Marked(mk, rest) => if is(mk) then mk else find(rest, m, is)
+        case Frames.Frame(_, rest) => find(rest, m, is)
         case Frames.End() => m match
-          case Stack.Done() => a
-          case Stack.Bound(_, out, rest) => go(Return(a), out, rest)
-        case Frames.Frame(f, k2) => go(f(a), k2, m)
-        case Frames.Marked(_, k2) => go(Return(a), k2, m)
-      case Bind(c0, f) => go(c0, Frames.Frame(f, k), m)
-      case Delay(t) => go(t(), k, m)
-      case Inject(op) =>
-        val n = steps.step(op, k, m, this)
-        go(n.c, n.k, n.m)
-      case Diag(op) => go(Inject(op), k, m)
+          case Stack.Bound(_, out, rest) => find(out, rest, is)
+          case _ => null
+
+    def split[A, B, S, T](k: Frames[G, A, B, S, T], is: Mark => Boolean): Split[G, A, B, S, T] | Null =
+      splitFrom(Rev.Nil[G, A, T](), k, is)
+
+    @tailrec private def splitFrom[A0, T0, A, B, S, T](rev: Rev[G, A0, A, T, T0], k: Frames[G, A, B, S, T],
+                                                       is: Mark => Boolean): Split[G, A0, B, S, T0] | Null = k match
+      case Frames.Marked(mk, rest) =>
+        if is(mk) then cut(Rev.link(rev, end[A, T]), mk, rest)
+        else splitFrom(Rev.Marks(rev, mk), rest, is)
+      case Frames.Frame(f, rest) => splitFrom(Rev.Snoc(rev, f), rest, is)
+      case Frames.End() => null
+
+    private def cut[A, Y0, S10, T, B, S](above0: Frames[G, A, Y0, S10, T], mk: Mark, below0: Frames[G, Y0, B, S, S10]): Split[G, A, B, S, T] =
+      new Split[G, A, B, S, T]:
+        type Y = Y0
+        type S1 = S10
+        def above = above0
+        def mark = mk
+        def below = below0
+
+    def join[A, Y, S1, T, B, S](above: Frames[G, A, Y, S1, T], below: Frames[G, Y, B, S, S1]): Frames[G, A, B, S, T] =
+      Rev.link(Rev.reverse(Rev.Nil[G, A, T](), above), below)
+
+    def closed[A, B, S, T, R, Z](k: Frames[G, A, B, S, T], m: Stack[G, B, S, R, Z]): Closed[G, A, T, R, Z] | Null = m match
+      case Stack.Bound(tag, out, rest) => closedBy(k, tag, out, rest)
+      case Stack.Answered() => atTop[A, S, T, R](k)
+      case Stack.Done() => null
+
+    private def closedBy[A, S0, T, R, B2, S2, X, Z](k0: Frames[G, A, S0, S0, T], tag: Tag[R] | Null, out: Frames[G, R, B2, S2, X],
+                                                    rest: Stack[G, B2, S2, X, Z]): Closed[G, A, T, R, Z] =
+      new Closed[G, A, T, R, Z]:
+        type S = S0
+        def k = k0
+        def answer(r: R): Next[G, Z] = next(Return[G, X, R](r), out, rest)
+        def instead(c: Freer[G, R, R, R]): Next[G, Z] = next(c, end[R, R], Stack.Bound[G, R, R, B2, S2, X, Z](tag, out, rest))
+
+    private def atTop[A, S0, T, R](k0: Frames[G, A, S0, S0, T]): Closed[G, A, T, R, R] =
+      new Closed[G, A, T, R, R]:
+        type S = S0
+        def k = k0
+        def answer(r: R): Next[G, R] = next(Return[G, R, R](r), end[R, R], Stack.Answered[G, R, R]())
+        def instead(c: Freer[G, R, R, R]): Next[G, R] = next(c, end[R, R], Stack.Answered[G, R, R]())
+
+  /** the machine for one effect, alone: every operation is its own */
+  final class Machine[G[_, _, +_]](steps: Step[G, G]) extends Core[G]:
+
+    /** run `c` with `k` as the last frame of its continuation; the run's result is its answer */
+    def run[A, S, R](c: Freer[G, S, R, A], k: A => S): R =
+      go(c, frame((a: A) => Return[G, S, S](k(a)), end[S, S]), Stack.Answered[G, S, R]())
+
+    /** run `c` to its value: answers diagonal, as a `Free` program's are */
+    def value[A, X](c: Freer[G, X, X, A]): A = go(c, end[A, X], Stack.Done[G, A, X]())
+
+    def force[A, S, T](k: Frames[G, A, S, S, T], x: A): T = deeper(go(Return[G, T, A](x), k, Stack.Answered[G, S, T]()))
+
+    @tailrec private def go[A, B, S, T, R, Z](c: Freer[G, T, R, A], k: Frames[G, A, B, S, T], m: Stack[G, B, S, R, Z]): Z =
+      c match
+        case Return(a) => k match
+          case Frames.Frame(f, k2) => go(f(a), k2, m)
+          case Frames.Marked(_, k2) => go(Return(a), k2, m)
+          case Frames.End() => m match
+            case Stack.Done() => a
+            case Stack.Answered() => a
+            case Stack.Bound(_, out, rest) => go(Return(a), out, rest)
+        case Bind(c0, f) => go(c0, Frames.Frame(f, k), m)
+        case Delay(t) => go(t(), k, m)
+        case Inject(op) =>
+          val n = steps.step(op, k, m, this)
+          go(n.c, n.k, n.m)
+        case Diag(op) => go(Inject(op), k, m)
+
 
   /**
    * the machine for effect `G` under the effects `F`: `G`'s operations go to its steps; an `F` operation leaves,
    * as a node of the program the machine answers, with this machine's state behind it in a `Delay` — so the
    * machine outside, forcing it in its own loop, re-enters this one with no host frame per nesting
    */
-  final class Under[G[_, _, +_], F[+_]](steps: Step[G, Row[G, F]]) extends Primitives[Row[G, F]]:
+  final class Under[G[_, _, +_], F[+_]](steps: Step[G, Row[G, F]]) extends Core[Row[G, F]]:
     private type H[S, R, A] = Sum[G, F, S, R, A]
 
-    /** run `c` with `k` as the last frame of its continuation: the program, over `F`, that answers `R` */
+    /** run `c` with `k` as the last frame of its continuation: the program, over `F`, that answers its answer */
     def run[A, S, R](c: Freer[H, S, R, A], k: A => S): Free[F, R] =
-      go(c, frame((a: A) => Return[H, S, S](k(a)), end[S]), Stack.Done[H, R]())
+      go(c, frame((a: A) => Return[H, S, S](k(a)), end[S, S]), Stack.Answered[H, S, R]())
+
+    /** run `c` to its value: the program, over `F`, that answers it */
+    def value[A, X](c: Freer[H, X, X, A]): Free[F, A] = go(c, end[A, X], Stack.Done[H, A, X]())
 
     /** a strict `k` cannot wait for an outer effect: one met inside it is refused, by name */
-    def force[A, S](k: Frames[H, A, S], x: A): S = deeper(go(Return[H, S, A](x), k, Stack.Done[H, S]())) match
-      case Return(s) => s
+    def force[A, S, T](k: Frames[H, A, S, S, T], x: A): T = deeper(go(Return[H, T, A](x), k, Stack.Answered[H, S, T]())) match
+      case Return(t) => t
       case _ => throw IllegalStateException("a strict k performed an operation of an outer effect; give its body the lazy k")
 
-    @tailrec private def go[A, S, T, R](c: Freer[H, S, T, A], k: Frames[H, A, S], m: Stack[H, T, R]): Free[F, R] = c match
-      case Return(a) => k match
-        case Frames.End() => m match
-          case Stack.Done() => Return(a)
-          case Stack.Bound(_, out, rest) => go(Return(a), out, rest)
-        case Frames.Frame(f, k2) => go(f(a), k2, m)
-        case Frames.Marked(_, k2) => go(Return(a), k2, m)
-      case Bind(c0, f) => go(c0, Frames.Frame(f, k), m)
-      case Delay(t) => go(t(), k, m)
-      case Inject(op) => op match
-        case Sum.Own(o) =>
-          val n = steps.step(o, k, m, this)
-          go(n.c, n.k, n.m)
-        case Sum.Fwd(o) => forward(o, k, m)
-      case Diag(op) => go(Inject(op), k, m)
+    @tailrec private def go[A, B, S, T, R, Z](c: Freer[H, T, R, A], k: Frames[H, A, B, S, T], m: Stack[H, B, S, R, Z]): Free[F, Z] =
+      c match
+        case Return(a) => k match
+          case Frames.Frame(f, k2) => go(f(a), k2, m)
+          case Frames.Marked(_, k2) => go(Return(a), k2, m)
+          case Frames.End() => m match
+            case Stack.Done() => Return(a)
+            case Stack.Answered() => Return(a)
+            case Stack.Bound(_, out, rest) => go(Return(a), out, rest)
+        case Bind(c0, f) => go(c0, Frames.Frame(f, k), m)
+        case Delay(t) => go(t(), k, m)
+        case Inject(op) => op match
+          case Sum.Own(o) =>
+            val n = steps.step(o, k, m, this)
+            go(n.c, n.k, n.m)
+          case Sum.Fwd(o) => forward(o, k, m)
+        case Diag(op) => go(Inject(op), k, m)
 
     /** an `F` operation out, as a node of the answered program; its answer enters this machine again, in a `Delay` */
-    private def forward[X, S, R](o: F[X], k: Frames[H, X, S], m: Stack[H, S, R]): Free[F, R] =
-      Bind(Inject[Freer.Lift[F], Unit, Unit, X](o), (x: X) => Delay(() => again(Return[H, S, X](x), k, m)))
+    private def forward[X, B, S, T, Z](o: F[X], k: Frames[H, X, B, S, T], m: Stack[H, B, S, T, Z]): Free[F, Z] =
+      Bind(Inject[Freer.Lift[F], Unit, Unit, X](o), (x: X) => Delay(() => again(Return[H, T, X](x), k, m)))
 
-    /** the loop entered again from the outside (the forwarded operation's answer): a call, so `go` stays a loop */
-    private def again[A, S, T, R](c: Freer[H, S, T, A], k: Frames[H, A, S], m: Stack[H, T, R]): Free[F, R] = go(c, k, m)
+    /** the loop entered again from the outside: a call, so `go` stays a loop */
+    private def again[A, B, S, T, R, Z](c: Freer[H, T, R, A], k: Frames[H, A, B, S, T], m: Stack[H, B, S, R, Z]): Free[F, Z] =
+      go(c, k, m)
+
+  /** a segment's frames set aside, top first, to build a segment back to front: typed, for `split` and `join` */
+  private enum Rev[G[_, _, +_], A0, +A, T, T0]:
+    case Nil[G[_, _, +_], A0, T0]() extends Rev[G, A0, A0, T0, T0]
+    case Snoc[G[_, _, +_], A0, A, X, T, R, T0](prev: Rev[G, A0, A, R, T0], f: A => Freer[G, T, R, X]) extends Rev[G, A0, X, T, T0]
+    case Marks[G[_, _, +_], A0, A, T, T0](prev: Rev[G, A0, A, T, T0], mark: Mark) extends Rev[G, A0, A, T, T0]
+
+  private object Rev:
+    /** the set-aside frames back on top of `k` */
+    @tailrec def link[G[_, _, +_], A0, A, T, T0, B, S](rev: Rev[G, A0, A, T, T0], k: Frames[G, A, B, S, T]): Frames[G, A0, B, S, T0] =
+      rev match
+        case Nil() => k
+        case Snoc(prev, f) => link(prev, Frames.Frame(f, k))
+        case Marks(prev, mk) => link(prev, Frames.Marked(mk, k))
+
+    /** a segment's frames set aside, top first */
+    @tailrec def reverse[G[_, _, +_], A0, A, Y, S1, T, T0](rev: Rev[G, A0, A, T, T0], k: Frames[G, A, Y, S1, T]): Rev[G, A0, Y, S1, T0] =
+      k match
+        case Frames.End() => rev
+        case Frames.Frame(f, rest) => reverse(Snoc(rev, f), rest)
+        case Frames.Marked(mk, rest) => reverse(Marks(rev, mk), rest)
