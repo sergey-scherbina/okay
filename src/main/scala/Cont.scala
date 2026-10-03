@@ -48,7 +48,7 @@ object Cont:
   inline def reset[A, R](c: Rep[A, A, R]): R = run(c)(identity)
 
   /** an opaque body: run as it is, given a strict `k` (`Atm.Resumption`) */
-  def shiftLeaf[A, S, R](f: (A => S) => R): Rep[A, S, R] = Inject[Sig, S, R, A](Atm.Strict(f))
+  def shiftLeaf[A, S, R](f: (A => S) => R): Rep[A, S, R] = Inject[Sig, S, R, A](Op.Strict(f))
 
   /**
    * an opaque body whose answer `S` is a PROGRAM and which calls `k` itself (cont-program-answer): its `k(a)`
@@ -56,7 +56,7 @@ object Cont:
    * The contract it changes: host side effects written after `k(a)` in the body run before `k`'s rest.
    */
   def programLeaf[A, S, R](f: (A => S) => R)(using p: Program[S]): Rep[A, S, R] =
-    Inject[Sig, S, R, A](Atm.WithK(k => f(x => p.later(() => Atm.runK(k, x)))))
+    Inject[Sig, S, R, A](Op.WithK(k => f(x => p.later(() => Atm.runK(k, x, Steps)))))
 
   /** `S` a program that can stand for itself unbuilt: a `Delay` of any `Freer`, `A ! F` among them */
   trait Program[S]:
@@ -76,10 +76,10 @@ object Cont:
 
   /** a tail body whose `S` is a proper subtype of `R`: `k`'s answer leaves as the body's (`Atm.Tail`) */
   def tailShift[A, S, R](v: () => A)(using ev: S <:< R): Rep[A, S, R] =
-    Freer.delay[Sig, S, R, A](() => Inject(Atm.Tail(v(), ev)))
+    Freer.delay[Sig, S, R, A](() => Inject(Op.Tail(v(), ev)))
 
   /** the same with no thunk */
-  def tailPure[A, S, R](v: A)(using ev: S <:< R): Rep[A, S, R] = Inject(Atm.Tail(v, ev))
+  def tailPure[A, S, R](v: A)(using ev: S <:< R): Rep[A, S, R] = Inject(Op.Tail(v, ev))
 
   /**
    * an answer-using body (`k(1) + k(10)`) after `ContMacro`'s selective CPS transform (Rompf, Maier & Odersky,
@@ -89,14 +89,14 @@ object Cont:
   opaque type Lazy[T, B] = Freer[Sig, T, T, B]
 
   /** the lazy `k` of an answer-using body: its captured continuation, from `A` to `S`, which only `call` applies */
-  opaque type LazyK[A, S] = Atm.K[A, S]
+  opaque type LazyK[A, S] = Atm.K[Sig, A, S]
 
   /** the body's answer */
   def done[T, R](r: R): Lazy[T, R] = Return(r)
 
   /** `k(a)` then `rest`: `k` under a boundary of its own, which hands its `S` to `rest` (`Atm.Resume`) */
   def call[A, S, T, R](k: LazyK[A, S], a: A, rest: S => Lazy[T, R]): Lazy[T, R] =
-    Bind(Inject[Sig, T, T, S](Atm.Resume[A, S, T](k, a)), rest)
+    Bind(Inject[Sig, T, T, S](Op.Resume[A, S, T](k, a)), rest)
 
   /**
    * `xs.map(f)` / `xs.foreach(f)` in an answer-using body whose `f` calls `k` (cont-stack-layer1-c (2)): `f` a
@@ -146,7 +146,7 @@ object Cont:
   private def goOn[X, B, T, R]: (X, B) => Lazy[T, R] | Null = (_, _) => null
 
   /** the leaf of an answer-using body: its program answers the leaf's `R`, at the leaf's level */
-  def lazyLeaf[A, S, R](body: LazyK[A, S] => Lazy[R, R]): Rep[A, S, R] = Inject[Sig, S, R, A](Atm.Lazily(body))
+  def lazyLeaf[A, S, R](body: LazyK[A, S] => Lazy[R, R]): Rep[A, S, R] = Inject[Sig, S, R, A](Op.Lazily(body))
   /** a bind whose left side is a thunk forced by the machine: tail calls without JVM frames */
   def defer[A, B, S, T, R](thunk: () => Rep[A, T, R])(f: A => Rep[B, S, T]): Rep[B, S, R] =
     Freer.defer(thunk)(f)
@@ -164,10 +164,39 @@ object Cont:
    * apply to a continuation: the ATM machine (Delimited.scala, `Atm`), `k` the reset's `ret` — what it answers
    * goes back to whoever called a captured `k`, what a shift body answers leaves the reset. Typed throughout.
    */
-  def run[A, S, R](c: Rep[A, S, R])(k: A => S): R = Atm.run(c, k)
+  def run[A, S, R](c: Rep[A, S, R])(k: A => S): R = Atm.run(c, k, Steps)
 
-  /** a Cont program performs no effect but its own: the ATM machine's operations */
-  private[okay] type Sig = Atm.Op
+  /** a Cont program performs no effect but its own */
+  private[okay] type Sig = Op
+
+  /** CONT'S OPERATIONS, an effect on the stack of continuations (`Atm`): the leaves of shift in the forms
+   * ContMacro picks, and the call of a lazy `k` */
+  sealed trait Op[S, R, +A]
+
+  object Op:
+    /** an opaque body, given a strict `k`: a nested run, counted */
+    final case class Strict[S, R, A](body: (A => S) => R) extends Op[S, R, A]
+    /** a body given `k` itself (a program-answered body builds its lazy `k` from it) */
+    final case class WithK[S, R, A](body: Atm.K[Op, A, S] => R) extends Op[S, R, A]
+    /** an answer-using body after the CPS transform: a program over the lazy `k`, answering `R` at its level */
+    final case class Lazily[S, R, A](body: Atm.K[Op, A, S] => Freer[Op, R, R, R]) extends Op[S, R, A]
+    /** `k(a)` as a node: `k` under a boundary of its own, which takes its `S` back here */
+    final case class Resume[A, S, T](k: Atm.K[Op, A, S], a: A) extends Op[T, T, S]
+    /** a tail body `k => k(v)` whose `S` is a proper subtype of `R`: `k`'s answer leaves as the body's */
+    final case class Tail[S, R, A](v: A, ev: S <:< R) extends Op[S, R, A]
+
+  /**
+   * WHAT EACH DOES: Danvy & Filinski's shift/reset with answer-type modification. A body's answer leaves its
+   * reset (`M`); a call of `k` puts a boundary of its own under `k`, so what `k` answers comes back to it.
+   */
+  private object Steps extends Atm.Effect[Op]:
+    import Atm.{K, M, Next}
+    def step[A, S, T, R](op: Op[S, T, A], k: K[Op, A, S], m: M[Op, T, R], run: Atm.Run[Op]): Next[Op, R] = op match
+      case Op.Strict(body) => Next(Return(body(x => run.force(k, x))), K.Done(), m)
+      case Op.WithK(body) => Next(Return(body(k)), K.Done(), m)
+      case Op.Lazily(body) => Next(body(k), K.Done(), m)
+      case Op.Resume(k1, a) => Next(Return(a), k1, M.Level(k, m))
+      case Op.Tail(v, ev) => Next(Return(v), k, M.Level(K.Push((s: S) => Return(ev(s)), K.Done()), m))
 
   /**
    * is `c` already an answer? then go on from it with a tail call instead of a continuation node

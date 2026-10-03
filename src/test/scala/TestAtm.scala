@@ -1,15 +1,29 @@
 package okay
 
 import okay.Freer.{Return, Inject, Bind}
-import Atm.*
+import Atm.{K, M, Next}
 
-/** the ATM machine (specs/cont-atm.md): D-F shift/reset with answer-type modification, two places, no cast */
+/** the stack of continuations (specs/cont-atm.md), effect-independent: this suite declares its own effect —
+ * Danvy & Filinski's shift/reset with answer-type modification — and the machine knows nothing of it */
 class TestAtm extends munit.FunSuite:
 
+  sealed trait Op[S, R, +A]
+  final case class Strict[S, R, A](body: (A => S) => R) extends Op[S, R, A]
+  final case class Lazily[S, R, A](body: K[Op, A, S] => Freer[Op, R, R, R]) extends Op[S, R, A]
+  final case class Resume[A, S, T](k: K[Op, A, S], a: A) extends Op[T, T, S]
+
+  object Steps extends Atm.Effect[Op]:
+    def step[A, S, T, R](op: Op[S, T, A], k: K[Op, A, S], m: M[Op, T, R], run: Atm.Run[Op]): Next[Op, R] = op match
+      case Strict(body) => Next(Return(body(x => run.force(k, x))), K.Done(), m)
+      case Lazily(body) => Next(body(k), K.Done(), m)
+      case Resume(k1, a) => Next(Return(a), k1, M.Level(k, m))
+
+  private type Prog[A, S, R] = Freer[Op, S, R, A]
+  private def run[A, S, R](c: Prog[A, S, R], k: A => S): R = Atm.run(c, k, Steps)
   private def pure[A, R](a: A): Prog[A, R, R] = Return(a)
   private def strict[A, S, R](body: (A => S) => R): Prog[A, S, R] = Inject(Strict(body))
-  private def lazily[A, S, R](body: K[A, S] => Freer[Op, R, R, R]): Prog[A, S, R] = Inject(Lazily(body))
-  private def call[A, S, T](k: K[A, S], a: A): Freer[Op, T, T, S] = Inject(Resume[A, S, T](k, a))
+  private def lazily[A, S, R](body: K[Op, A, S] => Freer[Op, R, R, R]): Prog[A, S, R] = Inject(Lazily(body))
+  private def call[A, S, T](k: K[Op, A, S], a: A): Freer[Op, T, T, S] = Inject(Resume[A, S, T](k, a))
   extension [A, S, R](c: Prog[A, S, R])
     private def andThen[B, S2](f: A => Prog[B, S2, S]): Prog[B, S2, R] = Bind(c, f)
 
@@ -45,16 +59,6 @@ class TestAtm extends munit.FunSuite:
         lazily[Int, List[Int], List[Int]](k => call[Int, List[Int], List[Int]](k, 10).flatMap(a =>
           call[Int, List[Int], List[Int]](k, 20).flatMap(b => Return(a ++ b)))).andThen(y => pure(List(x + y))))
     assertEquals(run(c, identity), List(11, 21, 12, 22))
-  }
-
-  test("a tail body with S a proper subtype of R: k's answer leaves as the body's") {
-    val c: Prog[Int, Int, AnyVal] = Inject(Tail[Int, AnyVal, Int](41, summon[Int <:< AnyVal])).andThen(x => pure(x + 1))
-    assertEquals(run(c, identity), 42: AnyVal)
-  }
-
-  test("WithK: a body given k as data, run on a run of its own") {
-    val c: Prog[Int, Int, String] = Inject(WithK[Int, String, Int](k => s"${runK(k, 20)}")).andThen(x => pure(x * 2))
-    assertEquals(run(c, identity), "40")
   }
 
   private def onSmallStack[A](body: => A): A =
