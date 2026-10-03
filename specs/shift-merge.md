@@ -1,6 +1,6 @@
 # shift-merge — Delim and Shift, one effect named `Shift`
 
-Status: stages 1, 2 and 4 and the one guard done, 2026-10-02; the keyed reset without a room done (shift-stacked-key); stage 3 next (sprint shift-prompt-key). Owner lane: `shift-merge`. Sprint
+Status: stages 1, 2 and 4 and the one guard done, 2026-10-02; the keyed reset without a room done (shift-stacked-key); stage 3 in progress (shift-prompt-key). Owner lane: `shift-merge`. Sprint
 cont-js-depth, the design conversation after stage 3a.
 
 ## Why
@@ -135,6 +135,20 @@ different keys mix in one `flatMap`. `Shift.dynamic(p)` names it.
       price of no room and no `ThreadLocal`. Accepted: the room cost a
       `ThreadLocal` read and a try/finally per reset and still switched
       stacks; this is a constant per run that a nested run does not pay.
+- [ ] stage 3 (shift-prompt-key): `Shift.Stacked` keys a delimiter by the
+      prompt's own singleton type — `Shift % p.type` in the ROW — instead of
+      a tuple-indexed stack (`Stack`/`Has`/`Under`/`rebase`, gone):
+      `reset(p => body)` types the body at `Shift % p.type + F` and runs it
+      (or pushes it on the machine running, by `Shift.Machine`), `shift(p)`
+      and `abort(p)` answer `A ! Shift % p.type + F`, `shift0(p)`'s body is
+      typed at the row OUTSIDE the delimiter and refuses a row that still
+      holds `p`'s key; a prompt's key is told apart by value (`ValueOf[p.type]`,
+      a `TypeableK.ByValue`, so `Distinct` lets two prompts share a row).
+      The refusals are the row's: a shift with no reset, to a foreign
+      prompt, or to one that escaped its reset leaves `Shift % q.type` in a
+      row nothing handles, and the program does not compile where it is run
+      or embedded (TestProg 6-8, TestStackedShift0, TestLayeredStacked,
+      TestLexicalStacked moved). Lexical.Stacked and Layered.Stacked on it.
 - [x] the differential oracle and the machine's depth suite unchanged and
       green — this lane changed the front, not the machine
 - [x] stage 4: every `Delim` in docs/ moved (docs/okay2.md excepted, it
