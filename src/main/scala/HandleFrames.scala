@@ -58,6 +58,13 @@ object HandleFrames:
       val (s2, v) = f(s, op.asInstanceOf[F[Any]])
       resume(s2, v))(s0, x)
 
+  /** a `try` as a frame (handle-frames-catch): `h` answers a throw from anything `x` runs, `x` built under it too */
+  def catching[A, G[+_]](h: Throwable => A ! G)(x: => A ! G): Shift.U[G, A] =
+    val frame = new Cont0.Catching[A]("try"):
+      def caught(t: Throwable): Any = h(t)
+    Freer.Inject[Shift.Ro[G], Unit, Unit, A](Cont0.Dollar0[Freer.Lift[G], A, A, Unit, Unit](
+      Cont0.delimiter[A, Unit](frame), (a: A) => Return[Shift.Ro[G], Unit, A](a), Free.delay(() => x).asInstanceOf[Shift.U[G, A]]))
+
   /** the control form (`Effects[Free].handle`, `Handler.control`) as a frame over `x`: the clause gets `k` */
   def control[F[+_], A, B, G[+_]](ret: A => Free[G, B], h: F !> Free[G, B], t: TypeableK[F])(x: Free[F + G, A]): Shift.U[G, B] =
     val frame = new Cont0.Handling[B]("handle"):

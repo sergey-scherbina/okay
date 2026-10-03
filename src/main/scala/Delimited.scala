@@ -322,6 +322,25 @@ object Frames:
         case Dollar(h: Cont0.Handling[?], _, _) if h.takes(op) => h
         case _ => handlerFor(op, st)
 
+    /** a throw at the stack `all`: the nearest catch frame that takes it answers in its place, the stack below it
+     * the stack — or none does, and it is thrown on, the same object (its trace as it was) */
+    def caught(t: Throwable, all: Stack[F, ?, S0, ?, Z]): Next[?, ?, ?, ?] =
+      // a handler that throws (rethrows, or throws anew) hands THAT to the frames below, as a throw from a
+      // `catch` clause goes to the `try` around it
+      @tailrec def walk(t: Throwable, st: Stack[F, ?, S0, ?, Z]): Next[?, ?, ?, ?] = st match
+        case c: Cat[F, ?, S0, ?, ?, ?, Z] @unchecked => walk(t, uncat(c))
+        case r: Run[F, ?, S0, ?, ?, ?, Z] @unchecked => walk(t, r.below)
+        case d: Dollar[F, ?, S0, ?, ?, Z] @unchecked => d.p match
+          case h: Cont0.Catching[?] => (try h.caught(t) catch case t2: Throwable => new Cont0.Thrown(t2)) match
+            case null => walk(t, d.below)
+            case again: Cont0.Thrown => walk(again.t, d.below)
+            // THE CLAIM: the frame's answer is a program at its own row and index, which the frame built
+            case p => Next[Any, Any, Any, Any](p.asInstanceOf[Freer[G, Any, R, Any]], noFrames[F, Any, Any],
+                        d.below.asInstanceOf[Stack[F, Any, S0, Any, Z]])
+          case _ => walk(t, d.below)
+        case _ => throw t
+      walk(t, all)
+
     /** the nearest handler frame on the stack that takes `op`, or null */
     @tailrec def handlerFor(op: Any, st: Stack[F, ?, ?, ?, ?]): Cont0.Handling[?] | Null = st match
       case c: Cat[F, ?, ?, ?, ?, ?, ?] @unchecked => handlerFor(op, uncat(c))
@@ -413,7 +432,7 @@ object Frames:
       case b: Bind[G, T, ?, R, ?, X] => Frames.as(b.f) match
         case null => b.a match
           // a value under a bind: apply, no frame
-          case r: Return[G, R, x0] => loop(b.f(r.a), fs, st)
+          case r: Return[G, R, x0] => loop(Cont0.guard(b.f(r.a)), fs, st)
           // an operation with nothing pushed: the head form already
           case a => fs match
             case _: End[F, X, S1] @unchecked => st match
@@ -424,24 +443,28 @@ object Frames:
         case ks =>
           val n = resume(b.a, ks, fs, st)
           loop(n.focus, n.fs, n.st)
+      // a throw from user code, on its way to a catch frame (handle-frames-catch)
+      case r: Return[G, R, X] if Cont0.Catching.ever && r.a.isInstanceOf[Cont0.Thrown] =>
+        val n = caught(r.a.asInstanceOf[Cont0.Thrown].t, runOf(fs, st))
+        loop(n.focus, n.fs, n.st)
       case r: Return[G, R, X] => fs match
-        case fr: Frame[F, X, S1, s2, T, ?, Y] => loop(fr.f(r.a), fr.rest, st)
+        case fr: Frame[F, X, S1, s2, T, ?, Y] => loop(Cont0.guard(fr.f(r.a)), fr.rest, st)
         case _: End[F, X, S1] @unchecked => st match
           // `$v`: pop the delimiter, run `ret`
-          case d: Dollar[F, Y, S0, S1, y, Z] => loop(d.ret(r.a), noFrames[F, y, S1], d.below)
+          case d: Dollar[F, Y, S0, S1, y, Z] => loop(Cont0.guard(d.ret(r.a)), noFrames[F, y, S1], d.below)
           // the next segment
           case rn: Run[F, Y, S0, ?, S1, ?, Z] => loop(focus, rn.frames, rn.below)
           // a `Cat`: its next node, in place
           case c: Cat[F, Y, S0, S1, y, s2, Z] => c.k match
             case _: Done[F, Y, S1] @unchecked => loop(focus, fs, c.below)
             case kr: Run[F, Y, `s2`, ?, S1, ?, `y`] => loop(focus, kr.frames, cat(kr.below, c.below))
-            case d: Dollar[F, Y, `s2`, S1, y1, `y`] => loop(d.ret(r.a), noFrames[F, y1, S1], cat(d.below, c.below))
+            case d: Dollar[F, Y, `s2`, S1, y1, `y`] => loop(Cont0.guard(d.ret(r.a)), noFrames[F, y1, S1], cat(d.below, c.below))
             case i: Cat[F, Y, `s2`, S1, ?, ?, `y`] => loop(focus, fs, Cat(i.k, Cat(i.below, c.below)))
           case _: Done[F, Y, S0] @unchecked => focus
       case d: Delay[G, T, R, X] => Frames.resume[F, T, R, X](d.thunk) match
         // a resumption is pushed, never forced; a run is stepped into, never started
         case null => own[F, T, R, X](d.thunk) match
-          case null => loop(d.thunk(), fs, st)
+          case null => loop(Cont0.guard(d.thunk()), fs, st)
           case p: Freer[G, T, R, X] @unchecked => loop(p, fs, st)
         case r: Resume[F, a, T, R, X] =>
           val n = resume(Return[G, R, a](r.a), r.k, fs, st)
@@ -521,6 +544,36 @@ object Cont0:
   object Handling:
     /** a frame was ever pushed in this process: until then a machine forwards an operation without looking */
     @volatile private[okay] var ever: Boolean = false
+
+  /**
+   * A CATCH FRAME'S DELIMITER (handle-frames-catch): `ret $ body` with a JVM `try` around everything the body runs,
+   * kept as DATA on the machine's stack — so a body nested a hundred thousand deep holds no host `try` per level.
+   * The machine runs user code (a bind, a `ret`, a thunk, a capture's body) under a `try` once any catch frame
+   * exists; a throw becomes `Return(Thrown(t))`, and the loop hands it to the nearest catch frame that takes it —
+   * the frames above it dropped, as a throw drops them — or, none taking it, throws it on.
+   */
+  abstract class Catching[Y](name: String) extends Prompt[Y](name, "catch"):
+    if !Catching.ever then Catching.ever = true
+    /** the frame's answer for `t` — a program at its row — or null: not this frame's */
+    def caught(t: Throwable): Any
+
+  object Catching:
+    /** a catch frame was ever made in this process: until then user code runs with no `try` around it */
+    @volatile @scala.annotation.publicInBinary private[okay] var ever: Boolean = false
+
+  /** a throw on its way to a catch frame: what a guarded call answers instead of throwing */
+  final class Thrown(val t: Throwable)
+
+  /** user code under the machine's `try` once catch frames exist: a throw comes back as `Return(Thrown(t))` */
+  inline def guard[G[_, _, +_], S, R, B](inline call: Freer[G, S, R, B]): Freer[G, S, R, B] =
+    if !Catching.ever then call
+    else
+      try call
+      catch case t: Throwable => thrown[G, S, R, B](t)
+
+  /** THE CLAIM: a `Thrown` rides in a `Return` at any answer type; only the machine's Return arm reads it */
+  @scala.annotation.publicInBinary private[okay] def thrown[G[_, _, +_], S, R, B](t: Throwable): Freer[G, S, R, B] =
+    Freer.Return[G, R, Any](new Thrown(t)).asInstanceOf[Freer[G, S, R, B]]
 
   /** the barrier's prompt: `Shift.run` installs it, nobody can name it */
   private val theBoundary = new Prompt[Any]("boundary", "Shift.run")
