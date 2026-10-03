@@ -56,8 +56,9 @@ trait Delimited[G[_, _, +_]]:
   def cut[A, B, S, T, R, Z](k: Frames[G, A, B, S, T], m: Stack[G, B, S, R, Z], is: Mark => Boolean,
                             stop: Mark => Boolean): Found[G, A, T, R, Z] | Null
 
-  /** a captured piece put back on top of a segment and its stack, `a` into its innermost frames */
-  def reinstall[A0, Y, I, B, S, R, Z](piece: Piece[G, A0, R, Y, I], a: A0, k: Frames[G, Y, B, S, I], m: Stack[G, B, S, R, Z]): Next[G, Z]
+  /** a captured piece put back on top of a segment and its stack, and `c` run inside it: its value into the
+   * piece's innermost frames, its captures reaching the piece's boundaries (DPJS's `pushSubCont`) */
+  def reinstall[A0, Y, I, B, S, R, Z](piece: Piece[G, A0, R, Y, I], c: Freer[G, R, R, A0], k: Frames[G, Y, B, S, I], m: Stack[G, B, S, R, Z]): Next[G, Z]
 
   /** the nearest boundary as an ANSWER boundary, the segment up to it closed by it: null when it is not one */
   def closed[A, B, S, T, R, Z](k: Frames[G, A, B, S, T], m: Stack[G, B, S, R, Z]): Closed[G, A, T, R, Z] | Null
@@ -281,13 +282,13 @@ object Delimited:
         def out = o
         def rest = r
 
-    def reinstall[A0, Y, I, B, S, R, Z](piece: Piece[G, A0, R, Y, I], a: A0, k: Frames[G, Y, B, S, I], m: Stack[G, B, S, R, Z]): Next[G, Z] =
-      link(piece, k, m, a)
+    def reinstall[A0, Y, I, B, S, R, Z](piece: Piece[G, A0, R, Y, I], c: Freer[G, R, R, A0], k: Frames[G, Y, B, S, I], m: Stack[G, B, S, R, Z]): Next[G, Z] =
+      link(piece, k, m, c)
 
     @tailrec private def link[A0, R, A, T, B, S, Z](piece: Piece[G, A0, R, A, T], k: Frames[G, A, B, S, T],
-                                                    m: Stack[G, B, S, R, Z], a: A0): Next[G, Z] = piece match
-      case Piece.Nil() => next(Return(a), k, m)
-      case Piece.Snoc(prev, kk, tag) => link(prev, kk, Stack.Delim(tag, k, m), a)
+                                                    m: Stack[G, B, S, R, Z], c: Freer[G, R, R, A0]): Next[G, Z] = piece match
+      case Piece.Nil() => next(c, k, m)
+      case Piece.Snoc(prev, kk, tag) => link(prev, kk, Stack.Delim(tag, k, m), c)
 
     @tailrec final def holds[B, S, R, Z](m: Stack[G, B, S, R, Z], is: Mark => Boolean): Mark | Null = m match
       case Stack.Delim(tag, _, rest) => if tag != null && is(tag) then tag else holds(rest, is)

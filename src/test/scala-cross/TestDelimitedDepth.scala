@@ -50,7 +50,7 @@ object DelimitedDepth:
 class TestDelimitedDepth extends munit.FunSuite:
   import DelimitedDepth.*
 
-  val M = LambdaDollar.machine[Freer.Lift[Pure]]
+  val M = LambdaDollar.machine
   val R = DelimitedReference.Ref
   val n = 1000000
 

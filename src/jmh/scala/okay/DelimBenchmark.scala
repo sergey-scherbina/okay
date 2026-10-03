@@ -176,8 +176,8 @@ class DelimBenchmark {
   // ---- an operation of ANOTHER effect on the machine (handling-ever-per-machine): N State
   // operations performed inside `Shift.run`, under one delimiter, answered by `State.run`
   // outside — each leaves the machine as its head form. Before forwarding one, a machine looks
-  // down its stack for a handler frame (handle-frames) only once `Cont0.Handling.ever` is set,
-  // process-wide; `stateForeignEver` forces it on to price that look.
+  // at its boundaries for a handler frame (handle-frames) only once a frame was installed in
+  // the run (cont-atm; until then process-wide, `Cont0.Handling.ever`).
 
   type FW = okay.State % Int
   type FRow = Shift % ? + FW
@@ -190,9 +190,6 @@ class DelimBenchmark {
 
   @Benchmark
   def stateForeign(): Int = foreignRun()
-
-  @Benchmark
-  def stateForeignEver(@annotation.unused on: DelimBenchmark.HandlingEver): Int = foreignRun()
 
   // ---- handler INSTANCES (specs/lexical-instances.md): the same N get/set
   // pairs as stateHandle, through one `Lexical` instance, by strategy.
@@ -261,9 +258,3 @@ class DelimBenchmark {
     while i >= 0 do { xs = i :: xs; i -= 1 }
     xs.length
 }
-
-object DelimBenchmark:
-  /** forces `Cont0.Handling.ever` on for the lane that takes it: a fork of its own, so no other lane sees it */
-  @State(Scope.Benchmark)
-  class HandlingEver:
-    @Setup def on(): Unit = Cont0.Handling.ever = true

@@ -105,7 +105,7 @@ object DelimitedDifferential:
 class TestDelimitedDifferential extends munit.FunSuite:
   import DelimitedDifferential.*
 
-  val machine = LambdaDollar.machine[Freer.Lift[Pure]]
+  val machine = LambdaDollar.machine
   val reference = DelimitedReference.Ref
 
   /** `minAnswered`: the share of programs that must answer, so the

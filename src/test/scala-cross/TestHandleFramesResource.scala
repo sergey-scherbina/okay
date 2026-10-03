@@ -57,7 +57,7 @@ class TestHandleFramesResource extends munit.FunSuite:
       _ <- Shift.abort[String, Unit, Pure](p)("aborted").at[Resource + D]
     yield a))))
     assertEquals(r, "aborted")
-    // a capture is a Cont0 operation, which no frame takes: the drop is the frame's own `k` left unrun — like the
+    // a capture is a Shift operation, which no frame takes: the drop is the frame's own `k` left unrun — like the
     // walk, whose forwarded capture is not a `Final`, nothing is released by it; pinned so a change is seen
     assertEquals(log.toList, Nil)
   }

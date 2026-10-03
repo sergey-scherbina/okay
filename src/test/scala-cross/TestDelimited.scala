@@ -91,9 +91,8 @@ abstract class DelimitedLaws[M[_, _, _]](name: String, val D: LambdaDollar[M]) e
     assertEquals(outcome(D.shift0[String, String, String, String, String](p)(k => k("a"))), "NoPrompt")
   }
 
-/** the frame machine through the interface */
-class TestDelimitedMachine extends DelimitedLaws[[S, R, A] =>> Freer[Cont0.Row[Freer.Lift[Pure]], S, R, A]](
-  "machine", LambdaDollar.machine[Freer.Lift[Pure]])
+/** Shift on the machine through the interface */
+class TestDelimitedMachine extends DelimitedLaws[LambdaDollar.OnShift]("machine", LambdaDollar.machine)
 
 /** the reference: the same laws, the same answers */
 class TestDelimitedReference extends DelimitedLaws[DelimitedReference.P]("reference", DelimitedReference.Ref)

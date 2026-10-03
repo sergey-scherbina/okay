@@ -123,7 +123,26 @@ object Shift {
   /** the body consumes `p`; `k` re-installs it */
   def shift0[R, A, F[+_]](p: Prompt[R])
                          (f: (A => R ! Shift % ? + F) => R ! Shift % ? + F)(using at: At): A ! Shift % ? + F =
+    withSubCont[R, A, F](p)(f)
+
+  /** `shift0` with the continuation as DATA (DPJS's `withSubCont`): `k(x)` resumes it with a value, and
+   * `k.resumeWith(m)` runs a computation inside it, its delimiters in force */
+  def withSubCont[R, A, F[+_]](p: Prompt[R])
+                              (f: Resumption[A, R, F] => R ! Shift % ? + F)(using at: At): A ! Shift % ? + F =
     op[A, F](Shift0[Any, A, R, F](p, f, at.where))
+
+  /**
+   * A CAPTURED CONTINUATION, up to and including its prompt: `k(x)` resumes it with a value; `resumeWith(m)` runs
+   * the computation `m` INSIDE it — a capture in `m` reaches the prompts `k` carries (DPJS's `pushSubCont`,
+   * "throwing into a continuation"). Either is a program that stands on its own: a deferred run, stepped into by
+   * a machine for the row already running — the piece back on its stack, the value to whoever resumed — and run by
+   * a machine of its own when forced by anyone else (a `k` that outlived its run). No barrier either way.
+   */
+  final class Resumption[A, R, F[+_]] private[Shift] (p: Prompt[R], piece: Delimited.Piece[Freer.Lift[Shift % ? + F], A, Unit, R, Unit])
+    extends (A => R ! Shift % ? + F):
+    def apply(x: A): R ! Shift % ? + F = resumeWith(okay.pure(x))
+    def resumeWith(m: A ! Shift % ? + F): R ! Shift % ? + F =
+      claim[R ! Shift % ? + F](Free.delay(Nested[R, F](op[R, F](Resume[Any, A, R, F](p, piece, m)), nested = true)))
 
   /** an operation of `Shift` as a node of its row */
   private def op[A, F[+_]](o: Shift[Any, A]): A ! Shift % ? + F = Freer.Inject[Freer.Lift[Shift % ? + F], Unit, Unit, A](o)
@@ -138,12 +157,14 @@ object Shift {
   private[okay] final case class Dollar[K, R0, R, F[+_]](p: Prompt[R], ret: R0 => R ! Shift % ? + F, body: R0 ! Shift % ? + F)
     extends Shift[K, R]
   /** capture to `p`: the body, given `k`, answers in `p`'s place */
-  private[okay] final case class Shift0[K, A, R, F[+_]](p: Prompt[R], body: (A => R ! Shift % ? + F) => R ! Shift % ? + F,
+  private[okay] final case class Shift0[K, A, R, F[+_]](p: Prompt[R], body: Resumption[A, R, F] => R ! Shift % ? + F,
                                                         at: String) extends Shift[K, A]
   /** leave `p`'s place with `value` */
   private[okay] final case class Abort[K, A, R](p: Prompt[R], value: R, at: String) extends Shift[K, A]
-  /** a captured continuation resumed: its segments and boundaries, `p`'s and `ret`'s included, back on top */
-  private[okay] final case class Resume[K, A, R, F[+_]](p: Prompt[R], k: Delimited.Piece[Freer.Lift[Shift % ? + F], A, Unit, R, Unit], a: A)
+  /** a captured continuation resumed: its segments and boundaries, `p`'s and `ret`'s included, back on top, and
+   * `body` run inside them */
+  private[okay] final case class Resume[K, A, R, F[+_]](p: Prompt[R], k: Delimited.Piece[Freer.Lift[Shift % ? + F], A, Unit, R, Unit],
+                                                        body: A ! Shift % ? + F)
     extends Shift[K, R]
 
   /** the prompt an operation names */
@@ -244,13 +265,13 @@ object Shift {
         machine.next(claim[Freer[L, U, U, r0]](d.body), machine.end[r0, U], machine.delim(d.p, machine.frame(ret, machine.end[r, U]), outside))
       case s: Shift0[?, a, r, ?] =>
         val c = claim[Cut[a, r, Z]](cutOrFail(s.p, s.at, k, m, machine))
-        val body = claim[(a => Freer[L, U, U, r]) => Freer[L, U, U, r]](s.body)
-        machine.next(body(x => resumption[a, r](s.p, c.piece, x)), c.out, c.rest)
+        val body = claim[Resumption[a, r, F] => Freer[L, U, U, r]](s.body)
+        machine.next(body(Resumption[a, r, F](s.p, c.piece)), c.out, c.rest)
       case ab: Abort[?, a, r] =>
         val c = claim[Cut[a, r, Z]](cutOrFail(ab.p, ab.at, k, m, machine))
         machine.next(Freer.Return[L, U, r](ab.value), c.out, c.rest)
       case rs: Resume[?, a, r, ?] =>
-        machine.reinstall(claim[Delimited.Piece[L, a, U, r, U]](rs.k), rs.a, claim[Frames[L, r, B, U, U]](k), m)
+        machine.reinstall(claim[Delimited.Piece[L, a, U, r, U]](rs.k), claim[Freer[L, U, U, a]](rs.body), claim[Frames[L, r, B, U, U]](k), m)
       // an operation of `F` a frame takes (`apply` kept it): a capture to the frame, the clause its body
       case _ =>
         val h = taker.nn
@@ -260,7 +281,7 @@ object Shift {
     /** the clause of frame `h` for `op` in the frame's place, `k` resuming the piece cut to it */
     private def handled[A, Y, Z](h: HandleFrames.Handling[Y], op: Any, c: Cut[A, Any, Z], machine: Delimited[L]): Delimited.Next[L, Z] =
       val piece = claim[Delimited.Piece[L, Any, U, Y, U]](c.piece)
-      machine.next(claim[Freer[L, U, U, Any]](h.clause(op, x => resumption[Any, Y](h, piece, x))), c.out, c.rest)
+      machine.next(claim[Freer[L, U, U, Any]](h.clause(op, Resumption[Any, Y, F](h, piece))), c.out, c.rest)
 
     /** a throw: the nearest catch frame answers it in its place, the frames above it dropped; one that declines
      * (null) or throws passes it, or what it threw, to the frames below; none takes it — thrown on */
@@ -285,15 +306,6 @@ object Shift {
 
     private val catches: Delimited.Mark => Boolean = _.isInstanceOf[HandleFrames.Catching]
     private val never: Delimited.Mark => Boolean = _ => false
-
-    /**
-     * `k(x)` as a program that stands on its own: a deferred run of the resumption. A machine for the row already
-     * running steps into it and puts the piece back on its own stack — the value returns to whoever called `k`;
-     * forced by anyone else (a `k` that outlived its run, a state-passing answer applied later), it runs a machine
-     * of its own. No barrier either way: a capture inside the resumed `k` reaches the prompts around its caller.
-     */
-    private def resumption[A, R](p: Prompt[R], piece: Delimited.Piece[L, A, U, R, U], x: A): Freer[L, U, U, R] =
-      claim[Freer[L, U, U, R]](Free.delay(Nested[R, F](op[R, F](Resume[Any, A, R, F](p, piece, x)), nested = true)))
 
     /** a capture to a prompt: the piece up to and including its closing (its opening and `ret` taken along), and
      * what lies under the closing */

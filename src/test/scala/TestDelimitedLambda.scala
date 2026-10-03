@@ -33,7 +33,7 @@ class TestDelimitedLambda extends munit.FunSuite:
           val piece = is.substituteCo[[v] =>> Delimited.Piece[L, a, Unit, v, Unit]](at.substituteCo[[x] =>> Delimited.Piece[L, a, Unit, f.Y, x]](f.piece))
           val out = is.substituteCo[[v] =>> Frames[L, v, f.B2, f.S2, Unit]](at.substituteCo[[x] =>> Frames[L, f.Y, f.B2, f.S2, x]](f.out))
           machine.next(sh.body(piece), out, f.rest)
-      case Resume(piece, a) => machine.reinstall(piece, a, k, m)
+      case Resume(piece, a) => machine.reinstall(piece, Return(a), k, m)
 
   /**
    * THE ONE CLAIM of this effect, the generative-prompt axiom (Dybvig, Peyton Jones & Sabry's `eqPrompt`): a
