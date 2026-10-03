@@ -104,4 +104,40 @@ class TestCont extends munit.FunSuite {
     assertEquals(Cont.reset(sum[[A] =>> A /> Int](Cont.Pure(1), Cont.Pure(2))), 3)
   }
 
+  // cont-run-prompt: every run is a frame of its own, and a leaf goes to the nearest one
+  test("a shift answers its own reset, not an outer one: lazy and strict leaves") {
+    val viaMacro = Cont.reset(for
+      a <- Cont.shift((k: Int => Int) => k(1) + 100)
+      b = Cont.reset(for x <- Cont.shift((k: Int => Int) => k(10) * 2) yield x + 1)
+    yield a + b)
+    val viaLeaf = Cont.reset(for
+      a <- Cont.shiftLeaf((k: Int => Int) => k(1) + 100)
+      b = Cont.reset(for x <- Cont.shiftLeaf((k: Int => Int) => k(10) * 2) yield x + 1)
+    yield a + b)
+    // inner: (10 + 1) * 2 = 22; outer: (1 + 22) + 100
+    assertEquals((viaMacro, viaLeaf), (123, 123))
+  }
+
+  test("a k that left its run answers to that run's root, called from inside another run") {
+    var saved: Int => Int = identity
+    val first = Cont.reset(for x <- Cont.shiftLeaf((k: Int => Int) => { saved = k; k(1) }) yield x * 10)
+    val second = Cont.reset(for y <- Cont.shiftLeaf((k: Int => Int) => k(saved(2))) yield y + 1)
+    // saved(2) is the first run's rest, 2 * 10, under the first run's root; the second adds its own 1
+    assertEquals((first, second), (10, 21))
+  }
+
+  // cont-shift-op's refuting case (specs/cont-shift-op.md, 2026-10-01): a lazy k that calls k twice, nested.
+  // A frame per run keeps D-F's boundary in the machine: k's own copy of the frame delimits every call of k
+  test("k(x + 1) + k(x + 1) chained d deep, lazy and strict, agree with the closure instance") {
+    def lazily(d: Int): Int /> Int =
+      (1 to d).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => Cont.shift((k: Int => Int) => k(x + 1) + k(x + 1))))
+    def strictly(d: Int): Int /> Int =
+      (1 to d).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => Cont.shiftLeaf((k: Int => Int) => k(x + 1) + k(x + 1))))
+    def closures(d: Int): Func[Int, Int, Int] =
+      (1 to d).foldLeft[Func[Int, Int, Int]](k => k(0))((m, _) => k => m(x => k(x + 1) + k(x + 1)))
+    for d <- 0 to 6 do
+      val want = closures(d)(identity)
+      assertEquals((Cont.reset(lazily(d)), Cont.reset(strictly(d))), (want, want), s"d = $d")
+  }
+
 }

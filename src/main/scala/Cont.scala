@@ -1,6 +1,6 @@
 package okay
 
-import okay.Freer.{Return, Bind, Delay}
+import okay.Freer.{Return, Inject, Bind, Delay}
 import scala.collection.LinearSeq
 
 /**
@@ -39,7 +39,7 @@ object Cont:
   def Pure[A, R](a: A): Rep[A, R, R] = Return(a)
 
   /**
-   * `shift`: one leaf, a `shift0` to the run's root. `ContMacro` picks the leaf's form at compile time:
+   * `shift`: one leaf, an `Op` the nearest run's frame answers. `ContMacro` picks the leaf's form at compile time:
    * a tail body is a value (`tailShift`/`tailPure`), an answer-using body a program over a lazy `k`
    * (`lazyLeaf`), anything else gets a strict `k` (`shiftLeaf`).
    */
@@ -49,8 +49,7 @@ object Cont:
   inline def reset[A, R](c: Rep[A, A, R]): R = run(c)(identity)
 
   /** an opaque body: run as it is, given a strict `k` (`Resumption`) */
-  def shiftLeaf[A, S, R](f: (A => S) => R): Rep[A, S, R] =
-    leaf[A, S, R](k => Return(f(Resumption(k))))
+  def shiftLeaf[A, S, R](f: (A => S) => R): Rep[A, S, R] = Inject[Sig, S, R, A](Op.Strict(f))
 
   /**
    * an opaque body whose answer `S` is a PROGRAM and which calls `k` itself (cont-program-answer): its `k(a)`
@@ -59,8 +58,7 @@ object Cont:
    * into it and continues into that program in its own loop, so the rest of the body is that machine's frame.
    * The contract it changes: host side effects written after `k(a)` in the body run before `k`'s rest.
    */
-  def programLeaf[A, S, R](f: (A => S) => R): Rep[A, S, R] =
-    leaf[A, S, R](k => Return(f(Later(k))))
+  def programLeaf[A, S, R](f: (A => S) => R): Rep[A, S, R] = Inject[Sig, S, R, A](Op.Program(f))
 
   /** the lazy `k` of a program-answered body: the machine's `Delay` node standing for the program `S` (the claim:
    * `ContMacro` picks this leaf only when `S` is a `Freer`, and the machine steps into its own node in any row) */
@@ -70,10 +68,29 @@ object Cont:
   /** a run of `k`'s rest to its answer, which is the program that goes on (the same claim as `Later`'s) */
   private val answerProgram: P[Any] => P[Any] = head => claim(answerOf(head))
 
-  /** the one leaf: `shift0` to the run's root. The root answers each leaf at that leaf's own types, which no
-   * one `Delimiter[Y, I]` can state: the clause and the node are claimed (memory cont-facade-over-free, trap 2) */
-  private def leaf[A, S, R](clause: K[A, S] => P[R]): Rep[A, S, R] =
-    claim(M.shift0[Any, Any, Any, Any, A](rootAt)(claim[Stack[NoEffect, A, Any, Any, Any] => P[Any]](clause))(using leafAt))
+  /**
+   * CONT'S OPERATION (cont-run-prompt, the operator's `ContShift[A, S, R](k: (A => S) => R)`): a leaf is an
+   * `Op[S, R, A]`, typed exactly as the leaf it is, in the form `ContMacro` chose for its body. Every run puts a
+   * frame of its own on the machine (`Root`), and the machine hands an `Op` to the nearest one — the leaf's own
+   * `reset`. The frame answers it: a `shift0` to itself whose body is the leaf's, given `k` (`Root.clause`).
+   */
+  sealed trait Op[S, R, +A] extends Cont0.Framed, (Any => Any)
+
+  /**
+   * Each form is its own clause, a function of the `k` its frame captured (`Root.clauseOf`: no closure an
+   * operation). THE CLAIM at the frame: the machine captured `k` for this operation, so it runs from the
+   * operation's `A` to its `S`; the frame's erased signature (`Handling`) cannot say so.
+   */
+  object Op:
+    /** an opaque body, given a strict `k` */
+    final case class Strict[S, R, A](body: (A => S) => R) extends Op[S, R, A]:
+      def apply(k: Any): Any = Return[Sig, Any, R](body(Resumption(claim[K[A, S]](k))))
+    /** an opaque body answering a program, given the lazy `k` (`Later`) */
+    final case class Program[S, R, A](body: (A => S) => R) extends Op[S, R, A]:
+      def apply(k: Any): Any = Return[Sig, Any, R](body(Later(claim[K[A, S]](k))))
+    /** an answer-using body after the CPS transform, given the captured stack itself */
+    final case class Lazily[S, R, A](body: LazyK[A, S] => Lazy[R]) extends Op[S, R, A]:
+      def apply(k: Any): Any = body(claim[K[A, S]](k))
 
   /** a tail body `k => { stats; k(v) }` as its value `v`; `S <: R` (the evidence) makes the claim sound */
   def tailShift[A, S, R](v: () => A)(using @annotation.unused ev: S <:< R): Rep[A, S, R] =
@@ -149,8 +166,7 @@ object Cont:
   private def goOn[X, B, R]: (X, B) => Lazy[R] | Null = never
 
   /** the leaf of an answer-using body */
-  def lazyLeaf[A, S, R](body: LazyK[A, S] => Lazy[R]): Rep[A, S, R] =
-    leaf(body)
+  def lazyLeaf[A, S, R](body: LazyK[A, S] => Lazy[R]): Rep[A, S, R] = Inject[Sig, S, R, A](Op.Lazily(body))
   /** a bind whose left side is a thunk forced by the machine: tail calls without JVM frames */
   def defer[A, B, S, T, R](thunk: () => Rep[A, T, R])(f: A => Rep[B, S, T]): Rep[B, S, R] =
     Freer.defer(thunk)(f)
@@ -167,34 +183,38 @@ object Cont:
   /** apply to a continuation: a root `$` whose `ret` is `k`; the run answers what the leaves' bodies answer, `R` */
   def run[A, S, R](c: Rep[A, S, R])(k: A => S): R =
     val r = Root(k, StackSwitch.firstRoom)
-    claim(answerOf(M.runHead[Any, Any, Any](M.dollar[Any, A, Any, Any](rootAt)(r)(claim[P[A]](c)))))
+    claim(answerOf(M.runHead[Any, Any, Any](M.dollar[Any, A, Any, Any](Cont0.delimiter(r))(r)(claim[P[A]](c)))))
 
-  // THE RUNNER: a Cont program runs on the frame machine under one root `$` per run; every leaf is a
-  // `shift0` to it. A lazy `k` is pushed by the machine; a strict `k` is a nested run, counted, a fresh
-  // stack at zero (`StackSwitch`).
+  // THE RUNNER: a Cont program runs on the frame machine under a root `$` of its own run, a frame that takes
+  // Cont's operation (`Op`); every leaf goes to the nearest one. A lazy `k` is pushed by the machine; a strict
+  // `k` is a nested run, counted, a fresh stack at zero (`StackSwitch`).
 
   /** a Cont program performs no effect but its own */
-  private[okay] type NoEffect = [S, R, X] =>> Nothing
-  private[okay] type Sig = Cont0.Row[NoEffect]
+  private[okay] type Sig = Cont0.Row[Op]
 
   /** a program on the machine answering `X`, its answer-type indexes erased: Cont's live on the facade */
   private type P[+X] = Freer[Sig, Any, Any, X]
   /** a captured `k` from `A` to `S`, at the same erased indexes */
-  private type K[A, S] = Stack[NoEffect, A, Any, Any, S]
+  private type K[A, S] = Stack[Op, A, Any, Any, S]
 
   /** the machine, through its one door */
-  private val M: Delimited.Machine[NoEffect] = Delimited.machine[NoEffect]
+  private val M: Delimited.Machine[Op] = Delimited.machine[Op]
 
-  /** the root prompt: one for every run */
-  private val root: Prompt[Any] = new Prompt[Any]("Cont.run", "Cont.scala")
-  /** the root as the machine's delimiter, at Cont's erased index */
-  private val rootAt: Cont0.Delimiter[Any, Any] = Cont0.delimiter(root)
-  /** where a leaf's capture says it was made */
-  private val leafAt: At = At("Cont.shift")
-
-  /** the root's `ret` (the user's `k`) and the run's room */
-  private final class Root[A, S](val k: A => S, var room: Int) extends (A => P[S]):
+  /**
+   * A RUN'S ROOT, one object: its own frame (the delimiter every leaf of the run goes to), its `ret` (the user's
+   * `k`) and its room. Its operations are `Framed`, so it leaves the machines' process-wide flag off.
+   */
+  private final class Root[A, S](val k: A => S, var room: Int)
+    extends Cont0.Handling[Any]("Cont.run", opens = false), (A => P[S]):
     def apply(x: A): P[S] = Return(k(x))
+    def takes(op: Any): Boolean = op.isInstanceOf[Op[?, ?, ?]]
+    /** each operation is its own clause (`Op`) */
+    override def clauseOf(op: Any): Any => Any = op match
+      case o: Op[?, ?, ?] => o
+      case _ => super.clauseOf(op)
+    def clause(op: Any, k: Any => Any): Any = op match
+      case o: Op[?, ?, ?] => o(k)
+    override def toString: String = label
 
   /** the strict `k`: `apply` runs `k`'s stack to a value, nested, counted (`force`) */
   private final class Resumption[A, S](k: K[A, S]) extends (A => S):
@@ -202,16 +222,19 @@ object Cont:
 
   /**
    * THE CLAIM, the file's only cast: Cont's answer types are the facade's, every node is built here, and the
-   * machine runs them at erased indexes. Every crossing between the two goes through here — a leaf's clause and
-   * node (`leaf`), a tail body's value (`tailShift`/`tailPure`), a program answer (`Later`), a run's tree and
+   * machine runs them at erased indexes. Every crossing between the two goes through here — the `k` a run's frame
+   * hands a leaf (`Root.clause`), a tail body's value (`tailShift`/`tailPure`), a program answer (`Later`), a run's tree and
    * answer (`run`) — and nowhere else.
    */
   private def claim[X](v: Any): X = v.asInstanceOf[X]
 
-  /** a run's head form is its value: Cont has no other operation */
+  /** a run's head form is its value: its frame answers every operation of the run */
   private def answerOf[X](head: P[X]): X = head match
     case Return(v) => v
-    case _ => throw IllegalStateException("a Cont program answered an operation: it has none")
+    case _ => throw IllegalStateException("a Cont program answered an operation outside its run's frame")
+
+  /** a run's root among the delimiters of a `k` (one function, no closure a force) */
+  private val isRoot: Prompt[?] => Boolean = _.isInstanceOf[Root[?, ?]]
 
   /** run `k` now, one level less of room; at zero on a fresh stack */
   private def force[A, S](k: K[A, S], x: A): S =
@@ -231,7 +254,7 @@ object Cont:
     answerOf(M.runHeadAt[A, Any, Any, S](k)(x))
 
   /** the root at the bottom of `k`: a strict `k` always ends at it (the machine reads its own stack) */
-  private def rootOf(k: K[?, ?]): Root[?, ?] = M.retOf(k, root) match
+  private def rootOf(k: K[?, ?]): Root[?, ?] = M.frameOf(k, isRoot) match
     case r: Root[?, ?] => r
     case _ => throw IllegalStateException("a strict k without its run's root: only a leaf makes one, and a leaf cuts to the root")
 

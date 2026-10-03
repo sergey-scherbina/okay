@@ -72,3 +72,21 @@ it was to save is only removable by the machine knowing Cont (a flag
 or a case in `Cont0`), refused for layering. Verdict: master's Cont
 (root `$` + `shift0` through `Delimited`) is the correct one.
 
+## The frame road — LANDED as cont-run-prompt (2026-10-03)
+
+The operator came back to the idea from the other side ("каждый reset свой
+делимитер", then "для Cont нужен свой тип эффекта `ContShift`"). What the
+probe above lacked was the boundary IN the machine; a frame per run is
+one: `Cont.Op[S, R, A]` (`Strict | Program | Lazily`) is Cont's operation,
+`Cont0.Framed` so a machine looks for its frame without the process-wide
+flag, and each run's `Root` is a `Cont0.Handling` frame — a deep handler,
+so `k` holds its own copy of the frame and a lazy `k`'s next operation
+finds THAT frame, not the body's rest. The refuting case, `k(x + 1) +
+k(x + 1)` chained, is a test now (TestCont, d = 0..6, lazy and strict
+against the closure instance). The clause lambda per leaf went the way
+the verdict above said it only could — the machine knowing the operation
+— but generally, not for Cont: an `Op` is its own clause
+(`Handling.clauseOf`), and `framed` captures straight to a frame at the
+head of the stack with no `Shift0` built (a gain for every handler
+frame). Numbers in specs/cont-core.md and history.d `cont-run-prompt`.
+

@@ -6,3 +6,6 @@
   d=2 loops to OOM. The boundary IS the root delimiter (master's
   design). Spec: specs/cont-shift-op.md (on feature/cont-shift-op,
   9d85c5105). Do not retake without a boundary that is not `Cont0`.
+  RETAKEN AND LANDED 2026-10-03 as cont-run-prompt, with the boundary
+  this entry asked for: a `Cont0.Handling` frame per run (a deep handler,
+  so `k` carries its run's frame); the d=2 case is a TestCont test.

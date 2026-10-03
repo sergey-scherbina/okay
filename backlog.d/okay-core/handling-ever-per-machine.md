@@ -16,3 +16,7 @@
       test fork that ran a handler earlier measures 5% slower for that.
       Weigh against C2's register pressure in this loop
       (cont-frames-register-pressure) before adding a register.
+      Since cont-run-prompt (2026-10-03) a frame whose operations mark
+      themselves `Cont0.Framed` is looked up WITHOUT the flag
+      (`Handling(name, opens = false)`): Cont's run frames leave it off.
+      The flag still turns on with the first handle-frames frame.

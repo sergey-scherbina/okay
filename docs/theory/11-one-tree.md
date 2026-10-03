@@ -47,10 +47,12 @@ opaque type Rep[A, S, R] = Freer[Sig, S, R, A]
 
 (Until 2026-10-01 the signature was `Shift = [S, R, X] =>> (X => S) =>
 R`, the shift body itself as the leaf, run by a runner of Cont's own.
-Since cont-on-frames it is `Sig = Cont0.Row[NoEffect]`: a leaf is a
-`Shift0` to the run's root delimiter, and Cont runs on the same frame
-machine as `Shift` — chapter 2's `shift0`/`$` calculus, one prompt per
-run. What follows holds of both: the leaf is a function of the
+Since cont-on-frames Cont runs on the same frame machine as `Shift` —
+chapter 2's `shift0`/`$` calculus — and since cont-run-prompt
+(2026-10-03) it is `Sig = Cont0.Row[Cont.Op]`: a leaf is Cont's own
+operation, `Op[S, R, A]`, typed as the leaf it is, and every run puts a
+handler frame of its own on the machine that answers it — a deep
+handler, so a resumed `k` carries its run's frame. What follows holds of both: the leaf is a function of the
 continuation either way.)
 
 and `Cont` **is** `Freer[Sig, S, R, A]`, the same enum `Free[F, A]`

@@ -180,9 +180,9 @@ object Frames:
     def ownedFlat[T, R, A, B](program: Freer[Cont0.Row[F], T, R, A])(out: Freer[Cont0.Row[F], T, R, A] => B): () => B =
       new Own[F, T, R, A, B](program, out, true)
 
-    /** the `ret` of the nearest delimiter `d` in a captured `k`, or null: how Cont's strict `k` finds its run's
-     * root (`Cont.rootOf`) without walking the machine's stack itself */
-    private[okay] def retOf(k: Stack[F, ?, ?, ?, ?], d: AnyRef): AnyRef | Null = Frames.retOf[F](k, d)
+    /** the nearest delimiter in a captured `k` that `is` holds for, or null: how Cont's strict `k` finds its
+     * run's root (`Cont.rootOf`) without walking the machine's stack itself */
+    private[okay] def frameOf(k: Stack[F, ?, ?, ?, ?], is: Prompt[?] => Boolean): Prompt[?] | Null = Frames.frameOf[F](k, is)
 
   private val theMachine: Machine[[S, R, X] =>> Nothing] = Machine()
   /** one stateless machine for every `F` (phantom signature) */
@@ -264,11 +264,11 @@ object Frames:
     case _: Done[F, A, T] @unchecked => below
     case _ => Cat(k, below)
 
-  /** the `ret` of the nearest delimiter `d` in `st`, or null */
-  @tailrec private def retOf[F[_, _, +_]](st: Stack[F, ?, ?, ?, ?], d: AnyRef): AnyRef | Null = st match
-    case Dollar(p, ret, below) => if p eq d then ret else retOf(below, d)
-    case Run(_, below) => retOf(below, d)
-    case c: Cat[F, ?, ?, ?, ?, ?, ?] @unchecked => retOf(uncat(c), d)
+  /** the nearest delimiter in `st` that `is` holds for, or null */
+  @tailrec private def frameOf[F[_, _, +_]](st: Stack[F, ?, ?, ?, ?], is: Prompt[?] => Boolean): Prompt[?] | Null = st match
+    case Dollar(p, _, below) => if is(p) then p else frameOf(below, is)
+    case Run(_, below) => frameOf(below, is)
+    case c: Cat[F, ?, ?, ?, ?, ?, ?] @unchecked => frameOf(uncat(c), is)
     case _ => null
 
   /** the prompts installed, for `NoPrompt` */
@@ -306,8 +306,21 @@ object Frames:
       case d: Dollar[F, C, S0, T2, ?, Z] if (d.p eq Cont0.boundary[Any, Any]) && !sh.p.isInstanceOf[Cont0.Handling[?]] =>
         throw NoPrompt(sh.at, sh.p.label, installed(all))
       case d: Dollar[F, C, S0, T2, y2, Z] =>
-        if sh.p eq d.p then found(sh, d.p, Rev.link(Rev.SnocDollar(rev, d.p, d.ret), noStack[F, y2, T2]), d.below)
+        if sh.p eq d.p then found(sh.p, sh.f, d.p, Rev.link(Rev.SnocDollar(rev, d.p, d.ret), noStack[F, y2, T2]), d.below)
         else cut(sh, all, d.below, Rev.SnocDollar(rev, d.p, d.ret))
+
+    /**
+     * the nearest handler frame that takes `op`: first where `capture` looks first — right under the live
+     * segment, or at the head of a resumed `k` — with no allocation; else the walk (`uncat` builds nodes).
+     * Measured (cont-run-prompt): the walk alone a lazy-`k` Cont operation was contAnswer 1.60x
+     */
+    def frameFor(op: Any, st: Stack[F, ?, ?, ?, ?]): Cont0.Handling[?] | Null =
+      val head = st match
+        case c: Cat[F, ?, ?, ?, ?, ?, ?] @unchecked => c.k
+        case _ => st
+      head match
+        case Dollar(h: Cont0.Handling[?], _, _) if h.takes(op) => h
+        case _ => handlerFor(op, st)
 
     /** the nearest handler frame on the stack that takes `op`, or null */
     @tailrec def handlerFor(op: Any, st: Stack[F, ?, ?, ?, ?]): Cont0.Handling[?] | Null = st match
@@ -318,12 +331,29 @@ object Frames:
         case _ => handlerFor(op, below)
       case _ => null
 
+    // THE CLAIM handle-frames makes, in these two: the frame's answer and index are the handler's own, which
+    // built both the frame and the clause; the machine only carries them
+    /** a frame as the delimiter its operations capture to */
+    def frameAt(h: Cont0.Handling[?]): Cont0.Delimiter[Any, Any] = Cont0.delimiter[Any, Any](h.asInstanceOf[Prompt[Any]])
+    /** the frame's clause for `op`, the body of that capture */
+    def clauseAt[T, X](h: Cont0.Handling[?], op: Any): Stack[F, X, Any, T, Any] => Freer[G, Any, R, Any] =
+      h.clauseOf(op).asInstanceOf[Stack[F, X, Any, T, Any] => Freer[G, Any, R, Any]]
+
     /** the operation as the `shift0` to its frame, the clause its body */
     def asShift0[T, X](h: Cont0.Handling[?], op: Any): Cont0.Shift0[F, Any, Any, T, R, X] =
-      // THE CLAIM handle-frames makes: the frame's answer and index are the handler's own, which built both
-      // the frame and the clause; the machine only carries them
-      Cont0.Shift0[F, Any, Any, T, R, X](Cont0.delimiter[Any, Any](h.asInstanceOf[Prompt[Any]]),
-        k => h.clause(op, k.asInstanceOf[Any => Any]).asInstanceOf[Freer[G, Any, R, Any]], h.label)
+      Cont0.Shift0[F, Any, Any, T, R, X](frameAt(h), clauseAt[T, X](h, op), h.what)
+
+    /**
+     * an operation taken by frame `h`: where `capture` looks first — the frame right under the live segment,
+     * or at the head of a resumed `k` — straight to it, no `Shift0` built and no second search; else as the
+     * `shift0` to it (cont-run-prompt: the node a capture was contAnswer 1.15x, +16 B a shift)
+     */
+    def framed[X, T, S1, Y](h: Cont0.Handling[?], op: Any, fs: Frames[F, X, S1, T, Y], st: Stack[F, Y, S0, S1, Z]): Next[?, ?, ?, ?] = st match
+      case d: Dollar[F, Y, S0, S1, y2, Z] if h eq d.p => nearest(frameAt(h), clauseAt[T, X](h, op), fs, d.p, d.ret, d.below)
+      case c: Cat[F, Y, S0, S1, y, s2, Z] => c.k match
+        case d: Dollar[F, Y, `s2`, S1, y2, `y`] if h eq d.p => nearest(frameAt(h), clauseAt[T, X](h, op), fs, d.p, d.ret, cat(d.below, c.below))
+        case _ => capture(asShift0[T, X](h, op), fs, st)
+      case _ => capture(asShift0[T, X](h, op), fs, st)
 
     /** an operation of `F`, not of `Cont0` */
     def foreign(a: Freer[G, ?, ?, ?]): Boolean = a match
@@ -333,10 +363,10 @@ object Frames:
     /** a capture: `nearest` for the usual one, else the walk */
     def capture[Y0, I0, X, T, S1, Y](sh: Cont0.Shift0[F, Y0, I0, T, R, X], fs: Frames[F, X, S1, T, Y], st: Stack[F, Y, S0, S1, Z]): Next[?, ?, ?, ?] = st match
       // the delimiter right under the live segment
-      case d: Dollar[F, Y, S0, S1, y2, Z] if sh.p eq d.p => nearest(sh, fs, d.p, d.ret, d.below)
+      case d: Dollar[F, Y, S0, S1, y2, Z] if sh.p eq d.p => nearest(sh.p, sh.f, fs, d.p, d.ret, d.below)
       // or at the head of a resumed `k`
       case c: Cat[F, Y, S0, S1, y, s2, Z] => c.k match
-        case d: Dollar[F, Y, `s2`, S1, y2, `y`] if sh.p eq d.p => nearest(sh, fs, d.p, d.ret, cat(d.below, c.below))
+        case d: Dollar[F, Y, `s2`, S1, y2, `y`] if sh.p eq d.p => nearest(sh.p, sh.f, fs, d.p, d.ret, cat(d.below, c.below))
         case _ => walk(sh, fs, st)
       case _ => walk(sh, fs, st)
 
@@ -345,10 +375,11 @@ object Frames:
       cut(sh, all, all, Rev.nil[F, X, T])
 
     /** `k` is the live segment over a copy of the delimiter. Inline: C2 refused it as a method at one arm. */
-    inline def nearest[Y0, I0, X, T, S1, Y, y2](sh: Cont0.Shift0[F, Y0, I0, T, R, X], fs: Frames[F, X, S1, T, Y],
+    inline def nearest[Y0, I0, X, T, S1, Y, y2](p0: Cont0.Delimiter[Y0, I0], f: Stack[F, X, I0, T, Y0] => Freer[G, I0, R, Y0],
+                                         fs: Frames[F, X, S1, T, Y],
                                          p: Cont0.Delimiter[y2, S1], ret: Y => Freer[G, S1, S1, y2],
                                          below: Stack[F, y2, S0, S1, Z]): Next[?, ?, ?, ?] =
-      found(sh, p, runOf(fs, Dollar[F, Y, S1, S1, y2, y2](p, ret, noStack[F, y2, S1])), below)
+      found(p0, f, p, runOf(fs, Dollar[F, Y, S1, S1, y2, y2](p, ret, noStack[F, y2, S1])), below)
 
     /**
      * A capture that found its delimiter `p`, in both of its roads (`nearest`, the general `cut`): `k` — the
@@ -356,12 +387,13 @@ object Frames:
      * shift's by the generative-prompt claim (one object, one type), and the body run with `k` in that place.
      * Inline, as `nearest` is: this is the code both had written out, once.
      */
-    inline def found[Y0, I0, X, T, y2, i2](sh: Cont0.Shift0[F, Y0, I0, T, R, X], p: Cont0.Delimiter[y2, i2],
+    inline def found[Y0, I0, X, T, y2, i2](p0: Cont0.Delimiter[Y0, I0], f: Stack[F, X, I0, T, Y0] => Freer[G, I0, R, Y0],
+                                           p: Cont0.Delimiter[y2, i2],
                                            k: Stack[F, X, i2, T, y2], below: Stack[F, y2, S0, i2, Z]): Next[?, ?, ?, ?] =
-      val same = identical(sh.p, p)
+      val same = identical(p0, p)
       val y = same.answer.flip
       val i = same.index.flip
-      Next[Y0, I0, I0, Y0](sh.f(y.liftCo[[a] =>> Stack[F, X, I0, T, a]](i.liftCo[[t] =>> Stack[F, X, t, T, y2]](k))),
+      Next[Y0, I0, I0, Y0](f(y.liftCo[[a] =>> Stack[F, X, I0, T, a]](i.liftCo[[t] =>> Stack[F, X, t, T, y2]](k))),
         noFrames[F, Y0, I0], y.liftCo[[a] =>> Stack[F, a, S0, I0, Z]](i.liftCo[[t] =>> Stack[F, y2, S0, t, Z]](below)))
 
     /** a resumption: `k`'s head segment into the register, the rest of `k` over the live stack */
@@ -428,9 +460,9 @@ object Frames:
             case null => Bind(focus, runOf(fs, st))
           // an operation of `F`: a handler frame below takes it, or out
           case op =>
-            val h = if Cont0.Handling.ever then handlerFor(op, st) else null
+            val h = if op.isInstanceOf[Cont0.Framed] || Cont0.Handling.ever then frameFor(op, st) else null
             if h == null then Bind(focus, runOf(fs, st))
-            else capture(asShift0[T, X](h, op), fs, st) match
+            else framed(h, op, fs, st) match
               case n: Next[x, ?, ?, ?] => loop(n.focus, n.fs, n.st)
               case null => Bind(focus, runOf(fs, st))
 
@@ -469,11 +501,22 @@ object Cont0:
    * frame, so a resumption re-installs it (a deep handler). Erased at the boundary: the subclass knows its
    * types and makes the one claim.
    */
-  abstract class Handling[Y](name: String) extends Prompt[Y](name, "handler"):
-    // from now on a machine looks for a frame before forwarding an operation
-    if !Handling.ever then Handling.ever = true
+  abstract class Handling[Y](name: String, opens: Boolean = true) extends Prompt[Y](name, "handler"):
+    // from now on a machine looks for a frame before forwarding an operation — unless the frame takes only
+    // `Framed` operations, which a machine always looks up (Cont's run, cont-run-prompt)
+    if opens && !Handling.ever then Handling.ever = true
     def takes(op: Any): Boolean
     def clause(op: Any, k: Any => Any): Any
+    /** the clause for `op` as one function of `k`: a closure over `op`, or — for a frame whose operations are
+     * their own clauses (Cont's, cont-run-prompt) — the operation itself, no allocation an operation */
+    def clauseOf(op: Any): Any => Any = k => clause(op, k.asInstanceOf[Any => Any])
+
+  /**
+   * AN OPERATION ONLY A FRAME ANSWERS (cont-run-prompt): the machine looks for its frame whether or not any
+   * other frame was ever built, so a frame for these alone (`Handling(name, opens = false)`) leaves the
+   * process-wide flag off — the flag is 1.055x on foreign operations when on (handling-ever-per-machine)
+   */
+  trait Framed
 
   object Handling:
     /** a frame was ever pushed in this process: until then a machine forwards an operation without looking */

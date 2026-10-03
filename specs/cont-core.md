@@ -95,9 +95,11 @@ is how rules 2 and 5 stay O(nodes crossed) with frames shared.
 ## Cont on the core
 
 `Cont.shift[A, S, R](f: (A => S) => R)` keeps its signature (operator,
-2026-10-01). A Cont program is a core program of one root prompt per
-run: `run(c)(k)` installs `Reset(root, k)`, and a leaf is a `Shift0` to
-the nearest root.
+2026-10-01). A Cont program is a core program with a frame of its own
+per run: `run(c)(k)` installs the run's `Root` (a `Cont0.Handling` whose
+`ret` is `k`), and a leaf is an `Op` the nearest one answers
+(cont-run-prompt, 2026-10-03; until then one static root prompt and a
+`Shift0` to it).
 
 The leaf's body gets `k` as an OBJECT: `final class Resumption(stack)
 extends (A => S)`, whose `apply(a)` runs the core machine on `stack` with
@@ -226,14 +228,29 @@ cont-facade-over-free to eleven casts, and `Lazy` had erased its answer.
 Now `Lazy[R]` is a program answering `R`, the lazy `k` is a typed stack
 `LazyK[A, S]` (ContMacro's `cpsBody` parameter, which only `call`
 applies), `Resumption`/`Later`/`Root` are generic, and `walk`'s steps
-answer their own `B`. What `claim` still says, and why it cannot go: ONE
-root prompt serves every leaf at that leaf's own answer types, and a
-typed `Delimiter[Y, I]` holds one `Y`, so a leaf's clause and node, a
+answer their own `B`. What `claim` still says, and why it cannot go: a
+run's frame answers every leaf of the run at that leaf's own answer
+types, and a typed `Delimiter[Y, I]` holds one `Y`, so the `k` the frame
+hands a leaf (cont-run-prompt; until then the leaf's clause and node), a
 tail body's value (`S <: R`, not `S = R`), a program answer (`Later`: the
 machine's `Delay` standing for the user's `S`) and a run's tree and answer
 cross through it. A cast-free Cont is a different runner (its own indexed
 operation and a typed interpreter, not a `shift0` to the root); the
 operator chose this road over that one.
+
+Then a frame per run (cont-run-prompt, 2026-10-03, operator: "каждый
+reset свой делимитер", "для Cont нужен свой тип эффекта"): a leaf is
+`Cont.Op[S, R, A]` (`Strict | Program | Lazily`), typed exactly — no claim
+at the leaf — and each run's `Root` is a `Cont0.Handling` frame. Three
+machine changes, each general: `Cont0.Framed` (an operation that always
+looks for its frame, so Cont leaves `Handling.ever` off — that flag is
+1.055x on foreign operations); `frameFor` (the frame at the head of the
+stack first, no `uncat`); `framed` (a capture straight to that frame, no
+`Shift0` built, `Handling.clauseOf` the clause — an `Op` is its own).
+Measured against master (history.d cont-run-prompt, 2 rounds alternated):
+the first cut was contAnswer 1.60x (the walk), with the clause 1.15x (the
+`Shift0` a capture), landed: statePara 0.94 (bytes 0.88), fib100 0.95
+(0.93), contAnswer 1.01 (0.98), stateForeign and handlePrebuilt 1.01.
 
 ### Found on the way
 
