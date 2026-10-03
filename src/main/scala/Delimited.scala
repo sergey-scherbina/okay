@@ -489,7 +489,7 @@ object Frames:
             case null => Bind(focus, runOf(fs, st))
           // an operation of `F`: a handler frame below takes it, or out
           case op =>
-            val h = if op.isInstanceOf[Cont0.Framed] || Cont0.Handling.ever then frameFor(op, st) else null
+            val h = if Cont0.Handling.ever then frameFor(op, st) else null
             if h == null then Bind(focus, runOf(fs, st))
             else framed(h, op, fs, st) match
               case n: Next[x, ?, ?, ?] => loop(n.focus, n.fs, n.st)
@@ -530,22 +530,14 @@ object Cont0:
    * frame, so a resumption re-installs it (a deep handler). Erased at the boundary: the subclass knows its
    * types and makes the one claim.
    */
-  abstract class Handling[Y](name: String, opens: Boolean = true) extends Prompt[Y](name, "handler"):
-    // from now on a machine looks for a frame before forwarding an operation — unless the frame takes only
-    // `Framed` operations, which a machine always looks up (Cont's run, cont-run-prompt)
-    if opens && !Handling.ever then Handling.ever = true
+  abstract class Handling[Y](name: String) extends Prompt[Y](name, "handler"):
+    // from now on a machine looks for a frame before forwarding an operation
+    if !Handling.ever then Handling.ever = true
     def takes(op: Any): Boolean
     def clause(op: Any, k: Any => Any): Any
     /** the clause for `op` as one function of `k`: a closure over `op`, or — for a frame whose operations are
-     * their own clauses (Cont's, cont-run-prompt) — the operation itself, no allocation an operation */
+     * their own clauses — the operation itself, no allocation an operation */
     def clauseOf(op: Any): Any => Any = k => clause(op, k.asInstanceOf[Any => Any])
-
-  /**
-   * AN OPERATION ONLY A FRAME ANSWERS (cont-run-prompt): the machine looks for its frame whether or not any
-   * other frame was ever built, so a frame for these alone (`Handling(name, opens = false)`) leaves the
-   * process-wide flag off — the flag is 1.055x on foreign operations when on (handling-ever-per-machine)
-   */
-  trait Framed
 
   object Handling:
     /** a frame was ever pushed in this process: until then a machine forwards an operation without looking */
