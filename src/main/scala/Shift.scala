@@ -46,12 +46,16 @@ object Reset:
       def run[A, F[+_]](p: A ! Shift % R + F)(using a: A <:< R, d: Distinct[Shift % R + F], n: Shift.Machine[F]): R ! F =
         reset[R, F](a.substituteCo[[X] =>> X ! Shift % R + F](p))
 
-/** a delimiter's name: answer type `R`, identity by allocation, labelled for diagnostics */
+/** a delimiter's name: answer type `R`, identity by allocation, labelled for diagnostics. On the machine
+ * (`Delimited`) a prompt in force is two value boundaries — this marks its opening — and its closing (`close`),
+ * with a `ret` between them */
 /** open for one subclass, a handler frame's delimiter (`Cont0.Handling`, handle-frames) */
-class Prompt[R](val what: String, val where: String):
+class Prompt[R](val what: String, val where: String) extends Delimited.Mark:
   /** `what @ where`, joined only when asked */
   def label: String = s"$what @ $where"
   override def toString: String = label
+  /** the mark of the value boundary where the prompt's place ends: its value has passed `ret` there */
+  private[okay] lazy val close: Delimited.Mark = new Delimited.Mark {}
 
 /** a capture naming a prompt not installed on this machine, with the ones that are */
 final class NoPrompt(val from: String, val wanted: String, val installed: List[String])
@@ -108,30 +112,155 @@ object Shift {
   /** THE DOORS' CLAIM: a `Shift % ? + F` program is a `U[F, A]` at the same erasure (only the machine reads `Cont0`) */
   private[okay] def in[F[+_], A](p: A ! Shift % ? + F): U[F, A] = p.asInstanceOf[U[F, A]]
   private[okay] def out[F[+_], A](p: U[F, A]): A ! Shift % ? + F = p.asInstanceOf[A ! Shift % ? + F]
-  private def inF[F[+_], A, B](f: A => B ! Shift % ? + F): A => U[F, B] = f.asInstanceOf[A => U[F, B]]
-  private def clause[F[+_], A, R](f: (A => R ! Shift % ? + F) => R ! Shift % ? + F): LambdaStack[Freer.Lift[F], A, Unit, Unit, R] => U[F, R] =
-    f.asInstanceOf[LambdaStack[Freer.Lift[F], A, Unit, Unit, R] => U[F, R]]
-
-  /** every unstacked program is at `Unit`, so every delimiter it installs is */
-  private[okay] def atUnit[R](p: Prompt[R]): Cont0.Delimiter[R, Unit] = Cont0.delimiter(p)
 
   /** `reset` at `p` */
   def push[R, F[+_]](p: Prompt[R])(body: R ! Shift % ? + F): R ! Shift % ? + F =
-    out(LambdaDollar.machine[Freer.Lift[F]].reset[Unit, Unit, R](atUnit(p))(in(body)))
+    dollar[R, R, F](p)(okay.pure)(body)
 
   /** `ret $ body` at `p`: `ret` runs outside, a `shift0` to `p` takes it along */
   def dollar[R0, R, F[+_]](p: Prompt[R])(ret: R0 => R ! Shift % ? + F)(body: R0 ! Shift % ? + F): R ! Shift % ? + F =
-    out(LambdaDollar.machine[Freer.Lift[F]].dollar[R, R0, Unit, Unit](atUnit(p))(inF(ret))(in(body)))
+    op[R, F](Dollar[Any, R0, R, F](p, ret, body))
 
   /** capture to `p`; the body runs under `p`, `k` re-installs it */
   def shift[R, A, F[+_]](p: Prompt[R])
                         (f: (A => R ! Shift % ? + F) => R ! Shift % ? + F)(using at: At): A ! Shift % ? + F =
-    out(LambdaDollar.machine[Freer.Lift[F]].shift[R, Unit, Unit, Unit, A](atUnit(p))(clause(f)))
+    shift0[R, A, F](p)(k => push[R, F](p)(f(k)))
 
   /** the body consumes `p`; `k` re-installs it */
   def shift0[R, A, F[+_]](p: Prompt[R])
                          (f: (A => R ! Shift % ? + F) => R ! Shift % ? + F)(using at: At): A ! Shift % ? + F =
-    out(LambdaDollar.machine[Freer.Lift[F]].shift0[R, Unit, Unit, Unit, A](atUnit(p))(clause(f)))
+    op[A, F](Shift0[Any, A, R, F](p, f, at.where))
+
+  /** an operation of `Shift` as a node of its row */
+  private def op[A, F[+_]](o: Shift[Any, A]): A ! Shift % ? + F = Freer.Inject[Freer.Lift[Shift % ? + F], Unit, Unit, A](o)
+
+  // ---- SHIFT ON THE MACHINE (specs/cont-atm.md): its operations are values of the row, answered by `Steps` on
+  // `Delimited`. A prompt in force is two marks on the segment, its opening and its closing, `ret` between them:
+  // a value passes all three; a capture to it cuts at the opening (`k` the frames above it, taken along with the
+  // marks and `ret`), and its body answers after the closing — `ret` skipped, as λ$'s `S0 k.e` replaces the whole
+  // `ret $ body`.
+
+  /** `ret $ body` at `p` */
+  private[okay] final case class Dollar[K, R0, R, F[+_]](p: Prompt[R], ret: R0 => R ! Shift % ? + F, body: R0 ! Shift % ? + F)
+    extends Shift[K, R]
+  /** capture to `p`: the body, given `k`, answers in `p`'s place */
+  private[okay] final case class Shift0[K, A, R, F[+_]](p: Prompt[R], body: (A => R ! Shift % ? + F) => R ! Shift % ? + F,
+                                                        at: String) extends Shift[K, A]
+  /** leave `p`'s place with `value` */
+  private[okay] final case class Abort[K, A, R](p: Prompt[R], value: R, at: String) extends Shift[K, A]
+  /** a captured continuation resumed: its segments and boundaries, `p`'s and `ret`'s included, back on top */
+  private[okay] final case class Resume[K, A, R, F[+_]](p: Prompt[R], k: Delimited.Piece[Freer.Lift[Shift % ? + F], A, Unit, R, Unit], a: A)
+    extends Shift[K, R]
+
+  /** the prompt an operation names */
+  private def promptOf(x: Any): AnyRef | Null = x match
+    case d: Dollar[?, ?, ?, ?] => d.p
+    case s: Shift0[?, ?, ?, ?] => s.p
+    case a: Abort[?, ?, ?] => a.p
+    case r: Resume[?, ?, ?, ?] => r.p
+    case _ => null
+
+  /**
+   * THE CLAIMS of a `Free` row on the machine, made here and nowhere else. The machine is cast-free; what its
+   * types cannot say about a row of `Free` is said once here: every node of a `Free` program is at `Unit`, so
+   * every segment and stack of its run is; an operation, or a nested run, was built in the row of the program it
+   * stands in; and the place a prompt's boundary stands answers that prompt's type (Dybvig, Peyton Jones & Sabry's
+   * `eqPrompt`).
+   */
+  private def claim[X](x: Any): X = x.asInstanceOf[X]
+
+  /** a nested run's value boundary: no capture crosses it */
+  private object Barrier extends Delimited.Mark
+
+  /** a run of a `Shift % ? + F` program, as a value: forced by whoever holds it, stepped into by a machine for the
+   * row already running (`Out.enter`), so nesting costs no host frames */
+  private final class Nested[R, F[+_]](val program: R ! Shift % ? + F, val nested: Boolean) extends (() => R ! F):
+    def apply(): R ! F = Delimited.over[Shift % ? + F, F](Steps[F](), Out[F](nested)).value(program)
+
+  /** what each operation does, for a row `Shift % ? + F`: a prompt in force is two value boundaries, its opening
+   * and its closing, with `ret` between them */
+  private final class Steps[F[+_]] extends Step[Freer.Lift[Shift % ? + F], Freer.Lift[Shift % ? + F]]:
+    private type L[S, R, A] = Freer.Lift[Shift % ? + F][S, R, A]
+    private type U = Unit
+
+    def step[A, B, S, T, R, Z](op: L[T, R, A], k: Frames[L, A, B, S, T], m: Stack[L, B, S, R, Z],
+                               machine: Delimited[L]): Delimited.Next[L, Z] =
+      at(op, claim[Frames[L, A, B, U, U]](k), claim[Stack[L, B, U, U, Z]](m), machine)
+
+    private def at[A, B, Z](op: (Shift % ? + F)[A], k: Frames[L, A, B, U, U], m: Stack[L, B, U, U, Z],
+                            machine: Delimited[L]): Delimited.Next[L, Z] = op match
+      case d: Dollar[?, r0, r, ?] =>
+        val ret = claim[r0 => Freer[L, U, U, r]](d.ret)
+        val outside = machine.delim(d.p.close, claim[Frames[L, r, B, U, U]](k), m)
+        machine.next(claim[Freer[L, U, U, r0]](d.body), machine.end[r0, U], machine.delim(d.p, machine.frame(ret, machine.end[r, U]), outside))
+      case s: Shift0[?, a, r, ?] =>
+        val c: Cut[a, r, Z] = cut(s.p, s.at, claim[Frames[L, a, B, U, U]](k), m, machine)
+        val body = claim[(a => Freer[L, U, U, r]) => Freer[L, U, U, r]](s.body)
+        machine.next(body(x => resumption[a, r](s.p, c.piece, x)), c.out, c.rest)
+      case ab: Abort[?, a, r] =>
+        val c: Cut[a, r, Z] = cut(ab.p, ab.at, claim[Frames[L, a, B, U, U]](k), m, machine)
+        machine.next(Freer.Return[L, U, r](ab.value), c.out, c.rest)
+      case rs: Resume[?, a, r, ?] =>
+        machine.reinstall(claim[Delimited.Piece[L, a, U, r, U]](rs.k), rs.a, claim[Frames[L, r, B, U, U]](k), m)
+      case _ => throw IllegalStateException("an operation of another effect reached Shift's steps")
+
+    /**
+     * `k(x)` as a program that stands on its own: a deferred run of the resumption. A machine for the row already
+     * running steps into it and puts the piece back on its own stack — the value returns to whoever called `k`;
+     * forced by anyone else (a `k` that outlived its run, a state-passing answer applied later), it runs a machine
+     * of its own. No barrier either way: a capture inside the resumed `k` reaches the prompts around its caller.
+     */
+    private def resumption[A, R](p: Prompt[R], piece: Delimited.Piece[L, A, U, R, U], x: A): Freer[L, U, U, R] =
+      claim[Freer[L, U, U, R]](Free.delay(Nested[R, F](op[R, F](Resume[Any, A, R, F](p, piece, x)), nested = true)))
+
+    /** a capture to `p`: the piece up to and including its closing (its opening and `ret` taken along), and what
+     * lies under the closing */
+    private final class Cut[A, R, Z](val piece: Delimited.Piece[L, A, U, R, U], val out: Frames[L, R, Any, U, U],
+                                     val rest: Stack[L, Any, U, U, Z])
+
+    private def cut[A, R, B, Z](p: Prompt[R], from: String, k: Frames[L, A, B, U, U], m: Stack[L, B, U, U, Z],
+                                machine: Delimited[L]): Cut[A, R, Z] =
+      machine.cut(k, m, _ eq p, _ eq Barrier) match
+        case null => throw NoPrompt(from, p.label, installed(m))
+        case open => open.rest match
+          case Stack.Delim(close, out, rest) if close eq p.close =>
+            val piece = Delimited.Piece.Snoc(open.piece, open.out, close)
+            Cut(claim[Delimited.Piece[L, A, U, R, U]](piece), claim[Frames[L, R, Any, U, U]](out), claim[Stack[L, Any, U, U, Z]](rest))
+          case _ => throw IllegalStateException(s"prompt ${p.label} opened and never closed")
+
+    /** the prompts on the machine's stack, innermost first, for `NoPrompt` */
+    private def installed[B, Z](m: Stack[L, B, U, U, Z]): List[String] =
+      var seen = List.empty[String]
+      labels(m, p => seen = p.label :: seen)
+      seen.reverse
+
+    @scala.annotation.tailrec
+    private def labels[B, S, R, Z](m: Stack[L, B, S, R, Z], see: Prompt[?] => Unit): Unit = m match
+      case Stack.Delim(tag, _, rest) =>
+        tag match
+          case p: Prompt[?] => see(p)
+          case _ => ()
+        if !(tag eq Barrier) then labels(rest, see)
+      case _ => ()
+
+  /** which operations of `Shift % ? + F` leave the machine: `F`'s; and, for a nested run, a capture to a prompt
+   * this machine has not installed, for the machine outside */
+  private final class Out[F[+_]](nested: Boolean) extends Delimited.Outer[Shift % ? + F, F]:
+    def apply[X](op: (Shift % ? + F)[X], here: (Delimited.Mark => Boolean) => Boolean): F[X] | Null = op match
+      // a resumption is always this machine's: it puts its prompt back rather than looking for it
+      case _: Resume[?, ?, ?, ?] => null
+      case s: Shift[?, ?] =>
+        val p = promptOf(s)
+        if nested && p != null && !here(_ eq p) then claim[F[X]](op) else null
+      case _ => claim[F[X]](op)
+    def diagonal[T, R]: T =:= R = claim[T =:= R](summon[T =:= T])
+    def enter[T, R, A](t: () => Freer[Freer.Lift[Shift % ? + F], T, R, A]): Freer[Freer.Lift[Shift % ? + F], T, R, A] | Null =
+      t match
+        case n: Nested[?, ?] => claim[Freer[Freer.Lift[Shift % ? + F], T, R, A]](n.program)
+        case _ => null
+    def barrier(t: () => Any): Delimited.Mark | Null = t match
+      case n: Nested[?, ?] if !n.nested => Barrier
+      case _ => null
 
   /** a fresh prompt, a block under it, run */
   def reset[R, F[+_]](body: Prompt[R] => R ! Shift % ? + F)
@@ -199,8 +328,8 @@ object Shift {
   inline def shift[A](using in: Prompted[?])[F[_]]
                          (using inline ctx: DirectCtx[F])(using rw: Reader.RowOf[F], at: At)
                          (f: (A => in.Res ! rw.R) => in.Res ! rw.R): A ! rw.R =
-    LambdaDollar.machine[Freer.Lift[Pure]].shift[in.Res, Unit, Unit, Unit, A](Cont0.delimiter[in.Res, Unit](in.prompt))(
-      f.asInstanceOf[LambdaStack[Freer.Lift[Pure], A, Unit, Unit, in.Res] => U[Pure, in.Res]]).asInstanceOf[A ! rw.R]
+    Shift.shift[in.Res, A, Pure](in.prompt)(f.asInstanceOf[(A => in.Res ! Shift % ? + Pure) => in.Res ! Shift % ? + Pure])
+      .asInstanceOf[A ! rw.R]
 
   /** the 0-variant */
   def shift0[R, A, F[+_]](using in: Prompted[R])
@@ -211,8 +340,8 @@ object Shift {
   inline def shift0[A](using in: Prompted[?])[F[_]]
                           (using inline ctx: DirectCtx[F])(using rw: Reader.RowOf[F], at: At)
                           (f: (A => in.Res ! rw.R) => in.Res ! rw.R): A ! rw.R =
-    LambdaDollar.machine[Freer.Lift[Pure]].shift0[in.Res, Unit, Unit, Unit, A](Cont0.delimiter[in.Res, Unit](in.prompt))(
-      f.asInstanceOf[LambdaStack[Freer.Lift[Pure], A, Unit, Unit, in.Res] => U[Pure, in.Res]]).asInstanceOf[A ! rw.R]
+    Shift.shift0[in.Res, A, Pure](in.prompt)(f.asInstanceOf[(A => in.Res ! Shift % ? + Pure) => in.Res ! Shift % ? + Pure])
+      .asInstanceOf[A ! rw.R]
 
   /** abort to the delimiter in force */
   def abort[R, A, F[+_]](using in: Prompted[R])(value: R)(using At): A ! Shift % ? + F =
@@ -440,28 +569,26 @@ object Shift {
                      (f: in.Res => in.Res): Unit ! rw.R =
     shift0[Unit](using in)(k => k(()).map(f))
 
-  /** `Shift`'s operations are `Cont0`'s */
+  /** `Shift`'s operations are its own values */
   given Effect[Shift % ?] = new Effect[Shift % ?]:
-    def test(x: Any): Boolean = x.isInstanceOf[Cont0[?, ?, ?, ?]]
+    def test(x: Any): Boolean = x.isInstanceOf[Shift[?, ?]]
 
   /** run on the machine under the barrier: a capture with no delimiter is `NoPrompt` */
   def run[R, F[+_]](prog: R ! Shift % ? + F)(using m: Machine[F]): R ! F =
     // a machine outside runs the program, its captures included
-    if m.inner then innerDyn(prog) else bounded[R, F](in(prog))
+    if m.inner then innerDyn(prog) else bounded[R, F](prog)
 
   /** run without the barrier: a capture with no delimiter goes out, for a machine outside */
   def runNested[R, F[+_]](prog: R ! Shift % ? + F)(using Row.In[Shift % ?, F]): R ! F =
-    residual[R, F](LambdaDollar.machine[Freer.Lift[F]].runHead[Unit, Unit, R](in(prog)))
+    Free.delay(Nested[R, F](prog, nested = true))
 
   /** drop the continuation and answer `value` at `p` */
-  def abort[R, A, F[+_]](p: Prompt[R])(value: R)(using At): A ! Shift % ? + F =
-    out(LambdaDollar.machine[Freer.Lift[F]].abort[R, Unit, A](atUnit(p))(value))
+  def abort[R, A, F[+_]](p: Prompt[R])(value: R)(using at: At): A ! Shift % ? + F =
+    op[A, F](Abort[Any, A, R](p, value, at.where))
 
-  /** under the barrier: a capture with no delimiter is `NoPrompt`. A value: run by whoever forces it, stepped
-   * into by a machine already running (the machine's `owned`) */
-  private[okay] def bounded[R, F[+_]](prog: U[F, R]): R ! F =
-    Free.delay(LambdaDollar.machine[Freer.Lift[F]].owned[Unit, Unit, R, R ! F](
-      LambdaDollar.machine[Freer.Lift[F]].reset[Unit, Unit, R](Cont0.boundary[R, Unit])(prog))(residual[R, F]))
+  /** on the machine: a capture with no delimiter is `NoPrompt`. A value, run by whoever forces it */
+  private[okay] def bounded[R, F[+_]](prog: R ! Shift % ? + F): R ! F =
+    Free.delay(Nested[R, F](prog, nested = false))
 
   /** the head form as the residual program */
   private[okay] def residual[R, F[+_]](head: U[F, R]): R ! F = head.asInstanceOf[R ! F]
@@ -492,10 +619,7 @@ object Shift {
     given promptKey[P <: Prompt[?] & Singleton](using v: ValueOf[P]): TypeableK.ByValue[Shift % P] = new:
       def test(x: Any): Boolean = Stacked.names(x, v.value)
 
-    private def names(x: Any, p: AnyRef): Boolean = x match
-      case s: Cont0.Shift0[?, ?, ?, ?, ?, ?] => (s.p: AnyRef) eq p
-      case d: Cont0.Dollar0[?, ?, ?, ?, ?] => (d.p: AnyRef) eq p
-      case _ => false
+    private def names(x: Any, p: AnyRef): Boolean = promptOf(x) eq p
 
     /** a fresh delimiter, the body under it with its key in the row; run — or pushed on the machine running */
     def reset[R, F[+_]](body: (d: Reset[R, F]) => R ! Shift % d.type + F)(using m: Machine[F], at: At): R ! F =
@@ -553,10 +677,7 @@ object Shift {
 
   /** the test reads the prompt, so `Shift % Int + Shift % String` is a good row */
   given typeableK[R](using k: Key[R]): TypeableK.ByValue[Shift % R] = new:
-    def test(x: Any): Boolean = x match
-      case s: Cont0.Shift0[?, ?, ?, ?, ?, ?] => (s.p: AnyRef) eq k.prompt
-      case d: Cont0.Dollar0[?, ?, ?, ?, ?] => (d.p: AnyRef) eq k.prompt
-      case _ => false
+    def test(x: Any): Boolean = promptOf(x) eq k.prompt
 
   /** level 2: the program as a `Cont` whose answers are programs: `c / k` is `reset(q >>= k)` */
   def cont[A, R, F[+_]](q: A ! Shift % R + F)(using Key[R], Distinct[Shift % R + F], Machine[F]): Cont[A, R ! F, R ! F] =
