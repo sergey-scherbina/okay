@@ -219,6 +219,8 @@ object Delimited:
   sealed abstract class Kont[G[_, _, +_], -A, T]:
     /** the run of it from `a`, its answer the run's result */
     def from(a: A): Next[G, T]
+    /** run it from `a` NOW, a nested run of the machine that captured it */
+    private[Delimited] def forced(a: A): T
     /** put back with `a`, its answer delivered through a fresh answer boundary into `out` over `rest` */
     def resume[B2, S2, X, Z](a: A, out: Frames[G, T, B2, S2, X], rest: Stack[G, B2, S2, X, Z]): Next[G, Z]
 
@@ -257,6 +259,8 @@ object Delimited:
 
     /** user code runs under a `try` (`guarding`) */
     private var guarded: Boolean = false
+    /** nothing leaves: no question to ask an operation (a machine for one effect) */
+    private val alone: Boolean = outer.isInstanceOf[Alone[?]]
     def guarding(): Unit = guarded = true
 
     /** run `c` with `k` as the last frame of its continuation: the program, over `F`, that answers its answer */
@@ -267,10 +271,16 @@ object Delimited:
     def value[A, X](c: Freer[G, X, X, A]): Free[F, A] = go(c, end[A, X], Stack.Done[G, A, X]())
 
     /** a strict `k` cannot wait for an effect outside: one met inside it is refused, by name */
-    def force[A, T](k: Kont[G, A, T], x: A): T =
-      deeper { val n = k.from(x); go(n.c, n.k, n.m) } match
-        case Return(t) => t
-        case _ => throw IllegalStateException("a strict k performed an operation of an outer effect; give its body the lazy k")
+    def force[A, T](k: Kont[G, A, T], x: A): T = k.forced(x)
+
+    /** a closed segment run from `x` now: no `Next` between (a strict `k` is called once an operation) */
+    private def forceAt[A, S, T](k: Frames[G, A, S, S, T], x: A): T =
+      answerOf(deeper(go(Return[G, T, A](x), k, Stack.Answered[G, S, T]())))
+
+    /** a run's answer, which a strict `k` cannot wait for an effect outside to give */
+    private def answerOf[T](p: Free[F, T]): T = p match
+      case Return(t) => t
+      case _ => throw IllegalStateException("a strict k performed an operation of an outer effect; give its body the lazy k")
 
     /** `body` one level deeper, on a fresh stack when there is no room left here (`StackSwitch`) */
     private def deeper[X](body: => X): X =
@@ -304,7 +314,7 @@ object Delimited:
             case inner => outer.barrier(t) match
               case null => go(inner, k, m)
               case b => go(inner, end[A, T], Stack.Delim(b, k, m))
-        case Inject(op) => outer(op, m, this) match
+        case Inject(op) => (if alone then null else outer(op, m, this)) match
           case null =>
             val n =
               if !guarded then steps.step(op, k, m, this)
@@ -387,8 +397,12 @@ object Delimited:
       case Piece.Nil() => next(c, k, m)
       case Piece.Snoc(prev, kk, tag) => link(prev, kk, Stack.Delim(tag, k, m), c)
 
-    def closed[A, B, S, T, R, Z](k: Frames[G, A, B, S, T], m: Stack[G, B, S, R, Z]): Closed[G, A, T, R, Z] | Null =
-      closedFrom(Piece.Nil[G, A, T](), k, m)
+    def closed[A, B, S, T, R, Z](k: Frames[G, A, B, S, T], m: Stack[G, B, S, R, Z]): Closed[G, A, T, R, Z] | Null = m match
+      // the usual one: the answer boundary right under the segment, the continuation that segment alone
+      case Stack.Bound(tag, out, rest) => segmentBy(k, tag, out, rest)
+      case Stack.Answered() => segmentAtTop[A, S, T, R](k)
+      case Stack.Delim(tag, out, rest) => closedFrom(Piece.Snoc(Piece.Nil[G, A, T](), k, tag), out, rest)
+      case _ => null
 
     @tailrec private def closedFrom[A0, T0, A, B, S, T, R, Z](piece: Piece[G, A0, T0, A, T], k: Frames[G, A, B, S, T],
                                                               m: Stack[G, B, S, R, Z]): Closed[G, A0, T0, R, Z] | Null = m match
@@ -397,10 +411,30 @@ object Delimited:
       case Stack.Answered() => atTop[A0, T0, A, S, T, R](piece, k)
       case _ => null
 
+    /** the continuation a closed level holds when it is one segment: put back over an answer boundary */
+    private abstract class Segment[A, S0, T, R, Z](k: Frames[G, A, S0, S0, T]) extends Closed[G, A, T, R, Z]:
+      def from(a: A): Next[G, T] = next(Return(a), k, Stack.Answered[G, S0, T]())
+      private[Delimited] def forced(a: A): T = forceAt(k, a)
+      def resume[B2, S2, X, Z2](a: A, out: Frames[G, T, B2, S2, X], rest: Stack[G, B2, S2, X, Z2]): Next[G, Z2] =
+        next(Return(a), k, Stack.Bound[G, S0, T, B2, S2, X, Z2](null, out, rest))
+
+    private def segmentBy[A, S0, T, R, B2, S2, X, Z](k: Frames[G, A, S0, S0, T], tag: Tag[R] | Null, out: Frames[G, R, B2, S2, X],
+                                                     rest: Stack[G, B2, S2, X, Z]): Closed[G, A, T, R, Z] =
+      new Segment[A, S0, T, R, Z](k):
+        def answer(r: R): Next[G, Z] = next(Return[G, X, R](r), out, rest)
+        def instead(c: Freer[G, R, R, R]): Next[G, Z] = next(c, end[R, R], Stack.Bound[G, R, R, B2, S2, X, Z](tag, out, rest))
+
+    private def segmentAtTop[A, S0, T, R](k: Frames[G, A, S0, S0, T]): Closed[G, A, T, R, R] =
+      new Segment[A, S0, T, R, R](k):
+        def answer(r: R): Next[G, R] = next(Return[G, R, R](r), end[R, R], Stack.Answered[G, R, R]())
+        def instead(c: Freer[G, R, R, R]): Next[G, R] = next(c, end[R, R], Stack.Answered[G, R, R]())
+
     /** the continuation a closed level holds: the piece over its last segment, put back over an answer boundary */
     private abstract class Held[A0, T0, Y, S0, I, R, Z](piece: Piece[G, A0, T0, Y, I], last: Frames[G, Y, S0, S0, I])
       extends Closed[G, A0, T0, R, Z]:
       def from(a: A0): Next[G, T0] = reinstall(piece, Return(a), last, Stack.Answered[G, S0, T0]())
+      private[Delimited] def forced(a: A0): T0 =
+        answerOf(deeper { val n = from(a); go(n.c, n.k, n.m) })
       def resume[B2, S2, X, Z2](a: A0, out: Frames[G, T0, B2, S2, X], rest: Stack[G, B2, S2, X, Z2]): Next[G, Z2] =
         reinstall(piece, Return(a), last, Stack.Bound[G, S0, T0, B2, S2, X, Z2](null, out, rest))
 
