@@ -377,18 +377,19 @@ object Frames:
                                        fs: Frames[F, X, S1, T, Y], st: Stack[F, Y, S0, S1, Z]): Freer[G, S0, R, Z] = st match
       case d: Dollar[F, Y, S0, S1, y2, Z] if h eq d.p =>
         foundHere(frameAt(h), clauseAt[T, X](h, op), d.p, runOf(fs, detached(d)), d.below)
-      case c: Cat[F, Y, S0, S1, y, s2, Z] => c.k match
-        case d: Dollar[F, Y, `s2`, S1, y2, `y`] if h eq d.p =>
-          foundHere(frameAt(h), clauseAt[T, X](h, op), d.p, runOf(fs, detached(d)), cat(d.below, c.below))
-        case _ => viaShift0(h, op, focus, fs, st)
-      case _ => viaShift0(h, op, focus, fs, st)
-
-    /** the rare road: as the `shift0` to frame `h`, the walk; its `Next` kept (a capture past another delimiter) */
-    inline def viaShift0[X, T, S1, Y](h: Cont0.Handling[?], op: Any, focus: Freer[G, T, R, X],
-                                      fs: Frames[F, X, S1, T, Y], st: Stack[F, Y, S0, S1, Z]): Freer[G, S0, R, Z] =
-      capture(asShift0[T, X](h, op), fs, st) match
+      // at a resumed `k`'s head: through `Next`, out of line — inlined here too, the loop grew past what C2
+      // keeps fast (contAnswer 1.17-1.19x, fib100 1.05-1.07x, cont-strict-k)
+      case _ => framedOut(h, op, fs, st) match
         case n: Next[x, ?, ?, ?] => loop(n.focus, n.fs, n.st)
         case null => Bind(focus, runOf(fs, st))
+
+    /** the other roads of `framedHere`, a method: at a resumed `k`'s head, else as the `shift0` to frame `h` */
+    def framedOut[X, T, S1, Y](h: Cont0.Handling[?], op: Any, fs: Frames[F, X, S1, T, Y], st: Stack[F, Y, S0, S1, Z]): Next[?, ?, ?, ?] =
+      st match
+        case c: Cat[F, Y, S0, S1, y, s2, Z] => c.k match
+          case d: Dollar[F, Y, `s2`, S1, y2, `y`] if h eq d.p => nearestAt(frameAt(h), clauseAt[T, X](h, op), fs, d, cat(d.below, c.below))
+          case _ => capture(asShift0[T, X](h, op), fs, st)
+        case _ => capture(asShift0[T, X](h, op), fs, st)
 
     /** an operation of `F`, not of `Cont0` */
     def foreign(a: Freer[G, ?, ?, ?]): Boolean = a match
