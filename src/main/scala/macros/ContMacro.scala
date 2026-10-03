@@ -46,9 +46,9 @@ import scala.quoted.*
     def opaque(p: Symbol, body: Term): Expr[Cont[A, S, R]] =
       if calls(p, body) then programLeaf.getOrElse(fallback) else fallback
 
-    /** `S` a program that can defer itself (`Cont.Program`: any `Freer`, an `A ! F` among them) */
+    /** `S` a program that can defer itself (`Cont.Later`: any `Freer`, an `A ! F` among them) */
     def programLeaf: Option[Expr[Cont[A, S, R]]] =
-      Expr.summon[Cont.Program[S]].map(p => '{ Cont.programLeaf[A, S, R]($f)(using $p) })
+      Expr.summon[Cont.Later[S]].map(p => '{ Cont.programLeaf[A, S, R]($f)(using $p) })
 
     /** `k(v)` / `k.apply(v)`, with `v` free of `k` */
     object TailCall:

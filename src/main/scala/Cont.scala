@@ -55,15 +55,15 @@ object Cont:
    * returns at once — a `Delay` whose forcing runs `k`'s rest to the program that goes on, a run of its own.
    * The contract it changes: host side effects written after `k(a)` in the body run before `k`'s rest.
    */
-  def programLeaf[A, S, R](f: (A => S) => R)(using p: Program[S]): Rep[A, S, R] =
-    Inject[Sig, S, R, A](Op.WithK(k => f(x => p.later(() => Delimited.runK(k, x, Steps)))))
+  def programLeaf[A, S, R](f: (A => S) => R)(using p: Later[S]): Rep[A, S, R] =
+    Inject[Sig, S, R, A](Op.Program(k => f(x => p.later(() => Delimited(Steps).force(k, x)))))
 
   /** `S` a program that can stand for itself unbuilt: a `Delay` of any `Freer`, `A ! F` among them */
-  trait Program[S]:
+  trait Later[S]:
     def later(make: () => S): S
 
-  object Program:
-    given freer[G[_, _, +_], S2, R2, X]: Program[Freer[G, S2, R2, X]] with
+  object Later:
+    given freer[G[_, _, +_], S2, R2, X]: Later[Freer[G, S2, R2, X]] with
       def later(make: () => Freer[G, S2, R2, X]): Freer[G, S2, R2, X] = Delay(make)
 
   /** a tail body `k => { stats; k(v) }` as its value `v`, where `S` is `R`: a value, nothing else */
@@ -89,7 +89,7 @@ object Cont:
   opaque type Lazy[T, B] = Freer[Sig, T, T, B]
 
   /** the lazy `k` of an answer-using body: its captured continuation, from `A` to `S`, which only `call` applies */
-  opaque type LazyK[A, S] = Delimited.K[Sig, A, S]
+  opaque type LazyK[A, S] = Frames[Sig, A, S]
 
   /** the body's answer */
   def done[T, R](r: R): Lazy[T, R] = Return(r)
@@ -164,7 +164,7 @@ object Cont:
    * apply to a continuation: the stack of continuations (`Delimited`), `k` the reset's `ret` — what it answers
    * goes back to whoever called a captured `k`, what a shift body answers leaves the reset. Typed throughout.
    */
-  def run[A, S, R](c: Rep[A, S, R])(k: A => S): R = Delimited.run(c, k, Steps)
+  def run[A, S, R](c: Rep[A, S, R])(k: A => S): R = Delimited(Steps).run(c, k)
 
   /** a Cont program performs no effect but its own */
   private[okay] type Sig = Op
@@ -176,12 +176,12 @@ object Cont:
   object Op:
     /** an opaque body, given a strict `k`: a nested run, counted */
     final case class Strict[S, R, A](body: (A => S) => R) extends Op[S, R, A]
-    /** a body given `k` itself (a program-answered body builds its lazy `k` from it) */
-    final case class WithK[S, R, A](body: Delimited.K[Op, A, S] => R) extends Op[S, R, A]
+    /** a body answering a program, given `k` itself, from which it builds its lazy `k` */
+    final case class Program[S, R, A](body: Frames[Op, A, S] => R) extends Op[S, R, A]
     /** an answer-using body after the CPS transform: a program over the lazy `k`, answering `R` at its level */
-    final case class Lazily[S, R, A](body: Delimited.K[Op, A, S] => Freer[Op, R, R, R]) extends Op[S, R, A]
+    final case class Lazily[S, R, A](body: Frames[Op, A, S] => Freer[Op, R, R, R]) extends Op[S, R, A]
     /** `k(a)` as a node: `k` under a boundary of its own, which takes its `S` back here */
-    final case class Resume[A, S, T](k: Delimited.K[Op, A, S], a: A) extends Op[T, T, S]
+    final case class Resume[A, S, T](k: Frames[Op, A, S], a: A) extends Op[T, T, S]
     /** a tail body `k => k(v)` whose `S` is a proper subtype of `R`: `k`'s answer leaves as the body's */
     final case class Tail[S, R, A](v: A, ev: S <:< R) extends Op[S, R, A]
 
@@ -190,13 +190,14 @@ object Cont:
    * reset (`M`); a call of `k` puts a boundary of its own under `k`, so what `k` answers comes back to it.
    */
   private object Steps extends Delimited.Effect[Op]:
-    import Delimited.{K, M, Next}
-    def step[A, S, T, R](op: Op[S, T, A], k: K[Op, A, S], m: M[Op, T, R], run: Delimited.Run[Op]): Next[Op, R] = op match
-      case Op.Strict(body) => Next(Return(body(x => run.force(k, x))), K.Done(), m)
-      case Op.WithK(body) => Next(Return(body(k)), K.Done(), m)
-      case Op.Lazily(body) => Next(body(k), K.Done(), m)
-      case Op.Resume(k1, a) => Next(Return(a), k1, M.Level(null, k, m))
-      case Op.Tail(v, ev) => Next(Return(v), k, M.Level(null, K.Push((s: S) => Return(ev(s)), K.Done()), m))
+    import Delimited.Next
+    def step[A, S, T, R](op: Op[S, T, A], k: Frames[Op, A, S], m: Stack[Op, T, R], machine: Delimited[Op]): Next[Op, R] =
+      op match
+        case Op.Strict(body) => Next(Return(body(x => machine.force(k, x))), Frames.End(), m)
+        case Op.Program(body) => Next(Return(body(k)), Frames.End(), m)
+        case Op.Lazily(body) => Next(body(k), Frames.End(), m)
+        case Op.Resume(k1, a) => Next(Return(a), k1, Stack.Bound(null, k, m))
+        case Op.Tail(v, ev) => Next(Return(v), k, Stack.Bound(null, Frames.Frame((s: S) => Return(ev(s)), Frames.End()), m))
 
   /**
    * is `c` already an answer? then go on from it with a tail call instead of a continuation node

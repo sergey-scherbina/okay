@@ -1,12 +1,12 @@
 package okay
 
 import okay.Freer.{Return, Inject}
-import Delimited.{K, M, Next, Cap}
+import Delimited.{Next, Cap}
 
 /**
  * A SECOND EFFECT on the same stack (specs/cont-atm.md): λ$ with named prompts — `ret $ body` at a prompt, and
  * `shift0` to a prompt through any boundaries between. Written with nothing but the stack's own manipulations
- * (`Level`, `cut`, `reinstall`); the machine is the one Cont runs on, unchanged.
+ * (`Stack.Bound`, `cut`, `reinstall`); the machine is the one Cont runs on, unchanged.
  */
 class TestDelimitedLambda extends munit.FunSuite:
 
@@ -25,13 +25,13 @@ class TestDelimitedLambda extends munit.FunSuite:
   final case class Resume[A, Z, X](k: Cap[L, A, Z], a: A) extends L[X, X, Z]
 
   object Steps extends Delimited.Effect[L]:
-    def step[A, S, T, R](op: L[S, T, A], k: K[L, A, S], m: M[L, T, R], run: Delimited.Run[L]): Next[L, R] = op match
-      case Dollar(p, ret, body) => Next(body, K.Push(ret, K.Done()), M.Level(p, k, m))
+    def step[A, S, T, R](op: L[S, T, A], k: Frames[L, A, S], m: Stack[L, T, R], machine: Delimited[L]): Next[L, R] = op match
+      case Dollar(p, ret, body) => Next(body, Frames.Frame(ret, Frames.End()), Stack.Bound(p, k, m))
       case s: Shift0[a, ?, ?] => Delimited.cut[L, a, T, R](k, m, _ eq s.p) match
         case null => throw IllegalStateException(s"no delimiter for prompt ${s.p.name}")
         case f: Delimited.Found[L, a, R] =>
           val is = same(f.cap.tag, s.p)
-          Next(s.body[f.U](is.substituteCo[[t] =>> Cap[L, a, t]](f.cap)), is.substituteCo[[t] =>> K[L, t, f.U]](f.out), f.m)
+          Next(s.body[f.U](is.substituteCo[[t] =>> Cap[L, a, t]](f.cap)), is.substituteCo[[t] =>> Frames[L, t, f.U]](f.out), f.m)
       case Resume(cap, a) => Delimited.reinstall(cap, a, k, m)
 
   /**
@@ -42,7 +42,7 @@ class TestDelimitedLambda extends munit.FunSuite:
   private def same[T, Y](@annotation.unused t: Delimited.Tag[T], @annotation.unused p: Prompt[Y]): T =:= Y =
     summon[T =:= T].asInstanceOf[T =:= Y]
 
-  private def run[A](c: Freer[L, A, A, A]): A = Delimited.run(c, identity, Steps)
+  private def run[A](c: Freer[L, A, A, A]): A = Delimited(Steps).run(c, identity)
   private def pure[A, R](a: A): Freer[L, R, R, A] = Return(a)
   private def reset[A, R, X](p: Prompt[R])(body: Freer[L, A, R, A]): Freer[L, X, X, R] =
     Inject(Dollar[A, A, A, R, X](p, (a: A) => Return[L, A, A](a), body))

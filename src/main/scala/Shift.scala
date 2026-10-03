@@ -109,8 +109,8 @@ object Shift {
   private[okay] def in[F[+_], A](p: A ! Shift % ? + F): U[F, A] = p.asInstanceOf[U[F, A]]
   private[okay] def out[F[+_], A](p: U[F, A]): A ! Shift % ? + F = p.asInstanceOf[A ! Shift % ? + F]
   private def inF[F[+_], A, B](f: A => B ! Shift % ? + F): A => U[F, B] = f.asInstanceOf[A => U[F, B]]
-  private def clause[F[+_], A, R](f: (A => R ! Shift % ? + F) => R ! Shift % ? + F): Stack[Freer.Lift[F], A, Unit, Unit, R] => U[F, R] =
-    f.asInstanceOf[Stack[Freer.Lift[F], A, Unit, Unit, R] => U[F, R]]
+  private def clause[F[+_], A, R](f: (A => R ! Shift % ? + F) => R ! Shift % ? + F): LambdaStack[Freer.Lift[F], A, Unit, Unit, R] => U[F, R] =
+    f.asInstanceOf[LambdaStack[Freer.Lift[F], A, Unit, Unit, R] => U[F, R]]
 
   /** every unstacked program is at `Unit`, so every delimiter it installs is */
   private[okay] def atUnit[R](p: Prompt[R]): Cont0.Delimiter[R, Unit] = Cont0.delimiter(p)
@@ -200,7 +200,7 @@ object Shift {
                          (using inline ctx: DirectCtx[F])(using rw: Reader.RowOf[F], at: At)
                          (f: (A => in.Res ! rw.R) => in.Res ! rw.R): A ! rw.R =
     LambdaDollar.machine[Freer.Lift[Pure]].shift[in.Res, Unit, Unit, Unit, A](Cont0.delimiter[in.Res, Unit](in.prompt))(
-      f.asInstanceOf[Stack[Freer.Lift[Pure], A, Unit, Unit, in.Res] => U[Pure, in.Res]]).asInstanceOf[A ! rw.R]
+      f.asInstanceOf[LambdaStack[Freer.Lift[Pure], A, Unit, Unit, in.Res] => U[Pure, in.Res]]).asInstanceOf[A ! rw.R]
 
   /** the 0-variant */
   def shift0[R, A, F[+_]](using in: Prompted[R])
@@ -212,7 +212,7 @@ object Shift {
                           (using inline ctx: DirectCtx[F])(using rw: Reader.RowOf[F], at: At)
                           (f: (A => in.Res ! rw.R) => in.Res ! rw.R): A ! rw.R =
     LambdaDollar.machine[Freer.Lift[Pure]].shift0[in.Res, Unit, Unit, Unit, A](Cont0.delimiter[in.Res, Unit](in.prompt))(
-      f.asInstanceOf[Stack[Freer.Lift[Pure], A, Unit, Unit, in.Res] => U[Pure, in.Res]]).asInstanceOf[A ! rw.R]
+      f.asInstanceOf[LambdaStack[Freer.Lift[Pure], A, Unit, Unit, in.Res] => U[Pure, in.Res]]).asInstanceOf[A ! rw.R]
 
   /** abort to the delimiter in force */
   def abort[R, A, F[+_]](using in: Prompted[R])(value: R)(using At): A ! Shift % ? + F =

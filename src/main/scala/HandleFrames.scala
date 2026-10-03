@@ -5,7 +5,7 @@ import okay.Freer.Return
 /**
  * HANDLERS AS FRAMES OF THE ONE MACHINE (handle-frames, specs/handle-frames.md).
  *
- * A handler's run is a VALUE (`Run`, a `Frames.Pending` in a `Delay`) with two faces: its fast fold, and its
+ * A handler's run is a VALUE (`Run`, a `LambdaFrames.Pending` in a `Delay`) with two faces: its fast fold, and its
  * FRAME. Forced by anything but a machine, it is the fold; a fold that meets a run nested in it forces that one
  * as a fold too, until `Limit` folds deep, and there as its frame on a machine — inside which every handler is a
  * frame, so nothing nests past it. A running machine steps into a run's frame in its own loop. The host stack is
@@ -123,7 +123,7 @@ object HandleFrames:
    * a handler's run as ONE object (stateSmall: a holder of two closures was four allocations a run,
    * 1.55x on 100 small runs): `at(depth)` its fold, entered `depth` folds deep; `program` its frame
    */
-  abstract class Run[B, G[+_]] extends Frames.Pending[Freer.Lift[G], Unit, Unit, B, B ! G]:
+  abstract class Run[B, G[+_]] extends LambdaFrames.Pending[Freer.Lift[G], Unit, Unit, B, B ! G]:
     def at(depth: Int): B ! G
     final def apply(): B ! G = at(0)
 
