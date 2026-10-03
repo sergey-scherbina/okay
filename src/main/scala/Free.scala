@@ -68,7 +68,7 @@ enum Freer[G[_, _, +_], S, R, +A] {
     case a => a
 
   /**
-   * `resume` that STOPS at a run — a `Delay` whose thunk is a `Frames.Pending` — alone or under its `Bind`,
+   * `resume` that STOPS at a run — a `Delay` whose thunk is `Freer.Suspended` — alone or under its `Bind`,
    * instead of forcing it: a loop that can hand itself to the machine walks with this, so a run nested in it
    * never runs inside it. A method of its own, so that `resume` carries no `Pending` test.
    */
@@ -78,13 +78,20 @@ enum Freer[G[_, _, +_], S, R, +A] {
     case Bind(h, g) => h match
       case Bind(a, f) => Bind(a, f(_).flatMap(g)).resumeRun
       case Return(a) => g(a).resumeRun
-      case Delay(t) => if t.isInstanceOf[Frames.Pending[?, ?, ?, ?, ?]] then this else Bind(t(), g).resumeRun
+      case Delay(t) => if t.isInstanceOf[Freer.Suspended] then this else Bind(t(), g).resumeRun
       case _ => this
-    case Delay(t) => if t.isInstanceOf[Frames.Pending[?, ?, ?, ?, ?]] then this else t().resumeRun
+    case Delay(t) => if t.isInstanceOf[Freer.Suspended] then this else t().resumeRun
     case a => a
 }
 
 object Freer {
+
+  /**
+   * A MACHINE PRIMITIVE, no effect's: a `Delay` thunk that is a run of its own, which a running machine may step
+   * into in its own loop rather than force (a loop that can hand itself to a machine stops at it, `resumeRun`).
+   * A machine's own runs implement it; `Freer` knows nothing of which.
+   */
+  trait Suspended
 
   /** the effect signature's leaf, indexes ignored: `Free[F, A]` is the base at `Lift[F]`, every index `Unit` */
   type Lift[F[+_]] = Lifted[F]#L
