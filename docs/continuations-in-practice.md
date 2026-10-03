@@ -120,53 +120,54 @@ delimiters it holds. That is the program's own structure, which is
 what a JVM stack trace cannot show you once a continuation has been
 resumed somewhere else.
 
-### The stack in the type
+### The stack in the row
 
 That error is a run-time one, and it need not be. `Shift.Stacked`
-carries the stack of installed prompts as a lexical given: `delimited`
-starts it empty and runs the machine, `reset` pushes the prompt it
-makes for its body only, and `shift` asks the compiler for evidence
-that its prompt is on the stack in force:
+keys each delimiter by its own type, in the ROW: `reset` hands its
+body a handle `d`, the body is typed at `Shift % d.type` plus the row
+outside, and a `shift` to `d` is an operation of that key, which the
+`reset` handles:
 
 ```scala
-val r = !.run(delimited[Int, P] { s =>
-  import s.given
-  shift[Int, Int, P](s.p)(k => k(5).map(_ * 2))
+val r = !.run(reset[Int, P] { p =>
+  shift(p)[Int](k => k(5).map(_ * 2))
 })   // 10
 ```
 
-One `import s.given` per delimiter is the whole cost at a call site;
-the type arguments on `shift` are the ones the unstacked door takes
-today. Three programs that throw `NoPrompt` at run time are refused by
-the compiler: a shift with no reset, a shift to a prompt another reset
-made, and a prompt that ESCAPED its reset into a `var` and is shifted
-to after it returned — once the reset has returned, the stack in force
-is the outer one, and the leaked prompt is not on it. The machinery
-underneath is the one machine, and the stack is the program's own
-index on the indexed tree (specs/indexed-effects.md, stages 4 and 6):
-the operations carry their types, and the stack erases.
+Three programs that throw `NoPrompt` at run time on the dynamic doors
+are refused by the compiler, because each leaves a key that nothing
+handles: a shift to a delimiter another reset made, a delimiter that
+ESCAPED its reset into a `var` and is shifted to after it returned
+(once the reset has returned, its key is no longer in the row in
+force), and a capture to a bare prompt with no reset at all (there is
+no handle to name). The machinery underneath is the one machine; the
+keys are the third kind `Shift % K` takes, beside the answer type and
+`?`.
 
-**What a capture's body may reach.** A capture takes its prompt AND
-every delimiter installed inside it, so its body runs on a smaller
-stack. The body of `shift` runs under the prompt and what
-is below it. The body of `shift0` runs below the prompt: the prompt is
+**What a capture's body may reach.** A capture takes its delimiter AND
+every delimiter installed inside it. So its body is typed at the row of
+its own delimiter, which the handle carries — the row outside `d`,
+fixed when `d` was installed, before anything inside it existed. The
+body of `shift` runs under `d` (`Shift % d.type` plus that row); the
+body of `shift0` runs outside it (that row alone): the delimiter is
 consumed, which is Materzok and Biernacki's typing rule for shift0
-\[ICFP 2011\]. Each body gets that stack as its own given, so a shift
-from the body to a prompt below still resolves:
+\[ICFP 2011\]. A shift from the body to a delimiter further out still
+types:
 
 ```scala
-shift0[Int, Int, P](inner.p)(k => shift[Int, Int, P](outer.p)(k2 => k2(100)).flatMap(k)).map(_ + 1)
+shift0(inner)[Int](k => shift(outer)[Int](k2 => k2(100)).flatMap(k)).map(_ + 1)
 ```
 
-A shift from the body to the consumed prompt, or to a prompt the
-capture took, is a compile error. The first version of this door typed
-bodies under the whole stack, and that second case compiled and threw
-`NoPrompt` (stacked-shift0). `dollar` is stacked too: it pushes a
-prompt for its body and runs its return function under the stack it
-was called from. The index is also
-conservative: ICFP 2011's own example calls a continuation where its
-prompt has been consumed, the paper accepts it because that
-continuation never captures to the prompt, and the index refuses it.
+A shift from the body to the consumed delimiter, or to one the capture
+took, is a compile error. A row is a set, so the ORDER of the
+delimiters lives in the handles: the first cut of this door let the
+caller name the body's row, and a row naming an inner key typed a body
+that threw `NoPrompt` (shift-prompt-key). `dollar` is keyed too: it
+installs a delimiter for its body and runs its return function at the
+row outside. The rule is conservative: ICFP 2011's own example calls a
+continuation where its delimiter has been consumed, the paper accepts
+it because that continuation never captures to it, and the row refuses
+it.
 
 > Gunter, Rémy & Riecke, *A generalization of exceptions and control in
 > ML-like languages*, FPCA 1995,

@@ -318,7 +318,7 @@ lexically. The row handler is what you use when there is one of a kind.
 | installed where they are used, nested, or reached past a handler of the same effect | any | `Lexical.State(s0)` / `Lexical.handle` (tail) | the installation | nothing | 1.65x |
 | the same, cheapest, on the spine only | tail-resumptive | `Lexical.walk` (by name) | a fresh `Instances` handle | `Instances.Of[F]` | 1.29x |
 | the same, with multi-shot, dropped or stored `k` | any | `Lexical.deep` (by name) | a prompt | nothing (needs `Shift`) | ~7x bytes, ~4x time |
-| any of those, and use outside the installation must not compile | deep or tail | `Lexical.Stacked` | a prompt on the typed stack | nothing | as unstacked |
+| any of those, and use outside the installation must not compile | deep or tail | `Lexical.Stacked` | a prompt keyed in the row | `Shift % i.p.type` | as unstacked |
 
 The compiler enforces the first row's condition: `Distinct` refuses a row
 whose members cannot be told apart, and its message names these routes.

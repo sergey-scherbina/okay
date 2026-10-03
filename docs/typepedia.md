@@ -1211,7 +1211,7 @@ once tested, and this list exists to not repeat that.
   one above is not).
 - **A method expecting `R ! F + G` does not recover that shape from
   an argument already typed as the EXPANDED union
-  `[A] =>> F[A] | G[A]`.** `Shift.Stacked`'s own `reset`/`delimited`
+  `[A] =>> F[A] | G[A]`.** `Shift.Stacked`'s own `reset`
   needed `push[R, F](...)`/`run[R, F](...)` with explicit type
   arguments for exactly this reason — the argument's type, once
   Scala has expanded `Shift % ? + F` into the type lambda, is no longer

@@ -1,6 +1,6 @@
 # shift-merge — Delim and Shift, one effect named `Shift`
 
-Status: stages 1, 2 and 4 and the one guard done, 2026-10-02; the keyed reset without a room done (shift-stacked-key); stage 3 in progress (shift-prompt-key). Owner lane: `shift-merge`. Sprint
+Status: stages 1, 2 and 4 and the one guard done, 2026-10-02; the keyed reset without a room done (shift-stacked-key); all four stages done (stage 3: shift-prompt-key, 2026-10-03). Owner lane: `shift-merge`. Sprint
 cont-js-depth, the design conversation after stage 3a.
 
 ## Why
@@ -135,7 +135,7 @@ different keys mix in one `flatMap`. `Shift.dynamic(p)` names it.
       price of no room and no `ThreadLocal`. Accepted: the room cost a
       `ThreadLocal` read and a try/finally per reset and still switched
       stacks; this is a constant per run that a nested run does not pay.
-- [ ] stage 3 (shift-prompt-key): `Shift.Stacked` keys a delimiter by the
+- [x] stage 3 (shift-prompt-key): `Shift.Stacked` keys a delimiter by the
       prompt's own singleton type — `Shift % p.type` in the ROW — instead of
       a tuple-indexed stack (`Stack`/`Has`/`Under`/`rebase`, gone):
       `reset(p => body)` types the body at `Shift % p.type + F` and runs it
@@ -211,3 +211,21 @@ different keys mix in one `flatMap`. `Shift.dynamic(p)` names it.
 - **Rows stay invariant**: static → dynamic is a written coercion
   (`Shift.dynamic`), as every row widening in okay is (widen-is-a-
   coercion).
+
+- **STAGE 3: THE ORDER LIVES IN THE HANDLES** (shift-prompt-key, 2026-10-03).
+  The first cut keyed the prompt itself (`reset(p => …)`, `shift(p)`) and let
+  the caller name the row a capture's body is typed at. A row is a SET: it
+  cannot say which delimiters were installed INSIDE `p`, and a capture takes
+  those into `k`. A caller naming a row with an inner key typed a body that
+  shifted to it — `NoPrompt` at run time; TestStackedShift0's CLOSED case
+  compiled. The tuple stack this replaces had that order (`Has.Aux` computed
+  the stack below `p`). The fix keeps it without a tuple: `reset` hands its
+  body a `Reset[R, F]` carrying `F`, the row OUTSIDE the delimiter, fixed
+  when it is installed — before anything inside it existed — and `shift(d)` /
+  `shift0(d)` type their bodies at `d`'s own row. A capture deeper in is
+  widened to the row in force with `.at` (the price of a set). Refused, each
+  a key nothing handles (TestProg 6-8, TestStackedShift0, TestLayeredStacked,
+  TestLexicalStacked): a capture to a bare prompt (no handle), to a sibling's
+  delimiter, to one that escaped its reset, to the consumed delimiter from a
+  `shift0` body, to one captured into `k`. Lexical's instances keep their
+  prompt as key, their outer row fixed by their own construction.

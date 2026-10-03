@@ -1,7 +1,7 @@
 package okay
 
 import okay.Direct.*
-import okay.Shift.Stacked.{delimited, shift}
+import okay.Shift.Stacked.{reset, shift}
 import scala.language.implicitConversions
 
 /**
@@ -61,11 +61,10 @@ class TestDocExamplesContinuationsInPractice extends munit.FunSuite:
     assertEquals(r, List(1, 2, 3))
   }
 
-  test("the stack in the type: reset { shift(k => k(5) * 2) }") {
+  test("the stack in the row: reset { shift(k => k(5) * 2) }") {
     type P = Pure
-    val r = !.run(delimited[Int, P] { s =>
-      import s.given
-      shift[Int, Int, P](s.p)(k => k(5).map(_ * 2))
+    val r = !.run(reset[Int, P] { p =>
+      shift(p)[Int](k => k(5).map(_ * 2))
     })   // 10
     assertEquals(r, 10)
   }

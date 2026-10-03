@@ -49,7 +49,7 @@ class ProbeRowInference extends munit.FunSuite:
   // ---------------------------------------------------------- shape 3: a union-typed argument DOES recover F + G now
 
   test("a method taking `R ! Shift % ? + F` recovers F from an argument ALREADY typed as the expanded union, since the indexed base") {
-    // Shift.Stacked.delimited's own construction (Shift.scala) needed
+    // Shift.Stacked.delimited's own construction (Shift.scala, until shift-prompt-key) needed
     // `push[R, F](...)`/`run[R, F](...)` spelled explicitly for exactly
     // this reason, and until freer-base-step-extractor (2026-09-29) this
     // probe pinned the refusal. The base's row is `Lifted[F]#L`, a class
