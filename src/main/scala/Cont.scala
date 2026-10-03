@@ -5,9 +5,8 @@ import scala.collection.LinearSeq
 
 /**
  * Danvy-Filinski's one-prompt `shift`/`reset` with answer-type modification: `M[A, S, R]` is `(A => S) => R`.
- * Instances: `Cont` (data, stack-safe) and `Func` (closures). THIS FILE IS THE FACADE AND THE BRIDGE: the
- * machine — its interface and its implementation — is Delimited.scala; here a body's `k` is a strict host
- * function `A => S` (the bridge into the machine: `shiftLeaf`, the room, the nested run), and ContMacro
+ * Instances: `Cont` (data, stack-safe) and `Func` (closures). THIS FILE IS THE FACADE: the machine is
+ * Delimited.scala's ATM machine (`Atm`), typed per reset installation, so nothing here is claimed; ContMacro
  * turns what it can read into data first.
  */
 trait Control[M[_, _, _]] extends ParaMonad[M]:
@@ -39,7 +38,7 @@ object Cont:
   def Pure[A, R](a: A): Rep[A, R, R] = Return(a)
 
   /**
-   * `shift`: one leaf, an `Op` the nearest run's frame answers. `ContMacro` picks the leaf's form at compile time:
+   * `shift`: one leaf, an operation of the ATM machine (`Atm.Op`). `ContMacro` picks the leaf's form at compile time:
    * a tail body is a value (`tailShift`/`tailPure`), an answer-using body a program over a lazy `k`
    * (`lazyLeaf`), anything else gets a strict `k` (`shiftLeaf`).
    */
@@ -48,99 +47,81 @@ object Cont:
   /** delimit and run: `c / identity` */
   inline def reset[A, R](c: Rep[A, A, R]): R = run(c)(identity)
 
-  /** an opaque body: run as it is, given a strict `k` (`Resumption`) */
-  def shiftLeaf[A, S, R](f: (A => S) => R): Rep[A, S, R] = Inject[Sig, S, R, A](Op.Strict(f))
+  /** an opaque body: run as it is, given a strict `k` (`Atm.Resumption`) */
+  def shiftLeaf[A, S, R](f: (A => S) => R): Rep[A, S, R] = Inject[Sig, S, R, A](Atm.Strict(f))
 
   /**
    * an opaque body whose answer `S` is a PROGRAM and which calls `k` itself (cont-program-answer): its `k(a)`
-   * returns at once — a `Delay` holding a lazy run of `k`'s rest (the machine's `ownedFlat`), no nested run.
-   * Any interpreter forces it: one bounded run, answering the program that goes on. A RUNNING machine steps
-   * into it and continues into that program in its own loop, so the rest of the body is that machine's frame.
+   * returns at once — a `Delay` whose forcing runs `k`'s rest to the program that goes on, a run of its own.
    * The contract it changes: host side effects written after `k(a)` in the body run before `k`'s rest.
    */
-  def programLeaf[A, S, R](f: (A => S) => R): Rep[A, S, R] = Inject[Sig, S, R, A](Op.Program(f))
+  def programLeaf[A, S, R](f: (A => S) => R)(using p: Program[S]): Rep[A, S, R] =
+    Inject[Sig, S, R, A](Atm.WithK(k => f(x => p.later(() => Atm.runK(k, x)))))
 
-  /** the lazy `k` of a program-answered body: the machine's `Delay` node standing for the program `S` (the claim:
-   * `ContMacro` picks this leaf only when `S` is a `Freer`, and the machine steps into its own node in any row) */
-  private final class Later[A, S](k: K[A, S]) extends (A => S):
-    def apply(x: A): S = claim(Delay[Sig, Any, Any, Any](M.ownedFlat[Any, Any, S, P[Any]](k(x))(answerProgram)))
+  /** `S` a program that can stand for itself unbuilt: a `Delay` of any `Freer`, `A ! F` among them */
+  trait Program[S]:
+    def later(make: () => S): S
 
-  /** a run of `k`'s rest to its answer, which is the program that goes on (the same claim as `Later`'s) */
-  private val answerProgram: P[Any] => P[Any] = head => claim(answerOf(head))
+  object Program:
+    given freer[G[_, _, +_], S2, R2, X]: Program[Freer[G, S2, R2, X]] with
+      def later(make: () => Freer[G, S2, R2, X]): Freer[G, S2, R2, X] = Delay(make)
 
-  /**
-   * CONT'S OPERATION (cont-run-prompt, the operator's `ContShift[A, S, R](k: (A => S) => R)`): a leaf is an
-   * `Op[S, R, A]`, typed exactly as the leaf it is, in the form `ContMacro` chose for its body. Every run puts a
-   * frame of its own on the machine (`Root`), and the machine hands an `Op` to the nearest one — the leaf's own
-   * `reset`. The frame answers it: a `shift0` to itself whose body is the leaf's, given `k` (`Root.clause`).
-   */
-  sealed trait Op[S, R, +A] extends Cont0.Framed, (Any => Any)
-
-  /**
-   * Each form is its own clause, a function of the `k` its frame captured (`Root.clauseOf`: no closure an
-   * operation). THE CLAIM at the frame: the machine captured `k` for this operation, so it runs from the
-   * operation's `A` to its `S`; the frame's erased signature (`Handling`) cannot say so.
-   */
-  object Op:
-    /** an opaque body, given a strict `k` */
-    final case class Strict[S, R, A](body: (A => S) => R) extends Op[S, R, A]:
-      def apply(k: Any): Any = Return[Sig, Any, R](body(Resumption(claim[K[A, S]](k))))
-    /** an opaque body answering a program, given the lazy `k` (`Later`) */
-    final case class Program[S, R, A](body: (A => S) => R) extends Op[S, R, A]:
-      def apply(k: Any): Any = Return[Sig, Any, R](body(Later(claim[K[A, S]](k))))
-    /** an answer-using body after the CPS transform, given the captured stack itself */
-    final case class Lazily[S, R, A](body: LazyK[A, S] => Lazy[R]) extends Op[S, R, A]:
-      def apply(k: Any): Any = body(claim[K[A, S]](k))
-
-  /** a tail body `k => { stats; k(v) }` as its value `v`; `S <: R` (the evidence) makes the claim sound */
-  def tailShift[A, S, R](v: () => A)(using @annotation.unused ev: S <:< R): Rep[A, S, R] =
-    claim(Freer.delay[Sig, Any, Any, A](() => Return[Sig, Any, A](v())))
+  /** a tail body `k => { stats; k(v) }` as its value `v`, where `S` is `R`: a value, nothing else */
+  def tailShiftSame[A, S, R](v: () => A)(using ev: S =:= R): Rep[A, S, R] =
+    ev.flip.substituteCo[[s] =>> Rep[A, s, R]](Freer.delay[Sig, R, R, A](() => Return(v())))
 
   /** the same with no thunk, for a literal or a stable name */
-  def tailPure[A, S, R](v: A)(using @annotation.unused ev: S <:< R): Rep[A, S, R] =
-    claim(Return[Sig, Any, A](v))
+  def tailPureSame[A, S, R](v: A)(using ev: S =:= R): Rep[A, S, R] =
+    ev.flip.substituteCo[[s] =>> Rep[A, s, R]](Return(v))
+
+  /** a tail body whose `S` is a proper subtype of `R`: `k`'s answer leaves as the body's (`Atm.Tail`) */
+  def tailShift[A, S, R](v: () => A)(using ev: S <:< R): Rep[A, S, R] =
+    Freer.delay[Sig, S, R, A](() => Inject(Atm.Tail(v(), ev)))
+
+  /** the same with no thunk */
+  def tailPure[A, S, R](v: A)(using ev: S <:< R): Rep[A, S, R] = Inject(Atm.Tail(v, ev))
 
   /**
    * an answer-using body (`k(1) + k(10)`) after `ContMacro`'s selective CPS transform (Rompf, Maier & Odersky,
-   * ICFP 2009): a program over the lazy `k`, built by `call` and `done`, answering `R`. Public for the macro's
-   * expansion; not an API.
+   * ICFP 2009): a program over the lazy `k` answering `B`, at the level of the leaf whose body it is, which
+   * answers `T` — the leaf's `R`. Built by `call` and `done`. Public for the macro's expansion; not an API.
    */
-  opaque type Lazy[R] = P[R]
+  opaque type Lazy[T, B] = Freer[Sig, T, T, B]
 
-  /** the lazy `k` of an answer-using body: its captured stack, from `A` to `S`, which only `call` applies */
-  opaque type LazyK[A, S] = K[A, S]
+  /** the lazy `k` of an answer-using body: its captured continuation, from `A` to `S`, which only `call` applies */
+  opaque type LazyK[A, S] = Atm.K[A, S]
 
   /** the body's answer */
-  def done[R](r: R): Lazy[R] = Return(r)
+  def done[T, R](r: R): Lazy[T, R] = Return(r)
 
-  /** `k(a)` then `rest`: `k`'s nodes pushed by the machine */
-  def call[A, S, R](k: LazyK[A, S], a: A, rest: S => Lazy[R]): Lazy[R] =
-    Bind(k(a), rest)
+  /** `k(a)` then `rest`: `k` under a boundary of its own, which hands its `S` to `rest` (`Atm.Resume`) */
+  def call[A, S, T, R](k: LazyK[A, S], a: A, rest: S => Lazy[T, R]): Lazy[T, R] =
+    Bind(Inject[Sig, T, T, S](Atm.Resume[A, S, T](k, a)), rest)
 
   /**
    * `xs.map(f)` / `xs.foreach(f)` in an answer-using body whose `f` calls `k` (cont-stack-layer1-c (2)): `f` a
    * program over the lazy `k`, the elements in order, each a bind the machine runs. Public for the macro's expansion.
    */
-  def traverse[X, B, R](xs: Iterable[X], f: X => Lazy[B], rest: List[B] => Lazy[R]): Lazy[R] =
-    walk[X, B, List[B], R](xs.toList, Nil, (_, x) => f(x), goOn, (acc, b) => b :: acc, acc => rest(acc.reverse))
+  def traverse[T, X, B, R](xs: Iterable[X], f: X => Lazy[T, B], rest: List[B] => Lazy[T, R]): Lazy[T, R] =
+    walk[T, X, B, List[B], R](xs.toList, Nil, (_, x) => f(x), goOn, (acc, b) => b :: acc, acc => rest(acc.reverse))
 
   /** `xs.foldLeft(z)(f)` in an answer-using body, `f` a program over the lazy `k`, the same way */
-  def foldIn[X, B, R](xs: Iterable[X], z: B, f: (B, X) => Lazy[B], rest: B => Lazy[R]): Lazy[R] =
-    walk[X, B, B, R](xs.toList, z, f, goOn, (_, b) => b, rest)
+  def foldIn[T, X, B, R](xs: Iterable[X], z: B, f: (B, X) => Lazy[T, B], rest: B => Lazy[T, R]): Lazy[T, R] =
+    walk[T, X, B, B, R](xs.toList, z, f, goOn, (_, b) => b, rest)
 
   /** a step of a loop over the lazy `k` (cont-stack-layer1-c, `while`): deferred to the machine, which forces it
    * in its own loop — an iteration that never calls `k` holds no host frame either */
-  def later[R](step: () => Lazy[R]): Lazy[R] = Delay(step)
+  def later[T, R](step: () => Lazy[T, R]): Lazy[T, R] = Delay(step)
 
   /** `xs.exists(p)` (`want` true) / `xs.forall(p)` (`want` false) in an answer-using body: the elements in turn,
    * stopping at the first whose answer is `want` — `p` is not run for the elements after it */
-  def existsIn[X, R](xs: Iterable[X], p: X => Lazy[Boolean], want: Boolean, rest: Boolean => Lazy[R]): Lazy[R] =
-    walk[X, Boolean, Unit, R](LazyList.from(xs), (), (_, x) => p(x),
+  def existsIn[T, X, R](xs: Iterable[X], p: X => Lazy[T, Boolean], want: Boolean, rest: Boolean => Lazy[T, R]): Lazy[T, R] =
+    walk[T, X, Boolean, Unit, R](LazyList.from(xs), (), (_, x) => p(x),
       (_, b) => if b == want then rest(want) else null, (_, _) => (), _ => rest(!want))
 
   /** `xs.find(p)` in an answer-using body, stopping at the first element `p` holds for */
-  def findIn[X, R](xs: Iterable[X], p: X => Lazy[Boolean], rest: Option[X] => Lazy[R]): Lazy[R] =
-    walk[X, Boolean, Unit, R](LazyList.from(xs), (), (_, x) => p(x),
+  def findIn[T, X, R](xs: Iterable[X], p: X => Lazy[T, Boolean], rest: Option[X] => Lazy[T, R]): Lazy[T, R] =
+    walk[T, X, Boolean, Unit, R](LazyList.from(xs), (), (_, x) => p(x),
       (x, b) => if b then rest(Some(x)) else null, (_, _) => (), _ => rest(None))
 
   /**
@@ -152,21 +133,20 @@ object Cont:
    * memoised `LazyList` where the walk may stop (`exists`, `find`) — a stop forces nothing after it, an infinite
    * receiver included. Either way a resumed `k` walks again from its own point, sharing no iterator.
    */
-  private def walk[X, B, S, R](rem: LinearSeq[X], s: S, step: (S, X) => Lazy[B], stop: (X, B) => Lazy[R] | Null,
-                               next: (S, B) => S, end: S => Lazy[R]): Lazy[R] =
+  private def walk[T, X, B, S, R](rem: LinearSeq[X], s: S, step: (S, X) => Lazy[T, B], stop: (X, B) => Lazy[T, R] | Null,
+                                  next: (S, B) => S, end: S => Lazy[T, R]): Lazy[T, R] =
     if rem.isEmpty then end(s)
     else
       val x = rem.head
       Bind(step(s, x), (b: B) =>
         val done = stop(x, b)
-        if done == null then walk[X, B, S, R](rem.tail, next(s, b), step, stop, next, end) else done.nn)
+        if done == null then walk[T, X, B, S, R](rem.tail, next(s, b), step, stop, next, end) else done.nn)
 
-  /** a walk that never stops early */
-  private val never: (Any, Any) => Null = (_, _) => null
-  private def goOn[X, B, R]: (X, B) => Lazy[R] | Null = never
+  /** a walk that never stops early (a lambda capturing nothing: one instance, made once) */
+  private def goOn[X, B, T, R]: (X, B) => Lazy[T, R] | Null = (_, _) => null
 
-  /** the leaf of an answer-using body */
-  def lazyLeaf[A, S, R](body: LazyK[A, S] => Lazy[R]): Rep[A, S, R] = Inject[Sig, S, R, A](Op.Lazily(body))
+  /** the leaf of an answer-using body: its program answers the leaf's `R`, at the leaf's level */
+  def lazyLeaf[A, S, R](body: LazyK[A, S] => Lazy[R, R]): Rep[A, S, R] = Inject[Sig, S, R, A](Atm.Lazily(body))
   /** a bind whose left side is a thunk forced by the machine: tail calls without JVM frames */
   def defer[A, B, S, T, R](thunk: () => Rep[A, T, R])(f: A => Rep[B, S, T]): Rep[B, S, R] =
     Freer.defer(thunk)(f)
@@ -180,83 +160,14 @@ object Cont:
   /** map, as `Freer.map`'s node */
   def mapped[A, B, S, R](c: Rep[A, S, R])(f: A => B): Rep[B, S, R] = c.map(f)
 
-  /** apply to a continuation: a root `$` whose `ret` is `k`; the run answers what the leaves' bodies answer, `R` */
-  def run[A, S, R](c: Rep[A, S, R])(k: A => S): R =
-    val r = Root(k, StackSwitch.firstRoom)
-    claim(answerOf(M.runHead[Any, Any, Any](M.dollar[Any, A, Any, Any](Cont0.delimiter(r))(r)(claim[P[A]](c)))))
-
-  // THE RUNNER: a Cont program runs on the frame machine under a root `$` of its own run, a frame that takes
-  // Cont's operation (`Op`); every leaf goes to the nearest one. A lazy `k` is pushed by the machine; a strict
-  // `k` is a nested run, counted, a fresh stack at zero (`StackSwitch`).
-
-  /** a Cont program performs no effect but its own */
-  private[okay] type Sig = Cont0.Row[Op]
-
-  /** a program on the machine answering `X`, its answer-type indexes erased: Cont's live on the facade */
-  private type P[+X] = Freer[Sig, Any, Any, X]
-  /** a captured `k` from `A` to `S`, at the same erased indexes */
-  private type K[A, S] = Stack[Op, A, Any, Any, S]
-
-  /** the machine, through its one door */
-  private val M: Delimited.Machine[Op] = Delimited.machine[Op]
-
   /**
-   * A RUN'S ROOT, one object: its own frame (the delimiter every leaf of the run goes to), its `ret` (the user's
-   * `k`) and its room. Its operations are `Framed`, so it leaves the machines' process-wide flag off.
+   * apply to a continuation: the ATM machine (Delimited.scala, `Atm`), `k` the reset's `ret` — what it answers
+   * goes back to whoever called a captured `k`, what a shift body answers leaves the reset. Typed throughout.
    */
-  private final class Root[A, S](val k: A => S, var room: Int)
-    extends Cont0.Handling[Any]("Cont.run", opens = false), (A => P[S]):
-    def apply(x: A): P[S] = Return(k(x))
-    def takes(op: Any): Boolean = op.isInstanceOf[Op[?, ?, ?]]
-    /** each operation is its own clause (`Op`) */
-    override def clauseOf(op: Any): Any => Any = op match
-      case o: Op[?, ?, ?] => o
-      case _ => super.clauseOf(op)
-    def clause(op: Any, k: Any => Any): Any = op match
-      case o: Op[?, ?, ?] => o(k)
-    override def toString: String = label
+  def run[A, S, R](c: Rep[A, S, R])(k: A => S): R = Atm.run(c, k)
 
-  /** the strict `k`: `apply` runs `k`'s stack to a value, nested, counted (`force`) */
-  private final class Resumption[A, S](k: K[A, S]) extends (A => S):
-    def apply(x: A): S = force(k, x)
-
-  /**
-   * THE CLAIM, the file's only cast: Cont's answer types are the facade's, every node is built here, and the
-   * machine runs them at erased indexes. Every crossing between the two goes through here — the `k` a run's frame
-   * hands a leaf (`Root.clause`), a tail body's value (`tailShift`/`tailPure`), a program answer (`Later`), a run's tree and
-   * answer (`run`) — and nowhere else.
-   */
-  private def claim[X](v: Any): X = v.asInstanceOf[X]
-
-  /** a run's head form is its value: its frame answers every operation of the run */
-  private def answerOf[X](head: P[X]): X = head match
-    case Return(v) => v
-    case _ => throw IllegalStateException("a Cont program answered an operation outside its run's frame")
-
-  /** a run's root among the delimiters of a `k` (one function, no closure a force) */
-  private val isRoot: Prompt[?] => Boolean = _.isInstanceOf[Root[?, ?]]
-
-  /** run `k` now, one level less of room; at zero on a fresh stack */
-  private def force[A, S](k: K[A, S], x: A): S =
-    val r = rootOf(k)
-    val here = r.room - 1
-    if here > 0 then nested(r, here, k, x)
-    else StackSwitch.fresh(fresh => nested(r, fresh, k, x))
-
-  /** `k` with `room` levels, the run's room restored after */
-  private def nested[A, S](r: Root[?, ?], room: Int, k: K[A, S], x: A): S =
-    val saved = r.room
-    r.room = room
-    try enter(k, x) finally r.room = saved
-
-  /** `x` into `k`'s nodes, run to a value, through the door's resumption form */
-  private def enter[A, S](k: K[A, S], x: A): S =
-    answerOf(M.runHeadAt[A, Any, Any, S](k)(x))
-
-  /** the root at the bottom of `k`: a strict `k` always ends at it (the machine reads its own stack) */
-  private def rootOf(k: K[?, ?]): Root[?, ?] = M.frameOf(k, isRoot) match
-    case r: Root[?, ?] => r
-    case _ => throw IllegalStateException("a strict k without its run's root: only a leaf makes one, and a leaf cuts to the root")
+  /** a Cont program performs no effect but its own: the ATM machine's operations */
+  private[okay] type Sig = Atm.Op
 
   /**
    * is `c` already an answer? then go on from it with a tail call instead of a continuation node

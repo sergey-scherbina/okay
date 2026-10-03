@@ -44,8 +44,11 @@ import scala.quoted.*
     /** an opaque body that calls `k` and answers a PROGRAM gets the lazy `k` (cont-program-answer): its `k(a)`
      * is a lazy run, never a nested one; a body that only passes `k` on keeps the strict leaf, at no cost */
     def opaque(p: Symbol, body: Term): Expr[Cont[A, S, R]] =
-      if calls(p, body) && TypeRepr.of[S] <:< TypeRepr.of[Freer[?, ?, ?, ?]] then '{ Cont.programLeaf[A, S, R]($f) }
-      else fallback
+      if calls(p, body) then programLeaf.getOrElse(fallback) else fallback
+
+    /** `S` a program that can defer itself (`Cont.Program`: any `Freer`, an `A ! F` among them) */
+    def programLeaf: Option[Expr[Cont[A, S, R]]] =
+      Expr.summon[Cont.Program[S]].map(p => '{ Cont.programLeaf[A, S, R]($f)(using $p) })
 
     /** `k(v)` / `k.apply(v)`, with `v` free of `k` */
     object TailCall:
@@ -90,7 +93,7 @@ import scala.quoted.*
     case class Kont(rt: TypeRepr, rest: Option[Term => Term])
 
     def done(rt: TypeRepr, v: Term): Term = rt.asType match
-      case '[r] => '{ Cont.done[r](${ v.asExprOf[r] }) }.asTerm
+      case '[r] => '{ Cont.done[R, r](${ v.asExprOf[r] }) }.asTerm
 
     def feed(kont: Kont, v: Term): Term = kont.rest match
       case None => done(kont.rt, v)
@@ -99,7 +102,7 @@ import scala.quoted.*
     /** a fresh `name => rest(name)` of type `in => Lazy[rt]` */
     def lam(name: String, in: TypeRepr, rt: TypeRepr)(rest: Term => Term): Term =
       val out = rt.asType match
-        case '[r] => TypeRepr.of[Cont.Lazy[r]]
+        case '[r] => TypeRepr.of[Cont.Lazy[R, r]]
       Lambda(Symbol.spliceOwner, MethodType(List(name))(_ => List(in), _ => out),
         (meth, ps) => rest(Ref(ps.head.symbol)).changeOwner(meth))
 
@@ -147,8 +150,8 @@ import scala.quoted.*
     /** `Cont.call(k, e, s => rest)` */
     def call(e: Term, kont: Kont)(using k: Symbol): Term = kont.rt.asType match
       case '[r] =>
-        '{ Cont.call[A, S, r](${ lazyK.get }, ${ e.asExprOf[A] },
-             ${ lam("s", TypeRepr.of[S], kont.rt)(sv => feed(kont, sv)).asExprOf[S => Cont.Lazy[r]] }) }.asTerm
+        '{ Cont.call[A, S, R, r](${ lazyK.get }, ${ e.asExprOf[A] },
+             ${ lam("s", TypeRepr.of[S], kont.rt)(sv => feed(kont, sv)).asExprOf[S => Cont.Lazy[R, r]] }) }.asTerm
 
     /** the parameter types a function term's arguments are matched against */
     def params(fun: Term): List[TypeRepr] = fun.tpe.widen match
@@ -259,7 +262,7 @@ import scala.quoted.*
      */
     def traversal(t: Term, kont: Kont)(using k: Symbol): Option[Term] =
       def step(ps: List[ValDef], body: Term, ins: List[TypeRepr], out: TypeRepr): Term =
-        val mt = MethodType(ps.map(_.name))(_ => ins, _ => out.asType match { case '[o] => TypeRepr.of[Cont.Lazy[o]] })
+        val mt = MethodType(ps.map(_.name))(_ => ins, _ => out.asType match { case '[o] => TypeRepr.of[Cont.Lazy[R, o]] })
         Lambda(Symbol.spliceOwner, mt, (meth, args) =>
           cps(ps.zip(args).foldLeft(body)((b, pa) => subst(b, pa._1.symbol, Ref(pa._2.symbol))), Kont(out, None)).changeOwner(meth))
       t match
@@ -274,15 +277,15 @@ import scala.quoted.*
           yield kont.rt.asType match { case '[rt] => x.asType match { case '[xt] => b.asType match { case '[btp] =>
               val f = (g match
                 case Left((ps, body)) => step(ps, body, List(x), b)
-                case Right(()) => lam("x", x, b)(xv => call(xv, Kont(b, None)))).asExprOf[xt => Cont.Lazy[btp]]
+                case Right(()) => lam("x", x, b)(xv => call(xv, Kont(b, None)))).asExprOf[xt => Cont.Lazy[R, btp]]
               val rest = lam("bs", TypeRepr.of[List[btp]], kont.rt)(bsv =>
                 r match
                   case None => feed(kont, '{ () }.asTerm)
                   case Some(want) => asResult(bsv, want, b) match
                     case Some(res) => feed(kont, res)
-                    case None => throw Opaque).asExprOf[List[btp] => Cont.Lazy[rt]]
+                    case None => throw Opaque).asExprOf[List[btp] => Cont.Lazy[R, rt]]
               cps(q, Kont(kont.rt, Some(q2 =>
-                '{ Cont.traverse[xt, btp, rt](${ q2.asExprOf[Iterable[xt]] }, $f, $rest) }.asTerm))) } } }
+                '{ Cont.traverse[R, xt, btp, rt](${ q2.asExprOf[Iterable[xt]] }, $f, $rest) }.asTerm))) } } }
         // flatMap: the traversal, then the answers flattened (their element type by the evidence the call had)
         case Apply(TypeApply(Select(q, "flatMap"), List(bt)), List(fn)) if !mentions(k, q) =>
           for
@@ -291,16 +294,16 @@ import scala.quoted.*
             c = body.tpe.widen
             res <- (kont.rt.asType, x.asType, c.asType, bt.tpe.asType) match
               case ('[rt], '[xt], '[ct], '[btp]) => Expr.summon[ct <:< IterableOnce[btp]].flatMap { ev =>
-                val f = step(ps, body, List(x), c).asExprOf[xt => Cont.Lazy[ct]]
+                val f = step(ps, body, List(x), c).asExprOf[xt => Cont.Lazy[R, ct]]
                 val want = t.tpe.widen
                 try
                   val rest = lam("bs", TypeRepr.of[List[ct]], kont.rt)(bsv =>
                     val flat = '{ ${ bsv.asExprOf[List[ct]] }.flatMap(c => $ev(c)) }.asTerm
                     asResult(flat, want, bt.tpe) match
                       case Some(r) => feed(kont, r)
-                      case None => throw Opaque).asExprOf[List[ct] => Cont.Lazy[rt]]
+                      case None => throw Opaque).asExprOf[List[ct] => Cont.Lazy[R, rt]]
                   Some(cps(q, Kont(kont.rt, Some(q2 =>
-                    '{ Cont.traverse[xt, ct, rt](${ q2.asExprOf[Iterable[xt]] }, $f, $rest) }.asTerm))))
+                    '{ Cont.traverse[R, xt, ct, rt](${ q2.asExprOf[Iterable[xt]] }, $f, $rest) }.asTerm))))
                 catch case Opaque => None
               }
               case _ => None
@@ -311,34 +314,34 @@ import scala.quoted.*
             x <- elemOf(q)
             (ps, body) <- lambdaOf(fn) if ps.length == 1 && mentions(k, body)
           yield kont.rt.asType match { case '[rt] => x.asType match { case '[xt] =>
-            val p = step(ps, body, List(x), TypeRepr.of[Boolean]).asExprOf[xt => Cont.Lazy[Boolean]]
+            val p = step(ps, body, List(x), TypeRepr.of[Boolean]).asExprOf[xt => Cont.Lazy[R, Boolean]]
             m match
               case "find" =>
-                val rest = lam("found", TypeRepr.of[Option[xt]], kont.rt)(v => feed(kont, v)).asExprOf[Option[xt] => Cont.Lazy[rt]]
-                cps(q, Kont(kont.rt, Some(q2 => '{ Cont.findIn[xt, rt](${ q2.asExprOf[Iterable[xt]] }, $p, $rest) }.asTerm)))
+                val rest = lam("found", TypeRepr.of[Option[xt]], kont.rt)(v => feed(kont, v)).asExprOf[Option[xt] => Cont.Lazy[R, rt]]
+                cps(q, Kont(kont.rt, Some(q2 => '{ Cont.findIn[R, xt, rt](${ q2.asExprOf[Iterable[xt]] }, $p, $rest) }.asTerm)))
               case _ =>
                 val want = Expr(m == "exists")
-                val rest = lam("holds", TypeRepr.of[Boolean], kont.rt)(v => feed(kont, v)).asExprOf[Boolean => Cont.Lazy[rt]]
-                cps(q, Kont(kont.rt, Some(q2 => '{ Cont.existsIn[xt, rt](${ q2.asExprOf[Iterable[xt]] }, $p, $want, $rest) }.asTerm))) } }
+                val rest = lam("holds", TypeRepr.of[Boolean], kont.rt)(v => feed(kont, v)).asExprOf[Boolean => Cont.Lazy[R, rt]]
+                cps(q, Kont(kont.rt, Some(q2 => '{ Cont.existsIn[R, xt, rt](${ q2.asExprOf[Iterable[xt]] }, $p, $want, $rest) }.asTerm))) } }
         // foldRight: foldIn over the elements reversed, the lambda's parameters swapped
         case Apply(Apply(TypeApply(Select(q, "foldRight"), List(bt)), List(z)), List(fn)) if !mentions(k, q) && !mentions(k, z) =>
           for
             x <- elemOf(q)
             (ps, body) <- lambdaOf(fn) if ps.length == 2 && mentions(k, body)
           yield kont.rt.asType match { case '[rt] => x.asType match { case '[xt] => bt.tpe.asType match { case '[btp] =>
-            val f = step(List(ps(1), ps(0)), body, List(bt.tpe, x), bt.tpe).asExprOf[(btp, xt) => Cont.Lazy[btp]]
-            val rest = lam("acc", bt.tpe, kont.rt)(av => feed(kont, av)).asExprOf[btp => Cont.Lazy[rt]]
+            val f = step(List(ps(1), ps(0)), body, List(bt.tpe, x), bt.tpe).asExprOf[(btp, xt) => Cont.Lazy[R, btp]]
+            val rest = lam("acc", bt.tpe, kont.rt)(av => feed(kont, av)).asExprOf[btp => Cont.Lazy[R, rt]]
             cps(q, Kont(kont.rt, Some(q2 => cps(z, Kont(kont.rt, Some(z2 =>
-              '{ Cont.foldIn[xt, btp, rt](${ q2.asExprOf[Iterable[xt]] }.toList.reverse, ${ z2.asExprOf[btp] }, $f, $rest) }.asTerm)))))) } } }
+              '{ Cont.foldIn[R, xt, btp, rt](${ q2.asExprOf[Iterable[xt]] }.toList.reverse, ${ z2.asExprOf[btp] }, $f, $rest) }.asTerm)))))) } } }
         case Apply(Apply(TypeApply(Select(q, "foldLeft"), List(bt)), List(z)), List(fn)) if !mentions(k, q) && !mentions(k, z) =>
           for
             x <- elemOf(q)
             (ps, body) <- lambdaOf(fn) if ps.length == 2 && mentions(k, body)
           yield kont.rt.asType match { case '[rt] => x.asType match { case '[xt] => bt.tpe.asType match { case '[btp] =>
-              val f = step(ps, body, List(bt.tpe, x), bt.tpe).asExprOf[(btp, xt) => Cont.Lazy[btp]]
-              val rest = lam("acc", bt.tpe, kont.rt)(av => feed(kont, av)).asExprOf[btp => Cont.Lazy[rt]]
+              val f = step(ps, body, List(bt.tpe, x), bt.tpe).asExprOf[(btp, xt) => Cont.Lazy[R, btp]]
+              val rest = lam("acc", bt.tpe, kont.rt)(av => feed(kont, av)).asExprOf[btp => Cont.Lazy[R, rt]]
               cps(q, Kont(kont.rt, Some(q2 => cps(z, Kont(kont.rt, Some(z2 =>
-                '{ Cont.foldIn[xt, btp, rt](${ q2.asExprOf[Iterable[xt]] }, ${ z2.asExprOf[btp] }, $f, $rest) }.asTerm)))))) } } }
+                '{ Cont.foldIn[R, xt, btp, rt](${ q2.asExprOf[Iterable[xt]] }, ${ z2.asExprOf[btp] }, $f, $rest) }.asTerm)))))) } } }
         case _ => None
 
     /**
@@ -461,13 +464,13 @@ import scala.quoted.*
         // no host frame. The condition false: the rest after the loop, once, inside the loop function
         case While(c, body) =>
           fresh += 1
-          val lazyT = kont.rt.asType match { case '[r] => TypeRepr.of[Cont.Lazy[r]] }
+          val lazyT = kont.rt.asType match { case '[r] => TypeRepr.of[Cont.Lazy[R, r]] }
           val loop = Symbol.newMethod(Symbol.spliceOwner, s"loop$$$fresh", MethodType(Nil)(_ => Nil, _ => lazyT))
           val again = Apply(Ref(loop), Nil)
           val iteration = cps(c, Kont(kont.rt, Some(c2 =>
             If(c2, cps(body, Kont(kont.rt, Some(_ => again))), feed(kont, '{ () }.asTerm)))))
           val rhs = kont.rt.asType match
-            case '[r] => '{ Cont.later[r](() => ${ iteration.changeOwner(Symbol.spliceOwner).asExprOf[Cont.Lazy[r]] }) }.asTerm
+            case '[r] => '{ Cont.later[R, r](() => ${ iteration.changeOwner(Symbol.spliceOwner).asExprOf[Cont.Lazy[R, r]] }) }.asTerm
           Block(List(DefDef(loop, _ => Some(rhs.changeOwner(loop)))), again)
         case If(c, a, b) =>
           if mentions(k, a) || mentions(k, b) then
@@ -482,21 +485,27 @@ import scala.quoted.*
         case _ => throw Opaque
 
     /** the body as a program over a lazy `k`, or None where the transform cannot read it */
-    def cpsBody(body: Term)(using k: Symbol): Option[Expr[Cont.LazyK[A, S] => Cont.Lazy[R]]] =
+    def cpsBody(body: Term)(using k: Symbol): Option[Expr[Cont.LazyK[A, S] => Cont.Lazy[R, R]]] =
       try
         Some('{ (k2: Cont.LazyK[A, S]) => ${
           lazyK = Some('k2)
-          cps(body, Kont(TypeRepr.of[R], None)).changeOwner(Symbol.spliceOwner).asExprOf[Cont.Lazy[R]] } })
+          cps(body, Kont(TypeRepr.of[R], None)).changeOwner(Symbol.spliceOwner).asExprOf[Cont.Lazy[R, R]] } })
       catch case Opaque => None
 
     // a tail body's types say `S <: R`; searched here, where `S` and `R` are concrete. Not found: the body
     // stays a leaf, which is always right
     lazy val tailEvidence: Option[Expr[S <:< R]] = Expr.summon[S <:< R]
+    // `S` is `R`: the tail body is a value and nothing else, typed by the equality
+    lazy val sameEvidence: Option[Expr[S =:= R]] = Expr.summon[S =:= R]
 
     f.asTerm.underlyingArgument match
       case Lambda(List(p), body) =>
         given Symbol = p.symbol
         rewrite(body) match
+          case Some(v) if eager(v) && sameEvidence.isDefined =>
+            '{ Cont.tailPureSame[A, S, R](${ v.asExprOf[A] })(using ${ sameEvidence.get }) }
+          case Some(v) if sameEvidence.isDefined =>
+            '{ Cont.tailShiftSame[A, S, R](() => ${ v.changeOwner(Symbol.spliceOwner).asExprOf[A] })(using ${ sameEvidence.get }) }
           case Some(v) if eager(v) && tailEvidence.isDefined =>
             '{ Cont.tailPure[A, S, R](${ v.asExprOf[A] })(using ${ tailEvidence.get }) }
           case Some(v) if tailEvidence.isDefined =>
