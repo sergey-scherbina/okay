@@ -1,1 +1,0 @@
-claude session_01RmxvQ3auS82y6atE9q1QmE, 2026-10-03, operator ask ("в Cont много кастов и Any — убрать"): Cont.scala casts down to ONE documented claim — typed Lazy[R]/LazyK[A,S], generic Resumption/Later/Root, ContMacro passes the lazy body a typed k (sprint.d/doing/cont-typed-claim.md)
