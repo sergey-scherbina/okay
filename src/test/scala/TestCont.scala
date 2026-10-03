@@ -140,4 +140,14 @@ class TestCont extends munit.FunSuite {
       assertEquals((Cont.reset(lazily(d)), Cont.reset(strictly(d))), (want, want), s"d = $d")
   }
 
+  // cont-atm: A ! F are plain values to Cont — an answer may be a program, which the effect's own handler runs
+  test("A ! F as answers with answer-type modification: Int ! Reader → String ! Reader, run by Reader.run") {
+    type Rd = Reader % Int
+    val c: Cont[Int, Int ! Rd, String ! Rd] =
+      Cont.shift[Int, Int ! Rd, String ! Rd](k => Reader.ask[Int].flatMap(e => k(e)).map(n => s"n=$n"))
+    val prog: String ! Rd = Cont.run(c.map(_ + 1))(x => Freer.Return(x))
+    // the body asks 5; k(5) is 5 + 1 as a program; the body answers it as text
+    assertEquals(!.run(Reader.run[Int, String, okay.Pure](5)(prog)), "n=6")
+  }
+
 }
