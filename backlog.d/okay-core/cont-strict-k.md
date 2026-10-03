@@ -14,7 +14,8 @@
       Leads: (1) a Cont leaf as one `Cont0` operation (the clause folded
       into it, ~5% of bytes); (2) the macro's lazy road for more shapes
       (closed as cont-stack-layer1-c 2026-10-02), above all PState's
-      function answer (backlog cont-fun-answer) and
+      function answer (its DEPTH answered by cont-fun-answer's `Bounce`
+      loop, 2026-10-03; the strict `k`'s price per call is unchanged) and
       Generate's `put`, re-measured ON THE MACHINE (the 2.8x that kept
       them opaque was the old runner's); (3) contAnswer lost 11% when the
       macro began emitting the program itself (less work, fewer bytes:

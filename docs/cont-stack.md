@@ -95,9 +95,7 @@ argument, under `try`, or in `Try(…)` and `Try`'s `map`/`flatMap`/`fold`/
 `k` the rest would run outside them), in the lambda of a MUTABLE
 collection's traversal (on purpose: the traversal would read the
 collection after the body could have changed it), in a `LazyList`'s lazy
-`map` (it forces no element the program does not ask for), in a lambda (`PState`'s
-`s => k(s)(s2)`: a function answer walked measured 2.8x its direct
-cost, so it is left direct on purpose), `k` passed into Java or an
+`map` (it forces no element the program does not ask for), in a lambda, `k` passed into Java or an
 abstract method, a body passed to `shift` as a value rather than a
 literal — runs direct, and each level is a frame. The
 runner counts the levels the current stack has room for; when the
@@ -106,6 +104,16 @@ parked worker thread with a 1 GB stack — and waits for the answer. No
 exception unwinds anything and nothing runs twice: the frames below
 stay where they are until the answer comes back. Multi-shot bodies
 keep working across the switch.
+
+**A function answer — state passing.** `PState.get` is
+`k => s => k(s)(s)`: the answer is a function, and applying it applies
+the rest inside its own frame, so a chain of n steps is n host frames
+OUTSIDE the machine, where no switch can reach. `PState.get` and `set`
+build their answer as a `PState.Bounce`: it hands back the next function
+and its state instead of applying them, and its `apply` is the loop — a
+million steps on a 128 KB thread, a hundred thousand on Scala.js, at the
+same cost (statePara 1.00x). A state-passing body of your own is written
+the same way, a `Bounce` with `next` and `arg`.
 
 **A helper of your own that calls `k`:** the macro reads only what it can
 see, and a plain `def`'s body is compiled elsewhere. Make the helper

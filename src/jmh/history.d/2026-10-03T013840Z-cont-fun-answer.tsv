@@ -1,0 +1,4 @@
+2026-10-03	d5803374b	quiet	statePara_bounce_pair	67.97	63.66	1.07	HandlerBenchmark.statePara (M=1000 PState get/get/set); get/set as Bounces, the next function and its state answered as a Next pair a step; 597349 vs 549336 B/op (+24 B an operation: the pair); round 1, ref first; DISCARDED shape
+2026-10-03	d5803374b	quiet	statePara_bounce_pair	67.89	63.13	1.08	round 2; DISCARDED shape
+2026-10-03	533c6ee36	quiet	statePara	62.43	62.26	1.00	Bounce.next/arg as two methods, the loop two parameters, no pair; 549328 vs 549336 B/op; round 1, mine first
+2026-10-03	533c6ee36	quiet	statePara	62.78	62.87	1.00	round 2

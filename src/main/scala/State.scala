@@ -255,8 +255,9 @@ object State {
  * is threaded by the answer type, get and set are shifts, and Cont's
  * flatMap already composes the transitions S -> S2 -> S3 (typestate:
  * the compiler enforces the protocol order). Unlike the State effect
- * above, whose handler loop is tail-recursive, running costs a stack
- * frame per operation, and it measures 1.79x slower on the same
+ * above, whose handler loop is tail-recursive, every operation is a
+ * shift (its answer, a function, is applied by a loop — `Bounce`,
+ * cont-fun-answer — so no host frame a step), and it measures 1.79x slower on the same
  * workload (HandlerBenchmark `statePara` 30.39 vs `stateEffect` 16.96
  * us/op, MIN of 3 rounds, JDK 26, 2026-09-30; 1.29x on 2026-09-17,
  * ~1.7x before that — the ratio moves with the JIT's inlining of the
