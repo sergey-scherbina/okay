@@ -1,26 +1,48 @@
 package okay
 
-import okay.Freer.Return
-
 /**
- * HANDLERS AS FRAMES OF THE ONE MACHINE (handle-frames, specs/handle-frames.md).
+ * HANDLERS AS FRAMES OF THE ONE MACHINE (handle-frames, specs/handle-frames.md; on `Delimited` since cont-atm,
+ * specs/cont-atm.md §5).
  *
- * A handler's run is a VALUE (`Run`, a `LambdaFrames.Pending` in a `Delay`) with two faces: its fast fold, and its
+ * A handler's run is a VALUE (`Run`, a `Shift.Pending` in a `Delay`) with two faces: its fast fold, and its
  * FRAME. Forced by anything but a machine, it is the fold; a fold that meets a run nested in it forces that one
  * as a fold too, until `Limit` folds deep, and there as its frame on a machine — inside which every handler is a
  * frame, so nothing nests past it. A running machine steps into a run's frame in its own loop. The host stack is
  * bounded by `Limit`, whatever the program's handler nesting; a composition of handlers stays on the folds.
  *
- * A frame is `ret $ body` with a `Cont0.Handling` for its delimiter; the machine makes an operation the frame
- * takes a `shift0` to it whose body is the clause (Delimited.scala). A handler with a state is parameter
- * passing: the frame answers `S => program`, the clause applies the continuation's answer to the next state,
- * and the frame's answer is applied to the state it started from.
+ * A frame is Shift's `ret $ body` with a `Handling` for its prompt: on the machine a value boundary like any
+ * prompt's, and an operation the frame takes is a capture to it whose body is the clause (Shift's `Steps`). A
+ * handler with a state is parameter passing: the frame answers `S => program`, the clause applies the
+ * continuation's answer to the next state, and the frame's answer is applied to the state it started from.
  *
- * THE CLAIM this file makes, once per form: a program of the handled row `F + G` is a program of `G` on the
- * machine, at the same erasure — every operation of `F` in it is taken by the frame before it could leave.
+ * THE CLAIM this file makes, once per form (`framed`): a program of the handled row `F + G` is a program of
+ * `Shift % ? + G` on the machine, at the same erasure — every operation of `F` in it is taken by the frame
+ * before it could leave. And a program of `G` is one of `Shift % ? + G` (`widened`: rows are invariant).
  */
 // public: the inline handler forms expand into every caller's code and reach it from there
 object HandleFrames:
+
+  /**
+   * A HANDLER'S PROMPT: the frame `ret $ body` of a handler that runs on the machine. It says which operations are
+   * its own; for one of them the machine makes the operation a capture to this frame whose body is `clause` — `k`
+   * the continuation up to and including the frame, so a resumption re-installs it (a deep handler). Erased: the
+   * form that makes it knows its types and makes the claim.
+   */
+  abstract class Handling[Y](name: String) extends Prompt[Y](name, "handler"):
+    def takes(op: Any): Boolean
+    /** a program of `Y` in the frame's row; `k(v)` one too */
+    def clause(op: Any, k: Any => Any): Any
+
+  /**
+   * A CATCH FRAME'S PROMPT (handle-frames-catch): `ret $ body` with a `try` around everything the body runs, kept
+   * as DATA on the machine's stack — so a body nested a hundred thousand deep holds no host `try` per level. A run
+   * that installs one calls user code under a `try` from then on (`Delimited.guarding`); a throw goes to the
+   * nearest catch frame, the frames above it dropped as a throw drops them — or, none taking it, is thrown on.
+   */
+  trait Catching:
+    self: Prompt[?] =>
+    /** the frame's answer for `t` — a program at its row — or null: not this frame's */
+    def caught(t: Throwable): Any
 
   /**
    * THE STATE FRAME, for every loop that threads a state (handle-frames-loops): from state `s0` over `x`,
@@ -47,28 +69,22 @@ object HandleFrames:
   def statefulAll[S, A, R, G[+_], H[+_]](takes0: Any => Boolean, ret: (S, A) => R ! G, onThrow: ((S, Throwable) => R ! G) | Null)
                                         (step: (S, Any, (S, Any) => R ! G) => R ! G)(s0: S, x: A ! H): Shift.U[G, R] =
     type Ans = S => Shift.U[G, R]
-    val frame: Cont0.Handling[Ans] =
-      if onThrow == null then new Cont0.Handling[Ans]("state"):
+    val frame: Handling[Ans] =
+      if onThrow == null then new Handling[Ans]("state"):
         def takes(op: Any): Boolean = takes0(op)
-        def clause(op: Any, k: Any => Any): Any =
-          Return[Shift.Ro[G], Unit, Ans]((s: S) => HandleFrames.clauseAt[S, R, G](step, s, op, k))
+        def clause(op: Any, k: Any => Any): Any = pure[Shift % ? + G, Ans]((s: S) => clauseAt[S, R, G](step, s, op, k))
       else
         val thrown = onThrow
-        new Cont0.Handling[Ans]("state") with Cont0.Catching:
+        new Handling[Ans]("state") with Catching:
           def takes(op: Any): Boolean = takes0(op)
-          def clause(op: Any, k: Any => Any): Any =
-            Return[Shift.Ro[G], Unit, Ans]((s: S) => HandleFrames.clauseAt[S, R, G](step, s, op, k))
-          def caught(t: Throwable): Any =
-            Return[Shift.Ro[G], Unit, Ans]((s: S) => thrown(s, t).asInstanceOf[Shift.U[G, R]])
-    val back: A => Shift.U[G, Ans] = a => Return[Shift.Ro[G], Unit, Ans]((s: S) => ret(s, a).asInstanceOf[Shift.U[G, R]])
-    Freer.Inject[Shift.Ro[G], Unit, Unit, Ans](Cont0.Dollar0[Freer.Lift[G], Ans, A, Unit, Unit](
-      Cont0.delimiter[Ans, Unit](frame), back, x.asInstanceOf[Shift.U[G, A]]))
-      .flatMap(g => g(s0))
+          def clause(op: Any, k: Any => Any): Any = pure[Shift % ? + G, Ans]((s: S) => clauseAt[S, R, G](step, s, op, k))
+          def caught(t: Throwable): Any = pure[Shift % ? + G, Ans]((s: S) => widened(thrown(s, t)))
+    val back: A => Shift.U[G, Ans] = a => pure[Shift % ? + G, Ans]((s: S) => widened(ret(s, a)))
+    Shift.dollar[A, Ans, G](frame)(back)(framed[A, H, G](x)).flatMap(g => g(s0))
 
   /** the clause with `resume` made of the frame's continuation: `k(v)` answers `S => program`, applied to `s2` */
   private def clauseAt[S, R, G[+_]](step: (S, Any, (S, Any) => R ! G) => R ! G, s: S, op: Any, k: Any => Any): Shift.U[G, R] =
-    step(s, op, (s2, v) => k(v).asInstanceOf[Shift.U[G, S => Shift.U[G, R]]].flatMap(g => g(s2)).asInstanceOf[R ! G])
-      .asInstanceOf[Shift.U[G, R]]
+    widened(step(s, op, (s2, v) => answered[S => Shift.U[G, R], G](k(v)).flatMap(g => g(s2)).asInstanceOf[R ! G]))
 
   /** the state form (`Handler.stateOf`) as a frame from state `s0` over `x` */
   def state[F[+_], S, A, G[+_]](f: [X] => (S, F[X]) => (S, X), t: TypeableK[F])(s0: S, x: A ! F + G): Shift.U[G, (S, A)] =
@@ -78,10 +94,9 @@ object HandleFrames:
 
   /** a `try` as a frame (handle-frames-catch): `h` answers a throw from anything `x` runs, `x` built under it too */
   def catching[A, G[+_]](h: Throwable => A ! G)(x: => A ! G): Shift.U[G, A] =
-    val frame = new Prompt[A]("try", "catch") with Cont0.Catching:
-      def caught(t: Throwable): Any = h(t)
-    Freer.Inject[Shift.Ro[G], Unit, Unit, A](Cont0.Dollar0[Freer.Lift[G], A, A, Unit, Unit](
-      Cont0.delimiter[A, Unit](frame), (a: A) => Return[Shift.Ro[G], Unit, A](a), Free.delay(() => x).asInstanceOf[Shift.U[G, A]]))
+    val frame = new Prompt[A]("try", "catch") with Catching:
+      def caught(t: Throwable): Any = widened(h(t))
+    Shift.dollar[A, A, G](frame)(a => pure(a))(Free.delay(() => widened(x)))
 
   /**
    * a frame whose clause gets the operation and its continuation as a function to programs of `G` — for a handler
@@ -90,23 +105,29 @@ object HandleFrames:
    */
   def handling[A, B, G[+_]](name: String, takes0: Any => Boolean, ret: A => B ! G)
                            (clause0: (Any, Any => B ! G) => B ! G)(x: Any): Shift.U[G, B] =
-    val frame = new Cont0.Handling[B](name):
+    val frame = new Handling[B](name):
       def takes(op: Any): Boolean = takes0(op)
-      def clause(op: Any, k: Any => Any): Any = clause0(op, k.asInstanceOf[Any => B ! G])
-    Freer.Inject[Shift.Ro[G], Unit, Unit, B](Cont0.Dollar0[Freer.Lift[G], B, A, Unit, Unit](
-      Cont0.delimiter[B, Unit](frame), ret.asInstanceOf[A => Shift.U[G, B]], x.asInstanceOf[Shift.U[G, A]]))
+      def clause(op: Any, k: Any => Any): Any = widened(clause0(op, k.asInstanceOf[Any => B ! G]))
+    Shift.dollar[A, B, G](frame)(a => widened(ret(a)))(answered[A, G](x))
 
   /** the control form (`Effects[Free].handle`, `Handler.control`) as a frame over `x`: the clause gets `k` */
   def control[F[+_], A, B, G[+_]](ret: A => Free[G, B], h: F !> Free[G, B], t: TypeableK[F])(x: Free[F + G, A]): Shift.U[G, B] =
-    val frame = new Cont0.Handling[B]("handle"):
+    val frame = new Handling[B]("handle"):
       def takes(op: Any): Boolean = t.test(op)
-      def clause(op: Any, k: Any => Any): Any = h(op.asInstanceOf[F[Any]]) / k.asInstanceOf[Any => Free[G, B]]
-    Freer.Inject[Shift.Ro[G], Unit, Unit, B](Cont0.Dollar0[Freer.Lift[G], B, A, Unit, Unit](
-      Cont0.delimiter[B, Unit](frame), ret.asInstanceOf[A => Shift.U[G, B]], x.asInstanceOf[Shift.U[G, A]]))
+      def clause(op: Any, k: Any => Any): Any = widened(h(op.asInstanceOf[F[Any]]) / k.asInstanceOf[Any => Free[G, B]])
+    Shift.dollar[A, B, G](frame)(a => widened(ret(a)))(framed[A, F + G, G](x))
 
   /** a frame program as a value: stepped into by a running machine, else run on a machine of its own */
   def pending[B, G[+_]](program: Shift.U[G, B]): B ! G =
-    Free.delay(LambdaDollar.machine[Freer.Lift[G]].owned[Unit, Unit, B, B ! G](program)(Shift.residual[B, G]))
+    Free.delay(Shift.nestedRun[B, G](program))
+
+  // THE CLAIMS, made here and nowhere else (see the header)
+  /** a program of the handled row is one of the frame's row: the frame takes what is not `G`'s */
+  private def framed[A, H[+_], G[+_]](x: A ! H): Shift.U[G, A] = x.asInstanceOf[Shift.U[G, A]]
+  /** a program of `G` is one of `Shift % ? + G` (a row coercion: rows are invariant) */
+  private def widened[A, G[+_]](x: A ! G): Shift.U[G, A] = x.asInstanceOf[Shift.U[G, A]]
+  /** what a frame's `k` answers: a program of the frame's answer, in its row */
+  private def answered[A, G[+_]](x: Any): Shift.U[G, A] = x.asInstanceOf[Shift.U[G, A]]
 
   /**
    * HOW DEEP FOLDS NEST (handle-frames-loops, measured): a fold that meets a nested run FORCES it — the nested
@@ -123,7 +144,7 @@ object HandleFrames:
    * a handler's run as ONE object (stateSmall: a holder of two closures was four allocations a run,
    * 1.55x on 100 small runs): `at(depth)` its fold, entered `depth` folds deep; `program` its frame
    */
-  abstract class Run[B, G[+_]] extends LambdaFrames.Pending[Freer.Lift[G], Unit, Unit, B, B ! G]:
+  abstract class Run[B, G[+_]] extends Shift.Pending[B, G]:
     def at(depth: Int): B ! G
     final def apply(): B ! G = at(0)
 
@@ -136,7 +157,7 @@ object HandleFrames:
 
   /**
    * the nested run at the head of `y` (a `Delay`, alone or under its `Bind`) FORCED, for a fold `depth` deep: as
-   * its fold below the `Limit`, as its frame on a machine at it. A machine run (`Own`) is forced as it is.
+   * its fold below the `Limit`, as its frame on a machine at it. Any other run is forced as it is.
    */
   def shallow[A, H[+_]](y: A ! H, depth: Int): A ! H = y match
     case Freer.Delay(t) => forced[A, H](t, depth)
@@ -147,6 +168,5 @@ object HandleFrames:
   private def forced[A, H[+_]](t: () => Any, depth: Int): A ! H = t match
     case r: Run[?, ?] =>
       if depth < Limit then r.at(depth + 1).asInstanceOf[A ! H]
-      else LambdaDollar.machine[Freer.Lift[H]].owned[Unit, Unit, A, A ! H](r.program.asInstanceOf[Shift.U[H, A]])(
-        Shift.residual[A, H])()
+      else Shift.nestedRun[A, H](r.program.asInstanceOf[Shift.U[H, A]])()
     case o => o().asInstanceOf[A ! H]

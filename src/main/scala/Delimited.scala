@@ -62,6 +62,13 @@ trait Delimited[G[_, _, +_]]:
   /** the nearest boundary as an ANSWER boundary, the segment up to it closed by it: null when it is not one */
   def closed[A, B, S, T, R, Z](k: Frames[G, A, B, S, T], m: Stack[G, B, S, R, Z]): Closed[G, A, T, R, Z] | Null
 
+  /** the nearest BOUNDARY whose mark `is` holds for, walking the boundaries only, never a frame; null when none */
+  def holds[B, S, R, Z](m: Stack[G, B, S, R, Z], is: Mark => Boolean): Mark | Null
+
+  /** from now on this run calls user code under a `try`, and a throw goes to the step's `thrown` (a catch frame
+   * was installed): until then a run pays nothing for exceptions */
+  def guarding(): Unit
+
 /**
  * A STEP: what the machine does with one of effect `G`'s operations in a program over the row `H` — given the
  * segment up to the nearest boundary and the stack under it, the next state, built with the machine's
@@ -71,6 +78,11 @@ trait Delimited[G[_, _, +_]]:
 trait Step[G[_, _, +_], H[_, _, +_]]:
   def step[A, B, S, T, R, Z](op: G[T, R, A], k: Frames[H, A, B, S, T], m: Stack[H, B, S, R, Z],
                              machine: Delimited[H]): Delimited.Next[H, Z]
+
+  /** a throw from user code at segment `k` and stack `m`, in a run that is `guarding`: the next state, or null —
+   * nobody here takes it, and it is thrown on */
+  def thrown[A, B, S, T, R, Z](t: Throwable, k: Frames[H, A, B, S, T], m: Stack[H, B, S, R, Z],
+                               machine: Delimited[H]): Delimited.Next[H, Z] | Null = null
 
 /** a SEGMENT, `A => Freer[G, S, R, B]` as data: frames joined as `Bind` joins them, and transparent marks.
  * Contravariant in `A`: it consumes a value. */
@@ -120,9 +132,9 @@ object Delimited:
 
   /** what a machine for a `Free` row needs told by the effect running the row */
   trait Outer[H[+_], F[+_]]:
-    /** `op` as an operation of the effects outside, or null when this machine answers it; `here(is)` says
-     * whether a mark `is` holds for stands on the machine's stack */
-    def apply[X](op: H[X], here: (Mark => Boolean) => Boolean): F[X] | Null
+    /** `op` as an operation of the effects outside, or null when this machine answers it — which may depend on
+     * the boundaries on its stack `m` (`machine.holds`) */
+    def apply[X, B, S, R, Z](op: H[X], m: Stack[Freer.Lift[H], B, S, R, Z], machine: Delimited[Freer.Lift[H]]): F[X] | Null
     /** an operation sent out stands at one index: in a `Free` row every node does */
     def diagonal[T, R]: T =:= R
     /** a deferred run of this row this machine steps into rather than forces (a nested run): its program, or null */
@@ -137,6 +149,14 @@ object Delimited:
 
   /** an answer boundary's mark, with `T` the answer of its level */
   trait Tag[T] extends Mark
+
+  /**
+   * a throw from user code, as the program a guarded call answers instead (`guarding`): a `Delay` of this. The
+   * machine hands it to its step's `thrown`; anything else that forces it throws it again, the same object — so
+   * it is a correct program everywhere, and typed at any answer with no claim (`() => Nothing`)
+   */
+  final class Thrown(val t: Throwable) extends (() => Nothing):
+    def apply(): Nothing = throw t
 
   /** the machine's state, which a step answers: a program, its segment, the stack under it */
   sealed abstract class Next[G[_, _, +_], Z]:
@@ -184,6 +204,17 @@ object Delimited:
   /** the primitives over `Frames` and `Stack`, shared by every machine, and its room for nested runs */
   abstract class Core[G[_, _, +_]] extends Delimited[G]:
     private var room: Int = StackSwitch.firstRoom
+
+    /** user code runs under a `try` (`guarding`) */
+    @scala.annotation.publicInBinary protected var guarded: Boolean = false
+    def guarding(): Unit = guarded = true
+
+    /** a call of user code: under a `try` once the run is `guarding`, a throw answered as a `Thrown` program */
+    protected final inline def call[T, R, A](inline body: Freer[G, T, R, A]): Freer[G, T, R, A] =
+      if !guarded then body
+      else
+        try body
+        catch case t: Throwable => Delay(Thrown(t))
 
     /** `body` one level deeper, on a fresh stack when there is no room left here (`StackSwitch`) */
     protected final def deeper[X](body: => X): X =
@@ -257,6 +288,11 @@ object Delimited:
                                                     m: Stack[G, B, S, R, Z], a: A0): Next[G, Z] = piece match
       case Piece.Nil() => next(Return(a), k, m)
       case Piece.Snoc(prev, kk, tag) => link(prev, kk, Stack.Delim(tag, k, m), a)
+
+    @tailrec final def holds[B, S, R, Z](m: Stack[G, B, S, R, Z], is: Mark => Boolean): Mark | Null = m match
+      case Stack.Delim(tag, _, rest) => if tag != null && is(tag) then tag else holds(rest, is)
+      case Stack.Bound(tag, _, rest) => if tag != null && is(tag) then tag else holds(rest, is)
+      case _ => null
 
     def closed[A, B, S, T, R, Z](k: Frames[G, A, B, S, T], m: Stack[G, B, S, R, Z]): Closed[G, A, T, R, Z] | Null = m match
       case Stack.Bound(tag, out, rest) => closedBy(k, tag, out, rest)
@@ -374,7 +410,7 @@ object Delimited:
     @tailrec private def go[A, B, S, T, R, Z](c: Freer[L, T, R, A], k: Frames[L, A, B, S, T], m: Stack[L, B, S, R, Z]): Free[F, Z] =
       c match
         case Return(a) => k match
-          case Frames.Frame(f, k2) => go(f(a), k2, m)
+          case Frames.Frame(f, k2) => go(call(f(a)), k2, m)
           case Frames.Marked(_, k2) => go(Return(a), k2, m)
           case Frames.End() => m match
             case Stack.Done() => Return(a)
@@ -382,12 +418,21 @@ object Delimited:
             case Stack.Delim(_, out, rest) => go(Return(a), out, rest)
             case Stack.Bound(_, out, rest) => go(Return(a), out, rest)
         case Bind(c0, f) => go(c0, Frames.Frame(f, k), m)
-        case Delay(t) => outer.enter(t) match
-          case null => go(t(), k, m)
-          case inner => go(inner, end[A, T], Stack.Delim(outer.barrier(t), k, m))
-        case Inject(op) => outer(op, is => find(k, m, is) != null) match
+        case Delay(t) => t match
+          case th: Thrown =>
+            val n = steps.thrown(th.t, k, m, this)
+            if n == null then throw th.t
+            go(n.c, n.k, n.m)
+          case _ => outer.enter(t) match
+            case null => go(call(t()), k, m)
+            case inner => go(inner, end[A, T], Stack.Delim(outer.barrier(t), k, m))
+        case Inject(op) => outer(op, m, this) match
           case null =>
-            val n = steps.step(op, k, m, this)
+            val n =
+              if !guarded then steps.step(op, k, m, this)
+              else
+                try steps.step(op, k, m, this)
+                catch case t: Throwable => next(Delay(Thrown(t)), k, m)
             go(n.c, n.k, n.m)
           case o => forward(o.nn, k, outer.diagonal[R, T].substituteCo[[r] =>> Stack[L, B, S, r, Z]](m))
         case Diag(op) => go(Inject(op), k, m)

@@ -48,8 +48,7 @@ object Reset:
 
 /** a delimiter's name: answer type `R`, identity by allocation, labelled for diagnostics. On the machine
  * (`Delimited`) a prompt in force is two value boundaries — this marks its opening — and its closing (`close`),
- * with a `ret` between them */
-/** open for one subclass, a handler frame's delimiter (`Cont0.Handling`, handle-frames) */
+ * with a `ret` between them. Open for a handler frame's delimiter (`HandleFrames.Handling`, `Catching`) */
 class Prompt[R](val what: String, val where: String) extends Delimited.Mark:
   /** `what @ where`, joined only when asked */
   def label: String = s"$what @ $where"
@@ -105,13 +104,8 @@ object Shift {
   private def named[R](what: String)(using at: At): Prompt[R] =
     new Prompt[R](what, at.where)
 
-  /** the row the machine runs a `Shift % ? + F` program in, and its programs */
-  type Ro[F[+_]] = Cont0.Row[Freer.Lift[F]]
-  type U[F[+_], A] = Freer[Ro[F], Unit, Unit, A]
-
-  /** THE DOORS' CLAIM: a `Shift % ? + F` program is a `U[F, A]` at the same erasure (only the machine reads `Cont0`) */
-  private[okay] def in[F[+_], A](p: A ! Shift % ? + F): U[F, A] = p.asInstanceOf[U[F, A]]
-  private[okay] def out[F[+_], A](p: U[F, A]): A ! Shift % ? + F = p.asInstanceOf[A ! Shift % ? + F]
+  /** a program the machine runs: a handler frame's (`HandleFrames`) as much as a prompt's */
+  type U[F[+_], A] = A ! Shift % ? + F
 
   /** `reset` at `p` */
   def push[R, F[+_]](p: Prompt[R])(body: R ! Shift % ? + F): R ! Shift % ? + F =
@@ -169,19 +163,68 @@ object Shift {
    */
   private def claim[X](x: Any): X = x.asInstanceOf[X]
 
-  /** a nested run's value boundary: no capture crosses it */
+  /** a nested run's value boundary: no capture crosses it (a handler's operation and a throw do) */
   private object Barrier extends Delimited.Mark
 
-  /** a run of a `Shift % ? + F` program, as a value: forced by whoever holds it, stepped into by a machine for the
-   * row already running (`Out.enter`), so nesting costs no host frames */
-  private final class Nested[R, F[+_]](val program: R ! Shift % ? + F, val nested: Boolean) extends (() => R ! F):
-    def apply(): R ! F = Delimited.over[Shift % ? + F, F](Steps[F](), Out[F](nested)).value(program)
+  /**
+   * A RUN AS A VALUE: a `Delay`'s thunk, forced by whoever holds it, STEPPED INTO by a machine for the row already
+   * running (`Steps.enter`) — so a run nested in a run, a reset in a reset or a handler in a handler, is one loop and
+   * not a host frame. `Nested` is Shift's own; a handler's run (`HandleFrames.Run`) is the other.
+   */
+  abstract class Pending[R, F[+_]] extends (() => R ! F), Freer.Suspended:
+    def program: R ! Shift % ? + F
 
-  /** what each operation does, for a row `Shift % ? + F`: a prompt in force is two value boundaries, its opening
-   * and its closing, with `ret` between them */
-  private final class Steps[F[+_]] extends Step[Freer.Lift[Shift % ? + F], Freer.Lift[Shift % ? + F]]:
+  /** a run of a `Shift % ? + F` program: `nested` — no barrier, a capture with no delimiter here goes out */
+  private final class Nested[R, F[+_]](val program: R ! Shift % ? + F, val nested: Boolean) extends Pending[R, F]:
+    def apply(): R ! F =
+      val s = Steps[F](nested)
+      Delimited.over[Shift % ? + F, F](s, s).value(program)
+
+  /**
+   * what each operation does, for a row `Shift % ? + F`, and which leave the machine. A prompt in force is two
+   * value boundaries, its opening and its closing, with `ret` between them; a HANDLER FRAME is one too
+   * (`HandleFrames.Handling`), and an operation of `F` it takes is a capture to it whose body is its clause — `k`
+   * putting the frame back (a deep handler). A CATCH FRAME (`HandleFrames.Catching`) answers a throw in its place.
+   */
+  private final class Steps[F[+_]](nested: Boolean)
+    extends Step[Freer.Lift[Shift % ? + F], Freer.Lift[Shift % ? + F]], Delimited.Outer[Shift % ? + F, F]:
     private type L[S, R, A] = Freer.Lift[Shift % ? + F][S, R, A]
     private type U = Unit
+
+    /** a handler frame was installed in this run: until then an operation of `F` leaves without a look */
+    private var framed = false
+    /** the frame `apply` found for the operation it kept, for `step` to cut to */
+    private var taker: HandleFrames.Handling[?] | Null = null
+
+    // ---- Outer: which operations leave
+
+    def apply[X, B, S, R, Z](op: (Shift % ? + F)[X], m: Stack[L, B, S, R, Z], machine: Delimited[L]): F[X] | Null = op match
+      // an installation and a resumption are always this machine's: they put a prompt on, not look for one
+      case _: Dollar[?, ?, ?, ?] | _: Resume[?, ?, ?, ?] => null
+      case s: Shift[?, ?] =>
+        val p = promptOf(s)
+        if nested && p != null && machine.holds(m, _ eq p) == null then claim[F[X]](op) else null
+      case _ =>
+        if !framed then claim[F[X]](op)
+        else machine.holds(m, takes(op)) match
+          case h: HandleFrames.Handling[?] => taker = h; null
+          case _ => claim[F[X]](op)
+
+    private def takes(op: Any): Delimited.Mark => Boolean =
+      case h: HandleFrames.Handling[?] => h.takes(op)
+      case _ => false
+
+    def diagonal[T, R]: T =:= R = claim[T =:= R](summon[T =:= T])
+
+    def enter[T, R, A](t: () => Freer[L, T, R, A]): Freer[L, T, R, A] | Null = t match
+      case p: Pending[?, ?] => claim[Freer[L, T, R, A]](p.program)
+      case _ => null
+
+    def barrier(t: () => Any): Delimited.Mark | Null = t match
+      case n: Nested[?, ?] if !n.nested => Barrier
+      case _ => null
+
+    // ---- Step: what the machine does with them
 
     def step[A, B, S, T, R, Z](op: L[T, R, A], k: Frames[L, A, B, S, T], m: Stack[L, B, S, R, Z],
                                machine: Delimited[L]): Delimited.Next[L, Z] =
@@ -190,19 +233,58 @@ object Shift {
     private def at[A, B, Z](op: (Shift % ? + F)[A], k: Frames[L, A, B, U, U], m: Stack[L, B, U, U, Z],
                             machine: Delimited[L]): Delimited.Next[L, Z] = op match
       case d: Dollar[?, r0, r, ?] =>
+        d.p match
+          case _: HandleFrames.Handling[?] => framed = true
+          case _ => ()
+        d.p match
+          case _: HandleFrames.Catching => machine.guarding()
+          case _ => ()
         val ret = claim[r0 => Freer[L, U, U, r]](d.ret)
         val outside = machine.delim(d.p.close, claim[Frames[L, r, B, U, U]](k), m)
         machine.next(claim[Freer[L, U, U, r0]](d.body), machine.end[r0, U], machine.delim(d.p, machine.frame(ret, machine.end[r, U]), outside))
       case s: Shift0[?, a, r, ?] =>
-        val c: Cut[a, r, Z] = cut(s.p, s.at, claim[Frames[L, a, B, U, U]](k), m, machine)
+        val c = claim[Cut[a, r, Z]](cutOrFail(s.p, s.at, k, m, machine))
         val body = claim[(a => Freer[L, U, U, r]) => Freer[L, U, U, r]](s.body)
         machine.next(body(x => resumption[a, r](s.p, c.piece, x)), c.out, c.rest)
       case ab: Abort[?, a, r] =>
-        val c: Cut[a, r, Z] = cut(ab.p, ab.at, claim[Frames[L, a, B, U, U]](k), m, machine)
+        val c = claim[Cut[a, r, Z]](cutOrFail(ab.p, ab.at, k, m, machine))
         machine.next(Freer.Return[L, U, r](ab.value), c.out, c.rest)
       case rs: Resume[?, a, r, ?] =>
         machine.reinstall(claim[Delimited.Piece[L, a, U, r, U]](rs.k), rs.a, claim[Frames[L, r, B, U, U]](k), m)
-      case _ => throw IllegalStateException("an operation of another effect reached Shift's steps")
+      // an operation of `F` a frame takes (`apply` kept it): a capture to the frame, the clause its body
+      case _ =>
+        val h = taker.nn
+        taker = null
+        handled(h, op, cut(k, m, _ eq h, never, machine).nn, machine)
+
+    /** the clause of frame `h` for `op` in the frame's place, `k` resuming the piece cut to it */
+    private def handled[A, Y, Z](h: HandleFrames.Handling[Y], op: Any, c: Cut[A, Any, Z], machine: Delimited[L]): Delimited.Next[L, Z] =
+      val piece = claim[Delimited.Piece[L, Any, U, Y, U]](c.piece)
+      machine.next(claim[Freer[L, U, U, Any]](h.clause(op, x => resumption[Any, Y](h, piece, x))), c.out, c.rest)
+
+    /** a throw: the nearest catch frame answers it in its place, the frames above it dropped; one that declines
+     * (null) or throws passes it, or what it threw, to the frames below; none takes it — thrown on */
+    override def thrown[A, B, S, T, R, Z](t: Throwable, k: Frames[L, A, B, S, T], m: Stack[L, B, S, R, Z],
+                                          machine: Delimited[L]): Delimited.Next[L, Z] | Null =
+      catchFrom(t, claim[Frames[L, A, B, U, U]](k), claim[Stack[L, B, U, U, Z]](m), machine)
+
+    @scala.annotation.tailrec
+    private def catchFrom[A, B, Z](t: Throwable, k: Frames[L, A, B, U, U], m: Stack[L, B, U, U, Z],
+                                   machine: Delimited[L]): Delimited.Next[L, Z] | Null =
+      cut(k, m, catches, never, machine) match
+        case null => null
+        case c => answerOf(c.tag, t) match
+          case null => catchFrom(t, c.out, c.rest, machine)
+          case again: Delimited.Thrown => catchFrom(again.t, c.out, c.rest, machine)
+          case p => machine.next(claim[Freer[L, U, U, Any]](p), c.out, c.rest)
+
+    /** the catch frame's answer for `t`: a program, null (not its throw), or what its handler threw */
+    private def answerOf(tag: Delimited.Mark, t: Throwable): Any = tag match
+      case h: HandleFrames.Catching => try h.caught(t) catch case t2: Throwable => Delimited.Thrown(t2)
+      case _ => null
+
+    private val catches: Delimited.Mark => Boolean = _.isInstanceOf[HandleFrames.Catching]
+    private val never: Delimited.Mark => Boolean = _ => false
 
     /**
      * `k(x)` as a program that stands on its own: a deferred run of the resumption. A machine for the row already
@@ -213,20 +295,27 @@ object Shift {
     private def resumption[A, R](p: Prompt[R], piece: Delimited.Piece[L, A, U, R, U], x: A): Freer[L, U, U, R] =
       claim[Freer[L, U, U, R]](Free.delay(Nested[R, F](op[R, F](Resume[Any, A, R, F](p, piece, x)), nested = true)))
 
-    /** a capture to `p`: the piece up to and including its closing (its opening and `ret` taken along), and what
-     * lies under the closing */
-    private final class Cut[A, R, Z](val piece: Delimited.Piece[L, A, U, R, U], val out: Frames[L, R, Any, U, U],
-                                     val rest: Stack[L, Any, U, U, Z])
+    /** a capture to a prompt: the piece up to and including its closing (its opening and `ret` taken along), and
+     * what lies under the closing */
+    private final class Cut[A, R, Z](val tag: Delimited.Mark, val piece: Delimited.Piece[L, A, U, R, U],
+                                     val out: Frames[L, R, Any, U, U], val rest: Stack[L, Any, U, U, Z])
 
-    private def cut[A, R, B, Z](p: Prompt[R], from: String, k: Frames[L, A, B, U, U], m: Stack[L, B, U, U, Z],
-                                machine: Delimited[L]): Cut[A, R, Z] =
-      machine.cut(k, m, _ eq p, _ eq Barrier) match
+    private def cutOrFail[A, B, Z](p: Prompt[?], from: String, k: Frames[L, A, B, U, U], m: Stack[L, B, U, U, Z],
+                                   machine: Delimited[L]): Cut[A, Any, Z] =
+      cut(k, m, _ eq p, _ eq Barrier, machine) match
         case null => throw NoPrompt(from, p.label, installed(m))
-        case open => open.rest match
-          case Stack.Delim(close, out, rest) if close eq p.close =>
+        case c => c
+
+    /** to the nearest prompt `is` holds for, `stop` before a barrier it holds for; null when none */
+    private def cut[A, B, Z](k: Frames[L, A, B, U, U], m: Stack[L, B, U, U, Z], is: Delimited.Mark => Boolean,
+                             stop: Delimited.Mark => Boolean, machine: Delimited[L]): Cut[A, Any, Z] | Null =
+      machine.cut(k, m, is, stop) match
+        case null => null
+        case open => (open.tag, open.rest) match
+          case (p: Prompt[?], Stack.Delim(close, out, rest)) if close eq p.close =>
             val piece = Delimited.Piece.Snoc(open.piece, open.out, close)
-            Cut(claim[Delimited.Piece[L, A, U, R, U]](piece), claim[Frames[L, R, Any, U, U]](out), claim[Stack[L, Any, U, U, Z]](rest))
-          case _ => throw IllegalStateException(s"prompt ${p.label} opened and never closed")
+            Cut(p, claim[Delimited.Piece[L, A, U, Any, U]](piece), claim[Frames[L, Any, Any, U, U]](out), claim[Stack[L, Any, U, U, Z]](rest))
+          case _ => throw IllegalStateException(s"prompt ${open.tag} opened and never closed")
 
     /** the prompts on the machine's stack, innermost first, for `NoPrompt` */
     private def installed[B, Z](m: Stack[L, B, U, U, Z]): List[String] =
@@ -242,25 +331,6 @@ object Shift {
           case _ => ()
         if !(tag eq Barrier) then labels(rest, see)
       case _ => ()
-
-  /** which operations of `Shift % ? + F` leave the machine: `F`'s; and, for a nested run, a capture to a prompt
-   * this machine has not installed, for the machine outside */
-  private final class Out[F[+_]](nested: Boolean) extends Delimited.Outer[Shift % ? + F, F]:
-    def apply[X](op: (Shift % ? + F)[X], here: (Delimited.Mark => Boolean) => Boolean): F[X] | Null = op match
-      // a resumption is always this machine's: it puts its prompt back rather than looking for it
-      case _: Resume[?, ?, ?, ?] => null
-      case s: Shift[?, ?] =>
-        val p = promptOf(s)
-        if nested && p != null && !here(_ eq p) then claim[F[X]](op) else null
-      case _ => claim[F[X]](op)
-    def diagonal[T, R]: T =:= R = claim[T =:= R](summon[T =:= T])
-    def enter[T, R, A](t: () => Freer[Freer.Lift[Shift % ? + F], T, R, A]): Freer[Freer.Lift[Shift % ? + F], T, R, A] | Null =
-      t match
-        case n: Nested[?, ?] => claim[Freer[Freer.Lift[Shift % ? + F], T, R, A]](n.program)
-        case _ => null
-    def barrier(t: () => Any): Delimited.Mark | Null = t match
-      case n: Nested[?, ?] if !n.nested => Barrier
-      case _ => null
 
   /** a fresh prompt, a block under it, run */
   def reset[R, F[+_]](body: Prompt[R] => R ! Shift % ? + F)
@@ -372,7 +442,7 @@ object Shift {
     given evidence[R0, K0[+_], F0[+_], P <: Prompted.Aux[R0, K0, F0]]: RowFor.Aux[P, K0 + F0] =
       RowFor.at[P, K0 + F0]
 
-  /** a capture to `in`'s delimiter typed at the row `r` chose: the same `Cont0` operation at the same
+  /** a capture to `in`'s delimiter typed at the row `r` chose: the same operation at the same
    * erasure, which only the machine reads — the claim `asRow` makes, made for the chosen row */
   private def atRow[A, P <: Prompted[?]](q: A ! Shift % ? + Pure)(using r: RowFor[P]): A ! r.R = q.asInstanceOf[A ! r.R]
 
@@ -582,6 +652,9 @@ object Shift {
   def runNested[R, F[+_]](prog: R ! Shift % ? + F)(using Row.In[Shift % ?, F]): R ! F =
     Free.delay(Nested[R, F](prog, nested = true))
 
+  /** a run with no barrier as a value (a handler frame's, `HandleFrames.pending`) */
+  private[okay] def nestedRun[R, F[+_]](prog: R ! Shift % ? + F): Pending[R, F] = Nested[R, F](prog, nested = true)
+
   /** drop the continuation and answer `value` at `p` */
   def abort[R, A, F[+_]](p: Prompt[R])(value: R)(using at: At): A ! Shift % ? + F =
     op[A, F](Abort[Any, A, R](p, value, at.where))
@@ -589,9 +662,6 @@ object Shift {
   /** on the machine: a capture with no delimiter is `NoPrompt`. A value, run by whoever forces it */
   private[okay] def bounded[R, F[+_]](prog: R ! Shift % ? + F): R ! F =
     Free.delay(Nested[R, F](prog, nested = false))
-
-  /** the head form as the residual program */
-  private[okay] def residual[R, F[+_]](head: U[F, R]): R ! F = head.asInstanceOf[R ! F]
 
   /**
    * A DELIMITER YOU NAME, ITS KEY ITS OWN TYPE (shift-prompt-key, specs/shift-merge.md stage 3): `reset` hands
@@ -659,13 +729,13 @@ object Shift {
    * value in one `flatMap`: rows are invariant, so this is the written row coercion (widen-is-a-coercion) */
   def dynamic[A, K, F[+_]](p: A ! Shift % K + F): A ! Shift % ? + F = toDyn[A, K, F](p)
 
-  /** a capture built at `Shift % ?` typed at the evidence's key: the same `Cont0` operation at the same
+  /** a capture built at `Shift % ?` typed at the evidence's key: the same operation at the same
    * erasure (only the machine reads it), and the evidence says which delimiter it targets — the claim
    * `toDyn`/`ofDyn` below make, made for a block's evidence */
   private[okay] def asRow[A](in: Prompted[?])(q: A ! Shift % ? + in.F): A ! in.K + in.F = q.asInstanceOf[A ! in.K + in.F]
 
   // THE ONE CLAIM: a `Shift % R` program is a `Shift` program at the same erasure (only the machine reads
-  // `Cont0`), and a capture of answer `R` reaches only the prompt of `R`'s key, where its `k` and body are
+  // its operations), and a capture of answer `R` reaches only the prompt of `R`'s key, where its `k` and body are
   // typed in that `reset`'s row.
   private[okay] def toDyn[A, R, F[+_]](q: A ! Shift % R + F): A ! Shift % ? + F = q.asInstanceOf[A ! Shift % ? + F]
   private[okay] def ofDyn[A, R, F[+_]](q: A ! Shift % ? + F): A ! Shift % R + F = q.asInstanceOf[A ! Shift % R + F]

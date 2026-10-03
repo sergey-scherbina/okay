@@ -41,7 +41,6 @@ import scala.quoted.*
   def machineImpl[F[+_]: Type](using q: Quotes): Expr[Shift.Machine[F]] =
     import q.reflect.*
     val shift = TypeRepr.of[Shift[Any, Any]].typeSymbol
-    val delim = TypeRepr.of[Cont0[?, ?, ?, Any]].typeSymbol
     // bounded by the row's own nesting, which the compiler has already walked
     def members(t: TypeRepr): List[TypeRepr] = t.dealias.simplified match
       case OrType(a, b) => members(a) ++ members(b)
@@ -55,7 +54,7 @@ import scala.quoted.*
         if d == tc then r else reduce(d.appliedTo(args), fuel - 1)
       case other => other
     val ms = members(TypeRepr.of[F].appliedTo(TypeRepr.of[Any])).map(reduce(_, 64)).flatMap(members)
-    val inner = ms.exists(m => m.typeSymbol == shift || m.typeSymbol == delim)
+    val inner = ms.exists(m => m.typeSymbol == shift)
     val unread = ms.filterNot(m => m.typeSymbol.isClassDef)
     if !inner && unread.nonEmpty then
       report.errorAndAbort(
