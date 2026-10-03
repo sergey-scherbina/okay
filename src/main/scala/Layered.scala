@@ -44,20 +44,18 @@ object Layered:
     def reflect[R, F[+_]](using r: Reflect[M, R], at: At): X ! Shift % ? + F =
       Shift.shift0[M[R], X, F](r.prompt)(k => r.layer.bind(m)(k))
 
-  /** the same over the typed prompt stack: a capability kept past its `reify` does not compile */
+  /** the same with the layer KEYED in the row (`Shift % l.type`, shift-prompt-key): a capability kept past its
+   * `reify` leaves its key in a row nothing handles, and does not compile where it is run */
   object Stacked:
-    import Shift.Stacked.{In, Stack, Under, Has}
+    import Shift.Stacked.Reset
 
-    /** a stacked layer */
-    def reify[M[_], R, F[+_]](using st: Stack[?])
-                             (body: (l: In[M[R], st.S]) => Under[F, R, l.p.type *: st.S])
-                             (using L: Layer[M], at: At): Under[F, M[R], st.S] =
-      Shift.Stacked.dollar[R, M[R], F]((r: R) => Freer.Return(L.pure(r)))(body)
+    /** a keyed layer: the body sees its delimiter, and its reflections carry its key */
+    def reify[M[_], R, F[+_]](body: (l: Reset[M[R], F]) => R ! Shift % l.type + F)
+                             (using L: Layer[M], m: Shift.Machine[F], at: At): M[R] ! F =
+      Shift.Stacked.dollar[R, M[R], F]((r: R) => okay.pure(L.pure(r)))(body)
 
     extension [M[_], X](m: M[X])
-      /** reflect, the layer's prompt proven on the stack */
-      def reflect[R, F[+_]](layer: In[M[R], ?])(using st: Stack[?])[B <: Tuple]
-                           (using Has.Aux[st.S, layer.p.type, B], Layer[M], At): Under[F, X, st.S] =
-        Shift.Stacked.shift0[M[R], X, F](layer.p)(k =>
-          Shift.Stacked.at[F, M[R], B](summon[Layer[M]].bind(m)(x => Shift.Stacked.erase(k(x)))))
+      /** reflect into the layer `layer`: the continuation is bound inside the layer, at the row outside it */
+      def reflect[R, F[+_]](layer: Reset[M[R], F])(using Layer[M], At): X ! Shift % layer.type + F =
+        Shift.Stacked.shift0(layer)[X](k => summon[Layer[M]].bind(m)(k))
 

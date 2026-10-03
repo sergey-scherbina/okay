@@ -1,16 +1,14 @@
 package okay
 
-import okay.Shift.Stacked
-import okay.Shift.Stacked.{abort, delimited, reset, shift, under}
+import okay.Shift.Stacked.{abort, reset, shift}
 import okay.Row.at
 
 /**
- * specs/freer-base.md, stage 2: the indexed facade, and `Shift`'s
- * prompt stack in the index. The five positive shapes of the probe
- * (scripts/stage2-prompt-identity-probe.scala) run through the REAL
- * machine and answer the shift/reset laws' values; the three shapes
- * that throw `NoPrompt` at run time on the unstacked doors are
- * compile errors here.
+ * specs/freer-base.md, stage 2, and specs/shift-merge.md stage 3 (shift-prompt-key): `Shift`'s prompts keyed
+ * by their own singleton types, the prompt stack read off the ROW. The five positive shapes of the probe
+ * (scripts/stage2-prompt-identity-probe.scala) run through the REAL machine and answer the shift/reset laws'
+ * values; the three shapes that throw `NoPrompt` at run time on the dynamic doors are compile errors here —
+ * each leaves a `Shift % q.type` that nothing handles.
  */
 class TestProg extends munit.FunSuite:
 
@@ -19,44 +17,37 @@ class TestProg extends munit.FunSuite:
   // ---------------------------------------------------------- positives
 
   test("1. the simple shape: reset { shift(k => k(5) * 2) } == 10") {
-    val r = !.run(delimited[Int, P] { s =>
-      import s.given
-      shift[Int, Int, P](s.p)(k => k(5).map(_ * 2))
+    val r = !.run(reset[Int, P] { p =>
+      shift(p)[Int](k => k(5).map(_ * 2))
     })
     assertEquals(r, 10)
   }
 
-  test("2. a for-comprehension — the head has no expected type, the stack is a given") {
-    val r = !.run(delimited[Int, P] { s =>
-      import s.given
+  test("2. a for-comprehension") {
+    val r = !.run(reset[Int, P] { p =>
       for
-        a <- shift[Int, Int, P](s.p)(k => k(1))
-        b <- shift[Int, Int, P](s.p)(k => k(a + 1))
+        a <- shift(p)[Int](k => k(1))
+        b <- shift(p)[Int](k => k(a + 1))
       yield b * 10
     })
     assertEquals(r, 20)
   }
 
-  test("3. an ordinary effect in head position, under the stack in force") {
+  test("3. an ordinary effect in head position, beside the prompt's key") {
     type F = Reader % Int
-    val r = !.run(Reader.run[Int, Int, P](41)(delimited[Int, F] { s =>
-      import s.given
+    val r = !.run(Reader.run[Int, Int, P](41)(reset[Int, F] { p =>
       for
-        a <- under(Reader.ask[Int].at[Shift % ? + F])
-        b <- shift[Int, Int, F](s.p)(k => k(a + 1))
+        a <- Reader.ask[Int].at[Shift % p.type + F]
+        b <- shift(p)[Int](k => k(a + 1))
       yield b
     }))
     assertEquals(r, 42)
   }
 
-  test("4. nesting: a shift to the OUTER prompt from inside the inner one — Has.there") {
-    val r = !.run(delimited[Int, P] { outer =>
-      import outer.given
-      reset[Int, P] { inner =>
-        import inner.given
-        // the outer prompt is second on the stack; the inner import
-        // wins the ambiguity, `there` finds the outer one below it
-        shift[Int, Int, P](outer.p)(k => k(1).map(_ + 100))
+  test("4. nesting: a shift to the OUTER delimiter from inside the inner one — typed at the outer's row, widened to the inner's") {
+    val r = !.run(reset[Int, P] { outer =>
+      reset[Int, Shift % outer.type + P] { inner =>
+        shift(outer)[Int](k => k(1).map(_ + 100)).at[Shift % inner.type + Shift % outer.type + P]
       }.map(_ + 1)
     })
     // k is the rest up to OUTER: (_ + 1) is inside k, (+ 100) is outside
@@ -64,71 +55,61 @@ class TestProg extends munit.FunSuite:
   }
 
   test("5. a reset as a step of a larger program, its value from the head") {
-    val r = !.run(delimited[Int, P] { s =>
-      import s.given
+    val r = !.run(reset[Int, P] { s =>
       for
-        a <- under(pure[Shift % ? + P, Int](5))
-        b <- reset[Int, P] { s2 =>
-               import s2.given
-               shift[Int, Int, P](s2.p)(k => k(a))
+        a <- pure[Shift % s.type + P, Int](5)
+        b <- reset[Int, Shift % s.type + P] { s2 =>
+               shift(s2)[Int](k => k(a))
              }
       yield b
     })
     assertEquals(r, 5)
   }
 
-  test("abort and multi-shot, stacked: the laws are the machine's, the stack only checks") {
-    val aborted = !.run(delimited[Int, P] { s =>
-      import s.given
-      abort[Int, Int, P](s.p)(7).map(_ + 100)
+  test("abort and multi-shot, keyed: the laws are the machine's, the row only checks") {
+    val aborted = !.run(reset[Int, P] { p =>
+      abort(p)[Int](7).map(_ + 100)
     })
     assertEquals(aborted, 7)
-    val twice = !.run(delimited[Int, P] { s =>
-      import s.given
-      shift[Int, Int, P](s.p)(k => k(1).flatMap(a => k(2).map(b => a + b))).map(_ * 10)
+    val twice = !.run(reset[Int, P] { p =>
+      shift(p)[Int](k => k(1).flatMap(a => k(2).map(b => a + b))).map(_ * 10)
     })
     assertEquals(twice, 30)
   }
 
   // ---------------------------------------------------------- negatives
 
-  test("6. a shift with NO reset is a compile error (NoPrompt at run time on the unstacked door)") {
+  test("6. a shift with no reset has no delimiter to name: a capture needs a reset's handle") {
+    // the dynamic door's NoPrompt here: with a bare prompt there is nothing to call `shift` on
     val e = compileErrors("""
       { val loose = okay.Shift.prompt[Int]
-        okay.Shift.Stacked.shift[Int, Int, okay.Pure](loose)(k => k(1)) }""")
-    assert(e.nonEmpty, "a shift with no reset compiled")
-    assert(e.contains("Stack"), s"the message does not name the stack: $e")
+        okay.Shift.Stacked.shift(loose)[Int](k => k(1)) }""")
+    assert(e.nonEmpty, "a shift to a bare prompt compiled")
   }
 
-  test("7. a shift to a FOREIGN prompt of the same answer type is a compile error") {
+  test("7. a shift to a FOREIGN delimiter is a compile error: its key is not in the body's row") {
     val e = compileErrors("""
-      okay.Shift.Stacked.delimited[Int, okay.Pure] { s =>
-        import s.given
-        val stolen = okay.Shift.prompt[Int]
-        okay.Shift.Stacked.shift[Int, Int, okay.Pure](stolen)(k => k(1))
+      okay.Shift.Stacked.reset[Int, okay.Pure] { s =>
+        var stolen: okay.Shift.Stacked.Reset[Int, okay.Pure] | Null = null
+        okay.Shift.Stacked.reset[Int, okay.Pure] { other => stolen = other; okay.pure(1) }
+        val t = stolen.nn
+        okay.Shift.Stacked.shift(t)[Int](k => k(1))
       }""")
-    assert(e.nonEmpty, "a shift to a foreign prompt compiled")
-    assert(e.contains("not on the prompt stack"), s"the message is not ours: $e")
+    assert(e.replaceAll("\\s+", " ").contains("% (t :"), s"compiled, or not naming the foreign key: $e")
   }
 
-  test("8. a prompt that ESCAPES its reset and is shifted to afterwards is a compile error") {
-    // the run-time NoPrompt this stage exists for: after the inner
-    // reset returns, the stack in force is the OUTER one, and the
-    // leaked prompt is not on it
+  test("8. a delimiter that ESCAPES its reset and is shifted to afterwards is a compile error") {
+    // after the inner reset returns, the row in force is the OUTER one, and the leaked delimiter's key is not in it
     val e = compileErrors("""
-      okay.Shift.Stacked.delimited[Int, okay.Pure] { outer =>
-        import outer.given
-        var leaked: okay.Prompt[Int] | Null = null
-        okay.Shift.Stacked.reset[Int, okay.Pure] { inner =>
-          import inner.given
-          leaked = inner.p
-          okay.Shift.Stacked.shift[Int, Int, okay.Pure](inner.p)(k => k(1))
+      okay.Shift.Stacked.reset[Int, okay.Pure] { outer =>
+        var leaked: okay.Shift.Stacked.Reset[Int, okay.Shift % outer.type + okay.Pure] | Null = null
+        okay.Shift.Stacked.reset[Int, okay.Shift % outer.type + okay.Pure] { inner =>
+          leaked = inner
+          okay.Shift.Stacked.shift(inner)[Int](k => k(1))
         }.flatMap { _ =>
           val l = leaked.nn
-          okay.Shift.Stacked.shift[Int, Int, okay.Pure](l)(k => k(2))
+          okay.Shift.Stacked.shift(l)[Int](k => k(2))
         }
       }""")
-    assert(e.nonEmpty, "a shift to an escaped prompt compiled")
-    assert(e.contains("not on the prompt stack"), s"the message is not ours: $e")
+    assert(e.replaceAll("\\s+", " ").contains("% (l :"), s"compiled, or not naming the escaped key: $e")
   }
-

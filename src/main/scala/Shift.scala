@@ -447,121 +447,89 @@ object Shift {
   /** run on the machine under the barrier: a capture with no delimiter is `NoPrompt` */
   def run[R, F[+_]](prog: R ! Shift % ? + F)(using m: Machine[F]): R ! F =
     // a machine outside runs the program, its captures included
-    if m.inner then innerDyn(prog) else Stacked.bounded[R, F](in(prog))
+    if m.inner then innerDyn(prog) else bounded[R, F](in(prog))
 
   /** run without the barrier: a capture with no delimiter goes out, for a machine outside */
   def runNested[R, F[+_]](prog: R ! Shift % ? + F)(using Row.In[Shift % ?, F]): R ! F =
-    Stacked.residual[R, F](Delimited.machine[Freer.Lift[F]].runHead[Unit, Unit, R](in(prog)))
+    residual[R, F](Delimited.machine[Freer.Lift[F]].runHead[Unit, Unit, R](in(prog)))
 
   /** drop the continuation and answer `value` at `p` */
   def abort[R, A, F[+_]](p: Prompt[R])(value: R)(using At): A ! Shift % ? + F =
     out(Delimited.machine[Freer.Lift[F]].abort[R, Unit, A](atUnit(p))(value))
 
-  // THE PROMPT STACK IN THE TYPE: the installed prompts are a lexical given, so a shift to a prompt not on
-  // it (none, foreign, escaped) is a compile error, not `NoPrompt`.
+  /** under the barrier: a capture with no delimiter is `NoPrompt`. A value: run by whoever forces it, stepped
+   * into by a machine already running (the machine's `owned`) */
+  private[okay] def bounded[R, F[+_]](prog: U[F, R]): R ! F =
+    Free.delay(Delimited.machine[Freer.Lift[F]].owned[Unit, Unit, R, R ! F](
+      Delimited.machine[Freer.Lift[F]].reset[Unit, Unit, R](Cont0.boundary[R, Unit])(prog))(residual[R, F]))
+
+  /** the head form as the residual program */
+  private[okay] def residual[R, F[+_]](head: U[F, R]): R ! F = head.asInstanceOf[R ! F]
+
+  /**
+   * A DELIMITER YOU NAME, ITS KEY ITS OWN TYPE (shift-prompt-key, specs/shift-merge.md stage 3): `reset` hands
+   * its body a `Reset[R, F]` — the prompt, and the row `F` OUTSIDE the delimiter, fixed when it is installed —
+   * and `Shift % d.type` in the row is a capture to it, `reset` its handler: the third key of the one effect,
+   * beside the answer type (`reset`/`shift` at the top level) and `?` (prompts by value, `NoPrompt` possible).
+   *
+   * The prompt stack is the row, and its ORDER is in the handles: a capture's body is typed at the row of its
+   * own delimiter — `shift`'s under it (`Shift % d.type + F`), `shift0`'s outside it (`F`) — and that row was
+   * fixed before any delimiter inside `d` existed, so a body cannot name one (it would be captured into `k`,
+   * not installed). A shift with no reset, to a foreign delimiter, or to one that escaped its reset leaves a
+   * key nothing handles, and the program does not compile where it is run or embedded.
+   */
   object Stacked:
-    import scala.annotation.unused
-    import okay.Freer.Return
 
-    /** the stack in force, as a type member */
-    final class Stack[S0 <: Tuple]:
-      type S = S0
+    /** what a `reset` hands its body: its prompt, and the row outside it */
+    final class Reset[R, F[+_]] private[Shift] (val p: Prompt[R])
 
-    /** what `reset` hands its body: the prompt and the stack it made (`import s.given`); open for Lexical */
-    class In[R, S <: Tuple](val p: Prompt[R]):
-      given stack: Stack[p.type *: S] = new Stack[p.type *: S]
+    /** a delimiter's key is told apart by VALUE: the operations of `Shift % d.type` are the ones naming `d`'s
+     * prompt (so `Distinct` lets two delimiters share a row, as two answer types do) */
+    given key[D <: Reset[?, ?] & Singleton](using v: ValueOf[D]): TypeableK.ByValue[Shift % D] = new:
+      def test(x: Any): Boolean = Stacked.names(x, v.value.p)
 
-    /** a plain delimiter */
-    final class Reset[R, S <: Tuple](p0: Prompt[R]) extends In[R, S](p0)
+    /** an instance's prompt as its own key (Lexical.Stacked): the same test */
+    given promptKey[P <: Prompt[?] & Singleton](using v: ValueOf[P]): TypeableK.ByValue[Shift % P] = new:
+      def test(x: Any): Boolean = Stacked.names(x, v.value)
 
-    /** `p` is on the stack, with `Below` the stack under it */
-    @implicitNotFound("prompt ${P} is not on the prompt stack ${S}: a shift names the prompt of a reset it is INSIDE (Shift.Stacked.reset { s => import s.given; … shift(s.p) … }) — not one that has returned, and not one another reset made")
-    sealed trait Has[S <: Tuple, P]:
-      /** the stack below `p` */
-      type Below <: Tuple
-    object Has:
-      type Aux[S <: Tuple, P, B <: Tuple] = Has[S, P] { type Below = B }
-      given here[P, S <: Tuple]: Aux[P *: S, P, S] = new Has[P *: S, P] { type Below = S }
-      given there[P, Q, S <: Tuple, B <: Tuple](using Aux[S, P, B]): Aux[Q *: S, P, B] =
-        new Has[Q *: S, P] { type Below = B }
+    private def names(x: Any, p: AnyRef): Boolean = x match
+      case s: Cont0.Shift0[?, ?, ?, ?, ?, ?] => (s.p: AnyRef) eq p
+      case d: Cont0.Dollar0[?, ?, ?, ?, ?] => (d.p: AnyRef) eq p
+      case _ => false
 
-    // A stacked program is `Freer` over the same row, at the prompt stack as its index.
+    /** a fresh delimiter, the body under it with its key in the row; run — or pushed on the machine running */
+    def reset[R, F[+_]](body: (d: Reset[R, F]) => R ! Shift % d.type + F)(using m: Machine[F], at: At): R ! F =
+      val d = new Reset[R, F](named[R]("reset"))
+      Shift.run[R, F](push[R, F](d.p)(toDyn(body(d))))(using m)
 
-    /** the row a stacked program runs in */
-    type Row[F[+_]] = Ro[F]
+    /** `ret $ body`: `ret` runs outside the delimiter, a `shift0` to it takes `ret` along */
+    def dollar[R0, R, F[+_]](ret: R0 => R ! F)(body: (d: Reset[R, F]) => R0 ! Shift % d.type + F)
+                            (using m: Machine[F], at: At): R ! F =
+      val d = new Reset[R, F](named[R]("dollar"))
+      Shift.run[R, F](Shift.dollar[R0, R, F](d.p)(retDyn(ret))(toDyn(body(d))))(using m)
 
-    /** a program under the stack `S` */
-    type Under[F[+_], A, S <: Tuple] = Freer[Row[F], S, S, A]
+    /** capture to `d`; the body runs under `d` — at its own row — and `k` re-installs it */
+    def shift[R, F[+_]](d: Reset[R, F])[A](f: (A => R ! Shift % d.type + F) => R ! Shift % d.type + F)
+                       (using At): A ! Shift % d.type + F =
+      ofDyn(Shift.shift[R, A, F](d.p)(clauseDyn(f)))
 
-    /** THE EMBEDDINGS ARE IDENTITIES: the same nodes at two types, so crossing costs nothing */
-    inline def under[F[+_], A](p: A ! Shift % ? + F)(using st: Stack[?]): Under[F, A, st.S] = at[F, A, st.S](p)
+    /** capture to `d`, the body OUTSIDE it: typed at the row outside `d` */
+    def shift0[R, F[+_]](d: Reset[R, F])[A](f: (A => R ! F) => R ! F)(using At): A ! Shift % d.type + F =
+      ofDyn(Shift.shift0[R, A, F](d.p)(clauseDyn(f)))
 
-    /** at a stack named by the caller */
-    def at[F[+_], A, S <: Tuple](p: A ! Shift % ? + F): Under[F, A, S] = p.asInstanceOf[Under[F, A, S]]
+    /** drop the continuation and answer `value` at `d` */
+    def abort[R, F[+_]](d: Reset[R, F])[A](value: R)(using At): A ! Shift % d.type + F =
+      ofDyn(Shift.abort[R, A, F](d.p)(value))
 
-    /** a stacked program as an unstacked one */
-    def erase[F[+_], A, S <: Tuple](p: Under[F, A, S]): A ! Shift % ? + F = p.asInstanceOf[A ! Shift % ? + F]
+    // ---- for a handle made BEFORE its installation (an instance's prompt, Lexical.Stacked): keyed by the
+    // prompt, the row outside fixed by the handle's own type — its maker's to keep honest
 
-    /** THE CLAIM: presence is monotone, so a program typed at a stack runs where more prompts are installed */
-    private[okay] def rebase[F[+_], A, S1, R1, S2, R2](p: Freer[Row[F], S1, R1, A]): Freer[Row[F], S2, R2, A] =
-      p.asInstanceOf[Freer[Row[F], S2, R2, A]]
+    private[okay] def dollarAt[R0, R, F[+_]](p: Prompt[R])(ret: R0 => R ! F)(body: R0 ! Shift % p.type + F)
+                                            (using m: Machine[F]): R ! F =
+      Shift.run[R, F](Shift.dollar[R0, R, F](p)(retDyn(ret))(toDyn(body)))(using m)
 
-    /** the same for a continuation, re-typed, never wrapped */
-    private def rebaseF[F[+_], A, B, S1, R1, S2, R2](f: A => Freer[Row[F], S1, R1, B]): A => Freer[Row[F], S2, R2, B] =
-      f.asInstanceOf[A => Freer[Row[F], S2, R2, B]]
-
-    /** under the barrier */
-    private[okay] def bounded[R, F[+_]](prog: Freer[Row[F], Unit, Unit, R]): R ! F =
-      // a value: run by whoever forces it, stepped into by a machine already running (the machine's `owned`)
-      Free.delay(Delimited.machine[Freer.Lift[F]].owned[Unit, Unit, R, R ! F](
-        Delimited.machine[Freer.Lift[F]].reset[Unit, Unit, R](Cont0.boundary[R, Unit])(prog))(residual[R, F]))
-
-    /** the head form as the residual program */
-    private[okay] def residual[R, F[+_]](head: Freer[Row[F], Unit, Unit, R]): R ! F =
-      head.asInstanceOf[R ! F]
-
-    /** run a program written under the empty stack */
-    def run[R, F[+_]](prog: Under[F, R, EmptyTuple])(using m: Machine[F]): R ! F =
-      if m.inner then innerDyn[R, F](erase(prog)) else bounded[R, F](rebase(prog))
-
-    /** a fresh prompt on the empty stack, the body under it, run */
-    def delimited[R, F[+_]](body: (s: Reset[R, EmptyTuple]) => Under[F, R, s.p.type *: EmptyTuple])
-                           (using om: Machine[F], at: At): R ! F =
-      val s = new Reset[R, EmptyTuple](named[R]("delimited")(using at))
-      run[R, F](Delimited.machine[Freer.Lift[F]].reset[EmptyTuple, EmptyTuple, R](Cont0.delimiter(s.p))(rebase(body(s))))(using om)
-
-    /** a fresh prompt on the stack in force, for the body only */
-    def reset[R, F[+_]](using st: Stack[?])
-                       (body: (s: Reset[R, st.S]) => Under[F, R, s.p.type *: st.S])
-                       (using at: At): Under[F, R, st.S] =
-      val s = new Reset[R, st.S](named[R]("reset")(using at))
-      Delimited.machine[Freer.Lift[F]].reset[st.S, st.S, R](Cont0.delimiter(s.p))(rebase(body(s)))
-
-    /** capture to `p`, which must be on the stack; the body gets `p *: B` */
-    def shift[R, A, F[+_]](p: Prompt[R])(using st: Stack[?])[B <: Tuple](using @unused ev: Has.Aux[st.S, p.type, B])
-                          (f: Stack[p.type *: B] ?=> (A => Under[F, R, p.type *: B]) => Under[F, R, p.type *: B])
-                          (using at: At): Under[F, A, st.S] =
-      given Stack[p.type *: B] = new Stack[p.type *: B]
-      Delimited.machine[Freer.Lift[F]].shift[R, B, st.S, st.S, A](Cont0.delimiter(p))(k => rebase(f(rebaseF(k))))
-
-    /** the body runs with `p` consumed, under `B` */
-    def shift0[R, A, F[+_]](p: Prompt[R])(using st: Stack[?])[B <: Tuple](using @unused ev: Has.Aux[st.S, p.type, B])
-                           (f: Stack[B] ?=> (A => Under[F, R, B]) => Under[F, R, B])
-                           (using at: At): Under[F, A, st.S] =
-      given Stack[B] = new Stack[B]
-      Delimited.machine[Freer.Lift[F]].shift0[R, B, st.S, st.S, A](Cont0.delimiter(p))(k => rebase(f(rebaseF(k))))
-
-    /** drop the continuation and answer `value` at `p` */
-    def abort[R, A, F[+_]](p: Prompt[R])(using st: Stack[?])[B <: Tuple](using @unused ev: Has.Aux[st.S, p.type, B])
-                          (value: R)(using at: At): Under[F, A, st.S] =
-      Delimited.machine[Freer.Lift[F]].shift0[R, B, st.S, st.S, A](Cont0.delimiter(p))(_ => rebase(Return[Row[F], B, R](value)))
-
-    /** `dollar`, stacked */
-    def dollar[R0, R, F[+_]](using st: Stack[?])(ret: R0 => Under[F, R, st.S])
-                            (body: (s: In[R, st.S]) => Under[F, R0, s.p.type *: st.S])
-                            (using at: At): Under[F, R, st.S] =
-      val s = new In[R, st.S](named[R]("dollar")(using at))
-      Delimited.machine[Freer.Lift[F]].dollar[R, R0, st.S, st.S](Cont0.delimiter(s.p))(ret)(rebase(body(s)))
+    private[okay] def shift0At[R, A, F[+_]](p: Prompt[R])(f: (A => R ! F) => R ! F)(using At): A ! Shift % p.type + F =
+      ofDyn(Shift.shift0[R, A, F](p)(clauseDyn(f)))
 
   /** a program keyed STATICALLY (by an answer type) as a dynamic one, to mix with captures to prompts by
    * value in one `flatMap`: rows are invariant, so this is the written row coercion (widen-is-a-coercion) */
@@ -580,6 +548,8 @@ object Shift {
   private[okay] def innerDyn[R, F[+_]](q: R ! Shift % ? + F): R ! F = q.asInstanceOf[R ! F]
   private[okay] def clauseDyn[R, A, F[+_], G[+_]](f: (A => R ! G) => R ! G): (A => R ! Shift % ? + F) => R ! Shift % ? + F =
     f.asInstanceOf[(A => R ! Shift % ? + F) => R ! Shift % ? + F]
+  private[okay] def retDyn[R0, R, F[+_]](f: R0 => R ! F): R0 => R ! Shift % ? + F =
+    f.asInstanceOf[R0 => R ! Shift % ? + F]
 
   /** the test reads the prompt, so `Shift % Int + Shift % String` is a good row */
   given typeableK[R](using k: Key[R]): TypeableK.ByValue[Shift % R] = new:

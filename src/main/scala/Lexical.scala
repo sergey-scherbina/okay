@@ -14,7 +14,7 @@ object Lexical:
     /** the operation, to this installation */
     def perform[X](e: F[X]): X ! G
 
-  /** the program type a clause answers in: unstacked here, `Stacked.Below` on the stacked road */
+  /** the program type a clause answers in */
   type Unstacked[G[+_]] = [X] =>> X ! G
 
   /** deep clauses: `k` resumes with the handler re-installed */
@@ -169,43 +169,35 @@ object Lexical:
       def put(s: S): Unit ! G = i.perform(okay.State.Update[S, Unit](_ => ((), s)))
 
   /**
-   * STACKED INSTANCES: the instance is its delimiter on the typed stack, so using it outside its
-   * installation does not compile; clauses are typed at the stack below it.
+   * KEYED INSTANCES (shift-prompt-key): the instance's prompt is its key in the row, `Shift % i.p.type`, so an
+   * operation of it outside its installation leaves a key nothing handles and does not compile where it is run.
+   * Clauses are typed at the row outside the installation.
    */
   object Stacked:
-    import Shift.Stacked.{In, Stack, Under, Has}
 
-    /** the program type of stacked clauses */
-    type Below[G[+_], St <: Tuple] = [X] =>> Under[G, X, St]
+    /** a keyed deep instance */
+    final class Deep[F[+_], R, G[+_]] private[Lexical] (val p: Prompt[R], ops: Ops[F, R, Unstacked[G]]):
+      /** the operation, a `shift0` to this instance's prompt */
+      def perform[X](e: F[X])(using At): X ! Shift % p.type + G =
+        Shift.Stacked.shift0At[R, X, G](p)(k => ops.op(e, k))
 
-    /** a stacked deep instance */
-    final class Deep[F[+_], R, G[+_], S <: Tuple] private[Lexical] (p0: Prompt[R], ops: Ops[F, R, Below[G, S]])
-        extends In[R, S](p0):
-      /** the operation; `Has` proves the instance is on the stack with `S` below */
-      def perform[X](e: F[X])(using st: Stack[?])(using Has.Aux[st.S, p.type, S], At): Under[G, X, st.S] =
-        Shift.Stacked.shift0[R, X, G](p)(using st)(k => ops.op(e, k))
+    def deep[F[+_], A, R, G[+_]](c: Clauses[F, A, R, Unstacked[G]])(body: (i: Deep[F, R, G]) => A ! Shift % i.p.type + G)
+                                (using Shift.Machine[G], At): R ! G =
+      val i = new Deep[F, R, G](Shift.prompt[R], c)
+      Shift.Stacked.dollarAt[A, R, G](i.p)(c.ret)(body(i))
 
-    def deep[F[+_], A, R, G[+_]](using st: Stack[?])(c: Clauses[F, A, R, Below[G, st.S]])
-                                (body: (i: Deep[F, R, G, st.S]) => Under[G, A, i.p.type *: st.S])
-                                (using at: At): Under[G, R, st.S] =
-      val i = new Deep[F, R, G, st.S](Shift.prompt[R], c)
-      Delimited.machine[Freer.Lift[G]].dollar[R, A, st.S, st.S](Cont0.delimiter(i.p))(c.ret)(Shift.Stacked.rebase(body(i)))
-
-    /** a stacked tail instance: installed deep, the state threaded */
-    final class Tail[F[+_], S0, A, G[+_], S <: Tuple] private[Lexical] (
-        p0: Prompt[S0 => Under[G, (S0, A), S]], c: TailClauses[F, S0]) extends In[S0 => Under[G, (S0, A), S], S](p0):
-      def perform[X](e: F[X])(using st: Stack[?])(using Has.Aux[st.S, p.type, S], At): Under[G, X, st.S] =
-        Shift.Stacked.shift0[S0 => Under[G, (S0, A), S], X, G](p)(using st)(k =>
-          Freer.Return((s: S0) => {
+    /** a keyed tail instance: installed deep, the state threaded */
+    final class Tail[F[+_], S0, A, G[+_]] private[Lexical] (val p: Prompt[S0 => (S0, A) ! G], c: TailClauses[F, S0]):
+      def perform[X](e: F[X])(using At): X ! Shift % p.type + G =
+        Shift.Stacked.shift0At[S0 => (S0, A) ! G, X, G](p)(k =>
+          okay.pure[G, S0 => (S0, A) ! G]((s: S0) => {
             val (s1, x) = c.op(e, s)
             k(x).flatMap(f => f(s1))
           }))
 
-    /** `tail`, stacked */
-    def tail[F[+_], S0, A, G[+_]](s0: S0)(c: TailClauses[F, S0])(using st: Stack[?])
-                                 (body: (i: Tail[F, S0, A, G, st.S]) => Under[G, A, i.p.type *: st.S])
-                                 (using at: At): Under[G, (S0, A), st.S] =
-      val i = new Tail[F, S0, A, G, st.S](Shift.prompt[S0 => Under[G, (S0, A), st.S]], c)
-      Delimited.machine[Freer.Lift[G]].dollar[S0 => Under[G, (S0, A), st.S], A, st.S, st.S](Cont0.delimiter(i.p))(
-        a => Freer.Return((s: S0) => Freer.Return((s, a))))(Shift.Stacked.rebase(body(i)))
+    /** `tail`, keyed */
+    def tail[F[+_], S0, A, G[+_]](s0: S0)(c: TailClauses[F, S0])(body: (i: Tail[F, S0, A, G]) => A ! Shift % i.p.type + G)
+                                 (using Shift.Machine[G], At): (S0, A) ! G =
+      val i = new Tail[F, S0, A, G](Shift.prompt[S0 => (S0, A) ! G], c)
+      Shift.Stacked.dollarAt[A, S0 => (S0, A) ! G, G](i.p)(a => okay.pure[G, S0 => (S0, A) ! G]((s: S0) => okay.pure[G, (S0, A)]((s, a))))(body(i))
         .flatMap(f => f(s0))

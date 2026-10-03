@@ -189,90 +189,76 @@ class TestLexicalTail extends munit.FunSuite:
     assertEquals(run(Lexical.State.tail[Int, Int, Shift % ? + Pure](0)(s => spin(s, 100_000))), (100_000, 100_000))
   }
 
-/** specs/lexical-instances.md stage 2: stacked instances */
+/** specs/lexical-instances.md stage 2: keyed instances (shift-prompt-key: each instance's prompt a key in the row) */
 class TestLexicalStacked extends munit.FunSuite:
-  import okay.Shift.Stacked.delimited
 
   type P = okay.Pure
 
   object StateClauses:
-    import okay.Shift.Stacked.Under
-    /** the answer is itself a stacked program at the clauses' stack:
-     * nothing on this road is erased (indexed-effects stage 9) */
-    type Ans[St <: Tuple] = Int => Under[P, (Int, Int), St]
-    def deep[St <: Tuple] = new Lexical.Clauses[State % Int, Int, Ans[St], Lexical.Stacked.Below[P, St]]:
-      def ret(a: Int): Under[P, Ans[St], St] = Freer.Return((s: Int) => Freer.Return((s, a)))
-      def op[X](e: State[Int, X], k: X => Under[P, Ans[St], St]): Under[P, Ans[St], St] = e match
-        case State.Get() => Freer.Return((s: Int) => k(s).flatMap(f => f(s)))
-        case State.Update(g) => Freer.Return((s: Int) => { val (b, s1) = g(s); k(b).flatMap(f => f(s1)) })
+    /** the answer is a program at the clauses' own row */
+    type Ans[G[+_]] = Int => (Int, Int) ! G
+    def deep[G[+_]] = new Lexical.Clauses[State % Int, Int, Ans[G], Lexical.Unstacked[G]]:
+      def ret(a: Int): Ans[G] ! G = pure((s: Int) => pure((s, a)))
+      def op[X](e: State[Int, X], k: X => Ans[G] ! G): Ans[G] ! G = e match
+        case State.Get() => pure((s: Int) => k(s).flatMap(f => f(s)))
+        case State.Update(g) => pure((s: Int) => { val (b, s1) = g(s); k(b).flatMap(f => f(s1)) })
     val tail = new Lexical.TailClauses[State % Int, Int]:
       def op[X](e: State[Int, X], s: Int): (Int, X) = e match
         case State.Get() => (s, s)
         case State.Update(g) => { val (b, s1) = g(s); (s1, b) }
 
-  test("stacked deep and tail instances, one inside the other: each operation reaches its own") {
-    val r = !.run(delimited[(Int, Int), P] { root =>
-      import root.given
-      Lexical.Stacked.tail[State % Int, Int, Int, P](0)(StateClauses.tail) { a =>
-        import a.given
-        Lexical.Stacked.deep(StateClauses.deep) { b =>
-          import b.given
-          for
-            x <- a.perform(State.Get[Int, Int]())
-            y <- b.perform(State.Get[Int, Int]())
-            _ <- a.perform(State.Update[Int, Int](_ => (x + 5, x + 5)))
-          yield x + y
-        }.flatMap(f => f(10)).map(_._2)
-      }
+  test("keyed deep and tail instances, one inside the other: each operation reaches its own") {
+    import okay.Row.at
+    val r = !.run(Lexical.Stacked.tail[State % Int, Int, Int, P](0)(StateClauses.tail) { a =>
+      type G = Shift % a.p.type + P
+      Lexical.Stacked.deep[State % Int, Int, StateClauses.Ans[G], G](StateClauses.deep[G]) { b =>
+        type H = Shift % b.p.type + G
+        for
+          x <- a.perform(State.Get[Int, Int]()).at[H]
+          y <- b.perform(State.Get[Int, Int]())
+          _ <- a.perform(State.Update[Int, Int](_ => (x + 5, x + 5))).at[H]
+        yield x + y
+      }.flatMap(f => f(10)).map(_._2)
     })
     assertEquals(r, (5, 10))
   }
 
-  // the same clause object at two stacks (munit's macro wants literals, so
-  // twice): at the installation's own it compiles, at another it is
-  // refused — the twin is what makes the refusal a proof rather than a typo
-  test("stacked clauses are typed at the stack below their prompt: clauses over another stack are refused at the installation") {
+  // the same clause object at two rows (munit's macro wants literals, so twice): at the installation's own row
+  // it compiles, at another it is refused — the twin is what makes the refusal a proof rather than a typo
+  test("keyed clauses are typed at the row outside their prompt: clauses over another row are refused at the installation") {
     assertEquals(compileErrors("""
-      okay.Shift.Stacked.delimited[Int, okay.Pure] { root =>
-        import root.given
-        val c = new okay.Lexical.Clauses[okay.State % Int, Int, Int, okay.Lexical.Stacked.Below[okay.Pure, root.p.type *: EmptyTuple]]:
-          def ret(a: Int) = okay.Freer.Return(a)
-          def op[X](e: okay.State[Int, X], k: X => okay.Shift.Stacked.Under[okay.Pure, Int, root.p.type *: EmptyTuple]) = e match
-            case okay.State.Get() => k(0)
-            case _ => okay.Freer.Return(0)
-        okay.Lexical.Stacked.deep(c) { b =>
-          import b.given
-          b.perform(okay.State.Get[Int, Int]())
-        }
+      val c = new okay.Lexical.Clauses[okay.State % Int, Int, Int, okay.Lexical.Unstacked[okay.Pure]]:
+        def ret(a: Int) = okay.pure[okay.Pure, Int](a)
+        def op[X](e: okay.State[Int, X], k: X => Int ! okay.Pure) = e match
+          case okay.State.Get() => k(0)
+          case _ => okay.pure[okay.Pure, Int](0)
+      okay.Lexical.Stacked.deep[okay.State % Int, Int, Int, okay.Pure](c) { b =>
+        b.perform(okay.State.Get[Int, Int]())
       }"""), "")
     val e = compileErrors("""
-      okay.Shift.Stacked.delimited[Int, okay.Pure] { root =>
-        import root.given
-        val c = new okay.Lexical.Clauses[okay.State % Int, Int, Int, okay.Lexical.Stacked.Below[okay.Pure, EmptyTuple]]:
-          def ret(a: Int) = okay.Freer.Return(a)
-          def op[X](e: okay.State[Int, X], k: X => okay.Shift.Stacked.Under[okay.Pure, Int, EmptyTuple]) = e match
-            case okay.State.Get() => k(0)
-            case _ => okay.Freer.Return(0)
-        okay.Lexical.Stacked.deep(c) { b =>
-          import b.given
-          b.perform(okay.State.Get[Int, Int]())
-        }
+      val c = new okay.Lexical.Clauses[okay.State % Int, Int, Int, okay.Lexical.Unstacked[okay.Reader % Int + okay.Pure]]:
+        def ret(a: Int) = okay.pure[okay.Reader % Int + okay.Pure, Int](a)
+        def op[X](e: okay.State[Int, X], k: X => Int ! okay.Reader % Int + okay.Pure) = e match
+          case okay.State.Get() => k(0)
+          case _ => okay.pure[okay.Reader % Int + okay.Pure, Int](0)
+      okay.Lexical.Stacked.deep[okay.State % Int, Int, Int, okay.Pure](c) { b =>
+        b.perform(okay.State.Get[Int, Int]())
       }""")
     assert(e.contains("Required:"), s"compiled, or not a type error: $e")
   }
 
-  test("a stacked instance used AFTER its installation returned does not compile") {
+  test("a keyed instance used AFTER its installation returned does not compile where it is run") {
     val e = compileErrors("""
-      okay.Shift.Stacked.delimited[(Int, Int), okay.Pure] { root =>
-        import root.given
-        var leaked: okay.Lexical.Stacked.Tail[okay.State % Int, Int, Int, okay.Pure, ?] | Null = null
-        okay.Lexical.Stacked.tail[okay.State % Int, Int, Int, okay.Pure](0)(null) { a =>
-          import a.given
-          leaked = a
-          okay.Freer.Return(1)
-        }.flatMap(_ => leaked.nn.perform(okay.State.Get[Int, Int]()).map(v => (v, v)))
-      }""")
-    assert(e.contains("not on the prompt stack"), s"compiled, or not our message: $e")
+      var leaked: okay.Lexical.Stacked.Tail[okay.State % Int, Int, Int, okay.Pure] | Null = null
+      okay.!.run(okay.Lexical.Stacked.tail[okay.State % Int, Int, Int, okay.Pure](0)(null) { a =>
+        leaked = a
+        okay.pure[okay.Shift % a.p.type + okay.Pure, Int](1)
+      }.flatMap { _ =>
+        val l = leaked.nn
+        l.perform(okay.State.Get[Int, Int]()).map(v => (v, v))
+      })""")
+    assert(e.nonEmpty, "an instance used after its installation ran")
+    assert(e.contains("l.p"), s"the message does not name the escaped key: $e")
   }
 
 /** specs/lexical-instances.md stage 3: the default, and the manual choice kept */

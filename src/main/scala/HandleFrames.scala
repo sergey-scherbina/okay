@@ -68,7 +68,7 @@ object HandleFrames:
 
   /** a frame program as a value: stepped into by a running machine, else run on a machine of its own */
   def pending[B, G[+_]](program: Shift.U[G, B]): B ! G =
-    Free.delay(Delimited.machine[Freer.Lift[G]].owned[Unit, Unit, B, B ! G](program)(Shift.Stacked.residual[B, G]))
+    Free.delay(Delimited.machine[Freer.Lift[G]].owned[Unit, Unit, B, B ! G](program)(Shift.residual[B, G]))
 
   /**
    * HOW DEEP FOLDS NEST (handle-frames-loops, measured): a fold that meets a nested run FORCES it — the nested
@@ -110,5 +110,5 @@ object HandleFrames:
     case r: Run[?, ?] =>
       if depth < Limit then r.at(depth + 1).asInstanceOf[A ! H]
       else Delimited.machine[Freer.Lift[H]].owned[Unit, Unit, A, A ! H](r.program.asInstanceOf[Shift.U[H, A]])(
-        Shift.Stacked.residual[A, H])()
+        Shift.residual[A, H])()
     case o => o().asInstanceOf[A ! H]
