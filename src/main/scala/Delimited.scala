@@ -604,3 +604,88 @@ private object Rev:
   /** the empty prefix, one object */
   private val theNil: Nil[Nothing, Any, Any] = Nil()
   def nil[F[_, _, +_], A, T]: Rev[F, A, T, T, A] = theNil.asInstanceOf[Rev[F, A, T, T, A]]
+
+// ======================================================================
+// THE ATM MACHINE (specs/cont-atm.md, the operator's "два типа и два места"):
+// Danvy & Filinski's shift/reset WITH answer-type modification. Two values,
+// two places: what `k` answers returns to whoever CALLED `k`; what a shift
+// body answers leaves its `reset`. So `k` (`K`) ends at the reset's `ret`,
+// and the reset boundaries are a stack of their own (`M`), each typed by its
+// own answer. The machine of Biernacka, Biernacki & Danvy (LMCS 2005), a CK
+// machine with a meta-continuation. No cast: every step is a GADT match whose
+// equations type the next state.
+// ======================================================================
+
+object Atm:
+
+  /** a computation `(A => S) => R` of ATM shift/reset: `Freer` itself, over the machine's own operations */
+  type Prog[A, S, R] = Freer[Op, S, R, A]
+
+  /**
+   * PLACE ONE: the continuation up to the `reset`, from `A` to `S`; its last frame is the reset's `ret`, and
+   * its `S` goes back to whoever called `k`. Contravariant in `A`: it consumes a value.
+   */
+  enum K[-A, S]:
+    case Done[A]() extends K[A, A]
+    case Push[A, B, S, T](f: A => Freer[Op, S, T, B], k: K[B, S]) extends K[A, T]
+
+  /**
+   * PLACE TWO: the `reset` boundaries, each with its own answer, from the innermost level's `T` to the run's `R`:
+   * a shift body's answer arrives here and leaves the reset.
+   */
+  enum M[T, R]:
+    case Top[R]() extends M[R, R]
+    /** a boundary: the level inside answers `T`, and outside it `out` takes that on to the levels below */
+    case Level[T, U, R](out: K[T, U], m: M[U, R]) extends M[T, R]
+
+  /** the leaves of shift, in the forms ContMacro picks, and the call of a lazy `k` */
+  sealed trait Op[S, R, +A]
+  /** an opaque body, given a strict `k`: a nested run, counted */
+  final case class Strict[S, R, A](body: (A => S) => R) extends Op[S, R, A]
+  /** a body given `k` itself, as data (a program-answered body builds its lazy `k` from it) */
+  final case class WithK[S, R, A](body: K[A, S] => R) extends Op[S, R, A]
+  /** an answer-using body after the CPS transform: a program over the lazy `k`, answering `R` at its level */
+  final case class Lazily[S, R, A](body: K[A, S] => Freer[Op, R, R, R]) extends Op[S, R, A]
+  /** `k(a)` as a node: `k` under a boundary of its own, which takes its `S` back here */
+  final case class Resume[A, S, T](k: K[A, S], a: A) extends Op[T, T, S]
+  /** a tail body `k => k(v)` whose `S` is a proper subtype of `R`: `k`'s answer leaves as the body's */
+  final case class Tail[S, R, A](v: A, ev: S <:< R) extends Op[S, R, A]
+
+  /** a run's room for nested strict `k`s (`StackSwitch`): one counter per run, the depth left on this stack */
+  final class Room(var left: Int)
+
+  /** apply to a continuation: `k` is the reset's `ret`, the bottom of every `k` the run captures */
+  def run[A, S, R](c: Prog[A, S, R], k: A => S): R =
+    go(c, K.Push((a: A) => Return[Op, S, S](k(a)), K.Done[S]()), M.Top[R](), Room(StackSwitch.firstRoom))
+
+  /** `k` from `x` to its answer, now, on a run of its own (a program-answered body's lazy `k`) */
+  def runK[A, S](k: K[A, S], x: A): S = go(Return[Op, S, A](x), k, M.Top[S](), Room(StackSwitch.firstRoom))
+
+  @tailrec private def go[A, S, T, R](c: Freer[Op, S, T, A], k: K[A, S], m: M[T, R], room: Room): R = c match
+    case Return(a) => k match
+      case K.Done() => m match
+        case M.Top() => a
+        case M.Level(out, m2) => go(Return(a), out, m2, room)
+      case K.Push(f, k2) => go(f(a), k2, m, room)
+    case Bind(c0, f) => go(c0, K.Push(f, k), m, room)
+    case Delay(t) => go(t(), k, m, room)
+    case Inject(op) => op match
+      case Strict(body) => go(Return(body(Resumption(k, room))), K.Done(), m, room)
+      case WithK(body) => go(Return(body(k)), K.Done(), m, room)
+      case Lazily(body) => go(body(k), K.Done(), m, room)
+      case Resume(k1, a) => go(Return(a), k1, M.Level(k, m), room)
+      case Tail(v, ev) => go(Return(v), k, M.Level(K.Push((s: S) => Return(ev(s)), K.Done()), m), room)
+    case Diag(op) => go(Inject(op), k, m, room)
+
+  /** the strict `k`: `apply` runs `k` from `x` to its answer now, a nested run of the machine, counted */
+  final class Resumption[A, S](k: K[A, S], room: Room) extends (A => S):
+    def apply(x: A): S =
+      val here = room.left - 1
+      if here > 0 then nested(here, x)
+      else StackSwitch.fresh(fresh => nested(fresh, x))
+
+    /** `k` with `left` levels, the run's room restored after */
+    private def nested(left: Int, x: A): S =
+      val saved = room.left
+      room.left = left
+      try go(Return[Op, S, A](x), k, M.Top[S](), room) finally room.left = saved
