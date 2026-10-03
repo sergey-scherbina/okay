@@ -99,6 +99,15 @@ class HandlerBenchmark {
         m.flatMap[State[Long], Long](_ => State.get[Long].flatMap(s => State.set[Long](s + 1)))
       })
 
+  /** the same M-step workload as `stateEffect` on PState, the typestate road: every operation a shift whose
+   * answer is a function (the Scala 3 core's `statePara`) */
+  @Benchmark
+  def statePara(): (Long, Long) =
+    PState.run[Long, Long, Long](0L)(
+      (1 to M).foldLeft(PState.get[Long, (Long, Long)]) { (m, _) =>
+        m.flatMap(_ => PState.get[Long, (Long, Long)].flatMap(s => PState.set[Long, Long, (Long, Long)](s + 1)))
+      })
+
   // okay2-split-at-rest: one lane per loop moved onto Split.at, each
   // M = 1000 operations deep, answer checked in buildOnce
 

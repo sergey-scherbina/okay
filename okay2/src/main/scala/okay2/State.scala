@@ -157,10 +157,54 @@ object State {
  */
 object PState {
   /** read the state, leaving its type unchanged */
-  def get[S, R]: Cont[S, S => R, S => R] = Cont.shift[S, S => R, S => R](k => s => k(s)(s))
+  def get[S, R]: Cont[S, S => R, S => R] = Cont.shift[S, S => R, S => R](k => new GetAt[S, R](k))
 
   /** write a state of a possibly different type; the old state is the value */
-  def set[S, S2, R](s2: S2): Cont[S, S2 => R, S => R] = Cont.shift[S, S2 => R, S => R](k => s => k(s)(s2))
+  def set[S, S2, R](s2: S2): Cont[S, S2 => R, S => R] = Cont.shift[S, S2 => R, S => R](k => new SetAt[S, S2, R](k, s2))
+
+  // the two bodies as `Bounce`s: the rest of the program, `k(s)`, answered with its state, never applied here
+  private final class GetAt[S, R](k: S => S => R) extends Bounce[S, R] {
+    type X = S
+    def next(s: S): S => R = k(s)
+    def arg(s: S): S = s
+  }
+  private final class SetAt[S, S2, R](k: S => S2 => R, s2: S2) extends Bounce[S, R] {
+    type X = S2
+    def next(s: S): S2 => R = k(s)
+    def arg(s: S): S2 = s2
+  }
+
+  /**
+   * A FUNCTION ANSWER APPLIED BY A LOOP (okay2-cont-fun-answer, the Scala 3 core's cont-fun-answer). A
+   * state-passing body `s => k(s)(s2)` applies the rest inside its own frame, so applying the answer of n steps
+   * nests n host frames, outside any machine. A `Bounce` answers the next function and its argument (`next`,
+   * then `arg`) instead of applying them, and its `apply` is the loop: one frame for the whole chain, on every
+   * platform. A function that is not a `Bounce` ends the chain.
+   */
+  abstract class Bounce[-S, +R] extends (S => R) {
+    /** the next function's argument type */
+    type X
+    /** the next function, not applied: called once a step, before `arg` */
+    def next(s: S): X => R
+    /** its argument */
+    def arg(s: S): X
+    final def apply(s: S): R = Bounce.run[S, R](this, s)
+  }
+
+  object Bounce {
+    def run[S, R](b: Bounce[S, R], s: S): R = loop[R](erase[S, R](b), s)
+
+    // THE ONE CLAIM: the pair the loop carries is a function and ITS argument — each step takes both from one
+    // `Bounce` (`next`, `arg`, typed `X => R` and `X`), and the first from `run`'s typed pair. It travels erased
+    // because scalac 2 keeps no `@tailrec` across changing type arguments (the Scala 3 core's loop is typed),
+    // and a typed holder a step is the 24 B an operation that cost the core 1.07x on statePara.
+    private def erase[A, R](f: A => R): Any => R = f.asInstanceOf[Any => R]
+
+    @tailrec private def loop[R](f: Any => R, a: Any): R = f match {
+      case b: Bounce[Any, R] @unchecked => loop[R](erase[b.X, R](b.next(a)), b.arg(a))
+      case g => g(a)
+    }
+  }
 
   /** a typestate transition read as a two-parameter carrier in its
    * state, `L[A, B] = Cont[X, B => R, A => R]` — what okay2-optics
