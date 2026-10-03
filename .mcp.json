@@ -3,6 +3,12 @@
     "rozum": {
       "type": "http",
       "url": "http://127.0.0.1:8779/mcp?project=/Users/sergiy/work/my/okay"
+    },
+    "symdex": {
+      "command": "sh",
+      "args": [
+        "scripts/symdex-mcp.sh"
+      ]
     }
   }
 }

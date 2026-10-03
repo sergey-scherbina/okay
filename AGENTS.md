@@ -30,6 +30,26 @@ CHANGELOG: changelog.d/ (one file per landed lane; CHANGELOG.md is the archive)
     it. Read it at the start of a task and after any compaction;
     write a fact the moment you learn it, rather than trusting the
     transcript to still be carrying it later.
+- `symdex` (`.mcp.json` runs `scripts/symdex-mcp.sh`; symdex-okay,
+  2026-10-03) answers STRUCTURE from the compiler's own output —
+  SemanticDB and TASTy, which sbt-symdex turns on for the build:
+  `definition`, `references` (`callers=true` groups them by the
+  enclosing definition), `implementations` (subtypes, overriders,
+  anonymous `new T { }`, the given instances of a type class), `givens`
+  (which given a call site resolved — nothing else can tell you),
+  `members`, `outline` (a file's definitions, without reading it),
+  `source` (one definition's body, not its file), `status`. Reach for it
+  when you KNOW the symbol and want every use of it exactly: a name that
+  is a common word (`answered`, `run`, `map`) or overloaded across types
+  is where grep drowns — measured on okay, `Bulk#joinSorted` is 2 calls
+  among 53 grep lines (symdex specs/symdex.md). It does NOT see prose
+  (docs, specs, boards, comments, strings) — grep those — and it answers
+  for what was COMPILED: in the main checkout ci-runner's whole-build
+  pass after each landing refreshes it, in a worktree your own gate
+  does, and `status` names what is stale. "Every reference" means every
+  one in the index. Answers carry their token cost; a long one comes
+  compressed with an archive id `more` pages. Guide:
+  github.com/sergey-scherbina/symdex, GUIDE.md.
 - Both are bound to THIS project by `.mcp.json`, whose URL carries
   `?project=` — do not drop it. rozum serves every project from one
   daemon and picks the project from that query; without it the daemon

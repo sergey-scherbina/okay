@@ -42,3 +42,5 @@ compare/jmh-result.text
 *-Throughput-*/
 *-SampleTime-*/
 *-SingleShotTime-*/
+# symdex-hook archives large Bash/Grep outputs here (scripts/symdex-mcp.sh, AGENTS.md)
+.symdex/

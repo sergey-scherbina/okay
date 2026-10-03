@@ -12,3 +12,8 @@ addSbtPlugin("org.portable-scala" % "sbt-scala-native-crossproject" % "1.4.0")
 lazy val root = (project in file("."))
   .dependsOn(RootProject(file("../okay-deploy/sbt-plugin")))
   .dependsOn(RootProject(file("../okay-frege/sbt-plugin")))
+// symdex (scripts/symdex-mcp.sh, AGENTS.md "Skills"): SemanticDB on for the build, so symdex can
+// answer structural questions from the compiler's own output; JVM only (project/SemanticdbJvmOnly.scala).
+// Served from GitHub Pages, no Maven Central.
+resolvers += Resolver.url("symdex", url("https://sergey-scherbina.github.io/symdex"))(Resolver.ivyStylePatterns)
+addSbtPlugin("io.github.sergey-scherbina" % "sbt-symdex" % "0.5.2")
