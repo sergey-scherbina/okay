@@ -300,7 +300,10 @@ object Delimited:
             go(n.c, n.k, n.m)
           case _ => outer.enter(t) match
             case null => go(if guarded then guard(t()) else t(), k, m)
-            case inner => go(inner, end[A, T], Stack.Delim(outer.barrier(t), k, m))
+            // stepped into: under a barrier when the effect asks for one, else straight on — no boundary at all
+            case inner => outer.barrier(t) match
+              case null => go(inner, k, m)
+              case b => go(inner, end[A, T], Stack.Delim(b, k, m))
         case Inject(op) => outer(op, m, this) match
           case null =>
             val n =

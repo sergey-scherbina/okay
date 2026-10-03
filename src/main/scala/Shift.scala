@@ -126,7 +126,7 @@ object Shift {
   /** capture to `p`; the body runs under `p`, `k` re-installs it */
   def shift[R, A, F[+_]](p: Prompt[R])
                         (f: (A => R ! Shift % ? + F) => R ! Shift % ? + F)(using at: At): A ! Shift % ? + F =
-    shift0[R, A, F](p)(k => push[R, F](p)(f(k)))
+    op[A, F](Shift0[Any, A, R, F](p, f, at.where, under = true))
 
   /** the body consumes `p`; `k` re-installs it */
   def shift0[R, A, F[+_]](p: Prompt[R])
@@ -137,7 +137,7 @@ object Shift {
    * `k.resumeWith(m)` runs a computation inside it, its delimiters in force */
   def withSubCont[R, A, F[+_]](p: Prompt[R])
                               (f: Resumption[A, R, F] => R ! Shift % ? + F)(using at: At): A ! Shift % ? + F =
-    op[A, F](Shift0[Any, A, R, F](p, f, at.where))
+    op[A, F](Shift0[Any, A, R, F](p, f, at.where, under = false))
 
   /**
    * A CAPTURED CONTINUATION, up to and including its prompt: `k(x)` resumes it with a value; `resumeWith(m)` runs
@@ -181,7 +181,7 @@ object Shift {
     extends Shift[K, R]
   /** capture to `p`: the body, given `k`, answers in `p`'s place */
   private[okay] final case class Shift0[K, A, R, F[+_]](p: Prompt[R], body: Resumption[A, R, F] => R ! Shift % ? + F,
-                                                        at: String) extends Shift[K, A]
+                                                        at: String, under: Boolean) extends Shift[K, A]
   /** leave `p`'s place with `value` */
   private[okay] final case class Abort[K, A, R](p: Prompt[R], value: R, at: String) extends Shift[K, A]
   /** a captured continuation resumed: its segments and boundaries, `p`'s and `ret`'s included, back on top, and
@@ -304,7 +304,11 @@ object Shift {
       case s: Shift0[?, a, r, ?] =>
         val c = claim[Cut[a, r, Z]](cutOrFail(s.p, s.at, k, m, machine))
         val body = claim[Resumption[a, r, F] => Freer[L, U, U, r]](s.body)
-        machine.next(body(Resumption[a, r, F](s.p, c.piece, held)), c.out, c.rest)
+        // `shift`: the body under a fresh reset of `p` — its boundary pushed in this same step (shift-generator-cost:
+        // as `shift0` of a `push` it was an operation, a node and a step more a capture)
+        val k2 = Resumption[a, r, F](s.p, c.piece, held)
+        if s.under then machine.next(body(k2), machine.end[r, U], machine.delim(s.p.whole, c.out, c.rest))
+        else machine.next(body(k2), c.out, c.rest)
       case ab: Abort[?, a, r] =>
         val c = claim[Cut[a, r, Z]](cutOrFail(ab.p, ab.at, k, m, machine))
         machine.next(Freer.Return[L, U, r](ab.value), c.out, c.rest)
