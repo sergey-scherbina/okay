@@ -19,8 +19,9 @@ class TestHandleFramesLoops extends munit.FunSuite:
   test("Writer.run (loopWith)") { assertEquals(!.run(wrun(n)), n) }
 
   /** a WALKER per level re-tells every tell below it: n levels are n²/2 re-tells, inherently (the fold's too),
-   * so these two run 5 000 deep — still past the Scala.js stack the eager walkers nested on */
-  val m = 5000
+   * so these two run 2 000 deep: 5 000 (12.5 M re-tells) timed out at 30 s on Scala.js on a loaded box in a full
+   * gate. Their depth is the 100 000 tests' job; these check the walkers' answers on the frames */
+  val m = 2000
 
   def wmap(n: Int): Int ! W =
     if n == 0 then pure(0)
