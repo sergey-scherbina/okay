@@ -331,7 +331,7 @@ object Frames:
         case c: Cat[F, ?, S0, ?, ?, ?, Z] @unchecked => walk(t, uncat(c))
         case r: Run[F, ?, S0, ?, ?, ?, Z] @unchecked => walk(t, r.below)
         case d: Dollar[F, ?, S0, ?, ?, Z] @unchecked => d.p match
-          case h: Cont0.Catching[?] => (try h.caught(t) catch case t2: Throwable => new Cont0.Thrown(t2)) match
+          case h: Cont0.Catching => (try h.caught(t) catch case t2: Throwable => new Cont0.Thrown(t2)) match
             case null => walk(t, d.below)
             case again: Cont0.Thrown => walk(again.t, d.below)
             // THE CLAIM: the frame's answer is a program at its own row and index, which the frame built
@@ -552,7 +552,8 @@ object Cont0:
    * exists; a throw becomes `Return(Thrown(t))`, and the loop hands it to the nearest catch frame that takes it —
    * the frames above it dropped, as a throw drops them — or, none taking it, throws it on.
    */
-  abstract class Catching[Y](name: String) extends Prompt[Y](name, "catch"):
+  trait Catching:
+    self: Prompt[?] =>
     if !Catching.ever then Catching.ever = true
     /** the frame's answer for `t` — a program at its row — or null: not this frame's */
     def caught(t: Throwable): Any

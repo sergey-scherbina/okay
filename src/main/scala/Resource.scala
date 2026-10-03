@@ -181,14 +181,43 @@ object Resource {
       try body
       catch { case t: Throwable => releaseAfter(fin, t); throw t }
 
-    def _loop(fin: List[() => Unit])(x: A ! Resource + F): A ! F = loop(fin)(x)
+    /** the head of `x`, a nested run forced on the way — as its fold `d` deep, as its frame on a machine at
+     * HandleFrames.Limit (handle-frames-catch) — all of it under the finalizers in force */
+    @tailrec def headOf(d: Int)(x: A ! Resource + F): A ! Resource + F = (x.resumeRun: @unchecked) match
+      case r @ Return(_) => r
+      case i @ Inject(_) => i
+      case b @ Bind(Inject(_), _) => b
+      case y => headOf(d)(HandleFrames.shallow(y, d))
+
+    /**
+     * THE SCOPE AS A FRAME (handle-frames-catch): the finalizers its state; a throw from inside releases the ones
+     * in force and goes on (a catch frame); and it takes EVERY operation passing through, to do what the walk does
+     * to a forwarded one — release before a final one, guard a failing one — and performs it again below itself
+     */
+    def frame(fin: List[() => Unit])(x: A ! Resource + F): Shift.U[F, A] =
+      HandleFrames.statefulAll[List[() => Unit], A, A, F, Resource + F](_ => true,
+        (fin, v) => { releaseAll(fin); Return(v) },
+        (fin, t) => { releaseAfter(fin, t); throw t })(
+        (fin, op, resume) => op match
+          case Acquire(mk, rel) =>
+            val r = guarded(fin)(mk())
+            resume((() => rel(r)) :: fin, r)
+          case e =>
+            // THE CLAIM: not Resource's, so an operation of F, which the frame performs again outside itself
+            val fe = e.asInstanceOf[F[Any]]
+            if isFinal(e) then
+              releaseAll(fin)
+              Inject(fe).flatMap(y => resume(Nil, y))
+            else Inject(failing.guard(fe, () => releaseAll(fin))).flatMap(y => resume(fin, y)))(fin, x)
+
+    def _loop(d: Int)(fin: List[() => Unit])(x: A ! Resource + F): A ! F = loop(d)(fin)(x)
 
     // `split`, not `<|>` (operator-followups, 2026-09-16): no Either per
     // operation. The while-and-return shape it replaced existed so one
     // catch could see the current finalizer list; `guarded` gives each
     // throwing call that list instead, and the loop is a tail call.
-    @tailrec def loop(fin: List[() => Unit])(x: A ! Resource + F): A ! F =
-      (guarded(fin)(x.resume): @unchecked) match
+    @tailrec def loop(d: Int)(fin: List[() => Unit])(x: A ! Resource + F): A ! F =
+      (guarded(fin)(headOf(d)(x)): @unchecked) match
         case Return(a) =>
           releaseAll(fin)
           Return(a)
@@ -205,22 +234,23 @@ object Resource {
             case Acquire(mk, rel) =>
               val r = guarded(fin)(mk())
               val f2 = (() => rel(r)) :: fin
-              loop(f2)(guarded(f2)(k(r)))
+              loop(d)(f2)(guarded(f2)(k(r)))
           } { e =>
             // a FINAL operation is never resumed, so the scope ends HERE:
             // release now, and hand on a continuation holding nothing —
             // were a handler to resume it anyway, nothing is released twice
             if isFinal(e) then
               releaseAll(fin)
-              Inject(e).flatMap { y => _loop(Nil)(k(y)) }
+              Inject(e).flatMap { y => _loop(d)(Nil)(k(y)) }
             else
               // k(y) runs USER code (the composed continuation) at the
               // outer handler's call site — a throw there must not skip
               // the finalizers, so it is guarded like every other call
-              Inject(failing.guard(e, () => releaseAll(fin))).flatMap { y => _loop(fin)(guarded(fin)(k(y))) }
+              Inject(failing.guard(e, () => releaseAll(fin))).flatMap { y => _loop(d)(fin)(guarded(fin)(k(y))) }
           }
 
-    loop(Nil)(a)
+    // a value: its fold forced by anything, the scope's frame on a machine that meets it
+    HandleFrames.run[A, F](d => loop(d)(Nil)(a), frame(Nil)(a))
   }
 }
 /**

@@ -36,12 +36,30 @@ object HandleFrames:
    * `Writer % W` in, `Writer % V` out): what the frame does not take is still the rest of the row, at erasure */
   def statefulOver[F[+_], S, A, R, G[+_], H[+_]](t: TypeableK[F], ret: (S, A) => R ! G)
                                                 (step: (S, Any, (S, Any) => R ! G) => R ! G)(s0: S, x: A ! H): Shift.U[G, R] =
+    statefulAll[S, A, R, G, H](t.test, ret, null)(step)(s0, x)
+
+  /**
+   * the state frame in full: `takes` says which operations are the frame's (a frame that must SEE a forwarded
+   * operation — Resource's release before a final one — takes them all and performs them again below itself);
+   * `onThrow`, if not null, makes it a catch frame too, answering a throw from inside with the state in force
+   * (handle-frames-catch): the frame's answer is `S => program`, applied to that state by the frame below it
+   */
+  def statefulAll[S, A, R, G[+_], H[+_]](takes0: Any => Boolean, ret: (S, A) => R ! G, onThrow: ((S, Throwable) => R ! G) | Null)
+                                        (step: (S, Any, (S, Any) => R ! G) => R ! G)(s0: S, x: A ! H): Shift.U[G, R] =
     type Ans = S => Shift.U[G, R]
-    val frame = new Cont0.Handling[Ans]("state"):
-      def takes(op: Any): Boolean = t.test(op)
-      def clause(op: Any, k: Any => Any): Any =
-        Return[Shift.Ro[G], Unit, Ans]((s: S) =>
-          HandleFrames.clauseAt[S, R, G](step, s, op, k))
+    val frame: Cont0.Handling[Ans] =
+      if onThrow == null then new Cont0.Handling[Ans]("state"):
+        def takes(op: Any): Boolean = takes0(op)
+        def clause(op: Any, k: Any => Any): Any =
+          Return[Shift.Ro[G], Unit, Ans]((s: S) => HandleFrames.clauseAt[S, R, G](step, s, op, k))
+      else
+        val thrown = onThrow
+        new Cont0.Handling[Ans]("state") with Cont0.Catching:
+          def takes(op: Any): Boolean = takes0(op)
+          def clause(op: Any, k: Any => Any): Any =
+            Return[Shift.Ro[G], Unit, Ans]((s: S) => HandleFrames.clauseAt[S, R, G](step, s, op, k))
+          def caught(t: Throwable): Any =
+            Return[Shift.Ro[G], Unit, Ans]((s: S) => thrown(s, t).asInstanceOf[Shift.U[G, R]])
     val back: A => Shift.U[G, Ans] = a => Return[Shift.Ro[G], Unit, Ans]((s: S) => ret(s, a).asInstanceOf[Shift.U[G, R]])
     Freer.Inject[Shift.Ro[G], Unit, Unit, Ans](Cont0.Dollar0[Freer.Lift[G], Ans, A, Unit, Unit](
       Cont0.delimiter[Ans, Unit](frame), back, x.asInstanceOf[Shift.U[G, A]]))
@@ -60,7 +78,7 @@ object HandleFrames:
 
   /** a `try` as a frame (handle-frames-catch): `h` answers a throw from anything `x` runs, `x` built under it too */
   def catching[A, G[+_]](h: Throwable => A ! G)(x: => A ! G): Shift.U[G, A] =
-    val frame = new Cont0.Catching[A]("try"):
+    val frame = new Prompt[A]("try", "catch") with Cont0.Catching:
       def caught(t: Throwable): Any = h(t)
     Freer.Inject[Shift.Ro[G], Unit, Unit, A](Cont0.Dollar0[Freer.Lift[G], A, A, Unit, Unit](
       Cont0.delimiter[A, Unit](frame), (a: A) => Return[Shift.Ro[G], Unit, A](a), Free.delay(() => x).asInstanceOf[Shift.U[G, A]]))
