@@ -171,11 +171,8 @@ ESCAPED (`Instances.Survived`); with the walk a frame of that machine it
 answers deep's answer, (6, List(0, 1, 3)), as with the machine inside.
 
 LEFT AS FOLDS, on purpose — each stays correct and nests as before:
-- `Throws.rows` (CanTry) and `Resource.handle`: each step runs under a
-  JVM `try` (an exception guard, a finalizer on failure). A frame on the
-  machine has no host `try` to run in, so the guarantee would be lost.
-- `Logic.msplit`: a search with a stack of alternatives, not a handler
-  with one answer; its own lane if it ever nests deep.
+- (`Throws.rows`, `Resource.run` and `Logic.msplit` were here until
+  handle-frames-catch, 2026-10-03; see "Catch frames" below.)
 - `Gen`'s walks (splice, indexed, taking, filtering, ...): closed rows
   (`Writer % W + Stop`), combinators of a generator, not handlers; the
   reader fuses them.
@@ -221,3 +218,40 @@ run (`Effects.Relaying`) whose depth is a field.
 The differential now runs the frame INSIDE a machine (`Shift.run`
 around the handler), since a fold no longer turns into one: a mutant
 in the state frame reds four.
+
+## Catch frames, Resource, the search (handle-frames-catch, 2026-10-03)
+
+A JVM `try` per step was why `Throws.rows` and `Resource.run` stayed folds:
+a frame has no host `try` to run in. The machine now has one of its own.
+
+- `Cont0.Catching` (a trait over a `Prompt`): the first one constructed sets
+  `Catching.ever`, and from then on the loop runs user code — a bind's
+  continuation, a `ret`, a thunk, a capture's body — under `Cont0.guard`,
+  which turns a throw into `Return(Thrown(t))`. The `Return` arm hands it to
+  the nearest `Catching` dollar below, dropping the frames above it as a
+  throw drops them; `caught(t)` answers a program, `null` (not mine), or
+  throws again, and a throw from a handler goes on to the frames BELOW it.
+  None taking it, the machine throws the same object on.
+  Before any catch frame exists the guard is one volatile read.
+- `Throws.rows` (CanTry): the fold forces nested runs at its head under its
+  step's `try`, depth-bounded; on a machine it is `HandleFrames.catching`.
+- `Resource.run`: `statefulAll` with a catch answer — a throw from inside
+  releases what is held and throws on; the frame takes every operation and
+  performs the foreign ones again below itself, so a `Final` operation still
+  releases first and `Failing.guard` still wraps the rest.
+  PINNED, not decided: a capture that drops its continuation through the
+  scope (`abort`) releases nothing on the frame, as the fold's forwarded
+  capture never did either (the old fold threw `ClassCastException` there).
+- `Logic.msplit` is a value now (it ran its search when called): the fold is
+  depth-bounded, and on a machine the search is a frame
+  (`HandleFrames.handling`, whose clause gets `k`): `k` run at each
+  alternative in turn, the first `Some` the answer, the alternatives not yet
+  run handed out in the rest as `HandleFrames.pending(k(c))` — a program
+  that a running machine steps into and anything else runs on a machine of
+  its own.
+
+Tests: TestHandleFramesCatch, TestHandleFramesResource, TestHandleFramesLogic
+(cross; 100 000 nested tries, scopes, cuts and splits; red first on master:
+StackOverflowError, and the old Throws fold silently answered a wrong value
+because it caught its own overflow).
+

@@ -56,8 +56,12 @@ of LogicT derives from ONE primitive over it.
   the standard `pure(()).flatMap(_ => …)` deferral, a by-name second
   argument, and a LazyList worklist. The lesson is recorded because
   it is the SAME bug the compare suite catches kyo on.
-- msplit (like every handler here) walks eagerly when CALLED up to
-  the first answer or F-operation — eliminators run, programs don't.
+- msplit walked eagerly when CALLED up to the first answer or
+  F-operation, until handle-frames-catch (2026-10-03): it is a VALUE
+  now, its search run when the program is — as a depth-bounded fold,
+  or as a search frame on a machine (specs/handle-frames.md, "Catch
+  frames, Resource, the search"), so searches nested 100 000 deep
+  hold a bounded host stack.
 
 ## logic-named-cut (filed, GATED on a search consumer)
 
