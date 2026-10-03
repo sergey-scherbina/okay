@@ -256,6 +256,33 @@ object Direct:
    * the context lambda is stripped by the macro, never called. */
   inline def direct[F[_]]: DirectApply[F] = DirectApply[F]()
 
+  /**
+   * `reset` and `shift` with a body in EITHER style (specs/direct-reset.md): a direct-style block — `.?`, `!`, or
+   * nothing under `implicitConversions` — or a program, as the core's take. Imported with `Direct.*` they stand
+   * for the core's `reset`/`shift` in that file, so they take every form the core's do: the body is expected as
+   * `R | R ! G`, which a value answers in direct style and a program (a `for`, a `direct { … }`) answers as before.
+   * The block's evidence is in scope, so `shift[A]` and `Shift.exit` name only their value type.
+   */
+  inline def reset[R, F[+_]](inline body: Shift.Prompted.Aux[R, Shift % R, F] ?=> DirectCtx[[X] =>> X ! Shift % R + F] ?=> (R | R ! Shift % R + F))
+                            (using Shift.Key[R], Distinct[Shift % R + F], Shift.Machine[F]): R ! F =
+    okay.reset[R, F]((p: Shift.Prompted.Aux[R, Shift % R, F]) ?=> block[R, Shift % R, F](body(using p)))
+
+  /** `shift` inside a block (the block's evidence names the delimiter), its lambda's body in either style */
+  inline def shift[A](using in: Shift.Prompted[?])
+                     (inline f: (A => in.Res ! in.K + in.F) => DirectCtx[[X] =>> X ! in.K + in.F] ?=> (in.Res | in.Res ! in.K + in.F))
+                     (using At): A ! in.K + in.F =
+    okay.shift[A](using in)(k => block[in.Res, in.K, in.F](f(k)))
+
+  /** `shift` to the delimiter of answer type `R` (the key names it), its lambda's body in either style */
+  inline def shift[R, A, F[+_]](inline f: (A => R ! Shift % R + F) => DirectCtx[[X] =>> X ! Shift % R + F] ?=> (R | R ! Shift % R + F))
+                               (using Shift.Key[R], At): A ! Shift % R + F =
+    okay.shift[R, A, F](k => block[R, Shift % R, F](f(k)))
+
+  /** a body in either style, as a program of `K + F` answering `R` (the macro behind the two above) */
+  inline def block[R, K[+_], F[+_]](inline body: DirectCtx[[X] =>> X ! K + F] ?=> Any)
+                                   (using inline d: Deferral, inline b: Binds): R ! K + F =
+    ${ okay.macros.DirectResetMacros.blockImpl[R, K, F]('body, 'd, 'b) }
+
   final class DirectApply[F[_]](private val unit: Unit = ()) extends AnyVal:
     inline def apply[A](inline block: DirectCtx[F] ?=> A)
                        (using inline M: Applicative[F], inline d: Deferral,

@@ -40,6 +40,6 @@ Direct.reset[Int, S](for x <- shift[Int, Int, S](k => k(1)) yield x + 1)
 - [ ] `Direct.reset` with a monadic body (`for`, `flatMap`), unchanged answers
 - [ ] `Direct.shift[A]` with a direct-style lambda body and with a monadic one,
       multi-shot included
-- [ ] the block's evidence inside: `Shift.exit` and `emit` work in a
+- [ ] the block's evidence inside: `Shift.exit` works in a
       `Direct.reset` body
 - [ ] fully unmarked with `implicitConversions`
