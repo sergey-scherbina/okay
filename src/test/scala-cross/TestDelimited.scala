@@ -2,14 +2,14 @@ package okay
 
 /**
  * specs/delimited.md: the machine through its interface. Every program
- * here is written against `Delimited[M]` ALONE, and runs on two
+ * here is written against `LambdaDollar[M]` ALONE, and runs on two
  * instances — the frame machine and the reference (DelimitedReference:
  * a list context, nothing subtle) — which must agree. The one thing the
  * interface adds over `k(a)` is pinned too: RESUMING WITH A COMPUTATION
  * (DPJS's `pushSubCont`, "throwing into a continuation"), whose
  * operations run inside the stack `k` carries, its delimiters in force.
  */
-abstract class DelimitedLaws[M[_, _, _]](name: String, val D: Delimited[M]) extends munit.FunSuite:
+abstract class DelimitedLaws[M[_, _, _]](name: String, val D: LambdaDollar[M]) extends munit.FunSuite:
 
   type Str = M[String, String, String]
 
@@ -93,7 +93,7 @@ abstract class DelimitedLaws[M[_, _, _]](name: String, val D: Delimited[M]) exte
 
 /** the frame machine through the interface */
 class TestDelimitedMachine extends DelimitedLaws[[S, R, A] =>> Freer[Cont0.Row[Freer.Lift[Pure]], S, R, A]](
-  "machine", Delimited.machine[Freer.Lift[Pure]])
+  "machine", LambdaDollar.machine[Freer.Lift[Pure]])
 
 /** the reference: the same laws, the same answers */
 class TestDelimitedReference extends DelimitedLaws[DelimitedReference.P]("reference", DelimitedReference.Ref)

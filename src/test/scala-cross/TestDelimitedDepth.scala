@@ -13,7 +13,7 @@ object DelimitedDepth:
 
   /** a million captures in a row under one delimiter, each body binding
    * on its resumption's answer — `k(1) + 1` written as data */
-  def answerUsing[M[_, _, _]](D: Delimited[M])(n: Int): M[Int, Int, Int] =
+  def answerUsing[M[_, _, _]](D: LambdaDollar[M])(n: Int): M[Int, Int, Int] =
     extension [A, S, R](m: M[S, R, A])
       def map[B](f: A => B): M[S, R, B] = D.bind[A, B, S, S, R](m)(a => D.pure[B, S](f(a)))
     val p = D.delimiter[Int, Int](using At("TestDelimitedDepth"))
@@ -25,7 +25,7 @@ object DelimitedDepth:
     D.reset[Int, Int, Int](p)(loop(n))
 
   /** a million delimiters, each inside the last */
-  def nestedResets[M[_, _, _]](D: Delimited[M])(n: Int): M[Int, Int, Int] =
+  def nestedResets[M[_, _, _]](D: LambdaDollar[M])(n: Int): M[Int, Int, Int] =
     val p = D.delimiter[Int, Int](using At("TestDelimitedDepth"))
     def nest(i: Int): M[Int, Int, Int] =
       if i == 0 then D.pure[Int, Int](0)
@@ -33,11 +33,11 @@ object DelimitedDepth:
     nest(n)
 
   /** a million binds, left-nested */
-  def leftBinds[M[_, _, _]](D: Delimited[M])(n: Int): M[Int, Int, Int] =
+  def leftBinds[M[_, _, _]](D: LambdaDollar[M])(n: Int): M[Int, Int, Int] =
     (1 to n).foldLeft(D.pure[Int, Int](0))((m, _) => D.bind[Int, Int, Int, Int, Int](m)(x => D.pure[Int, Int](x + 1)))
 
   /** every level resumes its continuation TWICE: 2^depth runs of the rest */
-  def multiShot[M[_, _, _]](D: Delimited[M])(depth: Int): M[Int, Int, Int] =
+  def multiShot[M[_, _, _]](D: LambdaDollar[M])(depth: Int): M[Int, Int, Int] =
     val p = D.delimiter[Int, Int](using At("TestDelimitedDepth"))
     def level(i: Int): M[Int, Int, Int] =
       if i == 0 then D.pure[Int, Int](1)
@@ -50,7 +50,7 @@ object DelimitedDepth:
 class TestDelimitedDepth extends munit.FunSuite:
   import DelimitedDepth.*
 
-  val M = Delimited.machine[Freer.Lift[Pure]]
+  val M = LambdaDollar.machine[Freer.Lift[Pure]]
   val R = DelimitedReference.Ref
   val n = 1000000
 

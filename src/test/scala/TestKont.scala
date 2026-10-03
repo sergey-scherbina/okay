@@ -25,20 +25,20 @@ class TestKont extends munit.FunSuite:
   /** run under a boundary, as `Shift.run` does: a capture that finds no
    * delimiter is `NoPrompt` by name, not an operation let out */
   def run[S, A](p: P[S, S, A]): A =
-    Delimited.machine[F].runHead[S, S, A](Delimited.machine[F].reset[S, S, A](Cont0.boundary[A, S])(p)) match
+    LambdaDollar.machine[F].runHead[S, S, A](LambdaDollar.machine[F].reset[S, S, A](Cont0.boundary[A, S])(p)) match
       case Return(a) => a
       case other => fail(s"not a value: $other")
 
   def shift0(p: Prompt[String])(f: (String => Str) => Str): Str =
-    Delimited.machine[F].shift0[String, String, String, String, String](Cont0.delimiter(p))(f)
+    LambdaDollar.machine[F].shift0[String, String, String, String, String](Cont0.delimiter(p))(f)
 
   def shift(p: Prompt[String])(f: (String => Str) => Str): Str =
-    Delimited.machine[F].shift[String, String, String, String, String](Cont0.delimiter(p))(f)
+    LambdaDollar.machine[F].shift[String, String, String, String, String](Cont0.delimiter(p))(f)
 
   def dollar(p: Prompt[String])(v: String => Str)(e: Str): Str =
-    Delimited.machine[F].dollar[String, String, String, String](Cont0.delimiter(p))(v)(e)
+    LambdaDollar.machine[F].dollar[String, String, String, String](Cont0.delimiter(p))(v)(e)
 
-  def reset(p: Prompt[String])(e: Str): Str = Delimited.machine[F].reset[String, String, String](Cont0.delimiter(p))(e)
+  def reset(p: Prompt[String])(e: Str): Str = LambdaDollar.machine[F].reset[String, String, String](Cont0.delimiter(p))(e)
 
   val angle: String => Str = x => pure(s"<$x>")
 
@@ -105,8 +105,8 @@ class TestKont extends munit.FunSuite:
     val p = Cont0.prompt[String]
     val ret: Int => P[Int, Int, String] = n => pure(s"n=$n")
     val body: P[Int, Int, Int] =
-      Delimited.machine[F].shift0[String, Int, Int, Int, Int](Cont0.delimiter(p))(k => k(1).flatMap(s => k(2).map(t => s + t)))
-    val prog: P[Int, Int, String] = Delimited.machine[F].dollar[String, Int, Int, Int](Cont0.delimiter(p))(ret)(body)
+      LambdaDollar.machine[F].shift0[String, Int, Int, Int, Int](Cont0.delimiter(p))(k => k(1).flatMap(s => k(2).map(t => s + t)))
+    val prog: P[Int, Int, String] = LambdaDollar.machine[F].dollar[String, Int, Int, Int](Cont0.delimiter(p))(ret)(body)
     assertEquals(run(prog), "n=1n=2")
   }
 
@@ -116,7 +116,7 @@ class TestKont extends munit.FunSuite:
     val p = Cont0.prompt[Int]
     def nest(n: Int): P[Int, Int, Int] =
       if n == 0 then pure(0)
-      else Delimited.machine[F].dollar[Int, Int, Int, Int](Cont0.delimiter(p))(x => pure(x + 1))(Delay(() => nest(n - 1)))
+      else LambdaDollar.machine[F].dollar[Int, Int, Int, Int](Cont0.delimiter(p))(x => pure(x + 1))(Delay(() => nest(n - 1)))
     assertEquals(run(nest(100_000)), 100_000)
   }
 
@@ -124,10 +124,10 @@ class TestKont extends munit.FunSuite:
     type L = List[Int]
     val p = Cont0.prompt[L]
     def emit(i: Int): P[L, L, Unit] =
-      Delimited.machine[F].shift0[L, L, L, L, Unit](Cont0.delimiter(p))(k => k(()).map(i :: _))
+      LambdaDollar.machine[F].shift0[L, L, L, L, Unit](Cont0.delimiter(p))(k => k(()).map(i :: _))
     def body(i: Int, n: Int): P[L, L, Unit] =
       if i > n then pure(()) else emit(i).flatMap(_ => Delay(() => body(i + 1, n)))
-    val prog = Delimited.machine[F].dollar[L, Unit, L, L](Cont0.delimiter(p))(_ => pure(Nil))(body(1, 100_000))
+    val prog = LambdaDollar.machine[F].dollar[L, Unit, L, L](Cont0.delimiter(p))(_ => pure(Nil))(body(1, 100_000))
     val got = run(prog)
     assertEquals(got.length, 100_000)
     assertEquals(got.take(3), List(1, 2, 3))
@@ -142,9 +142,9 @@ class TestKont extends munit.FunSuite:
     val p = Cont0.prompt[Int]
     // the frames pile up under the shift0: each recursive step adds a map
     def deep(n: Int): P[Int, Int, Int] =
-      if n == 0 then Delimited.machine[F].shift0[Int, Int, Int, Int, Int](Cont0.delimiter(p))(k => k(0).flatMap(a => k(1).map(b => a + b)))
+      if n == 0 then LambdaDollar.machine[F].shift0[Int, Int, Int, Int, Int](Cont0.delimiter(p))(k => k(0).flatMap(a => k(1).map(b => a + b)))
       else Delay(() => deep(n - 1)).map(_ + 1)
-    assertEquals(run(Delimited.machine[F].reset[Int, Int, Int](Cont0.delimiter(p))(deep(100_000))), 200_001)
+    assertEquals(run(LambdaDollar.machine[F].reset[Int, Int, Int](Cont0.delimiter(p))(deep(100_000))), 200_001)
   }
 
   // ------------------------------------------------ the two costs the segmented stack pays O(1)
@@ -156,9 +156,9 @@ class TestKont extends munit.FunSuite:
     val n = 20_000
     val p = Cont0.prompt[Int]
     val prog = (1 to n).foldLeft(pure[Int, Int](0))((m, _) =>
-      m.flatMap(x => Delimited.machine[F].shift0[Int, Int, Int, Int, Int](Cont0.delimiter(p))(k => k(x + 1))))
+      m.flatMap(x => LambdaDollar.machine[F].shift0[Int, Int, Int, Int, Int](Cont0.delimiter(p))(k => k(x + 1))))
     val t0 = System.nanoTime()
-    assertEquals(run(Delimited.machine[F].reset[Int, Int, Int](Cont0.delimiter(p))(prog)), n)
+    assertEquals(run(LambdaDollar.machine[F].reset[Int, Int, Int](Cont0.delimiter(p))(prog)), n)
     assert(System.nanoTime() - t0 < 5_000_000_000L, "20 000 captures took seconds: a capture is copying frames")
   }
 
@@ -168,9 +168,9 @@ class TestKont extends munit.FunSuite:
     val n = 100_000
     val p = Cont0.prompt[Int]
     val prog = (1 to n).foldLeft(pure[Int, Int](0))((m, _) =>
-      m.flatMap(x => Delimited.machine[F].shift0[Int, Int, Int, Int, Int](Cont0.delimiter(p))(k => k(x + 1).map(_ + 1))))
+      m.flatMap(x => LambdaDollar.machine[F].shift0[Int, Int, Int, Int, Int](Cont0.delimiter(p))(k => k(x + 1).map(_ + 1))))
     val t0 = System.nanoTime()
-    assertEquals(run(Delimited.machine[F].reset[Int, Int, Int](Cont0.delimiter(p))(prog)), 2 * n)
+    assertEquals(run(LambdaDollar.machine[F].reset[Int, Int, Int](Cont0.delimiter(p))(prog)), 2 * n)
     assert(System.nanoTime() - t0 < 5_000_000_000L, "100 000 nested resumptions took seconds: a resumption is copying frames")
   }
 
@@ -183,7 +183,7 @@ class TestKont extends munit.FunSuite:
   test("a foreign operation comes out as Bind(Inject(e), k); k fed twice gives two answers, the shift0 after it handled") {
     val p = Cont0.prompt[String]
     val body: Str = ask.flatMap(n => shift0(p)(k => k(n.toString).map(_ + "!")))
-    Delimited.machine[F].runHead[String, String, String](dollar(p)(angle)(body)) match
+    LambdaDollar.machine[F].runHead[String, String, String](dollar(p)(angle)(body)) match
       case Bind(Diag(_: Ask[?]), k) =>
         val fs = k.asInstanceOf[Int => P[String, String, String]]
         assertEquals(run(fs(1)), "<1>!")
@@ -210,7 +210,7 @@ class TestKont extends munit.FunSuite:
     val p = Cont0.prompt[String]
     // the ask is answered by the loop outside; the shift0 after it is the machine's, and its k is resumed twice
     val body: Str = ask.flatMap(n => shift0(p)(k => k(n.toString).flatMap(a => k((n + 1).toString).map(b => a + b))))
-    val prog = answer[String, String, String](7)(Delimited.machine[F].runHead[String, String, String](dollar(p)(angle)(body)))
+    val prog = answer[String, String, String](7)(LambdaDollar.machine[F].runHead[String, String, String](dollar(p)(angle)(body)))
     assertEquals(run(prog), "<7><8>")
   }
 

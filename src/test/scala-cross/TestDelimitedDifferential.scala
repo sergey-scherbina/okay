@@ -38,7 +38,7 @@ object DelimitedDifferential:
   def mix(x: Int, y: Int): Int = x * 31 + y
 
   /** the program on any instance; prompts fresh per run */
-  def interpret[M[_, _, _]](D: Delimited[M])(prog: Prog): M[Int, Int, Int] =
+  def interpret[M[_, _, _]](D: LambdaDollar[M])(prog: Prog): M[Int, Int, Int] =
     given At = At("TestDelimitedDifferential")
     val ps = Vector.fill(3)(D.delimiter[Int, Int])
     def pure(n: Int): M[Int, Int, Int] = D.pure[Int, Int](n)
@@ -65,7 +65,7 @@ object DelimitedDifferential:
     go(prog)
 
   /** an answer, or the failure's kind — the two must agree on both */
-  def outcome[M[_, _, _]](D: Delimited[M])(prog: Prog): Either[String, Int] =
+  def outcome[M[_, _, _]](D: LambdaDollar[M])(prog: Prog): Either[String, Int] =
     try Right(D.run(interpret(D)(prog)))
     catch case _: NoPrompt => Left("NoPrompt")
 
@@ -105,7 +105,7 @@ object DelimitedDifferential:
 class TestDelimitedDifferential extends munit.FunSuite:
   import DelimitedDifferential.*
 
-  val machine = Delimited.machine[Freer.Lift[Pure]]
+  val machine = LambdaDollar.machine[Freer.Lift[Pure]]
   val reference = DelimitedReference.Ref
 
   /** `minAnswered`: the share of programs that must answer, so the

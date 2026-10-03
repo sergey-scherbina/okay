@@ -117,21 +117,21 @@ object Shift {
 
   /** `reset` at `p` */
   def push[R, F[+_]](p: Prompt[R])(body: R ! Shift % ? + F): R ! Shift % ? + F =
-    out(Delimited.machine[Freer.Lift[F]].reset[Unit, Unit, R](atUnit(p))(in(body)))
+    out(LambdaDollar.machine[Freer.Lift[F]].reset[Unit, Unit, R](atUnit(p))(in(body)))
 
   /** `ret $ body` at `p`: `ret` runs outside, a `shift0` to `p` takes it along */
   def dollar[R0, R, F[+_]](p: Prompt[R])(ret: R0 => R ! Shift % ? + F)(body: R0 ! Shift % ? + F): R ! Shift % ? + F =
-    out(Delimited.machine[Freer.Lift[F]].dollar[R, R0, Unit, Unit](atUnit(p))(inF(ret))(in(body)))
+    out(LambdaDollar.machine[Freer.Lift[F]].dollar[R, R0, Unit, Unit](atUnit(p))(inF(ret))(in(body)))
 
   /** capture to `p`; the body runs under `p`, `k` re-installs it */
   def shift[R, A, F[+_]](p: Prompt[R])
                         (f: (A => R ! Shift % ? + F) => R ! Shift % ? + F)(using at: At): A ! Shift % ? + F =
-    out(Delimited.machine[Freer.Lift[F]].shift[R, Unit, Unit, Unit, A](atUnit(p))(clause(f)))
+    out(LambdaDollar.machine[Freer.Lift[F]].shift[R, Unit, Unit, Unit, A](atUnit(p))(clause(f)))
 
   /** the body consumes `p`; `k` re-installs it */
   def shift0[R, A, F[+_]](p: Prompt[R])
                          (f: (A => R ! Shift % ? + F) => R ! Shift % ? + F)(using at: At): A ! Shift % ? + F =
-    out(Delimited.machine[Freer.Lift[F]].shift0[R, Unit, Unit, Unit, A](atUnit(p))(clause(f)))
+    out(LambdaDollar.machine[Freer.Lift[F]].shift0[R, Unit, Unit, Unit, A](atUnit(p))(clause(f)))
 
   /** a fresh prompt, a block under it, run */
   def reset[R, F[+_]](body: Prompt[R] => R ! Shift % ? + F)
@@ -199,7 +199,7 @@ object Shift {
   inline def shift[A](using in: Prompted[?])[F[_]]
                          (using inline ctx: DirectCtx[F])(using rw: Reader.RowOf[F], at: At)
                          (f: (A => in.Res ! rw.R) => in.Res ! rw.R): A ! rw.R =
-    Delimited.machine[Freer.Lift[Pure]].shift[in.Res, Unit, Unit, Unit, A](Cont0.delimiter[in.Res, Unit](in.prompt))(
+    LambdaDollar.machine[Freer.Lift[Pure]].shift[in.Res, Unit, Unit, Unit, A](Cont0.delimiter[in.Res, Unit](in.prompt))(
       f.asInstanceOf[Stack[Freer.Lift[Pure], A, Unit, Unit, in.Res] => U[Pure, in.Res]]).asInstanceOf[A ! rw.R]
 
   /** the 0-variant */
@@ -211,7 +211,7 @@ object Shift {
   inline def shift0[A](using in: Prompted[?])[F[_]]
                           (using inline ctx: DirectCtx[F])(using rw: Reader.RowOf[F], at: At)
                           (f: (A => in.Res ! rw.R) => in.Res ! rw.R): A ! rw.R =
-    Delimited.machine[Freer.Lift[Pure]].shift0[in.Res, Unit, Unit, Unit, A](Cont0.delimiter[in.Res, Unit](in.prompt))(
+    LambdaDollar.machine[Freer.Lift[Pure]].shift0[in.Res, Unit, Unit, Unit, A](Cont0.delimiter[in.Res, Unit](in.prompt))(
       f.asInstanceOf[Stack[Freer.Lift[Pure], A, Unit, Unit, in.Res] => U[Pure, in.Res]]).asInstanceOf[A ! rw.R]
 
   /** abort to the delimiter in force */
@@ -451,17 +451,17 @@ object Shift {
 
   /** run without the barrier: a capture with no delimiter goes out, for a machine outside */
   def runNested[R, F[+_]](prog: R ! Shift % ? + F)(using Row.In[Shift % ?, F]): R ! F =
-    residual[R, F](Delimited.machine[Freer.Lift[F]].runHead[Unit, Unit, R](in(prog)))
+    residual[R, F](LambdaDollar.machine[Freer.Lift[F]].runHead[Unit, Unit, R](in(prog)))
 
   /** drop the continuation and answer `value` at `p` */
   def abort[R, A, F[+_]](p: Prompt[R])(value: R)(using At): A ! Shift % ? + F =
-    out(Delimited.machine[Freer.Lift[F]].abort[R, Unit, A](atUnit(p))(value))
+    out(LambdaDollar.machine[Freer.Lift[F]].abort[R, Unit, A](atUnit(p))(value))
 
   /** under the barrier: a capture with no delimiter is `NoPrompt`. A value: run by whoever forces it, stepped
    * into by a machine already running (the machine's `owned`) */
   private[okay] def bounded[R, F[+_]](prog: U[F, R]): R ! F =
-    Free.delay(Delimited.machine[Freer.Lift[F]].owned[Unit, Unit, R, R ! F](
-      Delimited.machine[Freer.Lift[F]].reset[Unit, Unit, R](Cont0.boundary[R, Unit])(prog))(residual[R, F]))
+    Free.delay(LambdaDollar.machine[Freer.Lift[F]].owned[Unit, Unit, R, R ! F](
+      LambdaDollar.machine[Freer.Lift[F]].reset[Unit, Unit, R](Cont0.boundary[R, Unit])(prog))(residual[R, F]))
 
   /** the head form as the residual program */
   private[okay] def residual[R, F[+_]](head: U[F, R]): R ! F = head.asInstanceOf[R ! F]

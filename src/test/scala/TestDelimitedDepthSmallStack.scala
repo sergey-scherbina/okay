@@ -5,7 +5,7 @@ package okay
 class TestDelimitedDepthSmallStack extends munit.FunSuite:
   import DelimitedDepth.*
 
-  val M = Delimited.machine[Freer.Lift[Pure]]
+  val M = LambdaDollar.machine[Freer.Lift[Pure]]
   val n = 1000000
 
   test("all four, a million deep, on 128 KB") {

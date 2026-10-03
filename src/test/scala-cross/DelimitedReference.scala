@@ -34,7 +34,7 @@ object DelimitedReference:
    */
   private def as[A](v: Any): A = v.asInstanceOf[A]
 
-  object Ref extends Delimited[P]:
+  object Ref extends LambdaDollar[P]:
     type Delimiter[Y, I] = Tag[Y, I]
 
     final class K[A, S, T, Z](val elems: List[Elem]) extends (A => P[S, T, Z]):

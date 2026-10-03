@@ -1,17 +1,17 @@
 package okay
 
 import okay.Freer.{Return, Inject}
-import Atm.{K, M, Next, Cap}
+import Delimited.{K, M, Next, Cap}
 
 /**
  * A SECOND EFFECT on the same stack (specs/cont-atm.md): λ$ with named prompts — `ret $ body` at a prompt, and
  * `shift0` to a prompt through any boundaries between. Written with nothing but the stack's own manipulations
  * (`Level`, `cut`, `reinstall`); the machine is the one Cont runs on, unchanged.
  */
-class TestAtmLambda extends munit.FunSuite:
+class TestDelimitedLambda extends munit.FunSuite:
 
   /** a prompt: a boundary's mark, with the answer every installation of it has */
-  final class Prompt[Y](val name: String) extends Atm.Tag[Y]
+  final class Prompt[Y](val name: String) extends Delimited.Tag[Y]
 
   /** a shift0 body: in the marked level's place, at whatever answers outside it */
   type Away[A, Y] = [W] => Cap[L, A, Y] => Freer[L, W, W, Y]
@@ -24,25 +24,25 @@ class TestAtmLambda extends munit.FunSuite:
   /** a captured continuation resumed: its boundaries put back, its answer the value */
   final case class Resume[A, Z, X](k: Cap[L, A, Z], a: A) extends L[X, X, Z]
 
-  object Steps extends Atm.Effect[L]:
-    def step[A, S, T, R](op: L[S, T, A], k: K[L, A, S], m: M[L, T, R], run: Atm.Run[L]): Next[L, R] = op match
+  object Steps extends Delimited.Effect[L]:
+    def step[A, S, T, R](op: L[S, T, A], k: K[L, A, S], m: M[L, T, R], run: Delimited.Run[L]): Next[L, R] = op match
       case Dollar(p, ret, body) => Next(body, K.Push(ret, K.Done()), M.Level(p, k, m))
-      case s: Shift0[a, ?, ?] => Atm.cut[L, a, T, R](k, m, _ eq s.p) match
+      case s: Shift0[a, ?, ?] => Delimited.cut[L, a, T, R](k, m, _ eq s.p) match
         case null => throw IllegalStateException(s"no delimiter for prompt ${s.p.name}")
-        case f: Atm.Found[L, a, R] =>
+        case f: Delimited.Found[L, a, R] =>
           val is = same(f.cap.tag, s.p)
           Next(s.body[f.U](is.substituteCo[[t] =>> Cap[L, a, t]](f.cap)), is.substituteCo[[t] =>> K[L, t, f.U]](f.out), f.m)
-      case Resume(cap, a) => Atm.reinstall(cap, a, k, m)
+      case Resume(cap, a) => Delimited.reinstall(cap, a, k, m)
 
   /**
    * THE ONE CLAIM of this effect, the generative-prompt axiom (Dybvig, Peyton Jones & Sabry's `eqPrompt`): a
    * boundary marked by a prompt was put there at that prompt's answer — `Dollar` is the only one that marks it.
    * It is the effect's, not the stack's: the stack never relates two marks.
    */
-  private def same[T, Y](@annotation.unused t: Atm.Tag[T], @annotation.unused p: Prompt[Y]): T =:= Y =
+  private def same[T, Y](@annotation.unused t: Delimited.Tag[T], @annotation.unused p: Prompt[Y]): T =:= Y =
     summon[T =:= T].asInstanceOf[T =:= Y]
 
-  private def run[A](c: Freer[L, A, A, A]): A = Atm.run(c, identity, Steps)
+  private def run[A](c: Freer[L, A, A, A]): A = Delimited.run(c, identity, Steps)
   private def pure[A, R](a: A): Freer[L, R, R, A] = Return(a)
   private def reset[A, R, X](p: Prompt[R])(body: Freer[L, A, R, A]): Freer[L, X, X, R] =
     Inject(Dollar[A, A, A, R, X](p, (a: A) => Return[L, A, A](a), body))

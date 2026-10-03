@@ -4,17 +4,21 @@ import okay.Freer.{Return, Inject, Bind, Delay, Diag}
 import scala.annotation.tailrec
 
 /**
- * THE MACHINE — its interface here, its implementation below (delimited-machine, 2026-10-02): continuations
+ * THE λ$ MACHINE — on its way out (specs/cont-atm.md): λ$'s two operations (`Dollar0`, `Shift0`) built into a
+ * machine of their own. The stack of continuations is `Delimited` below, effect-independent; λ$ is to become
+ * an effect on it, as Cont already is, and Shift and the handler frames with it.
+ *
+ * Its interface here, its implementation below (delimited-machine, 2026-10-02): continuations
  * are DATA (a captured segment, resumed by an instruction), indexed by their answer types, multi-shot.
  * The strict-`k` bridge, a continuation as a host function, is Cont.scala's, not this file's.
  *
  * The interface: Dybvig, Peyton Jones & Sabry's `MonadDelimitedCont` (JFP 2007) in λ$'s variant.
  * Primitives: `delimiter` (newPrompt), `dollar` (pushPrompt, with `ret`), `shift0` (withSubCont, but `k`
  * keeps the delimiter and `ret`), `resume` (pushSubCont: a computation inside `k`). Derived: `reset`,
- * `shift`, `abort`. Instances: `Delimited.machine` and the tests' reference. `Control` is the one-prompt
+ * `shift`, `abort`. Instances: `LambdaDollar.machine` and the tests' reference. `Control` is the one-prompt
  * user level, built on this.
  */
-trait Delimited[M[_, _, _]] extends ParaMonad[[A, S, R] =>> M[S, R, A]]:
+trait LambdaDollar[M[_, _, _]] extends ParaMonad[[A, S, R] =>> M[S, R, A]]:
 
   /** a delimiter's name: answer `Y`, installed at index `I` */
   type Delimiter[Y, I]
@@ -73,7 +77,7 @@ trait Delimited[M[_, _, _]] extends ParaMonad[[A, S, R] =>> M[S, R, A]]:
   def abort[Y, T, X](d: Delimiter[Y, T])(value: Y)(using At): M[T, T, X] =
     shift0[Y, T, T, T, X](d)(_ => pure[Y, T](value))
 
-object Delimited:
+object LambdaDollar:
 
   /** the frame machine (its class in `object Frames`, beside the loop it alone may start) */
   type Machine[F[_, _, +_]] = Frames.Machine[F]
@@ -130,7 +134,7 @@ object Frames:
   import Stack.{Done, Run, Dollar, Cat}
 
   /** the frame machine: `dollar`/`shift0` are its operations, `resume(k)(m)` is `Bind(m, k)` */
-  final class Machine[F[_, _, +_]] private[Frames] () extends Delimited[[S, R, A] =>> Freer[Cont0.Row[F], S, R, A]]:
+  final class Machine[F[_, _, +_]] private[Frames] () extends LambdaDollar[[S, R, A] =>> Freer[Cont0.Row[F], S, R, A]]:
     type Delimiter[Y, I] = Cont0.Delimiter[Y, I]
     type SubCont[A, S, T, Z] = Stack[F, A, S, T, Z]
 
@@ -153,7 +157,7 @@ object Frames:
     def run[A](m: Freer[Cont0.Row[F], A, A, A]): A =
       runHead[A, A, A](reset[A, A, A](Cont0.boundary[A, A])(m)) match
         case Return(a) => a
-        case _ => throw IllegalStateException("Delimited.machine.run: an operation of F was left unhandled")
+        case _ => throw IllegalStateException("LambdaDollar.machine.run: an operation of F was left unhandled")
 
     def dollar[Y, A, T, R](d: Cont0.Delimiter[Y, T])(ret: A => Freer[Cont0.Row[F], T, T, Y])
                           (body: Freer[Cont0.Row[F], T, R, A]): Freer[Cont0.Row[F], T, R, Y] =
@@ -610,7 +614,7 @@ private object Rev:
 // meta-continuation (LMCS 2005). No cast: every step is a GADT match.
 // ======================================================================
 
-object Atm:
+object Delimited:
 
   /**
    * PLACE ONE: the continuation up to the nearest boundary, from `A` to `S`; its last frame is the reset's

@@ -6,7 +6,7 @@ import scala.collection.LinearSeq
 /**
  * Danvy-Filinski's one-prompt `shift`/`reset` with answer-type modification: `M[A, S, R]` is `(A => S) => R`.
  * Instances: `Cont` (data, stack-safe) and `Func` (closures). THIS FILE IS THE FACADE: the machine is
- * Delimited.scala's ATM machine (`Atm`), typed per reset installation, so nothing here is claimed; ContMacro
+ * the stack of continuations (`Delimited`), typed per reset installation, so nothing here is claimed; ContMacro
  * turns what it can read into data first.
  */
 trait Control[M[_, _, _]] extends ParaMonad[M]:
@@ -38,7 +38,7 @@ object Cont:
   def Pure[A, R](a: A): Rep[A, R, R] = Return(a)
 
   /**
-   * `shift`: one leaf, an operation of the ATM machine (`Atm.Op`). `ContMacro` picks the leaf's form at compile time:
+   * `shift`: one leaf, an operation of the ATM machine (`Delimited.Op`). `ContMacro` picks the leaf's form at compile time:
    * a tail body is a value (`tailShift`/`tailPure`), an answer-using body a program over a lazy `k`
    * (`lazyLeaf`), anything else gets a strict `k` (`shiftLeaf`).
    */
@@ -47,7 +47,7 @@ object Cont:
   /** delimit and run: `c / identity` */
   inline def reset[A, R](c: Rep[A, A, R]): R = run(c)(identity)
 
-  /** an opaque body: run as it is, given a strict `k` (`Atm.Resumption`) */
+  /** an opaque body: run as it is, given a strict `k` (`Delimited.Resumption`) */
   def shiftLeaf[A, S, R](f: (A => S) => R): Rep[A, S, R] = Inject[Sig, S, R, A](Op.Strict(f))
 
   /**
@@ -56,7 +56,7 @@ object Cont:
    * The contract it changes: host side effects written after `k(a)` in the body run before `k`'s rest.
    */
   def programLeaf[A, S, R](f: (A => S) => R)(using p: Program[S]): Rep[A, S, R] =
-    Inject[Sig, S, R, A](Op.WithK(k => f(x => p.later(() => Atm.runK(k, x, Steps)))))
+    Inject[Sig, S, R, A](Op.WithK(k => f(x => p.later(() => Delimited.runK(k, x, Steps)))))
 
   /** `S` a program that can stand for itself unbuilt: a `Delay` of any `Freer`, `A ! F` among them */
   trait Program[S]:
@@ -74,7 +74,7 @@ object Cont:
   def tailPureSame[A, S, R](v: A)(using ev: S =:= R): Rep[A, S, R] =
     ev.flip.substituteCo[[s] =>> Rep[A, s, R]](Return(v))
 
-  /** a tail body whose `S` is a proper subtype of `R`: `k`'s answer leaves as the body's (`Atm.Tail`) */
+  /** a tail body whose `S` is a proper subtype of `R`: `k`'s answer leaves as the body's (`Delimited.Tail`) */
   def tailShift[A, S, R](v: () => A)(using ev: S <:< R): Rep[A, S, R] =
     Freer.delay[Sig, S, R, A](() => Inject(Op.Tail(v(), ev)))
 
@@ -89,12 +89,12 @@ object Cont:
   opaque type Lazy[T, B] = Freer[Sig, T, T, B]
 
   /** the lazy `k` of an answer-using body: its captured continuation, from `A` to `S`, which only `call` applies */
-  opaque type LazyK[A, S] = Atm.K[Sig, A, S]
+  opaque type LazyK[A, S] = Delimited.K[Sig, A, S]
 
   /** the body's answer */
   def done[T, R](r: R): Lazy[T, R] = Return(r)
 
-  /** `k(a)` then `rest`: `k` under a boundary of its own, which hands its `S` to `rest` (`Atm.Resume`) */
+  /** `k(a)` then `rest`: `k` under a boundary of its own, which hands its `S` to `rest` (`Delimited.Resume`) */
   def call[A, S, T, R](k: LazyK[A, S], a: A, rest: S => Lazy[T, R]): Lazy[T, R] =
     Bind(Inject[Sig, T, T, S](Op.Resume[A, S, T](k, a)), rest)
 
@@ -161,15 +161,15 @@ object Cont:
   def mapped[A, B, S, R](c: Rep[A, S, R])(f: A => B): Rep[B, S, R] = c.map(f)
 
   /**
-   * apply to a continuation: the ATM machine (Delimited.scala, `Atm`), `k` the reset's `ret` — what it answers
+   * apply to a continuation: the stack of continuations (`Delimited`), `k` the reset's `ret` — what it answers
    * goes back to whoever called a captured `k`, what a shift body answers leaves the reset. Typed throughout.
    */
-  def run[A, S, R](c: Rep[A, S, R])(k: A => S): R = Atm.run(c, k, Steps)
+  def run[A, S, R](c: Rep[A, S, R])(k: A => S): R = Delimited.run(c, k, Steps)
 
   /** a Cont program performs no effect but its own */
   private[okay] type Sig = Op
 
-  /** CONT'S OPERATIONS, an effect on the stack of continuations (`Atm`): the leaves of shift in the forms
+  /** CONT'S OPERATIONS, an effect on the stack of continuations (`Delimited`): the leaves of shift in the forms
    * ContMacro picks, and the call of a lazy `k` */
   sealed trait Op[S, R, +A]
 
@@ -177,11 +177,11 @@ object Cont:
     /** an opaque body, given a strict `k`: a nested run, counted */
     final case class Strict[S, R, A](body: (A => S) => R) extends Op[S, R, A]
     /** a body given `k` itself (a program-answered body builds its lazy `k` from it) */
-    final case class WithK[S, R, A](body: Atm.K[Op, A, S] => R) extends Op[S, R, A]
+    final case class WithK[S, R, A](body: Delimited.K[Op, A, S] => R) extends Op[S, R, A]
     /** an answer-using body after the CPS transform: a program over the lazy `k`, answering `R` at its level */
-    final case class Lazily[S, R, A](body: Atm.K[Op, A, S] => Freer[Op, R, R, R]) extends Op[S, R, A]
+    final case class Lazily[S, R, A](body: Delimited.K[Op, A, S] => Freer[Op, R, R, R]) extends Op[S, R, A]
     /** `k(a)` as a node: `k` under a boundary of its own, which takes its `S` back here */
-    final case class Resume[A, S, T](k: Atm.K[Op, A, S], a: A) extends Op[T, T, S]
+    final case class Resume[A, S, T](k: Delimited.K[Op, A, S], a: A) extends Op[T, T, S]
     /** a tail body `k => k(v)` whose `S` is a proper subtype of `R`: `k`'s answer leaves as the body's */
     final case class Tail[S, R, A](v: A, ev: S <:< R) extends Op[S, R, A]
 
@@ -189,9 +189,9 @@ object Cont:
    * WHAT EACH DOES: Danvy & Filinski's shift/reset with answer-type modification. A body's answer leaves its
    * reset (`M`); a call of `k` puts a boundary of its own under `k`, so what `k` answers comes back to it.
    */
-  private object Steps extends Atm.Effect[Op]:
-    import Atm.{K, M, Next}
-    def step[A, S, T, R](op: Op[S, T, A], k: K[Op, A, S], m: M[Op, T, R], run: Atm.Run[Op]): Next[Op, R] = op match
+  private object Steps extends Delimited.Effect[Op]:
+    import Delimited.{K, M, Next}
+    def step[A, S, T, R](op: Op[S, T, A], k: K[Op, A, S], m: M[Op, T, R], run: Delimited.Run[Op]): Next[Op, R] = op match
       case Op.Strict(body) => Next(Return(body(x => run.force(k, x))), K.Done(), m)
       case Op.WithK(body) => Next(Return(body(k)), K.Done(), m)
       case Op.Lazily(body) => Next(body(k), K.Done(), m)

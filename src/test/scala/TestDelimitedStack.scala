@@ -1,25 +1,25 @@
 package okay
 
 import okay.Freer.{Return, Inject, Bind}
-import Atm.{K, M, Next}
+import Delimited.{K, M, Next}
 
 /** the stack of continuations (specs/cont-atm.md), effect-independent: this suite declares its own effect —
  * Danvy & Filinski's shift/reset with answer-type modification — and the machine knows nothing of it */
-class TestAtm extends munit.FunSuite:
+class TestDelimitedStack extends munit.FunSuite:
 
   sealed trait Op[S, R, +A]
   final case class Strict[S, R, A](body: (A => S) => R) extends Op[S, R, A]
   final case class Lazily[S, R, A](body: K[Op, A, S] => Freer[Op, R, R, R]) extends Op[S, R, A]
   final case class Resume[A, S, T](k: K[Op, A, S], a: A) extends Op[T, T, S]
 
-  object Steps extends Atm.Effect[Op]:
-    def step[A, S, T, R](op: Op[S, T, A], k: K[Op, A, S], m: M[Op, T, R], run: Atm.Run[Op]): Next[Op, R] = op match
+  object Steps extends Delimited.Effect[Op]:
+    def step[A, S, T, R](op: Op[S, T, A], k: K[Op, A, S], m: M[Op, T, R], run: Delimited.Run[Op]): Next[Op, R] = op match
       case Strict(body) => Next(Return(body(x => run.force(k, x))), K.Done(), m)
       case Lazily(body) => Next(body(k), K.Done(), m)
       case Resume(k1, a) => Next(Return(a), k1, M.Level(null, k, m))
 
   private type Prog[A, S, R] = Freer[Op, S, R, A]
-  private def run[A, S, R](c: Prog[A, S, R], k: A => S): R = Atm.run(c, k, Steps)
+  private def run[A, S, R](c: Prog[A, S, R], k: A => S): R = Delimited.run(c, k, Steps)
   private def pure[A, R](a: A): Prog[A, R, R] = Return(a)
   private def strict[A, S, R](body: (A => S) => R): Prog[A, S, R] = Inject(Strict(body))
   private def lazily[A, S, R](body: K[Op, A, S] => Freer[Op, R, R, R]): Prog[A, S, R] = Inject(Lazily(body))
