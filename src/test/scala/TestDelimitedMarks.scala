@@ -3,8 +3,8 @@ package okay
 import okay.Freer.{Return, Inject, Bind}
 
 /**
- * ATM THROUGH AN EFFECT (specs/cont-atm.md): Reader as continuation MARKS, not boundaries — `local` hangs a mark
- * on the segment, `ask` finds the nearest one. A mark is transparent: it moves no answer type, and a capture
+ * ATM THROUGH AN EFFECT (specs/cont-atm.md): Reader as continuation MARKS — `local` installs a value boundary
+ * carrying the environment, `ask` finds the nearest one. A mark is transparent: it moves no answer type, and a capture
  * carries it. So a shift INSIDE `local` changes the answer type of its own reset, through Reader, and an `ask`
  * inside `k` sees the environment `k` was captured under. One machine, `Freer` untouched.
  */
@@ -24,16 +24,16 @@ class TestDelimitedMarks extends munit.FunSuite:
   object Steps extends Delimited.Step[Op, Op]:
     def step[A, B, S, T, R, Z](op: Op[T, R, A], k: Frames[Op, A, B, S, T], m: Stack[Op, B, S, R, Z],
                                machine: Delimited[Op]): Delimited.Next[Op, Z] = op match
-      case Resume(k1, a) => machine.next(Return(a), k1.k, machine.bound(null, k, m))
-      case Local(env, body) => machine.next(body, machine.mark(Env(env), k), m)
-      case Ask() => machine.find(k, m, _.isInstanceOf[Env]) match
+      case Resume(k1, a) => k1.resume(a, k, m)
+      case Local(env, body) => machine.next(body, machine.end, machine.delim(Env(env), k, m))
+      case Ask() => machine.holds(m, _.isInstanceOf[Env]) match
         case e: Env => machine.next(Return(e.value), k, m)
         case _ => throw IllegalStateException("ask outside any local")
       case leaf =>
         val c = machine.closed(k, m)
         if c == null then throw IllegalStateException("a shift with no reset around it")
         leaf match
-          case Strict(body) => c.answer(body(x => machine.force(c.k, x)))
+          case Strict(body) => c.answer(body(x => machine.force(c, x)))
           case Lazily(body) => c.instead(body(c))
           case _ => throw IllegalStateException("unreachable")
 

@@ -14,12 +14,12 @@ class TestDelimitedStack extends munit.FunSuite:
   object Steps extends Delimited.Step[Op, Op]:
     def step[A, B, S, T, R, Z](op: Op[T, R, A], k: Frames[Op, A, B, S, T], m: Stack[Op, B, S, R, Z],
                                machine: Delimited[Op]): Delimited.Next[Op, Z] = op match
-      case Resume(k1, a) => machine.next(Return(a), k1.k, machine.bound(null, k, m))
+      case Resume(k1, a) => k1.resume(a, k, m)
       case leaf =>
         val c = machine.closed(k, m)
         if c == null then throw IllegalStateException("a shift with no reset around it")
         leaf match
-          case Strict(body) => c.answer(body(x => machine.force(c.k, x)))
+          case Strict(body) => c.answer(body(x => machine.force(c, x)))
           case Lazily(body) => c.instead(body(c))
           case Resume(_, _) => throw IllegalStateException("unreachable")
 

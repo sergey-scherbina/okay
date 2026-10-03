@@ -47,16 +47,15 @@ object Reset:
         reset[R, F](a.substituteCo[[X] =>> X ! Shift % R + F](p))
 
 /** a delimiter's name: answer type `R`, identity by allocation, labelled for diagnostics. On the machine
- * (`Delimited`) a prompt in force is two value boundaries — this marks its opening — and its closing (`close`),
- * with a `ret` between them. Open for a handler frame's delimiter (`HandleFrames.Handling`, `Catching`) */
+ * (`Delimited`) a prompt in force is ONE value boundary: a `dollar`'s marked by the prompt, its `ret` the first
+ * frame above it; a `reset`'s marked by `whole`, nothing above it to skip. Open for a handler frame's delimiter
+ * (`HandleFrames.Handling`, `Catching`) */
 class Prompt[R](val what: String, val where: String) extends Delimited.Mark:
   /** `what @ where`, joined only when asked */
   def label: String = s"$what @ $where"
   override def toString: String = label
-  /** the mark of the value boundary where the prompt's place ends: its value has passed `ret` there */
-  private[okay] lazy val close: Delimited.Mark = new Delimited.Mark {}
-  /** the mark of a `reset`'s ONE boundary (`push`: no `ret` to skip, so no closing) — its own mark, not the prompt,
-   * so it is never read as a `dollar`'s opening whose closing lies under it */
+  /** the mark of a `reset`'s boundary (`push`: no `ret` to skip) — its own mark, not the prompt, so its first
+   * frame is never read as a `dollar`'s `ret` */
   private[okay] lazy val whole: Prompt.Whole = Prompt.Whole(this)
   /** a capture's test for this prompt's place, either form: made once, not a lambda per capture */
   private[okay] lazy val is: Delimited.Mark => Boolean = t => (t eq this) || (t eq whole)
@@ -153,6 +152,17 @@ object Shift {
     def apply(x: A): R ! Shift % ? + F = resumeWith(okay.pure(x))
     def resumeWith(m: A ! Shift % ? + F): R ! Shift % ? + F =
       claim[R ! Shift % ? + F](Free.delay(Nested[R, F](op[R, F](Resume[Any, A, R, F](p, piece, m, held)), nested = true)))
+    /** resume by THROWING `t` inside it, where it was captured: its own `try`s — catch frames, a `Resource` — answer
+     * it as they would a throw from the code that captured ("throwing into a continuation"); none does, it is
+     * thrown on out of the run */
+    def raise(t: Throwable): R ! Shift % ? + F = resumeWith(Free.delay(Delimited.Thrown(t)))
+
+  /** `t` thrown into `k`: inside it when it is a continuation a capture handed out (`Resumption`), else — a function
+   * of the caller's own making — at the call */
+  def raise[A, X, G[+_]](k: A => X ! G)(t: Throwable): X ! G = k match
+    // THE ONE CLAIM: a `Resumption` handed to a body typed `A => X ! G` is that function, at the same types
+    case r: Resumption[?, ?, ?] => r.raise(t).asInstanceOf[X ! G]
+    case _ => Free.delay(Delimited.Thrown(t))
 
   /** an operation of `Shift` as a node of its row */
   private def op[A, F[+_]](o: Shift[Any, A]): A ! Shift % ? + F = Freer.Inject[Freer.Lift[Shift % ? + F], Unit, Unit, A](o)
@@ -226,7 +236,7 @@ object Shift {
    * putting the frame back (a deep handler). A CATCH FRAME (`HandleFrames.Catching`) answers a throw in its place.
    */
   private final class Steps[F[+_]](nested: Boolean)
-    extends Delimited.Step[Freer.Lift[Shift % ? + F], Freer.Lift[Shift % ? + F]], Delimited.Outer[Shift % ? + F, F]:
+    extends Delimited.Step[Freer.Lift[Shift % ? + F], Freer.Lift[Shift % ? + F]], Delimited.Outer[Freer.Lift[Shift % ? + F], F]:
     private type L[S, R, A] = Freer.Lift[Shift % ? + F][S, R, A]
     private type U = Unit
 
@@ -246,7 +256,7 @@ object Shift {
 
     // ---- Outer: which operations leave
 
-    def apply[X, B, S, R, Z](op: (Shift % ? + F)[X], m: Stack[L, B, S, R, Z], machine: Delimited[L]): F[X] | Null = op match
+    def apply[T, R, X, B, S, Z](op: L[T, R, X], m: Stack[L, B, S, R, Z], machine: Delimited[L]): F[X] | Null = (op: (Shift % ? + F)[X]) match
       // an installation and a resumption are always this machine's: they put a prompt on, not look for one
       case _: Dollar[?, ?, ?, ?] | _: Push[?, ?, ?] | _: Resume[?, ?, ?, ?] => null
       case s: Shift[?, ?] =>
@@ -262,13 +272,13 @@ object Shift {
       case h: HandleFrames.Handling[?] => h.takes(op)
       case _ => false
 
-    def diagonal[T, R]: T =:= R = claim[T =:= R](summon[T =:= T])
+    def diagonal[T, R, A](op: L[T, R, A]): T =:= R = claim[T =:= R](summon[T =:= T])
 
-    def enter[T, R, A](t: () => Freer[L, T, R, A]): Freer[L, T, R, A] | Null = t match
+    override def enter[T, R, A](t: () => Freer[L, T, R, A]): Freer[L, T, R, A] | Null = t match
       case p: Pending[?, ?] => claim[Freer[L, T, R, A]](p.program)
       case _ => null
 
-    def barrier(t: () => Any): Delimited.Mark | Null = t match
+    override def barrier(t: () => Any): Delimited.Mark | Null = t match
       case n: Nested[?, ?] if !n.nested => Barrier
       case _ => null
 
@@ -288,8 +298,7 @@ object Shift {
           case _: HandleFrames.Catching => hold(Catches, machine)
           case _ => ()
         val ret = claim[r0 => Freer[L, U, U, r]](d.ret)
-        val outside = machine.delim(d.p.close, claim[Frames[L, r, B, U, U]](k), m)
-        machine.next(claim[Freer[L, U, U, r0]](d.body), machine.end[r0, U], machine.delim(d.p, machine.frame(ret, machine.end[r, U]), outside))
+        machine.next(claim[Freer[L, U, U, r0]](d.body), machine.end[r0, U], machine.delim(d.p, machine.frame(ret, claim[Frames[L, r, B, U, U]](k)), m))
       case d: Push[?, r, ?] =>
         machine.next(claim[Freer[L, U, U, r]](d.body), machine.end[r, U], machine.delim(d.p.whole, claim[Frames[L, r, B, U, U]](k), m))
       case s: Shift0[?, a, r, ?] =>
@@ -338,8 +347,8 @@ object Shift {
     private val never: Delimited.Mark => Boolean = _ => false
     private val isBarrier: Delimited.Mark => Boolean = _ eq Barrier
 
-    /** a capture to a prompt: the piece up to and including its closing (its opening and `ret` taken along), and
-     * what lies under the closing */
+    /** a capture to a prompt: the piece up to and including its boundary and `ret` (taken along), and what lies
+     * under them */
     private final class Cut[A, R, Z](val tag: Delimited.Mark, val piece: Delimited.Piece[L, A, U, R, U],
                                      val out: Frames[L, R, Any, U, U], val rest: Stack[L, Any, U, U, Z])
 
@@ -359,10 +368,15 @@ object Shift {
           case (w: Prompt.Whole, _) =>
             Cut(w.p, claim[Delimited.Piece[L, A, U, Any, U]](open.piece), claim[Frames[L, Any, Any, U, U]](open.out),
               claim[Stack[L, Any, U, U, Z]](open.rest))
-          case (p: Prompt[?], Stack.Delim(close, out, rest)) if close eq p.close =>
-            val piece = Delimited.Piece.Snoc(open.piece, open.out, close)
-            Cut(p, claim[Delimited.Piece[L, A, U, Any, U]](piece), claim[Frames[L, Any, Any, U, U]](out), claim[Stack[L, Any, U, U, Z]](rest))
-          case _ => throw IllegalStateException(s"prompt ${open.tag} opened and never closed")
+          // a dollar's: its `ret`, the first frame above it, goes into `k` (λ$'s `S0 k.e`), the body answers below
+          // it — so `k`'s last segment is `ret` alone, over an unmarked boundary where the caller's continuation joins
+          case (p: Prompt[?], _) => open.out match
+            case Frames.Frame(ret, out) =>
+              val piece = Delimited.Piece.Snoc(open.piece, Frames.Frame(ret, Frames.End()), null)
+              Cut(p, claim[Delimited.Piece[L, A, U, Any, U]](piece), claim[Frames[L, Any, Any, U, U]](out),
+                claim[Stack[L, Any, U, U, Z]](open.rest))
+            case _ => throw IllegalStateException(s"prompt ${open.tag} has no ret above it")
+          case _ => throw IllegalStateException(s"a capture found ${open.tag}, which is no prompt")
 
     /** the prompts on the machine's stack, innermost first, for `NoPrompt` */
     private def installed[B, Z](m: Stack[L, B, U, U, Z]): List[String] =
@@ -596,6 +610,11 @@ object Shift {
 
   object Paused:
     extension [Q, A, R, G[+_]](p: Paused[Q, A, R, G])
+      /** answer the question with a FAILURE, raised inside the paused run where it asked: its own `try`s see it
+       * (`Shift.raise`); a finished dialogue stays finished */
+      def fail(t: Throwable): Paused[Q, A, R, G] ! G = p match
+        case Ask(_, resume, _) => Shift.raise(resume)(t)
+        case done => okay.pure(done)
       /** the answer, if finished */
       def finished: Option[R] = p match
         case Done(r) => Some(r)

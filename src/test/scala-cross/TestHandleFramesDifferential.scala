@@ -116,3 +116,14 @@ class TestHandleFramesDifferential extends munit.FunSuite:
   test("translate: the fold and the frame answer alike, each operation asked once") {
     assertEquals(translateIt(ticks(600), machine = true), translateIt(ticks(600), machine = false))
   }
+
+  test("a paused dialogue answered with a FAILURE: the run's own try catches it where it asked (Paused.fail)") {
+    type D = Shift.Dialogue[String, Int, String, Pure]
+    val asked: D ! Pure = Shift.resumable[String, Int, String, Pure]:
+      summon[CanTry[[X] =>> X ! SD]].tryIn(
+        Shift.ask[String, Int, String, Pure]("how many?").map(n => s"got $n"))(e => pure(s"caught ${e.getMessage}"))
+    val failed = !.run(asked.flatMap(d => Shift.run[D, Pure](d.fail(IllegalStateException("no answer")))))
+    assertEquals(failed.finished, Some("caught no answer"))
+    val answered = !.run(asked.flatMap(Shift.drive[String, Int, String, Pure](_)(_ => pure(3))))
+    assertEquals(answered, "got 3")
+  }

@@ -147,7 +147,8 @@ stateForeign), FibBenchmark.fib100 — arms alternated against master.
 - [x] handlers as frames on the machine (§5.1–3): the five red tests green (okayJVM/test 835/835)
 - [x] exceptions as the machine's primitive (§5.4): TestHandleFramesCatch, TestHandleFramesResource
 - [x] LambdaDollar.scala deleted (§5.5); its INTERFACE kept as a test oracle over Shift (src/test/scala-cross/LambdaDollar.scala): the laws, the differential oracle and the depth programs check the new machine against the reference
-- [ ] the full gate; the benchmarks of §5 against master
+- [x] the full gate; the benchmarks of §5 against master
+- [x] one loop, marks as boundaries, a prompt as one boundary, a throw into a continuation (§7)
 
 ## Decisions
 
@@ -182,3 +183,31 @@ stateForeign), FibBenchmark.fib100 — arms alternated against master.
   RESUME WITH A COMPUTATION (DPJS `pushSubCont`). `reinstall` takes a
   program; a captured `k` is a `Shift.Resumption` with `resumeWith(m)`;
   `Shift.withSubCont` is its door.
+
+## 7. Simplified (delimited-simplify, 2026-10-03, operator: "Сделай сразу все")
+
+- ONE LOOP. `Machine`, `Under` and `Over` were three copies of `go`, differing
+  only in what an operation of another effect does. Now `Run[G, F]` is the loop
+  and `Outer[G, F]` says what leaves (`apply`, `diagonal` per operation, `enter`,
+  `barrier`): a machine alone is `Run` with nothing outside (`Machine` reads its
+  value back), nested machines (`under`) forward `Sum.Fwd` — diagonal by the GADT
+  match, no claim — and a `Free` row (`over`) is told by its effect. The `try`
+  for `guarding` is in the one loop, for every effect.
+- MARKS ARE BOUNDARIES. `Frames.Marked` is gone: a mark is a value boundary with
+  a tag and nothing else, so `Frames` is `Bind`'s continuations and nothing more,
+  `find` is `holds` (boundaries only), and `closed` walks value boundaries to the
+  nearest answer boundary — a `Kont` is a PIECE over its last segment, so Cont's
+  answer-type modification works through marks (and any value boundary).
+- A PROMPT IS ONE BOUNDARY. `push` (a reset) is a boundary marked by the prompt's
+  `whole`; `dollar`'s is marked by the prompt, its `ret` the first frame above it:
+  a capture takes `ret` into `k` and answers below it. No closing boundary, no
+  `close` mark. Measured for `push` alone (shift-prompt-one-boundary, history.d):
+  delimPushOnly 0.54x, delimDollarResume 0.73x, statePara 1.00x, delimGenerator
+  1.07-1.22x with 18% fewer bytes — the optimization lane after this one.
+- THROWING INTO A CONTINUATION. `Shift.Resumption.raise(t)` resumes `k` with a
+  throw where it was captured; `Shift.raise(k)(t)` for a `k` typed as a function;
+  `Paused.fail(t)` answers a dialogue's question with a failure its own `try`s
+  see (TestHandleFramesDifferential).
+- Not taken: `Cont.under` — a Cont with outer effects needs its own representation
+  (a `Sum` row), a public type of its own; `pause`'s cast is a claim about the
+  direct block's row, not about `k`.

@@ -1,0 +1,4 @@
+2026-10-03	e2299854e	quiet	delimGenerator_push_one_boundary	76.683	70.534	1.09	min of 2 alternating rounds vs master 185fa3343; 678457 vs 822510 B/op; round 1 shared the box with a compile
+2026-10-03	e2299854e	quiet	delimPushOnly_push_one_boundary	24.537	44.953	0.55	min of 2 alternating rounds vs master 185fa3343; 270192 vs 358175 B/op; round 1 shared the box with a compile
+2026-10-03	e2299854e	quiet	delimDollarResume_push_one_boundary	77.127	105.286	0.73	min of 2 alternating rounds vs master 185fa3343; 756171 vs 732141 B/op; round 1 shared the box with a compile
+2026-10-03	e2299854e	quiet	statePara_push_one_boundary	41.822	41.765	1.00	min of 2 alternating rounds vs master 185fa3343; 501344 vs 501344 B/op; round 1 shared the box with a compile

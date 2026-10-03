@@ -56,7 +56,7 @@ object Cont:
    * The contract it changes: host side effects written after `k(a)` in the body run before `k`'s rest.
    */
   def programLeaf[A, S, R](f: (A => S) => R)(using p: Later[S]): Rep[A, S, R] =
-    Inject[Sig, S, R, A](Op.Program(k => f(x => p.later(() => Delimited(Steps).force(k.k, x)))))
+    Inject[Sig, S, R, A](Op.Program(k => f(x => p.later(() => Delimited(Steps).force(k, x)))))
 
   /** `S` a program that can stand for itself unbuilt: a `Delay` of any `Freer`, `A ! F` among them */
   trait Later[S]:
@@ -193,12 +193,12 @@ object Cont:
     def step[A, B, S, T, R, Z](op: Op[T, R, A], k: Frames[Op, A, B, S, T], m: Stack[Op, B, S, R, Z],
                                machine: Delimited[Op]): Delimited.Next[Op, Z] =
       op match
-        case Op.Resume(k1, a) => machine.next(Return(a), k1.k, machine.bound(null, k, m))
+        case Op.Resume(k1, a) => k1.resume(a, k, m)
         case leaf =>
           val c = machine.closed(k, m)
           if c == null then throw IllegalStateException("a shift with no reset around it")
           leaf match
-            case Op.Strict(body) => c.answer(body(x => machine.force(c.k, x)))
+            case Op.Strict(body) => c.answer(body(x => machine.force(c, x)))
             case Op.Program(body) => c.answer(body(c))
             case Op.Lazily(body) => c.instead(body(c))
             case Op.Resume(_, _) => throw IllegalStateException("unreachable: Resume is answered above")
