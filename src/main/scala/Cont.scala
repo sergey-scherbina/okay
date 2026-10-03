@@ -189,7 +189,7 @@ object Cont:
    * reset (its boundary in `Stack`); a call of `k` puts a boundary of its own under `k`, so what `k` answers
    * comes back to it.
    */
-  private object Steps extends Step[Op, Op]:
+  private object Steps extends Delimited.Step[Op, Op]:
     def step[A, B, S, T, R, Z](op: Op[T, R, A], k: Frames[Op, A, B, S, T], m: Stack[Op, B, S, R, Z],
                                machine: Delimited[Op]): Delimited.Next[Op, Z] =
       op match

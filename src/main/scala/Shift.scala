@@ -213,7 +213,7 @@ object Shift {
    * putting the frame back (a deep handler). A CATCH FRAME (`HandleFrames.Catching`) answers a throw in its place.
    */
   private final class Steps[F[+_]](nested: Boolean)
-    extends Step[Freer.Lift[Shift % ? + F], Freer.Lift[Shift % ? + F]], Delimited.Outer[Shift % ? + F, F]:
+    extends Delimited.Step[Freer.Lift[Shift % ? + F], Freer.Lift[Shift % ? + F]], Delimited.Outer[Shift % ? + F, F]:
     private type L[S, R, A] = Freer.Lift[Shift % ? + F][S, R, A]
     private type U = Unit
 

@@ -43,7 +43,7 @@ boundary and the segment it closes, `Kont`); `force` (run a closed segment now,
 counted, `StackSwitch` at no room). A capture walks BOUNDARIES, never frames: to
 the nearest it takes the segment as it is, O(1).
 
-**Effects plug in** by `Step[G, H]`: one operation, the segment and the stack →
+**Effects plug in** by `Delimited.Step[G, H]` (inside the object: a top-level `okay.Step` clashed with `okay.ui.PWizard.Step` under `import okay.*`): one operation, the segment and the stack →
 the next state (`Next`). Three runners: `Machine` (one effect), `Under` (one
 effect under others, a tagged `Sum` row: the others' operations leave in the
 `Free` program it answers), `Over` (a `Free` row: `Outer` says which operations

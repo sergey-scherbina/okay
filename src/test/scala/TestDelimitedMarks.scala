@@ -21,7 +21,7 @@ class TestDelimitedMarks extends munit.FunSuite:
   final case class Local[S, R, A](env: Int, body: Freer[Op, S, R, A]) extends Op[S, R, A]
   final case class Ask[X]() extends Op[X, X, Int]
 
-  object Steps extends Step[Op, Op]:
+  object Steps extends Delimited.Step[Op, Op]:
     def step[A, B, S, T, R, Z](op: Op[T, R, A], k: Frames[Op, A, B, S, T], m: Stack[Op, B, S, R, Z],
                                machine: Delimited[Op]): Delimited.Next[Op, Z] = op match
       case Resume(k1, a) => machine.next(Return(a), k1.k, machine.bound(null, k, m))

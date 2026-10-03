@@ -70,21 +70,6 @@ trait Delimited[G[_, _, +_]]:
    * was installed): until then a run pays nothing for exceptions */
   def guarding(): Unit
 
-/**
- * A STEP: what the machine does with one of effect `G`'s operations in a program over the row `H` — given the
- * segment up to the nearest boundary and the stack under it, the next state, built with the machine's
- * primitives. `G[T, R, A]` is the operation at the program's indexes; the equations its own GADT match supplies
- * type the state it answers.
- */
-trait Step[G[_, _, +_], H[_, _, +_]]:
-  def step[A, B, S, T, R, Z](op: G[T, R, A], k: Frames[H, A, B, S, T], m: Stack[H, B, S, R, Z],
-                             machine: Delimited[H]): Delimited.Next[H, Z]
-
-  /** a throw from user code at segment `k` and stack `m`, in a run that is `guarding`: the next state, or null —
-   * nobody here takes it, and it is thrown on */
-  def thrown[A, B, S, T, R, Z](t: Throwable, k: Frames[H, A, B, S, T], m: Stack[H, B, S, R, Z],
-                               machine: Delimited[H]): Delimited.Next[H, Z] | Null = null
-
 /** a SEGMENT, `A => Freer[G, S, R, B]` as data: frames joined as `Bind` joins them, and transparent marks.
  * Contravariant in `A`: it consumes a value. */
 enum Frames[G[_, _, +_], -A, B, S, R]:
@@ -108,6 +93,21 @@ enum Stack[G[_, _, +_], B, S, R, Z]:
                                                rest: Stack[G, B2, S2, X, Z]) extends Stack[G, S, S, R, Z]
 
 object Delimited:
+
+  /**
+   * A STEP: what the machine does with one of effect `G`'s operations in a program over the row `H` — given the
+   * segment up to the nearest boundary and the stack under it, the next state, built with the machine's
+   * primitives. `G[T, R, A]` is the operation at the program's indexes; the equations its own GADT match supplies
+   * type the state it answers.
+   */
+  trait Step[G[_, _, +_], H[_, _, +_]]:
+    def step[A, B, S, T, R, Z](op: G[T, R, A], k: Frames[H, A, B, S, T], m: Stack[H, B, S, R, Z],
+                               machine: Delimited[H]): Next[H, Z]
+
+    /** a throw from user code at segment `k` and stack `m`, in a run that is `guarding`: the next state, or null —
+     * nobody here takes it, and it is thrown on */
+    def thrown[A, B, S, T, R, Z](t: Throwable, k: Frames[H, A, B, S, T], m: Stack[H, B, S, R, Z],
+                                 machine: Delimited[H]): Next[H, Z] | Null = null
 
   /** a machine for one effect, alone */
   def apply[G[_, _, +_]](steps: Step[G, G]): Machine[G] = Machine(steps)

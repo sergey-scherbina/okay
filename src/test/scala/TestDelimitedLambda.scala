@@ -22,7 +22,7 @@ class TestDelimitedLambda extends munit.FunSuite:
   /** a captured piece resumed: back on top, `a` into it */
   final case class Resume[A, Y](k: Delimited.Piece[L, A, Unit, Y, Unit], a: A) extends L[Unit, Unit, Y]
 
-  object Steps extends Step[L, L]:
+  object Steps extends Delimited.Step[L, L]:
     def step[A, B, S, T, R, Z](op: L[T, R, A], k: Frames[L, A, B, S, T], m: Stack[L, B, S, R, Z],
                                machine: Delimited[L]): Delimited.Next[L, Z] = op match
       case Push(p, body) => machine.next(body, machine.end, machine.delim(p, k, m))
