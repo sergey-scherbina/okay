@@ -4,7 +4,7 @@ package okay2
 import scala.annotation.{implicitNotFound, tailrec}
 import scala.language.experimental.macros
 import scala.reflect.macros.blackbox
-import Free.{Return, Inject, Bind}
+import Free.{Return, Inject, Bind, Delay}
 
 /**
  * Delimited control as an EFFECT — multi-prompt, in the shape of
@@ -132,7 +132,7 @@ trait Shifts {
   def reset[R, F <: Row](body: R ! (Shift[R] + F))(implicit k: Shift.Key[R], n: Shift.Machine[F]): R ! F = {
     val pushed = Shift.push[R, F](k.prompt)(Shift.in[R, R, F](body))
     // a row that still holds a capture's effect is run by the machine outside
-    if (n.inner) Shift.inner[R, F](pushed) else Shift.runReset[R, F](pushed)
+    if (n.inner) Shift.inner[R, F](pushed) else Shift.run[R, F](pushed)(Shift.Machine.outermost[F])
   }
 }
 
@@ -678,8 +678,38 @@ object Shift {
    * here, at their two lines, where F is known.
    */
   def run[R, F <: Row](prog: Free[Shift[Any] with F, R])(implicit om: Machine[F]): R ! F =
-    // a machine outside runs the program, its captures included (shift-merge-guard)
-    if (om.inner) inner[R, F](prog) else machine[R, F](prog, None)
+    // a machine outside runs the program, its captures included (shift-merge-guard); run outermost, a VALUE
+    // that a running machine steps into (okay2-shift-stacked-key)
+    if (om.inner) inner[R, F](prog) else Free.delay[F, R](new Own[R, F](prog))
+
+  /**
+   * A machine run outermost, as a value (okay2-shift-stacked-key, the Scala 3 core's `Frames.Own`): any other
+   * interpreter forces it once and it runs its own machine; a RUNNING machine meeting it steps into its program
+   * in its own loop, so nested resets are one machine's loop and take no host stack — on Scala.js, which has no
+   * stack to switch to, too.
+   */
+  private final class Own[R, F <: Row](val prog: Free[Shift[Any] with F, R]) extends (() => R ! F) {
+    def apply(): R ! F = machine[R, F](prog, None)
+  }
+
+  /**
+   * THE CLAIM of stepping in: an `Own` met as `Delay(own): X ! (Shift[Any] + G)` runs a program whose
+   * residual row the node's own row holds, at the node's answer `X` — the node was built as `R ! F` with
+   * `F` in that row and `R = X`. Its program's operations are then this machine's `Shift[Any]` ones or the
+   * row's, so it is a program of this machine at `X`.
+   */
+  private def stepInto[X, G <: Row](o: Own[_, _]): X ! (Shift[Any] + G) = o.prog.asInstanceOf[X ! (Shift[Any] + G)]
+
+  /** `Free.resume`, but stopping at an `Own` (alone or as a bind's left), which the machine steps into */
+  @tailrec private def resumeOwn[R, A](p: Free[R, A]): Free[R, A] = p match {
+    case Delay(_: Own[_, _]) => p
+    case Bind(Delay(_: Own[_, _]), _) => p
+    case Bind(Bind(a, f), g) => resumeOwn(Bind(a, (x: Any) => f(x).flatMap(g)))
+    case Bind(Return(a), f) => resumeOwn(f(a))
+    case Delay(t) => resumeOwn(t())
+    case Bind(Delay(t), g) => resumeOwn(Bind(t(), g))
+    case a => a
+  }
 
   /**
    * THE MACHINE THAT FORWARDS INSTEAD OF THROWING — for a row that
@@ -770,7 +800,7 @@ object Shift {
     // ONE tail-recursive loop: only a FOREIGN operation (or a forwarded
     // capture) suspends, under a flatMap closure, and the Shift[Any] ops
     // themselves are flat
-    @tailrec def loop(state: Next[F, R]): R ! F = Free.resume(state.prog) match {
+    @tailrec def loop(state: Next[F, R]): R ! F = resumeOwn(state.prog) match {
       case Return(x) => state.kont match {
         case Segs.Done(ev) => pure[F, R](ev(x))
         case Segs.K(f, rest) => loop(next(f(x), rest))
@@ -780,6 +810,10 @@ object Shift {
         case Segs.Ret(_, ret, _, rest) => loop(next(ret(x), rest))
       }
       case Inject(e) => loop(next(Bind(Inject[Rw, state.A](e), (y: state.A) => Return[Rw, state.A](y)), state.kont))
+      // a reset run outermost, met inside this machine: its program runs HERE, on this machine's stack of
+      // segments, instead of a machine of its own on the host stack (okay2-shift-stacked-key)
+      case Delay(o: Own[_, _]) => loop(next(stepInto[state.A, F](o), state.kont))
+      case Bind(Delay(o: Own[_, _]), k) => loop(next(stepInto[Any, F](o), Segs.K(k, state.kont)))
       case Bind(Inject(Mine(op)), k) =>
         val kont: Segs[F, Any, R] = Segs.K(k, state.kont)
         op match {
@@ -1053,37 +1087,6 @@ object Shift {
   /** level 2: a whole `Cont` as one capture */
   def embed[A, R, F <: Row](c: Cont[A, R ! F, R ! F])(implicit k: Key[R], at: At): A ! (Shift[R] + F) =
     okay2.shift0[R, A, F](kk => c / kk)
-
-  /**
-   * A `reset` that runs its own machine runs it INSIDE whatever forced it, and nested resets of one answer type
-   * each start one: JVM depth grows with the nesting. So the runs are counted per thread, and past the room the
-   * next one runs on a fresh stack, as Cont's strict `k` does (StackSwitch, specs/cont-stack.md Layer 2). A
-   * level is taken as ~4 KB cold, Cont's ~1.2 KB scaled. The Scala 3 core's twin.
-   */
-  private val room: Int = {
-    // `System.getProperty`, not `Integer.getInteger`: the shared source links on Scala.js and Native too
-    val p = System.getProperty("okay.shift.room")
-    if (p != null) p.toInt else math.max(32L, StackSwitch.firstRoom.toLong * 1200 / 4096).toInt
-  }
-  private val left: ThreadLocal[Array[Int]] = new ThreadLocal[Array[Int]] { override def initialValue(): Array[Int] = Array(room) }
-
-  /** run the machine for one `reset`, one level less of room; at zero on a fresh stack */
-  private[okay2] def runReset[R, F <: Row](pushed: R ! (Shift[Any] + F)): R ! F = {
-    val cell = left.get
-    val here = cell(0)
-    if (here > 0) {
-      cell(0) = here - 1
-      try machineFor[R, F](pushed) finally cell(0) = here
-    } else StackSwitch.fresh { big =>
-      val c = left.get
-      val saved = c(0)
-      c(0) = big / 2
-      try machineFor[R, F](pushed) finally c(0) = saved
-    }
-  }
-
-  // the keyed `reset` read the row at its own door: its machine is the outermost
-  private def machineFor[R, F <: Row](pushed: R ! (Shift[Any] + F)): R ! F = run[R, F](pushed)(Machine.outermost[F])
 
   // THE ONE CLAIM: a `Shift[R]` program is a `Shift[Any]` program at the same erasure (only the machine reads its
   // operations), and a capture of answer `R` reaches only the prompt of `R`'s key, where its `k` and body are
