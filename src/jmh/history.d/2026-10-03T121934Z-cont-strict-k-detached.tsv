@@ -1,0 +1,9 @@
+2026-10-03	e2afeabfa	quiet	contAnswer_detached_cat_only	35.08	38.05	0.92	HandlerBenchmark.contAnswer; a capture at a resumed k's head reuses its delimiter (detached) — the Cat arm only; 342128 vs 366104 B/op; round 1, ref first
+2026-10-03	e2afeabfa	quiet	contAnswer_detached_cat_only	34.98	37.50	0.93	round 2
+2026-10-03	e2afeabfa	quiet	statePara_detached_cat_only	61.17	60.92	1.00	the Cat arm alone does not reach statePara (its captures meet the delimiter right under the live segment); bytes equal 485303; round 1
+2026-10-03	21fb0151e	quiet	statePara	57.62	60.85	0.95	both arms (the direct delimiter too: a strict k's nested run); 437278 vs 485303 B/op (24 B x 2000 captures); round 1, mine first
+2026-10-03	21fb0151e	quiet	statePara	57.48	60.89	0.94	round 2
+2026-10-03	21fb0151e	quiet	contAnswer	35.11	37.94	0.93	both arms; 342104 vs 366104 B/op; round 1
+2026-10-03	21fb0151e	quiet	contAnswer	35.02	37.70	0.93	round 2
+2026-10-03	21fb0151e	quiet	fib100	6.369	6.515	0.98	FibBenchmark.fib100 us/op; 39472 vs 41920 B/op; round 1
+2026-10-03	21fb0151e	quiet	fib100	6.363	6.523	0.98	round 2 (one noisy round discarded by jmh-lane and re-run)

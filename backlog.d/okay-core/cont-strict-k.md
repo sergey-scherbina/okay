@@ -36,3 +36,14 @@
       What the flag's removal costs is a clause lambda per `shiftLeaf`
       (statePara ~49 KB/op in the alloc profile): see
       cont-core-remaining-costs.
+      AFTER cont-run-prompt (2026-10-03, profiled on 4e0a720d0): the leaf is
+      one `Cont.Op` and the per-call root walk is gone; what a capture still
+      allocates is the machine's own: `Return` 13%, `Dollar`, `Bind`, `Next`,
+      `Run`, `Frame` ~10% each (statePara). DONE 2026-10-03
+      (cont-strict-k-detached): a capture no longer copies a delimiter that
+      is already over nothing (a strict `k`'s run, a resumed `k`'s head) —
+      statePara 0.95x (-48 KB), contAnswer 0.93x (-24 KB), fib100 0.98x.
+      NEXT: the `Next` carrier a capture returns to the loop (~10% of bytes,
+      7% of CPU in its constructor) — inlined into the loop it is a jump, but
+      the loop's size and register pressure decided against that before
+      (cont-frames-register-pressure); measure, do not assume.
