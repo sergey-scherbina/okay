@@ -24,7 +24,7 @@ class TestDelimitedLambda extends munit.FunSuite:
   /** a captured continuation resumed: its boundaries put back, its answer the value */
   final case class Resume[A, Z, X](k: Cap[L, A, Z], a: A) extends L[X, X, Z]
 
-  object Steps extends Step[L]:
+  object Steps extends Step[L, L]:
     def step[A, S, T, R](op: L[S, T, A], k: Frames[L, A, S], m: Stack[L, T, R], machine: Delimited[L]): Delimited.Next[L, R] = op match
       case Dollar(p, ret, body) => machine.next(body, machine.frame(ret, machine.end), machine.bound(p, k, m))
       case s: Shift0[a, ?, ?] => machine.cut[a, T, R](k, m, _ eq s.p) match

@@ -11,7 +11,7 @@ class TestDelimitedStack extends munit.FunSuite:
   final case class Lazily[S, R, A](body: Frames[Op, A, S] => Freer[Op, R, R, R]) extends Op[S, R, A]
   final case class Resume[A, S, T](k: Frames[Op, A, S], a: A) extends Op[T, T, S]
 
-  object Steps extends Step[Op]:
+  object Steps extends Step[Op, Op]:
     def step[A, S, T, R](op: Op[S, T, A], k: Frames[Op, A, S], m: Stack[Op, T, R], machine: Delimited[Op]): Delimited.Next[Op, R] = op match
       case Strict(body) => machine.next(Return(body(x => machine.force(k, x))), machine.end, m)
       case Lazily(body) => machine.next(body(k), machine.end, m)
