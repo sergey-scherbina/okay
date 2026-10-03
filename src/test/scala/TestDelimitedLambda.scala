@@ -24,15 +24,15 @@ class TestDelimitedLambda extends munit.FunSuite:
   /** a captured continuation resumed: its boundaries put back, its answer the value */
   final case class Resume[A, Z, X](k: Cap[L, A, Z], a: A) extends L[X, X, Z]
 
-  object Steps extends Delimited.Effect[L]:
-    def step[A, S, T, R](op: L[S, T, A], k: Frames[L, A, S], m: Stack[L, T, R], machine: Delimited[L]): Next[L, R] = op match
-      case Dollar(p, ret, body) => Next(body, Frames.Frame(ret, Frames.End()), Stack.Bound(p, k, m))
-      case s: Shift0[a, ?, ?] => Delimited.cut[L, a, T, R](k, m, _ eq s.p) match
+  object Steps extends Step[L]:
+    def step[A, S, T, R](op: L[S, T, A], k: Frames[L, A, S], m: Stack[L, T, R], machine: Delimited[L]): Delimited.Next[L, R] = op match
+      case Dollar(p, ret, body) => machine.next(body, Frames.Frame(ret, Frames.End()), Stack.Bound(p, k, m))
+      case s: Shift0[a, ?, ?] => machine.cut[a, T, R](k, m, _ eq s.p) match
         case null => throw IllegalStateException(s"no delimiter for prompt ${s.p.name}")
         case f: Delimited.Found[L, a, R] =>
           val is = same(f.cap.tag, s.p)
-          Next(s.body[f.U](is.substituteCo[[t] =>> Cap[L, a, t]](f.cap)), is.substituteCo[[t] =>> Frames[L, t, f.U]](f.out), f.m)
-      case Resume(cap, a) => Delimited.reinstall(cap, a, k, m)
+          machine.next(s.body[f.U](is.substituteCo[[t] =>> Cap[L, a, t]](f.cap)), is.substituteCo[[t] =>> Frames[L, t, f.U]](f.out), f.m)
+      case Resume(cap, a) => machine.reinstall(cap, a, k, m)
 
   /**
    * THE ONE CLAIM of this effect, the generative-prompt axiom (Dybvig, Peyton Jones & Sabry's `eqPrompt`): a

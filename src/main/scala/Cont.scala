@@ -187,17 +187,17 @@ object Cont:
 
   /**
    * WHAT EACH DOES: Danvy & Filinski's shift/reset with answer-type modification. A body's answer leaves its
-   * reset (`M`); a call of `k` puts a boundary of its own under `k`, so what `k` answers comes back to it.
+   * reset (its boundary in `Stack`); a call of `k` puts a boundary of its own under `k`, so what `k` answers
+   * comes back to it.
    */
-  private object Steps extends Delimited.Effect[Op]:
-    import Delimited.Next
-    def step[A, S, T, R](op: Op[S, T, A], k: Frames[Op, A, S], m: Stack[Op, T, R], machine: Delimited[Op]): Next[Op, R] =
+  private object Steps extends Step[Op]:
+    def step[A, S, T, R](op: Op[S, T, A], k: Frames[Op, A, S], m: Stack[Op, T, R], machine: Delimited[Op]): Delimited.Next[Op, R] =
       op match
-        case Op.Strict(body) => Next(Return(body(x => machine.force(k, x))), Frames.End(), m)
-        case Op.Program(body) => Next(Return(body(k)), Frames.End(), m)
-        case Op.Lazily(body) => Next(body(k), Frames.End(), m)
-        case Op.Resume(k1, a) => Next(Return(a), k1, Stack.Bound(null, k, m))
-        case Op.Tail(v, ev) => Next(Return(v), k, Stack.Bound(null, Frames.Frame((s: S) => Return(ev(s)), Frames.End()), m))
+        case Op.Strict(body) => machine.next(Return(body(x => machine.force(k, x))), Frames.End(), m)
+        case Op.Program(body) => machine.next(Return(body(k)), Frames.End(), m)
+        case Op.Lazily(body) => machine.next(body(k), Frames.End(), m)
+        case Op.Resume(k1, a) => machine.next(Return(a), k1, Stack.Bound(null, k, m))
+        case Op.Tail(v, ev) => machine.next(Return(v), k, Stack.Bound(null, Frames.Frame((s: S) => Return(ev(s)), Frames.End()), m))
 
   /**
    * is `c` already an answer? then go on from it with a tail call instead of a continuation node

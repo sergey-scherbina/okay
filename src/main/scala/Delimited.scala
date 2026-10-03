@@ -16,17 +16,36 @@ import scala.annotation.tailrec
  *  - `Frames`, a SEGMENT: `Bind`'s continuations, joined as `Bind` joins — a value flows to the next frame;
  *  - `Stack`: segments joined by BOUNDARIES — a level's ANSWER flows to the segment outside it as its value.
  *
- * Every boundary has its own answer type, so answer-type modification is typed with no claim. The machine runs
- * `Return`, `Bind`, `Delay`; an operation goes to the effect (`Delimited.Effect`), which answers with the next
- * state built from the primitives below. Nothing here names an effect.
+ * Every boundary has its own answer type, so answer-type modification is typed with no claim. `Delimited` is the
+ * interface — the machine's primitives; an effect's operations are answered by its `Step`, built from them.
+ * Nothing here names an effect.
  */
 trait Delimited[G[_, _, +_]]:
+  import Delimited.{Tag, Next, Found, Cap}
 
   /** run `c` with `k` as the last frame of its continuation */
   def run[A, S, R](c: Freer[G, S, R, A], k: A => S): R
 
   /** a segment from `x` to its answer, NOW: a nested run */
   def force[A, S](k: Frames[G, A, S], x: A): S
+
+  /** the next state: a program, its segment, the stack under it */
+  def next[A, S, T, R](c: Freer[G, S, T, A], k: Frames[G, A, S], m: Stack[G, T, R]): Next[G, R]
+
+  /** walk out from a segment and its stack to the nearest boundary whose mark `is` holds for: the capture up to
+   * and including it, and what lies outside it; null when there is none */
+  def cut[A, T, R](k: Frames[G, A, T], m: Stack[G, T, R], is: Tag[?] => Boolean): Found[G, A, R] | Null
+
+  /** a captured continuation put back over `out` and `m`, its boundaries outermost first, `a` into the innermost */
+  def reinstall[A0, Y, U, R](cap: Cap[G, A0, Y], a: A0, out: Frames[G, Y, U], m: Stack[G, U, R]): Next[G, R]
+
+/**
+ * A STEP: what the machine does with one of an effect's operations, given the segment up to the nearest boundary
+ * and the stack under it — the next state, built with the machine's primitives. `G[S, T, A]` is the operation at
+ * the program's indexes; the equations its own GADT match supplies type the state it answers.
+ */
+trait Step[G[_, _, +_]]:
+  def step[A, S, T, R](op: G[S, T, A], k: Frames[G, A, S], m: Stack[G, T, R], machine: Delimited[G]): Delimited.Next[G, R]
 
 /** a SEGMENT: `Bind`'s continuations up to the nearest boundary, as data — from a value `A` to the answer `S`
  * of its level. Contravariant in `A`: it consumes a value. */
@@ -45,10 +64,15 @@ enum Stack[G[_, _, +_], T, R]:
 
 object Delimited:
 
+  /** the machine for an effect's steps */
+  def apply[G[_, _, +_]](steps: Step[G]): Delimited[G] = Machine(steps)
+
+  // ---- what the primitives speak of ----
+
   /** a boundary's mark, opaque to the machine, which an effect finds a boundary by: `T` the answer of its level */
   trait Tag[T]
 
-  /** the machine's state, which an effect's step answers: a program, its segment, the stack under it */
+  /** the machine's state, which a step answers: a program, its segment, the stack under it */
   sealed abstract class Next[G[_, _, +_], R]:
     type A
     type S
@@ -56,29 +80,6 @@ object Delimited:
     def c: Freer[G, S, T, A]
     def k: Frames[G, A, S]
     def m: Stack[G, T, R]
-
-  object Next:
-    def apply[G[_, _, +_], A0, S0, T0, R](c0: Freer[G, S0, T0, A0], k0: Frames[G, A0, S0], m0: Stack[G, T0, R]): Next[G, R] =
-      new Next[G, R]:
-        type A = A0
-        type S = S0
-        type T = T0
-        def c = c0
-        def k = k0
-        def m = m0
-
-  /**
-   * AN EFFECT: what the machine does with one of its operations, given the segment up to the nearest boundary and
-   * the stack under it — the next state, built from the primitives here. `G[S, T, A]` is the operation at the
-   * program's indexes; the equations its own GADT match supplies type the state it answers.
-   */
-  trait Effect[G[_, _, +_]]:
-    def step[A, S, T, R](op: G[S, T, A], k: Frames[G, A, S], m: Stack[G, T, R], machine: Delimited[G]): Next[G, R]
-
-  /** the machine for an effect */
-  def apply[G[_, _, +_]](effect: Effect[G]): Delimited[G] = Machine(effect)
-
-  // ---- primitives over the stack, for an effect to compose ----
 
   /** the boundaries a capture crossed, innermost first, the last outermost */
   enum Rev[G[_, _, +_], A0, A]:
@@ -101,45 +102,10 @@ object Delimited:
     def out: Frames[G, Y, U]
     def m: Stack[G, U, R]
 
-  /** walk out from a segment and its stack to the nearest boundary whose mark `is` holds for: the capture up to
-   * and including it, and what lies outside it; null when there is none */
-  def cut[G[_, _, +_], A, T, R](k: Frames[G, A, T], m: Stack[G, T, R], is: Tag[?] => Boolean): Found[G, A, R] | Null =
-    cutFrom(Rev.Nil[G, A](), k, m, is)
-
-  @tailrec private def cutFrom[G[_, _, +_], A0, A, T, R](rev: Rev[G, A0, A], k: Frames[G, A, T], m: Stack[G, T, R],
-                                                         is: Tag[?] => Boolean): Found[G, A0, R] | Null = m match
-    case Stack.Done() => null
-    case b: Stack.Bound[G, T, u, R] =>
-      val t = b.tag
-      if t != null && is(t) then found(rev, k, t.nn, b.out, b.rest)
-      else cutFrom(Rev.Snoc(rev, k, t), b.out, b.rest, is)
-
-  private def found[G[_, _, +_], A0, A1, Y0, U0, R](r: Rev[G, A0, A1], k1: Frames[G, A1, Y0], t: Tag[Y0],
-                                                   out0: Frames[G, Y0, U0], m0: Stack[G, U0, R]): Found[G, A0, R] =
-    new Found[G, A0, R]:
-      type Y = Y0
-      type U = U0
-      def cap = new Cap[G, A0, Y0]:
-        type A = A1
-        def rev = r
-        def k = k1
-        def tag = t
-      def out = out0
-      def m = m0
-
-  /** a captured continuation put back over `out` and `m`, its boundaries outermost first, `a` into the innermost */
-  def reinstall[G[_, _, +_], A0, Y, U, R](cap: Cap[G, A0, Y], a: A0, out: Frames[G, Y, U], m: Stack[G, U, R]): Next[G, R] =
-    link(cap.rev, cap.k, Stack.Bound(cap.tag, out, m), a)
-
-  @tailrec private def link[G[_, _, +_], A0, A, T, R](rev: Rev[G, A0, A], k: Frames[G, A, T], m: Stack[G, T, R], a: A0): Next[G, R] =
-    rev match
-      case Rev.Nil() => Next(Return(a), k, m)
-      case Rev.Snoc(prev, k0, tag) => link(prev, k0, Stack.Bound(tag, k, m), a)
-
   // ---- the implementation ----
 
-  /** the machine: an effect, and its room for nested runs (`StackSwitch`) — the depth left on this stack */
-  final class Machine[G[_, _, +_]](effect: Effect[G]) extends Delimited[G]:
+  /** the machine: an effect's steps, and its room for nested runs (`StackSwitch`) — the depth left on this stack */
+  final class Machine[G[_, _, +_]](steps: Step[G]) extends Delimited[G]:
     private var room: Int = StackSwitch.firstRoom
 
     def run[A, S, R](c: Freer[G, S, R, A], k: A => S): R =
@@ -155,6 +121,47 @@ object Delimited:
       room = left
       try go(Return[G, S, A](x), k, Stack.Done[G, S]()) finally room = saved
 
+    def next[A0, S0, T0, R](c0: Freer[G, S0, T0, A0], k0: Frames[G, A0, S0], m0: Stack[G, T0, R]): Next[G, R] =
+      new Next[G, R]:
+        type A = A0
+        type S = S0
+        type T = T0
+        def c = c0
+        def k = k0
+        def m = m0
+
+    def cut[A, T, R](k: Frames[G, A, T], m: Stack[G, T, R], is: Tag[?] => Boolean): Found[G, A, R] | Null =
+      cutFrom(Rev.Nil[G, A](), k, m, is)
+
+    @tailrec private def cutFrom[A0, A, T, R](rev: Rev[G, A0, A], k: Frames[G, A, T], m: Stack[G, T, R],
+                                              is: Tag[?] => Boolean): Found[G, A0, R] | Null = m match
+      case Stack.Done() => null
+      case b: Stack.Bound[G, T, u, R] =>
+        val t = b.tag
+        if t != null && is(t) then found(rev, k, t.nn, b.out, b.rest)
+        else cutFrom(Rev.Snoc(rev, k, t), b.out, b.rest, is)
+
+    private def found[A0, A1, Y0, U0, R](r: Rev[G, A0, A1], k1: Frames[G, A1, Y0], t: Tag[Y0],
+                                         out0: Frames[G, Y0, U0], m0: Stack[G, U0, R]): Found[G, A0, R] =
+      new Found[G, A0, R]:
+        type Y = Y0
+        type U = U0
+        def cap = new Cap[G, A0, Y0]:
+          type A = A1
+          def rev = r
+          def k = k1
+          def tag = t
+        def out = out0
+        def m = m0
+
+    def reinstall[A0, Y, U, R](cap: Cap[G, A0, Y], a: A0, out: Frames[G, Y, U], m: Stack[G, U, R]): Next[G, R] =
+      link(cap.rev, cap.k, Stack.Bound(cap.tag, out, m), a)
+
+    @tailrec private def link[A0, A, T, R](rev: Rev[G, A0, A], k: Frames[G, A, T], m: Stack[G, T, R], a: A0): Next[G, R] =
+      rev match
+        case Rev.Nil() => next(Return(a), k, m)
+        case Rev.Snoc(prev, k0, tag) => link(prev, k0, Stack.Bound(tag, k, m), a)
+
     @tailrec private def go[A, S, T, R](c: Freer[G, S, T, A], k: Frames[G, A, S], m: Stack[G, T, R]): R = c match
       case Return(a) => k match
         case Frames.End() => m match
@@ -164,6 +171,6 @@ object Delimited:
       case Bind(c0, f) => go(c0, Frames.Frame(f, k), m)
       case Delay(t) => go(t(), k, m)
       case Inject(op) =>
-        val n = effect.step(op, k, m, this)
+        val n = steps.step(op, k, m, this)
         go(n.c, n.k, n.m)
       case Diag(op) => go(Inject(op), k, m)
