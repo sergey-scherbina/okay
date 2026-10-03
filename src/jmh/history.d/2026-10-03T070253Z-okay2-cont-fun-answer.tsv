@@ -1,0 +1,2 @@
+2026-10-03	2f2fcd41b	quiet	okay2_statePara	30.94	33.19	0.93	okay2 HandlerBenchmark.statePara (new lane, M=1000 PState get/get/set; ref = master with the same lane added uncommitted); get/set as Bounces applied by a loop over the erased pair; 293385 vs 293385 B/op; round 1, ref first
+2026-10-03	2f2fcd41b	quiet	okay2_statePara	30.40	32.51	0.94	round 2
