@@ -580,6 +580,44 @@ and its cost is honest: the language import, and error messages
 inside a block that can point one conversion away from the real
 mistake.
 
+## `reset` and `shift` without `direct`
+
+A delimited capture written in direct style used to need `direct` twice —
+around the `reset`'s body and around the `shift`'s:
+`reset(direct { … shift(k => direct { … }) … })`. `Direct.reset` and
+`Direct.shift` take the body as it is, in either style. The body is
+expected as `R | R ! G`: a block ending in a value of the answer type is
+direct style and goes through the same compiler `direct` uses; a body that
+is already a program — a `for`, a `flatMap`, a `direct { … }` written by
+hand — is taken as the program it is.
+
+```scala
+val q: Int ! S = Direct.reset[Int, S] {
+  val x = Direct.shift[Int](k => k(1).? + k(10).?).?
+  x * 2 + State.get[Int].?
+}
+```
+
+The same door, monadic:
+
+```scala
+val q: Int ! S = Direct.reset[Int, S](
+  for
+    x <- shift[Int, Int, S](k => k(1).flatMap(a => k(10).map(_ + a)))
+    s <- State.get[Int].at[Shift % Int + S]
+  yield x * 2 + s)
+```
+
+Inside, the block's evidence is in scope as in any `reset`: `shift[A]` names
+only its value type, and `Shift.exit` leaves the body. Marks are `.?` and
+`!`; with `scala.language.implicitConversions` no marks at all, as Layer 3
+says. With `import okay.Direct.*` these two stand for the core's `reset` and
+`shift` in that file — they take every form the core's take, so the code
+already there keeps compiling — while the core's own stay the program-only
+doors. Literature: Danvy & Filinski, *Abstracting control*, LFP 1990 (the
+operators); Filinski, *Representing monads*, POPL 1994 (why the direct
+reading and the monadic one are the same program).
+
 ## Recursion in a block: deep, and with no annotation
 
 A block that calls its own def at the program type has a hazard the
