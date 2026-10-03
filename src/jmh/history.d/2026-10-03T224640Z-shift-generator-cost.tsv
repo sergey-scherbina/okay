@@ -1,0 +1,8 @@
+2026-10-04	-	quiet	statePara_shift_gen	47.297	54.443	0.87	min of 2 alternating rounds vs master c44ae19ab (delimited-simplify landed); 533401 vs 604862 B/op; shift as one step + Segment k
+2026-10-04	-	quiet	contAnswer_shift_gen	29.609	30.484	0.97	min of 2 alternating rounds vs master c44ae19ab (delimited-simplify landed); 390169 vs 406178 B/op; shift as one step + Segment k
+2026-10-04	-	quiet	fib100_shift_gen	5164.037	5595.681	0.92	min of 2 alternating rounds vs master c44ae19ab (delimited-simplify landed); 47576 vs 54824 B/op; shift as one step + Segment k
+2026-10-04	-	quiet	stateForeign_shift_gen	43.496	42.882	1.01	min of 2 alternating rounds vs master c44ae19ab (delimited-simplify landed); 438592 vs 438592 B/op; shift as one step + Segment k
+2026-10-04	-	quiet	delimGenerator_shift_gen	55.594	76.395	0.73	min of 2 alternating rounds vs master c44ae19ab (delimited-simplify landed); 542457 vs 678461 B/op; shift as one step + Segment k
+2026-10-04	-	quiet	statePara_shift_gen	47.118	41.696	1.13	min of 2 alternating rounds vs cont-atm 6fc400e08; 533401 vs 501344 B/op; shift as one step + Segment k; the stateForeign gap is push-one-boundary (ec9ee796a 41.5-42.9), see backlog shift-foreign-jit-shape
+2026-10-04	-	quiet	stateForeign_shift_gen	41.861	32.043	1.31	min of 2 alternating rounds vs cont-atm 6fc400e08; 438592 vs 438656 B/op; shift as one step + Segment k; the stateForeign gap is push-one-boundary (ec9ee796a 41.5-42.9), see backlog shift-foreign-jit-shape
+2026-10-04	-	quiet	fib100_shift_gen	5170.45	4662.751	1.11	min of 2 alternating rounds vs cont-atm 6fc400e08; 47576 vs 44320 B/op; shift as one step + Segment k; the stateForeign gap is push-one-boundary (ec9ee796a 41.5-42.9), see backlog shift-foreign-jit-shape

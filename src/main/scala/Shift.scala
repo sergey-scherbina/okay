@@ -257,16 +257,22 @@ object Shift {
     // ---- Outer: which operations leave
 
     def apply[T, R, X, B, S, Z](op: L[T, R, X], m: Stack[L, B, S, R, Z], machine: Delimited[L]): F[X] | Null = (op: (Shift % ? + F)[X]) match
-      // an installation and a resumption are always this machine's: they put a prompt on, not look for one
-      case _: Dollar[?, ?, ?, ?] | _: Push[?, ?, ?] | _: Resume[?, ?, ?, ?] => null
-      case s: Shift[?, ?] =>
-        val p = promptOf(s)
-        if nested && p != null && machine.holds(m, p.is) == null then claim[F[X]](op) else null
+      // the usual one first, one type test: an operation of another effect (shift-generator-cost)
+      case s: Shift[?, ?] => if nested then ownPrompt(s, op, m, machine) else null
       case _ =>
         if !framed then claim[F[X]](op)
         else machine.holds(m, takes(op)) match
           case h: HandleFrames.Handling[?] => taker = h; null
           case _ => claim[F[X]](op)
+
+    /** in a run with no barrier, a capture to a prompt not installed here goes out; an installation and a
+     * resumption are always this run's — they put a prompt on, not look for one */
+    private def ownPrompt[T, R, X, B, S, Z](s: Shift[?, ?], op: L[T, R, X], m: Stack[L, B, S, R, Z], machine: Delimited[L]): F[X] | Null =
+      s match
+        case _: Dollar[?, ?, ?, ?] | _: Push[?, ?, ?] | _: Resume[?, ?, ?, ?] => null
+        case _ =>
+          val p = promptOf(s)
+          if p != null && machine.holds(m, p.is) == null then claim[F[X]](op) else null
 
     private def takes(op: Any): Delimited.Mark => Boolean =
       case h: HandleFrames.Handling[?] => h.takes(op)
