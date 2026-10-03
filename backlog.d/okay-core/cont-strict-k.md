@@ -43,7 +43,13 @@
       (cont-strict-k-detached): a capture no longer copies a delimiter that
       is already over nothing (a strict `k`'s run, a resumed `k`'s head) —
       statePara 0.95x (-48 KB), contAnswer 0.93x (-24 KB), fib100 0.98x.
-      NEXT: the `Next` carrier a capture returns to the loop (~10% of bytes,
-      7% of CPU in its constructor) — inlined into the loop it is a jump, but
-      the loop's size and register pressure decided against that before
-      (cont-frames-register-pressure); measure, do not assume.
+      THE `Next` CARRIER, MEASURED 2026-10-03 (history.d
+      cont-strict-k-next-carrier), REFUTED as written: (a) a resumption's
+      `Next` as an inline loop arm changed nothing (C2 already scalar-replaces
+      it); (b) the frame-taken capture as the loop's own arm (`foundHere`,
+      tail calls, no `Next`) is statePara 0.83x but contAnswer 1.17-1.21x and
+      fib100 1.04-1.11x, inlining one arm or both: the clause call `f(k)` moves
+      into `loop$1`, and contAnswer's clause — the macro's continuation — is
+      inlined there (cont-frames-register-pressure, its fourth place). A road
+      that keeps the clause call OUT of the loop and still carries no `Next`
+      is the open question; nothing portable pins a call site out of line.

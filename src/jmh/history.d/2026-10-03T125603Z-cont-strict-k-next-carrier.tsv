@@ -1,0 +1,8 @@
+2026-10-03	9c58192bd	quiet	statePara_resume_inline	57.50	57.25	1.00	REFUTED: resume as an inline loop arm (no Next a resumption); bytes equal 437278 — C2 already scalar-replaced that Next; round 1
+2026-10-03	9c58192bd	quiet	contAnswer_resume_inline	35.86	34.79	1.03	REFUTED, round 1 (round 2 35.98 vs 35.62, 1.01); bytes equal
+2026-10-03	55f69d205	quiet	statePara_capture_inline_both	48.07	57.86	0.83	the frame-taken capture as the loop's own arm, both near roads inlined (framedHere/foundHere); 389258 vs 437278 B/op (-24 B a capture: the Next)
+2026-10-03	55f69d205	quiet	contAnswer_capture_inline_both	41.32	35.52	1.16	REFUTED for this lane: 318104 vs 342104 B/op, slower — the clause call moved into loop$1, the macro's continuation inlined there (register pressure, cont-frames-register-pressure); round 2 41.53 vs 34.90, 1.19
+2026-10-03	55f69d205	quiet	fib100_capture_inline_both	6.695	6.418	1.04	us/op; round 2 6.792 vs 6.370, 1.07; 37024 vs 39472 B/op
+2026-10-03	cd926dc62	quiet	statePara_capture_inline_direct	48.30	57.60	0.84	only the direct-delimiter arm inlined; round 2 48.01 vs 57.53, 0.83
+2026-10-03	cd926dc62	quiet	contAnswer_capture_inline_direct	42.62	35.60	1.20	REFUTED: contAnswer's captures take the direct arm too (bytes -24 KB), so the clause call is in loop$1 all the same; round 2 42.39 vs 35.11, 1.21
+2026-10-03	cd926dc62	quiet	fib100_capture_inline_direct	7.038	6.368	1.11	us/op, noisy (± 0.47); round 2 7.034 vs 6.368, 1.10
