@@ -3,6 +3,7 @@ package okay
 import org.openjdk.jmh.annotations.*
 import java.util.concurrent.TimeUnit
 import okay.Shift.{push, reset, shift}
+import okay.Row.at
 
 /**
  * The price of universality. `Shift` lets a user define effects in
@@ -172,6 +173,27 @@ class DelimBenchmark {
     val ret: Int => Ans ! Row = a => pure((s: Int) => pure((s, a)))
     !.run(Shift.run[(Int, Int), Pure](Shift.dollar[Int, Ans, Pure](p)(ret)(rewriteState(op)(stateProg(N))).flatMap(f => f(0))))._2
 
+  // ---- an operation of ANOTHER effect on the machine (handling-ever-per-machine): N State
+  // operations performed inside `Shift.run`, under one delimiter, answered by `State.run`
+  // outside — each leaves the machine as its head form. Before forwarding one, a machine looks
+  // down its stack for a handler frame (handle-frames) only once `Cont0.Handling.ever` is set,
+  // process-wide; `stateForeignEver` forces it on to price that look.
+
+  type FW = okay.State % Int
+  type FRow = Shift % ? + FW
+  def foreignProg(n: Int): Int ! FRow =
+    if n == 0 then okay.State.get[Int].at[FRow]
+    else okay.State.get[Int].at[FRow].flatMap(s => okay.State.set(s + 1).at[FRow]).flatMap(_ => foreignProg(n - 1))
+
+  def foreignRun(): Int =
+    okay.State.run(0)(Shift.run[Int, FW](Shift.push[Int, FW](Shift.prompt[Int])(foreignProg(N))))._2
+
+  @Benchmark
+  def stateForeign(): Int = foreignRun()
+
+  @Benchmark
+  def stateForeignEver(@annotation.unused on: DelimBenchmark.HandlingEver): Int = foreignRun()
+
   // ---- handler INSTANCES (specs/lexical-instances.md): the same N get/set
   // pairs as stateHandle, through one `Lexical` instance, by strategy.
   // `tail` answers in place (evidence passing) with one guard delimiter
@@ -239,3 +261,9 @@ class DelimBenchmark {
     while i >= 0 do { xs = i :: xs; i -= 1 }
     xs.length
 }
+
+object DelimBenchmark:
+  /** forces `Cont0.Handling.ever` on for the lane that takes it: a fork of its own, so no other lane sees it */
+  @State(Scope.Benchmark)
+  class HandlingEver:
+    @Setup def on(): Unit = Cont0.Handling.ever = true
