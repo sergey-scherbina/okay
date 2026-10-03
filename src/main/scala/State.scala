@@ -289,8 +289,42 @@ object PState {
   // the object it already is: nothing to re-box, whatever inlines.
   // Public because the expansion at a user's call site calls them; not
   // an API.
-  def getAt[S, R](k: S => S => R): S => R = s => k(s)(s)
-  def setAt[S, S2, R](k: S => S2 => R, s2: S2): S => R = s => k(s)(s2)
+  def getAt[S, R](k: S => S => R): S => R = new GetAt[S, R](k)
+  def setAt[S, S2, R](k: S => S2 => R, s2: S2): S => R = new SetAt[S, S2, R](k, s2)
+
+  // the two bodies as `Bounce`s: the rest of the program, `k(s)`, answered with its state, never applied here
+  private final class GetAt[S, R](k: S => S => R) extends Bounce[S, R]:
+    def step(s: S): Bounce.Next[R] = Bounce.next(k(s), s)
+  private final class SetAt[S, S2, R](k: S => S2 => R, s2: S2) extends Bounce[S, R]:
+    def step(s: S): Bounce.Next[R] = Bounce.next(k(s), s2)
+
+  /**
+   * A FUNCTION ANSWER APPLIED BY A LOOP (cont-fun-answer). A state-passing body `s => k(s)(s2)` applies the
+   * rest inside its own frame, so applying the answer of n steps nests n host frames — past any stack, the
+   * machine's switch included, since the nesting is outside the machine. A `Bounce`'s `step` answers the next
+   * function and its argument instead of applying them, and its `apply` is the loop: one frame for the whole
+   * chain, on every platform, for whoever applies the answer. A function that is not a `Bounce` ends the chain.
+   * Write a body of this shape as one (`PState.get`/`set` are two).
+   */
+  abstract class Bounce[-S, +R] extends (S => R):
+    /** the next function and its argument, not yet applied */
+    def step(s: S): Bounce.Next[R]
+    final def apply(s: S): R = Bounce.loop(step(s))
+
+  object Bounce:
+    /** a function and its argument; the argument's type is a member, so the loop applies them with no cast.
+     * `Bounce` carries `Function1`'s variances, so the loop's type test is implied by its scrutinee's type */
+    sealed abstract class Next[+R]:
+      type X
+      val f: X => R
+      val x: X
+    private final class Of[A, R](val f: A => R, val x: A) extends Next[R]:
+      type X = A
+    def next[A, R](f: A => R, x: A): Next[R] = new Of(f, x)
+
+    @tailrec def loop[R](n: Next[R]): R = n.f match
+      case b: Bounce[n.X, R] => loop(b.step(n.x))
+      case g => g(n.x)
 
   /** run from an initial state to (final state, value) */
   inline def run[S, S2, A](s: S)(m: Cont[A, S2 => (S2, A), S => (S2, A)]): (S2, A) =
