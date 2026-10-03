@@ -370,14 +370,25 @@ object Frames:
     /**
      * an operation taken by frame `h`: where `capture` looks first — the frame right under the live segment,
      * or at the head of a resumed `k` — straight to it, no `Shift0` built and no second search; else as the
-     * `shift0` to it (cont-run-prompt: the node a capture was contAnswer 1.15x, +16 B a shift)
+     * `shift0` to it (cont-run-prompt: the node a capture was contAnswer 1.15x, +16 B a shift). The loop's own arm,
+     * tail calls into it, no `Next` (cont-strict-k)
      */
-    def framed[X, T, S1, Y](h: Cont0.Handling[?], op: Any, fs: Frames[F, X, S1, T, Y], st: Stack[F, Y, S0, S1, Z]): Next[?, ?, ?, ?] = st match
-      case d: Dollar[F, Y, S0, S1, y2, Z] if h eq d.p => nearestAt(frameAt(h), clauseAt[T, X](h, op), fs, d, d.below)
+    inline def framedHere[X, T, S1, Y](h: Cont0.Handling[?], op: Any, focus: Freer[G, T, R, X],
+                                       fs: Frames[F, X, S1, T, Y], st: Stack[F, Y, S0, S1, Z]): Freer[G, S0, R, Z] = st match
+      case d: Dollar[F, Y, S0, S1, y2, Z] if h eq d.p =>
+        foundHere(frameAt(h), clauseAt[T, X](h, op), d.p, runOf(fs, detached(d)), d.below)
       case c: Cat[F, Y, S0, S1, y, s2, Z] => c.k match
-        case d: Dollar[F, Y, `s2`, S1, y2, `y`] if h eq d.p => nearestAt(frameAt(h), clauseAt[T, X](h, op), fs, d, cat(d.below, c.below))
-        case _ => capture(asShift0[T, X](h, op), fs, st)
-      case _ => capture(asShift0[T, X](h, op), fs, st)
+        case d: Dollar[F, Y, `s2`, S1, y2, `y`] if h eq d.p =>
+          foundHere(frameAt(h), clauseAt[T, X](h, op), d.p, runOf(fs, detached(d)), cat(d.below, c.below))
+        case _ => viaShift0(h, op, focus, fs, st)
+      case _ => viaShift0(h, op, focus, fs, st)
+
+    /** the rare road: as the `shift0` to frame `h`, the walk; its `Next` kept (a capture past another delimiter) */
+    inline def viaShift0[X, T, S1, Y](h: Cont0.Handling[?], op: Any, focus: Freer[G, T, R, X],
+                                      fs: Frames[F, X, S1, T, Y], st: Stack[F, Y, S0, S1, Z]): Freer[G, S0, R, Z] =
+      capture(asShift0[T, X](h, op), fs, st) match
+        case n: Next[x, ?, ?, ?] => loop(n.focus, n.fs, n.st)
+        case null => Bind(focus, runOf(fs, st))
 
     /** an operation of `F`, not of `Cont0` */
     def foreign(a: Freer[G, ?, ?, ?]): Boolean = a match
@@ -419,6 +430,16 @@ object Frames:
       val y = same.answer.flip
       val i = same.index.flip
       Next[Y0, I0, I0, Y0](f(y.liftCo[[a] =>> Stack[F, X, I0, T, a]](i.liftCo[[t] =>> Stack[F, X, t, T, y2]](k))),
+        noFrames[F, Y0, I0], y.liftCo[[a] =>> Stack[F, a, S0, I0, Z]](i.liftCo[[t] =>> Stack[F, y2, S0, t, Z]](below)))
+
+    /** `found` as the loop's own arm: its three parts the loop's arguments, a tail call, no `Next` (cont-strict-k) */
+    inline def foundHere[Y0, I0, X, T, y2, i2](p0: Cont0.Delimiter[Y0, I0], f: Stack[F, X, I0, T, Y0] => Freer[G, I0, R, Y0],
+                                               p: Cont0.Delimiter[y2, i2],
+                                               k: Stack[F, X, i2, T, y2], below: Stack[F, y2, S0, i2, Z]): Freer[G, S0, R, Z] =
+      val same = identical(p0, p)
+      val y = same.answer.flip
+      val i = same.index.flip
+      loop[Y0, I0, I0, Y0](f(y.liftCo[[a] =>> Stack[F, X, I0, T, a]](i.liftCo[[t] =>> Stack[F, X, t, T, y2]](k))),
         noFrames[F, Y0, I0], y.liftCo[[a] =>> Stack[F, a, S0, I0, Z]](i.liftCo[[t] =>> Stack[F, y2, S0, t, Z]](below)))
 
     /** a resumption: `k`'s head segment into the register, the rest of `k` over the live stack */
@@ -491,9 +512,7 @@ object Frames:
           case op =>
             val h = if op.isInstanceOf[Cont0.Framed] || Cont0.Handling.ever then frameFor(op, st) else null
             if h == null then Bind(focus, runOf(fs, st))
-            else framed(h, op, fs, st) match
-              case n: Next[x, ?, ?, ?] => loop(n.focus, n.fs, n.st)
-              case null => Bind(focus, runOf(fs, st))
+            else framedHere(h, op, focus, fs, st)
 
     val n = resume(focus0, st0, noFrames[F, Z, S0], noStack[F, Z, S0])
     loop(n.focus, n.fs, n.st)
