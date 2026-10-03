@@ -40,13 +40,13 @@ Every transition is a GADT match whose equations make the next state typed.
 
 ## Behavior (the probe)
 
-- [ ] no `asInstanceOf`, no `@unchecked`, no `Any` in the machine
-- [ ] D-F's ATM example: two leaves changing the answer type Int → String
+- [x] no `asInstanceOf`, no `@unchecked`, no `Any` in the machine
+- [x] D-F's ATM example: two leaves changing the answer type Int → String
       and Boolean → Int in one `reset`, strict and lazy, the right answer
-- [ ] `k(x + 1) + k(x + 1)` chained d = 0..6, strict and lazy, against the
+- [x] `k(x + 1) + k(x + 1)` chained d = 0..6, strict and lazy, against the
       closure instance (cont-shift-op's refuting case)
-- [ ] multi-shot: a lazy `k` resumed twice
-- [ ] stack safety: 1M left-nested binds, and 1M lazy-`k` shifts
+- [x] multi-shot: a lazy `k` resumed twice
+- [x] stack safety: 1M left-nested binds, and 1M lazy-`k` shifts
       (contAnswer's shape) on a 256 KB thread
 - [ ] a verdict: what moving Cont onto it costs (ContMacro, `programLeaf`,
       Effects' `onAnswer`, the frame machine's sharing) and its speed on
@@ -61,4 +61,12 @@ Every transition is a GADT match whose equations make the next state typed.
 
 ## Results
 
-(open)
+- 2026-10-03, first cut: THE HYPOTHESIS HOLDS FOR THE TYPES. `ProbeContAtm.scala`
+  compiles with zero `asInstanceOf`, `@unchecked` or `Any`, no warning, and
+  TestProbeContAtm's four tests are green (ATM Int → String / Boolean → Int,
+  the d = 0..6 refuting case, multi-shot, 1M binds and 1M lazy shifts on a
+  256 KB thread). Every transition is a method whose GADT match supplies
+  the equation the next state needs: `Pure` gives `S = T` (so `Apply` may
+  take `m: M[T, R]` as `M[S, R]`), `Done` gives `A = S`, `Top` gives
+  `T = R`, `Push`/`Then` compose their indexes.
+- Open: the verdict on moving Cont onto it, and its speed.
