@@ -1,1 +1,0 @@
-claude session_01UkcD4rZuMcWszYis8fWcGN, 2026-10-03, operator ask ("продолжай"): Cont.scala's four list lowerings (traverse, foldIn, existsIn, findIn) as one deferred walk over a memoised LazyList (sprint.d/doing/cont-list-combinators-one-walk.md)
