@@ -604,8 +604,14 @@ same model's log density and gradient agree to 1e-9 at ten random points.
 `Bayes.observeBulk` by `adaptive` on 2000 rows: μ 3.0746 against the
 large-n 3.0720 ± 0.0430. AD NUTS over a `Bulk[Chunks]` of 20 000 rows:
 μ 3.0156 ± 0.0144 (large-n 3.0150 ± 0.0142), σ 2.0044 ± 0.0101 (2.0040 ±
-0.0100), 17.7 s on the JVM — one aggregate per gradient. Spark and Flink
-run the same `Aggregator`; that it serialises there is not yet tested.
+0.0100), 17.7 s on the JVM — one aggregate per gradient. ON SPARK
+(okay-bayes-spark, TestSparkBayes in okay-spark, `local[4]`): the Dark
+Worlds model over a `SparkBulk` RDD has the log density and AD gradient of
+the same model over Chunks at three points, to 1e-9, in both forms — the
+aggregator shipped to the executors by serialisation and merged back;
+NUTS over the RDD, every gradient one Spark job, puts the halo at x
+2323.2, y 1120.2 (grid 2324.1 ± 24.8, 1123.5 ± 42.2), 200 draws in 38.7 s.
+Flink is still untested.
 
 ## 6. Open questions
 

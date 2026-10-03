@@ -23,8 +23,8 @@ object DarkWorlds:
   final case class Galaxy(x: Double, y: Double, e1: Double, e2: Double)
 
   /** sky n through the Bulk in scope: its CSV, each row a galaxy, held for the many passes a sampler makes */
-  def galaxies[D[_]](n: Int)(using bulk: Bulk[D]): D[Galaxy] =
-    bulk.cache(bulk.map(bulk.csv(s"bmh/darkworlds/Training_Sky$n.csv"))(r =>
+  def galaxies[D[_]](n: Int, dir: String = "bmh/darkworlds")(using bulk: Bulk[D]): D[Galaxy] =
+    bulk.cache(bulk.map(bulk.csv(s"$dir/Training_Sky$n.csv"))(r =>
       Galaxy(r("x").toDouble, r("y").toDouble, r("e1").toDouble, r("e2").toDouble)))
 
   /** the ORACLE's reading of sky n: a Bulk as well, but its own parser — the file's lines split by hand, columns by

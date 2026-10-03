@@ -1452,7 +1452,9 @@ lazy val okaySpark = (project in file("okay-spark"))
   // okay-sql: `Structured`'s predicate is okay-sql's `Query.Where`, compiled to a Column by SparkFrames (tables-structural-2)
   .dependsOn(okay.jvm, okayStream.jvm, okayCodec.jvm, okaySql.jvm, compare % "test->compile", okayParquet.jvm % "test->compile",
     // TestSparkRoutes: a Refine routing table run on SparkBulk (refine-bulk)
-    okayRefine.jvm % "test->compile")
+    okayRefine.jvm % "test->compile",
+    // TestSparkBayes: the Dark Worlds model of okay-bayes's tests, observed over SparkBulk (okay-bayes-spark)
+    okayBayes.jvm % "test->test")
   .settings(
     name := "okay-spark",
     libraryDependencies ++= Seq(

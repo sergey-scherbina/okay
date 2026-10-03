@@ -17,4 +17,4 @@
       okay-bayes-ch7; §6 vectors as named scalars okay-bayes-vector; 5d
       Dark Worlds on Kaggle's skies okay-bayes-darkworlds; 6 streams and
       Bulk (online filter as a Stage, observeBulk) okay-bayes-streams.
-      Left: a Spark/Flink run of observeBulk (serialisation untested).
+      observeBulk on Spark okay-bayes-spark (Flink untested).
