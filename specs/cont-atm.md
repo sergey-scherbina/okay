@@ -1,4 +1,4 @@
-# Cont with answer-type modification and no cast: a typed CK + meta machine
+# Delimited with answer-type modification: a typed CK + meta machine
 
 Operator ask, 2026-10-03 ("Делимитер с ATM", after cont-run-prompt): the one
 cast left in Cont.scala is the run's frame claiming the type of the `k` it
@@ -51,6 +51,45 @@ Every transition is a GADT match whose equations make the next state typed.
 - [ ] a verdict: what moving Cont onto it costs (ContMacro, `programLeaf`,
       Effects' `onAnswer`, the frame machine's sharing) and its speed on
       contAnswer / statePara / fib100 against master
+
+## Stage 2 — the operator's direction: Delimited itself gets ATM (2026-10-03)
+
+"Меняем Delimited для поддержки ATM"; "правильность дизайна доказывается в
+первую очередь типами". What is wrong in Delimited for ATM, found by stage 1:
+
+1. the answer type lives on the PROMPT (`Delimiter[Y, I]`, DPJS's typed
+   prompts): every installation of a prompt — the root and each copy in a
+   `k` — has one type, held by the `identical` axiom;
+2. `Dollar` fuses the `ret` frame with the BOUNDARY: a capture copies both
+   into `k`, the boundary's type frozen at the capture;
+3. one `R` for a whole run, `$` transparent to it (`Dollar0`'s body shares
+   the outside `R`): no level has an answer of its own.
+
+The design to prove by types, in a probe before the core (stage 2a), then
+in Delimited (2b):
+
+- `Freer[G, S, R, A]` unchanged as a tree; its `(S, R)` now read as the
+  answer pair of the NEAREST delimiter (it is that already for Cont);
+- a delimiter is two things: `ret`, an ordinary frame at the bottom of its
+  level's `K`, and the boundary, `Level(p, kOuter, m)` in the meta-
+  continuation `M`, typed per installation;
+- a capture to the NEAREST delimiter is ATM-typed with no claim (stage 1:
+  the body is polymorphic in the outer level's answer);
+- a capture to a NAMED prompt through levels (Shift, handler frames) takes
+  `k` as a typed chain of segments `Seg[A, Z]`; the one claim is the
+  generative-prompt axiom, DPJS's `unsafeCoerce`, that a prompt's
+  installation is at the prompt's declared type — unavoidable while prompts
+  are named at run time rather than by singleton types;
+- THE RULE that makes it typeable: answer types may change at the nearest
+  delimiter only; an operation that crosses other delimiters is diagonal
+  there `(X, X)`. Free's operations are (`Unit, Unit`); Cont's leaves
+  target their own `reset`.
+
+- [ ] 2a: the probe — `Level`/`Seg`, nearest capture with ATM, named capture
+      through levels with the one axiom, resumption of a multi-level `k`,
+      a deep handler frame; stack-safe; tests
+- [ ] 2b: Delimited on it; Shift, HandleFrames, Layered, Lexical, Cont moved;
+      the full gate; A/B on the core lanes
 
 ## Decisions
 
