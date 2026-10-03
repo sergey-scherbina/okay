@@ -22,7 +22,7 @@ import scala.annotation.tailrec
  * the rest's in the program it answers, which the machine outside runs. Nothing here names an effect.
  */
 trait Delimited[G[_, _, +_]]:
-  import Delimited.{Tag, Next, Found, Cap}
+  import Delimited.{Tag, Mark, Next, Found, Cap}
 
   /** a segment from `x` to its answer, NOW: a nested run */
   def force[A, S](k: Frames[G, A, S], x: A): S
@@ -38,6 +38,12 @@ trait Delimited[G[_, _, +_]]:
 
   /** a boundary over the stack `rest`: the level inside answers `T`, and `out` takes that on; `tag` marks it */
   def bound[T, U, R](tag: Tag[T] | Null, out: Frames[G, T, U], rest: Stack[G, U, R]): Stack[G, T, R]
+
+  /** a continuation mark on a segment: transparent — the segment's types are its own */
+  def mark[A, S](m: Mark, rest: Frames[G, A, S]): Frames[G, A, S]
+
+  /** the nearest continuation mark `is` holds for, from a segment out through every boundary; null when none */
+  def find[A, S, T, R](k: Frames[G, A, S], m: Stack[G, T, R], is: Mark => Boolean): Mark | Null
 
   /** walk out from a segment and its stack to the nearest boundary whose mark `is` holds for: the capture up to
    * and including it, and what lies outside it; null when there is none */
@@ -60,6 +66,10 @@ trait Step[G[_, _, +_], H[_, _, +_]]:
 enum Frames[G[_, _, +_], -A, S]:
   case End[G[_, _, +_], A]() extends Frames[G, A, A]
   case Frame[G[_, _, +_], A, B, S, T](f: A => Freer[G, S, T, B], rest: Frames[G, B, S]) extends Frames[G, A, T]
+  /** a CONTINUATION MARK (Clements & Felleisen's `with-continuation-mark`; Kiselyov, Shan & Sabry's delimited
+   * dynamic binding): not a boundary — a value passes it unchanged, a capture carries it, no answer type moves —
+   * only something an effect finds by walking (`find`) */
+  case Marked[G[_, _, +_], A, S](mark: Delimited.Mark, rest: Frames[G, A, S]) extends Frames[G, A, S]
 
 /** THE STACK: segments joined by boundaries, from the innermost level's answer `T` to the whole run's `R`. A
  * boundary takes its level's answer to the segment outside it, as that segment's value. */
@@ -96,6 +106,9 @@ object Delimited:
 
   /** a boundary's mark, opaque to the machine, which an effect finds a boundary by: `T` the answer of its level */
   trait Tag[T]
+
+  /** a continuation mark's content, opaque to the machine: what an effect hangs on the stack to find again */
+  trait Mark
 
   /** the machine's state, which a step answers: a program, its segment, the stack under it */
   sealed abstract class Next[G[_, _, +_], R]:
@@ -136,6 +149,14 @@ object Delimited:
     def frame[A, B, S, T](f: A => Freer[G, S, T, B], rest: Frames[G, B, S]): Frames[G, A, T] = Frames.Frame(f, rest)
     def bound[T, U, R](tag: Tag[T] | Null, out: Frames[G, T, U], rest: Stack[G, U, R]): Stack[G, T, R] =
       Stack.Bound(tag, out, rest)
+    def mark[A, S](m: Mark, rest: Frames[G, A, S]): Frames[G, A, S] = Frames.Marked(m, rest)
+
+    @tailrec final def find[A, S, T, R](k: Frames[G, A, S], m: Stack[G, T, R], is: Mark => Boolean): Mark | Null = k match
+      case Frames.Marked(mk, rest) => if is(mk) then mk else find(rest, m, is)
+      case Frames.Frame(_, rest) => find(rest, m, is)
+      case Frames.End() => m match
+        case Stack.Done() => null
+        case Stack.Bound(_, out, rest) => find(out, rest, is)
 
     def next[A0, S0, T0, R](c0: Freer[G, S0, T0, A0], k0: Frames[G, A0, S0], m0: Stack[G, T0, R]): Next[G, R] =
       new Next[G, R]:
@@ -207,6 +228,7 @@ object Delimited:
           case Stack.Done() => a
           case Stack.Bound(_, out, rest) => go(Return(a), out, rest)
         case Frames.Frame(f, k2) => go(f(a), k2, m)
+        case Frames.Marked(_, k2) => go(Return(a), k2, m)
       case Bind(c0, f) => go(c0, Frames.Frame(f, k), m)
       case Delay(t) => go(t(), k, m)
       case Inject(op) =>
@@ -237,6 +259,7 @@ object Delimited:
           case Stack.Done() => Return(a)
           case Stack.Bound(_, out, rest) => go(Return(a), out, rest)
         case Frames.Frame(f, k2) => go(f(a), k2, m)
+        case Frames.Marked(_, k2) => go(Return(a), k2, m)
       case Bind(c0, f) => go(c0, Frames.Frame(f, k), m)
       case Delay(t) => go(t(), k, m)
       case Inject(op) => op match
