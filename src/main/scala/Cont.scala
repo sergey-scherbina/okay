@@ -193,11 +193,11 @@ object Cont:
   private object Steps extends Step[Op]:
     def step[A, S, T, R](op: Op[S, T, A], k: Frames[Op, A, S], m: Stack[Op, T, R], machine: Delimited[Op]): Delimited.Next[Op, R] =
       op match
-        case Op.Strict(body) => machine.next(Return(body(x => machine.force(k, x))), Frames.End(), m)
-        case Op.Program(body) => machine.next(Return(body(k)), Frames.End(), m)
-        case Op.Lazily(body) => machine.next(body(k), Frames.End(), m)
-        case Op.Resume(k1, a) => machine.next(Return(a), k1, Stack.Bound(null, k, m))
-        case Op.Tail(v, ev) => machine.next(Return(v), k, Stack.Bound(null, Frames.Frame((s: S) => Return(ev(s)), Frames.End()), m))
+        case Op.Strict(body) => machine.next(Return(body(x => machine.force(k, x))), machine.end, m)
+        case Op.Program(body) => machine.next(Return(body(k)), machine.end, m)
+        case Op.Lazily(body) => machine.next(body(k), machine.end, m)
+        case Op.Resume(k1, a) => machine.next(Return(a), k1, machine.bound(null, k, m))
+        case Op.Tail(v, ev) => machine.next(Return(v), k, machine.bound(null, machine.frame((s: S) => Return(ev(s)), machine.end), m))
 
   /**
    * is `c` already an answer? then go on from it with a tail call instead of a continuation node

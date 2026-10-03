@@ -6,7 +6,7 @@ import Delimited.{Next, Cap}
 /**
  * A SECOND EFFECT on the same stack (specs/cont-atm.md): λ$ with named prompts — `ret $ body` at a prompt, and
  * `shift0` to a prompt through any boundaries between. Written with nothing but the stack's own manipulations
- * (`Stack.Bound`, `cut`, `reinstall`); the machine is the one Cont runs on, unchanged.
+ * (`bound`, `cut`, `reinstall`); the machine is the one Cont runs on, unchanged.
  */
 class TestDelimitedLambda extends munit.FunSuite:
 
@@ -26,7 +26,7 @@ class TestDelimitedLambda extends munit.FunSuite:
 
   object Steps extends Step[L]:
     def step[A, S, T, R](op: L[S, T, A], k: Frames[L, A, S], m: Stack[L, T, R], machine: Delimited[L]): Delimited.Next[L, R] = op match
-      case Dollar(p, ret, body) => machine.next(body, Frames.Frame(ret, Frames.End()), Stack.Bound(p, k, m))
+      case Dollar(p, ret, body) => machine.next(body, machine.frame(ret, machine.end), machine.bound(p, k, m))
       case s: Shift0[a, ?, ?] => machine.cut[a, T, R](k, m, _ eq s.p) match
         case null => throw IllegalStateException(s"no delimiter for prompt ${s.p.name}")
         case f: Delimited.Found[L, a, R] =>

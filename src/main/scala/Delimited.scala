@@ -32,6 +32,15 @@ trait Delimited[G[_, _, +_]]:
   /** the next state: a program, its segment, the stack under it */
   def next[A, S, T, R](c: Freer[G, S, T, A], k: Frames[G, A, S], m: Stack[G, T, R]): Next[G, R]
 
+  /** the empty segment: a value is its level's answer */
+  def end[A]: Frames[G, A, A]
+
+  /** a frame on a segment: `f`'s value flows into `rest` */
+  def frame[A, B, S, T](f: A => Freer[G, S, T, B], rest: Frames[G, B, S]): Frames[G, A, T]
+
+  /** a boundary over the stack `rest`: the level inside answers `T`, and `out` takes that on; `tag` marks it */
+  def bound[T, U, R](tag: Tag[T] | Null, out: Frames[G, T, U], rest: Stack[G, U, R]): Stack[G, T, R]
+
   /** walk out from a segment and its stack to the nearest boundary whose mark `is` holds for: the capture up to
    * and including it, and what lies outside it; null when there is none */
   def cut[A, T, R](k: Frames[G, A, T], m: Stack[G, T, R], is: Tag[?] => Boolean): Found[G, A, R] | Null
@@ -120,6 +129,11 @@ object Delimited:
       val saved = room
       room = left
       try go(Return[G, S, A](x), k, Stack.Done[G, S]()) finally room = saved
+
+    def end[A]: Frames[G, A, A] = Frames.End()
+    def frame[A, B, S, T](f: A => Freer[G, S, T, B], rest: Frames[G, B, S]): Frames[G, A, T] = Frames.Frame(f, rest)
+    def bound[T, U, R](tag: Tag[T] | Null, out: Frames[G, T, U], rest: Stack[G, U, R]): Stack[G, T, R] =
+      Stack.Bound(tag, out, rest)
 
     def next[A0, S0, T0, R](c0: Freer[G, S0, T0, A0], k0: Frames[G, A0, S0], m0: Stack[G, T0, R]): Next[G, R] =
       new Next[G, R]:
