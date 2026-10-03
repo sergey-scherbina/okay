@@ -83,6 +83,19 @@ object HandleFrames:
     Freer.Inject[Shift.Ro[G], Unit, Unit, A](Cont0.Dollar0[Freer.Lift[G], A, A, Unit, Unit](
       Cont0.delimiter[A, Unit](frame), (a: A) => Return[Shift.Ro[G], Unit, A](a), Free.delay(() => x).asInstanceOf[Shift.U[G, A]]))
 
+  /**
+   * a frame whose clause gets the operation and its continuation as a function to programs of `G` — for a handler
+   * that is no fold of one answer (Logic.msplit's search: the continuation run at every alternative, the ones not
+   * yet taken handed out in the answer as `pending` programs)
+   */
+  def handling[A, B, G[+_]](name: String, takes0: Any => Boolean, ret: A => B ! G)
+                           (clause0: (Any, Any => B ! G) => B ! G)(x: Any): Shift.U[G, B] =
+    val frame = new Cont0.Handling[B](name):
+      def takes(op: Any): Boolean = takes0(op)
+      def clause(op: Any, k: Any => Any): Any = clause0(op, k.asInstanceOf[Any => B ! G])
+    Freer.Inject[Shift.Ro[G], Unit, Unit, B](Cont0.Dollar0[Freer.Lift[G], B, A, Unit, Unit](
+      Cont0.delimiter[B, Unit](frame), ret.asInstanceOf[A => Shift.U[G, B]], x.asInstanceOf[Shift.U[G, A]]))
+
   /** the control form (`Effects[Free].handle`, `Handler.control`) as a frame over `x`: the clause gets `k` */
   def control[F[+_], A, B, G[+_]](ret: A => Free[G, B], h: F !> Free[G, B], t: TypeableK[F])(x: Free[F + G, A]): Shift.U[G, B] =
     val frame = new Cont0.Handling[B]("handle"):

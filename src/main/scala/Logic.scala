@@ -41,22 +41,44 @@ object Logic {
    */
   def msplit[A, F[+_]](m: A ! Choose + F)
   : Option[(A, A ! Choose + F)] ! F =
+    type O = Option[(A, A ! Choose + F)]
+    // the search as a frame (handle-frames-catch): the continuation run at each alternative in turn, the first
+    // answer found the answer, the alternatives not yet run handed out as programs pending on that continuation
+    def frame(x: A ! Choose + F): Shift.U[F, O] =
+      HandleFrames.handling[A, O, F]("msplit", summon[TypeableK[Choose]].test, a => pure(Some((a, alts(Nil)))))(
+        (op, k) => first(op.asInstanceOf[Choose[Any]].as.to(LazyList), k))(x)
+    def first(as: LazyList[Any], k: Any => O ! F): O ! F = as match
+      case LazyList() => pure(None)
+      case b #:: more => k(b).flatMap:
+        case None => again1(more, k)
+        case Some((a, r)) => pure(Some((a, alts(r #:: more.map(c => defer(reflect[A, F](HandleFrames.pending[O, F](
+          k(c).asInstanceOf[Shift.U[F, O]]))))))))
+    // the next alternative from inside flatMap: on a machine, a step of its loop, not a host frame
+    def again1(as: LazyList[Any], k: Any => O ! F): O ! F = first(as, k)
     // a forwarded operation resumes the walk from inside flatMap, a call
     // that cannot be a jump; `again` takes it, so `go` stays a checked loop
-    def again(stack: LazyList[A ! Choose + F]): Option[(A, A ! Choose + F)] ! F = go(stack)
-    @tailrec def go(stack: LazyList[A ! Choose + F]): Option[(A, A ! Choose + F)] ! F =
+    def again(d: Int)(stack: LazyList[A ! Choose + F]): O ! F = go(d)(stack)
+    @tailrec def go(d: Int)(stack: LazyList[A ! Choose + F]): O ! F =
       stack match
         case LazyList() => pure(None)
-        case p #:: rest => (p.resume: @unchecked) match
+        case p #:: rest => (p.resumeRun: @unchecked) match
           case Return(a) => pure(Some((a, alts(rest))))
           case i @ Inject(e) => split[Choose, F](e)
-            (c => go(c.as.to(LazyList).map(a => Return(a): A ! Choose + F) #::: rest))
-            (_ => forwarded[Choose, F](i).flatMap(a => again(Return(a) #:: rest)))
+            (c => go(d)(c.as.to(LazyList).map(a => Return(a): A ! Choose + F) #::: rest))
+            (_ => forwarded[Choose, F](i).flatMap(a => again(d)(Return(a) #:: rest)))
           case Bind(i @ Inject(e), k) => split[Choose, F](e)
-            (c => go(c.as.to(LazyList).map(x => k(x)) #::: rest))
-            (_ => forwarded[Choose, F](i).flatMap(x => again(k(x) #:: rest)))
+            (c => go(d)(c.as.to(LazyList).map(x => k(x)) #::: rest))
+            (_ => forwarded[Choose, F](i).flatMap(x => again(d)(k(x) #:: rest)))
+          // a nested run at the head (an inner search, a handler): forced, as its fold below the limit
+          case y => go(d)(HandleFrames.shallow(y, d) #:: rest)
 
-    go(LazyList(m))
+    HandleFrames.run[O, F](d => go(d)(LazyList(m)), frame(m))
+
+  /** a split back into a search: its answer, then the rest */
+  private def reflect[A, F[+_]](o: Option[(A, A ! Choose + F)] ! F): A ! Choose + F =
+    !.widen[Option[(A, A ! Choose + F)], F, Choose](o).flatMap:
+      case None => alts(Nil)
+      case Some((a, r)) => alts(Seq(pure(a), r))
 
   /** at most one answer: the cut — commits to the first success and
    * throws the rest of the search away. `once` until logic-cut
