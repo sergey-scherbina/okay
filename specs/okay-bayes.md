@@ -349,6 +349,33 @@ typeclass survey: "kernels and resample-move first").
   also re-runs a prefix) with every random draw in the old order: the
   Kalman, Beta–Bernoulli and Bayes-factor numbers are unchanged.
 
+Stage 8 — models whose structure is KNOWN BEFORE THEY RUN (operator,
+2026-10-03, after the typeclass survey). A model `A ! Model` already has
+Functor, Applicative, Selective and Monad — the core's `Monad[Free[F, *]]`
+— but derived from `flatMap`, so its sites show only by running it. The
+core's `Static[F, A]` is the FREE Selective (Capriotti & Kaposi 2014;
+Mokhov et al. 2019): `leaves` lists every operation it MAY perform. The
+price is that an operation's argument is fixed when the program is built:
+a prior cannot depend on another draw, and an observation's likelihood,
+which depends on the draws, cannot be an operation. So a DECLARED model is
+two parts — the PARAMETERS, a `Static[Model, P]` of independent draws
+(combined applicatively, branched by `select`/`ifS`), and the LIKELIHOOD,
+a pure `P => Double`. Most of the book fits (Challenger, the mixture, Dark
+Worlds); a hierarchical model fits NON-CENTERED, θ = μ + τ·z, z ~ N(0, 1).
+`Declared.sample`, `both`, `all`, `sampleN`; `Declared.sites(params)` —
+name, distribution, and whether under a branch — with nothing run;
+`Declared.model(params)(logLik)`, an ordinary `P ! Model` every sampler
+takes; `Declared.nuts(...)`, which refuses a discrete site, a site under a
+branch or a repeated name BEFORE sampling.
+  - [ ] the sites are listed without a single draw (a distribution whose
+        `sample` throws does not stop it), branches marked
+  - [ ] the coin model of TestBayes written with `ifS`: P(coin) against
+        the exact 0.4295 by `metropolis`, and `Declared.nuts` refusing it
+        by name before running
+  - [ ] eight schools non-centered by `Declared.nuts`, against the exact
+        posterior of TestVector
+  - [ ] a repeated site name refused at declaration
+
 ## 4. Decisions
 
 1. **A new module, not the core's `Prob`.** `Prob` is discrete and exact
