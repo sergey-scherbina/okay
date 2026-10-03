@@ -212,22 +212,23 @@ The reflex is to blame delimited control, and it is wrong. In this
 implementation a captured continuation is **already a data structure**:
 
 ```scala
-enum Frames[F[_, _, +_], A, S, T, Z]:
-  case End[F[_, _, +_], A, S]() extends Frames[F, A, S, S, A]
-  case Frame[F[_, _, +_], A, S, S2, T, Y, Z](f: A => Freer[Cont0.Row[F], S2, T, Y],
+enum Frames[G[_, _, +_], -A, B, S, R]:
+  case End[G[_, _, +_], A, S]() extends Frames[G, A, A, S, S]
+  case Frame[G[_, _, +_], A, X, B, S, T, R](f: A => Freer[G, T, R, X], rest: Frames[G, X, B, S, T])
 
-enum Stack[F[_, _, +_], A, S, T, Z] extends (A => Freer[Cont0.Row[F], S, T, Z]):
-  case Done[F[_, _, +_], A, S]() extends Stack[F, A, S, S, A]
-  case Run[F[_, _, +_], A, S, S2, T, Y, Z](frames: Frames[F, A, S2, T, Y],
-  case Dollar[F[_, _, +_], A, S, T, Y, Z](p: Cont0.Delimiter[Y, T], ret: A => Freer[Cont0.Row[F], T, T, Y],
+enum Stack[G[_, _, +_], B, S, R, Z]:
+  case Done[G[_, _, +_], B, X]() extends Stack[G, B, X, X, B]
+  case Delim[G[_, _, +_], B, S, R, B2, S2, Z](tag: Delimited.Mark | Null, out: Frames[G, B, B2, S2, S],
+  case Bound[G[_, _, +_], S, R, B2, S2, X, Z](tag: Delimited.Tag[R] | Null, out: Frames[G, R, B2, S2, X],
 ```
 
-Lists of frames, split at the delimiters: a `Frames` is one segment, a
-`Stack` is the segments and the delimiters between them, and the
-`Stack` is what a captured continuation is. You can walk it, count the
-frames, and see which prompts are installed — `Dollar` is a delimiter
-(a plain `reset` is `pure $ ·`), sitting in the continuation as an
-ordinary node. A continuation here is **more**
+Lists of frames, split at boundaries (Delimited.scala): a `Frames` is
+one segment, a `Stack` is the segments and the boundaries between them,
+and a captured continuation is a piece of it. You can walk it, count
+the frames, and see which prompts are installed — a prompt in force is
+two `Delim` boundaries, its opening and its closing, with its `ret`
+between (a plain `reset` is `pure $ ·`), sitting in the stack as
+ordinary nodes. A continuation here is **more**
 inspectable than a native stack, not less, and that is exactly why it
 is multi-shot (chapter 13).
 

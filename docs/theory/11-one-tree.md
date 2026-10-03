@@ -41,7 +41,7 @@ signature `F` of a freer tree the type constructor "a function of the
 continuation":
 
 ```scala
-// Cont.scala — the representation: the freer tree at Cont0's row
+// Cont.scala — the representation: the freer tree at Cont's own signature
 opaque type Rep[A, S, R] = Freer[Sig, S, R, A]
 ```
 
@@ -49,11 +49,12 @@ opaque type Rep[A, S, R] = Freer[Sig, S, R, A]
 R`, the shift body itself as the leaf, run by a runner of Cont's own.
 Since cont-on-frames Cont runs on the same frame machine as `Shift` —
 chapter 2's `shift0`/`$` calculus — and since cont-run-prompt
-(2026-10-03) it is `Sig = Cont0.Row[Cont.Op]`: a leaf is Cont's own
-operation, `Op[S, R, A]`, typed as the leaf it is, and every run puts a
-handler frame of its own on the machine that answers it — a deep
-handler, so a resumed `k` carries its run's frame. What follows holds of both: the leaf is a function of the
-continuation either way.)
+(2026-10-03) it is `Sig = Cont.Op`: a leaf is Cont's own operation,
+`Op[S, R, A]`, typed as the leaf it is. Since cont-atm (2026-10-03) it
+runs on `Delimited`, the machine every effect shares, as an effect with
+answer-type modification typed on the machine's ANSWER boundaries — no
+claim at all (specs/cont-atm.md). What follows holds of every stage: the
+leaf is a function of the continuation either way.)
 
 and `Cont` **is** `Freer[Sig, S, R, A]`, the same enum `Free[F, A]`
 is (`Freer[Lift[F], Unit, Unit, A]`). There is nothing to convert
@@ -87,10 +88,11 @@ a leaf `Inject(a: G[S, R, A])`, and `Bind(a: Freer[G, T, R, A], f: A
 type modification written on the node. `Cont` was that enum at `Shift
 = [S, R, X] =>> (X => S) => R` until 2026-10-01: the leaf the shift body
 at its own type, and its own runner typed by the GADT end to end. Since
-cont-on-frames it is that enum at Cont0's row, run by the frame machine;
-the facade's `Rep[A, S, R]` keeps the answer types and makes one claim
-at its boundary, because the machine's join index cannot carry an escape
-type (specs/freer-kont.md). `Free[F, A]` is the same enum at `Lift[F]`, a
+cont-on-frames it was that enum at the λ$ machine's row, run by the frame
+machine, the facade's `Rep[A, S, R]` making one claim at its boundary;
+since cont-atm it is that enum at Cont's own `Op`, run by `Delimited`,
+whose answer boundaries carry the answer types the claim stood for
+(specs/cont-atm.md). `Free[F, A]` is the same enum at `Lift[F]`, a
 signature that ignores the two indexes, with both fixed at `Unit`.
 
 It was not always so, and the two refusals on the way are why the
