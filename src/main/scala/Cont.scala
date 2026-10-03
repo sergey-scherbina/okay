@@ -1,6 +1,7 @@
 package okay
 
 import okay.Freer.{Return, Bind, Delay}
+import scala.collection.LinearSeq
 
 /**
  * Danvy-Filinski's one-prompt `shift`/`reset` with answer-type modification: `M[A, S, R]` is `(A => S) => R`.
@@ -97,27 +98,14 @@ object Cont:
 
   /**
    * `xs.map(f)` / `xs.foreach(f)` in an answer-using body whose `f` calls `k` (cont-stack-layer1-c (2)): `f` a
-   * program over the lazy `k`, the elements in order, each a bind the machine runs. On an immutable list: a `k`
-   * resumed twice traverses again from its own point, sharing no iterator. Public for the macro's expansion.
+   * program over the lazy `k`, the elements in order, each a bind the machine runs. Public for the macro's expansion.
    */
   def traverse[X, B, R](xs: Iterable[X], f: X => Lazy[B], rest: List[B] => Lazy[R]): Lazy[R] =
-    traverseFrom[X, B, R](xs.toList, Nil, f, rest)
-
-  // recursion DEFERRED: the next step is a bind's continuation the machine runs, never a host call
-  private def traverseFrom[X, B, R](rem: List[X], acc: List[B], f: X => Lazy[B], rest: List[B] => Lazy[R]): Lazy[R] =
-    rem match
-      case Nil => rest(acc.reverse)
-      case x :: tl => Bind(f(x), (b: Any) => traverseFrom[X, B, R](tl, answered[B](b) :: acc, f, rest))
+    walk[X, List[B], R](xs.toList, Nil, (_, x) => f(x), goOn, (acc, b) => answered[B](b) :: acc, acc => rest(acc.reverse))
 
   /** `xs.foldLeft(z)(f)` in an answer-using body, `f` a program over the lazy `k`, the same way */
   def foldIn[X, B, R](xs: Iterable[X], z: B, f: (B, X) => Lazy[B], rest: B => Lazy[R]): Lazy[R] =
-    foldFrom[X, B, R](xs.toList, z, f, rest)
-
-  // recursion DEFERRED, as `traverseFrom`
-  private def foldFrom[X, B, R](rem: List[X], acc: B, f: (B, X) => Lazy[B], rest: B => Lazy[R]): Lazy[R] =
-    rem match
-      case Nil => rest(acc)
-      case x :: tl => Bind(f(acc, x), (b: Any) => foldFrom[X, B, R](tl, answered[B](b), f, rest))
+    walk[X, B, R](xs.toList, z, f, goOn, (_, b) => answered[B](b), rest)
 
   /** a step of a loop over the lazy `k` (cont-stack-layer1-c, `while`): deferred to the machine, which forces it
    * in its own loop — an iteration that never calls `k` holds no host frame either */
@@ -126,25 +114,35 @@ object Cont:
   /** `xs.exists(p)` (`want` true) / `xs.forall(p)` (`want` false) in an answer-using body: the elements in turn,
    * stopping at the first whose answer is `want` — `p` is not run for the elements after it */
   def existsIn[X, R](xs: Iterable[X], p: X => Lazy[Boolean], want: Boolean, rest: Boolean => Lazy[R]): Lazy[R] =
-    existsFrom[X, R](LazyList.from(xs), p, want, rest)
-
-  // recursion DEFERRED, as `traverseFrom`
-  // over a LazyList: an early stop never forces the elements after it (an infinite receiver included), and
-  // the memoised list is what a resumed k walks again, multi-shot safe
-  private def existsFrom[X, R](rem: LazyList[X], p: X => Lazy[Boolean], want: Boolean, rest: Boolean => Lazy[R]): Lazy[R] =
-    if rem.isEmpty then rest(!want)
-    else Bind(p(rem.head), (b: Any) => if answered[Boolean](b) == want then rest(want) else existsFrom[X, R](rem.tail, p, want, rest))
+    walk[X, Unit, R](LazyList.from(xs), (), (_, x) => p(x),
+      (_, b) => if answered[Boolean](b) == want then rest(want) else null, (_, _) => (), _ => rest(!want))
 
   /** `xs.find(p)` in an answer-using body, stopping at the first element `p` holds for */
   def findIn[X, R](xs: Iterable[X], p: X => Lazy[Boolean], rest: Option[X] => Lazy[R]): Lazy[R] =
-    findFrom[X, R](LazyList.from(xs), p, rest)
+    walk[X, Unit, R](LazyList.from(xs), (), (_, x) => p(x),
+      (x, b) => if answered[Boolean](b) then rest(Some(x)) else null, (_, _) => (), _ => rest(None))
 
-  // recursion DEFERRED, as `traverseFrom`
-  private def findFrom[X, R](rem: LazyList[X], p: X => Lazy[Boolean], rest: Option[X] => Lazy[R]): Lazy[R] =
-    if rem.isEmpty then rest(None)
+  /**
+   * ONE WALK under every lowering of a collection in an answer-using body (cont-list-combinators-one-walk): the
+   * elements in order, `step(s, x)` a program over the lazy `k` for each, whose answer either STOPS the walk
+   * (`stop` answers the rest of the body) or goes on (`stop` answers null) with `s` advanced by `next`; at the
+   * end, `end(s)`. RECURSION DEFERRED: the next element is a bind's continuation the machine runs, never a host
+   * call. The caller picks the sequence: a `List` where every element is visited anyway (`map`, `foldLeft`), a
+   * memoised `LazyList` where the walk may stop (`exists`, `find`) — a stop forces nothing after it, an infinite
+   * receiver included. Either way a resumed `k` walks again from its own point, sharing no iterator.
+   */
+  private def walk[X, S, R](rem: LinearSeq[X], s: S, step: (S, X) => Lazy[Any], stop: (X, Any) => Lazy[R] | Null,
+                            next: (S, Any) => S, end: S => Lazy[R]): Lazy[R] =
+    if rem.isEmpty then end(s)
     else
       val x = rem.head
-      Bind(p(x), (b: Any) => if answered[Boolean](b) then rest(Some(x)) else findFrom[X, R](rem.tail, p, rest))
+      Bind(step(s, x), (b: Any) =>
+        val done = stop(x, b)
+        if done == null then walk[X, S, R](rem.tail, next(s, b), step, stop, next, end) else done.nn)
+
+  /** a walk that never stops early */
+  private val never: (Any, Any) => Null = (_, _) => null
+  private def goOn[X, R]: (X, Any) => Lazy[R] | Null = never
 
   /** THE CLAIM of `Lazy`: a step's program answers what its lambda's body answers, `B` (the macro built it so) */
   private def answered[B](b: Any): B = b.asInstanceOf[B]
