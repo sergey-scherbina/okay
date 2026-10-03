@@ -373,7 +373,7 @@ object Frames:
      * `shift0` to it (cont-run-prompt: the node a capture was contAnswer 1.15x, +16 B a shift)
      */
     def framed[X, T, S1, Y](h: Cont0.Handling[?], op: Any, fs: Frames[F, X, S1, T, Y], st: Stack[F, Y, S0, S1, Z]): Next[?, ?, ?, ?] = st match
-      case d: Dollar[F, Y, S0, S1, y2, Z] if h eq d.p => nearest(frameAt(h), clauseAt[T, X](h, op), fs, d.p, d.ret, d.below)
+      case d: Dollar[F, Y, S0, S1, y2, Z] if h eq d.p => nearestAt(frameAt(h), clauseAt[T, X](h, op), fs, d, d.below)
       case c: Cat[F, Y, S0, S1, y, s2, Z] => c.k match
         case d: Dollar[F, Y, `s2`, S1, y2, `y`] if h eq d.p => nearestAt(frameAt(h), clauseAt[T, X](h, op), fs, d, cat(d.below, c.below))
         case _ => capture(asShift0[T, X](h, op), fs, st)
@@ -387,7 +387,7 @@ object Frames:
     /** a capture: `nearest` for the usual one, else the walk */
     def capture[Y0, I0, X, T, S1, Y](sh: Cont0.Shift0[F, Y0, I0, T, R, X], fs: Frames[F, X, S1, T, Y], st: Stack[F, Y, S0, S1, Z]): Next[?, ?, ?, ?] = st match
       // the delimiter right under the live segment
-      case d: Dollar[F, Y, S0, S1, y2, Z] if sh.p eq d.p => nearest(sh.p, sh.f, fs, d.p, d.ret, d.below)
+      case d: Dollar[F, Y, S0, S1, y2, Z] if sh.p eq d.p => nearestAt(sh.p, sh.f, fs, d, d.below)
       // or at the head of a resumed `k`
       case c: Cat[F, Y, S0, S1, y, s2, Z] => c.k match
         case d: Dollar[F, Y, `s2`, S1, y2, `y`] if sh.p eq d.p => nearestAt(sh.p, sh.f, fs, d, cat(d.below, c.below))
@@ -398,15 +398,9 @@ object Frames:
       val all = runOf(fs, st)
       cut(sh, all, all, Rev.nil[F, X, T])
 
-    /** `k` is the live segment over a copy of the delimiter. Inline: C2 refused it as a method at one arm. */
-    inline def nearest[Y0, I0, X, T, S1, Y, y2](p0: Cont0.Delimiter[Y0, I0], f: Stack[F, X, I0, T, Y0] => Freer[G, I0, R, Y0],
-                                         fs: Frames[F, X, S1, T, Y],
-                                         p: Cont0.Delimiter[y2, S1], ret: Y => Freer[G, S1, S1, y2],
-                                         below: Stack[F, y2, S0, S1, Z]): Next[?, ?, ?, ?] =
-      found(p0, f, p, runOf(fs, Dollar[F, Y, S1, S1, y2, y2](p, ret, noStack[F, y2, S1])), below)
-
-    /** `nearest` at a resumed `k`'s head delimiter `d`: `k` is the live segment over `d`'s copy over nothing, which
-     * `d` itself is when it is one already — a `k` resumed and captured again, the steady state of a strict `k` */
+    /** the usual capture, to delimiter `d` right under the live segment or at a resumed `k`'s head: `k` is the live
+     * segment over `d`'s copy over nothing — `d` itself when it is one already, as it is in a strict `k`'s run and
+     * at a resumed `k`'s head (cont-strict-k). Inline: C2 refused it as a method at one arm. */
     inline def nearestAt[Y0, I0, X, T, S1, Y, y2, s2, y](p0: Cont0.Delimiter[Y0, I0], f: Stack[F, X, I0, T, Y0] => Freer[G, I0, R, Y0],
                                                        fs: Frames[F, X, S1, T, Y], d: Dollar[F, Y, s2, S1, y2, y],
                                                        below: Stack[F, y2, S0, S1, Z]): Next[?, ?, ?, ?] =
