@@ -92,7 +92,7 @@ mark. No `asInstanceOf` in the file.
   without capture; state with multi-shot by backup on capture and restore on
   resumption.
 
-## 5. Handlers and exceptions on the machine — the design (for approval)
+## 5. Handlers and exceptions on the machine (approved 2026-10-03, built)
 
 Today `HandleFrames` (State, Resource, Chronicle, Logic, Maybe, `Effects.handle`/
 `relay`, Lexical, Once, Handler) runs on the λ$ machine (LambdaDollar.scala), and
@@ -144,9 +144,9 @@ stateForeign), FibBenchmark.fib100 — arms alternated against master.
 - [x] ATM through a mark (TestDelimitedMarks); effects nested as machines (TestDelimitedNested)
 - [x] prompts as value boundaries in the stack, O(1) nearest capture (TestDelimitedLambda; TestShift's 100 000 captures)
 - [x] nested Shift runs stepped into, not forced (TestResetDepth, TestResetSmallStack: 100 000 on 128 KB)
-- [ ] handlers as frames on the machine (§5.1–3): the five red tests green
-- [ ] exceptions as the machine's primitive (§5.4): TestHandleFramesCatch, Resource's
-- [ ] LambdaDollar.scala deleted (§5.5)
+- [x] handlers as frames on the machine (§5.1–3): the five red tests green (okayJVM/test 835/835)
+- [x] exceptions as the machine's primitive (§5.4): TestHandleFramesCatch, TestHandleFramesResource
+- [x] LambdaDollar.scala deleted (§5.5); its INTERFACE kept as a test oracle over Shift (src/test/scala-cross/LambdaDollar.scala): the laws, the differential oracle and the depth programs check the new machine against the reference
 - [ ] the full gate; the benchmarks of §5 against master
 
 ## Decisions
@@ -170,3 +170,15 @@ stateForeign), FibBenchmark.fib100 — arms alternated against master.
   typed D-F ATM and a multi-prompt machine with no cast; the core machine followed.
 - 2026-10-03: Cont and Shift on the machine; okayJVM/test red only where handler
   frames on the λ$ machine meet Shift (five tests, listed in Behavior).
+- 2026-10-03: §5 built as designed. Two refinements the code forced:
+  (1) `here` became `holds`, a walk of the BOUNDARIES only — `find` walks
+  frames for marks and never saw a prompt, so a nested run's "is this prompt
+  installed here" always answered no; (2) a nested run with no barrier sent
+  its own `Dollar` out as "a prompt not installed here" — an installation is
+  always the machine's own (19 tests, one cause). A throw is a `Delay` of
+  `Delimited.Thrown`: typed at any answer with no claim (`() => Nothing`), and
+  correct everywhere — anything but a machine that forces it throws it again.
+- 2026-10-03: the λ$ interface's laws found one thing Shift lacked:
+  RESUME WITH A COMPUTATION (DPJS `pushSubCont`). `reinstall` takes a
+  program; a captured `k` is a `Shift.Resumption` with `resumeWith(m)`;
+  `Shift.withSubCont` is its door.

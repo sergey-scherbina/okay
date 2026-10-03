@@ -1,4 +1,4 @@
-- [ ] handling-ever-per-machine — PRIORITY: LOW, MEASURED 2026-10-03
+- [x] handling-ever-per-machine — ANSWERED 2026-10-03 by cont-atm (see the end). Was: PRIORITY: LOW, MEASURED 2026-10-03
       (the lane of this name; DelimBenchmark.stateForeign/
       stateForeignEver, src/jmh/history.d handling-ever-flag).
       `Cont0.Handling.ever` (Delimited.scala) is a PROCESS-WIDE flag: once
@@ -20,3 +20,11 @@
       themselves `Cont0.Framed` is looked up WITHOUT the flag
       (`Handling(name, opens = false)`): Cont's run frames leave it off.
       The flag still turns on with the first handle-frames frame.
+      ANSWERED by cont-atm (2026-10-03, specs/cont-atm.md §5): the λ$
+      machine and both process-wide flags are gone. On `Delimited` a
+      run's own steps (Shift's `Steps`) set `framed` when a `Handling`
+      frame is installed IN THAT RUN — only then does an operation of
+      another effect look at the boundaries (`holds`, which walks
+      boundaries, never frames) — and a catch frame turns on `guarding`
+      for that run only. A lane in a fork that ran a handler earlier no
+      longer pays for it.
