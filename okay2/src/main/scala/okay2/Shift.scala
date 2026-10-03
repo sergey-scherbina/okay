@@ -701,13 +701,13 @@ object Shift {
   private def stepInto[X, G <: Row](o: Own[_, _]): X ! (Shift[Any] + G) = o.prog.asInstanceOf[X ! (Shift[Any] + G)]
 
   /** `Free.resume`, but stopping at an `Own` (alone or as a bind's left), which the machine steps into */
+  // the `Own` test sits INSIDE the two Delay arms, so every other step takes `Free.resume`'s own path (tested
+  // first, the two arms cost delimShift 1.02-1.04x)
   @tailrec private def resumeOwn[R, A](p: Free[R, A]): Free[R, A] = p match {
-    case Delay(_: Own[_, _]) => p
-    case Bind(Delay(_: Own[_, _]), _) => p
     case Bind(Bind(a, f), g) => resumeOwn(Bind(a, (x: Any) => f(x).flatMap(g)))
     case Bind(Return(a), f) => resumeOwn(f(a))
-    case Delay(t) => resumeOwn(t())
-    case Bind(Delay(t), g) => resumeOwn(Bind(t(), g))
+    case Delay(t) => if (t.isInstanceOf[Own[_, _]]) p else resumeOwn(t())
+    case Bind(Delay(t), g) => if (t.isInstanceOf[Own[_, _]]) p else resumeOwn(Bind(t(), g))
     case a => a
   }
 

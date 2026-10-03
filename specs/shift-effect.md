@@ -202,6 +202,9 @@ one API, one suite over both:
   steps into in its own loop and anything else forces once. Nested resets
   are then one loop on any stack, Scala.js included (where the room's
   `ThreadLocal.withInitial` did not link at all), and the room is gone.
+  okay2 followed 2026-10-03 (okay2-shift-stacked-key): `Shift.run` answers
+  `Free.delay(Own(program))`, its machine steps into an `Own` met alone or
+  as a bind's left, and its room (`runReset`, the per-thread count) is gone.
 
 ## Results
 
