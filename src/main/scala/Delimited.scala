@@ -626,8 +626,70 @@ object Atm:
    */
   enum M[G[_, _, +_], T, R]:
     case Top[G[_, _, +_], R]() extends M[G, R, R]
-    /** a boundary: the level inside answers `T`, and outside it `out` takes that on to the levels below */
-    case Level[G[_, _, +_], T, U, R](out: K[G, T, U], m: M[G, U, R]) extends M[G, T, R]
+    /** a boundary: the level inside answers `T`, and outside it `out` takes that on to the levels below; an
+     * effect may mark it (`tag`, a prompt) to find it again by name */
+    case Level[G[_, _, +_], T, U, R](tag: Tag[T] | Null, out: K[G, T, U], m: M[G, U, R]) extends M[G, T, R]
+
+  /** a boundary's mark, which an effect names it by (a prompt): `T` is the answer of the level it marks */
+  trait Tag[T]
+
+  // ---- the stack's own manipulations, for an effect to compose: capture to a marked boundary, put it back ----
+
+  /** the levels a capture crossed, innermost first, the last outermost */
+  enum Rev[G[_, _, +_], A0, A]:
+    case Nil[G[_, _, +_], A0]() extends Rev[G, A0, A0]
+    case Snoc[G[_, _, +_], A0, A, T](prev: Rev[G, A0, A], k: K[G, A, T], tag: Tag[T] | Null) extends Rev[G, A0, T]
+
+  /** a captured continuation, from `A0` up to and including a marked boundary whose level answers `Y`: the
+   * levels crossed, the marked level's own continuation, its mark */
+  sealed abstract class Cap[G[_, _, +_], A0, Y]:
+    type A
+    def rev: Rev[G, A0, A]
+    def k: K[G, A, Y]
+    def tag: Tag[Y]
+
+  /** what a capture found: the continuation up to the marked boundary, and what lies outside it */
+  sealed abstract class Found[G[_, _, +_], A0, R]:
+    type Y
+    type U
+    def cap: Cap[G, A0, Y]
+    def out: K[G, Y, U]
+    def m: M[G, U, R]
+
+  /** walk out from the live `k` and `m` to the nearest boundary whose mark `is` holds for: the capture up to and
+   * including it, and what lies outside it; null when there is none */
+  def cut[G[_, _, +_], A, T, R](k: K[G, A, T], m: M[G, T, R], is: Tag[?] => Boolean): Found[G, A, R] | Null =
+    cutFrom(Rev.Nil[G, A](), k, m, is)
+
+  @tailrec private def cutFrom[G[_, _, +_], A0, A, T, R](rev: Rev[G, A0, A], k: K[G, A, T], m: M[G, T, R],
+                                                         is: Tag[?] => Boolean): Found[G, A0, R] | Null = m match
+    case M.Top() => null
+    case l: M.Level[G, T, u, R] =>
+      val t = l.tag
+      if t != null && is(t) then found(rev, k, t.nn, l.out, l.m)
+      else cutFrom(Rev.Snoc(rev, k, t), l.out, l.m, is)
+
+  private def found[G[_, _, +_], A0, A1, Y0, U0, R](r: Rev[G, A0, A1], k1: K[G, A1, Y0], t: Tag[Y0],
+                                                   out0: K[G, Y0, U0], m0: M[G, U0, R]): Found[G, A0, R] =
+    new Found[G, A0, R]:
+      type Y = Y0
+      type U = U0
+      def cap = new Cap[G, A0, Y0]:
+        type A = A1
+        def rev = r
+        def k = k1
+        def tag = t
+      def out = out0
+      def m = m0
+
+  /** a captured continuation put back over `out` and `m`, its levels outermost first, `a` into the innermost */
+  def reinstall[G[_, _, +_], A0, Y, U, R](cap: Cap[G, A0, Y], a: A0, out: K[G, Y, U], m: M[G, U, R]): Next[G, R] =
+    link(cap.rev, cap.k, M.Level(cap.tag, out, m), a)
+
+  @tailrec private def link[G[_, _, +_], A0, A, T, R](rev: Rev[G, A0, A], k: K[G, A, T], m: M[G, T, R], a: A0): Next[G, R] =
+    rev match
+      case Rev.Nil() => Next(Return(a), k, m)
+      case Rev.Snoc(prev, k0, tag) => link(prev, k0, M.Level(tag, k, m), a)
 
   /** the machine's state, which an effect's step answers: a program, its continuation, its boundaries */
   sealed abstract class Next[G[_, _, +_], R]:
@@ -683,7 +745,7 @@ object Atm:
       case Return(a) => k match
         case K.Done() => m match
           case M.Top() => a
-          case M.Level(out, m2) => go(Return(a), out, m2, run)
+          case M.Level(_, out, m2) => go(Return(a), out, m2, run)
         case K.Push(f, k2) => go(f(a), k2, m, run)
       case Bind(c0, f) => go(c0, K.Push(f, k), m, run)
       case Delay(t) => go(t(), k, m, run)

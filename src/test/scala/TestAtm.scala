@@ -16,7 +16,7 @@ class TestAtm extends munit.FunSuite:
     def step[A, S, T, R](op: Op[S, T, A], k: K[Op, A, S], m: M[Op, T, R], run: Atm.Run[Op]): Next[Op, R] = op match
       case Strict(body) => Next(Return(body(x => run.force(k, x))), K.Done(), m)
       case Lazily(body) => Next(body(k), K.Done(), m)
-      case Resume(k1, a) => Next(Return(a), k1, M.Level(k, m))
+      case Resume(k1, a) => Next(Return(a), k1, M.Level(null, k, m))
 
   private type Prog[A, S, R] = Freer[Op, S, R, A]
   private def run[A, S, R](c: Prog[A, S, R], k: A => S): R = Atm.run(c, k, Steps)

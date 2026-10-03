@@ -195,8 +195,8 @@ object Cont:
       case Op.Strict(body) => Next(Return(body(x => run.force(k, x))), K.Done(), m)
       case Op.WithK(body) => Next(Return(body(k)), K.Done(), m)
       case Op.Lazily(body) => Next(body(k), K.Done(), m)
-      case Op.Resume(k1, a) => Next(Return(a), k1, M.Level(k, m))
-      case Op.Tail(v, ev) => Next(Return(v), k, M.Level(K.Push((s: S) => Return(ev(s)), K.Done()), m))
+      case Op.Resume(k1, a) => Next(Return(a), k1, M.Level(null, k, m))
+      case Op.Tail(v, ev) => Next(Return(v), k, M.Level(null, K.Push((s: S) => Return(ev(s)), K.Done()), m))
 
   /**
    * is `c` already an answer? then go on from it with a tail call instead of a continuation node
