@@ -1,6 +1,6 @@
 # okay-bayes — Bayesian inference as effects, without Python
 
-Status: stage 1 landed (2026-10-02); stage 2a (ch.2, adaptive Metropolis) 2b (SMC), 2c (ch.3), 2d (ch.6), 3a (NUTS), 3b (AD) and 4 (the sampler facade), 5a (ch.4), 5b (ch.5), 5c (ch.7), 5d (Dark Worlds), §6 vectors, 6 (streams and Bulk), 7 (kernels, resample-move) 2026-10-02; specification 2026-10-02 (operator ask: "Bayesian Methods for
+Status: stage 1 landed (2026-10-02); stage 2a (ch.2, adaptive Metropolis) 2b (SMC), 2c (ch.3), 2d (ch.6), 3a (NUTS), 3b (AD) and 4 (the sampler facade), 5a (ch.4), 5b (ch.5), 5c (ch.7), 5d (Dark Worlds), §6 vectors, 6 (streams and Bulk), 7 (kernels, resample-move) 2026-10-02; 8 (declared models) 2026-10-03; specification 2026-10-02 (operator ask: "Bayesian Methods for
 Hackers ... make okay-bayes so we can do without Python; is it very
 hard?"). Builds on the core's `Prob` effect (specs/prob-effect-hansei.md:
 discrete `dist`, boolean `observe`, exact enumeration, rejection).
@@ -367,14 +367,21 @@ name, distribution, and whether under a branch — with nothing run;
 `Declared.model(params)(logLik)`, an ordinary `P ! Model` every sampler
 takes; `Declared.nuts(...)`, which refuses a discrete site, a site under a
 branch or a repeated name BEFORE sampling.
-  - [ ] the sites are listed without a single draw (a distribution whose
+  - [x] the sites are listed without a single draw (a distribution whose
         `sample` throws does not stop it), branches marked
-  - [ ] the coin model of TestBayes written with `ifS`: P(coin) against
+  - [x] the coin model of TestBayes written with `ifS`: P(coin) against
         the exact 0.4295 by `metropolis`, and `Declared.nuts` refusing it
         by name before running
-  - [ ] eight schools non-centered by `Declared.nuts`, against the exact
+  - [x] eight schools non-centered by `Declared.nuts`, against the exact
         posterior of TestVector
-  - [ ] a repeated site name refused at declaration
+  - [x] a repeated site name refused at declaration
+  Measured (TestDeclared, JVM/Scala.js/Native): the coin's sites listed
+  with nothing run — coin, x and y, the last two under a branch — and a
+  distribution whose `sample` throws listed without a throw. The declared
+  coin by `metropolis`: P(coin) 0.4316 (exact 0.4295); `Declared.nuts`
+  refuses it naming 'x'. Eight schools non-centered (z ~ N(0, 1), θ = μ +
+  5z) by `Declared.nuts`: μ 4.38 (exact 4.34), every θ within 4 standard
+  errors and its sd within 10%.
 
 ## 4. Decisions
 

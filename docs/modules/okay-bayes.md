@@ -158,6 +158,23 @@ same observation (resample-move, Gilks & Berzuini 2001). Observing 400
 flips one at a time, 259 of 1000 values survive without the move and 968
 with it.
 
+**Models known before they run: `Declared`.** A model written with `for`
+is a monad: its sites show only by running it. Written instead as
+PARAMETERS — independent draws in the core's free Selective, `Static` —
+and a pure LIKELIHOOD, its structure is data: `Declared.sites` lists every
+site it may draw, branches marked, without drawing anything, and
+`Declared.nuts` refuses a discrete site or one under a branch before
+sampling. A branch is written with `ifS`, and both sides are visible:
+
+```scala
+val coin = sample("coin", Bernoulli(0.5))
+.ifS(sample("x", Normal(0, 1)).map(x => (true, x)))(sample("y", Uniform(-1, 1)).map(y => (false, y)))
+```
+
+A prior that depends on another draw does not fit — write the hierarchy
+non-centered, θ = μ + τ·z with z ~ N(0, 1). `Declared.model(params)(logLik)`
+is the same model as an ordinary one, for every other sampler.
+
 **Evidence: `smc`.** Sequential Monte Carlo runs many copies of the program
 side by side, each SUSPENDED at its next `observe`; at every observation the
 copies are reweighed and, when a few carry most of the weight, resampled —
@@ -346,6 +363,7 @@ by `uv` through okay-py, samples the same model as a Live test.
 | `Dirichlet(alpha)` (`sample`, `logPdf`, `mean`, `covariance`); `AbTest.Variant`, `revenue`, `compare` | A/B testing by expected revenue |
 | `Online.filter(start, step, particles, seed)`: `push`, `particles`, `stage`; `Bayes.observeBulk(rows)(logLik)`, `Smooth.observeBulk(rows, params)(f)` | streams and Bulk |
 | `Bayes.sample(p, kernel, samples, burn, thin, chains, seed)`; `Kernel.site / sites / everySite / nuts`, `>>>`, `mixture`, `times`; `Trace` | samplers built from kernels |
+| `Declared.sample / pure / both / all / sampleN`, `sites`, `model(params)(logLik)`, `nuts(params, …)(logLik)` | models whose structure is known before they run |
 | `smc(p, particles, seed)`, `observeEach(xs)(d, value)` | sequential Monte Carlo: `Particles` with `expect`, `mean(site)`, `ess`, `logEvidence` |
 | `Posterior`: `draws`, `site(name)`, `vector(name)`, `rhat(name)`, `acceptance` | the posterior, typed |
 | `Summary.mean / sd / quantile / hdi / ess / rhat` | reading it |
@@ -373,6 +391,9 @@ by `uv` through okay-py, samples the same model as a Live test.
 - Griewank, Walther, *Evaluating Derivatives* (SIAM, 2nd ed. 2008) —
   reverse mode and the tape; Carpenter et al., *The Stan Math Library:
   Reverse-Mode Automatic Differentiation in C++* (2015).
+- Capriotti, Kaposi, *Free Applicative Functors* (MSFP 2014); Mokhov,
+  Lukyanov, Marlow, Dimino, *Selective Applicative Functors* (ICFP 2019) —
+  the free Selective `Declared` declares in.
 - Gordon, Salmond, Smith, *Novel Approach to Nonlinear/Non-Gaussian
   Bayesian State Estimation* (IEE Proc. F, 1993) — the bootstrap particle
   filter.
