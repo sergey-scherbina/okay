@@ -5,17 +5,11 @@ import scala.annotation.tailrec
 import scala.collection.immutable.ArraySeq
 
 /**
- * Extensible effects, founded on the continuation paramonad.
- *
- * A computation A ! F is a freer-monad tree over the signature F; its
- * meaning is its image in Cont, given by foldCont, where a handler is
- * an interpretation F !> S = F ==> ([X] =>> X /> S) — that is,
- * handlers are continuations. The Effects interface is final tagless;
- * Free (the initial encoding) and Eager (Eager.scala, pure binds at
- * construction) are its instances, and object Effects (aliased as `!`
- * for every existing call site) is the concrete toolkit over Free:
- * stepping (resume, next, ?), running, and the tail-resumptive relay.
- * reflect and reify move programs between the encodings.
+ * Extensible effects, founded on the continuation paramonad. A computation `A ! F` is a freer-monad tree over
+ * the signature `F`; its meaning is its image in `Cont` (`foldCont`), where a handler `F !> S` is an
+ * interpretation into continuations. `Effects` is the final-tagless interface; `Free` (the initial encoding)
+ * and `Eager` (Eager.scala) are its instances, and `object Effects` (also `!`) is the toolkit over `Free`.
+ * `reflect` and `reify` move programs between encodings.
  *
  * https://okmij.org/ftp/Haskell/extensible/more.pdf
  * https://blog.higher-order.com/assets/trampolines.pdf
@@ -24,10 +18,7 @@ import scala.collection.immutable.ArraySeq
 /** a computation of A performing the operations of F: A ! F */
 infix type ![A, F[+_]] = Free[F, A]
 
-/** the term-level name, kept as the alias every existing `!.run` /
- * `!.resume` / `!.relay` call site already spells — the object's own
- * name is `Effects`, which is what a NEW call site should write, and
- * what `Effects[M]` (the staging entry, now its `apply`) always meant. */
+/** the toolkit's short name, as in `!.run`; `Effects` is the same object */
 val ! = Effects
 
 /** a value as a computation */
@@ -37,31 +28,10 @@ inline def pure[F[+_], A](a: A): A ! F = Free.pure(a)
 inline def effect[F[+_], A](a: F[A]): A ! F = Free.inject(a)
 
 /**
- * The same thing postfix, which is what removes the last piece of
- * boilerplate from declaring an effect:
- *
- * enum Users[+A] derives TypeableK:
- * case Find(id: Long) extends Users[Option[String]]
- *
- * Users.Find(7).perform   :  Option[String] ! Users
- *
- * The answer type comes from the CASE — `Find` extends
- * `Users[Option[String]]`, so unifying the receiver against `F[A]`
- * recovers both the signature and what it answers, with nothing
- * written down twice.
- *
- * Named constructors (`def find(id: Long) = effect(Find(id))`) are
- * still worth writing for an effect anyone else will use: they are its
- * API, they read better at every call site, and they cost one line
- * each. This is for the ones nobody but the handler will ever say.
- *
- * It applies to any `F[A]`, including types nobody declared as a
- * signature — and that is not the hazard it first looks like. A freer
- * monad takes ANY type constructor, so `List(1, 2).perform` is not
- * nonsense: it is nondeterminism, and `runSeq` (Choice.scala) is its
- * handler, the same one `Choose` uses. The type that cannot be handled
- * is the one you find out about at the handler, where the row has to
- * be answered — which is the only place the question can be asked.
+ * An operation performed, postfix: `Users.Find(7).perform : Option[String] ! Users`. The answer type comes
+ * from the case (`Find` extends `Users[Option[String]]`), so nothing is written twice. Named constructors
+ * are still the better API for an effect others will use. It applies to any `F[A]`: `List(1, 2).perform` is
+ * nondeterminism, which `runSeq` (Choice.scala) handles.
  */
 extension [F[+_], A](op: F[A])
   inline def perform: A ! F = effect(op)
@@ -69,55 +39,29 @@ extension [F[+_], A](op: F[A])
 /** the union of two signatures: F + G */
 infix type +[F[+_], G[+_]] = [A] =>> F[A] | G[A]
 
-/** the empty signature: no operations, so a computation over it is
- * PURE — A ! Pure has nothing to perform. The zero of the union
- * algebra (F + Pure = F). The answer NODE of the tree is `Return`
- * (free-return-rename, 2026-09-23), so importing `!.*` no longer
- * shadows this name — it used to, and every such file wrote
- * `okay.Pure`; those spellings still compile. */
+/** the empty signature: a computation over it is pure, with nothing to perform; the zero of `+` */
 type Pure = Nothing
 
 /** fix the parameter of a binary signature: State % S, Throws % E */
 infix type %[F[_, _], S] = F[S, *]
 
 /**
- * A partial function, infix: `Request |=> Response ! Async`.
- *
- * The type this stack writes most and reads worst — every route in
- * every server is one. The spelling is the operator's choice, made
- * against THIS file's own `!`: an infix type's precedence comes from
- * its FIRST character, `!` sits at the `=`/`!` level, and anything
- * tighter binds the wrong way — `A ~> B ! F`, `A -?> B ! F` and
- * `A =?> B ! F` all parse as `(A ~> B) ! F`, measured. Only `|`, `^`
- * and `&` are looser, `^` is already `Cont`, and `=?>` would sit one
- * transposition away from the language's `?=>` besides.
- *
- * `|` reads as the alternatives a partial function is made of, and a
- * union on the left binds first, so `Get | Post |=> Res` means what
- * it looks like.
+ * A partial function, infix: `Request |=> Response ! Async`. The spelling is forced by `!`: an infix type's
+ * precedence comes from its first character, and anything binding tighter than `!` (`~>`, `-?>`, `=?>`)
+ * parses `A ~> B ! F` as `(A ~> B) ! F`. A union on the left binds first, so `Get | Post |=> Res` reads as
+ * it looks.
  */
 infix type |=>[A, B] = PartialFunction[A, B]
 
-/**
- * Final tagless interface of extensible effects: M[F, A] computes A
- * performing the operations of the signature F. The meaning of a
- * computation is its image in the continuation paramonad, given by
- * foldCont; run and handle are founded on it.
- */
+/** Final tagless interface of extensible effects: `M[F, A]` computes `A` performing the signature `F`. Its
+ * meaning is its image in the continuation paramonad (`foldCont`), on which `run` and `handle` are founded */
 trait Effects[M[_[+_], _]]:
   def pure[F[+_], A](a: A): M[F, A]
   def perform[F[+_], A](e: F[A]): M[F, A]
-  /** a bind whose left side is deferred: the thunk is not forced at
-   * construction, only when the encoding's own interpreter reaches this
-   * node — Free's runners (fold/runFree/resume) force it one hop at a
-   * time in their own tailrec loop. This is what lets two
-   * mutually-recursive functions returning M[F, A] call each other in
-   * tail position without nesting a JVM stack frame per call. */
+  /** a bind whose left side is deferred, forced only when the encoding's interpreter reaches it, so that
+   * mutually recursive functions returning `M[F, A]` call each other in tail position with no JVM frame each */
   def defer[F[+_], A, B](thunk: () => M[F, A])(f: A => M[F, B]): M[F, B]
-  /** mark a call to a mutually-recursive function as a tail call — the
-   * tagless counterpart of `!.tailcall` (object Effects, below, aliased
-   * as `!`), for code written polymorphically over `M: Effects` rather
-   * than committed to one encoding. */
+  /** a tail call to a mutually recursive function, for code written over any `M: Effects` (`!.tailcall` on `Free`) */
   def tailcall[F[+_], A](thunk: => M[F, A]): M[F, A] = defer(() => thunk)(pure)
 
   extension [F[+_], A](m: M[F, A])
@@ -132,17 +76,9 @@ trait Effects[M[_[+_], _]]:
     /** run all the effects by a comonadic Answers (the foldCont definition; encodings may override with an equivalent fast path) */
     def runWith(using Answers[F]): A = m.foldCont(handler[F, A]) / identity
     /**
-     * The program folded into any `Monad` G, each operation translated by
-     * `nt` (`Static.foldMap` into a `Selective`, `Proc.foldMap` into a
-     * `Monad`, the same fold).
-     *
-     * IT IS G's `tailRecM`, as cats' `Free.foldMap` is: each step resumes
-     * the tree once and answers `Left(the rest)` or `Right(the value)`,
-     * so the fold is exactly as stack-safe as `TailRecM[G]` — which is
-     * the carrier's own loop, never a derivation
-     * (specs/eager-carrier-depth.md). The first cut folded through
-     * `foldCont`, and an eager G's `flatMap` nested the host stack per
-     * operation: 1 000 operations overflowed a 128 KB thread.
+     * The program folded into any `Monad` `G`, each operation translated by `nt`: `G`'s own `tailRecM`, as
+     * cats' `Free.foldMap` is, so the fold is exactly as stack-safe as the carrier's loop
+     * (specs/eager-carrier-depth.md). Each step resumes the tree once and answers the rest or the value.
      */
     def foldMap[G[_]](nt: F ==> G)(using G: Monad[G], R: TailRecM[G]): G[A] =
       R.tailRecM[A ! F, A](reify[M, F, A](m)(using Effects.this)) { p =>
@@ -159,9 +95,8 @@ trait Effects[M[_[+_], _]]:
                           (h: F !> M[G, B]): M[G, B] =
     m.foldCont[M[G, B]]([X] => e => split[F, G](e)(e => h(e))(e => Cont.shift(k => perform(e).flatMap(k)))) / ret
 
-  // LEVEL 1 (specs/shift-effect.md): continuations and the ready handlers, in any encoding. The default goes
-  // through the tree (`reify`, the top-level function, `reflect`); `Effects[Free]` is the top-level functions
-  // themselves, so there is one definition of each.
+  // LEVEL 1 (specs/shift-effect.md): continuations and ready handlers in any encoding, through the tree by
+  // default; `Effects[Free]` overrides them with the top-level functions themselves
 
   /** Danvy-Filinski's capture (the top-level `shift`) */
   def shift[R, A, F[+_]](f: (A => M[Shift % R + F, R]) => M[Shift % R + F, R])(using k: Shift.Key[R], at: At): M[Shift % R + F, A] =
@@ -186,18 +121,14 @@ trait Effects[M[_[+_], _]]:
   /** a program with no effect left, to its value (the program's `run`) */
   def run[A](m: M[Pure, A]): A = reify[M, Pure, A](m)(using this).run
 
-/**
- * The freer monad is the initial (defunctionalized) encoding of Effects:
- * Inject is a suspended shift, given its meaning by foldCont's !> interpretation.
- * Choose Free when the program is a thing: to step it, inspect it,
- * relay it in stages — and stay stack-safe on any bind shape.
- */
+/** the freer monad, the initial encoding: `Inject` is a suspended shift, given its meaning by `foldCont`.
+ * Choose it when the program is a thing — to step, inspect or relay it — stack-safe on any bind shape */
 given Effects[Free] with
   override inline def pure[F[+_], A](a: A): Free[F, A] = Free.Return(a)
   override inline def perform[F[+_], A](e: F[A]): Free[F, A] = Free.Inject(e)
   override inline def defer[F[+_], A, B](thunk: () => Free[F, A])(f: A => Free[F, B]): Free[F, B] =
     Free.defer(thunk)(f)
-  /** the tree has a node for exactly this (delay-node) */
+  /** the tree has a node for exactly this */
   override def tailcall[F[+_], A](thunk: => Free[F, A]): Free[F, A] = Free.delay(() => thunk)
 
   extension [F[+_], A](m: Free[F, A])
@@ -223,82 +154,35 @@ given Effects[Free] with
       case Free.Bind(Free.Inject(e), f) => runFree(f(H.handle(e)))
 
   /**
-   * The definition (Effects.handle) answers EVERY operation in `Cont`,
-   * including the ones the handler never claims: a forwarded operation
-   * costs `shift(k => perform(e).flatMap(k))`, a continuation capture
-   * spent on work that is pure copying. Measured at +112.7 bytes per
-   * forwarded operation and 1.51x overall against `relay` on the same
-   * pre-built tree (handle-decompose, docs/benchmarks.md §2, rows
-   * `hd-*`), and forwarding is the common case: in a row of four
-   * effects every handler forwards three quarters of what it sees.
+   * `Effects.handle`'s definition in one loop over the tree. The definition answers EVERY operation in `Cont`,
+   * so a forwarded one costs a capture spent on copying (+112.7 B and 1.51x against `relay`, docs/benchmarks.md
+   * §2, `hd-*`). Here a forwarded operation is re-emitted on the `G` side as `relay` does, and `Cont` is
+   * entered only for an operation the handler claims. The same function: a forwarded operation is already
+   * committed to the `G` program, which a later abort cannot un-perform under the definition either
+   * (TestHandleForward pins aborting and multi-shot forwarding, red first against a wrong arm).
    *
-   * So the tree keeps what belongs to the tree. A forwarded operation
-   * is re-emitted on the G side exactly as `relay` does it, and `Cont`
-   * is entered ONLY for an operation the handler claims — where the
-   * capture is the point rather than an accident.
-   *
-   * WHY THIS IS THE SAME FUNCTION, and the argument is asymmetric on
-   * purpose: a forwarded operation is not the handler's business. It
-   * has already been committed to the G program, and a later abort
-   * cannot un-perform it — which is exactly what the definition does
-   * too, since `perform(e).flatMap(k)` puts `e` before `k` and an
-   * abort inside `k` cannot reach back past it. TestHandleForward is
-   * that claim as assertions rather than as this paragraph: what an
-   * ABORTING handler forwards, what a MULTI-SHOT handler forwards
-   * twice, and the order of both. Those tests were written against
-   * the definition, watched to FAIL against a deliberately wrong
-   * forwarding arm, and only then was this written.
-   *
-   * THE HANDLED ARM IS WHERE THE COST MOVED TO, and the measurement
-   * is worth more than the code. A handler that does not capture
-   * answers with `Cont.Pure`, and the loop simply CONTINUES on that
-   * answer — one tail call, nothing allocated. Only a handler that
-   * really captures needs the rest of the program reified, and it
-   * gets a `Delay` so that deep programs trampoline through the
-   * interpreter rather than the JVM stack (which is what `foldCont`'s
-   * `Cont` runner used to do for them).
-   *
-   * Taking that `Defer` on EVERY handled operation — the first version
-   * of this method — cost 59 µs and 730 328 B on the 10 000-operation
-   * lane, against a total gap of 61 µs: a `Defer` whose continuation
-   * is `Pure` rotates into a LEFT-nested `Bind`, left-nesting is the
-   * one shape `resume` rewrites, and every following operation pays
-   * for it. Measured, not reasoned: rows `hff-*`.
+   * A handler that answers with `Cont.Pure` continues the loop with one tail call; only a real capture
+   * reifies the rest, under a `Delay` so a deep program trampolines. A `Delay` on EVERY handled operation
+   * cost 59 µs of a 61 µs gap (`hff-*`): its `Pure` continuation rotates into a left-nested `Bind`.
    */
   override def handle[F[+_], G[+_]](using TypeableK[F])[A, B](m: Free[F + G, A])
                                    (ret: A => Free[G, B])
                                    (h: F !> Free[G, B]): Free[G, B] =
-    // NOT @tailrec, and the reason is a limitation of the annotation
-    // rather than of the loop: the two arms that DEFER mention `loop`
-    // inside a closure, which @tailrec reads as a non-tail recursive
-    // call even though the closure is a separate method that the
-    // interpreter, not this loop, will enter. The answered arm below
-    // is a real tail call and is compiled as one; what guarantees the
-    // depth is TestHandleForward's three stack-safety tests, which is
-    // where a guarantee of this kind belongs anyway.
-    //
-    // The TERMINAL case and the CAPTURING fallback live in their own
-    // methods, as `relay.last` does, and the reason is `Free.resume`'s
-    // size: since defer-eff-removal it is 323 bytes, under HotSpot's
-    // FreqInlineSize of 325, so the JIT pastes it into every loop that
-    // calls it. Pasted into `relay`'s 244-byte loop that is worth -6%;
-    // pasted into this loop at 388 bytes it cost +15% on handlePrebuilt
-    // and handleCapture (rows `de-*`) — a loop inlined into a loop that
-    // is itself "hot method too big". handle-loop-inlining made this
-    // same extraction when `resume` was 495 bytes and never inlined,
-    // and measured nothing; the shape only matters once `resume` fits.
+    // NOT @tailrec: the deferring arms mention `loop` inside a closure, which the annotation reads as a non-tail
+    // call; the answered arm is a real tail call, and TestHandleForward's stack-safety tests guard the depth.
+    // The terminal and capturing arms live in their own methods, as `relay`'s `last`, to keep this loop
+    // small: `Free.resume` (323 bytes, under FreqInlineSize 325) is pasted into it, and a loop that is itself
+    // too big to inline lost 15% on handlePrebuilt and handleCapture (`de-*`).
     def last(e: F[A] | G[A]): Free[G, B] =
       split[F, G](e)(e => h(e) / ret)(e => Free.Inject(e).flatMap(ret))
 
     def capture[X](d: Int)(c: Cont[X, Free[G, B], Free[G, B]], k: X => Free[F + G, A]): Free[G, B] =
       c / (x => Free.delay(() => loop(d)(k(x))))
 
-    // a call from inside flatMap cannot be a jump; `again` takes it, so
-    // the walk itself stays a checked loop
+    // a call from inside flatMap cannot be a jump; `again` takes it, so the walk stays a checked loop
     def again(d: Int)(x: Free[F + G, A]): Free[G, B] = loop(d)(x)
 
-    // the forwarding arm in its own method too (handle-frames-loops): the depth `shallow` needs pushed the loop
-    // to 356 bytes, past FreqInlineSize; the arm's lambda out of it is what brings the loop back under
+    // the forwarding arm in its own method too, to keep the loop under FreqInlineSize
     def forward[X](d: Int)(i: Free[F + G, X], k: X => Free[F + G, A]): Free[G, B] =
       forwarded[F, G](i).flatMap(x => again(d)(k(x)))
     @tailrec def loop(d: Int)(x: Free[F + G, A]): Free[G, B] = (x.resumeRun: @unchecked) match
@@ -322,60 +206,30 @@ given Effects[Free] with
       def program: Shift.U[G, B] = HandleFrames.control[F, A, B, G](ret, h, summon[TypeableK[F]])(m))
 
 /**
- * Any Effects program in ANY other Effects encoding.
- *
- * This is the initiality of the interface made a function: an
- * encoding is fixed by `pure` and `perform`, `foldCont` is the fold,
- * and so there is exactly one structure-preserving way across. The
- * handler rebuilds each operation in the target — `N.perform(e)` —
- * and the values land through `N.pure`.
- *
- * `reify` and `reflect` below are this at the two ends, and naming
- * them separately is worth it because the two directions are used for
- * different reasons, not because they are different functions.
+ * Any Effects program in any other encoding: the interface's initiality as a function. An encoding is fixed
+ * by `pure` and `perform` and `foldCont` is the fold, so there is one structure-preserving way across.
+ * `reify` and `reflect` are this at the two ends.
  */
 inline def convert[M[_[+_], _] : Effects,
   N[_[+_], _] : Effects as N, F[+_], A](m: M[F, A]): N[F, A] =
   m.foldCont[N[F, A]]([X] => e => Cont.shift(k =>
     N.perform(e).flatMap(k))) / (a => N.pure(a))
 
-/**
- * `M.tailRecM(a)(f)`: the loop of `TailRecM[F]`, spelled on the monad
- * instance. The instance is the CARRIER's (Monad.scala,
- * specs/eager-carrier-depth.md); there is none to derive.
- */
+/** `M.tailRecM(a)(f)`: `TailRecM[F]`'s loop, the carrier's own (specs/eager-carrier-depth.md) */
 extension [F[_]](M: Monad[F])
   def tailRecM[A, B](a: A)(f: A => F[Either[A, B]])(using R: TailRecM[F]): F[B] = R.tailRecM(a)(f)
 
-/**
- * any Effects program materializes back as a Free tree: building
- * the syntax is itself an interpretation !>, with the answers A ! F
- */
+/** any Effects program as a `Free` tree: building the syntax is itself an interpretation */
 inline def reify[M[_[+_], _] : Effects, F[+_], A](m: M[F, A]): A ! F =
   convert[M, Free, F, A](m)
 
 /**
- * The other direction: a Free tree read INTO any encoding — the
- * eager one, or another of your own.
- *
- * `reify` observes an abstract encoding as syntax, which is what a
- * debugger, a rewriter or `Pipeline`'s optimizer wants. `reflect`
- * spends syntax at an encoding, which is what running it fast wants:
- * a program built once as a tree can be reflected into `Eager` where
- * pure binds apply at construction.
- *
- * Together they are a round trip, and `TestReflect` asserts it is one
- * — the same answers, both ways, for every encoding this library has.
- *
- * One cost of the name, since it is the right name: inside package
- * `okay` it shadows `scala.reflect`, so a `Typeable` or `ClassTag`
- * referred to as `reflect.X` there must be spelled `scala.reflect.X`.
+ * A `Free` tree read INTO any encoding — `Eager`, or one of your own — where `reify` observes an encoding as
+ * syntax (for a debugger, a rewriter, `Pipeline`'s optimizer). Together they round-trip (TestReflect). Inside
+ * package `okay` the name shadows `scala.reflect`: write `scala.reflect.X` there.
  */
 def reflect[M[_[+_], _] : Effects as M, F[+_], A](m: A ! F): M[F, A] =
-  // `convert[Free, M]` would say the same through Cont; a tree is
-  // already syntax, so it folds straight into the target with no
-  // continuation reified on the way (this was `fromFree`, the same
-  // function under a second name — core-cleanup)
+  // straight into the target: a tree is already syntax, so no continuation is reified on the way
   Free.fold(m)(M.pure)([X] => e => k => M.perform(e).flatMap(x => reflect[M, F, A](k(x))))
 
 object Effects {
@@ -387,87 +241,43 @@ object Effects {
     extension [A](a: M[F, A])
       def flatMap[B](f: A => M[F, B]): M[F, B] = E.flatMap(a)(f)
 
-  /** the staging entry for effect programs, as staged is for Control:
-   * `Effects[Free]`, `Effects[Eager]`, `Effects[M]` for any M with an
-   * instance in scope. Moved here from a bare top-level def of the
-   * same name so this object and `trait Effects[M[_[+_], _]]` above
-   * form one door, the way a class and its companion do. */
+  /** the staging entry for effect programs: `Effects[Free]`, `Effects[Eager]`, or any `M` with an instance
+   * in scope; with `trait Effects` it forms one door, as a class and its companion do */
   transparent inline def apply[M[_[+_], _]]: Effects[M] =
     compiletime.summonInline[Effects[M]]
 
-  // `Effect` used to be a second name for `Inject` here (type + val),
-  // kept by freer-base so the match sites would not move. It collided
-  // with `okay.Effect`, the `derives` marker — every file importing
-  // `!.*` had to write `derives Effect` — and went in
-  // inject-not-effect (2026-09-15): the node's name is `Inject`.
-
   extension [F[+_], A](self: A ! F) {
-
-    /** `resume` is a MEMBER of `Free` now (Free.scala), where the
-     * rotation and the invariant every `@unchecked` match relies on
-     * are documented together. A member wins resolution, so every
-     * `.resume` in the library reaches that one loop. */
 
     /** step through the next n operations by the Answers */
     @tailrec def next(steps: Long = 1)(using H: Answers[F]): A ! F = (self.resume: @unchecked) match
       case Bind(Inject(e), k) if steps > 0 => k(H.handle(e)).next(steps - 1)
       case a => a
 
-    /**
-     * Peek the nearest answer: the value, or the first operation
-     * handled.
-     *
-     * A WORD, not a glyph, since unwrap-glyph: this method RUNS
-     * operations through the `Answers`, which is a great deal to hide
-     * behind one character — and the character was wanted by the
-     * thing users write far more often, the `direct` block's mark.
-     * It was `?` until 2026-09-17, and every call site it had was in
-     * the core's own tests and benchmarks, which is most of the
-     * argument for which spelling gave way (specs/unwrap-glyph.md).
-     */
+    /** peek the nearest answer: the value, or the first operation handled by the `Answers` */
     @tailrec def peek: Answers[F] ?=> ? = self match
       case Bind(a, _) => a.peek
       case Inject(e) => summon[Answers[F]].handle(e)
-      // at `Unit` a diagonal node holds the same `F[A]` an `Inject` does
-      // (freer-diag-leaf); no door here builds one, and this is the one
-      // match over the erased tree that is exhaustive rather than
-      // `@unchecked`, so it says so
+      // at `Unit` a diagonal node holds the same `F[A]` an `Inject` does; nothing here builds one, but this
+      // match is exhaustive rather than `@unchecked`
       case Freer.Diag(e) => summon[Answers[F]].handle(e)
       case Return(a) => a
-      // a peek forces the thunk too, same as `Bind(a, _) => a.peek`
-      // discards its own continuation without applying it
+      // forced, as `Bind(a, _)` above drops its continuation
       case Delay(t) => t().peek
   }
 
   /** run a closed computation */
   inline def run[A](e: A ! Nothing): A = e.runWith
 
-  /**
-   * mark a call to a mutually-recursive function returning `A ! F` as a
-   * tail call, so the interpreter (`fold`/`runFree`/`resume`) trampolines
-   * it instead of nesting a JVM stack frame per call. `Free.delay`, a
-   * node with no continuation — NOT `Free.defer` with `pure` as the
-   * continuation, which was the spelling until delay-node and cost a
-   * rotated `.flatMap(pure)` tail down every hop (see `Free.delay`).
-   * `Cont.delay` is the same door on the Cont side.
-   */
+  /** a tail call to a mutually recursive function returning `A ! F`: the interpreter trampolines it. A `Delay`,
+   * not `defer` with `pure`, which would push a `.flatMap(pure)` down every hop (`Cont.delay` on the Cont side) */
   inline def tailcall[F[+_], A](thunk: => A ! F): A ! F =
     Free.delay(() => thunk)
 
   /**
-   * `tailRecM` for programs (specs/fold-until.md, stage 2): run `f`
-   * from `s`, continue from a `Left`, answer a `Right`. The state
-   * decides when the iteration ends — the same form as `FoldUntil`
-   * over an input and `Proc.Iter` over an arrow, here over a program
-   * whose every iteration may perform `F`.
-   *
-   * Stack-safe without a trampoline of its own: the recursive call
-   * sits INSIDE the `flatMap`'s continuation, so it is made when the
-   * interpreter resumes that Bind, never on the caller's stack — the
-   * discipline direct-loops' `while` relies on for the same reason.
-   * Here rather than top-level because Generate.scala's `loop(f)(a)`
-   * (the Cont fixpoint) has the same two-list shape, and the overload
-   * would be ambiguous at every one of its calls.
+   * `tailRecM` for programs (specs/fold-until.md): run `f` from `s`, continue from a `Left`, answer a `Right`.
+   * Stack-safe with no trampoline of its own: the recursive call sits inside the `flatMap`'s continuation. In
+   * this object, not top-level: Generate.scala's `loop(f)(a)` has the same shape, and the overload would be
+   * ambiguous.
    */
   def loop[S, A, F[+_]](s: S)(f: S => Either[S, A] ! F): A ! F =
     f(s).flatMap {
@@ -476,51 +286,25 @@ object Effects {
     }
 
   /**
-   * A FOLD THAT PERFORMS, BUILT RIGHT-NESTED (left-nested-build-cost,
-   * 2026-09-27). `f` runs on each element in order, with the answer of
-   * the one before as its accumulator.
+   * A fold that performs, BUILT RIGHT-NESTED: `f` runs on each element in order, with the answer of the one
+   * before as its accumulator.
    *
    *     !.foldM(orders)(0L)((total, o) => price(o).map(total + _))
    *
-   * It is not `xs.foldLeft(pure(z))((m, x) => m.flatMap(...))`, and the
-   * difference is measured. That spelling builds a LEFT-nested chain, and
-   * `Free.resume` has to rotate it one bind at a time, allocating a
-   * closure and a Bind per step. The same 1000 State/Writer operations
-   * run in 32 µs built that way against 13 µs right-nested, and
-   * `-prof stack` puts 60-70% of the left-nested time in the rotation
-   * (specs/handler-fusion.md, re-measured 2026-09-27). Here each step's
-   * continuation builds the next, so the head is always one operation and
-   * nothing is ever rotated.
-   *
-   * Stack-safe as `loop` is: the recursive call sits inside a
-   * `flatMap`'s continuation. A value, as every program is: the input is
-   * indexed, not iterated, so the program runs again from the start.
+   * Not `xs.foldLeft(pure(z))((m, x) => m.flatMap(...))`: that builds a left-nested chain `resume` rotates one
+   * bind at a time (32 µs against 13 for 1000 State/Writer operations, specs/handler-fusion.md). Here each
+   * step's continuation builds the next, so nothing is rotated. Stack-safe as `loop`; a value that runs again
+   * from the start.
    */
   def foldM[X, B, F[+_]](xs: Iterable[X])(z: B)(f: (B, X) => B ! F): B ! F =
-    // indexed, so the program is a value that runs again — and FLAT
-    // (fold-each-residual-split, 2026-09-28): `v(i)` runs once a step,
-    // and a Vector's radix walk there was 3.3 µs of foldEach's 7.3 over
-    // the hand-written loop at N = 1000, as much as the boxed
-    // accumulator; an `ArraySeq` reads by a bounds check and a load.
-    // An `ArraySeq` passes through, anything else is copied once (a
-    // Vector of 1000 boxed Ints: 4 KB, and 1.21x on the fold).
+    // indexed and FLAT: `v(i)` runs once a step, and a Vector's radix walk there was 3.3 µs of 7.3 over the
+    // hand-written loop; an `ArraySeq` passes through, anything else is copied once
     val v = ArraySeq.untagged.from(xs)
     val n = v.length
-    // The step's `flatMap` into the NEXT step, with a trailing `map`
-    // folded in (one-bind-hot-steps, 2026-09-27): a step written
-    // `op.map(g)` arrives as `Bind(op, Mapped(g))` and becomes
-    // `Bind(op, y => go(i + 1, g(y)))`, one bind a step instead of two
-    // nested left. Safe HERE, and only for a `go` that builds the rest
-    // and calls no continuation: `g` is the user's pure function and
-    // `go` returns a program, so nothing chains on the stack.
-    // `Free.flatMap` cannot do this in general (specs/map-fusion.md,
-    // refuted). The continuation is built IN PLACE, not through a
-    // `next` closure handed to a helper: that helper's second closure
-    // was 24 B and ~2 µs a step of the builder's residual over a
-    // hand-written loop (map-cost-residual, the ladder).
-    //
-    // The one type claim is the one `Mapped` licenses: found as the
-    // continuation of a `Bind[F, x, B]`, it IS a `Mapped[F, x, B]`.
+    // a step written `op.map(g)` arrives as `Bind(op, Mapped(g))` and becomes `Bind(op, y => go(i + 1, g(y)))`,
+    // one bind a step instead of two. Safe here only because `go` builds the rest and calls no continuation
+    // (`flatMap` cannot do this in general, specs/map-fusion.md). The one type claim is the one `Mapped`
+    // licenses: the continuation of a `Bind[F, x, B]` that is a `Mapped` IS a `Mapped[F, x, B]`.
     def go(i: Int, acc: B): B ! F =
       if i >= n then Return(acc)
       else f(acc, v(i)) match
@@ -528,25 +312,17 @@ object Effects {
           case k: Freer.Mapped[Freer.Lift[F], Unit, x, B] @unchecked => Bind(b.a, (y: x) => go(i + 1, k.f(y)))
           case _ => Bind(b, (y: B) => go(i + 1, y))
         case m => Bind(m, (y: B) => go(i + 1, y))
-    // DELAYED, so `f` runs only when the program does, as it does in a
-    // foldLeft over flatMap: a caller whose `f` touches state (a UI
-    // fold updating its focus) must not see the first element's work
-    // happen at BUILD time when it converts to this
+    // DELAYED, so `f` runs when the program does, never at build time
     Free.delay(() => go(0, z))
 
   /**
-   * A FOLD WHOSE STEP IS ONE BIND by construction (fold-each, 2026-09-27):
-   * `f` is each element's program, and `combine` folds its answer into the
-   * accumulator PURELY.
+   * A fold whose step is ONE bind: `f` is each element's program, and `combine` folds its answer into the
+   * accumulator purely.
    *
    *     !.foldEach(orders)(0L)(o => price(o))(_ + _)
    *
-   * `foldM` with the same step written `(acc, x) => f(x).map(combine(acc,
-   * _))` folds that trailing map into its next step, but the map has
-   * already built its Bind and its `Mapped` by then, and they are thrown
-   * away. Here nothing is built but the bind: `f(x).flatMap(a => go(i + 1,
-   * combine(acc, a)))`. `combine` runs where the map did, when the
-   * element's answer arrives. Delayed, indexed and stack-safe as `foldM`.
+   * `foldM` with `(acc, x) => f(x).map(combine(acc, _))` folds the map away, but only after it built its Bind
+   * and `Mapped`; here nothing is built but the bind. Delayed, indexed and stack-safe as `foldM`.
    */
   def foldEach[X, A, B, F[+_]](xs: Iterable[X])(z: B)(f: X => A ! F)(combine: (B, A) => B): B ! F =
     val v = ArraySeq.untagged.from(xs) // flat, as foldM's: the read is per step
@@ -566,39 +342,18 @@ object Effects {
   inline def once[A, F[+_]](p: => A ! Once + F): A ! Once + F = Once.once(p)
 
   /**
-   * The same program in a wider row: effect subsumption, as a
-   * COERCION (widen-split, 2026-09-23). `Free` is invariant in its
-   * row by a measured choice (free-row-variance, 2026-09-03: the
-   * covariant `enum Free[+F[+_], A]` passes the variance check, and
-   * was not taken), so the type system cannot see that a program at
-   * `F` is one at `F + G`; `Row.into` says it once, by the erasure
-   * argument Row.scala states — an `Inject(e)` with `e: F[X]` IS a
-   * value of `(F + G)[X]`, since the row is a union. Nothing is
-   * forced and nothing is walked: a program whose state is made under
-   * `Free.delay` stays deferred until it runs, which is what
-   * windows-stage-rerun-loses-pane had to fix in the walk this used to
-   * be. The walk is `normalize`, below, under the name of what it
-   * does.
+   * The same program in a wider row: effect subsumption, as a COERCION. `Free` is invariant in its row by a
+   * measured choice, so the type system cannot see that a program at `F` is one at `F + G`; `Row.into` says it
+   * once (an `Inject(e)` with `e: F[X]` IS a `(F + G)[X]`, the row being a union). Nothing is forced or walked;
+   * the walk is `normalize`.
    */
   def widen[A, F[+_], G[+_]](p: A ! F): A ! F + G = Row.into[A, F, F + G](p)
 
   /**
-   * The WALK `widen` used to be: resume the head and rebuild the tree
-   * node by node into the wider row, one re-injected node per
-   * operation, deferred as it goes — a NORMALISATION rather than an
-   * upcast, and the two are told apart by name now (widen-split).
-   *
-   * When it pays: a rotation the walk does up front is one a runner
-   * would otherwise do per pull — which is why `Source.merge` keeps
-   * `Writer.widen`'s walk over its element type (measured,
-   * free-row-variance-widen-in-merge: 5.3% slower without it). No
-   * caller of THIS name is known; it is here so the walk keeps a
-   * name and its reason, not because anything wants it.
-   *
-   * A DEFERRED HEAD STAYS DEFERRED (windows-stage-rerun-loses-pane,
-   * 2026-09-23): `resume` forces a `Delay`, so the two deferred
-   * shapes are rebuilt as deferred and the walk begins only when the
-   * program runs.
+   * The WALK: resume the head and rebuild the tree into the wider row, one re-injected node per operation,
+   * deferred as it goes — a normalisation, not an upcast. It pays when a runner would otherwise rotate per
+   * pull (`Source.merge` keeps `Writer.widen`'s walk: 5.3% without it). A deferred head stays deferred, so
+   * the walk begins only when the program runs.
    */
   def normalize[A, F[+_], G[+_]](p: A ! F): A ! F + G = p match
     case Free.Delay(t) => Free.Delay(() => normalize[A, F, G](t()))
@@ -609,45 +364,14 @@ object Effects {
       case Bind(Inject(e), k) => Inject(e).flatMap(x => normalize[A, F, G](k(x)))
 
   /**
-   * Interpret F into ANOTHER ROW rather than into a value.
+   * `translate` with the widening done for you, for a target row BIGGER than the source's: `A ! Users + F`
+   * into `A ! State % Store + Writer % String + F`, the rest `F` carried through, every row solved by the
+   * expected type.
    *
-   * `Answers[F]` is `F ==> Id`, and Id is exactly where a suspension
-   * cannot go — which is why a comonadic handler can never do I/O on
-   * a platform with no thread to park (it must ANSWER, so it must
-   * finish). The general form is the natural transformation this
-   * library already names: a handler valued in a PROGRAM,
-   * `F ==> ([X] =>> X ! G)`, so an operation may answer with more
-   * computation instead of with a value.
-   *
-   * Three points on one line, then: `F ==> Id` is the comonadic
-   * handler (`runWith`), `F ==> ([X] =>> X ! G)` is this — the
-   * forwarding interpreter — and `F !> S` is the Cont-valued handler
-   * that `Effects.handle` takes, which adds abort and multi-shot at
-   * the price of going through Cont. `translate` is the
-   * tail-resumptive middle: one walk, no Cont, G forwarded.
-   *
-   * `Free.run(f: F ==> M)` is the same idea when the row is handled
-   * ENTIRELY; this is the version that leaves a residue.
-   */
-  /**
-   * `translate`, with the widening done for you — and this is the one
-   * to reach for when the target row is BIGGER than the source's.
-   *
-   * `translate` interprets F into a row the program is already in.
-   * Interpreting one effect into OTHERS means arriving somewhere new:
-   * `A ! Users + F` becomes `A ! State % Store + Writer % String +
-   * F`, where F is whatever the caller was already doing and is
-   * carried through untouched. Written by hand that is a widen and a
-   * translate and three type arguments; here the expected type solves
-   * every row:
-   *
-   * def tracked[A, F[+_]](p: A ! Users + F): A ! Tracked + F =
-   * !.interpret(p):
-   * [X] => (e: Users[X]) => e match
-   * case Users.Find(id) => ...   // a PROGRAM in Tracked + F
-   *
-   * (Not `interpr`, which builds a handler out of one. This rewrites
-   * a program.)
+   *     def tracked[A, F[+_]](p: A ! Users + F): A ! Tracked + F =
+   *       !.interpret(p):
+   *         [X] => (e: Users[X]) => e match
+   *           case Users.Find(id) => ...   // a PROGRAM in Tracked + F
    */
   def interpret[A, F[+_] : TypeableK, G[+_], H[+_]](prog: A ! F + H)(using Distinct[F + G + H])
                                                    (h: F ==> ([X] =>> X ! G + H))
@@ -655,23 +379,13 @@ object Effects {
     translate[A, F, G + H](prog.plus[G])(h)
 
   /**
-   * RECORD what a program asks for, without answering any of it: each
-   * operation of F is told to a `Writer` and then performed exactly
-   * as before, so the row keeps F and gains `Writer % W`.
+   * RECORD what a program asks for without answering any of it: each operation of `F` is told to a `Writer`
+   * and then performed as before, so the row keeps `F` and gains `Writer % W`.
    *
-   * !.tracing(prog)([X] => (e: Users[X]) => e.toString)
-   * : A ! Users + Writer % String + G
+   *     !.tracing(prog)([X] => (e: Users[X]) => e.toString)   // A ! Users + Writer % String + G
    *
-   * The program-level counterpart of `h.tracing`, and the same idea:
-   * the operations are already data, so recording is a layer, not a
-   * second implementation that can drift from the first. This one
-   * records BEFORE anything is interpreted, so it sees the program's
-   * own asks whatever eventually answers them — and it knows nothing
-   * about F beyond `show`.
-   *
-   * The interpreter re-emits `e` into the target row, which does not
-   * loop: `translate` walks the SOURCE program and never re-walks
-   * what a branch answers with.
+   * It records before anything is interpreted, so it sees the program's own asks whatever answers them.
+   * Re-emitting `e` does not loop: `translate` walks the SOURCE program only.
    */
   def tracing[A, F[+_] : TypeableK, W, G[+_]](prog: A ! F + G)
                                              (show: [X] => F[X] => W)
@@ -681,15 +395,16 @@ object Effects {
       [X] => (e: F[X]) =>
         Writer.tell(show(e)).at[R].flatMap(_ => effect[R, X](e))
 
+  /**
+   * Interpret `F` into ANOTHER ROW rather than into a value: a handler valued in a program,
+   * `F ==> ([X] =>> X ! G)`, so an operation may answer with more computation. Between `F ==> Id` (`runWith`,
+   * which must answer and so cannot suspend) and `F !> S` (`Effects.handle`, abort and multi-shot through
+   * `Cont`), this is the tail-resumptive middle: one walk, no `Cont`, `G` forwarded.
+   */
   def translate[A, F[+_] : TypeableK, G[+_]](prog: A ! F + G)(using Distinct[F + G])
                                             (h: F ==> ([X] =>> X ! G)): A ! G =
-    // every step suspends under a flatMap (the answer is a PROGRAM,
-    // not a value), so the recursion lives in closures rather than on
-    // the stack — the State.handle shape, and the reason no @tailrec
-    // annotation belongs here
-    // `split`, not `<|>`: no Either per operation (core-cleanup); the
-    // recursion is not a loop, so the inlined arms cost no inlining
-    // budget the way they would inside `relay`
+    // every step suspends under a flatMap (the answer is a program), so the recursion lives in closures, not
+    // on the stack, and no @tailrec belongs here
     def go(d: Int)(p: A ! F + G): A ! G = (p.resumeRun: @unchecked) match
       case Return(a) => Return(a)
       case i @ Inject(e) => split[F, G](e)(f => h(f))(_ => forwarded[F, G](i))
@@ -700,7 +415,7 @@ object Effects {
           (_ => forwarded[F, G](i).flatMap(x => go(d)(k(x))))
       // a run nested here: forced — its fold below HandleFrames.Limit, its frame on a machine at it
       case y => go(d)(HandleFrames.shallow(y, d))
-    // a value: run by whoever forces it, a frame for a machine that meets it (handle-frames)
+    // a value: run by whoever forces it, a frame for a machine that meets it
     Free.delay(new HandleFrames.Run[A, G]:
       def at(d: Int): A ! G = go(d)(prog)
       def program: Shift.U[G, A] = intoFrame[A, F, G](h)(prog))
@@ -711,52 +426,29 @@ object Effects {
       summon[TypeableK[F]])(x)
 
   /**
-   * handle_relay (Kiselyov): tail-resumptive handling. It was 1.51x
-   * faster than `Effects.handle` on forwarding-heavy work; since
-   * handle-forward-fast (2026-09-15) it is **1.03x**, and the two
-   * allocate the SAME NUMBER OF BYTES to the digit, because `handle`
-   * was given this loop's forwarding arm. What is left of the reason
-   * to reach for `relay` is therefore not speed: it is that an
-   * answer-polymorphic `g` cannot abort or perform G, which is a
-   * CLAIM about the handler that the type makes and `handle` cannot.
-   * docs/benchmarks.md §2, rows `hd-*` and `hff-*`. g is
-   * answer-polymorphic, so by parametricity it must resume the
-   * continuation (exactly once), which keeps the loop tail-recursive,
-   * i.e. stack-safe on any number of handled operations. For handlers
-   * that abort or perform G, use Effects.handle instead.
+   * handle_relay (Kiselyov): tail-resumptive handling. `g` is answer-polymorphic, so by parametricity it must
+   * resume the continuation exactly once, which keeps the loop tail-recursive and stack-safe on any number of
+   * handled operations. Since `handle` took this loop's forwarding arm the two cost the same (1.03x, the same
+   * bytes; docs/benchmarks.md §2, `hd-*`/`hff-*`); what `relay` adds is the CLAIM its type makes — `g` can
+   * neither abort nor perform `G`. For handlers that do, use `Effects.handle`.
    */
   def relay[A, B, F[+_] : TypeableK, G[+_]](a: A ! F + G)(using Distinct[F + G])(f: A => B ! G)
                                            (g: [X, Y] => F[X] => X /> Y): B ! G =
-    // a value: run by whoever forces it, a frame for a machine that meets it (handle-frames)
+    // a value: run by whoever forces it, a frame for a machine that meets it
     Free.delay(new HandleFrames.Run[B, G]:
       def at(d: Int): B ! G = new Relaying[A, B, F, G](d, f, g).loop(a)
       def program: Shift.U[G, B] =
         HandleFrames.control[F, A, B, G](f, [X] => (e: F[X]) => g[X, B ! G](e), summon[TypeableK[F]])(a))
 
   /**
-   * `relay`'s walk, an OBJECT per run (handle-frames-loops): its depth for `HandleFrames.shallow` is a field read
-   * in the cold arm only. Threaded through the loop and the forwarding closure as a parameter it cost
-   * relayPrebuilt 1.19x (156 against 131 µs, alternated; the same loop without it 131) — one allocation a run is
-   * the cheaper price.
+   * `relay`'s walk, an object per run: its depth for `HandleFrames.shallow` is a field, read in the cold arm
+   * only. Threaded through the loop as a parameter it cost relayPrebuilt 1.19x; one allocation a run is cheaper.
    */
   private final class Relaying[A, B, F[+_], G[+_]](depth: Int, f: A => B ! G, g: [X, Y] => F[X] => X /> Y)
                                                   (using TypeableK[F]):
-      /**
-       * The TERMINAL case — a bare operation with no continuation, which
-       * a program reaches at most once — in its own method, so that it
-       * does not occupy the hot loop's bytecode.
-       *
-       * `split` is an `inline def` taking `inline` branches, so both of
-       * its arms expand into whatever encloses them, and this loop is
-       * made of them. It compiles to 305 bytes against HotSpot's
-       * `FreqInlineSize` of 325 (read with -XX:+PrintInlining): twenty
-       * bytes from the cliff where it stops being inlined into `relay`
-       * and the lane loses over 10% at once. That is not a hypothetical
-       * — a sibling branch added 24 bytes here and paid exactly that,
-       * for five measurement sessions, while its allocation stayed
-       * identical to the digit and no data-structure theory fit.
-       * Extracting the cold arm leaves the loop at 244 bytes.
-       */
+      /** the terminal case, at most once a program, out of the hot loop: `split`'s inline arms expand into the
+       * loop, which must stay under HotSpot's FreqInlineSize (325 bytes) to be inlined into `relay` — 24 bytes
+       * past it cost the lane over 10%. Extracted, the loop is 244 bytes */
       def last(e: F[A] | G[A]): B ! G =
         split[F, G](e)(e => g(e) / f)(e => Inject(e).flatMap(f))
 
@@ -766,8 +458,7 @@ object Effects {
         forwarded[F, G](i).flatMap(x => again(k(x)))
 
       @tailrec final def loop(x: A ! F + G): B ! G = (x.resumeRun: @unchecked) match
-        // `g(e) / k`, not `g(e)(k)`: the Cont carrier's application is
-        // `/` since Cont became a facade over Free (specs/freer-base.md)
+        // `g(e) / k`: the Cont carrier's application
         case Bind(i @ Inject(e), k) => split[F, G](e)(e => loop(g(e) / k))(_ => forward(i, k))
         case Inject(e) => last(e)
         case Return(a) => f(a)
