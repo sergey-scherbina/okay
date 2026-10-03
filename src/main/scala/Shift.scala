@@ -55,6 +55,15 @@ class Prompt[R](val what: String, val where: String) extends Delimited.Mark:
   override def toString: String = label
   /** the mark of the value boundary where the prompt's place ends: its value has passed `ret` there */
   private[okay] lazy val close: Delimited.Mark = new Delimited.Mark {}
+  /** the mark of a `reset`'s ONE boundary (`push`: no `ret` to skip, so no closing) — its own mark, not the prompt,
+   * so it is never read as a `dollar`'s opening whose closing lies under it */
+  private[okay] lazy val whole: Prompt.Whole = Prompt.Whole(this)
+  /** a capture's test for this prompt's place, either form: made once, not a lambda per capture */
+  private[okay] lazy val is: Delimited.Mark => Boolean = t => (t eq this) || (t eq whole)
+
+object Prompt:
+  /** a `reset`'s boundary, naming its prompt */
+  private[okay] final class Whole(val p: Prompt[?]) extends Delimited.Mark
 
 /** a capture naming a prompt not installed on this machine, with the ones that are */
 final class NoPrompt(val from: String, val wanted: String, val installed: List[String])
@@ -109,7 +118,7 @@ object Shift {
 
   /** `reset` at `p` */
   def push[R, F[+_]](p: Prompt[R])(body: R ! Shift % ? + F): R ! Shift % ? + F =
-    dollar[R, R, F](p)(okay.pure)(body)
+    op[R, F](Push[Any, R, F](p, body))
 
   /** `ret $ body` at `p`: `ret` runs outside, a `shift0` to `p` takes it along */
   def dollar[R0, R, F[+_]](p: Prompt[R])(ret: R0 => R ! Shift % ? + F)(body: R0 ! Shift % ? + F): R ! Shift % ? + F =
@@ -154,6 +163,9 @@ object Shift {
   // marks and `ret`), and its body answers after the closing — `ret` skipped, as λ$'s `S0 k.e` replaces the whole
   // `ret $ body`.
 
+  /** `pure $ body` at `p` — a `reset`: ONE value boundary, there being no `ret` for a capture to skip
+   * (shift-prompt-one-boundary: as a `Dollar` with `pure`, a generator paid two boundaries and a frame a yield) */
+  private[okay] final case class Push[K, R, F[+_]](p: Prompt[R], body: R ! Shift % ? + F) extends Shift[K, R]
   /** `ret $ body` at `p` */
   private[okay] final case class Dollar[K, R0, R, F[+_]](p: Prompt[R], ret: R0 => R ! Shift % ? + F, body: R0 ! Shift % ? + F)
     extends Shift[K, R]
@@ -169,8 +181,9 @@ object Shift {
     extends Shift[K, R]
 
   /** the prompt an operation names */
-  private def promptOf(x: Any): AnyRef | Null = x match
+  private def promptOf(x: Any): Prompt[?] | Null = x match
     case d: Dollar[?, ?, ?, ?] => d.p
+    case d: Push[?, ?, ?] => d.p
     case s: Shift0[?, ?, ?, ?] => s.p
     case a: Abort[?, ?, ?] => a.p
     case r: Resume[?, ?, ?, ?] => r.p
@@ -235,10 +248,10 @@ object Shift {
 
     def apply[X, B, S, R, Z](op: (Shift % ? + F)[X], m: Stack[L, B, S, R, Z], machine: Delimited[L]): F[X] | Null = op match
       // an installation and a resumption are always this machine's: they put a prompt on, not look for one
-      case _: Dollar[?, ?, ?, ?] | _: Resume[?, ?, ?, ?] => null
+      case _: Dollar[?, ?, ?, ?] | _: Push[?, ?, ?] | _: Resume[?, ?, ?, ?] => null
       case s: Shift[?, ?] =>
         val p = promptOf(s)
-        if nested && p != null && machine.holds(m, _ eq p) == null then claim[F[X]](op) else null
+        if nested && p != null && machine.holds(m, p.is) == null then claim[F[X]](op) else null
       case _ =>
         if !framed then claim[F[X]](op)
         else machine.holds(m, takes(op)) match
@@ -277,6 +290,8 @@ object Shift {
         val ret = claim[r0 => Freer[L, U, U, r]](d.ret)
         val outside = machine.delim(d.p.close, claim[Frames[L, r, B, U, U]](k), m)
         machine.next(claim[Freer[L, U, U, r0]](d.body), machine.end[r0, U], machine.delim(d.p, machine.frame(ret, machine.end[r, U]), outside))
+      case d: Push[?, r, ?] =>
+        machine.next(claim[Freer[L, U, U, r]](d.body), machine.end[r, U], machine.delim(d.p.whole, claim[Frames[L, r, B, U, U]](k), m))
       case s: Shift0[?, a, r, ?] =>
         val c = claim[Cut[a, r, Z]](cutOrFail(s.p, s.at, k, m, machine))
         val body = claim[Resumption[a, r, F] => Freer[L, U, U, r]](s.body)
@@ -321,6 +336,7 @@ object Shift {
 
     private val catches: Delimited.Mark => Boolean = _.isInstanceOf[HandleFrames.Catching]
     private val never: Delimited.Mark => Boolean = _ => false
+    private val isBarrier: Delimited.Mark => Boolean = _ eq Barrier
 
     /** a capture to a prompt: the piece up to and including its closing (its opening and `ret` taken along), and
      * what lies under the closing */
@@ -329,7 +345,7 @@ object Shift {
 
     private def cutOrFail[A, B, Z](p: Prompt[?], from: String, k: Frames[L, A, B, U, U], m: Stack[L, B, U, U, Z],
                                    machine: Delimited[L]): Cut[A, Any, Z] =
-      cut(k, m, _ eq p, _ eq Barrier, machine) match
+      cut(k, m, p.is, isBarrier, machine) match
         case null => throw NoPrompt(from, p.label, installed(m))
         case c => c
 
@@ -339,6 +355,10 @@ object Shift {
       machine.cut(k, m, is, stop) match
         case null => null
         case open => (open.tag, open.rest) match
+          // a reset's one boundary: the piece is up to and including it
+          case (w: Prompt.Whole, _) =>
+            Cut(w.p, claim[Delimited.Piece[L, A, U, Any, U]](open.piece), claim[Frames[L, Any, Any, U, U]](open.out),
+              claim[Stack[L, Any, U, U, Z]](open.rest))
           case (p: Prompt[?], Stack.Delim(close, out, rest)) if close eq p.close =>
             val piece = Delimited.Piece.Snoc(open.piece, open.out, close)
             Cut(p, claim[Delimited.Piece[L, A, U, Any, U]](piece), claim[Frames[L, Any, Any, U, U]](out), claim[Stack[L, Any, U, U, Z]](rest))
@@ -355,6 +375,7 @@ object Shift {
       case Stack.Delim(tag, _, rest) =>
         tag match
           case p: Prompt[?] => see(p)
+          case w: Prompt.Whole => see(w.p)
           case _ => ()
         if !(tag eq Barrier) then labels(rest, see)
       case _ => ()
