@@ -1,111 +1,172 @@
-# Delimited with answer-type modification: a typed CK + meta machine
+# Delimited: an effect-independent machine for `Freer`, answer-type modification typed
 
-Operator ask, 2026-10-03 ("Делимитер с ATM", after cont-run-prompt): the one
-cast left in Cont.scala is the run's frame claiming the type of the `k` it
-hands a leaf. A PROBE, in the test tree; the core is untouched until it
-answers.
+Operator's asks, 2026-10-03, in order: remove Cont's casts and `Any`; a delimiter
+with answer-type modification ("два типа и два места"); "Delimited не должен знать
+о Cont/Shift/Shift0/Reset/Dollar — только где начинается и где заканчивается
+сегмент стека"; "Freer/Delimited полностью независимы от того какой эффект в нем
+работает — их задача предоставить все необходимые примитивы абстрактной машины";
+Cont works with `A ! F` as plain values; `Shift % P` with prompts moved onto the new
+machine as an effect; correctness shown by types first.
 
-## Why the cast exists today
+## 1. Where it comes from
 
-Cont is Danvy–Filinski `shift`/`reset` WITH answer-type modification:
-`Cont[A, S, R]` is `(A => S) => R`, and inside one `reset` every `shift` may
-change the answer type (`shift[Int, Int, String](k => k(1).toString)` then
-`shift[Boolean, Boolean, Int](...)`). Filinski's `A / F` and our `A ! F` have
-no such indexes: the answer type is fixed per delimiter (`Shift % R`).
+`Freer[G, S, R, A]` is `(A => S) => R` as data (Atkey's parameterised monad). An
+interpreter of it written directly is correct and typed by those indexes, but
+grows the host stack in two places: `Bind`'s continuations (opaque lambdas) and
+the interpreter's own nested runs. The machine is that host stack made DATA — the
+functional correspondence (Ager, Biernacki, Danvy & Midtgaard 2003; Biernacka,
+Biernacki & Danvy 2005 for shift/reset) — segmented as Dybvig, Peyton Jones &
+Sabry's (JFP 2007). `Freer` does not change.
 
-Cont runs on the λ$ frame machine (Delimited.scala). There a capture COPIES
-the delimiter into `k`, at the type the delimiter was installed with, and the
-machine's loop holds one `R` for a whole run (`Freer`'s `R` is constant along
-the left spine). Under D-F every installation of the delimiter has its own
-answer type: the root's is the run's `R`; the copy a call of `k_i` installs
-answers `S_i`. The λ$ typing cannot say that, whatever the delimiter type —
-so the frame claims it.
+## 2. The machine (src/main/scala/Delimited.scala)
 
-## Hypothesis
+**Data.**
 
-D-F's own abstract machine types it with no claim: a CK machine with a
-META-continuation (Biernacka, Biernacki & Danvy, "An operational foundation
-for delimited continuations in the CPS hierarchy", LMCS 2005). State
-`(C[A, S, T], K[A, S], M[T, R])`:
+- `Frames[G, -A, B, S, R]` — a SEGMENT, the operator's `A => F[B, S, R]`:
+  `Bind`'s continuations joined as `Bind` joins (`End`, `Frame`), and `Marked`, a
+  transparent mark an effect finds again (an environment: Reader's `local`).
+- `Stack[G, B, S, R, Z]` — what closes a level computing `Freer[S, R, B]` into the
+  run's result `Z`: the two ends (`Done` by value, `Answered` by answer) and two
+  kinds of boundary, each typed by its INSTALLATION, not by a prompt:
+  - `Delim(tag, out, rest)`, a VALUE boundary: the level's value goes on into
+    `out`, its answer types chain through as `Bind`'s do. A prompt; a nested run's
+    barrier; (planned) a handler's frame.
+  - `Bound(tag, out, rest)`, an ANSWER boundary: the level closes and its answer
+    flows out as `out`'s value — Danvy & Filinski's `reset`. Answer-type
+    modification is typed here with no claim.
 
-- `C[A, S, R]`, `(A => S) => R` as data: `Pure`, `Bind`, a leaf in its forms;
-- `K[A, S]`: the continuation up to the `reset`, a typed stack (`Done[A]:
-  K[A, A]`, `Push(f: A => C[B, S, T], k: K[B, S]): K[A, T]`);
-- `M[T, R]`: the reset boundaries, each frame typed by ITS answer —
-  the delimiter with ATM, per installation. A lazy `k` called from a body
-  pushes `Then(rest, m)` and runs `k` to `Done`: the boundary D-F's
-  `k = λx. reset(K[x])` needs, which cont-shift-op (REFUTED 2026-10-01) lost.
+**Primitives** (`trait Delimited[G]`, all an effect may use): `next`, `end`,
+`frame`, `mark`, `delim`, `bound`; `find` (nearest mark); `cut` (walk out over
+value boundaries to a marked one, `stop` at a barrier: the `Piece` above and what
+lies under) and `reinstall` (put a `Piece` back); `closed` (the nearest answer
+boundary and the segment it closes, `Kont`); `force` (run a closed segment now,
+counted, `StackSwitch` at no room). A capture walks BOUNDARIES, never frames: to
+the nearest it takes the segment as it is, O(1).
 
-Every transition is a GADT match whose equations make the next state typed.
+**Effects plug in** by `Step[G, H]`: one operation, the segment and the stack →
+the next state (`Next`). Three runners: `Machine` (one effect), `Under` (one
+effect under others, a tagged `Sum` row: the others' operations leave in the
+`Free` program it answers), `Over` (a `Free` row: `Outer` says which operations
+leave, which are the row's own; a nested run of the row, `Outer.enter`, is
+STEPPED INTO under a value boundary rather than forced, so nesting costs no host
+frames).
 
-## Behavior (the probe)
+**What it does not know**: any effect, any prompt's meaning, any answer type of a
+mark. No `asInstanceOf` in the file.
 
-- [x] no `asInstanceOf`, no `@unchecked`, no `Any` in the machine
-- [x] D-F's ATM example: two leaves changing the answer type Int → String
-      and Boolean → Int in one `reset`, strict and lazy, the right answer
-- [x] `k(x + 1) + k(x + 1)` chained d = 0..6, strict and lazy, against the
-      closure instance (cont-shift-op's refuting case)
-- [x] multi-shot: a lazy `k` resumed twice
-- [x] stack safety: 1M left-nested binds, and 1M lazy-`k` shifts
-      (contAnswer's shape) on a 256 KB thread
-- [ ] a verdict: what moving Cont onto it costs (ContMacro, `programLeaf`,
-      Effects' `onAnswer`, the frame machine's sharing) and its speed on
-      contAnswer / statePara / fib100 against master
+## 3. Effects on it
 
-## Stage 2 — the operator's direction: Delimited itself gets ATM (2026-10-03)
+- **Cont** (Cont.scala): Danvy–Filinski with ATM on answer boundaries. A leaf is
+  `Op.Strict`/`Program`/`Lazily` (ContMacro's forms); `closed` gives the body `k`
+  and takes its answer; a call of `k` opens a boundary of its own (`Resume`). No
+  claim, no cast, no `Any`. `A ! F` are plain answers (monadic reflection).
+- **Shift % P** (Shift.scala): a prompt in force is two value boundaries — its
+  opening and its closing — with `ret` between; `shift0` cuts at the opening and
+  skips past the closing, so `ret` goes into `k` and the body answers in the whole
+  `ret $ body`'s place (λ$'s `S0 k.e`). `k(x)` is a self-contained resumption (a
+  `Nested` run): stepped into by a machine running the row, run by its own
+  otherwise (a `k` that outlived its run). Shift's three CLAIMS about a `Free` row
+  — every node at `Unit`, an operation built in its program's row, a prompt's
+  place answering the prompt's type (`eqPrompt`) — are one function in Shift, not
+  in the machine.
 
-"Меняем Delimited для поддержки ATM"; "правильность дизайна доказывается в
-первую очередь типами". What is wrong in Delimited for ATM, found by stage 1:
+## 4. Literature, and where this differs
 
-1. the answer type lives on the PROMPT (`Delimiter[Y, I]`, DPJS's typed
-   prompts): every installation of a prompt — the root and each copy in a
-   `k` — has one type, held by the `identical` axiom;
-2. `Dollar` fuses the `ret` frame with the BOUNDARY: a capture copies both
-   into `k`, the boundary's type frozen at the capture;
-3. one `R` for a whole run, `$` transparent to it (`Dollar0`'s body shares
-   the outside `R`): no level has an answer of its own.
+- Atkey 2009; Kiselyov, "Genuine shift/reset" 2007: ATM by indexed monads, no
+  machine. Ours: a machine whose host types (Scala GADTs) check it.
+- Biernacka–Biernacki–Danvy 2005: the CK machine with a meta-continuation for
+  shift/reset, untyped. Ours: typed, the meta-continuation is `Stack`.
+- Dybvig–Peyton Jones–Sabry 2007: segmented stack, prompts between segments,
+  typed prompts (fixed answer per prompt, `eqPrompt` by `unsafeCoerce`). Ours: the
+  same segmentation; the answer type lives on the installation, so ATM and
+  prompts share one machine; `eqPrompt` is the prompt effect's, not the machine's.
+- Kobori, Kameyama, Kiselyov, "ATM without tears" (2015): shift/reset with ATM
+  translated into multi-prompt control without ATM by fresh prompts — the
+  closest to "the type on the installation"; theirs a translation, ours a machine.
+- Materzok & Biernacki 2011: types for shift0/$ with a stack of answer pairs —
+  what ATM through several levels at once would need; not taken (Freer unchanged).
+- Racket (Flatt et al., ICFP 2007) and Kiselyov–Shan–Sabry (delimited dynamic
+  binding, 2006): continuation marks beside prompts — our `Marked`.
+- Koka (Xie, Leijen et al. 2020/2021), Effekt (Brachthäuser et al.; Muhcu et al.
+  ICFP 2025): handlers on multi-prompt control; tail-resumptive operations
+  without capture; state with multi-shot by backup on capture and restore on
+  resumption.
 
-The design to prove by types, in a probe before the core (stage 2a), then
-in Delimited (2b):
+## 5. Handlers and exceptions on the machine — the design (for approval)
 
-- `Freer[G, S, R, A]` unchanged as a tree; its `(S, R)` now read as the
-  answer pair of the NEAREST delimiter (it is that already for Cont);
-- a delimiter is two things: `ret`, an ordinary frame at the bottom of its
-  level's `K`, and the boundary, `Level(p, kOuter, m)` in the meta-
-  continuation `M`, typed per installation;
-- a capture to the NEAREST delimiter is ATM-typed with no claim (stage 1:
-  the body is polymorphic in the outer level's answer);
-- a capture to a NAMED prompt through levels (Shift, handler frames) takes
-  `k` as a typed chain of segments `Seg[A, Z]`; the one claim is the
-  generative-prompt axiom, DPJS's `unsafeCoerce`, that a prompt's
-  installation is at the prompt's declared type — unavoidable while prompts
-  are named at run time rather than by singleton types;
-- THE RULE that makes it typeable: answer types may change at the nearest
-  delimiter only; an operation that crosses other delimiters is diagonal
-  there `(X, X)`. Free's operations are (`Unit, Unit`); Cont's leaves
-  target their own `reset`.
+Today `HandleFrames` (State, Resource, Chronicle, Logic, Maybe, `Effects.handle`/
+`relay`, Lexical, Once, Handler) runs on the λ$ machine (LambdaDollar.scala), and
+where its frames meet Shift on the new machine five tests are red. The port:
 
-- [ ] 2a: the probe — `Level`/`Seg`, nearest capture with ATM, named capture
-      through levels with the one axiom, resumption of a multi-level `k`,
-      a deep handler frame; stack-safe; tests
-- [ ] 2b: Delimited on it; Shift, HandleFrames, Layered, Lexical, Cont moved;
-      the full gate; A/B on the core lanes
+1. **A handler's frame is a value boundary** — the same shape as a prompt: its
+   opening (a `Handling` mark: `takes(op)`, `clause(op, k)`), its `ret`, its
+   closing. Installing it is a Shift-family operation of the `Free` row.
+2. **An operation finds its frame**: the row's `Outer` asks the machine whether a
+   frame that `takes` the operation stands on the stack (`here`); if so the
+   operation is the row's own, and its step cuts to the nearest such frame
+   (`cut`, stopping at a barrier), gives the clause `k` (a self-contained
+   resumption — deep: the frame goes back with it) and answers the clause's
+   program in the frame's place. If none takes it, it leaves (`Over` forwards).
+   A state frame stays parameter-passing (it answers `S => program`).
+3. **The fold/frame duality stays** (`HandleFrames.Run`): forced by anything but a
+   machine, a handler's run is its fold (`at(depth)`, bounded by `Limit`); a
+   machine running the row steps into its FRAME (`Outer.enter` recognises a `Run`
+   as it does a nested Shift run). `pending`, `shallow`, `Limit` keep their roles.
+4. **Exceptions become a machine primitive, not an effect inside the loop.**
+   Today the λ$ loop wraps every call of user code in `try` (`Cont0.guard`) once
+   any catch frame exists in the PROCESS, and hands a throw to the nearest
+   `Catching` frame. On the new machine: a run that has a catch frame on its
+   stack (a per-run count, not a process-wide flag — which also answers backlog
+   `handling-ever-per-machine`) calls user code under `try`; a throw goes to the
+   row's `Outer` (`thrown(t, k, m)`), which finds the nearest catch mark (`find`/
+   `cut`) and continues with its answer, or rethrows. The machine still knows no
+   effect: "a throw is the effect's to answer" is the primitive.
+5. **Then `LambdaDollar.scala` is deleted**, with `Cont0`, `LambdaFrames`,
+   `LambdaStack`, `Shift.U`/`Ro`/`in`/`out`/`residual`.
+
+**Measure** before landing — the hot path of every effect: HandlerBenchmark
+(statePara, stateSmall, handlePrebuilt, relayPrebuilt, contAnswer), SplitBenchmark
+(mixedList, writerShip), DelimBenchmark (delimGenerator, delimDollarResume,
+stateForeign), FibBenchmark.fib100 — arms alternated against master.
+
+## 6. Open questions
+
+- The cost of finding a frame for every foreign operation (`here` walks the
+  boundaries): a per-run count of frames skips it when there is none; whether a
+  cache of the nearest frame per effect is needed is a measurement.
+- Under `Under` (tagged rows) handlers are not needed yet; only `Over` gets them.
+- `Once` and `Lexical.walk` re-tell programs at another row; their frames move
+  with `HandleFrames`, their claims stay theirs.
+
+## Behavior
+
+- [x] the machine with no cast; Cont on it with no claim (TestDelimitedStack, TestCont, TestContMacro, …)
+- [x] ATM through a mark (TestDelimitedMarks); effects nested as machines (TestDelimitedNested)
+- [x] prompts as value boundaries in the stack, O(1) nearest capture (TestDelimitedLambda; TestShift's 100 000 captures)
+- [x] nested Shift runs stepped into, not forced (TestResetDepth, TestResetSmallStack: 100 000 on 128 KB)
+- [ ] handlers as frames on the machine (§5.1–3): the five red tests green
+- [ ] exceptions as the machine's primitive (§5.4): TestHandleFramesCatch, Resource's
+- [ ] LambdaDollar.scala deleted (§5.5)
+- [ ] the full gate; the benchmarks of §5 against master
 
 ## Decisions
 
-- A probe in `src/test/scala/ProbeContAtm.scala`, self-contained: it shares
-  nothing with Cont.scala, so a refutation costs the core nothing.
-- The strict `k` is a nested run of the machine (host recursion), as Cont's
-  is today; its room and `StackSwitch` are out of the probe's scope.
+- `Freer` unchanged (operator).
+- One machine for every effect; effects implement `Step`; the machine has no cast.
+- The answer type lives on a boundary's installation; prompts are marks the
+  machine cannot interpret.
+- A value boundary is a stack node, not a mark in a segment: as a mark, `split`/
+  `join` walked every frame above it, O(n) a capture — 100 000 captures took 142 s
+  (refuted 2026-10-03; DPJS segment the stack at prompts for this reason).
+- A nested run is stepped into, not forced: forced, 100 000 nested resets overflowed.
+- `k(x)` is a self-contained resumption: as a bare operation it reached the
+  outermost interpreter when `k` outlived its run (a state frame's `S => program`).
+- Kept though not needed for Cont: `Under` (nested machines) and marks — they are
+  the primitives for composing effects and for transparent tail-resumptive effects.
 
 ## Results
 
-- 2026-10-03, first cut: THE HYPOTHESIS HOLDS FOR THE TYPES. `ProbeContAtm.scala`
-  compiles with zero `asInstanceOf`, `@unchecked` or `Any`, no warning, and
-  TestProbeContAtm's four tests are green (ATM Int → String / Boolean → Int,
-  the d = 0..6 refuting case, multi-shot, 1M binds and 1M lazy shifts on a
-  256 KB thread). Every transition is a method whose GADT match supplies
-  the equation the next state needs: `Pure` gives `S = T` (so `Apply` may
-  take `m: M[T, R]` as `M[S, R]`), `Done` gives `A = S`, `Top` gives
-  `T = R`, `Push`/`Then` compose their indexes.
-- Open: the verdict on moving Cont onto it, and its speed.
+- 2026-10-03: the probes (src/test/scala/ProbeContAtm.scala, ProbeDelimAtm.scala)
+  typed D-F ATM and a multi-prompt machine with no cast; the core machine followed.
+- 2026-10-03: Cont and Shift on the machine; okayJVM/test red only where handler
+  frames on the λ$ machine meet Shift (five tests, listed in Behavior).
