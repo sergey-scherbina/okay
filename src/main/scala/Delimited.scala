@@ -260,7 +260,8 @@ object Delimited:
    * is stepped into, under a value boundary, not forced: its depth is this run's stack, not the host's.
    */
   final class Run[G[_, _, +_], F[+_]](steps: Step[G, G], outer: Outer[G, F]) extends Delimited[G]:
-    private var room: Int = StackSwitch.firstRoom
+    // @publicInBinary: `within` is inline and sets it from every caller — no unstable `inline$room` accessor (E192)
+    @scala.annotation.publicInBinary private[Delimited] var room: Int = StackSwitch.firstRoom
     /** levels this stack may still be granted, read or not: past them a fresh stack (`StackSwitch.levelsPerStack`).
      * Changed only at the end of a room, so the per-level path does not touch it */
     private var budget: Int = StackSwitch.levelsPerStack - StackSwitch.firstRoom
