@@ -2120,6 +2120,41 @@ itself, and the instance forwards to it:
     def run(h: Answers[Calc]): (Int, String) = { val n: Int = h.handle(this); (n, n.toString) }
 ```
 
+`Stubs` writes the other side's declarations from the same `Schema`
+(stage 58). `typescript` writes a `.d.ts` in the JSON codec's shapes:
+a sum is `{ Case: ... }`, `None` is `null`, and the leaves TypeScript
+would merge (`Int`, `Long`, `BigIntDigits`, `Base64`) get named aliases.
+`typescriptWire` writes the wire's shapes, where a case carries a
+`type` field, and `python` writes a `TypedDict` module.
+`typescriptPaths` lists every key `JsonOptic.path` accepts, typed:
+
+```scala
+  private val ts = Stubs.typescript(Order.schema, Shape.schema, Tree.schema)
+    assert(ts.contains("export type Shape =\n  | { Circle: Circle }\n  | { Rect: Rect };"), ts)
+```
+
+`TsTypes` goes the other way and reads TypeScript declarations into
+Scala 2 source. An interface becomes a case class, a sum becomes a
+sealed trait whose cases live in its companion, and each type gets its
+`Schema` there as an implicit lazy val. Scala 2 has no top-level type
+alias, so a plain `type X = T` is written out in place wherever it is
+used. A round trip is exact: the test build compiles the golden file
+that `TsTypes` writes for the stubs of these types:
+
+```scala
+    assertEquals(TsTypes.scala(declarations, "okay2.codec.golden"), Right(golden))
+```
+
+On the JVM, `StubFiles` writes the declarations as a build step and
+leaves an unchanged file alone. `TsCheck` asks a real `tsc` whether a
+hand-written copy declares the same types, and names each type that
+differs:
+
+```scala
+    assert(StubFiles.typescript(file, Order.schema, Shape.schema), "the first write")
+    assertEquals(TsCheck.same(generated, handwritten), Right(()))
+```
+
 ## 34. SQL: the relational seam
 
 `okay2-sql` is okay-sql, and `okay2-jdbc` is its JDBC driver (stage

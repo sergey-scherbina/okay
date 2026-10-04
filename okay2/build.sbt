@@ -297,7 +297,8 @@ lazy val okay2Codec = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     common,
     libraryDependencies += "org.scalameta" %%% "munit-scalacheck" % "1.1.0" % Test,
   )
-  .jvmSettings(reflect(None), jvmOnlyTests)
+  // scala-jvm: what writes files or starts `tsc` (StubFiles, TsCheck)
+  .jvmSettings(reflect(None), jvmOnlyTests, platformSources("scala-jvm"))
   .jsSettings(jsTests, reflect(Some(Provided)))
   .nativeSettings(reflect(Some(Provided)))
   .jvmConfigure(_.withId("okay2Codec"))

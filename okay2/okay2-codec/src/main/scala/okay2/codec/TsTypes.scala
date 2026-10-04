@@ -1,0 +1,503 @@
+package okay2.codec
+
+/**
+ * TypeScript declarations READ into Scala types (okay-codec's TsTypes,
+ * typescript-types T3): the direction where a type is written first in
+ * TypeScript. `TsTypes.scala(source, pkg)` answers Scala 2 source — a
+ * `final case class` or a `sealed trait` with its cases, each with its
+ * `Schema` in the companion, and `type` aliases — whose `Schema`s make
+ * the JSON codec write exactly the values those TypeScript types describe.
+ *
+ * It reads the declaration subset that describes DATA:
+ *  - `interface X { a: T; b?: T }` -> a case class (an optional field is
+ *    an `Option` defaulting to `None`);
+ *  - `type X = { A: A } | { B: B }` -> a sealed trait whose cases are the
+ *    named interfaces — the JSON codec's sum (`Stubs.typescript` writes
+ *    it); `type X = A | B` whose interfaces carry `type: "A"` is read the
+ *    same way (the wire's sum);
+ *  - `T[]`, `Array<T>` -> `Vector[T]`; `T | null` -> `Option[T]`;
+ *  - `string`, `number` (a `Double`), `boolean`, and the aliases
+ *    `Stubs.typescript` names — `Int`, `Long`, `Char`, `BigIntDigits`,
+ *    `Base64` — back to the exact Scala leaf;
+ *  - `type X = T` otherwise -> a Scala type alias.
+ *
+ * Anything else — generics, intersections, functions, tuples, `Record`,
+ * string-literal unions — is REFUSED by name and line, never guessed. A
+ * parser of this subset, not of TypeScript.
+ */
+object TsTypes {
+
+  sealed trait TsType
+  object TsType {
+    final case class Named(name: String, args: Vector[TsType]) extends TsType
+    final case class Arr(of: TsType) extends TsType
+    final case class Union(parts: Vector[TsType]) extends TsType
+    final case class Obj(fields: Vector[Field]) extends TsType
+    final case class Lit(value: String) extends TsType
+    case object Null extends TsType
+  }
+
+  final case class Field(name: String, tpe: TsType, optional: Boolean)
+
+  sealed trait Decl
+  object Decl {
+    final case class Interface(name: String, fields: Vector[Field]) extends Decl
+    final case class Alias(name: String, tpe: TsType) extends Decl
+  }
+
+  /** an exported function of a module: its parameters and its answer */
+  final case class Fn(name: String, params: Vector[Field], returns: TsType)
+
+  /** an export this reader does not type, and why (a generic, a callback…) */
+  final case class Unread(name: String, why: String)
+
+  /** a module's declarations: its data, its functions in order, and the
+   * type names its `import`s bring in */
+  final case class ModuleDecls(decls: Vector[Decl], functions: Vector[Either[Unread, Fn]], imported: Vector[String])
+
+  // ---------------------------------------------------------------- tokens
+
+  private sealed trait Tok
+  private object Tok {
+    final case class Id(s: String) extends Tok
+    final case class Str(s: String) extends Tok
+    final case class Num(s: String) extends Tok
+    final case class Sym(s: String) extends Tok
+  }
+
+  private final case class At(tok: Tok, line: Int)
+
+  private def tokens(src: String): Either[String, Vector[At]] = {
+    val out = Vector.newBuilder[At]
+    var i = 0
+    var line = 1
+    var bad: Option[String] = None
+    def peek(k: Int) = if (i + k < src.length) src.charAt(i + k) else '\u0000'
+    while (bad.isEmpty && i < src.length) {
+      val c = src.charAt(i)
+      if (c == '\n') { line += 1; i += 1 }
+      else if (c.isWhitespace) i += 1
+      else if (c == '/' && peek(1) == '/') {
+        while (i < src.length && src.charAt(i) != '\n') i += 1
+      }
+      else if (c == '/' && peek(1) == '*') {
+        i += 2
+        while (i < src.length && !(src.charAt(i) == '*' && peek(1) == '/')) {
+          if (src.charAt(i) == '\n') line += 1
+          i += 1
+        }
+        i += 2
+      }
+      else if (c.isLetter || c == '_' || c == '$') {
+        val start = i
+        while (i < src.length && (src.charAt(i).isLetterOrDigit || src.charAt(i) == '_' || src.charAt(i) == '$')) i += 1
+        out += At(Tok.Id(src.substring(start, i)), line)
+      }
+      else if (c.isDigit) {
+        val start = i
+        while (i < src.length && (src.charAt(i).isLetterOrDigit || src.charAt(i) == '.')) i += 1
+        out += At(Tok.Num(src.substring(start, i)), line)
+      }
+      else if (c == '"' || c == '\'') {
+        val q = c
+        val sb = new StringBuilder
+        i += 1
+        while (i < src.length && src.charAt(i) != q) {
+          if (src.charAt(i) == '\\' && i + 1 < src.length) { sb += src.charAt(i + 1); i += 2 }
+          else { sb += src.charAt(i); i += 1 }
+        }
+        i += 1
+        out += At(Tok.Str(sb.toString), line)
+      }
+      else if ("{}[]()<>|&;:?,=.*".indexOf(c.toInt) >= 0) {
+        out += At(Tok.Sym(c.toString), line)
+        i += 1
+      }
+      else bad = Some(s"line $line: unexpected '$c'")
+    }
+    bad.toLeft(out.result())
+  }
+
+  // ---------------------------------------------------------------- parser
+
+  private final class Refused(val why: String) extends RuntimeException(why)
+
+  private final class Parser(ts: Vector[At]) {
+    private var i = 0
+    private def line = if (i < ts.length) ts(i).line else ts.lastOption.fold(1)(_.line)
+    private def refuse(why: String): Nothing = throw new Refused(s"line $line: $why")
+    private def peek: Option[Tok] = ts.lift(i).map(_.tok)
+    private def next(): Tok = { val t = ts(i).tok; i += 1; t }
+    private def sym(s: String): Boolean = peek.contains(Tok.Sym(s))
+    private def id(s: String): Boolean = peek.contains(Tok.Id(s))
+    private def expect(s: String): Unit =
+      if (sym(s)) i += 1 else refuse(s"expected '$s', found ${peek.fold("the end")(describe)}")
+    private def describe(t: Tok): String = t match {
+      case Tok.Id(s) => s"'$s'"
+      case Tok.Str(s) => "\"" + s + "\""
+      case Tok.Num(s) => s
+      case Tok.Sym(s) => s"'$s'"
+    }
+    private def name(): String = next() match {
+      case Tok.Id(s) => s
+      case other => refuse(s"expected a name, found ${describe(other)}")
+    }
+
+    private val fns = Vector.newBuilder[Either[Unread, Fn]]
+    private val imports = Vector.newBuilder[String]
+
+    /** past the next `;` outside any brackets: the end of an export this
+     * reader gave up on */
+    private def skipStatement(): Unit = {
+      var depth = 0
+      var closedBlock = false // a class body ends its statement with no `;`
+      while (i < ts.length && !(depth == 0 && (sym(";") || closedBlock))) {
+        next() match {
+          case Tok.Sym("=") if sym(">") => i += 1 // an arrow, not a bracket
+          case Tok.Sym("(" | "{" | "[" | "<") => depth += 1
+          case Tok.Sym("}") => depth -= 1; closedBlock = depth == 0
+          case Tok.Sym(")" | "]" | ">") => depth -= 1
+          case _ => ()
+        }
+      }
+      if (sym(";")) i += 1
+    }
+
+    /** `import type { A, B as C } from "…";` -> A, C */
+    private def importNames(): Unit = {
+      while (i < ts.length && !sym(";") && !sym("{")) i += 1
+      if (sym("{")) {
+        i += 1
+        var last: Option[String] = None
+        while (i < ts.length && !sym("}")) {
+          next() match {
+            case Tok.Id("type") if !sym(",") && !sym("}") => ()
+            case Tok.Id("as") => ()
+            case Tok.Id(n) => last = Some(n)
+            case Tok.Sym(",") => last.foreach(imports += _); last = None
+            case _ => ()
+          }
+        }
+        last.foreach(imports += _)
+      }
+      while (i < ts.length && !sym(";")) i += 1
+      if (sym(";")) i += 1
+    }
+
+    /** `function f(a: T, b?: U): R;` — refused alone, not the module */
+    private def function(): Unit = {
+      val n = name()
+      val start = i
+      try {
+        if (sym("<")) refuse(s"function $n is generic; generics are not read")
+        expect("(")
+        val ps = Vector.newBuilder[Field]
+        while (!sym(")")) {
+          if (sym(".")) refuse(s"function $n takes a rest parameter")
+          val p = name()
+          val optional = sym("?")
+          if (optional) i += 1
+          expect(":")
+          ps += Field(p, union(), optional)
+          if (sym(",")) i += 1
+        }
+        expect(")")
+        expect(":")
+        val r = union()
+        if (sym(";")) i += 1
+        fns += Right(Fn(n, ps.result(), r))
+      } catch {
+        case r: Refused =>
+          i = start
+          skipStatement()
+          fns += Left(Unread(n, r.why))
+      }
+    }
+
+    def module(): ModuleDecls = {
+      val ds = decls(functions = true)
+      ModuleDecls(ds, fns.result(), imports.result())
+    }
+
+    def decls(functions: Boolean = false): Vector[Decl] = {
+      val out = Vector.newBuilder[Decl]
+      while (i < ts.length) {
+        if (id("export") || id("declare")) i += 1
+        else if (functions && id("import")) importNames()
+        else if (id("import")) {
+          while (i < ts.length && !sym(";")) i += 1
+          if (sym(";")) i += 1
+        }
+        else if (functions && id("function")) {
+          i += 1
+          function()
+        }
+        else if (functions && sym("{")) skipStatement() // `export {};`
+        else if (functions && (id("const") || id("let") || id("var") || id("class"))) {
+          val kind = peek.fold("")(describe)
+          i += 1
+          val n = name()
+          skipStatement()
+          fns += Left(Unread(n, s"a $kind export, not a function"))
+        }
+        else if (id("interface")) {
+          i += 1
+          val n = name()
+          if (sym("<")) refuse(s"interface $n is generic; generics are not read")
+          if (id("extends")) refuse(s"interface $n extends another; inheritance is not read")
+          out += Decl.Interface(n, obj())
+        }
+        else if (id("type")) {
+          i += 1
+          val n = name()
+          if (sym("<")) refuse(s"type $n is generic; generics are not read")
+          expect("=")
+          out += Decl.Alias(n, union())
+          if (sym(";")) i += 1
+        }
+        else if (sym(";")) i += 1
+        else refuse(s"only interfaces and type aliases describe data; found ${peek.fold("the end")(describe)}")
+      }
+      out.result()
+    }
+
+    private def obj(): Vector[Field] = {
+      expect("{")
+      val fs = Vector.newBuilder[Field]
+      while (!sym("}")) {
+        if (id("readonly") && ts.lift(i + 1).exists(a => a.tok != Tok.Sym(":") && a.tok != Tok.Sym("?"))) i += 1
+        val n = next() match {
+          case Tok.Id(s) => s
+          case Tok.Str(s) => s
+          case other => refuse(s"expected a field name, found ${describe(other)}")
+        }
+        if (sym("(")) refuse(s"field $n is a method; functions are not data")
+        val optional = sym("?")
+        if (optional) i += 1
+        expect(":")
+        fs += Field(n, union(), optional)
+        if (sym(";") || sym(",")) i += 1
+      }
+      expect("}")
+      fs.result()
+    }
+
+    private def union(): TsType = {
+      if (sym("|")) i += 1
+      val first = postfix()
+      if (sym("&")) refuse("an intersection (&) is not read")
+      if (!sym("|")) first
+      else {
+        val parts = Vector.newBuilder[TsType]
+        parts += first
+        while (sym("|")) {
+          i += 1
+          parts += postfix()
+        }
+        TsType.Union(parts.result())
+      }
+    }
+
+    private def postfix(): TsType = {
+      var t = primary()
+      while (sym("[")) {
+        i += 1
+        expect("]")
+        t = TsType.Arr(t)
+      }
+      t
+    }
+
+    private def primary(): TsType = peek match {
+      case Some(Tok.Sym("{")) => TsType.Obj(obj())
+      case Some(Tok.Sym("(")) =>
+        // `(x: T) => R` or `() => R`: a callback's type, not data
+        val arrow = (ts.lift(i + 1).map(_.tok), ts.lift(i + 2).map(_.tok)) match {
+          case (Some(Tok.Id(_)), Some(Tok.Sym(":" | "?" | ","))) | (Some(Tok.Sym(")")), _) => true
+          case _ => false
+        }
+        if (arrow) refuse("a function type is not data")
+        i += 1
+        val t = union()
+        expect(")")
+        if (sym("=")) refuse("a function type is not data")
+        t
+      case Some(Tok.Sym("[")) => refuse("a tuple is not read")
+      case Some(Tok.Str(s)) => i += 1; TsType.Lit(s)
+      case Some(Tok.Num(n)) => refuse(s"a number literal type ($n) is not read")
+      case Some(Tok.Id("null")) => i += 1; TsType.Null
+      case Some(Tok.Id(n)) =>
+        i += 1
+        val args =
+          if (!sym("<")) Vector.empty[TsType]
+          else {
+            i += 1
+            val as = Vector.newBuilder[TsType]
+            as += union()
+            while (sym(",")) { i += 1; as += union() }
+            expect(">")
+            as.result()
+          }
+        TsType.Named(n, args)
+      case other => refuse(s"expected a type, found ${other.fold("the end")(describe)}")
+    }
+  }
+
+  /** a module's declarations as `tsc --declaration` writes them: the data
+   * subset `parse` reads plus exported functions; a function that cannot
+   * be read is an `Unread`, the data still refuses as a whole */
+  def parseModule(source: String): Either[String, ModuleDecls] =
+    tokens(source).flatMap { ts =>
+      try Right(new Parser(ts).module())
+      catch { case r: Refused => Left(r.why) }
+    }
+
+  /** the declarations in `source`, or where and why they were refused */
+  def parse(source: String): Either[String, Vector[Decl]] =
+    tokens(source).flatMap { ts =>
+      try Right(new Parser(ts).decls())
+      catch { case r: Refused => Left(r.why) }
+    }
+
+  // ------------------------------------------------------------- Scala out
+
+  /** the names of the leaf aliases `Stubs.typescript` writes (`Int`, `Long`…):
+   * helpers of the generated file, not types of the model */
+  def leafAliases: Set[String] = leaves.keySet
+
+  /** the aliases `Stubs.typescript` writes for Scala leaves */
+  private val leaves = Map("Int" -> "Int", "Long" -> "Long", "Char" -> "Char",
+    "BigIntDigits" -> "BigInt", "Base64" -> "Array[Byte]")
+
+  private val scalaKeywords = Set("abstract", "case", "catch", "class", "def", "do", "else", "extends",
+    "false", "final", "finally", "for", "forSome", "if", "implicit", "import", "lazy", "macro", "match", "new",
+    "null", "object", "override", "package", "private", "protected", "return", "sealed", "super", "this",
+    "throw", "trait", "true", "try", "type", "val", "var", "while", "with", "yield")
+
+  private def ident(n: String): String =
+    if (n.matches("[A-Za-z_][A-Za-z0-9_]*") && !scalaKeywords(n)) n else s"`$n`"
+
+  /** Scala source for the data declarations in `source`, in package
+   * `pkg`, or the first refusal by name */
+  def scala(source: String, pkg: String): Either[String, String] =
+    parse(source).flatMap(ds => render(ds, pkg))
+
+  def render(decls: Vector[Decl], pkg: String): Either[String, String] =
+    renderData(decls, Set.empty).map(body =>
+      s"package $pkg\n\nimport okay2.codec.Schema\n\n// Generated by okay2.codec.TsTypes from TypeScript declarations: regenerate it, do not edit it.\n\n" +
+        body.mkString("\n\n") + "\n")
+
+  /** one TypeScript type as a Scala type, where `known` names the types
+   * in scope besides the leaves */
+  def scalaType(t: TsType, known: Set[String], where: String): Either[String, String] =
+    try Right(typeOf(t, known, where))
+    catch { case r: Refused => Left(r.why) }
+
+  /** `aliases`: the module's own `type X = T`, written IN PLACE, because
+   * Scala 2 has no top-level type alias; `seen` refuses a cycle of them */
+  private def typeOf(t: TsType, known: Set[String], where: String,
+                     aliases: Map[String, TsType] = Map.empty, seen: Set[String] = Set.empty): String = t match {
+    case TsType.Named("string", _) => "String"
+    case TsType.Named("number", _) => "Double"
+    case TsType.Named("boolean", _) => "Boolean"
+    case TsType.Named(n, Vector()) if leaves.contains(n) => leaves(n)
+    case TsType.Named("Array", Vector(of)) => s"Vector[${typeOf(of, known, where, aliases, seen)}]"
+    case TsType.Named("Record" | "Map", _) => throw new Refused(s"$where: a map is not read; a Schema has no map case")
+    case TsType.Named(n, Vector()) if aliases.contains(n) =>
+      if (seen(n)) throw new Refused(s"$where: the type alias '$n' refers to itself")
+      typeOf(aliases(n), known, where, aliases, seen + n)
+    case TsType.Named(n, Vector()) if known(n) => ident(n)
+    case TsType.Named(n, Vector()) => throw new Refused(s"$where: '$n' is not declared here")
+    case TsType.Named(n, _) => throw new Refused(s"$where: '$n<…>' is generic; generics are not read")
+    case TsType.Arr(of) => s"Vector[${typeOf(of, known, where, aliases, seen)}]"
+    case TsType.Union(parts) if parts.contains(TsType.Null) =>
+      parts.filterNot(_ == TsType.Null) match {
+        case Vector(one) => s"Option[${typeOf(one, known, where, aliases, seen)}]"
+        case _ => throw new Refused(s"$where: a union of several types besides null is not a field type")
+      }
+    case TsType.Union(_) => throw new Refused(s"$where: a union is read only as a whole `type` (a sum)")
+    case TsType.Obj(_) => throw new Refused(s"$where: an inline object type needs a name (an interface)")
+    case TsType.Lit(v) => throw new Refused(s"""$where: a literal type ("$v") is not read""")
+    case TsType.Null => throw new Refused(s"$where: null alone is not a type")
+  }
+
+  /** the companion that carries a type's `Schema`, which Scala 2's
+   * derivation finds by name for a recursive type */
+  private def companion(n: String, body: Vector[String]): String =
+    s"object ${ident(n)} {\n" + (body :+ s"  implicit lazy val schema: Schema[${ident(n)}] = Schema.derived").mkString("\n") + "\n}"
+
+  /** the Scala declarations for `decls`, one string each; `known` names
+   * types declared elsewhere (a module's imports) */
+  def renderData(decls: Vector[Decl], known: Set[String]): Either[String, Vector[String]] = {
+    val interfaces = decls.collect { case d: Decl.Interface => d.name -> d }.toMap
+    val aliasNames = decls.collect { case Decl.Alias(n, _) => n }.toSet
+    val inScope = known ++ interfaces.keySet ++ aliasNames
+    // an alias `type Int = number;` that Stubs wrote is a leaf, not a type
+    def isLeafAlias(d: Decl): Boolean = d match {
+      case Decl.Alias(n, TsType.Named(_, _)) => leaves.contains(n)
+      case _ => false
+    }
+
+    // the plain aliases, which Scala 2 cannot declare at the top level
+    lazy val plainAliases: Map[String, TsType] = decls.collect {
+      case d @ Decl.Alias(n, t) if !isLeafAlias(d) && !sumNames(n) => n -> t
+    }.toMap
+    lazy val sumNames: Set[String] = decls.collect { case Decl.Alias(n, TsType.Union(ps)) if !ps.contains(TsType.Null) => n }.toSet
+
+    def scalaType(t: TsType, where: String): String = typeOf(t, inScope, where, plainAliases)
+
+    def params(fields: Vector[Field], owner: String, skip: Set[String]): String =
+      fields.filterNot(f => skip(f.name)).map { f =>
+        val t = scalaType(f.tpe, s"$owner.${f.name}")
+        if (f.optional) {
+          if (t.startsWith("Option[")) s"${ident(f.name)}: $t = None"
+          else s"${ident(f.name)}: Option[$t] = None"
+        }
+        else s"${ident(f.name)}: $t"
+      }.mkString(", ")
+
+    /** the cases of a sum: `{ A: A } | …` (JSON's shape) or `A | B` whose
+     * interfaces carry `type: "A"` (the wire's) — each an interface */
+    def sumCases(parts: Vector[TsType]): Option[Vector[(String, Decl.Interface, Set[String])]] = {
+      val json = parts.map {
+        case TsType.Obj(Vector(Field(c, TsType.Named(i, Vector()), false))) if interfaces.get(i).exists(_ => c == i) =>
+          Some((c, interfaces(i), Set.empty[String]))
+        case _ => None
+      }
+      val wire = parts.map {
+        case TsType.Named(i, Vector()) => interfaces.get(i).flatMap { d =>
+          d.fields.headOption.collect { case Field("type", TsType.Lit(c), false) if c == i => (c, d, Set("type")) }
+        }
+        case _ => None
+      }
+      if (json.forall(_.isDefined)) Some(json.flatten)
+      else if (wire.forall(_.isDefined)) Some(wire.flatten)
+      else None
+    }
+
+    try {
+      val sums = decls.collect { case Decl.Alias(n, TsType.Union(ps)) if !ps.contains(TsType.Null) => n -> ps }
+      val cases = sums.map { case (n, ps) => n -> sumCases(ps).getOrElse(throw new Refused(
+        s"""type $n: a union is read as a sum when each member is { Case: Case } or an interface whose first field is type: "Case"""")) }
+      val inlined = cases.flatMap(_._2.map(_._2.name)).toSet
+      val sumMap = cases.toMap
+      val body = decls.flatMap {
+        case d if isLeafAlias(d) => None
+        case Decl.Interface(n, _) if inlined(n) => None
+        case Decl.Interface(n, fs) =>
+          Some(s"final case class ${ident(n)}(${params(fs, n, Set.empty)})\n" + companion(n, Vector.empty))
+        case Decl.Alias(n, _) if sumMap.contains(n) =>
+          val cs = sumMap(n).map { case (c, d, skip) =>
+            val ps = params(d.fields, s"$n.$c", skip)
+            if (ps.isEmpty) s"  case object ${ident(c)} extends ${ident(n)}"
+            else s"  final case class ${ident(c)}($ps) extends ${ident(n)}"
+          }
+          Some(s"sealed trait ${ident(n)}\n" + companion(n, cs))
+        // Scala 2 has no top-level alias: each use is written in place, and
+        // the declaration stays as the note of what it was
+        case Decl.Alias(n, t) => Some(s"// type ${ident(n)} = ${typeOf(t, inScope, n, plainAliases, Set(n))} (written in place)")
+      }
+      Right(body)
+    } catch { case r: Refused => Left(r.why) }
+  }
+}

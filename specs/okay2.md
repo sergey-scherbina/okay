@@ -2949,3 +2949,33 @@ okay2/backlog.d/modules/okay2-codec-tooling.
   2 does not refine `A` on a case pattern, so the cast-free instance is a
   method per case: the operation performs and decodes itself, and the
   instance forwards to it.
+
+## Stage 58 — okay2-codec-stubs: Stubs, StubFiles, TsTypes, TsCheck (2026-10-04)
+
+Operator: "Делай то что нужно для okay2 только сразу всё" — lane 2 of
+okay2/backlog.d/modules/okay2-codec-tooling.
+
+- [x] `Stubs.python`: a TypedDict per product, a type-tagged Union per
+      sum, dependencies first, a recursive type declared once (TestStubs)
+- [x] `Stubs.typescript`/`typescriptWire`/`typescriptOps`/`typescriptType`:
+      the JSON codec's shapes and the wire's, leaf aliases emitted only
+      when used (TestStubs)
+- [x] `Stubs.typescriptPaths`: every key it declares is one
+      `JsonOptic.path` accepts (TestStubsPaths)
+- [x] `TsTypes.parse`/`parseModule`/`scala`: the data subset read, the
+      rest refused by name and line; Scala -> TypeScript -> Scala exact,
+      the golden Scala compiled by the test build (TestTsTypes)
+- [x] `StubFiles` (JVM): rewritten only when the text changed (TestStubFiles)
+- [x] `TsCheck` (JVM): a live `tsc` decides, differences named by type
+      (TestTsCheck, TestStubsTsc; Live)
+- [x] JVM, Scala.js and Scala Native for `Stubs` and `TsTypes`
+
+### What differs from Scala 3
+- `TsTypes` writes Scala 2: a `final case class` or a `sealed trait`,
+  with cases and an `implicit lazy val schema` in the companion, so the
+  derivation finds a recursive type by name. A plain alias is written in
+  place, since Scala 2 has no top-level `type`, and a cycle of aliases is
+  refused. The rest of the output is Scala 3's.
+- The token, type and declaration enums are sealed traits.
+- okay2-codec gained a `scala-jvm` main source directory for the two
+  JVM files.
