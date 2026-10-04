@@ -103,7 +103,12 @@ claim=".work/active/$slug.claim"
     # `src/`, `project/` and the root `*.sbt` — one module per top-level
     # directory is this repository's layout, and it is the same seam
     # project/Affected.scala reads through the build's own directories.
+    # okay2/ is a build of its OWN (`cd okay2 && ../scripts/gate.sh`): its
+    # build.sbt is not this build's, so it is the module okay2, never BUILD
+    # (stack-host-three, 2026-10-04: two full re-gates of the core in one
+    # afternoon for siblings' okay2 lanes)
     module_of() { case "$1" in
+      okay2/*) echo okay2 ;;
       */*) case "$1" in project/*|*.sbt) echo BUILD ;; *) echo "${1%%/*}" ;; esac ;;
       *.sbt) echo BUILD ;; *) echo ROOT ;; esac; }
     mine=$(git diff --name-only "master...HEAD" -- . \
