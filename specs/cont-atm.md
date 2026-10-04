@@ -231,3 +231,18 @@ stateForeign), FibBenchmark.fib100 — arms alternated against master.
   The folds stay. What would reopen it: an in-place answer that allocates
   nothing (no lambda, no `Next`) and a machine that costs nothing to start —
   both measured here as the price, not assumed.
+
+## 8. What a step and a capture allocate (2026-10-04)
+
+- **`Next` per step stays** (delimited-next-per-step, refuted). One mutable slot per run in its place read
+  1.01–1.08x slower. Where the bytes did not move, C2 already removes the `Next`. Where they did, the
+  per-step writes to a shared object cost more than the allocation did. It also took a cast per step,
+  since a `Next`'s type members are what type the machine.
+- **A capture's `Found` and `Cut` are already free** (shift-capture-objects): the allocation profile of
+  delimDollarResume has neither. It had `Frames.End`, which has no fields, at 4.7% of the bytes. `Frames.end`
+  is now one instance for every index, one isolated cast: statePara 0.96x, contAnswer 0.95x,
+  delimDollarResume 0.96x (history.d shift-capture-end).
+- **A run costs ~56–60 ns to start** (machine-start-cost), with one capture in it, which is less than a step
+  of a long run.
+- **The strict leaf is cheaper than the lazy one** (cont-leaf-forms): 0.85x the time and 0.59x the bytes on
+  contAnswer's body. The lazy leaf is kept for stack safety where there is no StackSwitch (JS).
