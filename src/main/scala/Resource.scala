@@ -38,10 +38,13 @@ object Failing:
  * An operation is final by its VALUE where it has to be (`Maybe`,
  * `Choose`), so `isFinal` is a method, not only the type. What a marker
  * cannot know: a handler that decides NOT to resume an operation that
- * normally resumes (a timeout of its own, `Logic.once` dropping the
- * remaining alternatives). No effect system detects that without the
- * handler saying so. `bracketNow` (a `try/finally`) is the release that
- * holds even then.
+ * normally resumes (a timeout of its own). No effect system detects
+ * that without the handler saying so — which is how the drops in this
+ * library are told: an `abort` discontinues what it drops
+ * (`Shift.discontinue`), and `Logic.cut`/`observe` abandon the rest of a
+ * search (`Logic.abandon`, `Choose.abandon`; logic-cut-releases).
+ * `bracketNow` (a `try/finally`) is the release that holds even for a
+ * handler that says nothing.
  */
 trait Final:
   def isFinal: Boolean = true
@@ -318,9 +321,11 @@ object Resource {
  * outside: `raise`, `abort`, a `None`, `halt` and a pruned branch are
  * `Final` operations, and `Resource.run` releases before forwarding one
  * (bracket-final). What no marker can see is a handler that drops the
- * continuation of an operation that normally resumes (a timeout of its
- * own, `Logic.once` cutting alternatives). `bracketNow`'s `try/finally`
- * is the release that holds even then.
+ * continuation of an operation that normally resumes and does not say so
+ * (a timeout of its own); `Logic.cut` and `abort` do say so. A resource
+ * acquired before a `choose` is shared by its branches and released once
+ * (logic-cut-releases). `bracketNow`'s `try/finally` is the release that
+ * holds even then.
  *
  * This is the name cats (`bracket`), ZIO (`acquireReleaseWith`) and kyo
  * give the effect-polymorphic form. It belonged to `bracketNow` until
