@@ -13,3 +13,6 @@
 - Proven by Java sources (`okay-java/src/test/java/.../JavaEffects.java`)
   run by `TestJavaEffects`, 12 tests, including 1 000 000-deep Java
   recursion. specs/java-effects.md; docs/modules/okay-java.md.
+- `TestDocSnippets` reads `.java` sources too, so the Java example on
+  docs/modules/okay-java.md is pinned line by line to `JavaEffects.java`
+  (it had no way to pin a Java line before).

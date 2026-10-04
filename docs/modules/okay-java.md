@@ -19,31 +19,43 @@ RUN time (JEP 485) and are linked lazily, so nothing else here does.
 ## `Eff`: effects and handlers in Java
 
 An effect is a sealed interface of records, each naming the type it
-answers; a program is `Eff<A>`; a handler names the effect's class:
+answers; a program is `Eff<A>`; a handler names the effect's class. From
+`okay-java/src/test/java/okay/java/examples/JavaEffects.java`:
 
 ```java
-sealed interface Counter<R> extends Op<R> {
+public sealed interface Counter<R> extends Op<R> {
     record Next() implements Counter<Integer> {}
 }
-record Flip() implements Op<Boolean> {}
+public record Flip() implements Op<Boolean> {}
 
-Eff<Integer> two = Eff.perform(new Counter.Next())
-    .flatMap(a -> Eff.perform(new Counter.Next()).map(b -> a + b));
+public static Eff<Integer> twoNexts() {
+    return Eff.perform(new Counter.Next())
+        .flatMap(a -> Eff.perform(new Counter.Next()).map(b -> a + b));
+}
 
-two.handle(Handler.answer(Counter.class, op -> 21)).run();          // 42
-two.handle(StateHandler.of(Counter.class, 10,
-        (n, op) -> Stated.of(n + 1, n))).run();                     // Stated(12, 21)
-two.handle(Handler.into(Counter.class, op -> Eff.<Integer>modify(n -> n + 1)))
-   .handle(StateHandler.state(0)).run();                            // Stated(2, 3)
+// form 1: each operation answered
+return twoNexts().handle(Handler.answer(Counter.class, op -> 21)).run();
 
-// the continuation in hand: resumed twice, every answer of two flips
-Eff<Integer> flips = Eff.perform(new Flip())
-    .flatMap(a -> Eff.perform(new Flip()).map(b -> (a ? 1 : 0) + (b ? 2 : 0)));
+// form 2: a state threaded through the operations
+return twoNexts()
+    .handle(StateHandler.of(Counter.class, 10, (n, op) -> Stated.of(n + 1, n)))
+    .run();
+
+// form 3: each operation a program in another effect — here the core State
+return twoNexts()
+    .handle(Handler.into(Counter.class, op -> Eff.<Integer>modify(n -> n + 1)))
+    .handle(StateHandler.state(0))
+    .run();
+
+// form 4: the continuation in hand, resumed twice
 Control<Integer, List<Integer>> all = Control.of(Flip.class,
     (Integer a) -> Eff.pure(List.of(a)),
     (op, k) -> k.resume(true).flatMap(xs -> k.resume(false).map(ys -> concat(xs, ys))));
-flips.handle(all).run();                                           // [3, 1, 2, 0]
+return twoFlips().handle(all).run();
 ```
+
+The four answer `42`, `Stated(12, 21)`, `Stated(2, 3)` and, over two
+flips scored `(a ? 1 : 0) + (b ? 2 : 0)`, `[3, 1, 2, 0]` — every branch.
 
 These are the core's four handler forms (specs/handler-forms.md), and
 underneath they ARE the core's — `Handler.answerOf`, `stateOf`,

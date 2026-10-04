@@ -46,7 +46,7 @@ class TestDocSnippets extends munit.FunSuite:
 
   // a .ts module a test runs (okay-py/src/test/resources) is a tested source
   // too, and so is a live check script's program (scripts/ts-npm-check.sh)
-  private val sourceSuffixes = Vector(".scala", ".clj", ".fr", ".ts", ".sh", ".rs", ".go")
+  private val sourceSuffixes = Vector(".scala", ".java", ".clj", ".fr", ".ts", ".sh", ".rs", ".go")
 
   private def sourceLines(roots: Vector[String]): Set[String] =
     roots.flatMap { r =>
