@@ -92,9 +92,35 @@ and every handler that needs `k`.
       (`HandleFrames.statefulAll` with the union of the stack's `takes`), so a run nested in a machine keeps
       working as `HandleFrames.Run` does today.
 
+## Dispatch: a table, not a chain of tests (operator, 2026-10-04)
+
+"Строить какую то таблицу эффектов и по ней прямым переходом выполнять нужный хендлер." The fused loop
+must not test the operation against the stack's handlers one by one. Two levels:
+
+1. **At run time: a table keyed by the operation's EXACT class, filled lazily.** Every operation is a
+   class of its own (`Get`, `Set`, `Tell`). The stack carries a small table, operation class → handler
+   index. A hit is one class compare (`op.getClass eq c`, or a small identity hash when the stack sees many
+   classes), then a direct call of `steps(i)`. A miss, once per class per stack, runs the `TypeableK` tests
+   innermost first and records the index it finds. Correctness stays with `TypeableK`, and the table is only
+   its cache. An exact-class compare is cheaper than the effect's own test: an effect is a sealed TRAIT, and
+   `instanceof` against an interface scans the class's secondary supers.
+2. **At compile time: the whole stack known at one call.** `p.handle(h1, h2, h3)` with statically known
+   handlers lets a macro write the fused loop itself: a `match` over the operation classes whose branches
+   ARE the steps, inlined. No table, and no virtual call of a step either. This is `Direct.staged`'s
+   technique (2.24x over a Free direct block) applied to a handler stack.
+
+Limits written down now:
+- An instance by NAME (`Tag`, `Lexical`, two `State % Int`) is not told apart by class. Its table entry
+  says "test the instance", which is the fallback test.
+- Level 1's call of a step through the table is megamorphic, since every handler's step differs: ~3 ns.
+  Level 2 removes it.
+- For 2–3 handlers C2 already profiles a short chain of tests well, so the table may not beat it. Stage 0
+  measures chain against table at 2, 4 and 8 handlers before either is chosen.
+
 ## Stages
 
-0. **Re-measure the prize** before building anything. The last numbers predate the step engines, `Delimited`
+0. **Re-measure the prize** before building anything. Measure dispatch as well: the chain of tests
+   against the class table at 2, 4 and 8 handlers. The last numbers predate the step engines, `Delimited`
    and `Pure[+A]` (handler-fusion, 2026-09-27: fused against nested 1.36x / 1.31x on `foldLeft`-built
    programs, **1.05x right-nested**). FusionBenchmark's SW / TSW / SWr lanes on today's master, and beside
    them a hand-written two-state fused loop (the prototype of stage 2 for State + Writer only). This stage
