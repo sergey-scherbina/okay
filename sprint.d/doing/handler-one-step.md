@@ -22,4 +22,14 @@
       Chronicle, Generate (stopping), Writer.foldUntil, Lexical.walk, Maybe,
       Logic.msplit, Resource, Effects.handle/relay/translate — need a form of
       their own (a step answering "resume with (s2, v)" OR "stop with r").
+      STAGE 3 (2026-10-04): `HandleFrames.stateRunOr` — a step answering
+      `(s2, v)` or `Stop(program)` (allocated only on the stop): Chronicle
+      (dictate / halt) on it; Lexical.walk on `stateRun` (stateLexWalk 1.00x).
+      The state-threading folds are all on the three engines now. LEFT, and
+      of another nature: `State.zoomWith` and `Maybe.prune` RE-TELL one effect
+      as another (translate-shaped; `Distinct` keeps them off
+      `Effects.translate`, Maybe's own comment); Resource (finalizers, a catch
+      frame); Logic.msplit (a search); Effects.handle/relay/translate (the
+      clause gets `k`). They are not one-step state folds — handler-api-surface
+      is where they belong.
 

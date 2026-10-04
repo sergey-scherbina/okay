@@ -1,0 +1,1 @@
+2026-10-04	-	quiet	stateLexWalk_one_step	21.075	20.991	1.00	Lexical.walk on HandleFrames.stateRun against its hand loop, master 11b4f93f5; min of 2 alternating rounds; 302416 vs 302392 B/op. Chronicle (stateRunOr) has no lane; its tests cover it
