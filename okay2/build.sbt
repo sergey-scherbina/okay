@@ -362,14 +362,16 @@ lazy val okay2Pg = crossProject(JVMPlatform, JSPlatform)
 /** okay-persist's log primitives for the Scala 2 core (okay2-jdbc-writes):
  * Record, Ack, Policy, Topic, Store, the typed CBOR view, Offsets,
  * Snapshots and the memory engine — what okay2-jdbc's Writes, Poll and
- * SqlStore stand on. Pure, so it cross-builds; the file and replicated
- * engines, the wire and the durable workflow are not ported */
+ * SqlStore stand on — with Configs and the streaming reads (`Streams`,
+ * okay2-stream's `Source`) shared, and on the JVM the file engine,
+ * `Segments` and `Doctor` (okay2-persist-file), as okay-persist keeps
+ * them in scala-jvm */
 lazy val okay2Persist = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay2-persist"))
-  .dependsOn(okay2Codec)
+  .dependsOn(okay2Codec, okay2Stream, okay2Platform % Test)
   .settings(name := "okay2-persist", common)
-  .jvmSettings(jvmOnlyTests)
+  .jvmSettings(jvmOnlyTests, platformSources("scala-jvm"))
   .jsSettings(jsTests)
   .jvmConfigure(_.withId("okay2Persist"))
 

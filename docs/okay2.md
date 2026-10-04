@@ -2301,7 +2301,58 @@ State operation's answer type (the instance's typed doors are the API,
 `perform` is one cast), and there is no `Bisim` twin, so the suites
 compare values.
 
-## 37. Literature
+## 37. The durable log
+
+`okay2-persist` is okay-persist's log for Scala 2: a named, partitioned,
+append-only log of byte records, where the offset is the resume token.
+The memory engine and the typed CBOR view came first, for okay2-jdbc.
+On the JVM there is also the file engine, `FileStore`. Each partition is
+a run of segment files with a self-describing header and CRC32C-checked
+frames, in the same byte format as the Scala 3 engine, so either one
+reads the other's files. A crash leaves a torn tail, and recovery cuts
+it off. The next append reuses the offset nobody was ever told about:
+
+```scala
+    assertEquals(t2.end(0), 3L)
+    assert(Files.size(seg) < torn, "the torn tail was not truncated")
+    assertEquals(t2.append(0, Array.empty[Byte], bytes("v3"), Ack.Durable), 3L)
+```
+
+A second handle on the same directory sees what the writer appends,
+including segments it rolls and segments its retention deletes. That is
+the two-process arrangement, one writer and one reading replica.
+`Doctor.scan(root)` answers "is this backup restorable?" before anyone
+needs the answer. It reads the documented format with its own code, so
+it checks the writer instead of sharing its bugs. A torn tail on a
+partition's last segment is normal. Damage in a closed segment means
+the copy is bad. `Segments.parse` reads one segment's bytes wherever
+they are kept.
+
+`Configs` stores each config as one more keyed, compacted topic. The
+log already gives you the history, and rollback is just reading an
+older offset:
+
+```scala
+    assertEquals(c.at[Db]("db", o2).map(_._2), Some(Right(Db("jdbc:h2:mem:a", "app", "env:PG2"))))
+```
+
+`Streams.stream` reads a partition as an okay2-stream `Source` of
+chunks, one `Async` operation per chunk, and ends when it catches up.
+`Streams.tail` never ends: once caught up it waits on the platform
+timer and polls again. `Streams.chunks` is the blocking form that a
+dataflow partition pulls from. A reader whose offset fell out of
+retention gets a decision it chose in advance, not an empty read:
+
+```scala
+    val e = intercept[Streams.DroppedHistory](takeChunks(Streams.stream(t, 0, 0L), 1))
+```
+
+The segment log is Kafka's design (Kreps, Narkhede and Rao, "Kafka: a
+Distributed Messaging System for Log Processing", NetDB 2011). The
+crash rule, where a torn tail is truncated, is how write-ahead logs
+have always recovered (Mohan et al., "ARIES", TODS 1992).
+
+## 38. Literature
 
 - Marek Materzok and Dariusz Biernacki, "A dynamic interpretation of the
   CPS hierarchy" (APLAS 2012): λ$ and the `$` delimiter; Dariusz

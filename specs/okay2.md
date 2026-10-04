@@ -2837,3 +2837,54 @@ lane of okay2-codec-dialects.
   are each road's own, as in stage 41's JSON.
 - `Yaml`'s relex key is the mode's tag without its positions, which is
   what Scala 3's `ordinal` gave.
+
+## Stage 56 — okay2-persist-rest: the rest of okay-persist (2026-10-04)
+
+Operator: "Делай то что нужно для okay2 только сразу всё". Stage 42's
+lane 2 made `okay2-persist` the log only. This stage ports the rest of
+okay-persist in four lanes, each landed on its own, following
+okay-persist's own suites and their tagging.
+
+### Lane 1 — okay2-persist-file: the file engine and the log's readers
+- [x] `FileStore` (JVM, okay-persist keeps it in scala-jvm): segments
+      with a self-describing header and v2 CRC32C frames, the same bytes
+      as the Scala 3 engine; recovery truncates a torn tail, a newer
+      format is refused naming the file, a v1 active segment is closed
+      and a v2 one rolled; retention by whole segments; compaction by
+      atomic rename; a second handle sees appends, rolls and deletions
+      (TestFileStore, the StoreSuite contract on files)
+- [x] the openers race: several openers on one empty directory, the
+      loser recovering the winner's segment (TestFileStoreRace; the
+      24-opener law `Live`, as okay-persist tags it)
+- [x] `Segments.parse`: a segment's bytes to records, total, `sound`
+      false on a torn tail, `Refused` for a header it must not guess
+- [x] `Doctor.scan`: the independent reader's restorability verdict
+      (TestDoctor)
+- [x] `Configs` (shared): a compacted keyed topic of JSON configs;
+      history, `latest`, rollback as a read, the ambient door
+      (TestConfigs)
+- [x] `Streams` (shared): `stream`, `tail` and `chunks` over
+      okay2-stream's `Source`/`Chunks`, `DroppedHistory` by declared
+      decision (TestStreams, JVM: the tail test starts a thread)
+
+### Lane 2 — the wire
+- [ ] `WireProtocol`, `Wire` (server and client), `RemoteStore`; the
+      wire suites as okay-persist tags them
+
+### Lane 3 — replication and Raft
+- [ ] `Election`, `Replicated`, `Raft` (in-process, simulated network),
+      `RaftStore` and `RaftWire` with `Stable`
+
+### Lane 4 — the durable workflow over the log
+- [ ] `Dialogue`, `Worker`, `Saga`, `Signals`, `Timers`, `Cancels`,
+      `Children`, `Leases`, `Queues`, `Statuses`, `Retire`, `Resume`
+      over okay2-workflow's `Wf`
+
+### What differs from Scala 3 (lane 1)
+- `Repair` is not ported: it signals okay's `Condition`, which okay2
+  does not have.
+- `openExisting` decides inside the `catch` and recurses after it, since
+  Scala 2's `@tailrec` does not count a call inside a handler as a tail
+  call.
+- `okay2-persist` now depends on okay2-stream (for `Streams`), and on
+  okay2-platform in test scope.

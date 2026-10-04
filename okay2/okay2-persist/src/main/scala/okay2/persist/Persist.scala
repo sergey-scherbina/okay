@@ -6,10 +6,12 @@ package okay2.persist
  * tokens. BYTES in the engine, Schema/CBOR at the edge (`Typed`). Traits,
  * not effect rows: the log is infrastructure a HANDLER owns.
  *
- * okay2-persist holds the log's primitives only — Record, Ack, Policy,
- * Topic, Store, the typed view, Offsets, Snapshots and the memory engine
- * — what okay2-jdbc's Writes, Poll and SqlStore stand on. The file and
- * replicated engines, the wire and the durable workflow are not ported.
+ * okay2-persist holds the log's primitives — Record, Ack, Policy, Topic,
+ * Store, the typed view, Offsets, Snapshots and the memory engine, what
+ * okay2-jdbc's Writes, Poll and SqlStore stand on — with Configs, the
+ * streaming reads and, on the JVM, the file engine (specs/okay2.md stage
+ * 56). The replicated engines, the wire and the durable workflow follow
+ * in that stage's later lanes.
  */
 
 /** what the log stores; `key` may be empty (unkeyed append). The offset
