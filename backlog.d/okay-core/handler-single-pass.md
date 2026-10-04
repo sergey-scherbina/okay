@@ -32,3 +32,9 @@
       the boxed accumulator, the builder's closures — not the rotation
       and not `Bind(Return, g)`; the shape itself is ≤1.1x
       (left-nested-build-cost). The bar above stands as written.
+      DESIGNED 2026-10-04 (operator): specs/handler-single-pass.md. `handle`
+      REGISTERS a handler on a stack and `run` walks ONCE, with one match over
+      the whole stack. The abstraction between the handlers and the machine is
+      the step (`init`/`step`/`ret`), which every state-threading built-in has
+      had since handler-one-step. Handlers that need `k` split the stack.
+      Next: stage 0 there (re-measure, a two-state prototype).
