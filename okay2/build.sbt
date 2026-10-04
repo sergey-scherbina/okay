@@ -366,14 +366,18 @@ lazy val okay2Pg = crossProject(JVMPlatform, JSPlatform)
  * SqlStore stand on — with Configs and the streaming reads (`Streams`,
  * okay2-stream's `Source`) shared, and on the JVM the file engine,
  * `Segments` and `Doctor` (okay2-persist-file), as okay-persist keeps
- * them in scala-jvm */
+ * them in scala-jvm; `Replicated`, `Election` and the `Raft` core
+ * shared (okay2-persist-raft); the wire's shared client and, on the
+ * JVM, its server, `RemoteStore`, `RaftWire` and `RaftStore`
+ * (okay2-persist-wire) */
 lazy val okay2Persist = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay2-persist"))
-  .dependsOn(okay2Codec, okay2Stream, okay2Platform % Test)
+  // okay2-platform for the wire's `Net` seam and its threads
+  .dependsOn(okay2Codec, okay2Stream, okay2Platform)
   .settings(name := "okay2-persist", common)
   .jvmSettings(jvmOnlyTests, platformSources("scala-jvm"))
-  .jsSettings(jsTests)
+  .jsSettings(jsTests, platformTests("scala-js"))
   .jvmConfigure(_.withId("okay2Persist"))
 
 /** okay-http's transport half for the Scala 2 core: Request/Response/

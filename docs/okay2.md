@@ -2477,6 +2477,25 @@ thread. Raft is Ongaro and Ousterhout's ("In Search of an
 Understandable Consensus Algorithm", USENIX ATC 2014), with the
 membership change and pre-vote from Ongaro's thesis (Stanford, 2014).
 
+The log can also be reached over a network. `WireProtocol` defines the
+frames, a four-byte length followed by CBOR, and a client that runs
+unchanged on the JVM and on Node over okay2-platform's `Net`.
+`Wire.Server` serves one store, and its handshake answers with the list
+of topics the token may see. A request for any other topic is refused
+by name:
+
+```scala
+        val e = intercept[Wire.WireRefused](run(c.append("audit", 0, Array.empty[Byte], bytes("sneak"))))
+```
+
+`RemoteStore` turns a remote node into a `Store`, so `Replicated` can
+use it as a replica without any change. `RaftWire.Node` runs the Raft
+core over real sockets. `Stable` keeps the current term and vote in a
+file that is replaced atomically. `RaftStore` is a `Store` whose
+appends go through the Raft log, and every node applies committed
+entries to its local store in log order. Every suite that binds a port
+is tagged `Live`, so `liveOnly; okay2Persist/test` runs them.
+
 The segment log is Kafka's design (Kreps, Narkhede and Rao, "Kafka: a
 Distributed Messaging System for Log Processing", NetDB 2011). The
 crash rule, where a torn tail is truncated, is how write-ahead logs

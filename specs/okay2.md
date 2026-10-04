@@ -2888,15 +2888,47 @@ coordinator comes before the wire.
       after every event (TestRaftSim)
 - [x] JVM, Scala.js and Scala Native (TestElectionFile on the JVM)
 
-### Lane 3 — the wire
-- [ ] `WireProtocol`, `Wire` (server and client), `RemoteStore`,
-      `RaftWire` with `Stable`, `RaftStore`; the wire suites as
-      okay-persist tags them
+### Lane 3 — okay2-persist-wire: the wire, RemoteStore, RaftWire, RaftStore
+- [x] `WireProtocol` (shared): `Req`/`Resp`, `[len:int32][CBOR]` frames
+      over okay2-platform's `Net`, and the cross-platform `Client` — the
+      same code on the JVM and on Node (TestWireClient against the JVM
+      server; TestWireNode against a scripted Node server)
+- [x] `Wire.Server` (JVM): the handshake's capability list as the offer,
+      refusals by name, a replicated name routed to its coordinator,
+      TLS as a `ServerSocket` the caller builds; `Wire.Remote`, the Async
+      client with its synchronous half (TestWire, TestWireRepl)
+- [x] `RemoteStore` (JVM): a remote node as one of `Replicated`'s replicas
+      (TestWireRepl)
+- [x] `RaftWire.Node` (JVM): the Raft core over real sockets — election,
+      forwarding, membership changes with the addresses in the log,
+      compaction and InstallSnapshot — with `Stable` keeping the term and
+      the vote (TestRaftWire, TestStable)
+- [x] `RaftStore` (JVM): a `Store` over the Raft log, local stores applied
+      in log order, a follower's append carried to the leader, the store's
+      own snapshot and restore (TestRaftStore)
+- [x] every suite that binds a port is `Live` (AGENTS.md): TestWire,
+      TestWireClient, TestWireRepl, TestWireNode, TestRaftWire and
+      TestRaftStore whole, TestStable's node test by name. okay-persist
+      leaves the first three and TestWireNode untagged.
 
 ### Lane 4 — the durable workflow over the log
 - [ ] `Dialogue`, `Worker`, `Saga`, `Signals`, `Timers`, `Cancels`,
       `Children`, `Leases`, `Queues`, `Statuses`, `Retire`, `Resume`
       over okay2-workflow's `Wf`
+
+### What differs from Scala 3 (lane 3)
+- `Wire` cannot `export` the shared protocol, so it carries aliases
+  (`type Req = WireProtocol.Req`, `val Req = WireProtocol.Req`, …): every
+  `Wire.*` path reads as in Scala 3.
+- `Resp.Done` is a case object rather than `Done()`.
+- `TestWireTls` is not ported: okay2 has no TLS module. The seams it
+  tests are here (`Server(socket = …)`, `Remote.connect(wrap = …)`).
+- TestRaftWire's first test reads the leader inside its settle wait: read
+  between two waits it was `None` once on a loaded box, when a missed
+  heartbeat elected a new term.
+- `RaftStore` holds its node as an `Option` set by `start`, where Scala 3
+  used `RaftWire.Node | Null`; the snapshot's early exits are an
+  `Either` fold rather than `boundary`/`break`.
 
 ### What differs from Scala 3 (lane 2)
 - `RaftMsg` carries `stepTerm` (a PreVote's is 0), and `Raft.handle`
