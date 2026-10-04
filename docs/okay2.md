@@ -2395,6 +2395,32 @@ retention gets a decision it chose in advance, not an empty read:
     val e = intercept[Streams.DroppedHistory](takeChunks(Streams.stream(t, 0, 0L), 1))
 ```
 
+`Replicated` puts one coordinator over several replica stores, behind
+the same `Topic`. Replication is a consumer that writes what it reads.
+Reads never go past the high-water mark, the end that a quorum of
+replicas has reached, so a reader cannot see a record that a failover
+would take back. `Ack.Replicated` waits for a quorum and throws
+`NoQuorum` when it cannot get one. A leader handle from before a
+`promote` is fenced:
+
+```scala
+    intercept[Replicated.Fenced](t.append(old, bytes("k"), bytes("late"), Ack.Durable))
+```
+
+`Election` decides leadership by folding a control topic. The first
+claim at an epoch wins on every node's fold, and leases only decide
+when a takeover may begin. `Raft` is the consensus core as a pure
+function from a state and a message to a new state and the messages to
+send. It covers pre-vote, elections, log replication, commit safety,
+single-server membership changes, compaction and InstallSnapshot.
+TestRaftSim drives it through a discrete-event simulation over 40
+seeds, with dropped and reordered messages, a partition and a
+membership change, and checks the safety properties after every event.
+A seed replays exactly, because nothing in it reads a clock or a
+thread. Raft is Ongaro and Ousterhout's ("In Search of an
+Understandable Consensus Algorithm", USENIX ATC 2014), with the
+membership change and pre-vote from Ongaro's thesis (Stanford, 2014).
+
 The segment log is Kafka's design (Kreps, Narkhede and Rao, "Kafka: a
 Distributed Messaging System for Log Processing", NetDB 2011). The
 crash rule, where a torn tail is truncated, is how write-ahead logs

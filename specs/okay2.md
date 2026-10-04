@@ -2867,18 +2867,44 @@ okay-persist's own suites and their tagging.
       okay2-stream's `Source`/`Chunks`, `DroppedHistory` by declared
       decision (TestStreams, JVM: the tail test starts a thread)
 
-### Lane 2 — the wire
-- [ ] `WireProtocol`, `Wire` (server and client), `RemoteStore`; the
-      wire suites as okay-persist tags them
+### Lane 2 — okay2-persist-raft: replication, election and the Raft core
+The wire's server routes a replicated name to its coordinator, so the
+coordinator comes before the wire.
+- [x] `Replicated`: quorum acks, reads truncated to the high-water mark,
+      epoch fencing with the rejection as an ops event, the idempotent
+      producer window, `promote` catching the successor up first,
+      `replicate` as the pull (TestReplicated)
+- [x] `Election`: leadership as a fold of a control topic, the first
+      `Take` at an epoch winning on every fold, leases deciding liveness,
+      the `Operator` record outranking automation (ElectionSuite over
+      memory, TestElection, and the FileStore arbiter, TestElectionFile);
+      the election driving `promote` (TestElectionReplicated, `Live` as
+      okay-persist tags it)
+- [x] `Raft`: the pure core — pre-vote, election, log replication with
+      conflict-only truncation, commit safety (Figure 8), single-server
+      membership changes, compaction and InstallSnapshot (TestRaft), and
+      the seed-swept discrete-event simulation over 40 seeds with loss,
+      reordering, a partition and a membership change, safety checked
+      after every event (TestRaftSim)
+- [x] JVM, Scala.js and Scala Native (TestElectionFile on the JVM)
 
-### Lane 3 — replication and Raft
-- [ ] `Election`, `Replicated`, `Raft` (in-process, simulated network),
-      `RaftStore` and `RaftWire` with `Stable`
+### Lane 3 — the wire
+- [ ] `WireProtocol`, `Wire` (server and client), `RemoteStore`,
+      `RaftWire` with `Stable`, `RaftStore`; the wire suites as
+      okay-persist tags them
 
 ### Lane 4 — the durable workflow over the log
 - [ ] `Dialogue`, `Worker`, `Saga`, `Signals`, `Timers`, `Cancels`,
       `Children`, `Leases`, `Queues`, `Statuses`, `Retire`, `Resume`
       over okay2-workflow's `Wf`
+
+### What differs from Scala 3 (lane 2)
+- `RaftMsg` carries `stepTerm` (a PreVote's is 0), and `Raft.handle`
+  dispatches to one method per message, where Scala 3 matched the enum
+  twice — once for the term, once for the transition.
+- The simulator's `Event` and `Kind` live in `object TestRaftSim`: a case
+  class nested in the suite carries an outer reference its pattern
+  cannot check.
 
 ### What differs from Scala 3 (lane 1)
 - `Repair` is not ported: it signals okay's `Condition`, which okay2
