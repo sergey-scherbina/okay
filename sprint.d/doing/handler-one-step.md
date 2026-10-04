@@ -1,4 +1,4 @@
-- [ ] handler-one-step — PRIORITY: HIGH, STAGE 1 LANDED 2026-10-04 (operator, 2026-10-04: "что еще …
+- [ ] handler-one-step — PRIORITY: HIGH, STAGES 1-2 LANDED 2026-10-04 (operator, 2026-10-04: "что еще …
       слишком сложно"). Every handler (~20: State, Writer, Supply, Refs,
       Once, Chronicle, Generate, Lexical, Resource, Maybe, Logic,
       Effects.handle/relay/translate, Handler.stateOf …) is written TWICE:
@@ -22,4 +22,12 @@
       Chronicle, Generate (stopping), Writer.foldUntil, Lexical.walk, Maybe,
       Logic.msplit, Resource, Effects.handle/relay/translate — need a form of
       their own (a step answering "resume with (s2, v)" OR "stop with r").
+      STAGE 2 (2026-10-04): `HandleFrames.stateRunUntil` — the same, stopping
+      when the state is done (start or after a step). On it: Generate.foldUntil
+      and Writer.foldUntil; Generate.fold and .each on `stateRun`. -84 +36
+      lines; writerFoldUntilOfLong 1.01x, writerUnfoldFoldUntil 1.00x,
+      streamSpecialized 1.00x (history.d handler-one-step-2). LEFT: Chronicle,
+      Lexical.walk (instances), Maybe, Logic.msplit, Resource, State.zoomWith
+      (re-tells), Effects.handle/relay/translate — capture, re-tell or
+      finalize; each needs reading before a form is chosen.
 
