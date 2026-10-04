@@ -17,7 +17,7 @@ class TestSwing extends munit.FunSuite {
 
   import Ui.*
 
-  def now[A](p: A ! Async): A = !.run(Async.run[A, Nothing](p))
+  def now[A](p: A ! Async): A = !.run(Async.run[A, okay.Pure](p))
 
   /** a component tree as a string: what a frame LOOKS like, structurally */
   def show(c: Component): String = c match

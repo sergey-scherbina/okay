@@ -22,7 +22,7 @@ class TestPg extends munit.FunSuite {
   val host = sys.env.getOrElse("OKAY_PG_HOST", "127.0.0.1")
   val port = sys.env.get("OKAY_PG_PORT").flatMap(_.toIntOption).getOrElse(5432)
 
-  def connect(): PgSql = okay.!.run(okay.Async.run[PgSql, Nothing](PgSql.connect(host, port, "okay", "okay", "okay")))
+  def connect(): PgSql = okay.!.run(okay.Async.run[PgSql, okay.Pure](PgSql.connect(host, port, "okay", "okay", "okay")))
 
   lazy val available: Boolean =
     try { connect().close(); true }
@@ -54,7 +54,7 @@ class TestPg extends munit.FunSuite {
     try f(db)
     finally db.close()
 
-  def run[A](prog: A ! Async): A = !.run(Async.run[A, Nothing](prog))
+  def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.Pure](prog))
 
   def collectChunks[A](s: Source[Chunk[A]]): List[Chunk[A]] =
     summon[Stream[[W] =>> Unit ! Writer % W + Async, Async]].iterator(s).toList
@@ -70,7 +70,7 @@ class TestPg extends munit.FunSuite {
       val one = collectChunks(db.query("select 1")).flatten
       assertEquals(one, List(Vector(SqlValue.I32(1))))
     }
-    intercept[PgError](okay.!.run(okay.Async.run[PgSql, Nothing](PgSql.connect(host, port, "okay", "wrong-password", "okay"))))
+    intercept[PgError](okay.!.run(okay.Async.run[PgSql, okay.Pure](PgSql.connect(host, port, "okay", "wrong-password", "okay"))))
   }
 
   test("the typed layer runs over the wire: rows by label, verify with catalog nullability") {
@@ -123,7 +123,7 @@ class TestPg extends munit.FunSuite {
   test("transact over the wire: granted isolation read back; an abort rolls back") {
     assume(available, s"no Postgres at $host:$port — the live suite skips")
     withDb { db =>
-      val g = !.run(Async.run[Granted, Nothing](Resource.run[Granted, Async](
+      val g = !.run(Async.run[Granted, okay.Pure](Resource.run[Granted, Async](
         Typed.transact[Granted, Async](db, Isolation.RepeatableRead)(g => okay.pure(g)))))
       assertEquals(g.granted, Isolation.RepeatableRead)
       assert(!g.downgraded)
@@ -158,7 +158,7 @@ class TestPg extends munit.FunSuite {
             catch { case _: PgError => 0L }
           }))
       }
-      val e = intercept[PgError](!.run(Async.run[Long, Nothing](Resource.run[Long, Async](prog))))
+      val e = intercept[PgError](!.run(Async.run[Long, okay.Pure](Resource.run[Long, Async](prog))))
       assert(e.getMessage.contains("ROLLBACK"), e.getMessage)
       val n = collectChunks(db.query("select count(*) from customer where id = 31")).flatten
       assertEquals(n.head.head, SqlValue.I64(0), "the aborted transaction's insert is not there")
@@ -181,7 +181,7 @@ class TestPg extends munit.FunSuite {
       // a's whole transaction, run to completion INSIDE b's first run,
       // between b's read and b's write — the classic rw-conflict cycle
       def aWrites(): Unit =
-        !.run(Async.run[Long, Nothing](Resource.run[Long, Async](
+        !.run(Async.run[Long, okay.Pure](Resource.run[Long, Async](
           Typed.transact[Long, Async](a, Isolation.Serializable) { _ =>
             !.widen[Long, Async, Resource](count(a).flatMap(_ => a.update("insert into ssi values (1)")))
           }))): Unit
@@ -267,7 +267,7 @@ class TestPg extends munit.FunSuite {
         Typed.transact[Granted, Async](db)(g2 => okay.pure(g2))
       }
       val e = intercept[IllegalStateException](
-        !.run(Async.run[Granted, Nothing](Resource.run[Granted, Async](prog))))
+        !.run(Async.run[Granted, okay.Pure](Resource.run[Granted, Async](prog))))
       assert(e.getMessage.contains("nested"))
     }
   }

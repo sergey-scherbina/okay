@@ -44,7 +44,7 @@ class TestOkayGuice extends munit.FunSuite {
     val injector = Guice.createInjector(new com.google.inject.AbstractModule:
       override def configure(): Unit = bind(classOf[Clock]).toInstance(Clock(7L)))
     val stamp: Clock ?=> Module[[X] =>> String ?=> X] = Module.value[String](s"t@${wire[Clock].now}")
-    val got = !.run(Resource.run[String, Nothing]((OkayGuice.instance[Clock](injector) and stamp) { wire[String] }))
+    val got = !.run(Resource.run[String, okay.Pure]((OkayGuice.instance[Clock](injector) and stamp) { wire[String] }))
     assertEquals(got, "t@7")
   }
 }

@@ -57,7 +57,7 @@ claim at all (specs/cont-atm.md). What follows holds of every stage: the
 leaf is a function of the continuation either way.)
 
 and `Cont` **is** `Freer[Sig, S, R, A]`, the same enum `Free[F, A]`
-is (`Freer[Lift[F], Unit, Unit, A]`). There is nothing to convert
+is (`Freer[Unary[F], Unit, Unit, A]`). There is nothing to convert
 between them, because there is nothing between them. `Cont.Pure` is
 `Free.Return` (`Cont.scala:151`); `Cont.shift(f)` is `Free.Inject`
 of the leaf (`Cont.scala:155`); `flatMap` is `Free.Bind`, with one
@@ -92,8 +92,10 @@ cont-on-frames it was that enum at the λ$ machine's row, run by the frame
 machine, the facade's `Rep[A, S, R]` making one claim at its boundary;
 since cont-atm it is that enum at Cont's own `Op`, run by `Delimited`,
 whose answer boundaries carry the answer types the claim stood for
-(specs/cont-atm.md). `Free[F, A]` is the same enum at `Lift[F]`, a
-signature that ignores the two indexes, with both fixed at `Unit`.
+(specs/cont-atm.md). `Free[F, A]` is the same enum at `Unary[F]` —
+`F` on the diagonal of the two indexes, nothing off it — with both
+fixed at `Unit` (one-bridge, 2026-10-04: the bridge indexed rows use
+too; until then `Lift[F]`, which ignored the indexes).
 
 It was not always so, and the two refusals on the way are why the
 shape is what it is (specs/freer-base.md, stages 0 and 1):
@@ -133,8 +135,8 @@ Two details are load-bearing and worth knowing. The value type `A`
 comes LAST in `Freer[G, S, R, A]`, because a unary constructor
 inferred from a program value — `Monad[M]` from an `A ! F` — is the
 type abstracted over its last parameter, and `[A] =>> Free[F, A]` is
-what every instance is written for. And `Lift[F]` is a projection on
-a class, `Lifted[F]#L`, not a bare type lambda: applied to a row
+what every instance is written for. And `Unary[F]` is a projection on
+a class, `Diagonal[F]#L`, not a bare type lambda: applied to a row
 `Users + F` a lambda beta-reduces to a union when two are compared,
 and a union has no structure to solve `F1 + G` from, where the
 projection compares by its prefix and the row's `+` is matched

@@ -427,7 +427,7 @@ only thing that runs them.
   its Event answer re-enters the SAME fold through the merge (which
   was always the subscription mechanism). `Ui.run` is now the
   commandless special case of `runCmd`.
-- `Nav.Run(prog, s)` — the stack's spelling: stay showing `s`,
+- `Nav.launch(prog, s)` (the case `Nav.Run`, its program in `Nav.Launch` since one-bridge) — the stack's spelling: stay showing `s`,
   launch `prog`; `Nav.updateCmd` routes it, `Nav.run` wires the
   loop; `update` stays for pure stepping.
 - Failure is the command's own business: it encodes failure as an

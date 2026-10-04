@@ -47,7 +47,7 @@ class FairnessProbeBenchmark {
   // ── 1. the floor: an already-finished program, run ────────────────
 
   @Benchmark
-  def floor_okay(): Int = pure[Nothing, Int](1).runWith
+  def floor_okay(): Int = pure[Pure, Int](1).runWith
 
   @Benchmark
   def floor_catsIO(): Int =

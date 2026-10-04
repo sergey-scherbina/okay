@@ -1127,3 +1127,19 @@ shapes (a `Source` is a class here and a program alias on okay2, and
   `Int ! (State % Int)` runs, and the unparenthesised chain is refused
   with the message quoted in the stage. Rows stay `State[Int] +
   Writer[String]`.
+
+## one-bridge (2026-10-04): the rule, for every type a Scala 2 caller loads
+
+`Free`'s bridge is now `Unary[F]`, a MATCH type (one bridge for both
+arities, specs/indexed-effects.md), and scalac 2.13's TASTy reader
+refuses match types — with an exception and no position. It reaches one
+whenever it reads a program's type: a class's primary-constructor
+parameters are read when the class is loaded, and a sealed hierarchy's
+children are read when a 2.13 caller matches on it. So: **no class a
+Scala 2 caller loads holds a program (`A ! F`, or a type whose members
+return one) in its constructor** — a value class between them, as
+`ProgBody` is for `Prog`. Found by bisection of the probe: `okay.ui.Nav`
+(its `Run` case; the program now in `Nav.Launch`, built by
+`Nav.launch(prog, s)`) and the facade's `UiHost` (`UiHostBody`).
+`okayScala2Probe/Test/compile` in the gate is what catches the next one.
+

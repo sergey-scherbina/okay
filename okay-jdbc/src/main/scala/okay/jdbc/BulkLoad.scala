@@ -41,28 +41,28 @@ object BulkLoad {
           try
             val claimed =
               try
-                okay.!.run(Async.run[Long, Nothing](db.update(
+                okay.!.run(Async.run[Long, okay.Pure](db.update(
                   s"insert into $history (load_id, loaded_at) values (?, ?)",
                   Vector(SqlValue.Text(loadId), SqlValue.I64(System.currentTimeMillis))))): Unit
                 true
               catch case e: Exception =>
                 // a refused insert must mean the KEY, not a dead wire:
                 // verify before answering AlreadyLoaded
-                okay.!.run(Async.run[Unit, Nothing](db.rollback()))
-                val there = okay.!.run(Async.run[Long, Nothing](db.update(
+                okay.!.run(Async.run[Unit, okay.Pure](db.rollback()))
+                val there = okay.!.run(Async.run[Long, okay.Pure](db.update(
                   s"update $history set loaded_at = loaded_at where load_id = ?",
                   Vector(SqlValue.Text(loadId)))))
                 if there == 1 then false else throw e
             if !claimed then
               Outcome.AlreadyLoaded
             else
-              val rows = okay.!.run(Async.run[Long, Nothing](db.update(copySql)))
-              okay.!.run(Async.run[Unit, Nothing](db.commit()))
+              val rows = okay.!.run(Async.run[Long, okay.Pure](db.update(copySql)))
+              okay.!.run(Async.run[Unit, okay.Pure](db.commit()))
               Outcome.Loaded(rows)
           catch case e: Exception =>
             // a failing COPY rolls back the claim with it — the retry
             // with a fixed file starts clean, never half-loaded
-            try okay.!.run(Async.run[Unit, Nothing](db.rollback()))
+            try okay.!.run(Async.run[Unit, okay.Pure](db.rollback()))
             catch case _: Exception => ()
             throw e
         }

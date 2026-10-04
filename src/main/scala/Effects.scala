@@ -40,7 +40,7 @@ extension [F[+_], A](op: F[A])
 infix type +[F[+_], G[+_]] = [A] =>> F[A] | G[A]
 
 /** the empty signature: a computation over it is pure, with nothing to perform; the zero of `+` */
-type Pure = Nothing
+type Pure[+A] = Nothing
 
 /** fix the parameter of a binary signature: State % S, Throws % E */
 infix type %[F[_, _], S] = F[S, *]
@@ -263,7 +263,7 @@ object Effects {
   }
 
   /** run a closed computation */
-  inline def run[A](e: A ! Nothing): A = e.runWith
+  inline def run[A](e: A ! Pure): A = e.runWith
 
   /** a tail call to a mutually recursive function returning `A ! F`: the interpreter trampolines it. A `Delay`,
    * not `defer` with `pure`, which would push a `.flatMap(pure)` down every hop (`Cont.delay` on the Cont side) */
@@ -305,8 +305,8 @@ object Effects {
     def go(i: Int, acc: B): B ! F =
       if i >= n then Return(acc)
       else f(acc, v(i)) match
-        case b: Freer.Bind[Freer.Lift[F], Unit, Unit, Unit, x, B] @unchecked => b.f match
-          case k: Freer.Mapped[Freer.Lift[F], Unit, x, B] @unchecked => Bind(b.a, (y: x) => go(i + 1, k.f(y)))
+        case b: Freer.Bind[Unary[F], Unit, Unit, Unit, x, B] @unchecked => b.f match
+          case k: Freer.Mapped[Unary[F], Unit, x, B] @unchecked => Bind(b.a, (y: x) => go(i + 1, k.f(y)))
           case _ => Bind(b, (y: B) => go(i + 1, y))
         case m => Bind(m, (y: B) => go(i + 1, y))
     // DELAYED, so `f` runs when the program does, never at build time

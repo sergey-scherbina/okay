@@ -84,17 +84,6 @@ object Freer {
    */
   trait Suspended
 
-  /** the effect signature's leaf, indexes ignored: `Free[F, A]` is the base at `Lift[F]`, every index `Unit` */
-  type Lift[F[+_]] = Lifted[F]#L
-
-  /**
-   * A projection on a class rather than a bare type lambda, for inference: two lambdas applied to a row
-   * `Users + F` beta-reduce to unions, which give nothing to solve `F1` and `G` from; a projection compares by
-   * its prefix (`Lifted[Users + F]` against `Lifted[F1 + G]`), so the row's `+` matches application to
-   * application. The member reduces to `F[X]` wherever it is applied.
-   */
-  sealed trait Lifted[F[+_]]:
-    type L[S, R, +X] = F[X]
 
   /**
    * A continuation that only maps, left by `map`: it runs as `a => Return(f(a))`, and the tree has the same
@@ -181,18 +170,17 @@ object Freer {
       override def map[B](f: A => B): Freer[G, S, R, B] = Bind(m, Mapped[G, S, A, B](f))
 }
 
-/** the effect program: the base at `Lift[F]`, every index `Unit`. `object Free` keeps the four names
+/** the effect program: the base at `Unary[F]`, every index `Unit`. `object Free` keeps the four names
  * (`Return`, `Inject`, `Bind`, `Delay`) at the arities the match sites and the `direct` macro use */
-type Free[F[+_], +A] = Freer[Freer.Lift[F], Unit, Unit, A]
+type Free[F[+_], +A] = Freer[Unary[F], Unit, Unit, A]
 
 object Free {
-  import Freer.Lift
 
   /** a value as a tree */
   inline def pure[F[+_], A](a: A): Free[F, A] = Freer.Return(a)
 
   /** an operation as a tree */
-  inline def inject[F[+_], A](a: F[A]): Free[F, A] = Freer.Inject[Lift[F], Unit, Unit, A](a)
+  inline def inject[F[+_], A](a: F[A]): Free[F, A] = Freer.Inject[Unary[F], Unit, Unit, A](a)
 
   /** `Freer.defer` at the effect tree's indexes */
   def defer[F[+_], A, B](thunk: () => Free[F, A])(f: A => Free[F, B]): Free[F, B] =
@@ -220,7 +208,7 @@ object Free {
     def unapply[G[_, _, +_], R, A](r: Freer.Return[G, R, A]): Freer.Return[G, R, A] = r
 
   object Inject:
-    def apply[F[+_], A](a: F[A]): Free[F, A] = Freer.Inject[Lift[F], Unit, Unit, A](a)
+    def apply[F[+_], A](a: F[A]): Free[F, A] = Freer.Inject[Unary[F], Unit, Unit, A](a)
     def unapply[G[_, _, +_], S, R, A](i: Freer.Inject[G, S, R, A]): Freer.Inject[G, S, R, A] = i
 
   object Delay:

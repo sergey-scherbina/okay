@@ -158,7 +158,7 @@ class TestChunks extends munit.FunSuite {
     // combinators avoid it by never being invoked directly with a
     // literal Nothing outside the library that defines them; this
     // test sidesteps it the same way production code will: G=Async)
-    def run[A](p: A ! Async): A = !.run(Async.run[A, Nothing](p))
+    def run[A](p: A ! Async): A = !.run(Async.run[A, okay.Pure](p))
     def feedOf(c: Chunks[Long]): Source[Chunk[Long]] = Writer.of(c.toLazyList).plus[Async]
 
     val chunks = Chunks.range(0, 10000, 64)
@@ -198,7 +198,7 @@ class TestChunks extends munit.FunSuite {
   // iterator's result against `Writer.run` — built on the unrelated
   // `Writer.foldWith` trampoline — as an independent oracle.
   test("the specialized writer iterator agrees with Writer.run when real G-ops are interleaved") {
-    def run[A](p: A ! Async): A = !.run(Async.run[A, Nothing](p))
+    def run[A](p: A ! Async): A = !.run(Async.run[A, okay.Pure](p))
 
     def prog: Unit ! Writer % Int + Async =
       for

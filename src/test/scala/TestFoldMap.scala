@@ -32,7 +32,7 @@ class TestFoldMap extends munit.FunSuite:
     val toReader: Op ==> ([X] =>> X ! Reader % Int) = [X] => (e: Op[X]) => e match
       case Op.Lookup(k) => Reader.ask[Int].map(_ + k.length)
       case Op.Log(m) => pure { log += m; () }
-    val out = Reader.run[Int, Int, Nothing](10)(prog.foldMap[[X] =>> X ! Reader % Int](toReader))
+    val out = Reader.run[Int, Int, Pure](10)(prog.foldMap[[X] =>> X ! Reader % Int](toReader))
     assertEquals(!.run(out), 22)
     assertEquals(log.toList, List("a=11"))
   }
@@ -44,7 +44,7 @@ class TestFoldMap extends munit.FunSuite:
     val toReader: Op ==> ([X] =>> X ! Reader % Int) = [X] => (e: Op[X]) => e match
       case Op.Lookup(_) => Reader.ask[Int]
       case Op.Log(_) => pure(())
-    assertEquals(!.run(Reader.run[Int, Int, Nothing](1)(long.foldMap[[X] =>> X ! Reader % Int](toReader))), n)
+    assertEquals(!.run(Reader.run[Int, Int, Pure](1)(long.foldMap[[X] =>> X ! Reader % Int](toReader))), n)
   }
 
   test("an eager G on a 128 KB thread: a million operations through Option, both shapes") {

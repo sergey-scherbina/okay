@@ -12,7 +12,7 @@ import scala.annotation.tailrec
  * shadows the library's inside this object on purpose.
  *
  * specs/freer-base.md stage 1 wanted `Free[F, A]` to be an indexed
- * `Freer[Lift[F], A, Unit, Unit]` and was REFUTED: matching `Bind`
+ * `Freer[Unary[F], A, Unit, Unit]` and was REFUTED: matching `Bind`
  * makes the intermediate index existential, the 106 match sites want
  * `k: X => A ! F`, and the pinning extractor tried then — the type
  * variable only in `unapply`'s RESULT — infers it as `Nothing`. The
@@ -79,8 +79,8 @@ object ProbeFreerStep:
 
   // ---- Free: the base at a signature that ignores the indexes ----
 
-  type Lift[F[+_]] = [X, S, R] =>> F[X]
-  type Free[F[+_], A] = Freer[Lift[F], A, Unit, Unit]
+  type Unary[F[+_]] = [X, S, R] =>> F[X]
+  type Free[F[+_], A] = Freer[Unary[F], A, Unit, Unit]
 
   object Free:
     def pure[F[+_], A](a: A): Free[F, A] = Freer.Return(a)
@@ -94,8 +94,8 @@ object ProbeFreerStep:
    * node itself (a Product: no Option, no tuple, no allocation).
    */
   object Step:
-    def unapply[F[+_], X, A, T](b: Freer.Bind[Lift[F], X, A, Unit, T, Unit]): Freer.Bind[Lift[F], X, A, Unit, Unit, Unit] =
-      b.asInstanceOf[Freer.Bind[Lift[F], X, A, Unit, Unit, Unit]]
+    def unapply[F[+_], X, A, T](b: Freer.Bind[Unary[F], X, A, Unit, T, Unit]): Freer.Bind[Unary[F], X, A, Unit, Unit, Unit] =
+      b.asInstanceOf[Freer.Bind[Unary[F], X, A, Unit, Unit, Unit]]
 
   trait Interp[F[+_]]:
     def handle[X](e: F[X]): X

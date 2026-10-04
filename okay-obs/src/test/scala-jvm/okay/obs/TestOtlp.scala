@@ -22,7 +22,7 @@ class TestOtlp extends munit.FunSuite {
     super.munitTests().map(_.tag(new munit.Tag("Live")))
 
 
-  def run[A](p: A ! Async): A = !.run(Async.run[A, Nothing](p))
+  def run[A](p: A ! Async): A = !.run(Async.run[A, okay.Pure](p))
 
   def fixture(): (okay.persist.Topic, Tracer) =
     val topic = MemoryStore().topic("__trace", 1, Policy())

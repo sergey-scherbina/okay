@@ -37,13 +37,13 @@ class TestCmd extends munit.FunSuite {
       def step(e: Event): Nav = e match
         // Run expresses "go there AND launch": the done screen shows,
         // the closer ends the app — no further event needed
-        case Event.Edited("answer", v) => Nav.Run(async(Event.Closed), done(v))
+        case Event.Edited("answer", v) => Nav.launch(async(Event.Closed), done(v))
         case _ => Nav.Stay(this)
     val start: Screen = new Screen:
       def view: Ui = Ui.Button("go", "go")
       def step(e: Event): Nav = e match
         case Event.Pressed("go") =>
-          Nav.Run(async(Event.Edited("answer", "fetched")), loading)
+          Nav.launch(async(Event.Edited("answer", "fetched")), loading)
         case _ => Nav.Stay(this)
 
     val host = Scripted(Seq(Event.Pressed("go")))

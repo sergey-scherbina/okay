@@ -88,7 +88,7 @@ object Manifest:
 
 /** blocking reads of a lake: a flow's partition runs on its own thread */
 private[lake] object Run:
-  def apply[A](p: A ! Async): A = !.run(Async.run[A, Nothing](p))
+  def apply[A](p: A ! Async): A = !.run(Async.run[A, okay.Pure](p))
 
 /**
  * A PARQUET OBJECT AS A `ReadAt`: its size from the listing (or a HEAD),

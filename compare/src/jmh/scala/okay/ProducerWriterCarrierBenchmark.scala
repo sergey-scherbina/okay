@@ -139,7 +139,7 @@ class ProducerWriterCarrierBenchmark {
 
   @Benchmark
   def chunksFoldWriter(): Long =
-    Writer.fold[Chunk[Long], Long, Unit, Nothing](writerChunks).runWith._1
+    Writer.fold[Chunk[Long], Long, Unit, Pure](writerChunks).runWith._1
 
   // THE PURE SHAPE (producer-writer-carrier-pure-iterator): `Chunks[A]`
   // is `Producer[Chunk[A]]` — PURE, no G — so what `Chunks.fold` will
@@ -281,7 +281,7 @@ class ProducerWriterCarrierBenchmark {
 
   @Benchmark
   def chunksMapWriter(): Long =
-    Writer.fold[Chunk[Long], Long, Unit, Nothing](Writer.map[Chunk[Long], Chunk[Long], Unit, Pure](writerChunks)(doubleChunk)).runWith._1
+    Writer.fold[Chunk[Long], Long, Unit, Pure](Writer.map[Chunk[Long], Chunk[Long], Unit, Pure](writerChunks)(doubleChunk)).runWith._1
 
   // ---------------------------------------------------------- 3
   // Source.ofProducer / Source.toProducer: the bridge cost, on the

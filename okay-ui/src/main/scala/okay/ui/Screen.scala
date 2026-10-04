@@ -26,8 +26,9 @@ enum Nav:
   case To(s: Screen)
   /** the effect slot: stay on `s`, LAUNCH `prog` — its Event answer
    * re-enters the fold like any other event (specs/ui.md, "The
-   * effect slot"). The program is data; the loop runs it. */
-  case Run(prog: okay.![Event, okay.Async], s: Screen)
+   * effect slot"). The program is data; the loop runs it — held in
+   * `Nav.Launch` (`Nav.launch(prog, s)` builds the case) */
+  case Run(launch: Nav.Launch, s: Screen)
   /** exit to the NAMED boundary (nav-pop-to-screen): every frame
    * above it is dropped untouched, and the boundary routes the
    * typed answer. The key's identity carries its type — the Prompt
@@ -35,6 +36,17 @@ enum Nav:
   case PopTo[A](key: Nav.Key[A], answer: A) extends Nav
 
 object Nav {
+
+  /**
+   * THE PROGRAM OUT OF THE CONSTRUCTOR (one-bridge, 2026-10-04): a Scala 2.13 caller (the okay-scala2 facade) that
+   * matches on `Nav` makes scalac read every case's constructor types, and a program's type reaches `Free`'s bridge,
+   * a match type its TASTy reader refuses (a crash with no position). A value class between them: a reference to
+   * it is not a reading of its constructor — `okay.scala2.ProgBody`'s fix, the facade's rule
+   */
+  final class Launch(val prog: okay.![Event, okay.Async]) extends AnyVal
+
+  /** stay on `s` and launch `prog`: its Event answer re-enters the fold */
+  def launch(prog: okay.![Event, okay.Async], s: Screen): Nav = Run(Launch(prog), s)
 
   /** a boundary's identity AND its answer type (the Prompt shape) */
   final class Key[A]
@@ -64,7 +76,7 @@ object Nav {
       // the boundary survives its inner screen's ordinary moves
       case Stay(s) => Stay(new Boundary[A](k, s, done))
       case To(s) => To(new Boundary[A](k, s, done))
-      case Run(p, s) => Run(p, new Boundary[A](k, s, done))
+      case Run(l, s) => Run(l, new Boundary[A](k, s, done))
       case other => other
 
   /** a screen from a plain (state, view, update) triple — update may
@@ -104,7 +116,7 @@ object Nav {
         case Push(next) => (next :: top :: rest, Vector.empty)
         case Pop => (rest, Vector.empty)
         case To(s) => (s :: rest, Vector.empty)
-        case Run(prog, s) => (s :: rest, Vector(prog))
+        case Run(l, s) => (s :: rest, Vector(l.prog))
         case PopTo(k, a) => popTo(stack, k, a)
 
   /** drop to the named frame and let it route; an ABSENT boundary
@@ -125,7 +137,7 @@ object Nav {
           case Push(next) => (next :: remaining, Vector.empty)
           case Pop => (remaining.tail, Vector.empty)
           case To(s) => (s :: remaining.tail, Vector.empty)
-          case Run(prog, s) => (s :: remaining.tail, Vector(prog))
+          case Run(l, s) => (s :: remaining.tail, Vector(l.prog))
           case PopTo(k2, a2) => popTo(remaining, k2, a2)   // boundaries chain
 
   /** run a stack on a host: ends when the host closes (an emptied

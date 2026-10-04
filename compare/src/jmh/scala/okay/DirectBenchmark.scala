@@ -32,7 +32,7 @@ class DirectBenchmark {
 
   @Benchmark
   def okayFlatMap(): Int =
-    val chain = (1 to N).foldLeft(pure[Nothing, Int](0))((m, _) => m.flatMap(step))
+    val chain = (1 to N).foldLeft(pure[Pure, Int](0))((m, _) => m.flatMap(step))
     okay.!.run(chain)
 
   /** the macro rewrites the block into Monadic's Cont binds — the

@@ -348,7 +348,7 @@ given [F[_] : Comonad as C]: Answers[F] = ComonadAnswers[F](C)
 
 /** Pure has no operations left to handle */
 given Answers[Pure] with
-  inline def handle[A](a: Pure): A = a
+  inline def handle[A](a: Pure[A]): A = a
 
 /**
  * Handlers compose along the union: split the operation by the F

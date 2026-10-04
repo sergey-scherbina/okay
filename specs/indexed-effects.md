@@ -649,3 +649,20 @@ The operator: "Diag нужен только там, где индексы — н
   type Unary", okayScala2Probe) — `Unary` was harmless while only indexed
   rows named it.
 
+## one-bridge (2026-10-04): ONE bridge — `Lift` gone
+
+The operator, after free-unary-bridge: "В scala 3 используй Pure[+A] =
+Nothing и убери Lift … найди решение для 2.13". Done:
+- `type Pure[+A] = Nothing` — the empty row a lambda, so a row solved as
+  `[X] =>> Nothing` IS `Pure` and its givens are found. The empty row is
+  spelled `Pure`, never `Nothing` (87 files changed).
+- `Free[F, A] = Freer[Unary[F], Unit, Unit, A]`; `Unary[F] = Diagonal[F]#L`,
+  the projection `Lift` had (`Lifted[F]#L`) now around the match type, so
+  inference keeps its prefix to solve rows by. `Lift` and `Lifted` are gone.
+- Costs, measured by compiling everything: a GADT match directly on an
+  operation under `Free`'s nodes no longer refines (the operation's type
+  is the unreduced match type there) — read it through `split`, as every
+  handler already does (TestSqlPure); one call that solved a row's rest
+  from the argument needs it named (`Tables.via[A, Rows, …]`, SparkFrames).
+- Scala 2.13: specs/scala2-facade.md, "one-bridge".
+

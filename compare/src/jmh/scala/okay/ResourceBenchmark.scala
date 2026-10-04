@@ -42,7 +42,7 @@ class ResourceBenchmark {
     var c = 0
     val prog = (1 to N).foldLeft(pure[Resource, Int](0)): (m, _) =>
       m.flatMap(x => Resource.acquire(x + 1)(_ => c += 1))
-    !.run(Resource.run[Int, Nothing](prog)) + c
+    !.run(Resource.run[Int, okay.Pure](prog)) + c
 
   /**
    * `bracketNow` PAIRED with the region lane above: the same workload —
@@ -81,7 +81,7 @@ class ResourceBenchmark {
     var c = 0
     def go(i: Int, x: Int): Int ! Resource =
       if i == 0 then pure(x) else Resource.acquire(x + 1)(_ => c += 1).flatMap(y => go(i - 1, y))
-    !.run(Resource.run[Int, Nothing](go(N, 0))) + c
+    !.run(Resource.run[Int, okay.Pure](go(N, 0))) + c
 
   @Benchmark
   def catsIOBracket(): Int =

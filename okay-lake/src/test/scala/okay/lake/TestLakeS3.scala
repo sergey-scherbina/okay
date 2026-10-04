@@ -34,7 +34,7 @@ class TestLakeS3 extends LakeSuite:
     val stamp = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'")
       .withZone(java.time.ZoneOffset.UTC).format(java.time.Instant.now)
     val auth = SigV4.sign("PUT", s"/$bucket", Nil, Seq("host" -> "127.0.0.1:9000"), SigV4.emptyHash, "us-east-1", stamp, creds)
-    val r = !.run(Async.run[okay.http.Response, Nothing](http.send(Request(Method.Put, s"http://127.0.0.1:9000/$bucket", auth))))
+    val r = !.run(Async.run[okay.http.Response, okay.Pure](http.send(Request(Method.Put, s"http://127.0.0.1:9000/$bucket", auth))))
     assert(r.ok, s"bucket create: HTTP ${r.status}")
     Lakes.register(bucket, S3(http, "http://127.0.0.1:9000", bucket, "us-east-1", creds))
     bucket

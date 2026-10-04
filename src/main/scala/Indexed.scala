@@ -57,9 +57,20 @@ infix type +~[F[_, _, +_], G[_, _, +_]] = [S, R, X] =>> F[S, R, X] | G[S, R, X]
 
 /** a unary effect as a member of an indexed row: `F[X]` on the
  * diagonal, and nothing off it — see the header */
-type Unary[F[+_]] = [S, R, X] =>> S match
-  case R => F[X]
-  case _ => Nothing
+type Unary[F[+_]] = Diagonal[F]#L
+
+/**
+ * `Unary`'s body, a projection on a class rather than a bare type lambda, for inference: two lambdas applied to a
+ * row `Users + F` beta-reduce to unions, which give nothing to solve `F1` and `G` from; a projection compares by its
+ * prefix (`Diagonal[Users + F]` against `Diagonal[F1 + G]`), so the row's `+` matches application to application.
+ * The member reduces to `F[X]` wherever its two indexes are one type — every `A ! F`, at `Unit` — and to nothing
+ * elsewhere (one-bridge: `Free`'s bridge and the indexed rows' are this one; `Lift`, which ignored the indexes,
+ * is gone).
+ */
+sealed trait Diagonal[F[+_]]:
+  type L[S, R, +X] = S match
+    case R => F[X]
+    case _ => Nothing
 
 /** ∀S R X, the runtime test for F[S, R, X] — `TypeableK` at three
  * parameters; by class, since the indexes are erased and a row may

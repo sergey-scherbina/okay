@@ -146,7 +146,7 @@ object Shift {
    * a machine for the row already running — the piece back on its stack, the value to whoever resumed — and run by
    * a machine of its own when forced by anyone else (a `k` that outlived its run). No barrier either way.
    */
-  final class Resumption[A, R, F[+_]] private[Shift] (p: Prompt[R], piece: Delimited.Piece[Freer.Lift[Shift % ? + F], A, Unit, R, Unit],
+  final class Resumption[A, R, F[+_]] private[Shift] (p: Prompt[R], piece: Delimited.Piece[Unary[Shift % ? + F], A, Unit, R, Unit],
                                                        held: Int)
     extends (A => R ! Shift % ? + F):
     def apply(x: A): R ! Shift % ? + F = resumeWith(okay.pure(x))
@@ -165,7 +165,7 @@ object Shift {
     case _ => Free.delay(Delimited.Thrown(t))
 
   /** an operation of `Shift` as a node of its row */
-  private def op[A, F[+_]](o: Shift[Any, A]): A ! Shift % ? + F = Freer.Inject[Freer.Lift[Shift % ? + F], Unit, Unit, A](o)
+  private def op[A, F[+_]](o: Shift[Any, A]): A ! Shift % ? + F = Freer.Inject[Unary[Shift % ? + F], Unit, Unit, A](o)
 
   // ---- SHIFT ON THE MACHINE (specs/cont-atm.md): its operations are values of the row, answered by `Steps` on
   // `Delimited`. A prompt in force is two marks on the segment, its opening and its closing, `ret` between them:
@@ -186,7 +186,7 @@ object Shift {
   private[okay] final case class Abort[K, A, R](p: Prompt[R], value: R, at: String) extends Shift[K, A]
   /** a captured continuation resumed: its segments and boundaries, `p`'s and `ret`'s included, back on top, and
    * `body` run inside them; `held` what kinds of frame the run that captured it had installed (`Steps.held`) */
-  private[okay] final case class Resume[K, A, R, F[+_]](p: Prompt[R], k: Delimited.Piece[Freer.Lift[Shift % ? + F], A, Unit, R, Unit],
+  private[okay] final case class Resume[K, A, R, F[+_]](p: Prompt[R], k: Delimited.Piece[Unary[Shift % ? + F], A, Unit, R, Unit],
                                                         body: A ! Shift % ? + F, held: Int)
     extends Shift[K, R]
 
@@ -236,8 +236,8 @@ object Shift {
    * putting the frame back (a deep handler). A CATCH FRAME (`HandleFrames.Catching`) answers a throw in its place.
    */
   private final class Steps[F[+_]](nested: Boolean)
-    extends Delimited.Step[Freer.Lift[Shift % ? + F], Freer.Lift[Shift % ? + F]], Delimited.Outer[Freer.Lift[Shift % ? + F], F]:
-    private type L[S, R, A] = Freer.Lift[Shift % ? + F][S, R, A]
+    extends Delimited.Step[Unary[Shift % ? + F], Unary[Shift % ? + F]], Delimited.Outer[Unary[Shift % ? + F], F]:
+    private type L[S, R, A] = Unary[Shift % ? + F][S, R, A]
     private type U = Unit
 
     /**

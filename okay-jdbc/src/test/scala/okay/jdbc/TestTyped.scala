@@ -73,7 +73,7 @@ class TestTyped extends munit.FunSuite {
     try f(JdbcSql(conn))
     finally conn.close()
 
-  def run[A](prog: A ! Async): A = !.run(Async.run[A, Nothing](prog))
+  def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.Pure](prog))
 
   /** drain the effectful chunked stream into a list of chunks */
   def collectChunks[A](s: Source[Chunk[A]]): List[Chunk[A]] =
@@ -224,7 +224,7 @@ class TestTyped extends munit.FunSuite {
         !.widen[Long, Async, Resource](
           db.update("insert into customer(id, user_name, balance, active) values (20, 'tx', 1.0, true)"))
       }
-      val n = !.run(Async.run[Long, Nothing](Resource.run[Long, Async](prog)))
+      val n = !.run(Async.run[Long, okay.Pure](Resource.run[Long, Async](prog)))
       assertEquals(n, 1L)
       assert(conn.getAutoCommit, "autocommit not restored after commit")
       assertEquals(countBy(db, "id = 20"), 1L)
@@ -241,7 +241,7 @@ class TestTyped extends munit.FunSuite {
         !.widen[Long, Async, Resource](
           tx.update("insert into customer(id, user_name, balance, active) values (22, 'typed', 1.0, true)"))
       }
-      val n = !.run(Async.run[Long, Nothing](Resource.run[Long, Async](prog)))
+      val n = !.run(Async.run[Long, okay.Pure](Resource.run[Long, Async](prog)))
       assertEquals(n, 1L)
       assertEquals(countBy(db, "id = 22"), 1L)
       assertEquals(run(db.update("delete from customer where id = 22")), 1L)
@@ -269,7 +269,7 @@ class TestTyped extends munit.FunSuite {
           .map(_ => throw RuntimeException("boom"))
       }
       intercept[RuntimeException](
-        !.run(Async.run[Long, Nothing](Resource.run[Long, Async](prog)))): Unit
+        !.run(Async.run[Long, okay.Pure](Resource.run[Long, Async](prog)))): Unit
       assert(conn.getAutoCommit, "autocommit not restored after rollback")
       assertEquals(countBy(db, "id = 21"), 0L, "the insert survived the exception")
     finally conn.close()
@@ -284,7 +284,7 @@ class TestTyped extends munit.FunSuite {
           db.update("insert into customer(id, user_name, balance, active) values (22, 'boom', 1.0, true)"))
           .flatMap(_ => !.widen[Long, Async, Resource](db.update("select syntax error from")))
       }
-      intercept[java.sql.SQLException](!.run(Async.run[Long, Nothing](Resource.run[Long, Async](prog)))): Unit
+      intercept[java.sql.SQLException](!.run(Async.run[Long, okay.Pure](Resource.run[Long, Async](prog)))): Unit
       assert(conn.getAutoCommit, "autocommit not restored: the brake never ran")
       assertEquals(countBy(db, "id = 22"), 0L, "the insert survived the failed statement")
       val g = run(Resource.run[Granted, Async](Typed.transact[Granted, Async](db)(g => okay.pure(g))))
@@ -317,7 +317,7 @@ class TestTyped extends munit.FunSuite {
         Typed.transact[Granted, Async](db)(g2 => okay.pure(g2))
       }
       val e = intercept[IllegalStateException](
-        !.run(Async.run[Granted, Nothing](Resource.run[Granted, Async](prog))))
+        !.run(Async.run[Granted, okay.Pure](Resource.run[Granted, Async](prog))))
       assert(e.getMessage.contains("nested"), e.getMessage)
     }
   }
@@ -325,7 +325,7 @@ class TestTyped extends munit.FunSuite {
   test("requested isolation is passed through; the granted level is exposed") {
     withDb { db =>
       val prog = Typed.transact[Granted, Async](db, Isolation.Serializable)(g => okay.pure(g))
-      val g = !.run(Async.run[Granted, Nothing](Resource.run[Granted, Async](prog)))
+      val g = !.run(Async.run[Granted, okay.Pure](Resource.run[Granted, Async](prog)))
       assertEquals(g.requested, Isolation.Serializable)
       assertEquals(g.granted, Isolation.Serializable)
       assert(!g.downgraded)

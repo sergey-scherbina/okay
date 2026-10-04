@@ -31,7 +31,7 @@ class TestStd extends munit.FunSuite {
       def add(s: Long, w: Int): Long = s + w
     val w: String ! Writer % Int =
       Writer.tell(1).flatMap(_ => Writer.tell(2)).flatMap(_ => Writer.tell(3)).map(_ => "done")
-    val (sum, a) = !.run(Writer.fold[Int, Long, String, Nothing](w))
+    val (sum, a) = !.run(Writer.fold[Int, Long, String, Pure](w))
     assertEquals(sum, 6L)
     assertEquals(a, "done")
   }
@@ -52,7 +52,7 @@ class TestStd extends munit.FunSuite {
     assertEquals(!.run(Writer.run[Int, Int, okay.Pure](kept)), (Seq(5), 5))
 
     // and through a custom Fold, so the specialized dispatch sees it too
-    val (n, a2) = !.run(Writer.fold[Int, Long, Unit, Nothing](w)(using summon)(using summon, Fold.count))
+    val (n, a2) = !.run(Writer.fold[Int, Long, Unit, Pure](w)(using summon)(using summon, Fold.count))
     assertEquals(n, 1L)
     assertEquals(a2, ())
   }
@@ -77,7 +77,7 @@ class TestStd extends munit.FunSuite {
     val prog: Int ! F =
       effect[F, Int](Reader.Ask()).flatMap: x =>
         effect[F, Unit](Writer(s"got $x")).map(_ => x * 2)
-    val (ws, a) = !.run(Writer.run[String, Int, Nothing](
+    val (ws, a) = !.run(Writer.run[String, Int, Pure](
       Reader.run[Int, Int, Writer % String](7)(prog)))
     assertEquals(ws, Seq("got 7"))
     assertEquals(a, 14)
@@ -103,14 +103,14 @@ class TestStd extends munit.FunSuite {
   test("Choice: multi-shot handler explores every branch (cartesian)") {
     val prog: Int ! Choose =
       choose(1, 2, 3).flatMap(x => choose(10, 20).map(x * _))
-    assertEquals(!.run(runChoice[Int, Nothing](prog)),
+    assertEquals(!.run(runChoice[Int, Pure](prog)),
       Seq(10, 20, 20, 40, 30, 60))
   }
 
   test("Choice: empty choice prunes the branch") {
     val prog: Int ! Choose =
       choose(1, 2).flatMap(x => if x == 1 then choose[Int]() else choose(x))
-    assertEquals(!.run(runChoice[Int, Nothing](prog)), Seq(2))
+    assertEquals(!.run(runChoice[Int, Pure](prog)), Seq(2))
   }
 
   test("a producer is a stream: uncons steps it, toLazyList unfolds it") {

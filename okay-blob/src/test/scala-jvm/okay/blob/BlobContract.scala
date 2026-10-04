@@ -14,7 +14,7 @@ abstract class BlobContract(engine: String) extends munit.FunSuite {
 
   def make(): Blob
 
-  def run[A](p: A ! Async): A = !.run(Async.run[A, Nothing](p))
+  def run[A](p: A ! Async): A = !.run(Async.run[A, okay.Pure](p))
 
   /** a Source of `total` deterministic bytes in `piece`-sized chunks */
   def bytes(total: Int, piece: Int = 8 * 1024): Source[Chunk[Byte]] =

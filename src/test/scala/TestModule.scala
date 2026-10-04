@@ -10,7 +10,7 @@ class TestModule extends munit.FunSuite {
   trait Log { def tag: String }
   final case class Conf(url: String)
 
-  def run[A](p: A ! Resource): A = !.run(Resource.run[A, Nothing](p))
+  def run[A](p: A ! Resource): A = !.run(Resource.run[A, Pure](p))
 
   test("modules acquire left to right and release in reverse at the end of the scope") {
     var log = List.empty[String]

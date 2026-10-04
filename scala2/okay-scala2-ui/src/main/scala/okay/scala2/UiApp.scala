@@ -40,15 +40,22 @@ object UiApp {
 }
 
 /** where a view is drawn and events come from, as okay-ui's `Host` */
-final class UiHost private[scala2] (private[scala2] val host: okay.ui.Host)
+final class UiHost private[scala2] (private val body: UiHostBody) {
+  private[scala2] def host: okay.ui.Host = body.host
+}
+
+/** THE HOST OUT OF THE CONSTRUCTOR (one-bridge, 2026-10-04): scalac 2.13 reads a class's constructor parameter
+ * types when it loads the class, and `okay.ui.Host`'s `render` returns `Unit ! Async` — `Free`, whose bridge is a
+ * match type its TASTy reader refuses. A value class between them, as `ProgBody` is for `Prog` */
+private[scala2] final class UiHostBody(val host: okay.ui.Host) extends AnyVal
 
 object UiHost {
 
   /** this process's terminal: raw mode, keys, painting (JVM) */
-  def terminal(): UiHost = new UiHost(okay.ui.Terminal.host())
+  def terminal(): UiHost = new UiHost(new UiHostBody(okay.ui.Terminal.host()))
 
   /** a Swing container the caller owns */
-  def swing(root: java.awt.Container): UiHost = new UiHost(okay.ui.Swing.host(root))
+  def swing(root: java.awt.Container): UiHost = new UiHost(new UiHostBody(okay.ui.Swing.host(root)))
 }
 
 /**
@@ -61,11 +68,11 @@ object UiHost {
 final class ScriptedHost private (events: Seq[Event], close: Boolean) {
   private val drawn = new java.util.concurrent.ConcurrentLinkedQueue[Ui]
 
-  val host: UiHost = new UiHost(new okay.ui.Host {
+  val host: UiHost = new UiHost(new UiHostBody(new okay.ui.Host {
     def render(ui: Ui): okay.![Unit, okay.Async] = okay.async { val _ = drawn.add(ui) }
     def events: okay.Source[Event] =
       okay.Source.of((if (close) ScriptedHost.this.events :+ Event.Closed else ScriptedHost.this.events).toList)
-  })
+  }))
 
   /** every frame drawn so far, in order */
   def frames: Vector[Ui] = { import scala.jdk.CollectionConverters._; drawn.asScala.toVector }

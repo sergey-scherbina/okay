@@ -54,7 +54,7 @@ class TestSqlite extends munit.FunSuite {
     try f(JdbcSql(conn))
     finally conn.close()
 
-  def run[A](prog: A ! Async): A = !.run(Async.run[A, Nothing](prog))
+  def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.Pure](prog))
 
   def collectChunks[A](s: Source[Chunk[A]]): List[Chunk[A]] =
     summon[Stream[[W] =>> Unit ! Writer % W + Async, Async]].iterator(s).toList
@@ -88,7 +88,7 @@ class TestSqlite extends munit.FunSuite {
     try
       val db = JdbcSql(conn)
       // granted isolation is read back, not assumed
-      val g = !.run(Async.run[Granted, Nothing](Resource.run[Granted, Async](
+      val g = !.run(Async.run[Granted, okay.Pure](Resource.run[Granted, Async](
         Typed.transact[Granted, Async](db, Isolation.Serializable)(g => okay.pure(g)))))
       assertEquals(g.granted, Isolation.Serializable)
 

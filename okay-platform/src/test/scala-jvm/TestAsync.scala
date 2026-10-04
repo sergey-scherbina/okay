@@ -7,7 +7,7 @@ class TestAsync extends munit.FunSuite {
 
   test("async ops run in place: run is a relay") {
     val prog: Int ! Async = async(20).flatMap(x => async(x + 22))
-    assertEquals(!.run(Async.run[Int, Nothing](prog)), 42)
+    assertEquals(!.run(Async.run[Int, okay.Pure](prog)), 42)
     assertEquals(prog.runWith, 42)
   }
 
@@ -219,7 +219,7 @@ class TestAsync extends munit.FunSuite {
       effect[F, Unit](Writer("start")).flatMap: _ =>
         effect[F, Int](Async.Run(() => 21)).flatMap: x =>
           effect[F, Unit](Writer("end")).map(_ => x * 2)
-    val (ws, a) = !.run(Writer.run[String, Int, Nothing](
+    val (ws, a) = !.run(Writer.run[String, Int, okay.Pure](
       Async.run[Int, Writer % String](prog)))
     assertEquals(ws, Seq("start", "end"))
     assertEquals(a, 42)

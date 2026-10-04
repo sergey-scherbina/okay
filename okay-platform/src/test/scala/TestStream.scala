@@ -72,7 +72,7 @@ class TestStream extends munit.FunSuite {
     val MP = summon[MonadPlus[LazyList]]
     assertEquals(MP.empty[Int].append(LazyList(1)).append(LazyList(2)).toList, List(1, 2))
     val CP = summon[MonadPlus[[A] =>> A ! Choose]]
-    assertEquals(!.run(runChoice[Int, Nothing](
+    assertEquals(!.run(runChoice[Int, okay.Pure](
       CP.append(choose(1, 2))(CP.empty).append(choose(3)))), Seq(1, 2, 3))
   }
 

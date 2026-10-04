@@ -18,7 +18,7 @@ class TestMigrate extends munit.FunSuite {
     n += 1
     DriverManager.getConnection(s"jdbc:h2:mem:mig$n;DB_CLOSE_DELAY=-1")
 
-  def run[A](prog: A ! Async): A = !.run(Async.run[A, Nothing](prog))
+  def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.Pure](prog))
 
   val v1 = Script(1, "users", "create table users(id int primary key, name varchar(64))")
   val v2 = Script(2, "seed", "insert into users values (1, 'ann'); insert into users values (2, 'bo')")

@@ -18,7 +18,7 @@ class TestPool extends munit.FunSuite {
     try c.createStatement().execute("create table marks(n int not null)"): Unit
     finally c.close()
 
-  def run[A](prog: A ! Async): A = !.run(Async.run[A, Nothing](prog))
+  def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.Pure](prog))
 
   def drain(p: Source[Chunk[Vector[SqlValue]]]): Vector[Vector[SqlValue]] ! Async = Source.concat(p)
 

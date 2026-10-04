@@ -63,7 +63,7 @@ class GenBenchmark {
   // does not compile; the plain defs take `Nothing` at their boundary
   @Benchmark
   def writerUnfoldCollect: List[Long] =
-    !.run(Writer.run[Long, Unit, Nothing](prog))._1.toList
+    !.run(Writer.run[Long, Unit, okay.Pure](prog))._1.toList
 
   @Benchmark
   def writerUnfoldFoldUntil: List[Long] =
@@ -102,7 +102,7 @@ class GenBenchmark {
 
   @Benchmark
   def writerPipelineCollect: List[Long] =
-    val mapped = Writer.map[Long, Long, Unit, Nothing](prog)(_ * 2)
+    val mapped = Writer.map[Long, Long, Unit, okay.Pure](prog)(_ * 2)
     !.run(Writer.fold[Long, List[Long], Unit, Nothing](mapped)(using summon)(using summon, filtering))._1.reverse
 
   // ---- the barriers, fused (gen-flatmap-fusion): flatMap, ++, zipWithIndex
@@ -113,8 +113,8 @@ class GenBenchmark {
   /** the hand road for flatMap's shape: a Writer program telling once per element */
   @Benchmark
   def writerFlatMapCollect: List[Long] =
-    val mapped = Writer.map[Long, Long, Unit, Nothing](prog)(_ + 1)
-    !.run(Writer.run[Long, Unit, Nothing](mapped))._1.toList
+    val mapped = Writer.map[Long, Long, Unit, okay.Pure](prog)(_ + 1)
+    !.run(Writer.run[Long, Unit, okay.Pure](mapped))._1.toList
 
   @Benchmark
   def genConcatToList: List[Long] = (gen ++ gen).toList

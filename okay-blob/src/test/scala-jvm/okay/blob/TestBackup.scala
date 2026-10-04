@@ -13,7 +13,7 @@ import java.nio.file.{Files, Path}
  */
 class TestBackup extends munit.FunSuite {
 
-  def run[A](p: A ! Async): A = !.run(Async.run[A, Nothing](p))
+  def run[A](p: A ! Async): A = !.run(Async.run[A, okay.Pure](p))
 
   def store(): (Path, okay.persist.Topic) =
     val root = Files.createTempDirectory("okay-backup-src")

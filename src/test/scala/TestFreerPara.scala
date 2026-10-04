@@ -40,8 +40,8 @@ class TestFreerPara extends munit.FunSuite:
     P.flatMap(m)(a => P.flatMap(f(a))(b => P.flatMap(g(b))(c => P.pure(c))))
 
   test("Freer.Para[G] is a ParaMonad for any G: found, and its nodes are the tree's") {
-    val P = summon[ParaMonad[Freer.Para[Freer.Lift[Pure]]]]
-    val p: Freer[Freer.Lift[Pure], Unit, Unit, Int] = P.flatMap(P.pure[Int, Unit](1))(x => P.pure(x + 1))
+    val P = summon[ParaMonad[Freer.Para[Unary[Pure]]]]
+    val p: Freer[Unary[Pure], Unit, Unit, Int] = P.flatMap(P.pure[Int, Unit](1))(x => P.pure(x + 1))
     p match
       case Bind(Return(1), _) => ()
       case other => fail(s"expected Bind(Return(1), _), got $other")

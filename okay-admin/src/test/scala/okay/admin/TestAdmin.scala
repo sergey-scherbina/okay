@@ -13,7 +13,7 @@ import okay.security.given
  */
 class TestAdmin extends munit.FunSuite {
 
-  def run[A](p: A ! Async): A = !.run(Async.run[A, Nothing](p))
+  def run[A](p: A ! Async): A = !.run(Async.run[A, okay.Pure](p))
 
   var replayed = 0
   var pinged = 0

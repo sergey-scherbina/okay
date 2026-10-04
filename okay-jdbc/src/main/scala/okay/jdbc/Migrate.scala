@@ -84,15 +84,15 @@ object Migrate {
     db.begin(Isolation.ReadCommitted).flatMap { _ =>
       okay.async {
         try
-          okay.!.run(Async.run[Long, Nothing](db.update(s.sql))): Unit
-          okay.!.run(Async.run[Long, Nothing](db.update(
+          okay.!.run(Async.run[Long, okay.Pure](db.update(s.sql))): Unit
+          okay.!.run(Async.run[Long, okay.Pure](db.update(
             s"insert into $table (version, name, checksum, applied_at) values (?, ?, ?, ?)",
             Vector(SqlValue.I32(a.version), SqlValue.Text(a.name),
               SqlValue.Text(a.checksum), SqlValue.I64(a.at))))): Unit
-          okay.!.run(Async.run[Unit, Nothing](db.commit()))
+          okay.!.run(Async.run[Unit, okay.Pure](db.commit()))
           Right(())
         catch case e: Exception =>
-          okay.!.run(Async.run[Unit, Nothing](db.rollback()))
+          okay.!.run(Async.run[Unit, okay.Pure](db.rollback()))
           Left(s"script v${s.version} '${s.name}' failed: ${e.getMessage}")
       }
     }

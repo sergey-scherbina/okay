@@ -211,7 +211,7 @@ class HandlerBenchmark {
   def stateForward(): (Long, Long) = askLoop(State.handle(0L)(forwardProg))
 
   /** the residue of `handleIndexed` at every index `Unit` IS an `Ask`
-   * tree (`Unary[Ask][Unit, Unit, X]` reduces to `Ask[X]`, `Lift[Ask]`'s
+   * tree (`Unary[Ask][Unit, Unit, X]` reduces to `Ask[X]`, `Unary[Ask]`'s
    * shape); the cast names the two spellings of one runtime tree, and is
    * the one this lane adds — the handler has none */
   @Benchmark

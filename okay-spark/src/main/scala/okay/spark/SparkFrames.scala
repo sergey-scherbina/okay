@@ -178,7 +178,9 @@ final class SparkFrames(spark: SparkSession, bulk: SparkBulk):
   /** a program in `Tables + Structured`, run on Spark; it may also use
    * `load`/`read`/`frame`, whose row is the heap's `State` */
   def run[A](p: A ! Tables + Structured + State % H): A =
-    State.run(Heap.empty[Rows])(structured(Tables.via(bulk)(p)))._2
+    // the rest of the row named: through the bridge's match type `via` cannot solve its `F` from `p`
+    val tabled: A ! Structured + State % H = Tables.via[A, Rows, Structured + State % H](bulk)(p)
+    State.run(Heap.empty[Rows])(structured(tabled))._2
 
 object SparkFrames:
   /** THE ONE CAST, as `SparkBulk`'s: the seam's RDD holds `Any`, and an

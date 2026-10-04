@@ -158,7 +158,7 @@ object Resource {
    * }}}
    */
   def scoped[A](a: A ! Resource): A =
-    !.run(run[A, Nothing](a)(using new Failing[Nothing]:
+    !.run(run[A, Pure](a)(using new Failing[Pure]:
       def guard[X](e: Nothing, onFailure: () => Unit): Nothing = e))
 
   /** the handler as a value: `p.handle(Resource.region)` — every acquisition released at the end, in reverse */

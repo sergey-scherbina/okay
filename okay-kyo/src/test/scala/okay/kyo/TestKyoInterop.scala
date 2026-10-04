@@ -24,7 +24,7 @@ class TestKyoInterop extends munit.FunSuite {
       effect[Reader % Int, Int](Reader.Ask()).flatMap(x => pure(x * 2))
     assertEquals(Env.run(21)(toKyoEnv(ours)).eval, 42)
     val theirs: Int < Env[Int] = Env.get[Int].flatMap((x: Int) => x + 1)
-    assertEquals(!.run(okay.Reader.run[Int, Int, Nothing](41)(
+    assertEquals(!.run(okay.Reader.run[Int, Int, okay.Pure](41)(
       okay.!.widen(fromKyoEnv(theirs)))), 42)
   }
 
@@ -41,7 +41,7 @@ class TestKyoInterop extends munit.FunSuite {
       Emit.valueWith("x")(Emit.valueWith("y")(5: Int < Emit[String]))
     val back = fromKyoEmit(theirs)
     assertEquals(okay.Writer.uncons(back).toOption.map(_._1), Some("x"))
-    val (ws, r) = !.run(okay.Writer.run[String, Int, Nothing](okay.!.widen(back)))
+    val (ws, r) = !.run(okay.Writer.run[String, Int, okay.Pure](okay.!.widen(back)))
     assertEquals((ws, r), (Seq("x", "y"), 5))
   }
 
@@ -66,7 +66,7 @@ class TestKyoInterop extends munit.FunSuite {
       List(10, 20, 20, 30, 40, 60))
     val theirs: Int < Choice =
       Choice.get(Seq(1, 2)).flatMap((x: Int) => Choice.get(Seq(10, 20)).flatMap((y: Int) => x * y))
-    assertEquals(!.run(okay.runChoice[Int, Nothing](okay.!.widen(fromKyoChoice(theirs)))).sorted,
+    assertEquals(!.run(okay.runChoice[Int, okay.Pure](okay.!.widen(fromKyoChoice(theirs)))).sorted,
       Seq(10, 20, 20, 40))
   }
 

@@ -36,7 +36,7 @@ class TestQuerySqlite extends munit.FunSuite {
     try f(JdbcSql(conn))
     finally conn.close()
 
-  def run[A](prog: A ! Async): A = !.run(Async.run[A, Nothing](prog))
+  def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.Pure](prog))
 
   def rows(db: Sql, sql: String, params: Vector[SqlValue]): Vector[Customer] =
     summon[Stream[[W] =>> Unit ! Writer % W + Async, Async]]

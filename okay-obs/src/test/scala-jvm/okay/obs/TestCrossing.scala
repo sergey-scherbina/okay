@@ -45,7 +45,7 @@ class TestCrossing extends munit.FunSuite {
           val n = tracer.root("GET /q", h("traceparent"), h("tracestate")) {
             tracer.span("sql update", Attr("db.system", "h2")) {
               val db: Sql = JdbcSql(conn)
-              okay.!.run(Async.run[Long, Nothing](Typed.update[Row](db, "update t set n = ?")(Row(7))))
+              okay.!.run(Async.run[Long, okay.Pure](Typed.update[Row](db, "update t set n = ?")(Row(7))))
             }
           }
           Response(200, Nil, Http.one(n.toString.getBytes("UTF-8")))

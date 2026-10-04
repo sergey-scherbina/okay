@@ -12,7 +12,7 @@ class TestResource extends munit.FunSuite {
     var log = List.empty[String]
     def res(n: String) = Resource.acquire { log ::= s"open $n"; n } (r => log ::= s"close $r")
     val prog = res("a").flatMap(a => res("b").map(b => a + b))
-    assertEquals(!.run(Resource.run[String, Nothing](prog)), "ab")
+    assertEquals(!.run(Resource.run[String, okay.Pure](prog)), "ab")
     assertEquals(log.reverse, List("open a", "open b", "close b", "close a"))
   }
 
@@ -32,7 +32,7 @@ class TestResource extends munit.FunSuite {
     var released = false
     val prog: Int ! Resource = Resource.acquire(())(_ => released = true)
       .flatMap(_ => pure[Resource, Int](0).map(_ => throw RuntimeException("boom")))
-    intercept[RuntimeException](!.run(Resource.run[Int, Nothing](prog))): Unit
+    intercept[RuntimeException](!.run(Resource.run[Int, okay.Pure](prog))): Unit
     assertEquals(released, true)
   }
 

@@ -16,18 +16,18 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
   import q.reflect.*
 
   /** the tree's class: `Freer` since freer-base-step-extractor (2026-09-29),
-   * `A ! Row` being `Freer[Lift[Row], Unit, Unit, A]` */
+   * `A ! Row` being `Freer[Unary[Row], Unit, Unit, A]` */
   lazy val freeClass = Symbol.requiredClass("okay.Freer")
-  private lazy val liftedClass = TypeRepr.of[okay.Freer.Lifted[Option]].typeSymbol
-  private lazy val liftAlias = TypeRepr.of[okay.Freer.Lift[Option]].typeSymbol
+  private lazy val liftedClass = TypeRepr.of[okay.Diagonal[Option]].typeSymbol
+  private lazy val liftAlias = TypeRepr.of[okay.Unary[Option]].typeSymbol
 
   /**
    * A PROGRAM TYPE, TAKEN APART: `(row, elem)` of an `A ! Row`, or None.
    * One place for the shape, because the base is indexed now:
    * `Freer[G, S, R, A]` with the value LAST and the row inside `G`,
    * which arrives in three spellings depending on how far the compiler
-   * has dealiased it — `Lift[Row]` (the alias applied),
-   * `Lifted[Row]#L` (the projection it stands for), or the lambda
+   * has dealiased it — `Unary[Row]` (the alias applied),
+   * `Diagonal[Row]#L` (the projection it stands for), or the lambda
    * `[S, R, X] =>> Row[X]` the projection reduces to. The last is
    * eta-expanded back to a unary row, so `=:=` against a block's row
    * holds either way.

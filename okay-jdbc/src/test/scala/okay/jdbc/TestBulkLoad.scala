@@ -13,7 +13,7 @@ import java.sql.DriverManager
  */
 class TestBulkLoad extends munit.FunSuite {
 
-  def run[A](p: A ! Async): A = !.run(Async.run[A, Nothing](p))
+  def run[A](p: A ! Async): A = !.run(Async.run[A, okay.Pure](p))
 
   def duck(): (java.sql.Connection, Sql) =
     Class.forName("org.duckdb.DuckDBDriver")

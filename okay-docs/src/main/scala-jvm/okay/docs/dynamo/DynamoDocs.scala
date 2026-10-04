@@ -64,7 +64,7 @@ final class DynamoDocs[A](http: Http, endpoint: String, region: String, creds: S
     val req = Request(Method.Post, s"$endpoint/",
       Seq("x-amz-target" -> target, "content-type" -> contentType) ++ auth,
       Body.Bytes(ArraySeq.unsafeWrapArray(payload)))
-    val (status, text) = !.run(Async.run[(Int, String), Nothing](
+    val (status, text) = !.run(Async.run[(Int, String), okay.Pure](
       http.send(req).flatMap(r => Http.text(r).map(t => (r.status, t)))))
     val json = Json.parse(text)
     if status == 200 then Right(json)

@@ -20,7 +20,7 @@ that operations must be *shaped* to carry their continuation. Their
 **freer** monad stores the continuation *beside* the operation instead:
 
 ```scala
-// Free.scala — the one enum; `Free[F, A]` is it at `Lift[F]` with the
+// Free.scala — the one enum; `Free[F, A]` is it at `Unary[F]` with the
 // two answer-type indexes S and R fixed at Unit (chapter 11 says why
 // they are there: the same tree is `Cont`)
 enum Freer[G[_, _, +_], S, R, +A] {

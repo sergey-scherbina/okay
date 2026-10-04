@@ -12,7 +12,7 @@ import scala.collection.immutable.ArraySeq
  */
 class TestSourceProducer extends munit.FunSuite:
 
-  def run[A](p: A ! Async): A = !.run(Async.run[A, Nothing](p))
+  def run[A](p: A ! Async): A = !.run(Async.run[A, okay.Pure](p))
 
   type P = Produce + Async
 

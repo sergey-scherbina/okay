@@ -10,7 +10,7 @@ import reactor.core.publisher.Mono
 /**
  * Why the adapter alone is not enough: WebFlux reads a reactive return
  * type's ELEMENT type from generic index 0, and `A ! Async` is
- * `Freer[Lift[Async], Unit, Unit, A]` — index 0 is the effect's
+ * `Freer[Unary[Async], Unit, Unit, A]` — index 0 is the effect's
  * signature, and the value is index 3. Measured: with only the
  * adapter, a `String ! Async` was written as a server-sent event
  * (`data:hi!`), the element type having resolved to the effect. This
@@ -28,7 +28,7 @@ final class OkayResultHandler(delegate: ResponseBodyResultHandler) extends Handl
     classOf[Freer[?, ?, ?, ?]].isAssignableFrom(result.getReturnTypeSource.getParameterType) && delegate.supports(result)
 
   override def handleResult(exchange: ServerWebExchange, result: HandlerResult): Mono[Void] =
-    // index 3: `A ! F` is `Freer[Lift[F], Unit, Unit, A]` since
+    // index 3: `A ! F` is `Freer[Unary[F], Unit, Unit, A]` since
     // freer-base-step-extractor — the value comes LAST (Free.scala says why)
     val elem = ResolvableType.forMethodParameter(result.getReturnTypeSource).getGeneric(3).resolve(classOf[AnyRef])
     val stub = if classOf[CharSequence].isAssignableFrom(elem) then OkayResultHandler.string else OkayResultHandler.any

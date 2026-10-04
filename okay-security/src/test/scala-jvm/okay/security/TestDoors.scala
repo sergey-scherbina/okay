@@ -8,7 +8,7 @@ import okay.http.{Http, Request, Response}
  * door, against stubs where a wire would be */
 class TestDoors extends munit.FunSuite {
 
-  def run[A](p: A ! Async): A = !.run(Async.run[A, Nothing](p))
+  def run[A](p: A ! Async): A = !.run(Async.run[A, okay.Pure](p))
 
   /** an Http stub answering a fixed response — the wire, removed */
   def stub(status: Int, body: String): Http = new Http:

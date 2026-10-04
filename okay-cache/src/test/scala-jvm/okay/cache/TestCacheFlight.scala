@@ -12,7 +12,7 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 class TestCacheFlight extends munit.FunSuite {
 
-  def run[A](prog: A ! Async): A = !.run(Async.run[A, Nothing](prog))
+  def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.Pure](prog))
 
   test("N concurrent misses on one key: one load, N answers; another key independent") {
     val c = Cache.memory[String, String](Regime.Invalidated, 100)

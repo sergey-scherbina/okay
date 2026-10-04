@@ -35,7 +35,7 @@ class TestPoll extends munit.FunSuite {
     try f(JdbcSql(conn))
     finally conn.close()
 
-  def run[A](prog: A ! Async): A = !.run(Async.run[A, Nothing](prog))
+  def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.Pure](prog))
 
   def insert(db: Sql, seqs: Long*): Unit =
     seqs.foreach(s => run(db.update(s"insert into events values ($s, 'p-$s')")))

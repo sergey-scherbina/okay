@@ -166,7 +166,7 @@ object Delimited:
 
   /** a machine for a `Free` row `H` whose effects outside are `F`: it answers every operation of `H` but those
    * `outer` sends out, which leave in the program it answers */
-  def over[H[+_], F[+_]](steps: Step[Freer.Lift[H], Freer.Lift[H]], outer: Outer[Freer.Lift[H], F]): Run[Freer.Lift[H], F] =
+  def over[H[+_], F[+_]](steps: Step[Unary[H], Unary[H]], outer: Outer[Unary[H], F]): Run[Unary[H], F] =
     Run(steps, outer)
 
   // ---- what the primitives speak of ----
@@ -332,7 +332,7 @@ object Delimited:
 
     /** an operation out, as a node of the answered program; its answer enters this loop again, in a `Delay` */
     private def forward[X, B, S, T, Z](o: F[X], k: Frames[G, X, B, S, T], m: Stack[G, B, S, T, Z]): Free[F, Z] =
-      Bind(Inject[Freer.Lift[F], Unit, Unit, X](o), (x: X) => Delay(() => again(Return[G, T, X](x), k, m)))
+      Bind(Inject[Unary[F], Unit, Unit, X](o), (x: X) => Delay(() => again(Return[G, T, X](x), k, m)))
 
     /** the loop entered again from the outside: a call, so `go` stays a loop */
     private def again[A, B, S, T, R, Z](c: Freer[G, T, R, A], k: Frames[G, A, B, S, T], m: Stack[G, B, S, R, Z]): Free[F, Z] =
