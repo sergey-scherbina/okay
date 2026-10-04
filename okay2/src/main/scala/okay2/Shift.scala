@@ -159,14 +159,18 @@ object Shift {
    * and `ret` are programs in the machine's row, erased here as
    * `Push`'s body is and re-typed at the machine's claim lines.
    */
-  final case class Dollar[R0, R](prompt: Prompt[R], ret: Any, body: Any, shots: Shots) extends Op[R]
+  final case class Dollar[R0, R](prompt: Prompt[R], ret: Any, body: Any) extends Op[R]
+
+  /** a WATCHED `dollar` (`dollarResumed`): a `Dollar` with its count, its own operation so the plain one carries
+   * no field it does not use (okay2-delim-perf, the Scala 3 core's delim-dollar-shots-bytes). Matched LAST */
+  final case class Watched[R0, R](prompt: Prompt[R], ret: Any, body: Any, shots: Shots) extends Op[R]
 
   /**
    * How many times the machine has entered a watched `dollar` through
    * ONE capture (the Scala 3 core's `Shift.Shots`, lexical-tail-guard-
    * abort): a capture that takes the delimiter gets a fresh count, so
    * `n > 1` means "this same captured context has been RUN a second
-   * time". `null` on a plain dollar. Counted when the reified program is
+   * time". Only a watched dollar has one. Counted when the reified program is
    * stepped, not when `k` builds it.
    */
   final class Shots(val resumed: Int => Unit) { var n: Int = 0 }
@@ -197,7 +201,7 @@ object Shift {
    * core's twin (specs/shift0-dollar.md, okay2-dollar).
    */
   def dollar[R0, R, F <: Row](p: Prompt[R])(ret: R0 => R ! (Shift[Any] + F))(body: Free[Shift[Any] with F, R0]): R ! (Shift[Any] + F) =
-    Free.inject[Shift[Any], R](Dollar[R0, R](p, ret, body, null)).plus[F]
+    Free.inject[Shift[Any], R](Dollar[R0, R](p, ret, body)).plus[F]
 
   /** `dollar`, told each time the machine enters it: `resumed(1)` at the
    * call itself and at the first run of each capture that took the
@@ -205,7 +209,7 @@ object Shift {
    * what a `ret` cannot see, since a resumption that leaves by `abort`
    * never returns through it (okay2-lexical, the Scala 3 core's twin) */
   def dollarResumed[R0, R, F <: Row](p: Prompt[R])(ret: R0 => R ! (Shift[Any] + F), resumed: Int => Unit)(body: Free[Shift[Any] with F, R0]): R ! (Shift[Any] + F) =
-    Free.inject[Shift[Any], R](Dollar[R0, R](p, ret, body, new Shots(resumed))).plus[F]
+    Free.inject[Shift[Any], R](Watched[R0, R](p, ret, body, new Shots(resumed))).plus[F]
 
   /**
    * Capture the continuation up to `p` and hand it to `f`. The
@@ -582,13 +586,19 @@ object Shift {
     final case class Mark[F <: Row, X, Z](p: Prompt[X], rest: Segs[F, X, Z]) extends Segs[F, X, Z]
     /** a `dollar` delimiter: the body's X0 leaves through `ret` into
      * the prompt's X */
-    final case class Ret[F <: Row, X0, X, Z](p: Prompt[X], ret: X0 => X ! (Shift[Any] + F), shots: Shots, rest: Segs[F, X, Z]) extends Segs[F, X0, Z]
+    final case class Ret[F <: Row, X0, X, Z](p: Prompt[X], ret: X0 => X ! (Shift[Any] + F), rest: Segs[F, X, Z]) extends Segs[F, X0, Z]
+    /** a watched `dollar` (`dollarResumed`): a `Ret` with its count. Matched LAST wherever the chain is walked,
+     * so the plain frames pay no type test for it */
+    final case class Watch[F <: Row, X0, X, Z](p: Prompt[X], ret: X0 => X ! (Shift[Any] + F), shots: Shots, rest: Segs[F, X, Z]) extends Segs[F, X0, Z]
   }
 
-  /** the copy of a `Ret` a capture takes with it: a watched dollar gets a
-   * FRESH count, one per capture (`Shots`) */
+  /** the copy of a `Ret` a capture takes with it */
   private def retake[F <: Row, X0, X, Q](r: Segs.Ret[F, X0, X, _], c: Segs[F, X, Q]): Segs.Ret[F, X0, X, Q] =
-    Segs.Ret(r.p, r.ret, if (r.shots == null) null else new Shots(r.shots.resumed), c)
+    Segs.Ret(r.p, r.ret, c)
+
+  /** the copy of a `Watch`: a FRESH count, one per capture (`Shots`) */
+  private def rewatch[F <: Row, X0, X, Q](r: Segs.Watch[F, X0, X, _], c: Segs[F, X, Q]): Segs.Watch[F, X0, X, Q] =
+    Segs.Watch(r.p, r.ret, new Shots(r.shots.resumed), c)
 
   /** the stack cut at a prompt. TWO SHAPES, as in the Scala 3 core: a
    * `dollar` changes the answer type and a plain mark does not */
@@ -736,7 +746,8 @@ object Shift {
       case Segs.Done(ev) => ev.substituteCo[Prog](start)
       case Segs.K(f, rest) => reify(rest, start.flatMap(f))
       case Segs.Mark(p, rest) => reify(rest, Free.inject[Shift[Any], A](Push(p, start)).plus[F])
-      case r: Segs.Ret[F, A, x, P] => reify(r.rest, Free.inject[Shift[Any], x](Dollar[A, x](r.p, r.ret, start, r.shots)).plus[F])
+      case r: Segs.Ret[F, A, x, P] => reify(r.rest, Free.inject[Shift[Any], x](Dollar[A, x](r.p, r.ret, start)).plus[F])
+      case r: Segs.Watch[F, A, x, P] => reify(r.rest, Free.inject[Shift[Any], x](Watched[A, x](r.p, r.ret, start, r.shots)).plus[F])
     }
 
     /** the delimiters this machine has installed, innermost first —
@@ -745,8 +756,9 @@ object Shift {
       @tailrec def go(k: Segs[F, _, R], acc: List[String]): List[String] = k match {
         case Segs.Done(_) => acc.reverse
         case Segs.Mark(q, rest) => go(rest, q.label :: acc)
-        case Segs.Ret(q, _, _, rest) => go(rest, q.label :: acc)
+        case Segs.Ret(q, _, rest) => go(rest, q.label :: acc)
         case Segs.K(_, rest) => go(rest, acc)
+        case Segs.Watch(q, _, _, rest) => go(rest, q.label :: acc)
       }
       go(kont, Nil)
     }
@@ -787,6 +799,17 @@ object Shift {
           walk[A, P, Z](Walk(k.rest, On(here.w, new Frame[F, x, y] {
             def apply[Q](c: Segs[F, y, Q]): Segs[F, x, Q] = Segs.K(k.f, c)
           })), p)
+        // a watched dollar, last: as a `Ret`, its copy with a fresh count
+        case r: Segs.Watch[F, x, x1, Z] => samePrompt.same(r.p, p) match {
+          case Some(ev) =>
+            Some(atRet[F, A, x, P, Z](unwind(here.w.step(Segs.Done[F, x, x](implicitly[x =:= x]))),
+              rewatch[F, x, x1, P](r, Segs.Done[F, x1, P](ev)),
+              ev.substituteCo[({ type L[t] = Segs[F, t, Z] })#L](r.rest)))
+          case None =>
+            walk[A, P, Z](Walk(r.rest, On(here.w, new Frame[F, x, x1] {
+              def apply[Q](c: Segs[F, x1, Q]): Segs[F, x, Q] = rewatch(r, c)
+            })), p)
+        }
       }
     }
 
@@ -807,7 +830,8 @@ object Shift {
         // the delimited block finished normally: drop its marker
         case Segs.Mark(_, rest) => loop(next(pure[Rw, state.A](x), rest))
         // a `dollar` finished normally: leave it, through its return
-        case Segs.Ret(_, ret, _, rest) => loop(next(ret(x), rest))
+        case Segs.Ret(_, ret, rest) => loop(next(ret(x), rest))
+        case Segs.Watch(_, ret, _, rest) => loop(next(ret(x), rest))
       }
       case Inject(e) => loop(next(Bind(Inject[Rw, state.A](e), (y: state.A) => Return[Rw, state.A](y)), state.kont))
       // a reset run outermost, met inside this machine: its program runs HERE, on this machine's stack of
@@ -866,11 +890,18 @@ object Shift {
             // and ret leads from r0 to the prompt's r, in this row
             val body = d.body.asInstanceOf[Prog[r0]]
             val ret = d.ret.asInstanceOf[r0 => Prog[r]]
+            loop(next(body, Segs.Ret[F, r0, r, R](d.prompt, ret, Segs.K((a: r) => pure[Rw, Any](a), kont))))
+
+          case w: Watched[r0, r] =>
+            // claims 1b and 1c, as `Dollar`'s
+            val body = w.body.asInstanceOf[Prog[r0]]
+            val ret = w.ret.asInstanceOf[r0 => Prog[r]]
             // a watched dollar is told it is being entered — here, when the
             // program is RUN, so a continuation built and dropped does not count
-            val shots = d.shots
-            if (shots != null) { shots.n += 1; shots.resumed(shots.n) }
-            loop(next(body, Segs.Ret[F, r0, r, R](d.prompt, ret, shots, Segs.K((a: r) => pure[Rw, Any](a), kont))))
+            val shots = w.shots
+            shots.n += 1
+            shots.resumed(shots.n)
+            loop(next(body, Segs.Watch[F, r0, r, R](w.prompt, ret, shots, Segs.K((a: r) => pure[Rw, Any](a), kont))))
         }
       // a foreign operation suspends the machine: the residual program
       // performs it and resumes with the same stack
@@ -1103,6 +1134,7 @@ object Shift {
       case c: Shift.Capture[_, _] => c.prompt eq k.prompt
       case p: Shift.Push[_] => p.prompt eq k.prompt
       case d: Shift.Dollar[_, _] => d.prompt eq k.prompt
+      case w: Shift.Watched[_, _] => w.prompt eq k.prompt
       case _ => false
     }
   }
