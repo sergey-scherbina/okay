@@ -14,3 +14,10 @@
       Async guard does. TRIGGER: the first consumer that acquires inside
       a search it cuts, or a review that finds one. Until then: acquire
       OUTSIDE the search, or use `bracketNow` inside a branch.
+      UPDATE 2026-10-04 (resource-abort-releases): the tool now exists on
+      the machine — `Shift.discontinue(k)` throws `Shift.Discontinued` into
+      a dropped continuation, and a `Resource` scope there releases. On a
+      machine, `Logic.msplit`'s rest is `HandleFrames.pending(k(c))`
+      programs over the search frame's `k`, so a `cut` that dropped the
+      rest could discontinue those `k`s; the fold's rest (plain `Bind`
+      continuations, no scope frame) still has nothing to throw into.
