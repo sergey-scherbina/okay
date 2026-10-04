@@ -1,6 +1,5 @@
 package okay
 
-import scala.annotation.tailrec
 import okay.!.*
 import okay.Row.at
 
@@ -70,39 +69,12 @@ object Chronicle:
     def verdict[B](errs: List[E], a: B): Verdict[E, B] =
       if errs.isEmpty then Clean(a) else Warned(a, errs.reverse.toVector)
 
-    def _loop(d: Int)(errs: List[E])(x: A ! Chronicle % E + F): Verdict[E, A] ! F = loop(d)(errs)(x)
-
-    // the seed of `Writer.loopWith`'s shape: a bespoke loop, because the
-    // record has to be threaded through it
-    // the loop as a frame (handle-frames-loops): the record is its state, and a halt does not resume
-    def frame(errs: List[E])(x: A ! Chronicle % E + F): Shift.U[F, Verdict[E, A]] =
-      HandleFrames.stateful[Chronicle % E, List[E], A, Verdict[E, A], F](summon[TypeableK[Chronicle % E]],
-        (errs, a) => pure(verdict(errs, a)))(
-        (errs, op, resume) => (op.asInstanceOf[Chronicle[E, Any]]: @unchecked) match
-          case Dictate(err) => resume(err :: errs, ())
-          case Halt() => pure(Failed(errs.reverse.toVector)))(errs, x)
-
-    @tailrec def loop(d: Int)(errs: List[E])(x: A ! Chronicle % E + F): Verdict[E, A] ! F = (x.resumeRun: @unchecked) match
-      case Return(a) => Return(verdict(errs, a))
-      case i @ Inject(e) => split[Chronicle % E, F](e) { c =>
-          // `@unchecked` as the Bind case below explains: under the
-          // indexed base `e` is typed at the program's answer type, and
-          // the checker cannot see both constructors are all there is
-          (c: @unchecked) match
-            case Dictate(err) => Return(verdict(err :: errs, ())): Verdict[E, A] ! F
-            case Halt() => Return(Failed(errs.reverse.toVector)): Verdict[E, A] ! F
-        } { _ => forwarded[Chronicle % E, F](i).map(verdict(errs, _)) }
-      case Bind(i @ Inject(e), k) => split[Chronicle % E, F](e) { c =>
-          // the constructor refines the CONTINUATION's domain here; the
-          // checker cannot see that under an existential answer type the
-          // two cases are all there is — `Writer.loopWith`'s claim
-          (c: @unchecked) match
-            case Dictate(err) => loop(d)(err :: errs)(k(()))
-            case Halt() => Return(Failed(errs.reverse.toVector)): Verdict[E, A] ! F
-        } { _ => forwarded[Chronicle % E, F](i).flatMap(x => _loop(d)(errs)(k(x))) }
-      case y => loop(d)(errs)(HandleFrames.shallow(y, d))
-
-    HandleFrames.run[Verdict[E, A], F](d => loop(d)(Nil)(p), frame(Nil)(p))
+    // one step, both faces (handler-one-step): a dictate records and resumes, a halt stops with the record
+    HandleFrames.stateRunOr[Chronicle % E, List[E], A, Verdict[E, A], F](summon[TypeableK[Chronicle % E]],
+      (errs, a) => pure(verdict(errs, a)))(
+      (errs, op) => (op.asInstanceOf[Chronicle[E, Any]]: @unchecked) match
+        case Dictate(err) => (err :: errs, ())
+        case Halt() => HandleFrames.Stop(pure(Failed(errs.reverse.toVector))))(Nil, p)
   }
 
   /**

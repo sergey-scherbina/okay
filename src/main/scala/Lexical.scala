@@ -95,28 +95,13 @@ object Lexical:
       val handle = Instances.handle("walk")
       val i = new Inst[F, R]:
         def perform[X](e: F[X]): X ! R = Free.Inject(Instances[F, X](handle, e))
-      // a resumption from a forwarded operation re-enters here
-      def again(d: Int)(s: S)(x: A ! R): (S, A) ! R = loop(d)(s)(x)
-      // the walk as a frame (handle-frames-loops): it takes the operations of ITS instance only
+      // the walk, one step both faces (handler-one-step): it takes the operations of ITS instance only; another
+      // instance's goes on, as the rest of the row does
       def mine: TypeableK[Instances.Of[F]] = new TypeableK[Instances.Of[F]]:
         def test(x: Any): Boolean = summon[TypeableK[Instances.Of[F]]].test(x) && (x.asInstanceOf[Instances[F, Any]].at eq handle)
-      def frame(s: S)(x: A ! R): Shift.U[R, (S, A)] =
-        HandleFrames.stateful[Instances.Of[F], S, A, (S, A), R](mine, (s, a) => okay.pure((s, a)))(
-          (s, op, resume) => { val (s1, y) = c.op(op.asInstanceOf[Instances[F, Any]].op, s); resume(s1, y) })(s, x)
-      @scala.annotation.tailrec
-      def loop(d: Int)(s: S)(x: A ! R): (S, A) ! R = (x.resumeRun: @unchecked) match
-        case Free.Return(a) => okay.pure((s, a))
-        case Free.Inject(e) => split[Instances.Of[F], G](e) { in =>
-            if in.at eq handle then { val (s1, a) = c.op(in.op, s); okay.pure[R, (S, A)]((s1, a)) }
-            else Free.Inject(in).map(a => (s, a))
-          } { g => Free.Inject(g).map(a => (s, a)) }
-        case Free.Bind(Free.Inject(e), k) => split[Instances.Of[F], G](e) { in =>
-            if in.at eq handle then { val (s1, y) = c.op(in.op, s); loop(d)(s1)(k(y)) }
-            else Free.Inject(in).flatMap(y => again(d)(s)(k(y)))
-          } { g => Free.Inject(g).flatMap(y => again(d)(s)(k(y))) }
-        case y => loop(d)(s)(HandleFrames.shallow(y, d))
       val b = body(i)
-      HandleFrames.run[(S, A), R](d => loop(d)(s0)(b), frame(s0)(b))
+      HandleFrames.stateRun[Instances.Of[F], S, A, (S, A), R](mine, (s, a) => okay.pure((s, a)))(
+        (s, op) => c.op(op.asInstanceOf[Instances[F, Any]].op, s))(s0, b)
     }
 
   /** the default by clause kind: tail clauses run `tail`, others `deep` */
