@@ -34,6 +34,11 @@ object JsonStrict {
     /** open containers, for the native/trampoline switch */
     private var open = 0
 
+    /** one container opened and closed, on the same counter the
+     * interpreted walk spends (the staged readers' containers) */
+    def enter(): Unit = open += 1
+    def leave(): Unit = open -= 1
+
     def skipWs(): Unit =
       while (at < n && { val c = s.charAt(at); c == ' ' || c == '\n' || c == '\r' || c == '\t' }) at += 1
 

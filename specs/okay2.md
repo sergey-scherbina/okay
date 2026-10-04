@@ -2793,3 +2793,47 @@ first lane of three.
 - `Digest`'s own Schema is written by hand: `Schema.derived` cannot
   expand in the module that defines the macro. Typed one/two/three-field
   helpers hold the one cast (`Hand.part`).
+
+## Stage 55 — okay2-codec-text: EDN, YAML, Markdown and the staged codecs (2026-10-04)
+
+Operator: "Делай то что нужно для okay2 только сразу всё" — the second
+lane of okay2-codec-dialects.
+
+- [x] `Edn`: the value, an iterative reader (comments, commas, discard,
+      sets, tags, characters, symbols, `##Inf`, `N` and `M`) and printer,
+      a Schema through EDN and back — keyword keys, an exact Long, `123N`,
+      `\c`, a sum as a tag namespaced by the sum (`#Shape/Rect {…}`),
+      bytes as `#okay/bytes` — decoded natively to `NativeThreshold`,
+      then on `Cont.defer` (TestEdn)
+- [x] `Yaml`: the indentation prover, scanner, driver and projection on
+      an explicit stack, decoded by the SAME Json algebra (TestYamlMarkdown)
+- [x] `Markdown`: the reframing prover; crossing emphasis reframed,
+      unclosed emphasis an error node (TestYamlMarkdown)
+- [x] the lossless laws under random input for YAML and Markdown, and a
+      value round-tripping JSON, CBOR and EDN (TestTextLaws, scalacheck)
+- [x] on a 256 KB stack (JVM): CBOR and EDN encode and decode 20 000
+      levels, EDN text 20 000, YAML 5 000 (TestTextDepth)
+- [x] `Staged.json`/`cbor`/`strict`: the codec generated at the call site
+      from the class, agreeing with the fold byte-for-byte on encode and
+      Left-for-Left on decode — totality doors, wrong shapes, unknown
+      cases, an iso field and a recursive type delegated to the fold, a
+      CBOR map in any order with duplicate keys (TestStaged,
+      TestStagedCbor, TestJsonStrictStaged)
+- [x] JVM, Scala.js and Scala Native
+
+### What differs from Scala 3
+- `Staged` is a blackbox macro (`StagedMacro`) that reads the class as
+  `SchemaMacro` does, where Scala 3 reads a `Mirror` inside a quote. The
+  rule is Scala 3's: a node is staged only where the run-time schema has
+  the class's shape (`productShape`/`sumShape`, a val per type, checked
+  once), and anything else is the fold. The leaves of the JSON tree are
+  read by small helpers (`Staged.jInt`, `jField`, …) instead of inline
+  matches, and CBOR and strict products are made from their slots by a
+  cast per field in the generated code, as `SchemaMacro`'s `make` does.
+- `JsonStrict.Reader` gained `enter`/`leave`, so a staged container
+  spends the same depth counter the interpreted walk does.
+- `Edn`'s decoder reads leaves through one `Schema.Visit` shared by both
+  roads, where Scala 3 matched `(schema, value)` pairs; the containers
+  are each road's own, as in stage 41's JSON.
+- `Yaml`'s relex key is the mode's tag without its positions, which is
+  what Scala 3's `ordinal` gave.

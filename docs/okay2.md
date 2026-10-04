@@ -2040,6 +2040,34 @@ so a process can send it to one that does not share its build:
     assertEquals(Digest.compare(old, roundTrip(Digest.of(next))).render, Compat.compare(old, next).render)
 ```
 
+EDN, YAML and Markdown are the text dialects (stage 55), and `Staged`
+generates a codec at the call site that gives the same answers as the
+folds. EDN says what
+JSON cannot. A field name is a keyword, a Long is exact, `123N` is a
+BigInt, and a sum is a value tagged with its case:
+
+```scala
+    assert(text.contains(":shape #EdShape/Rect {:w 2.0 :h 3.5}"), text)
+```
+
+YAML nests by indentation. Its tree keeps every comment and space, and
+it projects into `Json`, so `Yaml.read` decodes with the JSON algebra.
+Markdown's emphasis can cross (`*a _b* c_`); the parser closes and
+reopens the inner frame, and nothing is lost:
+
+```scala
+    assertEquals(Yaml.read[Person](doc),
+      Right(Person("ann", 41, List("a", "b"), Some(Person("bo ss", 60, List("x"), None)))))
+```
+
+A staged codec is checked against the fold it replaces, so it can be
+used wherever the fold is:
+
+```scala
+  private val orderCodec = Staged.json[SgOrder]
+    assertEquals(codec.encode(a), folded, "encode disagrees")
+```
+
 `Codecs` is the run-time door. `Codecs.cbor(schema)` and
 `Codecs.json(schema)` answer through the installed `Provider`, which is
 the interpreter until something else is installed.
