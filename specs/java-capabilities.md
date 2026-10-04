@@ -43,21 +43,21 @@ language with no effect types.
 
 ## Behavior
 
-- [ ] each of the four forms through a capability, its program's row a
+- [x] each of the four forms through a capability, its program's row a
       parameter
-- [ ] TWO instances of one effect, nested, each answering its own:
+- [x] TWO instances of one effect, nested, each answering its own:
       `Cap.answer(Ask, 1, a -> Cap.answer(Ask, 2, b -> …a… …b…))` answers
       12, not the 22 a class test gives (the mutant)
-- [ ] two `Var<Integer>` in one program, and a `Var<Integer>` beside a
+- [x] two `Var<Integer>` in one program, and a `Var<Integer>` beside a
       `Var<String>`
-- [ ] Env + Var + Raise in one program; `recover` keeps the state the
+- [x] Env + Var + Raise in one program; `recover` keeps the state the
       program reached
-- [ ] `Io.run`: sleep then async
-- [ ] multi-shot `control` through a capability (every flip)
-- [ ] an escaped capability, used after its handler is gone, is refused by
+- [x] `Io.run`: sleep then async
+- [x] multi-shot `control` through a capability (every flip)
+- [x] an escaped capability, used after its handler is gone, is refused by
       name ("escaped its scope"), also when a NEW handler of the same
       effect surrounds the use
-- [ ] 1 000 000 `Var` steps by Java recursion, constant stack
+- [x] 1 000 000 `Var` steps by Java recursion, constant stack
 
 ## Decisions
 
@@ -81,3 +81,13 @@ language with no effect types.
 - **Not checked by a compiler test.** "Does not compile without the
   capability" is Java's own rule for a missing argument. A test would
   only test javac.
+
+## Results
+
+- 11 tests in `TestJavaCapabilities`, every program in
+  `JavaCapabilities.java` (Java 17 source), green beside
+  `TestJavaEffects`' 12, which are unchanged.
+- Mutant: the capability's test made a class test (`case t: Tagged =>
+  true`). Four tests fail: nested instances (22 instead of 12), two Vars,
+  Env+Var+Raise (a ClassCastException, `Env$Ask` taken by `Raise`'s
+  handler), and an escaped capability taken by a new handler.

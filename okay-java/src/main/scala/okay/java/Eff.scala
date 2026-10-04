@@ -151,8 +151,10 @@ object Eff {
 
   /** what `run` answers an operation that reached it with: a refusal by name, never the operation as a value */
   private[java] val unhandled: Answers[Top] = new Answers[Top]:
-    def handle[X](op: Top[X]): X =
-      throw IllegalStateException(s"okay.java: no handler took ${Rows.named(op)}")
+    def handle[X](op: Top[X]): X = op match
+      case t: Cap.Tagged => throw IllegalStateException(
+        s"okay.java: ${t.op} was performed through ${t.cap} outside its handler — the capability escaped its scope")
+      case _ => throw IllegalStateException(s"okay.java: no handler took ${Rows.named(op)}")
 
   private[java] val asyncOnly: Answers[Async + Top] =
     Answers.union[Async, Top](using summon[TypeableK[Async]], summon[Answers[Async]], unhandled)(using Rows.distinct)
@@ -176,15 +178,20 @@ final class Handler private (private val take: [A] => Free[Top, A] => Free[Top, 
 object Handler {
 
   /** form 1: each operation of `cls` answered by `f`, and the program goes on */
-  def answer[O](cls: Class[O], f: JFunction[? >: O, ?]): Handler =
-    val h = okay.Handler.answerOf[Top]([X] => (op: Top[X]) => answered[X](f.apply(cls.cast(op))))(using Rows.test(cls))
+  def answer[O](cls: Class[O], f: JFunction[? >: O, ?]): Handler = answerBy(Rows.test(cls), op => f.apply(cls.cast(op)))
+
+  /** form 3: each operation of `cls` becomes the program `f` makes of it, in whatever effects remain */
+  def into[O](cls: Class[O], f: JFunction[? >: O, Eff[?]]): Handler = intoBy(Rows.test(cls), op => f.apply(cls.cast(op)))
+
+  // the forms over any test: by class above, by a capability's identity in `Cap`; `f` reads the raw operation
+
+  private[java] def answerBy(test: TypeableK[Top], f: Any => Any): Handler =
+    val h = okay.Handler.answerOf[Top]([X] => (op: Top[X]) => answered[X](f(op)))(using test)
     new Handler([A] => (p: Free[Top, A]) => coerce[Top, Top, A](
       h.run[A, Top](coerce(p))(using summon, Rows.distinct, okay.Handler.Nothing.any)))
 
-  /** form 3: each operation of `cls` becomes the program `f` makes of it, in whatever effects remain */
-  def into[O](cls: Class[O], f: JFunction[? >: O, Eff[?]]): Handler =
-    val h = okay.Handler.intoOf[Top, Top]([X] => (op: Top[X]) => f.apply(cls.cast(op)).program.map(answered[X]))(
-      using Rows.test(cls))
+  private[java] def intoBy(test: TypeableK[Top], f: Any => Eff[?]): Handler =
+    val h = okay.Handler.intoOf[Top, Top]([X] => (op: Top[X]) => f(op).program.map(answered[X]))(using test)
     new Handler([A] => (p: Free[Top, A]) =>
       h.run[A, Top](coerce(p))(using summon, Rows.distinct, summon))
 
@@ -202,9 +209,12 @@ object StateHandler {
 
   /** form 2: each operation of `cls` answered from the state, which it may replace: `(s, op) -> Stated.of(s2, answer)` */
   def of[O, S](cls: Class[O], init: S, step: BiFunction[S, ? >: O, Stated[S, ?]]): StateHandler[S] =
+    stateBy(Rows.test(cls), init, (s, op) => step.apply(s, cls.cast(op)))
+
+  private[java] def stateBy[S](test: TypeableK[Top], init: S, step: (S, Any) => Stated[S, ?]): StateHandler[S] =
     val h = okay.Handler.stateOf[Top, S](init)([X] => (s: S, op: Top[X]) =>
-      val next = step.apply(s, cls.cast(op))
-      (next.state, answered[X](next.value)))(using Rows.test(cls))
+      val next = step(s, op)
+      (next.state, answered[X](next.value)))(using test)
     new StateHandler([A] => (p: Free[Top, A]) =>
       h.run[A, Top](coerce(p))(using summon, Rows.distinct, okay.Handler.Nothing.any))
 
@@ -225,9 +235,9 @@ trait Clause[O, B] {
 }
 
 /** form 4: a handler with the continuation in hand, its return clause turning the answer `A` into `B` */
-final class Control[A, B] private (cls: Class[?], ret: JFunction[? >: A, Eff[B]], clause: Clause[Any, B]) {
+final class Control[A, B] private[java] (test: TypeableK[Top], ret: JFunction[? >: A, Eff[B]], clause: Clause[Any, B]) {
   private[java] def run(e: Eff[A]): Eff[B] =
-    new Eff(Effects[Free].handle[Top, Top](using Rows.test(cls))[A, B](coerce(e.program))(a => ret.apply(a).program)(
+    new Eff(Effects[Free].handle[Top, Top](using test)[A, B](coerce(e.program))(a => ret.apply(a).program)(
       [X] => (op: Top[X]) =>
         Cont.shift[X, Free[Top, B], Free[Top, B]](k => clause(op, x => new Eff(k(answered[X](x)))).program)))
 }
@@ -236,5 +246,5 @@ object Control {
 
   /** `ret` for the program's answer, `clause` for each operation of `cls`: `(op, k) -> k.resume(true)` */
   def of[O, A, B](cls: Class[O], ret: JFunction[? >: A, Eff[B]], clause: Clause[? >: O, B]): Control[A, B] =
-    new Control[A, B](cls, ret, (op, k) => clause.apply(cls.cast(op), k))
+    new Control[A, B](Rows.test(cls), ret, (op, k) => clause.apply(cls.cast(op), k))
 }

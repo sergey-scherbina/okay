@@ -11,6 +11,7 @@ RUN time (JEP 485) and are linked lazily, so nothing else here does.
 |---|---|
 | `Eff` | okay programs, effects and handlers FROM JAVA (specs/java-effects.md): `Eff<A>` a program, `Op<R>` a Java effect's operation, handlers in the core's four forms (`Handler.answer`/`into`, `StateHandler.of`, `Control.of` with a multi-shot `resume`), the core Reader/State/Throws/Async, and `Eff.from`/`toScala` across the seam |
 | `Gather` | an okay `Stage` IS a `java.util.stream.Gatherer` (JDK 24): `Gather.gatherer(stage)` runs a stage in `stream.gather(…)` — a stage that answers short-circuits even an infinite stream — and `Gather.stage(g)` runs any JDK gatherer in an okay pipeline |
+| `Cap` | the STATIC row for Java, as parameters (specs/java-capabilities.md): a handler makes a capability and hands it to its body, operations are taken by the capability's identity — so a program's effects are its method's parameters, two instances of one effect coexist, and an escaped capability is refused by name; built in `Var`, `Env`, `Raise`, `Io` |
 | `Collect` | an okay `Aggregator` IS a `java.util.stream.Collector` — the same fold vocabulary both ways, so a JDK stream can finish in okay's aggregators and vice versa |
 | `Parallel` | the `Bulk[D[_]]` seam (specs/bulk.md) on a machine's cores: a `java.util.List` is the collection, every step a parallel stream, the aggregation the `Collect` bridge — a platform-free ETL runs here as it runs on Spark |
 | `Streams` | `Chunks` <-> `java.util.stream` both ways; the spliterator splits per CHUNK, so the chunk size IS the parallel split size |
@@ -67,11 +68,12 @@ with `p.recover(e -> …)`, `Eff.async(…)`/`sleep(ms)` with `runAsync()`.
 A recursive Java program is stack-safe through `flatMap`, and a bare tail
 call through `Eff.defer(() -> loop(n - 1))` (a million deep in the test).
 
-What Java cannot have is the STATIC row. okay's row is a union of type
+What Java cannot write is a row TYPE. okay's row is a union of type
 constructors; okay-scala2 replaced it with a phantom intersection,
 `Eff[State[Int] with R, A]`, but Java allows an intersection only as a
-bound, never as a type argument. So `Eff<A>` records no row, and `run()`
-refuses an operation nothing handled BY NAME — `IllegalStateException:
+bound, never as a type argument. So `Eff<A>` records no row — the static
+row comes back as capabilities, below — and `run()` refuses an operation
+nothing handled BY NAME — `IllegalStateException:
 okay.java: no handler took …Counter$Next` — where the core's `Answers[Pure]`
 would have handed the operation back as the answer and failed later as a
 `ClassCastException` (the lane's mutant check). For the same reason a
@@ -82,6 +84,63 @@ any `A ! F` into Java, and `eff.toScala[F]` brings a Java program back
 under a `Member[F]` that refuses a stranger by name as it is performed.
 `okay-java/src/test/java/okay/java/examples/JavaEffects.java` is every
 example above, compiled by javac and asserted by `TestJavaEffects`.
+
+## `Cap`: the row as parameters
+
+Java can write a method's PARAMETERS, so they carry the row. A handler
+makes a capability and hands it to its body, and an operation is performed
+through it (capability-passing style: Brachthäuser, Schuster, Ostermann,
+"Effects as Capabilities", OOPSLA 2020). A program that needs an effect
+cannot be called without one, and only a handler makes one. From
+`okay-java/src/test/java/okay/java/examples/JavaCapabilities.java`:
+
+```java
+public record Counter(Cap<CounterOp> cap) {
+    public Eff<Integer> next() { return cap.perform(new CounterOp.Next()); }
+}
+
+static Eff<Integer> two(Counter c) {
+    return c.next().flatMap(a -> c.next().map(b -> a + b));
+}
+
+return Cap.answer(CounterOp.class, op -> 21, c -> two(new Counter(c))).run();
+```
+
+The handler takes the operations tagged with ITS capability, not every
+operation of the class. So two instances of one effect are told apart,
+which a class test cannot do:
+
+```java
+return Cap.answer(Ask.class, op -> 1, a ->
+       Cap.answer(Ask.class, op -> 2, b ->
+           a.perform(new Ask()).flatMap(x -> b.perform(new Ask()).map(y -> x * 10 + y)))).run();
+```
+
+That answers 12. A class test answers 22, and that is the lane's mutant.
+The built-ins are capabilities too: `Var<S>` (two of one type in one
+program work), `Env<E>`, `Raise<E>` with a typed `E`, and `Io` for the
+platform's Async, given only by `Io.run`:
+
+```java
+static Eff<String> config(Env<Integer> env, Var<Integer> st, Raise<String> err) {
+    return env.ask()
+        .flatMap(e -> st.modify(s -> s + e))
+        .flatMap(s -> s > 100 ? err.<String>raise("too big: " + s) : Eff.pure("s=" + s));
+}
+
+return Var.run(1, (Var<Integer> st) ->
+    Env.run(env, (Env<Integer> e) ->
+        Raise.recover((String msg) -> "recovered " + msg, (Raise<String> err) -> config(e, st, err)))).run();
+```
+
+What Java cannot stop is a capability leaving its scope, kept in a field
+and used after its handler has returned. Its operation then matches no
+live handler, not even a new one of the same effect, and `run()` refuses
+it: `… via Cap(…Ask)@… outside its handler — the capability escaped its
+scope`. That check sits at the top, so it costs the hot path nothing. The
+untyped `Eff.perform` and the class-based handlers above remain, and the
+static guarantee holds for programs that reach their effects through
+capabilities only.
 
 ## `Windowed`: what it fixes, and where it stops
 
