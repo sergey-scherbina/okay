@@ -66,8 +66,10 @@ class TestDialogNavFromScala2 extends munit.FunSuite {
     val host = ScriptedHost(Event.Pressed("open"), Event.Pressed("inc"), Event.Pressed("inc"))
     val stack = UiApp.run(Nav.state(list))(Nav.view)(Nav.update)(host.host).runWith
     assertEquals(stack.size, 2)
-    assertEquals(Nav.view(stack), counter.step(Event.Pressed("inc")) match {
-      case Nav.Stay(s) => s.step(Event.Pressed("inc")) match { case Nav.Stay(s2) => s2.view; case other => fail(other.toString) }
+    // a match on okay-ui's Nav goes through the facade's mirror (NavCase): Nav.Run holds a program, whose type
+    // scalac 2.13 cannot read
+    assertEquals(Nav.view(stack), NavCase.of(counter.step(Event.Pressed("inc"))) match {
+      case NavCase.Stay(s) => NavCase.of(s.step(Event.Pressed("inc"))) match { case NavCase.Stay(s2) => s2.view; case other => fail(other.toString) }
       case other => fail(other.toString)
     })
     val back = Nav.update(stack, Event.Pressed("back"))

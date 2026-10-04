@@ -1135,11 +1135,13 @@ arities, specs/indexed-effects.md), and scalac 2.13's TASTy reader
 refuses match types — with an exception and no position. It reaches one
 whenever it reads a program's type: a class's primary-constructor
 parameters are read when the class is loaded, and a sealed hierarchy's
-children are read when a 2.13 caller matches on it. So: **no class a
-Scala 2 caller loads holds a program (`A ! F`, or a type whose members
-return one) in its constructor** — a value class between them, as
-`ProgBody` is for `Prog`. Found by bisection of the probe: `okay.ui.Nav`
-(its `Run` case; the program now in `Nav.Launch`, built by
-`Nav.launch(prog, s)`) and the facade's `UiHost` (`UiHostBody`).
-`okayScala2Probe/Test/compile` in the gate is what catches the next one.
-
+children are read when a 2.13 caller matches on it. **The facade screens
+it, never the library** (the operator: "Для scala 2 сделай в фасаде
+экранирование матч типа"): a facade class holds a program behind a value
+class (`ProgBody` for `Prog`, `UiHostBody` for `UiHost`), and a library
+ADT a 2.13 caller must match on gets a facade mirror whose program case
+does the same — `NavCase.of(nav)` for okay-ui's `Nav` (its `Run` case
+holds a program; `NavProgram` holds it in the mirror). Building a library
+ADT's case from 2.13 reads only that case and needs nothing. Found by
+bisecting the probe; `okayScala2Probe/Test/compile` in the gate is what
+catches the next one.

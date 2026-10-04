@@ -1036,6 +1036,9 @@ assertEquals(answer, Some("hi ada"))
   loop: `UiApp.run(Nav.state(root))(Nav.view)(Nav.update)(host)`. The
   one unreadable helper, `Nav.screen` (its update answers the union
   `Nav | S`), is `Screens.of(init)(view)(update)`, with an `Either`.
+  To MATCH on a step's `Nav`, match its mirror `NavCase.of(nav)`:
+  `Nav.Run` holds a program, whose type scalac 2.13 cannot read, and a
+  match reads every case (building a `Nav` reads only its own).
 
 ## 8j. Resilience: breaker, bulkhead, limiter, hedge, deadline, retry
 

@@ -209,7 +209,18 @@ object Free {
 
   object Inject:
     def apply[F[+_], A](a: F[A]): Free[F, A] = Freer.Inject[Unary[F], Unit, Unit, A](a)
-    def unapply[G[_, _, +_], S, R, A](i: Freer.Inject[G, S, R, A]): Freer.Inject[G, S, R, A] = i
+    /**
+     * the operation AT ITS OWN TYPE, `F[A]` (one-bridge's follow-up): the node's field is typed by the bridge,
+     * `Unary[F][Unit, Unit, A]` — a match type, which reduces in an expression but not as the scrutinee of a
+     * nested pattern, so `case Inject(Writer.Say(c))` on the field would refine nothing. Read here, at known
+     * indexes, it reduces to `F[A]`, and a constructor pattern on it refines `A` as a GADT match does. A
+     * name-based extractor over a value class: nothing allocated.
+     */
+    def unapply[F[+_], A](i: Freer.Inject[Unary[F], Unit, Unit, A]): Op[F, A] = Op(i.a)
+
+  /** what `Inject.unapply` answers: the operation, typed `F[A]` */
+  final class Op[F[+_], A](val get: F[A]) extends AnyVal:
+    def isEmpty: false = false
 
   object Delay:
     def apply[F[+_], A](thunk: () => Free[F, A]): Free[F, A] = Freer.Delay(thunk)
