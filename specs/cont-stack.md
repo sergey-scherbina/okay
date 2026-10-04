@@ -765,6 +765,16 @@ speed but place: no second thread. The reader also re-reads the
 bounds, which never change for a thread, at every exhaustion (backlog
 `cont-stack-read-bounds-once`).
 
+### cont-leaf-forms (2026-10-04): the strict leaf against the lazy one
+
+On `Delimited`, contAnswer's body `k(x + 1) + 1` at M = 1000 is cheaper as the STRICT leaf
+(`Cont.shiftLeaf`, lane `HandlerBenchmark.contAnswerStrict`) than as the macro's lazy leaf. The strict
+leaf takes 25.1 µs and 230 304 B, the lazy one 29.3–29.8 µs and 390 152 B (0.85x time, 0.59x bytes, two
+rounds, history.d cont-leaf-forms). Speed does not decide the choice of form: the lazy leaf exists so
+that a body using `k`'s answer does not grow the host stack where there is no StackSwitch (JS). Whether
+JVM and Native should take the strict leaf is backlog okay-core/cont-leaf-by-platform. It is measured
+at depth first.
+
 ## Stages — what landed, and the plan after it (operator's ask, 2026-09-25 evening)
 
 Landed 2026-09-25 as cont-stack-switch (60a59c97e): Layer 2 (the room

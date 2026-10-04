@@ -1,0 +1,3 @@
+2026-10-04	de485245e	-	HandlerBenchmark.contAnswerStrict vs contAnswer us/op r1	25.061	29.769	0.84	strict leaf (shiftLeaf) vs the macro's lazy leaf, M=1000 k(x+1)+1
+2026-10-04	de485245e	-	HandlerBenchmark.contAnswerStrict vs contAnswer us/op r2	25.177	29.345	0.86	same, second round
+2026-10-04	de485245e	-	HandlerBenchmark.contAnswerStrict vs contAnswer B/op	230304	390152	0.59	gc.alloc.rate.norm, both rounds identical
