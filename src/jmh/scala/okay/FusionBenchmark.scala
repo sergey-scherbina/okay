@@ -290,6 +290,25 @@ class FusionBenchmark {
       State.handle[Int](0)(
         Writer.run[String, Int, Throws % String + State % Int](tsw)))).toOption.get._2._2
 
+  // ---- the same programs through a chain of `handle`s: one stack, one walk (handler-single-pass stage 2)
+
+  @Benchmark
+  def handledSW(): Int =
+    val w: (Seq[String], Int) ! State % Int = sw.handle(Writer.log[String])
+    w.handle(State(0)).run._2._2
+
+  @Benchmark
+  def handledSWr(): Int =
+    val w: (Seq[String], Int) ! State % Int = swR.handle(Writer.log[String])
+    w.handle(State(0)).run._2._2
+
+  /** Writer and State one stack, Throws outside it a run of its own */
+  @Benchmark
+  def handledTSW(): Int =
+    val w: (Seq[String], Int) ! (Throws % String + State % Int) = tsw.handle(Writer.log[String])
+    val s: (Int, (Seq[String], Int)) ! Throws % String = w.handle(State(0))
+    s.handle(Throws.either[String]).run.toOption.get._2._2
+
   @Benchmark
   def fusedTSW(): Int =
     Fused.throwsStateWriter(0)(tsw).toOption.get._2

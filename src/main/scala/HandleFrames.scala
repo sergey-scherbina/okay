@@ -287,3 +287,112 @@ object HandleFrames:
       if depth < Limit then r.at(depth + 1).asInstanceOf[A ! H]
       else Shift.nestedRun[A, H](r.program.asInstanceOf[Shift.U[H, A]])()
     case o => o().asInstanceOf[A ! H]
+
+  // ---- THE ONE-PASS STACK (handler-single-pass stage 2, specs/handler-single-pass.md) ----
+
+  /** the row a stack's walk is typed at: its handlers' rows, met only at run time (`Handled`'s claim) */
+  type Erased[+X] = Any
+
+  /**
+   * `p.handle(h)` for a stepped `h` (`Free.handle`): on a program that already IS a handled stack, `h` is pushed
+   * onto that stack, and nothing is walked. Otherwise the program becomes a stack of one.
+   */
+  def handled[A, O[_], F[+_]](p: Any, h: Handler.Stepped[?, ?, ?]): O[A] ! F =
+    val one = erasedStep(h)
+    val node = p match
+      case Freer.Delay(st: Handled) => st.push(one)
+      case _ => Handled(p.asInstanceOf[Any ! Erased], Array(one))
+    Free.delay(node).asInstanceOf[O[A] ! F]
+
+  /** a stepped handler at the erased state its stack holds it at: the state is the handler's own, passed back to
+   * it only (THE CLAIM: `init`'s value is what `step`, `ret` and `halted` are given, and nothing else is) */
+  private def erasedStep(h: Handler.Stepped[?, ?, ?]): Handler.Stepped[?, Any, ?] = h.asInstanceOf[Handler.Stepped[?, Any, ?]]
+
+  /**
+   * A HANDLED PROGRAM AS A STACK of stepped handlers, innermost first (`stack(0)` was applied first). Its fold is
+   * ONE walk: an operation goes to the innermost handler of the stack that takes it, found through a table of
+   * the operation classes seen; the rest of the row leaves once. A stack of one is that handler's own `run`, the
+   * fold it has always had. Its frame is the handlers' own runs nested, so a machine meeting it steps into
+   * frames as it always has.
+   *
+   * THE CLAIM this class makes, for the whole stack: `under` is a program of the innermost handler's row, every
+   * handler's `ret` and `halted` answer a program of the row outside it, and `Free.handle` built the stack in
+   * that order from the types it checked. Erased here because the stack is heterogeneous; typed at both ends.
+   */
+  final class Handled(val under: Any ! Erased, val stack: Array[Handler.Stepped[?, Any, ?]]) extends Run[Any, Erased]:
+    def push(h: Handler.Stepped[?, Any, ?]): Handled = Handled(under, stack :+ h)
+
+    /** the handlers' own runs, nested in the stack's order */
+    private def nested: Any ! Erased =
+      var p = under
+      var i = 0
+      while i < stack.length do
+        p = runOf(stack(i), p)
+        i += 1
+      p
+
+    def at(depth: Int): Any ! Erased =
+      if stack.length == 1 then shallow(nested, depth)
+      else Walk(stack, depth).loop(0, Array.tabulate[Any](stack.length)(i => stack(i).init), under)
+
+    def program: Shift.U[Erased, Any] = widened(nested)
+
+  /** one stepped handler's own `run` over `p`, at the erased row (the evidence its signature asks for was checked
+   * by `Free.handle` when the stack was built) */
+  private def runOf[E[+_], O[_]](h: Handler.Stepped[E, Any, O], p: Any ! Erased): Any ! Erased =
+    h.run[Any, Erased](p.asInstanceOf[Any ! E + Erased])(using summon[Any <:< Any], Distinct.unchecked[E + Erased](),
+      Handler.Nothing.any[Erased])
+
+  /** the walk of one stack, `depth` folds deep: its handlers' states, and the table of operation classes */
+  private final class Walk(stack: Array[Handler.Stepped[?, Any, ?]], depth: Int):
+    private val n = stack.length
+    private var classes = new Array[Class[?]](8)
+    private var index = new Array[Int](8)
+    private var filled = 0
+
+    /** the innermost handler at or past `lo` that takes `op`, or `n`: the table first, its entry checked by that
+     * handler's own test (an instance by name shares its class with another), then the stack in order */
+    private def find(op: Any, lo: Int): Int =
+      val c = op.getClass
+      var j = 0
+      while j < filled && (classes(j) ne c) do j += 1
+      if j < filled then
+        val i = index(j)
+        if i >= lo && i < n && stack(i).takes.test(op) then return i
+      var i = lo
+      while i < n && !stack(i).takes.test(op) do i += 1
+      if j == filled then
+        if filled == classes.length then
+          classes = java.util.Arrays.copyOf(classes, filled * 2)
+          index = java.util.Arrays.copyOf(index, filled * 2)
+        classes(filled) = c
+        filled += 1
+      index(j) = i
+      i
+
+    // a call from inside flatMap cannot be a jump; `again` takes it, so the walk stays a checked loop
+    private def again(lo: Int, s: Array[Any], x: Any ! Erased): Any ! Erased = loop(lo, s, x)
+
+    /** handlers `lo` and past are active, `s` their states. A program that ended is answered by the innermost
+     * active handler's `ret`, and that answer is walked by the handlers outside it */
+    @scala.annotation.tailrec final def loop(lo: Int, s: Array[Any], x: Any ! Erased): Any ! Erased =
+      if lo == n then x
+      else (x.resumeRun: @unchecked) match
+        case Free.Return(a) => loop(lo + 1, s, stack(lo).ret[Any, Erased](s(lo), a))
+        case i @ Free.Inject(_) => loop(lo, s, i.flatMap(v => Free.Return(v)))
+        case Free.Bind(i @ Free.Inject(e), k) =>
+          val h = find(e, lo)
+          if h < n then
+            stack(h).step(s(h), e) match
+              // the run under `h` stops: the handlers inside it are dropped, `h` answers, the outside walks on
+              case Handler.Halt(s2) => loop(h + 1, s, stack(h).halted[Any, Erased](s2))
+              case (s2, v) =>
+                s(h) = s2
+                loop(lo, s, feed(k, v))
+          else
+            // the rest of the row, once: every resumption of it gets the states as they were here (a multi-shot
+            // handler outside resumes it more than once)
+            val kept = s.clone()
+            forwarded[Erased, Erased](i).flatMap(v => again(lo, kept.clone(), feed(k, v)))
+        // a run nested here: forced — its fold below Limit, its frame on a machine at it
+        case y => loop(lo, s, shallow(y, depth))

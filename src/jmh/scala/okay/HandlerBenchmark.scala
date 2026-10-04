@@ -138,6 +138,17 @@ class HandlerBenchmark {
 
   /** handle-frames: a handler's run per CALL — 100 small `State.run`s, two operations each — prices what a
    * handler costs to start (since handle-frames a `Delay` and a `Handled` before its loop), not per operation */
+  /** `stateSmall` through `p.handle(State(s))`: a handler REGISTERED on a stack of one (handler-single-pass
+   * stage 2) — what a single `handle` costs to start */
+  @Benchmark
+  def stateSmallHandle(): Long =
+    var acc = 0L
+    var i = 0
+    while i < 100 do
+      acc += State.get[Long].flatMap(s => State.set[Long](s + 1)).handle(State(i.toLong)).run._1
+      i += 1
+    acc
+
   @Benchmark
   def stateSmall(): Long =
     var acc = 0L
