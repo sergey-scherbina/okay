@@ -1,0 +1,1 @@
+2026-10-04	-	quiet	stateIndexedForward_no_diag	37.258	36.983	1.01	Diag out of Freer: the unary member read under Inject with Indexed.onDiagonal; 413280 vs 414080 B/op; min of 2 alternating rounds vs master 61fa70cd4 — parity
