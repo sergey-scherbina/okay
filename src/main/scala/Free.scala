@@ -24,14 +24,6 @@ enum Freer[G[_, _, +_], S, R, +A] {
    * `Cont`, the shift body `(A => S) => R` itself */
   case Inject[G[_, _, +_], S, R, A](a: G[S, R, A]) extends Freer[G, S, R, A]
 
-  /**
-   * A DIAGONAL operation: it moves no index, and says so on the node. A unary effect enters an indexed row
-   * through `Freer.diag`; matched under a `Bind`, the GADT gives the continuation the loop's own `R`, with no
-   * wrapper per operation and no cast. The effect tree and `Cont` never build it (they build `Inject`), so
-   * their loops match `@unchecked` rather than pay a dead arm.
-   */
-  case Diag[G[_, _, +_], R, A](a: G[R, R, A]) extends Freer[G, R, R, A]
-
   /** sequencing: run a, then feed its value to the plain-function
    * continuation f; the answer types meet at `T` */
   case Bind[G[_, _, +_], S, T, R, A, B](a: Freer[G, T, R, A],
@@ -50,8 +42,7 @@ enum Freer[G[_, _, +_], S, R, +A] {
   inline def map[B](f: A => B): Freer[G, S, R, B] = Bind(this, Freer.Mapped[G, S, A, B](f))
 
   /**
-   * THE rotation: normalize to a head form — `Return(a)`, `Inject(e)` or `Bind(Inject(e), k)`, and `Diag`
-   * likewise on an indexed row — in constant stack, for every signature, with no cast. Sound by associativity,
+   * THE rotation: normalize to a head form — `Return(a)`, `Inject(e)` or `Bind(Inject(e), k)` — in constant stack, for every signature, with no cast. Sound by associativity,
    * linear-time amortized for programs built by `foldLeft`. Stepping one operation at a time measures within
    * ~8% of a bulk run (HandlerBenchmark), so the queue of "reflection without remorse" (van der Ploeg–Kiselyov
    * 2014) is not needed. A member, so every interpreter's `.resume` reaches it with no import.
@@ -120,11 +111,6 @@ object Freer {
   def defer[G[_, _, +_], S, T, R, A, B](thunk: () => Freer[G, T, R, A])(f: A => Freer[G, S, T, B]): Freer[G, S, R, B] =
     // not a node of its own: one node more at construction, two cases fewer in every loop that walks the tree
     Bind(Delay(thunk), f)
-
-  /** a unary operation into an INDEXED row, on the diagonal by its
-   * node — see `Diag`. The effect tree at `Unit` does not use this door;
-   * `Free.inject` builds `Inject` there, and the two coincide. */
-  def diag[G[_, _, +_], R, A](a: G[R, R, A]): Freer[G, R, R, A] = Diag(a)
 
   /** a deferred call with NOTHING after it, `!.tailcall`'s node. Not `defer(thunk)(pure)`: resumed, that
    * pushes a `.flatMap(pure)` down every bind of the deferred subprogram; `Delay` has nothing to push */

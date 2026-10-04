@@ -197,18 +197,15 @@ class HandlerBenchmark {
        .flatMap(s => if i % 10 == 0 then Indexed.unary[IRow, Unit, Long](Ask(s)) else Indexed.pure[IRow, Unit, Long](s))
 
   /** the residue's runner, over the tree's own nodes: a forwarded `Ask`
-   * is an `Inject` (the unary handler re-emits it so) or a `Diag` (the
-   * indexed handler forwards a diagonal operation as it came), and
-   * `Ask(a)` answers `a` in place. `Free.Bind` pins the bind's middle
-   * index to `Unit` (Free.scala: the tree's constant claim), which the
-   * enum's own extractor leaves existential; a `Diag` inside it says the
-   * same by its type. */
+   * is an `Inject` (the unary handler re-emits it so; the indexed one
+   * forwards the node it came in), and `Ask(a)` answers `a` in place.
+   * `Free.Bind` pins the bind's middle index to `Unit` (Free.scala: the
+   * tree's constant claim), which the enum's own extractor leaves
+   * existential. */
   @tailrec private def askLoop[A](x: A ! Ask): A = (x.resume: @unchecked) match
     case Free.Return(a) => a
     case Free.Inject(g) => g.a
-    case Freer.Diag(g) => g.a
     case Free.Bind(Free.Inject(g), k) => askLoop(k(g.a))
-    case Free.Bind(Freer.Diag(g), k) => askLoop(k(g.a))
 
   @Benchmark
   def stateForward(): (Long, Long) = askLoop(State.handle(0L)(forwardProg))

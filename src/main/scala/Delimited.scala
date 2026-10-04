@@ -1,6 +1,6 @@
 package okay
 
-import okay.Freer.{Return, Inject, Bind, Delay, Diag}
+import okay.Freer.{Return, Inject, Bind, Delay}
 import scala.annotation.tailrec
 
 /**
@@ -324,7 +324,6 @@ object Delimited:
                 catch case t: Throwable => next(Delay(Thrown(t)), k, m)
             go(n.c, n.k, n.m)
           case o => forward(o.nn, k, outer.diagonal(op).flip.substituteCo[[r] =>> Stack[G, B, S, r, Z]](m))
-        case Diag(op) => go(Inject(op), k, m)
 
     /** a call of user code under the `try`: a throw answered as a `Thrown` program */
     private inline def guard[T, R, A](inline body: Freer[G, T, R, A]): Freer[G, T, R, A] =

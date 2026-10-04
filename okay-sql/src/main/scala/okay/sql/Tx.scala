@@ -94,7 +94,7 @@ object Tx:
   def commit(): Data[Unit, Open, Idle] = Indexed.effect[Row, Idle, Open, Unit](TxOp.Commit())
   /** ROLLBACK — `Open -> Idle` */
   def rollback(): Data[Unit, Open, Idle] = Indexed.effect[Row, Idle, Open, Unit](TxOp.Rollback())
-  /** a statement runs in either state and moves nothing: the diagonal node */
+  /** a statement runs in either state and moves nothing: `TxOp[S, S, X]`, on the diagonal by its constructor */
   def update[S](sql: String, params: Vector[SqlValue] = Vector.empty): Data[Long, S, S] =
     Indexed.unary[Row, S, Long](TxOp.Update(sql, params))
   def batch[S](sql: String, rows: Chunk[Vector[SqlValue]]): Data[Long, S, S] =
@@ -117,14 +117,6 @@ object Tx:
    */
   def interpret[A](p: Data[A, Idle, Idle])(db: Sql): A ! Async = loop(new Conn[Idle](db))(p)
 
-  /** a statement on the diagonal: the driver's program for it. The
-   * three transitions cannot sit at `TxOp[S, S, X]` — their indexes
-   * differ — and `@unchecked` says so once instead of three dead arms */
-  private def statement[S, X](c: Conn[S], op: TxOp[S, S, X]): X ! Async = (op: @unchecked) match
-    case TxOp.Update(sql, params) => c.db.update(sql, params)
-    case TxOp.Batch(sql, rows) => c.db.batch(sql, rows)
-    case TxOp.Describe(sql) => c.db.describe(sql)
-
   /** the loop re-entered from under a `flatMap`: a call there is not
    * a tail call, and `@tailrec` must not see it as one (State.handle's
    * `_loop`) */
@@ -134,21 +126,23 @@ object Tx:
    * the program, `c: Conn[R]` the value of that state */
   @tailrec private def loop[T, R, A](c: Conn[R])(p: Freer[Row, T, R, A]): A ! Async = (p.resume: @unchecked) match
     case Freer.Return(a) => okay.pure(a)
-    case Freer.Diag(e) => loop(c)(Freer.Diag[Row, R, A](e).flatMap(v => Freer.Return(v)))
     case Freer.Inject(o) => loop(c)(Freer.Inject[Row, T, R, A](o).flatMap(v => Freer.Return(v)))
-    case Freer.Bind(Freer.Diag(e), k) =>
-      splitI[TxOp, Unary[Async]](e)(op => statement(c, op).flatMap(x => again(c)(k(x))))(a =>
-        okay.Free.inject(a).flatMap(x => again(c)(k(x))))
-    case Freer.Bind(Freer.Inject(o), k) => splitI[TxOp, Unary[Async]](o) {
-        // the GADT binds the connection's state to the operation's:
-        // `Begin` is `TxOp[Open, Idle, Granted]`, so here `c: Conn[Idle]`
-        // and `opened` exists; a `Commit` arm from `Conn[Idle]` would not
-        // type (TestTxData pins it). A statement may sit under `Inject`
-        // too, at the same state on both sides.
-        case TxOp.Begin(iso, ro) => c.db.begin(iso, ro).flatMap(g => again(c.opened)(k(g)))
-        case TxOp.Commit() => c.db.commit().flatMap(u => again(c.closed)(k(u)))
-        case TxOp.Rollback() => c.db.rollback().flatMap(u => again(c.closed)(k(u)))
-        case TxOp.Update(sql, params) => c.db.update(sql, params).flatMap(x => again(c)(k(x)))
-        case TxOp.Batch(sql, rows) => c.db.batch(sql, rows).flatMap(x => again(c)(k(x)))
-        case TxOp.Describe(sql) => c.db.describe(sql).flatMap(x => again(c)(k(x)))
-      }(Indexed.offDiagonal)
+    // the bind's middle index `t` and value `x` named, for the equality an `Async` operation needs
+    case b: Freer.Bind[Row, T, t, R, x, A] => (b.a: @unchecked) match
+      case Freer.Inject(o) => splitI[TxOp, Unary[Async]](o) {
+          // the GADT binds the connection's state to the operation's:
+          // `Begin` is `TxOp[Open, Idle, Granted]`, so here `c: Conn[Idle]`
+          // and `opened` exists; a `Commit` arm from `Conn[Idle]` would not
+          // type (TestTxData pins it). A statement is `TxOp[S, S, X]`: the
+          // same state on both sides, by its constructor.
+          case TxOp.Begin(iso, ro) => c.db.begin(iso, ro).flatMap(g => again(c.opened)(b.f(g)))
+          case TxOp.Commit() => c.db.commit().flatMap(u => again(c.closed)(b.f(u)))
+          case TxOp.Rollback() => c.db.rollback().flatMap(u => again(c.closed)(b.f(u)))
+          case TxOp.Update(sql, params) => c.db.update(sql, params).flatMap(x => again(c)(b.f(x)))
+          case TxOp.Batch(sql, rows) => c.db.batch(sql, rows).flatMap(x => again(c)(b.f(x)))
+          case TxOp.Describe(sql) => c.db.describe(sql).flatMap(x => again(c)(b.f(x)))
+        } { a =>
+          // an `Async` operation: on the diagonal by its door (`Indexed.onDiagonal`), the connection unmoved
+          val k = Indexed.onDiagonal(a).substituteCo[[i] =>> x => Freer[Row, T, i, A]](b.f)
+          okay.Free.inject(Indexed.atDiagonal(a)).flatMap(y => again(c)(k(y)))
+        }

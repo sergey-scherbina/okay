@@ -257,9 +257,6 @@ object Effects {
     @tailrec def peek: Answers[F] ?=> ? = self match
       case Bind(a, _) => a.peek
       case Inject(e) => summon[Answers[F]].handle(e)
-      // at `Unit` a diagonal node holds the same `F[A]` an `Inject` does; nothing here builds one, but this
-      // match is exhaustive rather than `@unchecked`
-      case Freer.Diag(e) => summon[Answers[F]].handle(e)
       case Return(a) => a
       // forced, as `Bind(a, _)` above drops its continuation
       case Delay(t) => t().peek

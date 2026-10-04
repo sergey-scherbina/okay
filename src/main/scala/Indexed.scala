@@ -12,33 +12,33 @@ import scala.quoted.*
  * — is three-ary, and a row of those is this file: `F +~ G` is the
  * union at three parameters, exactly as `+` is at one, and `split`'s
  * by-class test is `splitI`'s. Nothing in the tree changes: `Freer[F
- * +~ G, S, R, A]` is the same nodes, with `Inject` for an operation
- * that moves the index and `Diag` for one that does not.
+ * +~ G, S, R, A]` is the same nodes, `Inject` for every operation —
+ * one that moves the index and one that does not alike.
  *
  * THE UNARY MEMBER, and why it is a match type. An ordinary effect —
  * `State % Int` beside a typestate — has no index of its own; the row
  * probe (TestFreerPara) first lifted it with a wrapper per operation
- * (`At.Op`), then with `Diag` on the node (freer-diag-leaf). What was
- * left open was the DOOR: the union `PSt[S, R, X] | State[Int, X]`
- * accepts a `State` operation through `Inject` at a moving index, a
- * program no handler can answer (its continuation would be at an
- * index the handler cannot reach), so the handler threw. `Unary[F]`
- * closes it at the type: `[S, R, X] =>> S match { case R => F[X] }`
- * REDUCES to `F[X]` only when the two indexes are the same type — the
- * diagonal, where `Diag`'s door puts it — and off it is `Nothing`
- * where the two indexes are provably different types (the second
- * case; without it dotty WARNS at every door whose indexes are
- * disjoint, E184 "matches none of the cases") and a stuck match type
- * where they are abstract, which no value of `F[X]` conforms to
- * either. So `Indexed.
- * unary` accepts a `State` operation and `Indexed.effect` at `(Int =>
- * Z, String => Z)` refuses it, both by the compiler (TestFreerPara
- * pins the refusal). What the match type cannot do is tell a HANDLER
- * that the arm is dead: at an existential middle index the member is
- * stuck, not `Nothing`, so `splitI`'s exclusion arm still has to be
- * written there. `offDiagonal` is that arm, the one throw of the
- * design, named once and documented as `Free.Bind`'s constant claim
- * is: no door builds what it catches.
+ * (`At.Op`), then with a `Diag` node in `Freer` (freer-diag-leaf),
+ * gone since freer-no-diag (2026-10-04). `Unary[F]` is
+ * `[S, R, X] =>> S match { case R => F[X] }`: it REDUCES to `F[X]` only
+ * when the two indexes are the same type — the diagonal — and off it
+ * is `Nothing` where they are provably different (the second case;
+ * without it dotty WARNS at every door whose indexes are disjoint,
+ * E184 "matches none of the cases") and a stuck match type where they
+ * are abstract, which no value of `F[X]` conforms to either. So
+ * `Indexed.unary` accepts a `State` operation and `Indexed.effect` at
+ * `(Int => Z, String => Z)` refuses it, both by the compiler
+ * (TestFreerPara pins the refusal).
+ *
+ * THE COMBINATOR OF TWO ARITIES, `F +^ G` (an indexed signature and a
+ * unary effect beside it), carries what the `Diag` node carried: since
+ * the DOOR is typed, every operation of the unary member in the tree
+ * was built on the diagonal, and a handler that tells one apart
+ * (`splitI`) gets the equality its continuation needs from
+ * `Indexed.onDiagonal` — the one claim of the design, the reflexive
+ * singleton, no node and no allocation. An indexed signature's own
+ * diagonal operations need not even that: `TxOp.Update[S] extends
+ * TxOp[S, S, Long]`, and matching the constructor gives the equality.
  *
  * Not here, on purpose: an inductive membership witness over `+~`
  * (`Row.In`'s shape crashes dotty on an abstract row —
@@ -50,6 +50,9 @@ import scala.quoted.*
 
 /** the union of two indexed signatures — `+` at three parameters */
 infix type +~[F[_, _, +_], G[_, _, +_]] = [S, R, X] =>> F[S, R, X] | G[S, R, X]
+
+/** an indexed signature `F` and a unary effect `G` beside it, on the diagonal: the combinator of two arities */
+infix type +^[F[_, _, +_], G[+_]] = F +~ Unary[G]
 
 /** a unary effect as a member of an indexed row: `F[X]` on the
  * diagonal, and nothing off it — see the header */
@@ -116,14 +119,14 @@ object Indexed:
    * to where */
   inline def effect[G[_, _, +_], S, R, X](g: G[S, R, X]): Freer[G, S, R, X] = Freer.Inject(g)
 
-  /** an operation that moves nothing, on the diagonal by its node — the
-   * door of a `Unary` member, and of any diagonal operation */
-  inline def unary[G[_, _, +_], R, X](e: G[R, R, X]): Freer[G, R, R, X] = Freer.diag(e)
+  /** an operation that moves nothing — a unary member's (`Unary[G]` reduces to `G[X]` only here), or an indexed
+   * signature's own diagonal operation (`TxOp.Update[S] extends TxOp[S, S, Long]`): a plain `Inject` at `(R, R)` */
+  inline def unary[G[_, _, +_], R, X](e: G[R, R, X]): Freer[G, R, R, X] = Freer.Inject(e)
 
   /**
    * A whole UNARY PROGRAM inside an indexed one, on the diagonal
    * (indexed-effects stage 2, for `Tx.Data`'s `async`): every operation
-   * becomes the `Diag` node `unary` would build for it, through `into`
+   * becomes the `Inject` at `(R, R)` that `unary` would build for it, through `into`
    * — which at a `Unary` member is the identity, since the match type
    * reduces to `F[X]` there. Lazy, one node per operation as the
    * interpreter reaches it, and the recursion is under `flatMap`
@@ -132,17 +135,21 @@ object Indexed:
   def lift[G[_, _, +_], F[+_], R, A](p: Free[F, A])(into: [X] => F[X] => G[R, R, X]): Freer[G, R, R, A] =
     (p.resume: @unchecked) match
       case Freer.Return(a) => Freer.Return(a)
-      case Freer.Inject(e) => Freer.Diag(into(e))
-      case Free.Bind(Free.Inject(e), k) => Freer.Diag(into(e)).flatMap(x => lift(k(x))(into))
+      case Freer.Inject(e) => Freer.Inject(into(e))
+      case Free.Bind(Free.Inject(e), k) => Freer.Inject(into(e)).flatMap(x => lift(k(x))(into))
 
   /**
-   * The exclusion arm no door can reach: a `Unary` member's operation
-   * under `Inject` at a moving index. `Indexed.effect` refuses it at
-   * compile time (the match type is stuck off the diagonal), so a
-   * handler that meets one holds a node built by hand around the
-   * doors — the claim is constant, as `Free.Bind`'s, and this is where
-   * it is said.
+   * THE ONE CLAIM OF A MIXED-ARITY ROW (freer-no-diag, the operator's ask: no `Diag` node — the combinator of
+   * effects of different arity carries it): an operation of a UNARY member stands on the diagonal. Not a
+   * convention but the door's type: `Unary[G][S, R, X]` is `S match { case R => G[X] }`, which REDUCES to
+   * `G[X]` only where `S` and `R` are one type — `Nothing` where they differ, stuck where they are abstract — so no
+   * value of `G[X]` was ever built into the row anywhere else (TestFreerPara pins the refusal). A handler that
+   * has told a unary member's operation apart (`splitI`) asks this for the equality its continuation needs.
+   * The answer is the reflexive singleton: no allocation.
    */
-  def offDiagonal(op: Any): Nothing =
-    throw IllegalStateException(
-      s"an operation of a unary member of an indexed row off the diagonal: $op — built by `Freer.Inject` where `Indexed.unary` is the door")
+  def onDiagonal[G[+_], S, R, X](@annotation.unused e: Unary[G][S, R, X]): S =:= R =
+    summon[S =:= S].asInstanceOf[S =:= R]
+
+  /** a unary member's operation read as its effect's, at the diagonal `onDiagonal` proved */
+  def atDiagonal[G[+_], S, R, X](e: Unary[G][S, R, X]): G[X] =
+    onDiagonal(e).substituteCo[[s] =>> Unary[G][s, R, X]](e)

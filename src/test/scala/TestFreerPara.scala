@@ -1,6 +1,6 @@
 package okay
 
-import okay.Freer.{Return, Inject, Diag, Bind}
+import okay.Freer.{Return, Inject, Bind}
 
 /**
  * `Freer` as Atkey's parameterised monad (freer-paramonad, 2026-09-30),
@@ -175,7 +175,7 @@ class TestFreerPara extends munit.FunSuite:
     assert(errors.nonEmpty, "a State operation at a moving index must not type")
     // and on the diagonal the same operation is accepted, through either door
     val ok: Freer[Row, Int => Unit, Int => Unit, Int] = Indexed.unary[Row, Int => Unit, Int](State.Update[Int, Int](n => (n + 1, n + 1)))
-    assert(ok.isInstanceOf[Freer.Diag[?, ?, ?]])
+    assert(ok.isInstanceOf[Freer.Inject[?, ?, ?, ?]])
   }
 
   // ---------- reading 2: the index is a CONSUMED state — on the library's base
