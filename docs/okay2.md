@@ -2108,6 +2108,25 @@ The idea is Flyway's (versioned migrations with checksums) and the
 warehouses' load history (Snowflake per file, BigQuery per job), as
 okay-jdbc has them (specs/jdbc.md, specs/data.md).
 
+For a database you do NOT own, `Writes` gives exactly-once outcomes
+without creating anything on their side. It writes the intent into an
+`okay2-persist` log before the statement runs and the completion after.
+After a crash, `recover` finds each intent with no completion and either
+runs the same statement again with the same key, so their unique
+constraint drops the duplicate, or asks with a SELECT by key:
+
+```scala
+      val out = Run(w.recover(_ => Writes.Policy.WithKey))
+      assertEquals(out, Vector[Writes.Recovered](Writes.Recovered.Reapplied("ord-2", 1L)))
+```
+
+`Poll` reads their new rows by a column that only grows and keeps the
+last value it reached as a consumer offset in the same log. `SqlStore`
+is that log kept in a SQL table, and it passes the same contract suite
+as the in-memory one. This is the transactional-outbox and
+idempotent-receiver pattern (Hohpe and Woolf, *Enterprise Integration
+Patterns*) with the journal on our side.
+
 `okay2-pg` is the second driver: the Postgres v3 protocol itself, with
 no JDBC, behind the same `Sql` trait. It logs in with SCRAM-SHA-256 and
 checks the server's signature too, streams rows through portals, and

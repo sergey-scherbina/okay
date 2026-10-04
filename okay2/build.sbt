@@ -127,6 +127,7 @@ lazy val root: Project = (project in file("."))
     okay2Refine.jvm, okay2Refine.js, okay2Refine.native,
     okay2Sql.jvm, okay2Sql.js, okay2Sql.native,
     okay2Crypto.jvm, okay2Crypto.js, okay2Pg.jvm, okay2Pg.js,
+    okay2Persist.jvm, okay2Persist.js, okay2Persist.native,
     okay2Http.jvm, okay2Http.js, okay2Http.native,
     okay2Workflow.jvm, okay2Workflow.js, okay2Workflow.native,
     okay2Async.jvm, okay2Async.js, okay2Async.native,
@@ -358,6 +359,19 @@ lazy val okay2Pg = crossProject(JVMPlatform, JSPlatform)
     libraryDependencies += "com.h2database" % "h2" % "2.3.232" % Test)
   .jsSettings(jsTests, platformTests("scala-js"))
   .jvmConfigure(_.withId("okay2Pg").dependsOn(okay2Jdbc % Test))
+/** okay-persist's log primitives for the Scala 2 core (okay2-jdbc-writes):
+ * Record, Ack, Policy, Topic, Store, the typed CBOR view, Offsets,
+ * Snapshots and the memory engine — what okay2-jdbc's Writes, Poll and
+ * SqlStore stand on. Pure, so it cross-builds; the file and replicated
+ * engines, the wire and the durable workflow are not ported */
+lazy val okay2Persist = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay2-persist"))
+  .dependsOn(okay2Codec)
+  .settings(name := "okay2-persist", common)
+  .jvmSettings(jvmOnlyTests)
+  .jsSettings(jsTests)
+  .jvmConfigure(_.withId("okay2Persist"))
 
 /** okay-http's transport half for the Scala 2 core: Request/Response/
  * Http, WebSocket sessions as Stages (shared), on the JVM the JDK
@@ -391,12 +405,15 @@ lazy val okay2Http = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 
 /** okay-jdbc's driver for the Scala 2 core: `JdbcSql`, tested against
  * embedded SQLite and H2; `Migrate`, `BulkLoad` (tested on embedded
- * DuckDB) and `JdbcInterop` beside it (okay2-jdbc-migrate). The
+ * DuckDB) and `JdbcInterop` beside it (okay2-jdbc-migrate), and
+ * `Writes`, `Poll` and `SqlStore` over okay2-persist (okay2-jdbc-writes). The
  * platform at compile scope: Migrate and BulkLoad run a statement to
  * its answer inside one Async operation, as the Scala 3 originals do,
  * which parks on the platform's CanBlock */
 lazy val okay2Jdbc: Project = (project in file("okay2-jdbc"))
-  .dependsOn(okay2Sql.jvm, okay2Platform.jvm)
+  // okay2-persist backs Writes' journal, Poll's watermark and SqlStore's
+  // Store; test->test borrows its StoreSuite for SqlStore's contract run
+  .dependsOn(okay2Sql.jvm, okay2Platform.jvm, okay2Persist.jvm % "compile->compile;test->test")
   .settings(
     name := "okay2-jdbc",
     common,

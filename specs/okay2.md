@@ -2202,6 +2202,28 @@ needs okay2-codec's CBOR; they are the next lane.
       as the Scala 3 originals do, and that parks on the platform's
       `CanBlock`
 
+### okay2-jdbc-tails, lane 2: okay2-persist, Writes, Poll, SqlStore (2026-10-04)
+The three okay-jdbc pieces that stand on okay-persist. okay-persist is
+large (the file and replicated engines, the wire, Raft, the durable
+workflow); what they need is its log, so `okay2-persist` is that log and
+nothing more.
+
+- [x] okay2-persist (JVM, Scala.js, Scala Native): `Record`, `Ack`,
+      `Policy`, `Topic` (FNV-1a routing), `Store`, the typed view `Typed`
+      (a four-byte version envelope before the CBOR payload, upcasts,
+      damage as data), `Offsets` (commit-as-record), `Snapshots`, and
+      `MemoryStore`; okay-persist's `StoreSuite` contract, run on memory
+- [x] `Writes`: intent journaled before the statement, completion after;
+      `recover` per key by `WithKey` (the same statement, their unique
+      constraint dedups), `Reconcile` (a SELECT by key settles without
+      re-executing) or `Fail`, answers as data; every `SqlValue` survives
+      the journal; TestSqlite's crash-window case over native ON CONFLICT
+- [x] `Poll`: the watermark as a consumer offset, the decoded prefix as
+      the batch (a damaged row stops the watermark), the late-commit miss
+      and the lag window both shown
+- [x] `SqlStore`: the same `StoreSuite` over a SQL table through the seam
+      (H2)
+
 ### okay2-jdbc-tails, lane 3: okay2-pg and okay2-crypto (2026-10-04)
 okay-pg on okay2: the Postgres v3 wire behind the `Sql` seam, JVM and
 Scala.js (Native has no javax.crypto and no Node; okay-pg has no Native

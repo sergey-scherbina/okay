@@ -6,10 +6,12 @@ import okay2.{!, +, Resource, Throws, pure}
 import okay2.async.Async
 import okay2.sql._
 import okay2.sql.javatime._
+import okay2.persist.{Ack, MemoryStore, Typed => PTyped}
 
-/** SQLite through the seam (okay-jdbc's TestSqlite, without its Writes
- * bridge case): the embedded engine everyone has, the same typed layer
- * with zero new machinery, and read-only open mode as the embedded
+/** SQLite through the seam (okay-jdbc's TestSqlite): the embedded engine
+ * everyone has, the same typed layer with zero new machinery, native
+ * `ON CONFLICT DO NOTHING` serving the Writes bridge in its
+ * spec-preferred spelling, and read-only open mode as the embedded
  * world's no-DDL posture */
 class TestSqlite extends munit.FunSuite {
 
@@ -79,6 +81,27 @@ class TestSqlite extends munit.FunSuite {
       assert(conn.getAutoCommit)
       assertEquals(Run.chunks(db.query("select count(*) c from customer where id = 50")).flatten.head.head, SqlValue.I32(0))
     } finally conn.close()
+  }
+
+  test("the Writes bridge over NATIVE on-conflict: the crash-window retry lands once") {
+    withDb { db =>
+      // the spec-preferred WithKey spelling, verbatim
+      val upsert = "insert into customer(id, user_name, balance, active) " +
+        "values (?, ?, ?, ?) on conflict(id) do nothing"
+      val params = Vector(SqlValue.I64(60), SqlValue.Text("sq"), SqlValue.F64(6.0), SqlValue.Bool(true))
+      val topic = new MemoryStore().topic("writes")
+      // the crash: intent journaled, statement executed, ack lost
+      PTyped[Writes.Rec](topic, 1, Map.empty).append(0, "run-1".getBytes("UTF-8"),
+        Writes.Rec.Intent(0, upsert, params, "60"), Ack.Durable): Unit
+      assertEquals(Run(db.update(upsert, params)), 1L)
+
+      val w = new Writes(db, topic, "run-1")
+      assertEquals(Run(w.recover(_ => Writes.Policy.WithKey)),
+        Vector[Writes.Recovered](Writes.Recovered.Reapplied("60", 0L)))
+      val n = Run.chunks(db.query("select count(*) c from customer where id = 60")).flatten
+      assertEquals(n.head.head, SqlValue.I32(1): SqlValue, "the retry duplicated the row")
+      assertEquals(Run(db.update("delete from customer where id = 60")), 1L)
+    }
   }
 
   test("read-only open mode is the embedded no-DDL posture: reads full, writes refuse") {
