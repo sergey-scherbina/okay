@@ -2202,6 +2202,33 @@ needs okay2-codec's CBOR; they are the next lane.
       as the Scala 3 originals do, and that parks on the platform's
       `CanBlock`
 
+### okay2-jdbc-tails, lane 3: okay2-pg and okay2-crypto (2026-10-04)
+okay-pg on okay2: the Postgres v3 wire behind the `Sql` seam, JVM and
+Scala.js (Native has no javax.crypto and no Node; okay-pg has no Native
+leg either).
+
+- [x] okay2-crypto: `Crypto` (HMAC-SHA256, SHA-256, PBKDF2, randomness),
+      JCA on the JVM, node:crypto on JS, found as the companion's
+      implicit; the published vectors on both platforms (TestCrypto)
+- [x] `Scram`: phase objects (an out-of-order step does not compile) and
+      the one-object adapter (misorder a named `PgError`), the RFC 7677
+      vector byte for byte on JVM and JS (TestScram)
+- [x] `PgSql`: startup + SCRAM over okay2-platform's `Net`, describe with
+      catalog nullability, portals as chunks, update/batch, begin with the
+      granted level and READ ONLY read back, COMMIT's ROLLBACK tag refused,
+      the cancel brake, COPY IN, composites/arrays decoded (named composite
+      and table row types preloaded at connect), MAXDIM = 6 the parser's
+      bound (TestPgArrayDepth on a 256 KB stack)
+- [x] `Load` (registry row + COPY in one transaction), `PgTarget` (the URL
+      parser), `PgTls` (the SSLRequest dance; JVM)
+- [x] the TLS client half okay-tls has (`SslMode`, `TlsConfig`, trust,
+      mTLS identity, PKCS#8 keys), inside okay2-pg's JVM sources: okay-tls
+      and okay-conf's `Secret` are not ported, so `clientKey` is the PATH
+      of the key file and a value holding PEM is refused by name
+- [x] the Live suites, tagged `Live` (`liveOnly; okay2Pg/test`): TestPg,
+      TestPgComposite, TestCopy, TestAcceptance (the same typed program
+      over PgSql and JdbcSql/H2), TestPgTls, TestPgMtls; TestPgNode on JS
+
 ### Found while building it
 - `Params.bind(Tuple1(x))` was refused: okay2-codec's derivation skipped
   everything under `scala.`, and a tuple is a case class there. Scala

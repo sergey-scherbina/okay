@@ -126,6 +126,7 @@ lazy val root: Project = (project in file("."))
     okay2Codec.jvm, okay2Codec.js, okay2Codec.native,
     okay2Refine.jvm, okay2Refine.js, okay2Refine.native,
     okay2Sql.jvm, okay2Sql.js, okay2Sql.native,
+    okay2Crypto.jvm, okay2Crypto.js, okay2Pg.jvm, okay2Pg.js,
     okay2Http.jvm, okay2Http.js, okay2Http.native,
     okay2Workflow.jvm, okay2Workflow.js, okay2Workflow.native,
     okay2Async.jvm, okay2Async.js, okay2Async.native,
@@ -330,6 +331,33 @@ lazy val okay2Sql = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .jsSettings(jsTests, platformSources("scala-js-native"))
   .nativeSettings(platformSources("scala-js-native"))
   .jvmConfigure(_.withId("okay2Sql"))
+
+/** okay-crypto's primitive seam for the Scala 2 core (okay2-pg): HMAC,
+ * SHA-256, PBKDF2 and randomness from the platform — JCA on the JVM,
+ * node:crypto on Scala.js — and nothing that drags a dependency */
+lazy val okay2Crypto = crossProject(JVMPlatform, JSPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay2-crypto"))
+  .settings(name := "okay2-crypto", common)
+  .jvmSettings(platformSources("scala-jvm"))
+  .jsSettings(jsTests, platformSources("scala-js"))
+  .jvmConfigure(_.withId("okay2Crypto"))
+
+/** okay-pg for the Scala 2 core: the Postgres v3 wire behind the Sql
+ * seam, SCRAM-SHA-256 over okay2-crypto, pulled through okay2-platform's
+ * Net — the same driver on the JVM and on Node. On the JVM also the
+ * sslmode connect (PgTls, with the TLS client half okay-tls has) and
+ * PgTarget. The suites that need a server are Live (`liveOnly;
+ * okay2Pg/test`); the two-driver acceptance borrows okay2-jdbc on H2 */
+lazy val okay2Pg = crossProject(JVMPlatform, JSPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay2-pg"))
+  .dependsOn(okay2Sql, okay2Platform, okay2Crypto)
+  .settings(name := "okay2-pg", common)
+  .jvmSettings(jvmOnlyTests, platformSources("scala-jvm"),
+    libraryDependencies += "com.h2database" % "h2" % "2.3.232" % Test)
+  .jsSettings(jsTests, platformTests("scala-js"))
+  .jvmConfigure(_.withId("okay2Pg").dependsOn(okay2Jdbc % Test))
 
 /** okay-http's transport half for the Scala 2 core: Request/Response/
  * Http, WebSocket sessions as Stages (shared), on the JVM the JDK

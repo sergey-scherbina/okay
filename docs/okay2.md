@@ -2076,6 +2076,25 @@ The idea is Flyway's (versioned migrations with checksums) and the
 warehouses' load history (Snowflake per file, BigQuery per job), as
 okay-jdbc has them (specs/jdbc.md, specs/data.md).
 
+`okay2-pg` is the second driver: the Postgres v3 protocol itself, with
+no JDBC, behind the same `Sql` trait. It logs in with SCRAM-SHA-256 and
+checks the server's signature too, streams rows through portals, and
+reads arrays and composite types into `Arr` and `Row`. It pulls bytes
+through okay2-platform's `Net`, so the same driver runs on the JVM and
+on Node. The acceptance suite runs one typed program over both drivers
+and expects the same answer:
+
+```scala
+      val overPg = program(pg, "$1, $2, $3, $4")
+      val overH2 = program(h2, "?, ?, ?, ?")
+      assertEquals(overPg, overH2)
+```
+
+The suites that need a server are tagged `Live` and run with
+`liveOnly; okay2Pg/test` against the `okay-pg` container. The protocol
+is the one in the PostgreSQL manual's "Frontend/Backend Protocol"
+chapter; SCRAM is RFC 5802 with RFC 7677's SHA-256.
+
 ## 35. HTTP: two plain types
 
 `okay2-http` is okay-http's transport half (stage 44, part A). HTTP is
