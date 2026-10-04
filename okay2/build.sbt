@@ -118,7 +118,7 @@ lazy val jvmSuitesOnly = Test / unmanagedSources / excludeFilter := HiddenFileFi
  * sources, which the crossProject compiles */
 lazy val root: Project = (project in file("."))
   .aggregate(
-    okay2.jvm, okay2.js, okay2.native,
+    okay2.jvm, okay2.js, okay2.native, okay2Jdk22,
     okay2Data.jvm, okay2Data.js, okay2Data.native,
     okay2Optics.jvm, okay2Optics.js, okay2Optics.native,
     okay2Lex.jvm, okay2Lex.js, okay2Lex.native,
@@ -144,6 +144,45 @@ lazy val root: Project = (project in file("."))
     Test / unmanagedResourceDirectories := Nil,
   )
 
+/**
+ * A Multi-Release JAR variant (JEP 238), the root build's `versioned` (okay2-stackroom-jdk22): `dir` holds sources
+ * that redefine classes of `hostId` for a JVM of feature version `n` and up — the same names and public shape, a
+ * newer API inside. They compile with `-release n` (scalac 2.13's twin of the root's `jdkFloor(n)`) against the
+ * host's own compile classpath; the host depends on THIS project, so no `dependsOn` here.
+ */
+def versioned(id: String, dir: String, n: Int, hostId: String): Project =
+  Project(id, file(dir))
+    .settings(
+      Compile / unmanagedSourceDirectories := Seq(baseDirectory.value),
+      Compile / unmanagedClasspath ++= (LocalProject(hostId) / Compile / fullClasspath).value,
+      scalacOptions := Seq("-deprecation", "-feature", "-Xlint", "-Werror", "-release", n.toString),
+      publish / skip := true,
+    )
+
+/**
+ * The host side of `versioned`, as the root build's `multiRelease`: the variant's classes go into the host's jar
+ * under `META-INF/versions/n/`, the manifest says `Multi-Release: true`, and the host's forked tests run against
+ * that JAR in place of the two classes directories — a class loaded from a classes directory is never versioned,
+ * so a test against `target/classes` would prove nothing about the swap.
+ */
+def multiRelease(variantId: String, n: Int): Seq[Setting[_]] = Seq(
+  Compile / packageBin / mappings ++= {
+    val dir = (LocalProject(variantId) / Compile / classDirectory).value
+    val _ = (LocalProject(variantId) / Compile / compile).value
+    (dir ** "*.class").get().map(f => f -> s"META-INF/versions/$n/${IO.relativize(dir, f).get}")
+  },
+  packageOptions += Package.ManifestAttributes("Multi-Release" -> "true"),
+  Test / fullClasspath := {
+    val jar = (Compile / packageBin).value
+    val own = (Compile / classDirectory).value
+    val variant = (LocalProject(variantId) / Compile / classDirectory).value
+    Attributed.blank(jar) +: (Test / fullClasspath).value.filterNot(e => e.data == own || e.data == variant)
+  },
+)
+
+/** okay2's JDK 22+ stack reader (`jdk22/StackRoom.scala`, FFM), in okay2's jar as a Multi-Release variant */
+lazy val okay2Jdk22 = versioned("okay2Jdk22", "jdk22", 22, "okay2")
+
 lazy val okay2 = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("."))
@@ -159,8 +198,10 @@ lazy val okay2 = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   // okay2-bench: the core's benchmarks, in src/jmh as in the root build,
   // on the JVM project only. `test` does not compile them — `Jmh/compile`
   // does (`../scripts/gate.sh "okay2/Jmh/compile"`)
-  .jvmConfigure(_.withId("okay2").enablePlugins(JmhPlugin))
+  .jvmConfigure(_.withId("okay2").enablePlugins(JmhPlugin).dependsOn(okay2Jdk22 % "test->compile"))
   .jvmSettings(Jmh / sourceDirectory := baseDirectory.value.getParentFile / "src" / "jmh")
+  // the JDK 22+ reader in the jar, and the native access it needs, for the forked tests (okay2-stackroom-jdk22)
+  .jvmSettings(multiRelease("okay2Jdk22", 22), Test / javaOptions += "--enable-native-access=ALL-UNNAMED")
 
 /** the Async effect: Run/Await, the Drive, Fiber/Scheduler/Timer/CanBlock
  * as traits, par/race/timeout/supervised/attempt/sleep, Retry, Par */
