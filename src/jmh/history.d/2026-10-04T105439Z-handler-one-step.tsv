@@ -1,0 +1,5 @@
+2026-10-04	-	quiet	stateSmall_one_step	1.326	1.297	1.02	HandleFrames.stateRun (fold and frame from one tail step) against the hand-written folds, master 4c884bcc6; min of 2 alternating rounds; first cut 1.36x (+56 B a run: the lone operation rewritten as a bind), fixed
+2026-10-04	-	quiet	stateHandle_one_step	13.951	14.041	0.99	same; first cut 1.08x (feed a call), fixed by inline
+2026-10-04	-	quiet	writerTell_one_step	10.591	10.913	0.97	Writer.loopWith on stateRun
+2026-10-04	-	quiet	mixedList_one_step	11.156	10.452	1.07	noisy pair (base 10.45/11.88 across rounds); same bytes 132816
+2026-10-04	-	quiet	mixedList_one_step_more	10.634	11.331	0.94	three more alternating rounds: 11.654/11.431/10.634 against 11.628/11.574/11.331 — parity within the noise
