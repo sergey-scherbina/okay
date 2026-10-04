@@ -2146,7 +2146,8 @@ The modules section's third item. okay-sql (the relational seam over
 okay2-codec's `Schema`) as a cross project, and its JDBC driver on the JVM
 so it runs against real engines in tests (SQLite and H2, embedded). The
 pg wire driver, and okay-jdbc's BulkLoad, Migrate, Poll, SqlStore, Writes
-and JdbcInterop, are on demand (backlog `okay2-jdbc-tails`).
+and JdbcInterop, followed in okay2-jdbc-tails (2026-10-04, the three lanes
+below).
 
 - [x] the seam: `SqlValue`, `SqlType`, `Col`, `Isolation`, `Granted`
       (downgrade named), `Drift`, `Bad`, `Sql` (describe, a chunked
