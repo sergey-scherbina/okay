@@ -2457,9 +2457,10 @@ instrument is one path, and what it writes back is JSON whatever it read
     assertEquals(back, Right("""{"id":"f1","notional":500,"forwardPrice":101.5}"""))
 ```
 
-`Format.detect` is `json <|> xml` over the codec's own lossless trees —
-YAML and CBOR join it when okay2-codec reads them, as one more
-alternative each. A pattern is also a search (`search`: `Took` the
+`Format.detect` is okay's level, `cbor <|> (text andThen (json <|> xml
+<|> yaml))`, over the codec's own lossless trees and its CBOR reader;
+`Format.value` projects JSON and YAML into the one `Json`, XML through
+`Xml.value`, and declines CBOR (no value without a schema). A pattern is also a search (`search`: `Took` the
 answer, `Unclear` a choice point, `Declined` an empty one), so
 `runChoice` lists the readings.
 

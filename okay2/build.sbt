@@ -305,7 +305,7 @@ lazy val okay2Codec = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 /** okay-refine for the Scala 2 core: a typed hierarchy of patterns
  * (prisms whose read may decline) that recognise a document level by
  * level and say why; the format level over okay2-codec's own trees
- * (JSON, XML — YAML and CBOR when the codec has them) */
+ * (JSON, XML, YAML, CBOR) */
 lazy val okay2Refine = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay2-refine"))

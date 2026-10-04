@@ -1,14 +1,13 @@
 package okay2.refine
 
-import okay2.codec.{Json, Xml}
+import okay2.codec.{Cbor, Json, Xml, Yaml}
 import okay2.parse.Cst
 
 /**
  * The first level: what FORMAT the bytes are in — okay-refine's
- * `Format`, for the dialects the Scala 2 codec has today: JSON and
- * XML. YAML and CBOR join the level the day okay2-codec reads them
- * (a new format is one more alternative in `detect`, nothing here
- * edited).
+ * `Format`, over the four dialects okay2-codec reads: JSON, XML, YAML
+ * and CBOR (okay2-refine-yaml-cbor, 2026-10-04 — each one more
+ * alternative in `detect`).
  *
  * Every text format is decided over the dialect's OWN lossless tree,
  * not by a sniff of the first byte: the parser already knows — its
@@ -20,6 +19,8 @@ sealed trait Doc
 object Doc {
   final case class Json(tree: Cst[okay2.lex.Json.K]) extends Doc
   final case class Xml(tree: Cst[okay2.codec.Xml.K]) extends Doc
+  final case class Yaml(tree: Cst[okay2.codec.Yaml.K]) extends Doc
+  final case class Cbor(bytes: Array[Byte]) extends Doc
 }
 
 object Format {
@@ -68,21 +69,58 @@ object Format {
       })(
       d => Xml.render(d.tree))
 
-  /** The level. EVERY alternative runs: two takers are `Unclear`, never
-   * whichever came first. */
+  /**
+   * A YAML mapping or sequence with no damage, and NOTHING ELSE at the
+   * root: the block dialect reads `{"a": 1}` as a scalar `{` followed by
+   * a mapping, with no error node — a root-level scalar beside the
+   * structure is the tell (okay-refine's TestFormat found it).
+   */
+  val yaml: Refine[String, Doc.Yaml] =
+    Refine.step[String, Doc.Yaml]("yaml") { s =>
+      // flow style is outside the block dialect's scope, and `<?`/`<!` begin an XML prolog, never a YAML key
+      val c = lead(s)
+      val t = s.dropWhile(ch => ch == '\uFEFF' || Character.isWhitespace(ch))
+      if (c == '{' || c == '[') Left(s"begins with '${c.toChar}': flow style is not the block dialect")
+      else if (t.startsWith("<?") || t.startsWith("<!")) Left("begins with an XML prolog")
+      else {
+        val tree = Yaml.cst(s)
+        firstError(tree).toLeft(()).flatMap(_ =>
+          if (rootKinds(tree).exists(Set("map", "seq")) && !rootScalar(tree)) Right(Doc.Yaml(tree))
+          else Left("not a YAML mapping or sequence"))
+      }
+    }(d => Yaml.render(d.tree))
+
+  /** exactly one well-formed CBOR item */
+  val cbor: Refine[Array[Byte], Doc.Cbor] =
+    Refine.step[Array[Byte], Doc.Cbor]("cbor") { bs =>
+      if (bs.isEmpty) Left("empty")
+      else {
+        val in = new Cbor.In(bs)
+        in.skipItem().flatMap(_ =>
+          if (in.peek == -1) Right(Doc.Cbor(bs))
+          else Left("bytes after the first item"))
+      }
+    }(_.bytes)
+
+  /** The level. EVERY alternative runs: `{"a": 1}` read by two dialects
+   * would be `Unclear` naming both, never whichever came first. */
   val detect: Refine[Array[Byte], Doc] =
-    text andThen (json.widen[Doc] <|> xml.widen[Doc])
+    cbor.widen[Doc] <|> (text andThen (json.widen[Doc] <|> xml.widen[Doc] <|> yaml.widen[Doc]))
 
   /** The bridge from a detected document to a VALUE, so a Schema
-   * pattern can follow: JSON into `Json`, XML through `Xml.value`
-   * (elements as objects, attributes as `@name`, repeats as arrays).
+   * pattern can follow: JSON and YAML into the same `Json` (the one
+   * decode algebra), XML through `Xml.value` (elements as objects,
+   * attributes as `@name`, repeats as arrays); CBOR has no value
+   * projection without a schema and declines saying so.
    * The write renders the value as JSON text and re-reads its tree — a
    * document written back through this bridge is JSON, whatever it was
    * read from, which is what makes a path through it a CONVERSION. */
   val value: Refine[Doc, Json] =
     Refine.step[Doc, Json]("value") {
       case Doc.Json(tree) => Right(Json.value(tree))
+      case Doc.Yaml(tree) => Right(Yaml.parse(Yaml.render(tree)))
       case Doc.Xml(tree) => Right(Xml.value(tree))
+      case Doc.Cbor(_) => Left("no value projection for cbor without a schema")
     }(j => Doc.Json(Json.cst(Json.print(j))))
 
   /** the tree's first error, as the reason — the parser's own words */
@@ -100,6 +138,15 @@ object Format {
   private def rootKinds[K](tree: Cst[K]): Set[String] = tree match {
     case Cst.Node(kind, kids) => kids.collect { case Cst.Node(k, _) => k }.toSet + kind
     case _ => Set.empty
+  }
+
+  /** a scalar at the root, beside or instead of the structure */
+  private def rootScalar(tree: Cst[Yaml.K]): Boolean = tree match {
+    case Cst.Node(_, kids) => kids.exists {
+      case Cst.Leaf(t) => t.kind == Yaml.K.Scalar || t.kind == Yaml.K.Quoted
+      case _ => false
+    }
+    case _ => false
   }
 
   private def hasElement(tree: Cst[Xml.K]): Boolean = {

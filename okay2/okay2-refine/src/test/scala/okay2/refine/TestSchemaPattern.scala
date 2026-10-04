@@ -43,7 +43,7 @@ class TestSchemaPattern extends munit.FunSuite {
     instrument.run(asJson) match {
       case Verdict.Took(Forward("f1", 500.0, 101.5), by, declined) =>
         assertEquals(by, Path("text", "json", "value", "forward"))
-        assertEquals(declined.map(_.at), Vector(Path("text", "xml"), Path("text", "json", "value", "swap")))
+        assertEquals(declined.map(_.at), Vector(Path("cbor"), Path("text", "xml"), Path("text", "yaml"), Path("text", "json", "value", "swap")))
       case other => fail(s"expected the forward, got $other")
     }
     // written back through the same path: JSON, since the value bridge renders JSON
@@ -56,7 +56,7 @@ class TestSchemaPattern extends munit.FunSuite {
     val under = Format.detect andThen Format.value andThen Refine.json.field("forward") andThen forward
     under.run(fromXml) match {
       case Verdict.Declined(tried) =>
-        assertEquals(tried.map(_.at), Vector(Path("text", "json"), Path("text", "xml", "value", "forward", "forward")))
+        assertEquals(tried.map(_.at), Vector(Path("cbor"), Path("text", "json"), Path("text", "yaml"), Path("text", "xml", "value", "forward", "forward")))
         assert(tried.last.reason.contains("SDouble") && tried.last.reason.contains("JStr"), tried.last.reason)
       case other => fail(s"expected the codec's refusal, got $other")
     }

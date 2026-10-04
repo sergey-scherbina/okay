@@ -416,7 +416,8 @@ run of the real documents — the four things found were all on the way:
 okay2 (2026-09-30, lane okay2-refine): the module ported to the Scala 2
 core as `okay2/okay2-refine` — `Refine`/`Verdict`/`Path`/`Refusal`,
 `Format` over JSON and XML (the two dialects okay2-codec has; YAML and
-CBOR join `detect` as one more alternative each when it reads them),
+CBOR join `detect` as one more alternative each when it reads them —
+they did, 2026-10-04, okay2-refine-yaml-cbor, the same four as okay's),
 `Refine.schema`, `Refine.json`, `search`. One shape difference: `run` and
 `write` are the trait's own methods per case (`runAt`, `writeBack`),
 because Scala 2 cannot connect `AndThen`'s existential `X` across a

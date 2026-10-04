@@ -4,9 +4,9 @@ okay-refine for the Scala 2.13 core: a typed hierarchy of patterns
 (prisms whose read may decline) that recognise a document level by level
 and say why. `Refine[A, B]`, `Verdict` (`Took` / `Unclear` / `Declined`
 with every `Refusal`), `Path`; `Format.detect` over okay2-codec's own
-lossless trees — JSON and XML today, YAML and CBOR the day the codec has
-them (one more `<|>` each, nothing here edited); `Format.value` into the
-one `Json` a Schema pattern reads; `Refine.schema`, `Refine.json.*`; the algebra — `>>>`, `or`, `orElse`,
+lossless trees — JSON, XML, YAML and CBOR (`cbor <|> text >>> (json <|>
+xml <|> yaml)`, as okay-refine's); `Format.value` into the one `Json` a
+Schema pattern reads (CBOR declines it: no projection without a schema); `Refine.schema`, `Refine.json.*`; the algebra — `>>>`, `or`, `orElse`,
 `Refine.id` + `Category`, `Refine.empty`, `***` / `+++` / `and` with
 `Refine.Merge`, `orRaise` (Throws), `verdicts` / `taken` (Stages); routing — `Router`
 (`route[X]`, `route { case … }`, `byName`, `tap`, `otherwise`, `run`),
