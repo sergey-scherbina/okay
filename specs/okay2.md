@@ -2180,6 +2180,28 @@ and JdbcInterop, are on demand (backlog `okay2-jdbc-tails`).
       35 on the JVM, TestTyped on H2 as a user with no DDL rights,
       TestSqlite, TestQuerySqlite, TestPool, TestRetry)
 
+### okay2-jdbc-tails, lane 1: Migrate, BulkLoad, JdbcInterop (2026-10-04)
+The three pieces of okay-jdbc that need nothing of okay-persist. `Writes`,
+`Poll` and `SqlStore` need the log (an okay2-persist), whose typed view
+needs okay2-codec's CBOR; they are the next lane.
+
+- [x] `Migrate`: versioned scripts in order, each with its sha-256 in a
+      version table in the same database, one transaction per script and
+      row; refuses duplicates and disorder before touching the database,
+      a CHANGED or VANISHED applied script by version, a failing script
+      leaves no row; `record` sees each `Applied` after its commit
+- [x] `BulkLoad.load`: the load id's history row and the caller's COPY in
+      one transaction — `Loaded(n)`, then `AlreadyLoaded` on the retry; a
+      failing COPY rolls its claim back. `BulkLoad.olap` refuses row DML
+      by name, reads and transactions pass (on embedded DuckDB)
+- [x] `JdbcInterop`: a connection under the Resource region (closed on a
+      handled abort), a query as a chunked stream of fetch-size chunks, a
+      chunk per batch
+- [x] okay2-jdbc depends on okay2-platform at compile scope: `Migrate` and
+      `BulkLoad` run a statement to its answer inside one Async operation,
+      as the Scala 3 originals do, and that parks on the platform's
+      `CanBlock`
+
 ### Found while building it
 - `Params.bind(Tuple1(x))` was refused: okay2-codec's derivation skipped
   everything under `scala.`, and a tuple is a case class there. Scala
