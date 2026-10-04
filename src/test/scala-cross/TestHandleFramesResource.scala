@@ -49,7 +49,7 @@ class TestHandleFramesResource extends munit.FunSuite:
     assertEquals(log.toList, List("release a"))
   }
 
-  test("on a machine: an abort through the scope (a capture dropping k) releases before it leaves") {
+  test("on a machine: an abort through the scope releases it before it leaves (resource-abort-releases)") {
     val log = scala.collection.mutable.ArrayBuffer.empty[String]
     val p = Shift.prompt[String]
     val r = !.run(Shift.run[String, Pure](Shift.push[String, Pure](p)(Resource.run[String, D](for
@@ -57,7 +57,6 @@ class TestHandleFramesResource extends munit.FunSuite:
       _ <- Shift.abort[String, Unit, Pure](p)("aborted").at[Resource + D]
     yield a))))
     assertEquals(r, "aborted")
-    // a capture is a Shift operation, which no frame takes: the drop is the frame's own `k` left unrun — like the
-    // walk, whose forwarded capture is not a `Final`, nothing is released by it; pinned so a change is seen
-    assertEquals(log.toList, Nil)
+    // the dropped piece is discontinued: its scope sees the throw, releases, and the abort answers
+    assertEquals(log.toList, List("release a"))
   }

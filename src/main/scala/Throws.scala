@@ -338,7 +338,8 @@ object CanTry:
         case b @ Bind(Inject(_), _) => b
         case y => headOf(d)(HandleFrames.shallow(y, d))
       def step(d: Int)(p: () => A ! Fx): A ! Fx =
-        (try Right(headOf(d)(p())) catch case e: Throwable => Left(e)) match
+        // a dropped continuation's throw is no failure of this step: on, past the `try` (resource-abort-releases)
+        (try Right(headOf(d)(p())) catch { case e: Shift.Discontinued => throw e; case e: Throwable => Left(e) }) match
           case Left(e) => h(e)
           // the stack's convention: the head answers one of three shapes
           case Right(head) => (head: @unchecked) match

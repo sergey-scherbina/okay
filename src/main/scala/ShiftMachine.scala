@@ -137,7 +137,12 @@ object ShiftMachine {
         else machine.next(body(k2), c.out, c.rest)
       case ab: Abort[?, a, r] =>
         val c = claim[Cut[a, r, Z]](cutOrFail(ab.p, ab.at, k, m, machine))
-        machine.next(Freer.Return[L, U, r](ab.value), c.out, c.rest)
+        // the piece an abort drops is DISCONTINUED when a scope in it must release (resource-abort-releases): thrown
+        // into, its finalizers run inner first, and the value answered after them — else just the value
+        if (held & Catches) == 0 || !finalizerIn(c.piece) then machine.next(Freer.Return[L, U, r](ab.value), c.out, c.rest)
+        else
+          val dropped = Resumption[a, r, F](ab.p, c.piece, held).discontinue.map(_ => ab.value)
+          machine.next(claim[Freer[L, U, U, r]](dropped), c.out, c.rest)
       case rs: Resume[?, a, r, ?] =>
         hold(rs.held, machine)
         machine.reinstall(claim[Delimited.Piece[L, a, U, r, U]](rs.k), claim[Freer[L, U, U, a]](rs.body), claim[Frames[L, r, B, U, U]](k), m)
@@ -156,22 +161,34 @@ object ShiftMachine {
      * (null) or throws passes it, or what it threw, to the frames below; none takes it — thrown on */
     override def thrown[A, B, S, T, R, Z](t: Throwable, k: Frames[L, A, B, S, T], m: Stack[L, B, S, R, Z],
                                           machine: Delimited[L]): Delimited.Next[L, Z] | Null =
-      catchFrom(t, claim[Frames[L, A, B, U, U]](k), claim[Stack[L, B, U, U, Z]](m), machine)
+      catchFrom(t, t, claim[Frames[L, A, B, U, U]](k), claim[Stack[L, B, U, U, Z]](m), machine)
 
+    /** `first` the throw the walk began with: none taking `t` — null when it is that one (the machine throws it on),
+     * else `t` thrown here, a handler's own throw, so it is not lost for the one it replaced */
     @scala.annotation.tailrec
-    private def catchFrom[A, B, Z](t: Throwable, k: Frames[L, A, B, U, U], m: Stack[L, B, U, U, Z],
+    private def catchFrom[A, B, Z](first: Throwable, t: Throwable, k: Frames[L, A, B, U, U], m: Stack[L, B, U, U, Z],
                                    machine: Delimited[L]): Delimited.Next[L, Z] | Null =
       cut(k, m, catches, never, machine) match
-        case null => null
+        case null => if t eq first then null else throw t
         case c => answerOf(c.tag, t) match
-          case null => catchFrom(t, c.out, c.rest, machine)
-          case again: Delimited.Thrown => catchFrom(again.t, c.out, c.rest, machine)
+          case null => catchFrom(first, t, c.out, c.rest, machine)
+          case again: Delimited.Thrown => catchFrom(first, again.t, c.out, c.rest, machine)
           case p => machine.next(claim[Freer[L, U, U, Any]](p), c.out, c.rest)
 
     /** the catch frame's answer for `t`: a program, null (not its throw), or what its handler threw */
     private def answerOf(tag: Delimited.Mark, t: Throwable): Any = tag match
       case h: HandleFrames.Catching => try h.caught(t) catch case t2: Throwable => Delimited.Thrown(t2)
       case _ => null
+
+    /** a finalizing catch frame among the boundaries of `piece` */
+    @scala.annotation.tailrec
+    private def finalizerIn[A0, T0, A, T](piece: Delimited.Piece[L, A0, T0, A, T]): Boolean = piece match
+      case Delimited.Piece.One(_, tag) => finalizer(tag)
+      case Delimited.Piece.Snoc(prev, _, tag) => finalizer(tag) || finalizerIn(prev)
+
+    private def finalizer(tag: Delimited.Mark | Null): Boolean = tag match
+      case c: HandleFrames.Catching => c.finalizes
+      case _ => false
 
     private val catches: Delimited.Mark => Boolean = _.isInstanceOf[HandleFrames.Catching]
     private val never: Delimited.Mark => Boolean = _ => false

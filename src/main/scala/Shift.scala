@@ -158,6 +158,26 @@ object Shift {
      * it as they would a throw from the code that captured ("throwing into a continuation"); none does, it is
      * thrown on out of the run */
     def raise(t: Throwable): R ! Shift % ? + F = resumeWith(Free.delay(Delimited.Thrown(t)))
+    /** DROP it, releasing what it holds (OCaml's `discontinue`): `Discontinued` thrown into it — which its scopes
+     * see and its `try`s decline — and taken back out under it; answers once every scope inside has released, or
+     * fails with a release that failed. A continuation neither resumed nor discontinued keeps its scopes open:
+     * nothing can tell a dropped `k` from a stored one */
+    def discontinue: Unit ! Shift % ? + F =
+      val d = Discontinued()
+      HandleFrames.dropping[F](d)(raise(d))
+
+  /**
+   * THE THROW THAT DROPS A CONTINUATION (resource-abort-releases): thrown into one nobody will resume, so its scopes
+   * release. No failure of the code there, so a `try` does not answer it; a finalizer does, and throws it on. No
+   * stack trace; a release that fails is attached to it, suppressed, and thrown where it is taken back.
+   */
+  final class Discontinued private[okay] () extends RuntimeException("a dropped continuation", null, true, false)
+
+  /** `k` dropped (`Resumption.discontinue`); a function of the caller's own making holds nothing: nothing to do */
+  def discontinue[A, X, G[+_]](k: A => X ! G): Unit ! G = k match
+    // THE ONE CLAIM: a `Resumption` handed to a body typed `A => X ! G` is that function, at the same types
+    case r: Resumption[?, ?, ?] => r.discontinue.asInstanceOf[Unit ! G]
+    case _ => okay.pure(())
 
   /** `t` thrown into `k`: inside it when it is a continuation a capture handed out (`Resumption`), else — a function
    * of the caller's own making — at the call */

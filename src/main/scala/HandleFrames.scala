@@ -43,6 +43,9 @@ object HandleFrames:
     self: Prompt[?] =>
     /** the frame's answer for `t` — a program at its row — or null: not this frame's */
     def caught(t: Throwable): Any
+    /** a FINALIZER (a `Resource` scope): it sees a dropped continuation's throw too (`Shift.Discontinued`), which
+     * an abort through it must be told of — the machine discontinues a dropped piece only when it holds one */
+    def finalizes: Boolean = false
 
   /**
    * THE STATE FRAME, for every loop that threads a state (handle-frames-loops): from state `s0` over `x`,
@@ -79,6 +82,8 @@ object HandleFrames:
           def takes(op: Any): Boolean = takes0(op)
           def clause(op: Any, k: Any => Any): Any = pure[Shift % ? + G, Ans]((s: S) => clauseAt[S, R, G](step, s, op, k))
           def caught(t: Throwable): Any = pure[Shift % ? + G, Ans]((s: S) => widened(thrown(s, t)))
+          // `onThrow` answers every throw, a dropped continuation's included: a state frame's catch is its finalizer
+          override def finalizes: Boolean = true
     val back: A => Shift.U[G, Ans] = a => pure[Shift % ? + G, Ans]((s: S) => widened(ret(s, a)))
     Shift.dollar[A, Ans, G](frame)(back)(framed[A, H, G](x)).flatMap(g => g(s0))
 
@@ -176,8 +181,28 @@ object HandleFrames:
   /** a `try` as a frame (handle-frames-catch): `h` answers a throw from anything `x` runs, `x` built under it too */
   def catching[A, G[+_]](h: Throwable => A ! G)(x: => A ! G): Shift.U[G, A] =
     val frame = new Prompt[A]("try", "catch") with Catching:
-      def caught(t: Throwable): Any = widened(h(t))
+      // a dropped continuation's throw is no failure here: answering it would run on in what was dropped
+      def caught(t: Throwable): Any = t match
+        case _: Shift.Discontinued => null
+        case _ => widened(h(t))
     Shift.dollar[A, A, G](frame)(a => pure(a))(Free.delay(() => widened(x)))
+
+  /**
+   * `x` — a continuation `d` is thrown into (`Resumption.discontinue`) — under a frame that takes `d` back
+   * (resource-abort-releases): `()` when it arrives, every scope inside released; a release that failed, attached
+   * to `d` suppressed, thrown on from here as the failure it is; `()` too if something inside answered after all
+   */
+  def dropping[G[+_]](d: Shift.Discontinued)(x: Any ! Shift % ? + G): Unit ! Shift % ? + G =
+    val frame = new Prompt[Unit]("discontinue", "catch") with Catching:
+      def caught(t: Throwable): Any =
+        if !(t eq d) then null
+        else d.getSuppressed match
+          case Array() => pure[Shift % ? + G, Unit](())
+          case failed =>
+            val first = failed(0)
+            failed.iterator.drop(1).foreach(first.addSuppressed)
+            throw first
+    Shift.dollar[Any, Unit, G](frame)(_ => pure(()))(x)
 
   /**
    * a frame whose clause gets the operation and its continuation as a function to programs of `G` — for a handler
