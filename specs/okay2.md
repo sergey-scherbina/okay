@@ -2319,7 +2319,37 @@ Found while building it:
   would shadow `List`'s in every pattern of the package.
 - Not ported: TestRouteFacts (it exercises okay-di's `Fact`/`Module`,
   which okay2 has not got), and the Scala.js client transports (backlog
-  `okay2-http-js-transports`).
+  `okay2-http-js-transports`, now part C).
+
+### Part C — the Scala.js transports (okay2-http-js-transports, 2026-10-04)
+- [x] `Transports.fetch`: an `Http` over the global `fetch` through
+      okay2-platform's typed `Web`, the body read one `reader.read()` per
+      chunk (`ofReader`), a rejected promise a failed `Async`
+- [x] `Transports.sockets(capacity)`: `Sockets` over the global
+      `WebSocket`, frames into a `Channel` of `capacity`, text/binary
+      told apart by a type test; an error before the open fails the
+      connect instead of hanging it; ping/pong dropped (the web surface
+      has neither), as in okay-http
+- [x] `Client`: `Acceptance.check` over both, linked as a Node main
+      (CommonJS, `scalaJSUseMainModuleInitializer`), exit 0 the
+      acceptance; okay2-http's JVM Test/compile links it
+- [x] `TestAcceptance` (`Live`): the JVM control (JDK transports, 4/4)
+      and `node main.js <port>` against the same JVM server (4 `ok`)
+
+Found while building it:
+- okay-jetty serves both halves for the Scala 3 run; okay2 has no Jetty
+  and its JDK `Server` cannot upgrade. The test fixture
+  `AcceptanceServer` splits by request head on ONE port: a WebSocket
+  handshake runs the shared `Acceptance.echo` through `Ws.over` on a
+  server-side `Socket`, anything else is piped to `Server` answering
+  `Acceptance.routes`. The RFC 6455 wire bits moved from `WsEcho` into
+  `WsWire`, which both use.
+- Node's fetch pool reuses a kept-alive connection for the WebSocket
+  handshake: the first run sent `/ws` down the connection `/person` had
+  opened, so the split never saw it and the backend answered. The pipe
+  now rewrites both heads to `Connection: close`. The JS failure read
+  `websocket error` with a bare `TypeError`; the transport's error before
+  open is what made it a failure and not a hang.
 
 ## Stage 45 — every handler loop splits by `Split.at` (2026-09-25)
 Backlog `okay2-split-at-rest`. okay2-handler-allocs moved State, relay,

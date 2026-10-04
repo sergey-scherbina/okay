@@ -332,18 +332,34 @@ lazy val okay2Sql = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .jvmConfigure(_.withId("okay2Sql"))
 
 /** okay-http's transport half for the Scala 2 core: Request/Response/
- * Http, WebSocket sessions as Stages (shared), and on the JVM the JDK
- * server, raw NIO and the JDK client/WebSocket transports */
+ * Http, WebSocket sessions as Stages (shared), on the JVM the JDK
+ * server, raw NIO and the JDK client/WebSocket transports, and on
+ * Scala.js `fetch` and the global `WebSocket` */
 lazy val okay2Http = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay2-http"))
   .dependsOn(okay2Codec, okay2Stream)
   .settings(name := "okay2-http", common)
   // its own macro (`route.of[C]`)
-  .jvmSettings(reflect(None), jvmOnlyTests, platformSources("scala-jvm"))
-  .jsSettings(jsTests, reflect(Some(Provided)))
+  .jvmSettings(reflect(None), jvmOnlyTests, platformSources("scala-jvm"),
+    // the acceptance run (okay-http's, served from okay-jetty there):
+    // the JS transports linked as a Node program, driven by
+    // TestAcceptance against a JVM server. Hung off Test/compile as the
+    // root build does, `compile` being a plain TaskKey in sbt 1 and 2
+    Test / javaOptions += {
+      val out = (LocalProject("okay2HttpJS") / Compile / fastLinkJS / scalaJSLinkerOutputDirectory).value
+      s"-Dokay2.http.client.js=${(out / "main.js").getAbsolutePath}"
+    },
+    Test / compile := (Test / compile).dependsOn(LocalProject("okay2HttpJS") / Compile / fastLinkJS).value)
+  .jsSettings(jsTests, reflect(Some(Provided)), platformSources("scala-js"),
+    // the linked main and the test suite link separately, so the JS
+    // tests stay while the main is a Node program
+    scalaJSUseMainModuleInitializer := true,
+    Compile / mainClass := Some("okay2.http.Client"),
+    scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)))
   .nativeSettings(reflect(Some(Provided)))
   .jvmConfigure(_.withId("okay2Http").dependsOn(okay2Platform.jvm))
+  .jsConfigure(_.dependsOn(okay2Platform.js))
 
 /** okay-jdbc's driver for the Scala 2 core: `JdbcSql`, tested against
  * embedded SQLite and H2; `Migrate`, `BulkLoad` (tested on embedded

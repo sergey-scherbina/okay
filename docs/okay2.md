@@ -2104,6 +2104,19 @@ channels, and `Transports` provides the JDK client and WebSocket. The
 suites that bind a port are tagged `Live`: `test` leaves them out, and
 `integrationTest` (or `liveOnly; okay2Http/test`) runs them.
 
+On Scala.js, `Transports.fetch` is an `Http` over the global `fetch`. It
+reads the body one `read()` at a time, so a long response streams there
+too. `Transports.sockets()` gives `Sockets` over the global `WebSocket`,
+whose frames land in a bounded `Channel`. Both are typed through
+okay2-platform's `Web` facades and work in Node 22+ and browsers. The same
+`Acceptance.check` runs on both sides: `Client` is that program linked
+as a Node main, and `TestAcceptance` (`Live`) runs it with `node` against
+a JVM server:
+
+```scala
+    Async.runAsync(Acceptance.check(Transports.fetch, Transports.sockets(), port)).onComplete {
+```
+
 A typed route (stage 44, part B) is one declaration with three
 interpreters. `unapply` matches it (as a pattern too), `url` builds it,
 and `describe` renders it with no request at hand.
