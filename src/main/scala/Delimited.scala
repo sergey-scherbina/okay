@@ -197,9 +197,10 @@ object Delimited:
     def m: Stack[G, B, S, R, Z]
 
   /** a captured piece of the stack, built outward: from the hole `A0` (at index `T0`) through segments and the
-   * value boundaries between them to `A` (at index `T`) */
+   * value boundaries between them to `A` (at index `T`) — at least one segment and its boundary, so a capture
+   * allocates no empty piece to start from */
   enum Piece[G[_, _, +_], A0, T0, A, T]:
-    case Nil[G[_, _, +_], A0, T0]() extends Piece[G, A0, T0, A0, T0]
+    case One[G[_, _, +_], A0, T0, B, S](k: Frames[G, A0, B, S, T0], tag: Mark | Null) extends Piece[G, A0, T0, B, S]
     case Snoc[G[_, _, +_], A0, T0, A, T, B, S](prev: Piece[G, A0, T0, A, T], k: Frames[G, A, B, S, T], tag: Mark | Null)
       extends Piece[G, A0, T0, B, S]
 
@@ -366,7 +367,12 @@ object Delimited:
 
     def cut[A, B, S, T, R, Z](k: Frames[G, A, B, S, T], m: Stack[G, B, S, R, Z], is: Mark => Boolean,
                               stop: Mark => Boolean): Found[G, A, T, R, Z] | Null =
-      cutFrom(Piece.Nil[G, A, T](), k, m, is, stop)
+      m match
+        case Stack.Delim(tag, out, rest) =>
+          if tag != null && is(tag) then found(Piece.One(k, tag), tag, out, rest)
+          else if tag != null && stop(tag) then null
+          else cutFrom(Piece.One(k, tag), out, rest, is, stop)
+        case _ => null
 
     @tailrec private def cutFrom[A0, T0, A, B, S, T, R, Z](piece: Piece[G, A0, T0, A, T], k: Frames[G, A, B, S, T],
                                                            m: Stack[G, B, S, R, Z], is: Mark => Boolean,
@@ -394,14 +400,14 @@ object Delimited:
 
     @tailrec private def link[A0, R, A, T, B, S, Z](piece: Piece[G, A0, R, A, T], k: Frames[G, A, B, S, T],
                                                     m: Stack[G, B, S, R, Z], c: Freer[G, R, R, A0]): Next[G, Z] = piece match
-      case Piece.Nil() => next(c, k, m)
+      case Piece.One(kk, tag) => next(c, kk, Stack.Delim(tag, k, m))
       case Piece.Snoc(prev, kk, tag) => link(prev, kk, Stack.Delim(tag, k, m), c)
 
     def closed[A, B, S, T, R, Z](k: Frames[G, A, B, S, T], m: Stack[G, B, S, R, Z]): Closed[G, A, T, R, Z] | Null = m match
       // the usual one: the answer boundary right under the segment, the continuation that segment alone
       case Stack.Bound(tag, out, rest) => segmentBy(k, tag, out, rest)
       case Stack.Answered() => segmentAtTop[A, S, T, R](k)
-      case Stack.Delim(tag, out, rest) => closedFrom(Piece.Snoc(Piece.Nil[G, A, T](), k, tag), out, rest)
+      case Stack.Delim(tag, out, rest) => closedFrom(Piece.One(k, tag), out, rest)
       case _ => null
 
     @tailrec private def closedFrom[A0, T0, A, B, S, T, R, Z](piece: Piece[G, A0, T0, A, T], k: Frames[G, A, B, S, T],
