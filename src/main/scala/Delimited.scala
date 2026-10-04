@@ -235,17 +235,11 @@ object Delimited:
   /** a run for one effect alone: its answer, not a program */
   final class Machine[G[_, _, +_]] private[Delimited] (val loop: Run[G, None]):
     /** run `c` with `k` as the last frame of its continuation; the result is its answer */
-    def run[A, S, R](c: Freer[G, S, R, A], k: A => S): R = Machine.done(loop.run(c, k))
+    def run[A, S, R](c: Freer[G, S, R, A], k: A => S): R = loop.runAlone(c, k)
     /** run `c` to its value */
-    def value[A, X](c: Freer[G, X, X, A]): A = Machine.done(loop.value(c))
+    def value[A, X](c: Freer[G, X, X, A]): A = loop.valueAlone(c)
     /** a continuation run now */
     def force[A, T](k: Kont[G, A, T], x: A): T = loop.force(k, x)
-
-  object Machine:
-    /** nothing leaves a run alone, so its program is a value */
-    private def done[A](p: Free[None, A]): A = p match
-      case Return(a) => a
-      case _ => throw IllegalStateException("an operation left a machine for one effect")
 
   // ---- THE LOOP ----
 
@@ -274,9 +268,18 @@ object Delimited:
     /** a strict `k` cannot wait for an effect outside: one met inside it is refused, by name */
     def force[A, T](k: Kont[G, A, T], x: A): T = k.forced(x)
 
-    /** a closed segment run from `x` now: no `Next` between (a strict `k` is called once an operation) */
+    /** a closed segment run from `x` now: no `Next` between (a strict `k` is called once an operation) — on a
+     * machine alone through its own loop, which answers `T` itself, no `Return` built to be taken apart */
     private def forceAt[A, S, T](k: Frames[G, A, S, S, T], x: A): T =
-      answerOf(deeper(go(Return[G, T, A](x), k, Stack.Answered[G, S, T]())))
+      if alone then deeper(goAlone(Return[G, T, A](x), k, Stack.Answered[G, S, T]()))
+      else answerOf(deeper(go(Return[G, T, A](x), k, Stack.Answered[G, S, T]())))
+
+    /** a machine alone run with `k` as the last frame: its answer (`Delimited.Machine`) */
+    private[Delimited] def runAlone[A, S, R](c: Freer[G, S, R, A], k: A => S): R =
+      goAlone(c, frame((a: A) => Return[G, S, S](k(a)), end[S, S]), Stack.Answered[G, S, R]())
+
+    /** a machine alone run to its value */
+    private[Delimited] def valueAlone[A, X](c: Freer[G, X, X, A]): A = goAlone(c, end[A, X], Stack.Done[G, A, X]())
 
     /** a run's answer, which a strict `k` cannot wait for an effect outside to give */
     private def answerOf[T](p: Free[F, T]): T = p match
@@ -324,6 +327,37 @@ object Delimited:
                 catch case t: Throwable => next(Delay(Thrown(t)), k, m)
             go(n.c, n.k, n.m)
           case o => forward(o.nn, k, outer.diagonal(op).flip.substituteCo[[r] =>> Stack[G, B, S, r, Z]](m))
+
+    /**
+     * THE LOOP OF A MACHINE ALONE (strict-k-cost): nothing leaves it, so it answers `Z` itself. Through the one loop,
+     * whose answer is `Free[F, Z]` for the operations that leave, a strict `k` — a nested run per call — built a
+     * `Return` to take apart again: statePara 1.12x and +32 KB against cont-atm, one `Return` a call (history.d
+     * strict-k-cost). These are `go`'s arms less the two a machine alone cannot reach: an operation sent out, a
+     * deferred run stepped into.
+     */
+    @tailrec private def goAlone[A, B, S, T, R, Z](c: Freer[G, T, R, A], k: Frames[G, A, B, S, T], m: Stack[G, B, S, R, Z]): Z =
+      c match
+        case Return(a) => k match
+          case Frames.Frame(f, k2) => goAlone(if guarded then guard(f(a)) else f(a), k2, m)
+          case Frames.End() => m match
+            case Stack.Done() => a
+            case Stack.Answered() => a
+            case Stack.Delim(_, out, rest) => goAlone(Return(a), out, rest)
+            case Stack.Bound(_, out, rest) => goAlone(Return(a), out, rest)
+        case Bind(c0, f) => goAlone(c0, Frames.Frame(f, k), m)
+        case Delay(t) => t match
+          case th: Thrown =>
+            val n = steps.thrown(th.t, k, m, this)
+            if n == null then throw th.t
+            goAlone(n.c, n.k, n.m)
+          case _ => goAlone(if guarded then guard(t()) else t(), k, m)
+        case Inject(op) =>
+          val n =
+            if !guarded then steps.step(op, k, m, this)
+            else
+              try steps.step(op, k, m, this)
+              catch case t: Throwable => next(Delay(Thrown(t)), k, m)
+          goAlone(n.c, n.k, n.m)
 
     /** a call of user code under the `try`: a throw answered as a `Thrown` program */
     private inline def guard[T, R, A](inline body: Freer[G, T, R, A]): Freer[G, T, R, A] =
@@ -439,7 +473,8 @@ object Delimited:
       extends Closed[G, A0, T0, R, Z]:
       def from(a: A0): Next[G, T0] = reinstall(piece, Return(a), last, Stack.Answered[G, S0, T0]())
       private[Delimited] def forced(a: A0): T0 =
-        answerOf(deeper { val n = from(a); go(n.c, n.k, n.m) })
+        if alone then deeper { val n = from(a); goAlone(n.c, n.k, n.m) }
+        else answerOf(deeper { val n = from(a); go(n.c, n.k, n.m) })
       def resume[B2, S2, X, Z2](a: A0, out: Frames[G, T0, B2, S2, X], rest: Stack[G, B2, S2, X, Z2]): Next[G, Z2] =
         reinstall(piece, Return(a), last, Stack.Bound[G, S0, T0, B2, S2, X, Z2](null, out, rest))
 
