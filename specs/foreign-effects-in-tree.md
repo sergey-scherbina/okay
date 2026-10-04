@@ -41,17 +41,21 @@ val a: Int ! IO = IO(1).perform
 val b: Int ! ZIO[Db, DbErr, *] = ZIO.service[Db].as(1).perform
 val c: Int ! UIO = ZIO.succeed(2).perform          // also Task, RIO[R, *], URIO[R, *], zio.IO[E, *]
 // kyo (okay-kyo): the one invented name, an alias, because `A < S` has none
-type Kyo[S] = [A] =>> A < S
-val d: Int ! Kyo[Async & Abort[E]] = Kyo.perform(v)   // `perform` cannot unify `A < S` with `F[A]`
+val d: Int ! <[*, Async & Abort[E]] = KyoEffect.perform(v)   // `perform` cannot unify `A < S` with `F[A]`
 
 // handlers: the runtime is chosen at handling, not at building
-p.toIO        // IO members natively, in ONE fiber (as CatsEffect.toIO); others through their bridge
-p.toZIO       // ZIO members natively; R and E read off the row: ZIO[R1 & R2, lub(E1, E2), A]
-p.viaAsync    // today's asOkay: each foreign value forked and awaited as Async
-p.handle(...) // any okay handler, e.g. a mock answering IO/ZIO operations in a test
+p.toIO        // IO + Async as ONE IO fiber (as CatsEffect.toIO)
+p.toZIO       // a row of ZIO members as one ZIO; R and E read off the row: ZIO[R1 & R2, lub(E1, E2), A]
+p.via[M]      // each M step lowered by ForeignEffect[M] (Async for IO and Task), the rest of the row kept
+p.handle(...) // any okay handler, e.g. one answering the IO operations in a test
 ```
 
-`asOkay` stays, as the shortcut "perform, then `viaAsync`".
+`asOkay` stays; it is `perform` then `via[IO]` (TestIOMembers checks they agree).
+AS BUILT (2026-10-04): `via[M]` is ONE extension in okay-async, chosen by the
+`ForeignEffect[M]` instance, not a `viaAsync` per module — per-module
+extensions of one name do not overload when imported together
+(interop-compose). kyo's member is `<[*, S]`, not an alias: `kyo.Kyo` is
+kyo's own object, and a name okay invented would clash.
 `CatsFx` stays for cats-effect's primitives that carry sub-programs
 (`uncancelable(poll => …)`, `racePair`); a plain `IO` is `IO`.
 
@@ -93,6 +97,10 @@ any two different rows do not. Until the bind lands, a `direct` block
 does it.
 
 ## The union-writing bind
+
+IT EXISTS ALREADY as a method: `Row.bind` (bind-in-row-union, 2026-09-23 — `p.bind(f) : B ! F + G`,
+Row.scala, with the reasons it is not `flatMap`), found after this section was written. What is open is
+`flatMap` itself, so that a `for` mixes rows; the probe below re-derived `bind` and measured that.
 
 ```scala
 def bind[G[+_], B](f: A => B ! G): B ! (F + G)   // on p: A ! F; one claim: members of a union erase (Row.In's)
@@ -193,8 +201,10 @@ covariance allows but does not require.
 - [x] probe D: cats `IO`, ZIO (`ZIO[R, E, *]`, `UIO`, `Task`) and kyo as row members; `toZIO` infers `ZIO[Db & Log, AppErr, Int]`, the type ZIO's own `for` gives; a lift of `perform`'s signature (`[F[+_], A](fa: F[A])`) takes a ZIO with no type lambda; kyo is refused by it and needs its own lift
 - [x] probe E: the union-writing bind on the REAL core — rows, order, same effect, real handlers, an abstract row
 - [x] refuted on the real core: `flatMap` as extensions (lexical givens' `flatMap` win; self-recursion), `flatMap` with a `Join` given (dotty crash)
-- [ ] stage 1 (okay-cats, okay-zio, okay-kyo): the foreign types as members — `perform` for IO/ZIO, `Kyo.perform`; `toIO`, `toZIO` (R, E by `Row.Sub`), `viaAsync`; `asOkay` as perform + viaAsync; a mock handler in a test; cats-effect laws on `toIO` over a mixed program; cancellation both ways
-- [ ] stage 2: ZIO's narrowing handlers by ZIO's names — `provide`, `provideEnvironment`, `catchAll`, `mapError` on a ZIO member
+- [x] stage 1 (foreign-effects-members, 2026-10-04): `IO`, `ZIO[R, E, *]` (and ZIO's aliases) and kyo's `<[*, S]` as row members; `perform` builds an IO/ZIO operation, `KyoEffect.perform` a kyo one; `p.toIO` (IO + Async as one IO), `p.toZIO` (R and E read off the row; TestZioMembers checks the type against ZIO's own `for`), `p.via[M]` (each `M` step lowered by `ForeignEffect[M]`, the rest kept), `KyoEffect.run`; a handler of our own answering the IO steps; `asOkay` agrees with `perform` then `via[IO]`; a thousand steps each (TestIOMembers 6, TestZioMembers 5, TestKyoMembers 1)
+- [ ] stage 1, left: cats-effect laws on `toIO` over a mixed program; cancellation both ways through `toIO`/`toZIO`
+- [x] stage 2: `provideEnvironment`, `mapError` on a row of ZIO members
+- [ ] stage 2, left: `catchAll` (it is the whole program's, not a step's: it needs the rest of the program, a different shape)
 - [ ] stage 3: the union bind as `for`'s `flatMap` — road (a), else (b)
 - [ ] stage 4: `direct`'s `.?` on an IO/ZIO puts the value in the tree instead of awaiting it (a semantic change: the operator decides)
 

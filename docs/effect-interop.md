@@ -91,6 +91,62 @@ Everything crosses as `A ! Async`. Handle any other effect in an okay
 row first (`Reader.run`, `runEither`). A typed `ZIO[R, E, A]` crosses
 by the `direct` mark, as a `ZioRow` (below).
 
+## A foreign value as an effect of the tree
+
+`asOkay` turns a foreign value into okay's `Async` at once. Sometimes the
+decision belongs to whoever HANDLES the program: run the IO steps in one
+cats-effect fiber, or each through okay's runners, or answer them in a test
+without a runtime. Then keep the value in the tree. The row member is the
+foreign type itself, and `perform` builds the operation
+(specs/foreign-effects-in-tree.md):
+
+```scala
+val p: Int ! IO = IO { ran.incrementAndGet(); 20 }.perform.flatMap(a => IO(a + 1).perform)
+assertEquals(p.toIO.unsafeRunSync(), 21)
+```
+
+Building ran nothing; `toIO` runs the IO steps, with okay's `Async` beside
+them, as ONE IO. `via[M]` lowers the `M` steps by the library's own
+`ForeignEffect[M]` and keeps the rest of the row; `asOkay` is exactly
+`perform` then `via[IO]`:
+
+```scala
+val q: Int ! (Async + State % Int) = p.via[IO]
+```
+
+ZIO keeps its own types in the row, one member per step, so steps with
+different environments and errors sit side by side. The handlers read `R`
+and `E` off the whole row by subtyping, which is what ZIO's own `flatMap`
+bounds do, and `toZIO` answers the type ZIO's own `for` would:
+
+```scala
+val p: Int ! (ZIO[Db, DbErr, *] + ZIO[Log, LogErr, *]) = z1.perform.bind(a => z2.perform.map(_ + a))
+val ours: ZIO[Db & Log, AppErr, Int] = p.toZIO
+val q: Int ! ZIO[Any, AppErr, *] = p.provideEnvironment(env)
+val q: Int ! ZIO[Db & Log, String, *] = failing.mapError(_.toString)
+```
+
+Two ZIO members are one class at run time, so a row holding several is for
+the ZIO handlers above, which walk it whole; a handler that splits a row
+(`State.handle`) refuses it by `Distinct`.
+
+kyo writes its computation value-first, `A < S`, so its member is written
+with the value's place open, and `KyoEffect.perform` builds the operation
+(plain `perform` cannot unify `A < S` with `F[A]`). A kyo row is lowered
+whole:
+
+```scala
+val p: Int ! <[*, Abort[Nothing] & KAsync] =
+  KyoEffect.perform(k).flatMap(a => KyoEffect.perform[Int, Abort[Nothing] & KAsync](a + 1))
+assertEquals(KyoEffect.run(p).runWith, 21)
+```
+
+The idea is old: a free monad keeps the program as data so that the
+interpreter, not the author, decides what an operation means (Kiselyov and
+Ishii, *Freer Monads, More Extensible Effects*, 2015); ZIO's own
+`ZIO[-R, +E, +A]` is where the variance-driven join of environments and
+errors comes from (zio.dev, "ZIO's type parameters").
+
 ## ZIO
 
 Module `okay-zio`; `import okay.zio.given` brings the instances, and
