@@ -607,3 +607,29 @@ unshared Get, the facade), alternating arms, one lane per `jmh-lane.sh`
   fast path in `interpret` for a driver program that is already a
   `Return` — it would collapse the residue only for a silent Sql, which
   no caller has.
+
+## freer-no-diag (2026-10-04)
+
+The operator: "Diag нужен только там, где индексы — настоящие переменные …
+предлагаю попробовать решить эту конкретную проблему без Diag", then "одну
+простую и стройную систему комбинаторов типов для эффектов разной арности".
+
+- `Freer.Diag` is gone. The door is typed: `Unary[G][S, R, X]` reduces to
+  `G[X]` only at `S = R`, so every operation of a unary member in the tree
+  was BUILT on the diagonal. What the node carried to the handler, one
+  function says now — `Indexed.onDiagonal(e): S =:= R`, the one claim of
+  the design (the reflexive singleton, no allocation) — and
+  `Indexed.atDiagonal(e)` reads the operation as its effect's.
+  `Indexed.unary` and `lift` build `Inject` at `(R, R)`; `offDiagonal` is
+  gone with the arm it answered.
+- An indexed signature's own diagonal operations never needed it: `Tx`'s
+  statements are `TxOp[S, S, X]` by their constructors.
+- ONE SYSTEM: one kind of signature in the tree (`G[_, _, +_]`), one sum
+  (`+~`), one bridge from a unary effect (`Unary`), and the unary sum `+`
+  agreeing with them — `Unary[F + G]` and `Unary[F] +~ Unary[G]` reduce to
+  the same type on the diagonal and to nothing off it (TestFreerPara pins
+  both). A row of two arities is `F +~ Unary[G]`.
+- Open: `Free`'s own bridge is `Lift` (indexes ignored), not `Unary`;
+  whether `Free[F, A] = Freer[Unary[F], Unit, Unit, A]` keeps inference is
+  the probe free-unary-bridge.
+

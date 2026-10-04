@@ -170,6 +170,16 @@ class TestFreerPara extends munit.FunSuite:
     assertEquals(run(State.handleIndexed(4)(lone))(toShift)(a => s => (s, a))(9), (9, (5, 5)))
   }
 
+  test("one system for two arities: Unary distributes over the unary sum, on the diagonal and off it") {
+    type One = Int => Unit
+    // on the diagonal both spellings reduce to the union of the two effects' operations
+    summon[Unary[State[Int, *] + Reader[Int, *]][One, One, Long] =:= (State[Int, Long] | Reader[Int, Long])]
+    summon[(Unary[State[Int, *]] +~ Unary[Reader[Int, *]])[One, One, Long] =:= (State[Int, Long] | Reader[Int, Long])]
+    // off it, neither accepts an operation of either
+    assert(compileErrors("val x: Unary[State[Int, *] + Reader[Int, *]][One, String => Unit, Long] = State.Get[Int, Long]()").nonEmpty)
+    assert(compileErrors("val x: (Unary[State[Int, *]] +~ Unary[Reader[Int, *]])[One, String => Unit, Long] = State.Get[Int, Long]()").nonEmpty)
+  }
+
   test("the door refuses a unary operation off the diagonal: the Unary member is stuck there") {
     val errors = compileErrors("Indexed.effect[Row, Int => Unit, String => Unit, Int](State.Update[Int, Int](n => (n + 1, n + 1)))")
     assert(errors.nonEmpty, "a State operation at a moving index must not type")

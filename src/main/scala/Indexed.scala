@@ -30,14 +30,18 @@ import scala.quoted.*
  * `(Int => Z, String => Z)` refuses it, both by the compiler
  * (TestFreerPara pins the refusal).
  *
- * THE COMBINATOR OF TWO ARITIES, `F +^ G` (an indexed signature and a
- * unary effect beside it), carries what the `Diag` node carried: since
- * the DOOR is typed, every operation of the unary member in the tree
- * was built on the diagonal, and a handler that tells one apart
- * (`splitI`) gets the equality its continuation needs from
- * `Indexed.onDiagonal` — the one claim of the design, the reflexive
- * singleton, no node and no allocation. An indexed signature's own
- * diagonal operations need not even that: `TxOp.Update[S] extends
+ * ONE SYSTEM FOR TWO ARITIES (freer-no-diag, 2026-10-04): the tree
+ * knows one kind of signature, `G[_, _, +_]`; `+~` is its one sum; a
+ * unary effect enters it by one bridge, `Unary`; and `+` — the unary
+ * sum — agrees with them: `Unary[F + G]` and `Unary[F] +~ Unary[G]`
+ * reduce to the same type, `F[X] | G[X]` on the diagonal and nothing
+ * off it. A row of both arities is `F +~ Unary[G]`. Since the DOOR is
+ * typed, every operation of a unary member in the tree was built on
+ * the diagonal, and a handler that tells one apart (`splitI`) gets the
+ * equality its continuation needs from `Indexed.onDiagonal` — the one
+ * claim of the design, the reflexive singleton, no node and no
+ * allocation (it was the `Diag` node's job). An indexed signature's
+ * own diagonal operations need not even that: `TxOp.Update[S] extends
  * TxOp[S, S, Long]`, and matching the constructor gives the equality.
  *
  * Not here, on purpose: an inductive membership witness over `+~`
@@ -50,9 +54,6 @@ import scala.quoted.*
 
 /** the union of two indexed signatures — `+` at three parameters */
 infix type +~[F[_, _, +_], G[_, _, +_]] = [S, R, X] =>> F[S, R, X] | G[S, R, X]
-
-/** an indexed signature `F` and a unary effect `G` beside it, on the diagonal: the combinator of two arities */
-infix type +^[F[_, _, +_], G[+_]] = F +~ Unary[G]
 
 /** a unary effect as a member of an indexed row: `F[X]` on the
  * diagonal, and nothing off it — see the header */
