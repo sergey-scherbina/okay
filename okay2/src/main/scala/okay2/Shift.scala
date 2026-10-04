@@ -592,71 +592,48 @@ object Shift {
     final case class Watch[F <: Row, X0, X, Z](p: Prompt[X], ret: X0 => X ! (Shift[Any] + F), shots: Shots, rest: Segs[F, X, Z]) extends Segs[F, X0, Z]
   }
 
-  /** the copy of a `Ret` a capture takes with it */
-  private def retake[F <: Row, X0, X, Q](r: Segs.Ret[F, X0, X, _], c: Segs[F, X, Q]): Segs.Ret[F, X0, X, Q] =
-    Segs.Ret(r.p, r.ret, c)
+  /**
+   * A CAPTURED part of the chain: the frames `split` copied, which only `reify` ever reads (okay2-delim-perf, the
+   * Scala 3 core's delim-split-wrap-free). Its own type, not `Segs`, because it is built FRONT TO BACK: each copy's
+   * `rest` is set exactly once, by `copy`'s loop, into the hole the previous copy left, while the copy is still
+   * unpublished. The machine's own frames stay immutable case classes (a `var` on every frame cost the core 3-4%
+   * on lanes that never capture).
+   */
+  private sealed trait Frames[F <: Row, A, Z]
 
-  /** the copy of a `Watch`: a FRESH count, one per capture (`Shots`) */
-  private def rewatch[F <: Row, X0, X, Q](r: Segs.Watch[F, X0, X, _], c: Segs[F, X, Q]): Segs.Watch[F, X0, X, Q] =
-    Segs.Watch(r.p, r.ret, new Shots(r.shots.resumed), c)
+  /** a frame with a successor, and so the place the next copy goes */
+  private sealed abstract class Hole[F <: Row, Y, Z] { var rest: Frames[F, Y, Z] = null }
 
-  /** the stack cut at a prompt. TWO SHAPES, as in the Scala 3 core: a
-   * `dollar` changes the answer type and a plain mark does not */
+  private object Frames {
+    final case class End[F <: Row, A, Z](ev: A =:= Z) extends Frames[F, A, Z]
+    final class K[F <: Row, X, Y, Z](val f: X => Y ! (Shift[Any] + F)) extends Hole[F, Y, Z] with Frames[F, X, Z]
+    final class Mark[F <: Row, X, Z](val p: Prompt[X]) extends Hole[F, X, Z] with Frames[F, X, Z]
+    final class Ret[F <: Row, X0, X, Z](val p: Prompt[X], val ret: X0 => X ! (Shift[Any] + F)) extends Hole[F, X, Z] with Frames[F, X0, Z]
+    final class Watch[F <: Row, X0, X, Z](val p: Prompt[X], val ret: X0 => X ! (Shift[Any] + F), val shots: Shots)
+      extends Hole[F, X, Z] with Frames[F, X0, Z]
+    /** the first hole of a copy: where its head goes, one per capture */
+    final class Head[F <: Row, A, E] extends Hole[F, A, E]
+  }
+
+  /** the copy of a `Watch` a capture takes with it: a FRESH count, one per capture (`Shots`); a plain `Ret` is
+   * copied as it is */
+  private def retake[F <: Row, X0, X, Q](r: Segs.Watch[F, X0, X, _]): Frames.Watch[F, X0, X, Q] =
+    new Frames.Watch[F, X0, X, Q](r.p, r.ret, new Shots(r.shots.resumed))
+
+  /** the stack cut at a prompt. TWO SHAPES, as in the Scala 3 core: a `dollar` changes the answer type and a plain
+   * mark does not */
   private sealed trait Cut[F <: Row, A, P, Z]
 
+  /** no delimiter of the prompt on this stack: only the path that forwards or throws `NoPrompt` */
+  private final case class NotFound[F <: Row, A, P, Z]() extends Cut[F, A, P, Z]
+
   /** a plain mark: the chain up to it, answering the prompt's P */
-  private final case class Plain[F <: Row, A, P, Z](captured: Segs[F, A, P], outer: Segs[F, P, Z]) extends Cut[F, A, P, Z]
+  private final case class Plain[F <: Row, A, P, Z](captured: Frames[F, A, P], outer: Segs[F, P, Z]) extends Cut[F, A, P, Z]
 
-  /** a `dollar`: the chain answers the body's `P0`, and `close` (the
-   * `Ret` with its function) leads to `P`. A delimited continuation is
-   * `captured` then `close`, so `ret` goes with it (`$/S0`). `P0` is an
-   * existential spelled as a type MEMBER, so `captured` and `close` stay
-   * linked through one stable value, with no cast. */
-  private sealed abstract class AtRet[F <: Row, A, P, Z] extends Cut[F, A, P, Z] {
-    type P0
-    val captured: Segs[F, A, P0]
-    val close: Segs[F, P0, P]
-    val outer: Segs[F, P, Z]
-  }
-  private def atRet[F <: Row, A, Q, P, Z](c: Segs[F, A, Q], cl: Segs[F, Q, P], o: Segs[F, P, Z]): AtRet[F, A, P, Z] =
-    new AtRet[F, A, P, Z] {
-      type P0 = Q
-      val captured: Segs[F, A, Q] = c
-      val close: Segs[F, Q, P] = cl
-      val outer: Segs[F, P, Z] = o
-    }
-
-  /**
-   * The segments `cut` walked past, as a type-aligned stack
-   * (specs/stack-safety.md): from a chain leading out of Y it builds one
-   * leading out of A, for ANY end Q. Scala 2 refines no method type
-   * parameter by a match, so each step is a METHOD on the node: `Top`
-   * is finished, `On` hands back the frame below it with one more
-   * segment wrapped. No cast.
-   */
-  private sealed trait Wrap[F <: Row, A, Y] { def step[Q](c: Segs[F, Y, Q]): Unwound[F, A, Q] }
-  private final case class Top[F <: Row, A]() extends Wrap[F, A, A] {
-    def step[Q](c: Segs[F, A, Q]): Unwound[F, A, Q] = Unwound.Finished(c)
-  }
-  private final case class On[F <: Row, A, X, Y](under: Wrap[F, A, X], frame: Frame[F, X, Y]) extends Wrap[F, A, Y] {
-    def step[Q](c: Segs[F, Y, Q]): Unwound[F, A, Q] = Unwound.More(under, frame(c))
-  }
-  /** one segment put back around a chain, whatever that chain's end */
-  private trait Frame[F <: Row, X, Y] { def apply[Q](c: Segs[F, Y, Q]): Segs[F, X, Q] }
-
-  private sealed trait Unwound[F <: Row, A, Q]
-  private object Unwound {
-    final case class Finished[F <: Row, A, Q](c: Segs[F, A, Q]) extends Unwound[F, A, Q]
-    final case class More[F <: Row, A, X, Q](w: Wrap[F, A, X], c: Segs[F, X, Q]) extends Unwound[F, A, Q]
-  }
-
-  @tailrec private def unwind[F <: Row, A, Q](u: Unwound[F, A, Q]): Segs[F, A, Q] = u match {
-    case Unwound.Finished(c) => c
-    case m: Unwound.More[F, A, x, Q] => unwind(m.w.step(m.c))
-  }
-
-  /** where the walk is: the chain still to search, and what it passed */
-  private final case class Walk[F <: Row, A, X, Z](kont: Segs[F, X, Z], w: Wrap[F, A, X])
+  /** a `dollar`: the chain up to it WITH a copy of the dollar's own frame at its end, so it answers the prompt's P
+   * through `ret` — `reify` is a left fold, so one chain ending in that frame reifies to `ret $ E[v]` (`$/S0`).
+   * Until okay2-delim-perf this was two chains linked by an existential type member (`AtRet`) */
+  private final case class AtDollar[F <: Row, A, P, Z](whole: Frames[F, A, P], outer: Segs[F, P, Z]) extends Cut[F, A, P, Z]
 
   /** the machine's state between steps: a program and the stack it
    * continues into, the head type an abstract member so a
@@ -742,12 +719,12 @@ object Shift {
 
     /** frames back into a program: binds become flatMaps, markers
      * become pushes — the continuation re-installs its delimiter */
-    @tailrec def reify[A, P](segs: Segs[F, A, P], start: Prog[A]): Prog[P] = segs match {
-      case Segs.Done(ev) => ev.substituteCo[Prog](start)
-      case Segs.K(f, rest) => reify(rest, start.flatMap(f))
-      case Segs.Mark(p, rest) => reify(rest, Free.inject[Shift[Any], A](Push(p, start)).plus[F])
-      case r: Segs.Ret[F, A, x, P] => reify(r.rest, Free.inject[Shift[Any], x](Dollar[A, x](r.p, r.ret, start)).plus[F])
-      case r: Segs.Watch[F, A, x, P] => reify(r.rest, Free.inject[Shift[Any], x](Watched[A, x](r.p, r.ret, start, r.shots)).plus[F])
+    @tailrec def reify[A, P](segs: Frames[F, A, P], start: Prog[A]): Prog[P] = segs match {
+      case Frames.End(ev) => ev.substituteCo[Prog](start)
+      case k: Frames.K[F, A, y, P] => reify(k.rest, start.flatMap(k.f))
+      case m: Frames.Mark[F, A, P] => reify(m.rest, Free.inject[Shift[Any], A](Push(m.p, start)).plus[F])
+      case r: Frames.Ret[F, A, x, P] => reify(r.rest, Free.inject[Shift[Any], x](Dollar[A, x](r.p, r.ret, start)).plus[F])
+      case r: Frames.Watch[F, A, x, P] => reify(r.rest, Free.inject[Shift[Any], x](Watched[A, x](r.p, r.ret, start, r.shots)).plus[F])
     }
 
     /** the delimiters this machine has installed, innermost first —
@@ -763,53 +740,56 @@ object Shift {
       go(kont, Nil)
     }
 
-    /** cut the chain at the mark of p: the mark's prompt IS p by
-     * identity, and Same's witness makes the mark's type P's */
-    def cut[A, P, Z](kont: Segs[F, A, Z], p: Prompt[P]): Option[Cut[F, A, P, Z]] =
-      walk[A, P, Z](Walk(kont, Top[F, A]()), p)
+    /**
+     * cut the chain at the delimiter of p: its prompt IS p by identity, and Same's witness makes its type P's. A
+     * LOOP, ONE pass (okay2-delim-perf): the prefix is copied FRONT TO BACK while it is walked, each copy's `rest`
+     * set once into the hole the previous copy left, and the delimiter's witness closes the copy — with `End` at a
+     * plain mark, with a copy of the dollar's frame at a dollar. Until okay2-delim-perf a type-aligned `Wrap` of
+     * frame closures was pushed per segment and unwound after.
+     */
+    def split[A, P](kont: Segs[F, A, R], p: Prompt[P]): Cut[F, A, P, R] = {
+      val head = new Frames.Head[F, A, P]
+      copy[A, A, P](kont, head, head, p)
+    }
 
-    // A LOOP (specs/stack-safety.md): each segment passed on the way
-    // down is pushed onto `Wrap`, and the captured part is wrapped in
-    // them once the mark is found. The recursive version rebuilt the
-    // prefix on the way back up, one frame per segment, and a shift
-    // under 20 000 other delimiters overflowed.
-    @tailrec def walk[A, P, Z](at: Walk[F, A, _, Z], p: Prompt[P]): Option[Cut[F, A, P, Z]] = at match {
-      case here: Walk[F, A, x, Z] => here.kont match {
-        case Segs.Done(_) => None
-        case m: Segs.Mark[F, x, Z] => samePrompt.same(m.p, p) match {
-          case Some(ev) =>
-            Some(Plain(unwind(here.w.step(Segs.Done[F, x, P](ev))), ev.substituteCo[({ type L[t] = Segs[F, t, Z] })#L](m.rest)))
-          case None =>
-            walk[A, P, Z](Walk(m.rest, On(here.w, new Frame[F, x, x] {
-              def apply[Q](c: Segs[F, x, Q]): Segs[F, x, Q] = Segs.Mark(m.p, c)
-            })), p)
-        }
-        case r: Segs.Ret[F, x, x1, Z] => samePrompt.same(r.p, p) match {
-          case Some(ev) =>
-            // the body's chain ends at x; the Ret leads from x to the prompt's P
-            Some(atRet[F, A, x, P, Z](unwind(here.w.step(Segs.Done[F, x, x](implicitly[x =:= x]))),
-              retake[F, x, x1, P](r, Segs.Done[F, x1, P](ev)),
-              ev.substituteCo[({ type L[t] = Segs[F, t, Z] })#L](r.rest)))
-          case None =>
-            walk[A, P, Z](Walk(r.rest, On(here.w, new Frame[F, x, x1] {
-              def apply[Q](c: Segs[F, x1, Q]): Segs[F, x, Q] = retake(r, c)
-            })), p)
-        }
-        case k: Segs.K[F, x, y, Z] =>
-          walk[A, P, Z](Walk(k.rest, On(here.w, new Frame[F, x, y] {
-            def apply[Q](c: Segs[F, y, Q]): Segs[F, x, Q] = Segs.K(k.f, c)
-          })), p)
-        // a watched dollar, last: as a `Ret`, its copy with a fresh count
-        case r: Segs.Watch[F, x, x1, Z] => samePrompt.same(r.p, p) match {
-          case Some(ev) =>
-            Some(atRet[F, A, x, P, Z](unwind(here.w.step(Segs.Done[F, x, x](implicitly[x =:= x]))),
-              rewatch[F, x, x1, P](r, Segs.Done[F, x1, P](ev)),
-              ev.substituteCo[({ type L[t] = Segs[F, t, Z] })#L](r.rest)))
-          case None =>
-            walk[A, P, Z](Walk(r.rest, On(here.w, new Frame[F, x, x1] {
-              def apply[Q](c: Segs[F, x1, Q]): Segs[F, x, Q] = rewatch(r, c)
-            })), p)
-        }
+    /** a missing delimiter drops the copy made so far: that path forwards or throws `NoPrompt`, and never runs hot */
+    @tailrec def copy[A, X, P](cur: Segs[F, X, R], hole: Hole[F, X, P], head: Frames.Head[F, A, P], p: Prompt[P]): Cut[F, A, P, R] = cur match {
+      case k: Segs.K[F, X, y, R] =>
+        val c = new Frames.K[F, X, y, P](k.f)
+        hole.rest = c
+        copy[A, y, P](k.rest, c, head, p)
+      case m: Segs.Mark[F, X, R] => samePrompt.same(m.p, p) match {
+        case Some(ev) =>
+          hole.rest = Frames.End[F, X, P](ev)
+          Plain[F, A, P, R](head.rest, ev.substituteCo[({ type L[t] = Segs[F, t, R] })#L](m.rest))
+        case None =>
+          val c = new Frames.Mark[F, X, P](m.p)
+          hole.rest = c
+          copy[A, X, P](m.rest, c, head, p)
+      }
+      case r: Segs.Ret[F, X, x, R] => samePrompt.same(r.p, p) match {
+        case Some(ev) =>
+          val c = new Frames.Ret[F, X, x, x](r.p, r.ret)
+          c.rest = Frames.End[F, x, x](implicitly[x =:= x])
+          hole.rest = ev.substituteCo[({ type L[t] = Frames[F, X, t] })#L](c)
+          AtDollar[F, A, P, R](head.rest, ev.substituteCo[({ type L[t] = Segs[F, t, R] })#L](r.rest))
+        case None =>
+          val c = new Frames.Ret[F, X, x, P](r.p, r.ret)
+          hole.rest = c
+          copy[A, x, P](r.rest, c, head, p)
+      }
+      case Segs.Done(_) => NotFound[F, A, P, R]()
+      // a watched dollar, last: as a `Ret`, its copy with a fresh count
+      case r: Segs.Watch[F, X, x, R] => samePrompt.same(r.p, p) match {
+        case Some(ev) =>
+          val c = retake[F, X, x, x](r)
+          c.rest = Frames.End[F, x, x](implicitly[x =:= x])
+          hole.rest = ev.substituteCo[({ type L[t] = Frames[F, X, t] })#L](c)
+          AtDollar[F, A, P, R](head.rest, ev.substituteCo[({ type L[t] = Segs[F, t, R] })#L](r.rest))
+        case None =>
+          val c = retake[F, X, x, P](r)
+          hole.rest = c
+          copy[A, x, P](r.rest, c, head, p)
       }
     }
 
@@ -861,20 +841,17 @@ object Shift {
             // return function, `$/S0`); control/control0 hand back the
             // bare segment, which answers the prompt's type only at a
             // plain mark
-            cut(kont, cap.prompt) match {
-              // AtRet BEFORE Plain: in the other order scalac 2.13 calls
-              // this arm "unreachable code" (a false reachability verdict on
-              // the type pattern); the two cases are disjoint either way
-              case Some(r: AtRet[F, Any, p, R]) =>
-                if (cap.delimitK) loop(resume((v: a) => reify(r.close, reify(r.captured, pure[Rw, Any](v))), r.outer))
-                else throw new UnsupportedOperationException(
-                  s"${cap.at}: a control-capture to ${cap.prompt.label}, which is a `dollar`: its bare continuation answers the body's type, not the prompt's (specs/shift0-dollar.md)")
-              case Some(Plain(captured, outer)) =>
+            split[Any, p](kont, cap.prompt) match {
+              case Plain(captured, outer) =>
                 loop(resume((v: a) => {
                   val seg = reify(captured, pure[Rw, Any](v))
                   if (cap.delimitK) Free.inject[Shift[Any], p](Push(cap.prompt, seg)).plus[F] else seg
                 }, outer))
-              case None => forward match {
+              case AtDollar(whole, outer) =>
+                if (cap.delimitK) loop(resume((v: a) => reify(whole, pure[Rw, Any](v)), outer))
+                else throw new UnsupportedOperationException(
+                  s"${cap.at}: a control-capture to ${cap.prompt.label}, which is a `dollar`: its bare continuation answers the body's type, not the prompt's (specs/shift0-dollar.md)")
+              case NotFound() => forward match {
                 case Some(in) =>
                   // re-emit, and resume this machine with the same
                   // stack; `kont` is immutable, so a multi-shot outer
