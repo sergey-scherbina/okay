@@ -15,3 +15,16 @@
       the `Kont` is called virtually (`Segment`, `Held`). A loop for a
       machine ALONE that answers `Z` itself would take both back, at the
       price of a second copy of `go` — the copy delimited-simplify deleted.
+      (1) ANSWERED 2026-10-04 (state-foreign-shape, history.d): in one build,
+      `push` as one boundary 40.5-41.9 us against `dollar(p)(pure)` 32.1-32.4;
+      LogCompilation shows why — with `push` the continuation call `f(a)` in
+      `Run.go` sees only the benchmark's two lambdas, and C2 inlines them
+      (and `boxToInteger`, `Integer.valueOf`, State's constructors) into the
+      loop: `go` 3832 B of code against 2568. `dollar`'s `ret` frame passes
+      the same site and makes it megamorphic. With
+      `-XX:CompileCommand=dontinline,okay.DelimBenchmark::*` `push` reads
+      33.4: the gap is the inlining, not the machine's work — an artifact of
+      a program with two continuation lambdas; a real one's site is
+      megamorphic. Same mechanism as cont-frames-register-pressure. Open:
+      (2), the strict `k`.
+
