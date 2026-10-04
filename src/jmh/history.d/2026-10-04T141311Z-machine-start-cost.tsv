@@ -1,0 +1,2 @@
+2026-10-04	b105839c2	-	DelimBenchmark.delimRunEach vs delimDollarResume us/op r1	55.629	68.471	0.81	N=1000 runs of one capture each vs one run of N
+2026-10-04	b105839c2	-	DelimBenchmark.delimRunEach vs delimDollarResume us/op r2	60.539	79.991	0.76	same; round 2 on a busier box (both arms up)
