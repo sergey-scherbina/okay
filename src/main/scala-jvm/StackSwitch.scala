@@ -73,4 +73,9 @@ private[okay] object StackSwitch:
    * was statePara's 4.9x on the count road) */
   def fresh[R](body: Int => R): R =
     switches.incrementAndGet()
-    StackPool.run(bigStack)(() => body(bigRoom))
+    StackPool.run(bigStack)(() => body(if StackRoom.readable then readFirstRoom else bigRoom))
+
+  /** levels one stack is given in all, read or counted: past it the rest goes to a fresh stack even where the
+   * stack reads room left. A GC scans one thread's stack with one worker, so a million levels on ONE stack
+   * read 2.2x the time of the same levels over four (cont-stack-exact-first, GC 47 ms a collection against 14) */
+  val levelsPerStack: Int = bigRoom

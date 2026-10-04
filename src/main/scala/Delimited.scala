@@ -261,6 +261,9 @@ object Delimited:
    */
   final class Run[G[_, _, +_], F[+_]](steps: Step[G, G], outer: Outer[G, F]) extends Delimited[G]:
     private var room: Int = StackSwitch.firstRoom
+    /** levels this stack may still be granted, read or not: past them a fresh stack (`StackSwitch.levelsPerStack`).
+     * Changed only at the end of a room, so the per-level path does not touch it */
+    private var budget: Int = StackSwitch.levelsPerStack - StackSwitch.firstRoom
 
     /** user code runs under a `try` (`guarding`) */
     private var guarded: Boolean = false
@@ -302,9 +305,16 @@ object Delimited:
       val here = room - 1
       if here > 0 then within(here, body)
       else
-        val granted = StackSwitch.more()
-        if granted > 0 then within(granted, body)
-        else StackSwitch.fresh(fresh => within(fresh, body))
+        val granted = math.min(StackSwitch.more(), budget)
+        if granted > 0 then
+          val left = budget
+          budget = left - granted
+          try within(granted, body) finally budget = left
+        else
+          StackSwitch.fresh: first =>
+            val left = budget
+            budget = StackSwitch.levelsPerStack - first
+            try within(first, body) finally budget = left
 
     private def within[X](left: Int, body: => X): X =
       val saved = room

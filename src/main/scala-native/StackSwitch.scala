@@ -28,6 +28,9 @@ private[okay] object StackSwitch:
   /** at the end of a room, levels this stack still takes: none is known here (nothing reads the stack) */
   def more(): Int = 0
 
+  /** levels one stack is given in all (nothing reads the stack here, so it is the fresh stack's room) */
+  val levelsPerStack: Int = bigRoom
+
   /** switches made, for the tests */
   val switches: AtomicLong = AtomicLong()
 

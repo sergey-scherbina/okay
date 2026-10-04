@@ -7,5 +7,6 @@ private[okay] object StackSwitch:
   /** at the end of a room, levels this stack still takes: none is known here (nothing reads the stack) */
   def more(): Int = 0
 
+  val levelsPerStack: Int = Int.MaxValue
   var switches: Long = 0L
   def fresh[R](body: Int => R): R = body(Int.MaxValue)
