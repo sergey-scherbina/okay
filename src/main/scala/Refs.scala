@@ -1,6 +1,5 @@
 package okay
 
-import scala.annotation.tailrec
 import okay.!.*
 
 /**
@@ -93,34 +92,12 @@ object Refs:
    * so there is one place to check that claim.
    */
   def handle[A, F[+_]](p: A ! Refs + F): A ! F =
-    def slot[S](h: Map[Int, Any], c: Ref[S]): S = h(c).asInstanceOf[S]
-
-    def _loop(d: Int)(n: Int, h: Map[Int, Any])(x: A ! Refs + F): A ! F = loop(d)(n, h)(x)
-
-    // the loop as a frame (handle-frames-loops): the counter and the heap are its state
-    def frame(n: Int, h: Map[Int, Any])(x: A ! Refs + F): Shift.U[F, A] =
-      HandleFrames.stateful[Refs, (Int, Map[Int, Any]), A, A, F](summon[TypeableK[Refs]], (_, a) => pure(a))(
-        (s, op, resume) => (op.asInstanceOf[Refs[Any]]: @unchecked) match
-          case New(init) => resume((s._1 + 1, s._2.updated(s._1, init)), s._1)
-          case Read(c) => resume(s, s._2(c))
-          case Write(c, v) => resume((s._1, s._2.updated(c, v)), v))((n, h), x)
-
-    @tailrec def loop(d: Int)(n: Int, h: Map[Int, Any])(x: A ! Refs + F): A ! F =
-      (x.resumeRun: @unchecked) match
-        case Return(a) => Return(a)
-        case Inject(e) => split[Refs, F](e) {
-            case New(init) => Return(n): A ! F
-            case Read(c) => Return(slot(h, c)): A ! F
-            case Write(_, s) => Return(s): A ! F
-          } (e => Inject(e))
-        case Bind(i @ Inject(e), k) => split[Refs, F](e) {
-            case New(init) => loop(d)(n + 1, h.updated(n, init))(k(n))
-            case Read(c) => loop(d)(n, h)(k(slot(h, c)))
-            case Write(c, s) => loop(d)(n, h.updated(c, s))(k(s))
-          } (_ => forwarded[Refs, F](i).flatMap(x => _loop(d)(n, h)(k(x))))
-        case y => loop(d)(n, h)(HandleFrames.shallow(y, d))
-
-    HandleFrames.run[A, F](d => loop(d)(0, Map.empty)(p), frame(0, Map.empty)(p))
+    // one step, both faces (handler-one-step): the counter and the heap are the state
+    HandleFrames.stateRun[Refs, (Int, Map[Int, Any]), A, A, F](summon[TypeableK[Refs]], (_, a) => pure(a))(
+      (s, op) => (op.asInstanceOf[Refs[Any]]: @unchecked) match
+        case New(init) => ((s._1 + 1, s._2.updated(s._1, init)), s._1)
+        case Read(c) => (s, s._2(c))
+        case Write(c, v) => ((s._1, s._2.updated(c, v)), v))((0, Map.empty), p)
 
   /** run a program that uses cells, and nothing else */
   inline def run[A](p: A ! Refs): A = !.run(handle[A, okay.Pure](p))

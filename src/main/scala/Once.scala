@@ -1,6 +1,5 @@
 package okay
 
-import scala.annotation.tailrec
 
 /**
  * Call-by-need for programs, as an EFFECT (direct-once, 2026-09-16).
@@ -135,18 +134,6 @@ object Once:
    */
   def run[A, F[+_]](a: A ! Once + F): A ! F =
     import !.*
-    def again(d: Int)(c: Cells)(x: A ! Once + F): A ! F = loop(d)(c)(x)
-    // the loop as a frame (handle-frames-loops): the cells are its state
-    def frame(c: Cells)(x: A ! Once + F): Shift.U[F, A] =
-      HandleFrames.stateful[Once, Cells, A, A, F](summon[TypeableK[Once]], (_, a) => pure(a))(
-        (c, op, resume) => { val (c2, v) = step(c, op.asInstanceOf[Once[Any]]); resume(c2, v) })(c, x)
-    @tailrec def loop(d: Int)(c: Cells)(x: A ! Once + F): A ! F = (x.resumeRun: @unchecked) match
-      case Return(v) => Return(v)
-      case i @ Inject(e) => split[Once, F](e)
-        (o => Return(step(c, o)._2): A ! F)
-        (_ => forwarded[Once, F](i))
-      case Bind(i @ Inject(e), k) => split[Once, F](e)
-        (o => { val (c2, x) = step(c, o); loop(d)(c2)(k(x)) })
-        (_ => forwarded[Once, F](i).flatMap(x => again(d)(c)(k(x))))
-      case y => loop(d)(c)(HandleFrames.shallow(y, d))
-    HandleFrames.run[A, F](d => loop(d)(Map.empty)(a), frame(Map.empty)(a))
+    // one step, both faces (handler-one-step): the cells are the state
+    HandleFrames.stateRun[Once, Cells, A, A, F](summon[TypeableK[Once]], (_, a) => pure(a))(
+      (c, op) => step(c, op.asInstanceOf[Once[Any]]))(Map.empty, a)

@@ -98,15 +98,18 @@ object HandleFrames:
     def again(d: Int)(s: S)(y: A ! F + G): R ! G = loop(d)(s)(y)
     @scala.annotation.tailrec def loop(d: Int)(s: S)(y: A ! F + G): R ! G = (y.resumeRun: @unchecked) match
       case Free.Return(a) => ret(s, a)
-      // a lone operation is a bind with a pure continuation: one node, and the arm below knows the case
-      case Free.Inject(e) => loop(d)(s)(Free.Inject(e).flatMap(v => Free.Return(v)))
+      // a lone operation: the program's last, its value the program's — answered in place, no node built
+      case i @ Free.Inject(e) => split[F, G](e)(op => { val (s2, v) = step(s, op); ret(s2, fed[A](v)) })
+                                               (_ => forwarded[F, G](i).flatMap(v => ret(s, v)))
       case Free.Bind(i @ Free.Inject(e), k) => split[F, G](e)(op => { val (s2, v) = step(s, op); loop(d)(s2)(feed(k, v)) })
                                                              (_ => forwarded[F, G](i).flatMap(v => again(d)(s)(k(v))))
       case z => loop(d)(s)(shallow(z, d))
     run[R, G](d => loop(d)(s0)(x), stateful[F, S, A, R, G](t, ret)((s, op, resume) => { val (s2, v) = step(s, op); resume(s2, v) })(s0, x))
 
   /** THE CLAIM the fold makes of its step: the value it resumes with is the operation's answer */
-  def feed[X, B](k: X => B, v: Any): B = k(v.asInstanceOf[X])
+  inline def feed[X, B](k: X => B, v: Any): B = k(v.asInstanceOf[X])
+  /** the same claim for a lone operation, whose answer is the program's */
+  inline def fed[A](v: Any): A = v.asInstanceOf[A]
 
   /** the clause with `resume` made of the frame's continuation: `k(v)` answers `S => program`, applied to `s2` */
   private def clauseAt[S, R, G[+_]](step: (S, Any, (S, Any) => R ! G) => R ! G, s: S, op: Any, k: Any => Any): Shift.U[G, R] =
