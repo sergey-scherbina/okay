@@ -583,13 +583,16 @@ object Shift {
   private object Segs {
     final case class Done[F <: Row, A, Z](ev: A =:= Z) extends Segs[F, A, Z]
     final case class K[F <: Row, X, Y, Z](f: X => Y ! (Shift[Any] + F), rest: Segs[F, Y, Z]) extends Segs[F, X, Z]
-    final case class Mark[F <: Row, X, Z](p: Prompt[X], rest: Segs[F, X, Z]) extends Segs[F, X, Z]
+    /** a delimiter: the prompt's X, which `up` carries to the Y the operation that installed it answers — the
+     * witness the machine holds at the `Push`, kept on the frame instead of an identity `K` under it
+     * (okay2-delim-perf, the Scala 3 core's delim-machine-allocs (2)) */
+    final case class Mark[F <: Row, X, Y, Z](p: Prompt[X], up: X <:< Y, rest: Segs[F, Y, Z]) extends Segs[F, X, Z]
     /** a `dollar` delimiter: the body's X0 leaves through `ret` into
      * the prompt's X */
-    final case class Ret[F <: Row, X0, X, Z](p: Prompt[X], ret: X0 => X ! (Shift[Any] + F), rest: Segs[F, X, Z]) extends Segs[F, X0, Z]
+    final case class Ret[F <: Row, X0, X, Y, Z](p: Prompt[X], ret: X0 => X ! (Shift[Any] + F), up: X <:< Y, rest: Segs[F, Y, Z]) extends Segs[F, X0, Z]
     /** a watched `dollar` (`dollarResumed`): a `Ret` with its count. Matched LAST wherever the chain is walked,
      * so the plain frames pay no type test for it */
-    final case class Watch[F <: Row, X0, X, Z](p: Prompt[X], ret: X0 => X ! (Shift[Any] + F), shots: Shots, rest: Segs[F, X, Z]) extends Segs[F, X0, Z]
+    final case class Watch[F <: Row, X0, X, Y, Z](p: Prompt[X], ret: X0 => X ! (Shift[Any] + F), shots: Shots, up: X <:< Y, rest: Segs[F, Y, Z]) extends Segs[F, X0, Z]
   }
 
   /**
@@ -607,18 +610,19 @@ object Shift {
   private object Frames {
     final case class End[F <: Row, A, Z](ev: A =:= Z) extends Frames[F, A, Z]
     final class K[F <: Row, X, Y, Z](val f: X => Y ! (Shift[Any] + F)) extends Hole[F, Y, Z] with Frames[F, X, Z]
-    final class Mark[F <: Row, X, Z](val p: Prompt[X]) extends Hole[F, X, Z] with Frames[F, X, Z]
-    final class Ret[F <: Row, X0, X, Z](val p: Prompt[X], val ret: X0 => X ! (Shift[Any] + F)) extends Hole[F, X, Z] with Frames[F, X0, Z]
-    final class Watch[F <: Row, X0, X, Z](val p: Prompt[X], val ret: X0 => X ! (Shift[Any] + F), val shots: Shots)
-      extends Hole[F, X, Z] with Frames[F, X0, Z]
+    final class Mark[F <: Row, X, Y, Z](val p: Prompt[X], val up: X <:< Y) extends Hole[F, Y, Z] with Frames[F, X, Z]
+    final class Ret[F <: Row, X0, X, Y, Z](val p: Prompt[X], val ret: X0 => X ! (Shift[Any] + F), val up: X <:< Y)
+      extends Hole[F, Y, Z] with Frames[F, X0, Z]
+    final class Watch[F <: Row, X0, X, Y, Z](val p: Prompt[X], val ret: X0 => X ! (Shift[Any] + F), val shots: Shots, val up: X <:< Y)
+      extends Hole[F, Y, Z] with Frames[F, X0, Z]
     /** the first hole of a copy: where its head goes, one per capture */
     final class Head[F <: Row, A, E] extends Hole[F, A, E]
   }
 
   /** the copy of a `Watch` a capture takes with it: a FRESH count, one per capture (`Shots`); a plain `Ret` is
    * copied as it is */
-  private def retake[F <: Row, X0, X, Q](r: Segs.Watch[F, X0, X, _]): Frames.Watch[F, X0, X, Q] =
-    new Frames.Watch[F, X0, X, Q](r.p, r.ret, new Shots(r.shots.resumed))
+  private def retake[F <: Row, X0, X, Y, Q](r: Segs.Watch[F, X0, X, _, _], up: X <:< Y): Frames.Watch[F, X0, X, Y, Q] =
+    new Frames.Watch[F, X0, X, Y, Q](r.p, r.ret, new Shots(r.shots.resumed), up)
 
   /** the stack cut at a prompt. TWO SHAPES, as in the Scala 3 core: a `dollar` changes the answer type and a plain
    * mark does not */
@@ -628,12 +632,12 @@ object Shift {
   private final case class NotFound[F <: Row, A, P, Z]() extends Cut[F, A, P, Z]
 
   /** a plain mark: the chain up to it, answering the prompt's P */
-  private final case class Plain[F <: Row, A, P, Z](captured: Frames[F, A, P], outer: Segs[F, P, Z]) extends Cut[F, A, P, Z]
+  private final case class Plain[F <: Row, A, P, Q, Z](captured: Frames[F, A, P], up: P <:< Q, outer: Segs[F, Q, Z]) extends Cut[F, A, P, Z]
 
   /** a `dollar`: the chain up to it WITH a copy of the dollar's own frame at its end, so it answers the prompt's P
    * through `ret` — `reify` is a left fold, so one chain ending in that frame reifies to `ret $ E[v]` (`$/S0`).
    * Until okay2-delim-perf this was two chains linked by an existential type member (`AtRet`) */
-  private final case class AtDollar[F <: Row, A, P, Z](whole: Frames[F, A, P], outer: Segs[F, P, Z]) extends Cut[F, A, P, Z]
+  private final case class AtDollar[F <: Row, A, P, Q, Z](whole: Frames[F, A, P], up: P <:< Q, outer: Segs[F, Q, Z]) extends Cut[F, A, P, Z]
 
   /** the machine's state between steps: a program and the stack it
    * continues into, the head type an abstract member so a
@@ -716,15 +720,17 @@ object Shift {
   private def machine[R, F <: Row](prog: Free[Shift[Any] with F, R], forward: Option[F <:< Shift[Any]]): R ! F = {
     type Rw = Shift[Any] + F
     type Prog[X] = X ! Rw
+    /** the same, covariant, for `<:<.liftCo` (a delimiter's `up`) */
+    type ProgCo[+X] = Free[Rw, X]
 
     /** frames back into a program: binds become flatMaps, markers
      * become pushes — the continuation re-installs its delimiter */
     @tailrec def reify[A, P](segs: Frames[F, A, P], start: Prog[A]): Prog[P] = segs match {
       case Frames.End(ev) => ev.substituteCo[Prog](start)
       case k: Frames.K[F, A, y, P] => reify(k.rest, start.flatMap(k.f))
-      case m: Frames.Mark[F, A, P] => reify(m.rest, Free.inject[Shift[Any], A](Push(m.p, start)).plus[F])
-      case r: Frames.Ret[F, A, x, P] => reify(r.rest, Free.inject[Shift[Any], x](Dollar[A, x](r.p, r.ret, start)).plus[F])
-      case r: Frames.Watch[F, A, x, P] => reify(r.rest, Free.inject[Shift[Any], x](Watched[A, x](r.p, r.ret, start, r.shots)).plus[F])
+      case m: Frames.Mark[F, A, y, P] => reify(m.rest, m.up.liftCo[ProgCo](Free.inject[Shift[Any], A](Push(m.p, start)).plus[F]))
+      case r: Frames.Ret[F, A, x, y, P] => reify(r.rest, r.up.liftCo[ProgCo](Free.inject[Shift[Any], x](Dollar[A, x](r.p, r.ret, start)).plus[F]))
+      case r: Frames.Watch[F, A, x, y, P] => reify(r.rest, r.up.liftCo[ProgCo](Free.inject[Shift[Any], x](Watched[A, x](r.p, r.ret, start, r.shots)).plus[F]))
     }
 
     /** the delimiters this machine has installed, innermost first —
@@ -732,10 +738,10 @@ object Shift {
     def installed(kont: Segs[F, _, R]): List[String] = {
       @tailrec def go(k: Segs[F, _, R], acc: List[String]): List[String] = k match {
         case Segs.Done(_) => acc.reverse
-        case Segs.Mark(q, rest) => go(rest, q.label :: acc)
-        case Segs.Ret(q, _, rest) => go(rest, q.label :: acc)
+        case Segs.Mark(q, _, rest) => go(rest, q.label :: acc)
+        case Segs.Ret(q, _, _, rest) => go(rest, q.label :: acc)
         case Segs.K(_, rest) => go(rest, acc)
-        case Segs.Watch(q, _, _, rest) => go(rest, q.label :: acc)
+        case Segs.Watch(q, _, _, _, rest) => go(rest, q.label :: acc)
       }
       go(kont, Nil)
     }
@@ -758,38 +764,38 @@ object Shift {
         val c = new Frames.K[F, X, y, P](k.f)
         hole.rest = c
         copy[A, y, P](k.rest, c, head, p)
-      case m: Segs.Mark[F, X, R] => samePrompt.same(m.p, p) match {
+      case m: Segs.Mark[F, X, y, R] => samePrompt.same(m.p, p) match {
         case Some(ev) =>
           hole.rest = Frames.End[F, X, P](ev)
-          Plain[F, A, P, R](head.rest, ev.substituteCo[({ type L[t] = Segs[F, t, R] })#L](m.rest))
+          Plain[F, A, P, y, R](head.rest, ev.flip.andThen(m.up), m.rest)
         case None =>
-          val c = new Frames.Mark[F, X, P](m.p)
+          val c = new Frames.Mark[F, X, y, P](m.p, m.up)
           hole.rest = c
-          copy[A, X, P](m.rest, c, head, p)
+          copy[A, y, P](m.rest, c, head, p)
       }
-      case r: Segs.Ret[F, X, x, R] => samePrompt.same(r.p, p) match {
+      case r: Segs.Ret[F, X, x, y, R] => samePrompt.same(r.p, p) match {
         case Some(ev) =>
-          val c = new Frames.Ret[F, X, x, x](r.p, r.ret)
+          val c = new Frames.Ret[F, X, x, x, x](r.p, r.ret, implicitly[x <:< x])
           c.rest = Frames.End[F, x, x](implicitly[x =:= x])
           hole.rest = ev.substituteCo[({ type L[t] = Frames[F, X, t] })#L](c)
-          AtDollar[F, A, P, R](head.rest, ev.substituteCo[({ type L[t] = Segs[F, t, R] })#L](r.rest))
+          AtDollar[F, A, P, y, R](head.rest, ev.flip.andThen(r.up), r.rest)
         case None =>
-          val c = new Frames.Ret[F, X, x, P](r.p, r.ret)
+          val c = new Frames.Ret[F, X, x, y, P](r.p, r.ret, r.up)
           hole.rest = c
-          copy[A, x, P](r.rest, c, head, p)
+          copy[A, y, P](r.rest, c, head, p)
       }
       case Segs.Done(_) => NotFound[F, A, P, R]()
       // a watched dollar, last: as a `Ret`, its copy with a fresh count
-      case r: Segs.Watch[F, X, x, R] => samePrompt.same(r.p, p) match {
+      case r: Segs.Watch[F, X, x, y, R] => samePrompt.same(r.p, p) match {
         case Some(ev) =>
-          val c = retake[F, X, x, x](r)
+          val c = retake[F, X, x, x, x](r, implicitly[x <:< x])
           c.rest = Frames.End[F, x, x](implicitly[x =:= x])
           hole.rest = ev.substituteCo[({ type L[t] = Frames[F, X, t] })#L](c)
-          AtDollar[F, A, P, R](head.rest, ev.substituteCo[({ type L[t] = Segs[F, t, R] })#L](r.rest))
+          AtDollar[F, A, P, y, R](head.rest, ev.flip.andThen(r.up), r.rest)
         case None =>
-          val c = retake[F, X, x, P](r)
+          val c = retake[F, X, x, y, P](r, r.up)
           hole.rest = c
-          copy[A, x, P](r.rest, c, head, p)
+          copy[A, y, P](r.rest, c, head, p)
       }
     }
 
@@ -808,10 +814,10 @@ object Shift {
         case Segs.Done(ev) => pure[F, R](ev(x))
         case Segs.K(f, rest) => loop(next(f(x), rest))
         // the delimited block finished normally: drop its marker
-        case Segs.Mark(_, rest) => loop(next(pure[Rw, state.A](x), rest))
+        case m: Segs.Mark[F, state.A, y, R] => loop(next(pure[Rw, y](m.up(x)), m.rest))
         // a `dollar` finished normally: leave it, through its return
-        case Segs.Ret(_, ret, rest) => loop(next(ret(x), rest))
-        case Segs.Watch(_, ret, _, rest) => loop(next(ret(x), rest))
+        case r: Segs.Ret[F, state.A, x1, y, R] => loop(next(r.up.liftCo[ProgCo](r.ret(x)), r.rest))
+        case r: Segs.Watch[F, state.A, x1, y, R] => loop(next(r.up.liftCo[ProgCo](r.ret(x)), r.rest))
       }
       case Inject(e) => loop(next(Bind(Inject[Rw, state.A](e), (y: state.A) => Return[Rw, state.A](y)), state.kont))
       // a reset run outermost, met inside this machine: its program runs HERE, on this machine's stack of
@@ -825,30 +831,30 @@ object Shift {
             // claim 1: the pushed body answers the prompt's r in this
             // row; r is an answer of the op, which K carries up
             val body = pu.body.asInstanceOf[Prog[r]]
-            loop(next(body, Segs.Mark(pu.prompt, Segs.K((a: r) => pure[Rw, Any](a), kont))))
+            loop(next(body, Segs.Mark[F, r, Any, R](pu.prompt, implicitly[r <:< Any], kont)))
 
           case cap: Capture[p, a] =>
             // claim 2: f takes a continuation into the prompt's answer
             // and gives back a program at it, in this row. shift/control
             // put the body back under the delimiter; the 0-variants have
             // consumed it
-            def resume(k: a => Prog[p], outer: Segs[F, p, R]): Next[F, R] = {
+            def resume[Q](k: a => Prog[p], up: p <:< Q, outer: Segs[F, Q, R]): Next[F, R] = {
               val body = cap.f.asInstanceOf[(a => Prog[p]) => Prog[p]](k)
-              if (cap.underPrompt) next(Free.inject[Shift[Any], p](Push(cap.prompt, body)).plus[F], outer)
-              else next(body, outer)
+              if (cap.underPrompt) next(up.liftCo[ProgCo](Free.inject[Shift[Any], p](Push(cap.prompt, body)).plus[F]), outer)
+              else next(up.liftCo[ProgCo](body), outer)
             }
             // shift/shift0 re-install the delimiter (a dollar's with its
             // return function, `$/S0`); control/control0 hand back the
             // bare segment, which answers the prompt's type only at a
             // plain mark
             split[Any, p](kont, cap.prompt) match {
-              case Plain(captured, outer) =>
-                loop(resume((v: a) => {
-                  val seg = reify(captured, pure[Rw, Any](v))
+              case pl: Plain[F, Any, p, q, R] =>
+                loop(resume[q]((v: a) => {
+                  val seg = reify(pl.captured, pure[Rw, Any](v))
                   if (cap.delimitK) Free.inject[Shift[Any], p](Push(cap.prompt, seg)).plus[F] else seg
-                }, outer))
-              case AtDollar(whole, outer) =>
-                if (cap.delimitK) loop(resume((v: a) => reify(whole, pure[Rw, Any](v)), outer))
+                }, pl.up, pl.outer))
+              case ad: AtDollar[F, Any, p, q, R] =>
+                if (cap.delimitK) loop(resume[q]((v: a) => reify(ad.whole, pure[Rw, Any](v)), ad.up, ad.outer))
                 else throw new UnsupportedOperationException(
                   s"${cap.at}: a control-capture to ${cap.prompt.label}, which is a `dollar`: its bare continuation answers the body's type, not the prompt's (specs/shift0-dollar.md)")
               case NotFound() => forward match {
@@ -867,7 +873,7 @@ object Shift {
             // and ret leads from r0 to the prompt's r, in this row
             val body = d.body.asInstanceOf[Prog[r0]]
             val ret = d.ret.asInstanceOf[r0 => Prog[r]]
-            loop(next(body, Segs.Ret[F, r0, r, R](d.prompt, ret, Segs.K((a: r) => pure[Rw, Any](a), kont))))
+            loop(next(body, Segs.Ret[F, r0, r, Any, R](d.prompt, ret, implicitly[r <:< Any], kont)))
 
           case w: Watched[r0, r] =>
             // claims 1b and 1c, as `Dollar`'s
@@ -878,7 +884,7 @@ object Shift {
             val shots = w.shots
             shots.n += 1
             shots.resumed(shots.n)
-            loop(next(body, Segs.Watch[F, r0, r, R](w.prompt, ret, shots, Segs.K((a: r) => pure[Rw, Any](a), kont))))
+            loop(next(body, Segs.Watch[F, r0, r, Any, R](w.prompt, ret, shots, implicitly[r <:< Any], kont)))
         }
       // a foreign operation suspends the machine: the residual program
       // performs it and resumes with the same stack
