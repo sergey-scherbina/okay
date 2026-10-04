@@ -1,2 +1,0 @@
-claude session_01UkcD4rZuMcWszYis8fWcGN, 2026-10-04, operator ask ("сделай сначала уже то что мы решили для Zio, Cats, Kyo"): foreign values as row members, toIO/toZIO/viaAsync, ZIO's narrowing handlers (sprint.d/doing/foreign-effects-members.md)
-worktree: ../okay-wt-fem
