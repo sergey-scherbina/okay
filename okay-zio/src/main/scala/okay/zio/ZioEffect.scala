@@ -25,8 +25,8 @@ extension [A, R[+_]](p: A ! R)
     ZioEffect.mapSteps[A, R, Env, E, [X] =>> ZIO[Any, E, X]](p)([X] => (z: ZIO[Env, E, X]) => z.provideEnvironment(env))
 
   /** every step's typed failure mapped, as ZIO's `mapError` */
-  def mapError[Env, E, E2](using R[Any] <:< ZIO[Env, E, Any])(f: E => E2): A ! ([X] =>> ZIO[Env, E2, X]) =
-    ZioEffect.mapSteps[A, R, Env, E, [X] =>> ZIO[Env, E2, X]](p)([X] => (z: ZIO[Env, E, X]) => z.mapError(f))
+  def mapError[Env, E, Err](using R[Any] <:< ZIO[Env, E, Any])(f: E => Err): A ! ([X] =>> ZIO[Env, Err, X]) =
+    ZioEffect.mapSteps[A, R, Env, E, [X] =>> ZIO[Env, Err, X]](p)([X] => (z: ZIO[Env, E, X]) => z.mapError(f))
 
 object ZioEffect:
   /**
