@@ -202,7 +202,7 @@ object ShiftMachine {
           // it — so `k`'s last segment is `ret` alone, over an unmarked boundary where the caller's continuation joins
           case (p: Prompt[?], _) => open.out match
             case Frames.Frame(ret, out) =>
-              val piece = Delimited.Piece.Snoc(open.piece, Frames.Frame(ret, Frames.End()), null)
+              val piece = Delimited.Piece.Snoc(open.piece, Frames.Frame(ret, Frames.end), null)
               Cut(p, claim[Delimited.Piece[L, A, U, Any, U]](piece), claim[Frames[L, Any, Any, U, U]](out),
                 claim[Stack[L, Any, U, U, Z]](open.rest))
             case _ => throw IllegalStateException(s"prompt ${open.tag} has no ret above it")

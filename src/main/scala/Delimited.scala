@@ -74,6 +74,16 @@ enum Frames[G[_, _, +_], -A, B, S, R]:
   case Frame[G[_, _, +_], A, X, B, S, T, R](f: A => Freer[G, T, R, X], rest: Frames[G, X, B, S, T])
     extends Frames[G, A, B, S, R]
 
+object Frames:
+  private val theEnd: End[[S, R, X] =>> Nothing, Any, Any] = End()
+
+  /**
+   * The empty segment, one instance for every index (shift-capture-objects). THE CAST: `End` holds nothing, so no
+   * value in it can be read at the wrong type. Its indexes say only that its input is its output, which holds
+   * for every instance alike.
+   */
+  def end[G[_, _, +_], A, S]: Frames[G, A, A, S, S] = theEnd.asInstanceOf[Frames[G, A, A, S, S]]
+
 /** THE STACK: what closes a level computing `Freer[G, S, R, B]` into the run's result `Z` */
 enum Stack[G[_, _, +_], B, S, R, Z]:
   /** the run's end by VALUE: the level's value is the result, its answers diagonal */
@@ -385,7 +395,7 @@ object Delimited:
         def k = k0
         def m = m0
 
-    def end[A, S]: Frames[G, A, A, S, S] = Frames.End()
+    def end[A, S]: Frames[G, A, A, S, S] = Frames.end[G, A, S]
     def frame[A, X, B, S, T, R](f: A => Freer[G, T, R, X], rest: Frames[G, X, B, S, T]): Frames[G, A, B, S, R] =
       Frames.Frame(f, rest)
     def delim[B, S, R, B2, S2, Z](tag: Mark | Null, out: Frames[G, B, B2, S2, S], rest: Stack[G, B2, S2, R, Z]): Stack[G, B, S, R, Z] =
