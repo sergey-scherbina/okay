@@ -67,6 +67,22 @@ type Unary[F[+_]] = Diagonal[F]#L
  * elsewhere (one-bridge: `Free`'s bridge and the indexed rows' are this one; `Lift`, which ignored the indexes,
  * is gone).
  */
+/**
+ * THE BRIDGE'S EXTRACTOR (unary-extractor): a node of a unary member's operation ON THE DIAGONAL, answered at the
+ * operation's own type. Its field is typed by the bridge, `Unary[F][R, R, A]` — a match type, which reduces in an
+ * expression but not as the scrutinee of a nested pattern, so `case Unary(Writer.Say(c))` on the plain node would
+ * refine nothing; viewed at `Unary.Op[F]` the field IS `F[A]`, and a constructor pattern on it refines `A` as a GADT
+ * match does. A product match: the node itself, nothing allocated. `Free.Inject` is this at `Unit, Unit`.
+ */
+object Unary:
+  /** `F` with its two indexes ignored: what the bridge IS on the diagonal */
+  type Op[F[+_]] = [S, R, X] =>> F[X]
+
+  def unapply[F[+_], R, A](i: Freer.Inject[Unary[F], R, R, A]): Freer.Inject[Op[F], R, R, A] =
+    // THE CLAIM, the bridge's own definition read back: on the diagonal `Unary[F]` reduces to `F` — the same
+    // operation, the same node, read at the signature that says so
+    i.asInstanceOf[Freer.Inject[Op[F], R, R, A]]
+
 sealed trait Diagonal[F[+_]]:
   type L[S, R, +X] = S match
     case R => F[X]

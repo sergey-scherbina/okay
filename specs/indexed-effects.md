@@ -665,4 +665,8 @@ Nothing и убери Lift … найди решение для 2.13". Done:
   handler already does (TestSqlPure); one call that solved a row's rest
   from the argument needs it named (`Tables.via[A, Rows, …]`, SparkFrames).
 - Scala 2.13: specs/scala2-facade.md, "one-bridge".
+- unary-extractor (2026-10-04): `Unary`'s own extractor — `case Unary(op)` on
+  a diagonal node answers the operation at `F[A]`, the bridge read back on the
+  diagonal; `Free.Inject` is it at `Unit, Unit`. A GADT match on the operation
+  refines as it did under `Lift`.
 

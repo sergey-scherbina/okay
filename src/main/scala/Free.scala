@@ -209,22 +209,11 @@ object Free {
 
   object Inject:
     def apply[F[+_], A](a: F[A]): Free[F, A] = Freer.Inject[Unary[F], Unit, Unit, A](a)
-    /**
-     * the node AT ITS OPERATION'S OWN TYPE (free-match-and-facade): the field is typed by the bridge,
-     * `Unary[F][Unit, Unit, A]` — a match type, which reduces in an expression but not as the scrutinee of a
-     * nested pattern, so `case Inject(Writer.Say(c))` would refine nothing. The node is answered viewed at
-     * `Free.Op[F]`, whose field IS `F[A]`: a product match, the node itself, nothing allocated and no call
-     * more than before (TestInlineBudget measures `handle`'s loop).
-     */
-    def unapply[F[+_], A](i: Freer.Inject[Unary[F], Unit, Unit, A]): Freer.Inject[Op[F], Unit, Unit, A] = atOp(i)
-
-  /** `F` with its two indexes ignored: what the bridge IS at `Unit, Unit` */
-  type Op[F[+_]] = [S, R, X] =>> F[X]
-
-  /** THE CLAIM `Inject.unapply` makes: at the indexes every `Free` node has, `Unit` and `Unit`, the bridge
-   * `Unary[F]` reduces to `F` — the same operation, the same node, read at the signature that says so */
-  private def atOp[F[+_], A](i: Freer.Inject[Unary[F], Unit, Unit, A]): Freer.Inject[Op[F], Unit, Unit, A] =
-    i.asInstanceOf[Freer.Inject[Op[F], Unit, Unit, A]]
+    /** the node at its operation's own type, `F[A]` — `Unary`'s extractor, at the indexes every `Free` node
+     * has (`Unit, Unit`); a product match, the node itself, nothing allocated (TestInlineBudget measures
+     * `handle`'s loop) */
+    def unapply[F[+_], A](i: Freer.Inject[Unary[F], Unit, Unit, A]): Freer.Inject[Unary.Op[F], Unit, Unit, A] =
+      Unary.unapply(i)
 
   object Delay:
     def apply[F[+_], A](thunk: () => Free[F, A]): Free[F, A] = Freer.Delay(thunk)

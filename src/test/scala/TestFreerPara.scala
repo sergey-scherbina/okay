@@ -180,6 +180,16 @@ class TestFreerPara extends munit.FunSuite:
     assert(compileErrors("val x: (Unary[State[Int, *]] +~ Unary[Reader[Int, *]])[One, String => Unit, Long] = State.Get[Int, Long]()").nonEmpty)
   }
 
+  test("Unary's extractor reads a diagonal node at its operation's own type, at any diagonal index") {
+    // the field is typed by the bridge, a match type a nested pattern would not reduce; `Unary(...)` answers the
+    // node at `F[A]`, so the constructor pattern refines the answer type
+    val node: Freer[Unary[State[Int, *]], String, String, Int] = Indexed.unary(State.Update[Int, Int](n => (n + 1, n)))
+    val bumped = node match
+      case Unary(State.Update(f)) => f(41)._1
+      case _ => -1
+    assertEquals(bumped, 42)
+  }
+
   test("the door refuses a unary operation off the diagonal: the Unary member is stuck there") {
     val errors = compileErrors("Indexed.effect[Row, Int => Unit, String => Unit, Int](State.Update[Int, Int](n => (n + 1, n + 1)))")
     assert(errors.nonEmpty, "a State operation at a moving index must not type")
