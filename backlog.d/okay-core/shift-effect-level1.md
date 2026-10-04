@@ -16,3 +16,9 @@
       type arguments, as shift-in-scope.)
       TRIGGER: a consumer that runs a `reset` per element of a stream, or a
       profile with the machine's start (`Delimited.runHead`) in it.
+      MEASURED 2026-10-04 (machine-start-cost): a whole run with one
+      capture in it is ~56–60 ns (`DelimBenchmark.delimRunEach`), LESS
+      than a step of a long run. The ~35 ns a reset this item bounds is
+      the same order, and the trigger above has not fired. Both
+      candidates stay filed for that trigger.
+

@@ -1,8 +1,8 @@
 package okay
 
 /**
- * specs/cont-stack.md, the Native row: the room is counted, and the
- * switch is a 1 GB platform thread.
+ * specs/cont-stack.md, the Native row: the room is READ from the
+ * runtime's own `ThreadInfo`, and the switch is a 1 GB platform thread.
  */
 class TestContStackNative extends munit.FunSuite:
 
@@ -15,6 +15,24 @@ class TestContStackNative extends munit.FunSuite:
 
   private def tail(n: Int): Int /> Int =
     (1 to n).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => Cont.shiftLeaf[Int, Int, Int](k => k(x + 1))))
+
+  test("a stackalloc address lies inside the bounds the runtime reports (the ThreadInfo layout guard)") {
+    val (top, floor, sp) = StackSwitch.probe()
+    assert(top > 0 && floor > 0 && sp > 0, s"top=$top floor=$floor sp=$sp")
+    assert(floor < sp && sp < top, s"$floor < $sp < $top")
+    assert(top - floor < (1L << 31), s"a stack of ${top - floor} bytes")
+  }
+
+  test("the end of a room reads more of a stack that has it, and none of one that does not") {
+    assert(onThread(8192)(StackSwitch.more()) > 1000, "an 8 MB thread granted almost nothing")
+    assertEquals(onThread(128)(lowThenMore()), 0)
+  }
+
+  /** 60 KB of this frame's own, then ask: a 128 KB thread so low has less than a 16-level grant over the margin */
+  private def lowThenMore(): Int =
+    val pad = scala.scalanative.unsafe.stackalloc[Byte](60000)
+    pad(0) = 1.toByte
+    StackSwitch.more()
 
   test("20 000 tail shifts on a 2 MB thread: the answer, a switch at the first room and none after") {
     val before = StackSwitch.switches.get()

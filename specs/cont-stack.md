@@ -809,7 +809,9 @@ exactly." A count of levels is a guess about frame sizes. This lane showed the g
    (cont-stack-exact-first): where `StackRoom` reads (JDK 22+ with native access), the first room is
    32 levels. At the end of every room `StackSwitch.more` reads the pointer and the floor (the guard zones
    excluded) and grants half of what is left over a 64 KB margin, at a cold level's size. A grant under 16
-   levels switches. The count stays where nothing reads (JDK 17–21, no native access, Native), and
+   levels switches. Scala Native reads too, always, since stack-host-three: the runtime's `ThreadInfo`
+   (its bounds and guard page) and a `stackalloc`'s address, a TLS access and no system call, behind
+   TestContStackNative's layout guard. The count stays where nothing reads (JDK 17–21, no native access), and
    `-Dokay.cont.read=false` turns reading off. A stack is given `levelsPerStack` levels in all (309 733)
    whether read or counted: a GC scans one thread's stack with one worker. TestColdRoom has a 256 KB
    thread that the count overflows and the reader holds, and a 16 MB thread whose 2 000 cold levels need

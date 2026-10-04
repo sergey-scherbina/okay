@@ -141,7 +141,7 @@ platform — specs/cont-core.md, step 7.)
 | platform | first room | what a switch costs |
 |---|---|---|
 | JVM 17+ | the VM's default thread stack over a cold level (2.6 KB), halved for the caller: ~400 levels on a 2 MB thread, ~200 on 1 MB | one switch per first room on the caller's stack, then ~309 000 levels per segment: ~4 µs to hand off to a parked worker, ~0.01 µs a level after |
-| Scala Native | 16 levels (a first room derived from the main thread's 8 MB would be wrong for every other thread) | as the JVM's |
+| Scala Native | 16 levels, then READ: the runtime's own `ThreadInfo` gives the stack's bounds, a `stackalloc` the pointer (a few ns, no system call), and every room after the first is granted from what is really left | as the JVM's |
 | Scala.js | — no thread to switch to | **the bound**: nested bodies of the second kind are limited by the engine's stack (~10 800 frames on Node's default; `node --stack-size` raises it) |
 
 ## A body that calls `k` and answers a program: no nesting at all
@@ -172,7 +172,8 @@ unchanged: its calls already happen later, from the loop.
 
 - `-Dokay.cont.room=N` — the levels the caller's stack is asked to hold
   before the switch (default: the VM's `ThreadStackSize` over 2.6 KB,
-  halved; 16 on Native; 32 where the stack is read).
+  halved; 16 on Native, which reads every room after it; 32 where the
+  JVM reads the stack).
 - READ, NOT GUESSED, where it can be: on JDK 22+ with
   `--enable-native-access=ALL-UNNAMED`, the end of every room reads the
   stack pointer and the thread's bounds, and grants more of the same

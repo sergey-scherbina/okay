@@ -85,6 +85,40 @@ its rows before it moves anything:
 (`QuoteUnpickler`). They run at compile time over the user's source
 tree. Whether that counts as BOUNDED is Decision 2 below.
 
+## Audit under the host-stack rule (stack-host-three, 2026-10-04)
+
+The operator's rule of 2026-10-04 (specs/cont-stack.md, "THE HOST STACK ONLY WHERE NOTHING ELSE CAN
+WORK") is stricter than "bounded by a limit written down": a bound is acceptable only when the depth
+it allows is KNOWN to fit. The 369 rows of specs/stack-safety-okay.tsv, by what their bound is:
+
+| kind | rows | verdict |
+|---|---:|---|
+| compile time: a macro recursing over source a person wrote | 89 | fits: the compiler's own stack, over text |
+| tail, trampolined, deferred to a runtime's own loop (cats, kyo, fs2, core.async, a timer, a waker), lazy | ~95 | no host-stack depth |
+| data from outside, cut by a CONSTANT before it recurses (Thrift `MaxDepth` 32, Arrow `MaxNesting` 64, Postgres `MAXDIM` 6, `Source.ChunkSize`, Cardano `maxTxSize`, `Codecs.NativeThreshold` 24) | ~40 | fits: a small count of small frames, refused past it by name |
+| the program's own TYPES (a Schema, ColType, Shape or Digest derived from Scala types, a recursive type cut by `seen`) | ~85 | fits in practice: the depth is the nesting of types a person wrote |
+| a VALUE the program builds at run time (a Ui tree, a Proc term, a Plan, a pipeline of operators, a chain of combinators, `orElse` nesting, an actor hierarchy, a Flow, a SqlValue parameter) | **59** | **does not meet the rule**: a loop can build any depth, and nothing reads the stack |
+
+The 59 rows, by module and by how easily a program grows the depth with a loop:
+
+| priority | module | rows | the structure |
+|---|---|---:|---|
+| high | okay-workflow | 5 | a Proc term, "or a fold over steps it chose" |
+| high | okay-stream | 7 | a Plan / pipeline built by applying operators |
+| high | okay-lex | 5 | a chain of combinators, each machine calling the inner's step |
+| high | okay-actor | 2 | an actor hierarchy the program spawns |
+| high | okay-cluster | 1 | a Flow over a source |
+| medium | okay-ui, okay-ui-gtk | 23 | a Ui tree (a recursive data view renders as a deep tree) |
+| low | okay-stm | 3 | `orElse` nesting in a transaction's text |
+| low | okay-pg, okay-r2dbc | 4 | a SqlValue parameter the program built |
+| low | okay-refine | 2 | a pattern tree the program built |
+| low | okay-script | 5 | the site's page tree and front matter |
+| fixed | okay-deploy, okay-x402-cdp | 2 | a document of this module's own fixed shape |
+
+Each is filed as backlog okay-core/stack-program-built-depth, to be moved to a heap work-list or a
+trampoline module by module, high first. The `recscan-check` gate cannot see the difference: it checks
+that a row HAS a bound, not what kind. The kind is this table.
+
 ## Stages
 
 Each stage takes one group in BOTH cores where both have it, in this
