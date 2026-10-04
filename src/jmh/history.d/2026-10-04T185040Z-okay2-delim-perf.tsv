@@ -1,0 +1,12 @@
+2026-10-04	9d6c7c79d	quiet	okay2_delimDollarOnly	24.31	24.62	0.99	okay2 DelimBenchmark; (1) a watched dollar its own op/frame, the plain Dollar/Ret no Shots field; 348056 vs 364056 B/op (16 B a dollar); round 1, ref first; round 2 24.26 vs 24.60
+2026-10-04	9d6c7c79d	quiet	okay2_delimDollarResume	87.90	88.33	1.00	(1); 1068063 vs 1108063 B/op; round 2 87.58 vs 88.95, 0.98
+2026-10-04	b26956e8c	quiet	okay2_delimGenerator	96.76	98.96	0.98	(1)+(2) a capture copies its prefix in one pass (Frames, holes, AtDollar); 990512 vs 1094512 B/op (104 B a capture); round 2 98.40 vs 106.01 (ref noisy), 0.93
+2026-10-04	b26956e8c	quiet	okay2_delimDollarResume	78.72	88.99	0.88	(1)+(2); 948062 vs 1108063 B/op; round 2 78.51 vs 89.06, 0.88
+2026-10-04	d89efc0c4	quiet	okay2_delimPushOnly	19.1	23.6	0.81	(1)+(2)+(3) the delimiter frames carry up: X <:< Y, no identity K; 270088 vs 334088 B/op (64 B a push); two rounds equal
+2026-10-04	d89efc0c4	quiet	okay2_delimGenerator	84.0	105.3	0.80	(1)+(2)+(3); 862447 vs 1094513 B/op; round 2 83.8 vs 105.3
+2026-10-04	d89efc0c4	quiet	okay2_delimDollarResume	62.9	88.1	0.71	(1)+(2)+(3); 844060 vs 1108063 B/op; round 2 64.8 vs 89.1, 0.73
+2026-10-04	d89efc0c4	quiet	okay2_delimDollarOnly	20.1	24.4	0.82	(1)+(2)+(3); 292056 vs 364056 B/op; round 2 20.2 vs 24.4
+2026-10-04	f1520259d	quiet	okay2_s45_delimShift	116.1	118.4	0.98	okay2-split-at-rest-measure: stage 45 (f1520259d) against its parent, the lanes copied in; min of 3, alternating; 1166026 vs 1182026 B/op
+2026-10-04	f1520259d	quiet	okay2_s45_produceFold	23.8	21.9	1.09	stage 45 SLOWER here, all three rounds (23.8-23.9 vs 21.9-22.2); 269520 vs 269504 B/op — filed okay2-split-at-rest-regressions
+2026-10-04	f1520259d	quiet	okay2_s45_writerMap	21.9	20.8	1.05	stage 45 slower (21.9-22.5 vs 20.8-21.6); 250664 vs 242648 B/op (+8 KB) — filed okay2-split-at-rest-regressions
+2026-10-04	f1520259d	quiet	okay2_s45_msplitObserve	12710.6	12873.1	0.99	us/op; 8757729 vs 8741730 B/op
