@@ -1,0 +1,4 @@
+2026-10-04	-	quiet	statePara_go_alone	44.078	47.078	0.94	a machine alone runs its own loop (goAlone) answering Z: no Return a strict k; min of 2 alternating rounds vs master 696b95391; against cont-atm (41.7) 1.06x left
+2026-10-04	-	quiet	fib100_go_alone	4946.974	5186.930	0.95	ns/op; same
+2026-10-04	-	quiet	contAnswer_go_alone	29.553	29.448	1.00	same; parity (its k is lazy)
+2026-10-04	-	quiet	statePara_alloc_profile	1.99	1.35	1.47	Return per Bind before this lane (async-profiler event=alloc): master 1.99 against cont-atm 1.35, every other class alike — the one Return a strict k

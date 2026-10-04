@@ -27,4 +27,9 @@
       a program with two continuation lambdas; a real one's site is
       megamorphic. Same mechanism as cont-frames-register-pressure. Open:
       (2), the strict `k`.
+      (2) DONE 2026-10-04 (strict-k-cost): the allocation profile named it —
+      one `Freer.Return` a strict `k` (Return per Bind 1.99 against cont-atm's
+      1.35), the one loop's `Free[F, Z]` answer built and taken apart. A
+      machine alone has its own loop again (`goAlone`, answering `Z`):
+      statePara 0.94x, fib100 0.95x master's; against cont-atm 1.06x left.
 
