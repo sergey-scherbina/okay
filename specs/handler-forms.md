@@ -92,6 +92,17 @@ An `Answers[F]` becomes form 1 with `Handler.from(answers)`.
   typed at its definition, where the row is abstract.
 - **control's resume** (control-resume-node): the first call's node defers to the Resume object, -24 B.
 
+- **The whole list, one table** (handler-api-surface, 2026-10-04). The author's page has one table of every
+  way to give an effect a meaning, keyed by what the handler must do (docs/your-own-effect.md, "Which one").
+  It holds the four forms, `Answers[F]` for a whole row, `!.interpret`/`!.tracing` for a row the program does
+  not hold yet, and `Lexical` for two instances by name. `Effects.handle`, `!.relay` and `!.translate` are
+  what the forms stand on, and `HandleFrames.stateRun`/`stateRunUntil`/`stateRunOr` are LEVEL 3: a built-in's
+  fold as one step (handler-one-step). Nothing was removed. Each entry answers a question none of the others
+  does, and every one has callers. The two hand loops left outside the core that were plain state folds
+  (okay-agent's `Memory.handle`, okay-py's `PyStream.holding`) are one step on `stateRun` now. What is still
+  hand-written re-tells an effect as another (`State.zoomWith`, `Maybe.prune`, `Writer.map`, okay-stream's
+  `Source`), runs finalizers (`Resource`) or searches (`Logic.msplit`).
+
 ## Results
 
 JMH (history.d `handler-forms`, one lane at a time, quiet box):

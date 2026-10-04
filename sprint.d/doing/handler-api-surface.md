@@ -11,4 +11,6 @@
       effect as another (translate-shaped, kept off `Effects.translate` by
       `Distinct`), Resource (finalizers, a catch frame), Logic.msplit (a
       search), Effects.handle/relay/translate (the clause gets `k`).
+      DONE 2026-10-04: one table (docs/your-own-effect.md, "Which one"); Memory.handle and
+      PyStream.holding on stateRun; nothing removed, why in specs/handler-forms.md.
 

@@ -1,7 +1,6 @@
 package okay.agent
 
 import okay.{!, +, Aggregator}
-import okay.!.*
 
 /**
  * The context handler that THREADS its state instead of holding it

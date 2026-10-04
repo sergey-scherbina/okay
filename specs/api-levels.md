@@ -14,9 +14,10 @@ specs/shift-effect.md.
    clause is a `Cont[X, B ! G, B ! G]`, and `Cont.shift`/`Cont.reset` are its capture and delimiter, with
    answer-type modification), `Effects.handle(m)(ret)(clause)`, `!.relay`, `split`, `Delim`'s named prompts,
    `Handler[E, O]` / `Handler.Full` (a handler as a level-1 value), `Answers[F]` (an answer per operation) and
-   `Shift.cont`/`Shift.embed`.
-3. **The library** is `Freer`, `Cont0`, `Delimited`, `Frames`/`Stack`, `StackSwitch`, `ContMacro` and the
-   `direct` macro.
+   `Shift.cont`/`Shift.embed`. Which of them to reach for is one table, docs/your-own-effect.md, "Which one"
+   (handler-api-surface).
+3. **The library** is `Freer`, `Cont0`, `Delimited`, `Frames`/`Stack`, `StackSwitch`, `ContMacro`,
+   `HandleFrames` (the built-ins' folds as one step) and the `direct` macro.
 
 ## Level 1, the whole of it
 

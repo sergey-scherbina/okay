@@ -268,6 +268,29 @@ Measured against the built-ins they re-express (specs/handler-forms.md): `answer
 `Reader(r)`, `state` is 1.04x of `State(s)`, `control` is 1.26x of `Maybe.option`. The cases cost what the
 polymorphic form costs.
 
+### Which one: the whole list
+
+Every way to give an effect its meaning, and when to reach for it. The first column is the question to ask.
+The forms above cover what an author needs. The last rows are where the forms themselves come from, and an
+effect author does not need them.
+
+| what the handler must do | write | it runs on |
+|---|---|---|
+| answer every operation of a whole row with a value, the program fixed | `Answers[F]`, run with `runWith` (§5) | a fold, no tree |
+| answer each operation with a value, one effect off any row | `Handler[F] { case … }` (form 1) | `!.relay` |
+| answer and carry a state, the last state in the result | `Handler[F].state(s0) { … }` (form 2) | `HandleFrames.stateRun` |
+| answer with a program in effects the row already holds | `Handler[F].into[G] { … }` (form 3) | `!.translate` |
+| the same into effects the row does NOT hold yet | `!.interpret(p)` (§7): `p.plus[G]`, then `translate` | `!.translate` |
+| record what is asked and answer nothing | `!.tracing(p)` (§6) | `!.interpret` |
+| abort, resume twice, keep the continuation | `Handler[F].control[O](ret)` (form 4) | `Effects.handle` |
+| two instances of one effect, told apart by name | `Lexical.deep` / `tail` / `walk` ([many-instances.md](many-instances.md)) | a prompt per installation |
+| *(library)* a built-in's fold that threads a state | `HandleFrames.stateRun`, `stateRunUntil` (stops when the state is done), `stateRunOr` (a step may stop the run) | one step, as a loop and as a machine frame |
+| *(library)* the general clause, `k` in hand | `Effects.handle(m)(ret)(clause)`, `!.relay`, `!.translate` | the forms above |
+
+What is still a hand-written walk is a different kind of thing, not another handler form. `State.zoomWith`,
+`Maybe.prune`, `Writer.map` and okay-stream's `Source` re-tell one effect as another. `Resource` runs
+finalizers and catches. `Logic.msplit` is a search. Each says why in its own comment.
+
 ## 6. Recording is a decorator
 
 Operations are already data, so "what did this program ask for, and in

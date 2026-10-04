@@ -1,7 +1,6 @@
 package okay.foreign
 
 import okay.{!, %, +, Row as OkRow, Take, Writer, effect, pure}
-import okay.!.*
 import okay.codec.Schema
 
 /**
