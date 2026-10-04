@@ -1,0 +1,3 @@
+2026-10-04	3c507a600	-	ProbeContDepthNative strict vs lazy depth=1000 us (median)	160.3	128.7	1.25	Scala Native releaseFast, immix; timed loop, 2 rounds (1.25, 1.24); not JMH
+2026-10-04	3c507a600	-	ProbeContDepthNative strict vs lazy depth=100000 us (median)	18294.0	22123.9	0.83	same; rounds 0.77, 0.89 (lazy noisy)
+2026-10-04	3c507a600	-	ProbeContDepthNative strict vs lazy depth=1000000 us (median)	207513.7	248311.7	0.84	same; rounds 0.74, 0.96 (lazy noisy)
