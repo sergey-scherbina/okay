@@ -158,6 +158,37 @@ Limits written down now:
   by its effect's class. The dispatch test is then the instance's, which the stack must carry.
 - **Scala 2 (okay2)**: the same design over okay2's handlers, after the Scala 3 core lands it.
 
+## Results
+
+### Stage 0 (2026-10-04): the prize re-measured, and dispatch measured
+
+One lane per `jmh-lane.sh` run, two rounds, JDK 26, macOS arm64 (history.d handler-single-pass-stage0).
+
+The prize, today's nested `handle`s against Fused's hand-written one-pass loop (FusionBenchmark):
+
+| program | nested | fused | fused / nested | bytes |
+|---|---|---|---|---|
+| State + Writer, built by `foldLeft` (SW) | 31.1–31.4 µs | 26.3–26.4 µs | 0.84x | −15.5 KB |
+| the same, right-nested: an ordinary recursion (SWr) | 11.7 µs | 11.8–12.0 µs | **1.01x, no win** | −15.5 KB |
+| Throws + State + Writer (TSW) | 31.7–32.0 µs | 27.0–27.5 µs | 0.86x | −15.6 KB |
+
+Smaller than on 2026-09-27 (1.36x, 1.05x, 1.31x then): the nested handlers got faster since, on the
+step engines (handler-one-step). On the shape of a recursion one pass saves bytes and no time. So the
+case for this design is the architecture (one walk, one place where dispatch lives, `handle` as
+registration), not speed. A speedup is real only for programs built by folds, at 1.16–1.19x.
+
+Dispatch, one fused loop over N stepped handlers, 1 000 operations round-robin, two operation classes an
+effect (DispatchBenchmark, a prototype):
+
+| handlers | chain of tests | class table | table / chain |
+|---|---|---|---|
+| 2 | 3.7–4.0 µs | 3.7–3.9 µs | 0.99x |
+| 4 | 4.6–4.9 µs | 3.6–3.8 µs | 0.78x |
+| 8 | 6.2 µs | 3.9–4.3 µs | 0.66x |
+
+The table is flat in the number of handlers and the chain grows with it. The table is never worse, so it
+is the dispatch of stage 2. Its cost is 160 B more per run (the cache arrays).
+
 ## Literature
 
 - Ningning Xie and Daan Leijen, "Generalized Evidence Passing for Effect Handlers", ICFP 2021: handlers as

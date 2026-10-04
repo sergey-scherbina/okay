@@ -1,0 +1,6 @@
+2026-10-04	acd191239	-	FusionBenchmark fusedSW vs nestedSW us/op	26.345	31.287	0.84	2 rounds mean; bytes 300848 vs 316368
+2026-10-04	acd191239	-	FusionBenchmark fusedSWr vs nestedSWr us/op	11.882	11.707	1.01	right-nested (recursion): no win; bytes 117296 vs 132816
+2026-10-04	acd191239	-	FusionBenchmark fusedTSW vs nestedTSW us/op	27.226	31.839	0.86	bytes 300880 vs 316464
+2026-10-04	acd191239	-	DispatchBenchmark table vs chain handlers=2 us/op	3.796	3.831	0.99	1000 ops round-robin, one fused loop; bytes 240 vs 80 (the cache arrays)
+2026-10-04	acd191239	-	DispatchBenchmark table vs chain handlers=4 us/op	3.677	4.743	0.78	same
+2026-10-04	acd191239	-	DispatchBenchmark table vs chain handlers=8 us/op	4.107	6.205	0.66	same; the table is flat in the handler count, the chain linear

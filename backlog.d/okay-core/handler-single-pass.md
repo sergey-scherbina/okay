@@ -38,3 +38,10 @@
       the step (`init`/`step`/`ret`), which every state-threading built-in has
       had since handler-one-step. Handlers that need `k` split the stack.
       Next: stage 0 there (re-measure, a two-state prototype).
+      STAGE 0 DONE 2026-10-04 (spec, Results): one pass against nested is
+      1.19x / 1.17x on fold-built programs and NO win (1.01x) on a
+      recursion's shape, so the case is architectural. The class table
+      beats the chain from 4 handlers (0.78x, 0.66x at 8) and ties at 2.
+      Stage 1 (`Stepped`) is next if the operator takes the design on that
+      evidence.
+
