@@ -1,12 +1,58 @@
 package okay2.codec
 
-/** An unbounded integer as a Schema primitive (okay-codec's TestBigInt,
- * JSON half): JSON carries it as a string of digits because `JNum` is a
- * Double, and accepts a number only while a double still holds it
- * exactly. */
+/** An unbounded integer as a Schema primitive (okay-codec's TestBigInt):
+ * CBOR writes RFC 8949's preferred serialization — a plain integer
+ * across the whole 64-bit unsigned range, a tag 2/3 bignum past it, as
+ * Plutus Data and the Cardano ledger write integers; JSON carries it as
+ * a string of digits because `JNum` is a Double, and accepts a number
+ * only while a double still holds it exactly. */
 class TestBigInt extends munit.FunSuite {
 
+  private def hex(bs: Array[Byte]): String = bs.map(b => f"${b & 0xFF}%02x").mkString
+  private def unhex(s: String): Array[Byte] = s.grouped(2).map(Integer.parseInt(_, 16).toByte).toArray
+
+  // ---- the defect found on the way: SLong read a uint64 as a negative
+
+  test("SLong refuses a CBOR uint64 past Long.MaxValue instead of wrapping it negative") {
+    // RFC 8949 Appendix A: 18446744073709551615 = 1bffffffffffffffff
+    val r = Cbor.read[Long](unhex("1bffffffffffffffff"))
+    assert(r.isLeft, s"decoded as $r")
+  }
+
+  test("SLong refuses a CBOR negative past Long.MinValue") {
+    assert(Cbor.read[Long](unhex("3bffffffffffffffff")).isLeft)
+  }
+
+  test("SLong still reads its own extremes") {
+    assertEquals(Cbor.read[Long](Cbor.write(Long.MaxValue)), Right(Long.MaxValue))
+    assertEquals(Cbor.read[Long](Cbor.write(Long.MinValue)), Right(Long.MinValue))
+  }
+
   private val two64 = BigInt(1) << 64
+
+  test("CBOR writes the preferred serialization: plain integer to 2^64-1, bignum past it") {
+    val vectors = List(
+      BigInt(0) -> "00",
+      BigInt(-1) -> "20",
+      BigInt(1000000) -> "1a000f4240",
+      (two64 - 1) -> "1bffffffffffffffff", // uint64 max: still a plain integer
+      two64 -> "c249010000000000000000", // tag 2
+      -two64 -> "3bffffffffffffffff", // -2^64: still a plain negative
+      (-two64 - 1) -> "c349010000000000000000") // tag 3
+    vectors.foreach { case (v, h) =>
+      assertEquals(hex(Cbor.write(v)), h, s"writing $v")
+      assertEquals(Cbor.read[BigInt](unhex(h)), Right(v), s"reading $h")
+    }
+  }
+
+  test("CBOR reads a bignum a conforming encoder sent for a SMALL value (not preferred, still valid)") {
+    assertEquals(Cbor.read[BigInt](unhex("c24101")), Right(BigInt(1)))
+    assertEquals(Cbor.read[BigInt](unhex("c34100")), Right(BigInt(-1)))
+  }
+
+  test("CBOR refuses a tag that is not a bignum") {
+    assert(Cbor.read[BigInt](unhex("c11a514b67b0")).isLeft) // tag 1, epoch time
+  }
 
   private val boundary: List[BigInt] = List(
     BigInt(0), BigInt(1), BigInt(-1),
@@ -14,8 +60,9 @@ class TestBigInt extends munit.FunSuite {
     two64 - 1, two64, -two64, -two64 - 1,
     (BigInt(1) << 300) + 12345, -(BigInt(1) << 300))
 
-  test("round-trips lossless and strict JSON at every boundary") {
+  test("round-trips CBOR, lossless JSON and strict JSON at every boundary") {
     boundary.foreach { v =>
+      assertEquals(Cbor.read[BigInt](Cbor.write(v)), Right(v), s"cbor $v")
       assertEquals(Json.read[BigInt](Json.write(v)), Right(v), s"json $v")
       assertEquals(JsonStrict.read[BigInt](Json.write(v)), Right(v), s"strict $v")
     }
@@ -38,11 +85,25 @@ class TestBigInt extends munit.FunSuite {
     assert(junk._1.isLeft && junk._2.isLeft, s"$junk")
   }
 
-  test("inside a derived product: a uint64 quantity round-trips") {
+  test("inside a derived product: a uint64 quantity round-trips both wires, Validate agrees") {
     final case class Asset(policy: Array[Byte], name: String, quantity: BigInt)
     implicit val asset: Schema[Asset] = Schema.derived
     val a = Asset(Array[Byte](1, 2, 3), "tok", two64 - 1)
+    assertEquals(Cbor.read[Asset](Cbor.write(a)).map(_.quantity), Right(two64 - 1))
     assertEquals(Json.read[Asset](Json.write(a)).map(_.quantity), Right(two64 - 1))
     assertEquals(Json.readStrict[Asset](Json.write(a)).map(_.quantity), Right(two64 - 1))
+    assert(Validate.decode(asset)(Json.parse(Json.write(a))).isRight)
+    val bad = Validate.decode(asset)(Json.parse("""{"policy":"AQID","name":"tok","quantity":"1e3"}"""))
+    assert(bad.isLeft, s"$bad")
+  }
+
+  test("a digest carries it across a wire, and Long -> BigInt is a type change (the JSON wire changes)") {
+    final case class V1(q: Long)
+    final case class V2(q: BigInt)
+    implicit val v1: Schema[V1] = Schema.derived
+    implicit val v2: Schema[V2] = Schema.derived
+    assert(Digest.compare(v2, Digest.of(v2)).changes.isEmpty)
+    val r = Compat.compare(v1, v2)
+    assert(r.render.contains("Long") && r.render.contains("BigInt"), r.render)
   }
 }

@@ -2737,3 +2737,36 @@ Operator: "продолжай" — the core's shift-merge-guard (83a0b7084) in t
   the macro expanding in its own run: every door passes the evidence on.
 - **Left**: stage 3, `Stacked` read as `Shift[p.type]` (the core's
   shift-stacked-key, queued there).
+
+## Stage 54 — okay2-codec-cbor: CBOR, Validate, Digest/Compat, the Codecs door (2026-10-04)
+
+Operator: "Делай то что нужно для okay2 только сразу всё" — the rest of
+okay-codec in the twin (okay2/backlog.d/modules/okay2-codec-dialects),
+first lane of three.
+
+- [x] `Cbor`: RFC 8949 items through `Cbor.Out`/`Cbor.In`, the Schema
+      fold on both sides, the BigInt preferred serialization (a plain
+      integer to 2^64−1, tag 2/3 past it — RFC Appendix A vectors in
+      TestBigInt), SLong refusing a uint64 instead of wrapping, declared
+      lengths refused past the bytes left (TestCborLengths), unknown fields
+      SKIPPED as JSON skips them (TestUnknownFields); decode, skip and
+      encode native to `NativeThreshold`, then on `Cont.defer`
+      (TestCborTrampoline, 200 000 deep)
+- [x] `Validate`: every refusal at its dotted path, `decode`'s verdict and
+      value (TestValidate's `agree`), `validated` read as okay2's
+      `Validated` and combined by its `Applicative`
+- [x] `Compat` and `Digest`: the report checked against BOTH decoders
+      (TestCompat's `reads`), a `Digest` crossing CBOR and compared
+      against a schema it never came from (TestDigest)
+- [x] `Codecs`: the provider seam (`Provider`, `Interpreter`, `install`,
+      `reset`, the `*Json`/`*Cbor`/`readStrict` doors) and the
+      `JsonCodec`/`CborCodec`/`StrictJsonCodec` traits (TestCodecs)
+- [x] JVM, Scala.js and Scala Native
+
+### What differs from Scala 3
+- The decoders dispatch through `Schema.visit`, as stage 41's JSON does.
+- `Validate` needs `Schema.Step.node`, added with a `Kid` that carries
+  its value's type as a member rather than a wildcard.
+- `Digest`'s own Schema is written by hand: `Schema.derived` cannot
+  expand in the module that defines the macro. Typed one/two/three-field
+  helpers hold the one cast (`Hand.part`).

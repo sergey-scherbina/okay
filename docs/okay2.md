@@ -2012,6 +2012,38 @@ view:
     assertEquals(take("ada"), JStr("ada"))
 ```
 
+CBOR is the second wire over the same `Schema` (stage 54). Products are
+maps keyed by field name, sums one-entry maps, and both wires decode to
+the same value. An integer travels in RFC 8949's preferred form, as a
+plain integer up to 2^64−1 and a tag 2/3 bignum past it. A field the
+reader does not declare is skipped, as JSON skips it:
+
+```scala
+    assertEquals(Cbor.read[Person](Cbor.write(p)), Json.read[Person](Json.write(p)))
+      two64 -> "c249010000000000000000", // tag 2
+```
+
+`Validate` reads a document the way `Json.decode` does, but it keeps
+going after a refusal and reports every error at its path:
+
+```scala
+    assertEquals(paths, Vector("id", "email", "address.city"))
+```
+
+`Compat.compare(old, next)` says whether a new reader still reads old
+bytes (`backward`) and the reverse (`forward`). Its answers are checked
+against both decoders. `Digest.of(schema)` is the shape alone, as data,
+so a process can send it to one that does not share its build:
+
+```scala
+    assert(r.backward.reasons.head.contains("currency is new and required"))
+    assertEquals(Digest.compare(old, roundTrip(Digest.of(next))).render, Compat.compare(old, next).render)
+```
+
+`Codecs` is the run-time door. `Codecs.cbor(schema)` and
+`Codecs.json(schema)` answer through the installed `Provider`, which is
+the interpreter until something else is installed.
+
 ## 34. SQL: the relational seam
 
 `okay2-sql` is okay-sql, and `okay2-jdbc` is its JDBC driver (stage

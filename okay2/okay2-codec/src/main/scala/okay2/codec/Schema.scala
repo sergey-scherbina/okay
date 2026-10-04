@@ -330,6 +330,46 @@ object Schema extends SchemaDerivation {
       }
     }
 
+    /** one child of a `node`: a step, its environment and its value,
+     * whose type only the kid itself knows (Scala 3's `Kid[E, ?, R]`) */
+    sealed abstract class Kid[E, R] {
+      type X
+      def step: Step[E, X, R]
+      def env: E
+      def value: X
+    }
+    object Kid {
+      def apply[E, X0, R](s: Step[E, X0, R], e: E, v: X0): Kid[E, R] = new Kid[E, R] {
+        type X = X0
+        def step = s
+        def env = e
+        def value = v
+      }
+    }
+
+    /** a node whose children are chosen per value (a decoder's: which
+     * fields arrived decides what is walked) */
+    def node[E, A, R, S](enter: (E, A) => S,
+                         kids: (E, A) => Vector[Kid[E, R]],
+                         step: (S, R) => S,
+                         close: (E, A, S) => R): Step[E, A, R] = new Step[E, A, R] {
+      def run(e: E, a: A, open: Int): R = {
+        var s = enter(e, a)
+        kids(e, a).foreach { k => s = step(s, child(k.step, k.env, k.value, open + 1)) }
+        close(e, a, s)
+      }
+      def cont(e: E, a: A, open: Int): R /> R = {
+        val ks = kids(e, a)
+        def loop(i: Int, s: S): R /> R =
+          if (i >= ks.length) Cont.Pure(close(e, a, s))
+          else {
+            val k = ks(i)
+            Cont.defer(() => k.step.cont(k.env, k.value, open + 1))((r: R) => loop(i + 1, step(s, r)))
+          }
+        loop(0, enter(e, a))
+      }
+    }
+
     def elems[E, A, X, R, S](enter: (E, A) => S,
                              items: A => Iterable[X],
                              each: () => Step[E, X, R],
