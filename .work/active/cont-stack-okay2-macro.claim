@@ -1,1 +1,0 @@
-claude session_01FeSfUJ4Z4YBWrEERDnoghu, 2026-10-04, operator ("Делай то что нужно для okay2 только сразу всё"): okay2's Cont.shift as a blackbox macro — a tail-shaped body (every k a tail call, its argument k-free) as Cont.tailShift/tailPure, the rest Cont.shiftLeaf; the core's own callers on shiftLeaf
