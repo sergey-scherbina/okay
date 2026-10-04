@@ -288,9 +288,28 @@ WHEN:
   scopes open, as an OCaml continuation does — the contract, written down.
 
 Behaviour:
-- [ ] an abort through a scope releases it, inner scopes first, and answers the value
-- [ ] an abort through a `try` (`Throws`) and a scope: the try does not answer, the scope releases
-- [ ] a release that fails during an abort: the abort fails with it
-- [ ] an abort through no scope: unchanged (the value, nothing run)
-- [ ] `k.discontinue` in a body that drops `k`: the scope releases; the body's answer stands
-- [ ] a stored `k` resumed later still runs (no release at the capture)
+- [x] an abort through a scope releases it, inner scopes first, and answers the value
+- [x] an abort through a `try` (`Throws`) and a scope: the try does not answer, the scope releases
+- [x] a release that fails during an abort: the abort fails with it
+- [x] an abort through no scope: unchanged (the value, nothing run)
+- [x] `k.discontinue` in a body that drops `k`: the scope releases; the body's answer stands
+- [x] a stored `k` resumed later still runs (no release at the capture)
+
+Results (TestResourceDiscontinue, cross, JVM and JS; red first on the five
+behaviours above that changed):
+- FOUND ON THE WAY, a defect of the catch walk itself: a catch frame whose
+  handler threw ANEW, with nothing below to take it, had the machine rethrow
+  the ORIGINAL throw — the new one lost. A release failing during a
+  discontinue was the first to meet it; a plain `try` whose handler throws
+  shows it too (its own test, red first). The walk throws the new one now.
+- COST (history.d resource-abort-releases): an abort through a `try` alone
+  1.02x/1.01x — a `Finalizes` bit held by the run, so no scope ever
+  installed means no look at the piece. The first cut looked whenever a
+  catch frame was held: 1.06x, discarded. An abort through a scope 2.21x
+  its old price, ~170 ns: the release, which the old code never did.
+- NOT DONE, on purpose: a `shift` body that drops `k` silently. Nothing can
+  tell it from one that stores `k` (generators, dialogues); `discontinue` is
+  the word for it, and the contract is written in docs/effects/resource.md.
+  `Logic.cut` dropping the rest of a search is the same case
+  (backlog `logic-cut-releases`).
+

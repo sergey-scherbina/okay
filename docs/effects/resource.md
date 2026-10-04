@@ -29,6 +29,58 @@ val sum: Int ! Resource =
 val three = Resource.scoped(sum)   // 3, and log is Vector(open a, open b, close b, close a)
 ```
 
+## Through a capture: `abort`, and a `k` that is dropped
+
+A scope can sit inside a delimited continuation: a `shift` or an `abort`
+to a prompt OUTSIDE the scope captures the scope along with everything
+else up to the prompt. When that continuation is resumed, the scope goes
+on and releases at its end as usual. When it is DROPPED, the scope must
+still release, and the only one who can know it was dropped is whoever
+dropped it.
+
+`abort` knows. It throws `Shift.Discontinued` into the piece it drops,
+where the piece was captured, and only then answers its value. Each scope
+in the piece releases what it holds, inner first, and passes the throw
+on. A `try` (`Throws`, `CanTry`) does not answer it: this is not a failure
+of the code there, and recovering from it would run on in a continuation
+that nobody resumes. If a release fails, the `abort` fails with that
+failure.
+
+```scala
+def scope[A](log: scala.collection.mutable.ArrayBuffer[String], name: String)(body: String => A ! Resource + D): A ! D =
+  Resource.run[A, D](Resource.acquire(name)(x => log += s"release $x").at[Resource + D].flatMap(body))
+
+val r = !.run(Shift.run[String, Pure](Shift.push[String, Pure](p)(
+  scope(log, "outer")(_ => scope(log, "inner")(_ =>
+    Shift.abort[String, String, Pure](p)("aborted").at[Resource + D]).at[Resource + D]))))
+assertEquals(r, "aborted")
+assertEquals(log.toList, List("release inner", "release outer"))
+```
+
+A `shift` body that does not call `k` is another matter. Nothing can tell a
+`k` that was dropped from one that was STORED to be resumed later (a
+generator, a dialogue). Releasing at the capture would break the second,
+so the body says which it is: `Shift.discontinue(k)` drops `k` the way
+`abort` does.
+
+```scala
+scope(log, "a")(_ => Shift.shift[String, Int, Pure](p)(k =>
+  Shift.discontinue(k).map(_ => "dropped")).at[Resource + D].map(_.toString)))))
+assertEquals(r, "dropped")
+assertEquals(log.toList, List("release a"))
+```
+
+A `k` that is neither resumed nor discontinued keeps its scopes open. This
+is the contract OCaml 5 states for its continuations (`continue` or
+`discontinue`, exactly once). The design follows Leijen, "Algebraic Effect
+Handlers with Resources and Deep Finalization" (MSR-TR-2018-10): a
+resumption that will not be resumed is finalized by running it with a
+throw that only the finalizers inside it act on. Racket's `dynamic-wind`
+is the contrast: it runs its post-thunk whenever control leaves, and its
+pre-thunk again on re-entry. A resource cannot be acquired again by
+re-entering, so here leaving by a capture releases nothing until the
+continuation is known to be dropped.
+
 ## Notes
 
 - Release survives a handled abort and an exception in the middle of a

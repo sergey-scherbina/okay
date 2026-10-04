@@ -31,6 +31,8 @@ object ShiftMachine {
   /** `Steps.held`'s bits */
   private final val Framed = 1
   private final val Catches = 2
+  /** a FINALIZING catch frame (a `Resource` scope): only then may an abort's dropped piece need discontinuing */
+  private final val Finalizes = 4
 
   /** a nested run's value boundary: no capture crosses it (a handler's operation and a throw do) */
   private object Barrier extends Delimited.Mark
@@ -62,7 +64,8 @@ object ShiftMachine {
 
     /**
      * what kinds of frame this run has installed: `Framed` (a handler's — until then an operation of `F` leaves
-     * without a look) and `Catches` (a catch frame's — until then user code runs with no `try`). A captured `k`
+     * without a look), `Catches` (a catch frame's — until then user code runs with no `try`) and `Finalizes` (a
+     * finalizing one's — until then an abort drops its piece with no look for a scope to release). A captured `k`
      * carries the bits of the run it was captured in, and the run that resumes it — perhaps another, a dialogue
      * driven later — takes them on with the frames its piece puts back
      */
@@ -121,7 +124,7 @@ object ShiftMachine {
           case _: HandleFrames.Handling[?] => hold(Framed, machine)
           case _ => ()
         d.p match
-          case _: HandleFrames.Catching => hold(Catches, machine)
+          case c: HandleFrames.Catching => hold(if c.finalizes then Catches | Finalizes else Catches, machine)
           case _ => ()
         val ret = claim[r0 => Freer[L, U, U, r]](d.ret)
         machine.next(claim[Freer[L, U, U, r0]](d.body), machine.end[r0, U], machine.delim(d.p, machine.frame(ret, claim[Frames[L, r, B, U, U]](k)), m))
@@ -139,7 +142,7 @@ object ShiftMachine {
         val c = claim[Cut[a, r, Z]](cutOrFail(ab.p, ab.at, k, m, machine))
         // the piece an abort drops is DISCONTINUED when a scope in it must release (resource-abort-releases): thrown
         // into, its finalizers run inner first, and the value answered after them — else just the value
-        if (held & Catches) == 0 || !finalizerIn(c.piece) then machine.next(Freer.Return[L, U, r](ab.value), c.out, c.rest)
+        if (held & Finalizes) == 0 || !finalizerIn(c.piece) then machine.next(Freer.Return[L, U, r](ab.value), c.out, c.rest)
         else
           val dropped = Resumption[a, r, F](ab.p, c.piece, held).discontinue.map(_ => ab.value)
           machine.next(claim[Freer[L, U, U, r]](dropped), c.out, c.rest)

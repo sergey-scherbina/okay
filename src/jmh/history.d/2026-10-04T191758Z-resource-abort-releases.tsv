@@ -1,0 +1,3 @@
+2026-10-04	90ed80b7e	quiet	ShiftBenchmark.abort_try us/op	4.833/4.850	4.511/4.601	1.06	resource-abort-releases DISCARDED cut: the dropped piece walked for a finalizer whenever a catch frame was held (~3 ns an abort); replaced by a Finalizes bit
+2026-10-04	90ed80b7e	quiet	ShiftBenchmark.abort_try us/op	4.697/4.562	4.539/4.536	1.02	resource-abort-releases: Finalizes bit, an abort through a try alone looks no further; alternating arms, 2 rounds, jmh-lane quiet
+2026-10-04	90ed80b7e	quiet	ShiftBenchmark.abort_scope us/op	31.691/31.662	14.296/14.396	2.21	resource-abort-releases: the release itself (~170 ns an abort: Discontinued thrown through the scope frame and taken back); the ref releases NOTHING, so this is the price of the fix, not a regression
