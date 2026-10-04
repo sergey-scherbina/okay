@@ -1,0 +1,4 @@
+2026-10-04	9a6898d33	-	HandlerBenchmark.statePara us/op	43.577	45.360	0.96	one Frames.End for every index; 2 rounds mean; bytes 469336 vs 501368
+2026-10-04	9a6898d33	-	HandlerBenchmark.contAnswer us/op	28.680	30.107	0.95	same; bytes 374136 vs 390152
+2026-10-04	9a6898d33	-	DelimBenchmark.delimDollarResume us/op	63.333	66.029	0.96	same; base r1 85.0 discarded (busy box), mine = accepted retries; bytes 644152 vs 676170
+2026-10-04	9a6898d33	-	DelimBenchmark.delimGenerator us/op	54.997	55.157	1.00	same; bytes 510415 vs 526447
