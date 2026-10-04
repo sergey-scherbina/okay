@@ -1,0 +1,3 @@
+2026-10-04	580da0652	quiet	okay2_produceFold_split_shape	23.67	30.17	0.78	REFUTES the split as stage 45's produceFold cost: on master, Producer.fold's Split.at loop (mine) against the pre-stage-45 split shape restored (ref: Split.split, two closures, Left/tuple a step); 269520 vs 365504 B/op; round 1, mine first
+2026-10-04	580da0652	quiet	okay2_produceFold_split_shape	23.37	29.52	0.79	round 2
+2026-10-04	580da0652	quiet	okay2_produceFold_split_shape	22.65	30.06	0.75	round 3
