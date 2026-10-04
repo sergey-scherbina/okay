@@ -329,7 +329,11 @@ object CanTry:
       (e: E) ?=> (try fa(using e) catch case ex: Throwable => h(ex)(using e))
   /** Free rows: guard construction AND every continuation step */
   given rows: [Fx[+_]] => CanTry[[X] =>> X ! Fx] = new:
-    def tryIn[A](fa: => A ! Fx)(h: Throwable => A ! Fx): A ! Fx =
+    def tryIn[A](fa: => A ! Fx)(h: Throwable => A ! Fx): A ! Fx = guardRows[A, Fx](fa)(h)(HandleFrames.catching[A, Fx](h)(fa))
+
+  /** `fa` with every step under a `try` answered by `h` — a fold `d` deep; on a machine, `frame` (`rows`'s catch
+   * frame, or `HandleFrames.unwinding`'s) */
+  private[okay] def guardRows[A, Fx[+_]](fa: => A ! Fx)(h: Throwable => A ! Fx)(frame: => Shift.U[Fx, A]): A ! Fx =
       // the head of `x`, a nested run (a handler, a machine run) forced on the way, under this step's `try` —
       // as its fold `d` deep, as its frame on a machine at HandleFrames.Limit (handle-frames-catch)
       @scala.annotation.tailrec def headOf(d: Int)(x: A ! Fx): A ! Fx = (x.resumeRun: @unchecked) match
@@ -347,7 +351,7 @@ object CanTry:
             case Inject(op) => Free.Inject(op)
             case Bind(Inject(op), k) => Free.Bind(Free.Inject(op), x => step(d)(() => k(x)))
       // a value: its fold forced by anything, a catch FRAME on a machine that meets it — the `try` as data
-      HandleFrames.run[A, Fx](d => step(d)(() => fa), HandleFrames.catching[A, Fx](h)(fa))
+      HandleFrames.run[A, Fx](d => step(d)(() => fa), frame)
 
 /**
  * A step a program may DECLINE — which is what a refutable pattern on

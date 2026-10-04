@@ -188,6 +188,17 @@ object HandleFrames:
     Shift.dollar[A, A, G](frame)(a => pure(a))(Free.delay(() => widened(x)))
 
   /**
+   * `onUnwind` run when a throw leaves `x` — any throw, a dropped continuation's included (a FINALIZING frame) —
+   * and the throw goes on (logic-cut-releases: a search a throw leaves abandons the branch points it holds)
+   */
+  def unwinding[A, G[+_]](onUnwind: () => Unit)(x: => A ! G): A ! G =
+    val frame = new Prompt[A]("unwind", "catch") with Catching:
+      def caught(t: Throwable): Any = { onUnwind(); null }
+      override def finalizes: Boolean = true
+    CanTry.guardRows[A, G](x)(t => { onUnwind(); throw t })(
+      Shift.dollar[A, A, G](frame)(a => pure(a))(Free.delay(() => widened(x))))
+
+  /**
    * `x` — a continuation `d` is thrown into (`Resumption.discontinue`) — under a frame that takes `d` back
    * (resource-abort-releases): `()` when it arrives, every scope inside released; a release that failed, attached
    * to `d` suppressed, thrown on from here as the failure it is; `()` too if something inside answered after all

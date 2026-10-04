@@ -46,33 +46,62 @@ object Logic {
     // answer found the answer, the alternatives not yet run handed out as programs pending on that continuation
     def frame(x: A ! Choose + F): Shift.U[F, O] =
       HandleFrames.handling[A, O, F]("msplit", summon[TypeableK[Choose]].test, a => pure(Some((a, alts(Nil)))))(
-        (op, k) => first(op.asInstanceOf[Choose[Any]].as.to(LazyList), k))(x)
-    def first(as: LazyList[Any], k: Any => O ! F): O ! F = as match
+        (op, k) =>
+          val c = op.asInstanceOf[Choose[Any]]
+          // a branch point something is shared through (logic-cut-releases): a throw out of the search abandons it
+          Forked.sharedOf(c.as) match
+            case Nil => first(c.as.to(LazyList), k, Nil)
+            case held => HandleFrames.unwinding[O, F](() => held.foreach(_.abandon()))(first(c.as.to(LazyList), k, held)))(x)
+    def first(as: LazyList[Any], k: Any => O ! F, held: List[Shared]): O ! F = as match
       case LazyList() => pure(None)
       case b #:: more => k(b).flatMap:
-        case None => again1(more, k)
-        case Some((a, r)) => pure(Some((a, alts(r #:: more.map(c => defer(reflect[A, F](HandleFrames.pending[O, F](
-          k(c).asInstanceOf[Shift.U[F, O]]))))))))
+        case None => again1(more, k, held)
+        case Some((a, r)) => pure(Some((a, restOf(r #:: more.map(c => defer(reflect[A, F](HandleFrames.pending[O, F](
+          k(c).asInstanceOf[Shift.U[F, O]])))), sharedIn(r) ::: held))))
     // the next alternative from inside flatMap: on a machine, a step of its loop, not a host frame
-    def again1(as: LazyList[Any], k: Any => O ! F): O ! F = first(as, k)
+    def again1(as: LazyList[Any], k: Any => O ! F, held: List[Shared]): O ! F = first(as, k, held)
     // a forwarded operation resumes the walk from inside flatMap, a call
     // that cannot be a jump; `again` takes it, so `go` stays a checked loop
-    def again(d: Int)(stack: LazyList[A ! Choose + F]): O ! F = go(d)(stack)
-    @tailrec def go(d: Int)(stack: LazyList[A ! Choose + F]): O ! F =
+    def again(d: Int)(stack: LazyList[A ! Choose + F], held: List[Shared]): O ! F = go(d)(stack, held)
+    // `held`: the branch points something is shared through that this search has met (logic-cut-releases) — handed
+    // out with the rest, and abandoned when a throw leaves the search
+    @tailrec def go(d: Int)(stack0: LazyList[A ! Choose + F], held: List[Shared]): O ! F =
+      val stack = if held.isEmpty then stack0 else unwinding(held)({ val _ = stack0.isEmpty; stack0 })
       stack match
         case LazyList() => pure(None)
-        case p #:: rest => (p.resumeRun: @unchecked) match
-          case Return(a) => pure(Some((a, alts(rest))))
+        case p #:: rest => ((if held.isEmpty then p.resumeRun else unwinding(held)(p.resumeRun)): @unchecked) match
+          case Return(a) => pure(Some((a, restOf(rest, held))))
           case i @ Inject(e) => split[Choose, F](e)
-            (c => go(d)(c.as.to(LazyList).map(a => Return(a): A ! Choose + F) #::: rest))
-            (_ => forwarded[Choose, F](i).flatMap(a => again(d)(Return(a) #:: rest)))
+            (c => go(d)(c.as.to(LazyList).map(a => Return(a): A ! Choose + F) #::: rest, Forked.sharedOf(c.as) ::: held))
+            (_ => forwarded[Choose, F](i).flatMap(a => again(d)(Return(a) #:: rest, held)))
           case Bind(i @ Inject(e), k) => split[Choose, F](e)
-            (c => go(d)(c.as.to(LazyList).map(x => k(x)) #::: rest))
-            (_ => forwarded[Choose, F](i).flatMap(x => again(d)(k(x) #:: rest)))
+            (c => go(d)(c.as.to(LazyList).map(x => k(x)) #::: rest, Forked.sharedOf(c.as) ::: held))
+            (_ => forwarded[Choose, F](i).flatMap(x => again(d)(k(x) #:: rest, held)))
           // a nested run at the head (an inner search, a handler): forced, as its fold below the limit
-          case y => go(d)(HandleFrames.shallow(y, d) #:: rest)
+          case y => go(d)(HandleFrames.shallow(y, d) #:: rest, held)
 
-    HandleFrames.run[O, F](d => go(d)(LazyList(m)), frame(m))
+    HandleFrames.run[O, F](d => go(d)(LazyList(m), Nil), frame(m))
+
+  /** `body` — the walk forcing user code — with the branch points `held` abandoned when it throws */
+  private inline def unwinding[T](held: List[Shared])(inline body: T): T =
+    try body
+    catch case t: Throwable => { held.foreach(_.abandon()); throw t }
+
+  /** a split's rest: the alternatives left, with the branch points they still hold (logic-cut-releases) */
+  private def restOf[A, F[+_]](rest: Seq[A ! Choose + F], held: List[Shared]): A ! Choose + F =
+    if held.isEmpty then alts(rest) else alts(Forked(rest, Shared.Group(held)))
+
+  /** the branch points a rest `msplit` handed out holds */
+  private def sharedIn[A, F[+_]](rest: A ! Choose + F): List[Shared] = rest match
+    case Bind(Inject(c: Choose[?]), _) => Forked.sharedOf(c.as)
+    case _ => Nil
+
+  /**
+   * THE REST OF A SEARCH DROPPED (logic-cut-releases): no alternative in `rest` — a rest `msplit` handed out — will
+   * be started, so what they share with the branches already run is released once those are done. `cut` and
+   * `observe` say it themselves; a combinator of one's own that drops a rest says it here.
+   */
+  def abandon[A, F[+_]](rest: A ! Choose + F): Unit = sharedIn(rest).foreach(_.abandon())
 
   /** a split back into a search: its answer, then the rest */
   private def reflect[A, F[+_]](o: Option[(A, A ! Choose + F)] ! F): A ! Choose + F =
@@ -86,7 +115,7 @@ object Logic {
    * a file importing both `!.*` and `Logic.*` had the two collide. */
   def cut[A, F[+_]](m: A ! Choose + F): A ! Choose + F =
     !.widen[Option[(A, A ! Choose + F)], F, Choose](msplit(m)).flatMap:
-      case Some((a, _)) => pure(a)
+      case Some((a, rest)) => abandon(rest); pure(a)
       case None => effect(Choose(Seq.empty))
 
   /** the soft cut: if cond has ANY answer, then th over ALL its
@@ -127,7 +156,8 @@ object Logic {
 
   /** the first n answers (a possibly infinite search stays lazy) */
   def observe[A, F[+_] : TypeableK](n: Int)(m: A ! Choose + F): Seq[A] ! F =
-    if n <= 0 then pure(Seq.empty)
+    // none more wanted: what is left of the search is dropped, and says so (logic-cut-releases)
+    if n <= 0 then pure(()).map(_ => { abandon(m); Seq.empty })
     else msplit(m).flatMap:
       case Some((a, rest)) => observe(n - 1)(rest).map(a +: _)
       case None => pure(Seq.empty)

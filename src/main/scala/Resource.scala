@@ -96,6 +96,48 @@ object Resource {
   def releaseAfter(fin: List[() => Unit], cause: Throwable): Unit =
     runAll(fin).foreach(t => if t ne cause then cause.addSuppressed(t))
 
+  /**
+   * ONE ACQUISITION'S RELEASE, SHARED (logic-cut-releases, specs/backtracking.md): its holders are the path that
+   * took it and every branch a choice passing out of the scope started from there. Calling it lets ONE holder go;
+   * the release runs when the last does. A scope nothing branches out of has one holder: released at once, as
+   * before.
+   */
+  private final class Held(release: () => Unit) extends (() => Unit):
+    private var holders = 1
+    def take(): Unit = holders += 1
+    def apply(): Unit =
+      holders -= 1
+      if holders == 0 then release()
+
+  /**
+   * A CHOICE PASSING OUT OF A SCOPE that holds `held`: the path's holders are the branch point's now, and every
+   * branch the handler starts takes them again. The branch point lets go when every alternative has started —
+   * `known` of them, or as many as there turned out to be (`exhausted`) — or when the handler abandons the rest.
+   */
+  private final class Fork(held: List[Held], known: Int) extends Forked.Counting:
+    private var total = known
+    private var started = 0
+    private var done = false
+    /** a branch starts: its holders taken BEFORE the branch point may let go of its own */
+    def start(): Unit =
+      held.foreach(_.take())
+      started += 1
+      settle()
+    def exhausted(n: Int): Unit = { total = n; settle() }
+    def abandon(): Unit = if !done then { done = true; releaseAll(held) }
+    private def settle(): Unit = if !done && total >= 0 && started >= total then { done = true; releaseAll(held) }
+
+  /** the branch point a choice gets passing out of a scope holding `fin`, or null: none to share */
+  private def forkOf(e: Any, fin: List[Held]): Fork | Null = e match
+    case c: Choose[?] if fin.nonEmpty => Fork(fin, c.as.knownSize)
+    case _ => null
+
+  /** the choice with its branch point (`forkOf`) — THE CLAIM: `e` was the row's operation, and a `Choose` with the
+   * same alternatives, wrapped, is the same operation of the same row */
+  private def forked[X](e: X, f: Fork): X = e match
+    case c: Choose[?] => Choose(Forked(c.as, f)).asInstanceOf[X]
+    case _ => e
+
   /** acquire inside the enclosing Resource.run scope */
   inline def acquire[R](make: => R)(release: R => Unit): R ! Resource =
     effect(Acquire(() => make, release))
@@ -177,7 +219,7 @@ object Resource {
      * thunks, continuations), an `Acquire`'s `mk`, a continuation
      * `k` — goes through here; the releases that END a walk do not,
      * so a throwing finalizer is not released twice. */
-    def guarded[T](fin: List[() => Unit])(body: => T): T =
+    def guarded[T](fin: List[Held])(body: => T): T =
       try body
       catch { case t: Throwable => releaseAfter(fin, t); throw t }
 
@@ -194,29 +236,31 @@ object Resource {
      * in force and goes on (a catch frame); and it takes EVERY operation passing through, to do what the walk does
      * to a forwarded one — release before a final one, guard a failing one — and performs it again below itself
      */
-    def frame(fin: List[() => Unit])(x: A ! Resource + F): Shift.U[F, A] =
-      HandleFrames.statefulAll[List[() => Unit], A, A, F, Resource + F](_ => true,
+    def frame(fin: List[Held])(x: A ! Resource + F): Shift.U[F, A] =
+      HandleFrames.statefulAll[List[Held], A, A, F, Resource + F](_ => true,
         (fin, v) => { releaseAll(fin); Return(v) },
         (fin, t) => { releaseAfter(fin, t); throw t })(
         (fin, op, resume) => op match
           case Acquire(mk, rel) =>
             val r = guarded(fin)(mk())
-            resume((() => rel(r)) :: fin, r)
+            resume(Held(() => rel(r)) :: fin, r)
           case e =>
             // THE CLAIM: not Resource's, so an operation of F, which the frame performs again outside itself
             val fe = e.asInstanceOf[F[Any]]
             if isFinal(e) then
               releaseAll(fin)
               Inject(fe).flatMap(y => resume(Nil, y))
-            else Inject(failing.guard(fe, () => releaseAll(fin))).flatMap(y => resume(fin, y)))(fin, x)
+            else forkOf(e, fin) match
+              case null => Inject(failing.guard(fe, () => releaseAll(fin))).flatMap(y => resume(fin, y))
+              case f => Inject(failing.guard(forked(fe, f), () => f.abandon())).flatMap { y => f.start(); resume(fin, y) })(fin, x)
 
-    def _loop(d: Int)(fin: List[() => Unit])(x: A ! Resource + F): A ! F = loop(d)(fin)(x)
+    def _loop(d: Int)(fin: List[Held])(x: A ! Resource + F): A ! F = loop(d)(fin)(x)
 
     // `split`, not `<|>` (operator-followups, 2026-09-16): no Either per
     // operation. The while-and-return shape it replaced existed so one
     // catch could see the current finalizer list; `guarded` gives each
     // throwing call that list instead, and the loop is a tail call.
-    @tailrec def loop(d: Int)(fin: List[() => Unit])(x: A ! Resource + F): A ! F =
+    @tailrec def loop(d: Int)(fin: List[Held])(x: A ! Resource + F): A ! F =
       (guarded(fin)(headOf(d)(x)): @unchecked) match
         case Return(a) =>
           releaseAll(fin)
@@ -224,16 +268,18 @@ object Resource {
         case Inject(e) => split[Resource, F](e) {
             case Acquire(mk, rel) =>
               val r = guarded(fin)(mk())
-              releaseAll((() => rel(r)) :: fin)
+              releaseAll(Held(() => rel(r)) :: fin)
               Return(r): A ! F
           } { e =>
             if isFinal(e) then { releaseAll(fin); Inject(e): A ! F }
-            else Inject(failing.guard(e, () => releaseAll(fin))).map { a => releaseAll(fin); a }
+            else forkOf(e, fin) match
+              case null => Inject(failing.guard(e, () => releaseAll(fin))).map { a => releaseAll(fin); a }
+              case f => Inject(failing.guard(forked(e, f), () => f.abandon())).map { a => f.start(); releaseAll(fin); a }
           }
         case Bind(Inject(e), k) => split[Resource, F](e) {
             case Acquire(mk, rel) =>
               val r = guarded(fin)(mk())
-              val f2 = (() => rel(r)) :: fin
+              val f2 = Held(() => rel(r)) :: fin
               loop(d)(f2)(guarded(f2)(k(r)))
           } { e =>
             // a FINAL operation is never resumed, so the scope ends HERE:
@@ -246,7 +292,11 @@ object Resource {
               // k(y) runs USER code (the composed continuation) at the
               // outer handler's call site — a throw there must not skip
               // the finalizers, so it is guarded like every other call
-              Inject(failing.guard(e, () => releaseAll(fin))).flatMap { y => _loop(d)(fin)(guarded(fin)(k(y))) }
+              forkOf(e, fin) match
+                case null => Inject(failing.guard(e, () => releaseAll(fin))).flatMap { y => _loop(d)(fin)(guarded(fin)(k(y))) }
+                // a choice among branches that share what the scope holds: each one started takes it again
+                case f => Inject(failing.guard(forked(e, f), () => f.abandon())).flatMap { y =>
+                  f.start(); _loop(d)(fin)(guarded(fin)(k(y))) }
           }
 
     // a value: its fold forced by anything, the scope's frame on a machine that meets it
