@@ -2888,3 +2888,38 @@ okay-persist's own suites and their tagging.
   call.
 - `okay2-persist` now depends on okay2-stream (for `Streams`), and on
   okay2-platform in test scope.
+
+## Stage 57 — okay2-codec-optics: JsonOptic, Policy, Journalled (2026-10-04)
+
+Operator: "Делай то что нужно для okay2 только сразу всё" — lane 1 of
+okay2/backlog.d/modules/okay2-codec-tooling.
+
+- [x] `JsonOptic`: `at` (the lawful lens over `Option[Json]`), `field`,
+      `index`, `caseOf` (affines), `values`, `entries` (traversals); the
+      laws, and the drift law against okay2-optics' value lenses and
+      prisms (TestJsonOptic)
+- [x] `creating`/`creatingObjects`: a lawful lens that creates missing
+      parents through `Iso.non`, prunes on the way up (TestCreatingPath)
+- [x] `path`: a dotted key read against the Schema, a sum's case level
+      supplied by the schema, keys bounded by `MaxSegments` (TestJsonOptic;
+      TestJsonOpticDepth on a 256 KB stack, JVM)
+- [x] the zipper's `plate` and `removeChild`/`insertChild`; a cursor's
+      edit is the path optic's edit (TestJsonZipper)
+- [x] `Policy`: `touches` describes, `project`/`redact`/`optic`/`text`
+      run, and the removed keys are exactly `touches` (TestPolicy)
+- [x] `Journalled[F <: Row]`: name, fingerprint, `withKey`, `perform`
+      (the answer beside its written form), `decode`, `asked`
+      (TestJournalled)
+- [x] JVM, Scala.js and Scala Native
+
+### What differs from Scala 3
+- The traversals are `Walk`s, because Scala 2 has no polymorphic function
+  type, and the plate is an implicit val.
+- Scala 2 infers `andThen`'s constraint from an expected type that is in
+  view and then refuses the prism. So a composition is bound to a `val`
+  before it is returned (`field`, `JsonOptic.seq`, `Policy.via`/`into`).
+- `creating` is a `foldRight` over the steps, where Scala 3 recursed.
+- `Journalled` takes a row and its `F#Op[A]`, as `Answers[F]` does. Scala
+  2 does not refine `A` on a case pattern, so the cast-free instance is a
+  method per case: the operation performs and decodes itself, and the
+  instance forwards to it.

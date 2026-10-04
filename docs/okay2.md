@@ -2072,6 +2072,54 @@ used wherever the fold is:
 `Codecs.json(schema)` answer through the installed `Provider`, which is
 the interpreter until something else is installed.
 
+`JsonOptic` puts optics (okay2-optics) on `Json` (stage 57). `at(name)`
+is the lawful lens, whose focus is an `Option`: `set(None)` removes the
+field. `field`, `index` and `caseOf` are affines, `values` and `entries`
+are traversals, and `path` reads a dotted form key against the schema
+that wrote the document. The schema knows where a sum adds a level that
+the key leaves out. For a derived schema, editing a value and editing
+its JSON are the same edit:
+
+```scala
+    assertEquals(at("address.city").preview(enc(ada)), Some(Json.JStr("Warszawa"): Json))
+```
+
+`creating` is a path that makes missing parents on the way down, and it
+is still a lawful lens. Each step is `at(name)` followed by
+`Iso.non(default)`, so an absent field reads as the default, and writing
+the default back removes the field again:
+
+```scala
+  val path: Lens[Json, Json, Json, Json] = JsonOptic.creatingObjects(List("a", "b", "c"))
+    assertEquals(path.set(Json.JNum(1))(empty), obj("a" -> obj("b" -> obj("c" -> Json.JNum(1)))))
+```
+
+Scala 2 has one trap here that Scala 3 does not. When an `andThen` is
+written where an `Affine` is expected, Scala 2 infers the constraint
+from that expected type and refuses the prism. Bind the composition to
+a `val` first and then return it.
+
+`Policy` lists the fields of a record that must not be seen. It is one
+declaration with two readings: `touches` reports what it hides without
+looking at any document, and `project`, `redact`, `optic` and `text`
+apply it to a document. A key the schema does not write is refused at
+construction:
+
+```scala
+  val policy: Policy[PoOrder] = Policy.hide[PoOrder]("customer.email", "lines.price", "shape.secret", "note").toOption.get
+    assertEquals(policy.touches, Set("customer.email", "lines.price", "shape.secret", "note"))
+```
+
+`Journalled[F]` is what a journal needs of a row's operations: a name, a
+fingerprint, a retry key, and the answer together with its written
+form. Scala 2 does not refine `A` on a constructor pattern, so an
+instance does not match on the operation. Each case performs and decodes
+itself, and the instance forwards to it:
+
+```scala
+    def run(h: Answers[Calc]): (Int, String) = { val n: Int = h.handle(this); (n, n.toString) }
+```
+
 ## 34. SQL: the relational seam
 
 `okay2-sql` is okay-sql, and `okay2-jdbc` is its JDBC driver (stage
