@@ -629,7 +629,14 @@ The operator: "Diag нужен только там, где индексы — н
   agreeing with them — `Unary[F + G]` and `Unary[F] +~ Unary[G]` reduce to
   the same type on the diagonal and to nothing off it (TestFreerPara pins
   both). A row of two arities is `F +~ Unary[G]`.
-- Open: `Free`'s own bridge is `Lift` (indexes ignored), not `Unary`;
-  whether `Free[F, A] = Freer[Unary[F], Unit, Unit, A]` keeps inference is
-  the probe free-unary-bridge.
+- `Free`'s bridge stays `Lift` (free-unary-bridge, PROBE, REFUTED
+  2026-10-04): with `Lifted[F]#L` made `Unary[F]`, core compiles but every
+  use of the EMPTY row breaks — `Pure = Nothing`, `Unary[Nothing][Unit,
+  Unit, X]` reduces to `Nothing[X] = Nothing` and inference loses the row,
+  solving it as `[X] =>> Nothing`, so `Answers[Pure]`/`TypeableK` are not
+  found: `p.runWith`, `!.run`, `peek`, `Logic.observe` on `A ! Pure` (7
+  errors in core's tests alone, the most common calls in user code). So
+  the system has two bridges by necessity, and one law joins them: where
+  `Free` lives they agree, `Lift[F][Unit, Unit, X] = Unary[F][Unit, Unit,
+  X] = F[X]`; `Lift` ignores the indexes, `Unary` requires them equal.
 
