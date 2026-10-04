@@ -102,6 +102,22 @@ class DelimBenchmark {
       go(0)
     })
 
+  /** `delimDollarResume`'s step, each in a run of its own: N runs of one capture and one resume. Against
+   * `delimDollarResume` (one run, N steps) the difference over N is what a run costs to start
+   * (machine-start-cost: `Run`, `Steps`, `Nested`, the prompt) */
+  @Benchmark
+  def delimRunEach(): Int =
+    var acc = 0
+    var i = 0
+    while i < N do
+      val v = i
+      acc += !.run(Shift.run[Int, Pure] {
+        val p = Shift.prompt[Int]
+        Shift.dollar[Int, Int, Pure](p)(x => pure(x + 1))(Shift.shift0[Int, Int, Pure](p)(k => k(v)))
+      })
+      i += 1
+    acc
+
   @Benchmark
   def delimMacroResume(): Int =
     !.run(Shift.run[Int, Pure] {
