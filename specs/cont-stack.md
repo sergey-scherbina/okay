@@ -161,7 +161,7 @@ is not landed: see Results.
 
 | platform | the fresh stack | room a segment | where the waiting frames live |
 |---|---|---|---|
-| JVM, every JDK | a platform thread with a 1 GB stack (Decision 8) | ~500 000 by count, exact with Layer 3 | on the waiting threads' stacks, pages committed only as touched, unmapped when the segment returns |
+| JVM, every JDK | a platform thread with a 1 GB stack (Decision 8) | ~309 000 by count since cont-stack-cold-bytes-per-level (~500 000 before), exact with Layer 3 | on the waiting threads' stacks, pages committed only as touched, unmapped when the segment returns |
 | Native | a platform thread with a 1 GB stack | the same | the same |
 | JS | none | unbounded count | **the bound**: the depth of nested opaque bodies is limited by the engine's stack, written here and in the docs |
 
@@ -286,7 +286,7 @@ the room can be read exactly.
 
 | runtime | the fresh stack | first room | exact bytes at exhaustion | proved by |
 |---|---|---|---|---|
-| JVM 17 | platform thread, 1 GB | `ThreadStackSize` / 1.2 KB / 2 | never (no FFM): the count and its bound | `sbt verifyJdk17` (build.sbt: every forking suite on `jdk17Home`) |
+| JVM 17 | platform thread, 1 GB | `ThreadStackSize` / 2.6 KB / 2 | never (no FFM): the count and its bound | `sbt verifyJdk17` (build.sbt: every forking suite on `jdk17Home`) |
 | JVM 21 | the same | the same | never: FFM is still preview on 21 and this library enables no previews | a run on `jdk21Home` (build.sbt:1551 already names it) |
 | JVM 22–24 | the same | the same | the core's `jdk22/` FFM reader (JEP 238 picks it), when `Module.isNativeAccessEnabled` (22+); 24 is where the WARNING starts for callers that did not enable it | the default `Test / javaHome` when it is one of these |
 | JVM 25+ | the same | the same | the same reader; a later release will REFUSE the call instead of warning (JEP 472), and the gate is the same boolean either way | JDK 26, the default `Test / javaHome` |
@@ -774,6 +774,38 @@ rounds, history.d cont-leaf-forms). Speed does not decide the choice of form: th
 that a body using `k`'s answer does not grow the host stack where there is no StackSwitch (JS). Whether
 JVM and Native should take the strict leaf is backlog okay-core/cont-leaf-by-platform. It is measured
 at depth first.
+
+### cont-stack-cold-bytes-per-level (2026-10-04): a cold level is 2.5 KB on `Delimited`
+
+The constant was 1 200 B, measured on the λ$ runner. On `Delimited` a strict `k` is a nested run, several
+frames a level. `ColdRoomMain` (an answer-using opaque body, a thread of the VM's default size, its own
+JVM) fits 367 levels in 1 MB, 784 in 2 MB and 1 617 in 4 MB interpreted, and the same in a default JVM's
+first run: ~2 520 B a level over ~124 KB fixed. So the first room (`ThreadStackSize / 1 200 / 2`: 436 on
+1 MB, 873 on 2 MB) overflowed before its switch with NO caller frames at all, and the 1 GB room
+(1 GB / 2 048 = 524 288 levels) overflowed at ~426 000 cold levels. `TestColdRoom` runs each case in a
+cold JVM and was red on all three. Now `coldBytesPerLevel` is 2 600 B, the first room `/ 2 600 / 2`
+(201 on 1 MB, 403 on 2 MB, ~630 KB used of 1 MB), and the 1 GB room is three quarters of the stack over
+the same constant (309 000), on JVM and Native. The halving is the caller's margin again.
+
+Price: `ContDepthBenchmark.strictLeaf` at 1 000 000 levels, 1.09–1.14x (more switches; equal bytes,
+history.d cont-stack-cold-bytes). Paid for a room that no longer overflows.
+
+### THE HOST STACK ONLY WHERE NOTHING ELSE CAN WORK (operator, 2026-10-04)
+
+"Avoid the JVM stack for anything whenever there is a way, unless how much of it may be used is known
+exactly." A count of levels is a guess about frame sizes. This lane showed the guess off by a factor of
+2.1 for a year, and a 1 MB stack overflowing at 367 levels. So the order of roads for a body that waits on
+`k`:
+
+1. The macro reads it: the lazy leaf, on the heap (unchanged; per-platform strict was declined,
+   cont-leaf-by-platform).
+2. It answers a PROGRAM: the program leaf (`k(a)` returns a `Delay`, the machine runs the rest), whether or
+   not the macro can read it. Backlog cont-program-leaf-always. This covers every library body whose depth
+   the user controls (`runChoice`, `runSeq`, `runExact`, the Scala 2 facade's `Effect`).
+3. Only a body whose pending work lives in its own JVM frame (an opaque body answering a plain value: Zoom,
+   a user's `k(x) + 1` inside a lambda) uses the host stack, and its bound should be READ (the FFM reader,
+   JDK 22+ with native access), with the count as the fallback where nothing can be read. Backlog
+   cont-stack-exact-first.
 
 ## Stages — what landed, and the plan after it (operator's ask, 2026-09-25 evening)
 

@@ -1,0 +1,1 @@
+2026-10-04	2134249d7	-	ContDepthBenchmark.strictLeaf depth=1000000 us/op	33266.4	29818.6	1.12	coldBytesPerLevel 1200->2600, 1 GB room 524288->309000 levels: more switches; rounds 1.09, 1.14; bytes equal

@@ -140,7 +140,7 @@ platform — specs/cont-core.md, step 7.)
 
 | platform | first room | what a switch costs |
 |---|---|---|
-| JVM 17+ | the VM's default thread stack over a cold level (1.2 KB), halved for the caller: ~870 levels on a 2 MB thread | one switch per first room on the caller's stack, then ~500 000 levels per segment: ~4 µs to hand off to a parked worker, ~0.01 µs a level after |
+| JVM 17+ | the VM's default thread stack over a cold level (2.6 KB), halved for the caller: ~400 levels on a 2 MB thread, ~200 on 1 MB | one switch per first room on the caller's stack, then ~309 000 levels per segment: ~4 µs to hand off to a parked worker, ~0.01 µs a level after |
 | Scala Native | 16 levels (a first room derived from the main thread's 8 MB would be wrong for every other thread) | as the JVM's |
 | Scala.js | — no thread to switch to | **the bound**: nested bodies of the second kind are limited by the engine's stack (~10 800 frames on Node's default; `node --stack-size` raises it) |
 
@@ -171,7 +171,7 @@ unchanged: its calls already happen later, from the loop.
 ## The knobs
 
 - `-Dokay.cont.room=N` — the levels the caller's stack is asked to hold
-  before the switch (default: the VM's `ThreadStackSize` over 1.2 KB,
+  before the switch (default: the VM's `ThreadStackSize` over 2.6 KB,
   halved; 16 on Native).
 - `-Dokay.cont.idleWorkers=N` (2), `-Dokay.cont.idleMillis=N` (30 000)
   — parked workers kept for the next switch, and how long.

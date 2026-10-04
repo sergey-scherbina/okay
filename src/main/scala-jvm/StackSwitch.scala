@@ -9,9 +9,12 @@ import java.util.concurrent.atomic.AtomicLong
  */
 private[okay] object StackSwitch:
 
-  /** bytes one level takes in a cold JVM (interpreted frames; measured
-   * ~1.2 KB): what the first room is derived from */
-  val coldBytesPerLevel: Long = 1200L
+  /** bytes one level takes in a cold JVM, what every room is derived from. A strict `k` on `Delimited` is a
+   * nested run, several frames a level: interpreted, 367 levels fit 1 MB, 784 fit 2 MB and 1 617 fit 4 MB,
+   * ~2 520 B a level over ~124 KB fixed (macOS arm64, JDK 26; a default JVM's first, cold run is the same).
+   * 1 200 B, measured on the λ$ runner, let the first room overflow a 1 MB stack and the 1 GB room overflow
+   * at ~426 000 levels (cont-stack-cold-bytes-per-level, TestColdRoom) */
+  val coldBytesPerLevel: Long = 2600L
 
   /** the VM's default thread stack, in bytes, or 1 MB when the VM
    * cannot be asked (not HotSpot, module not readable) */
@@ -25,10 +28,10 @@ private[okay] object StackSwitch:
    * `-Dokay.cont.room=N` overrides */
   val firstRoom: Int = Integer.getInteger("okay.cont.room", math.max(64L, defaultStackBytes / coldBytesPerLevel / 2).toInt)
 
-  /** a platform thread's stack past the switch, and the levels it is
-   * counted for, at a generous 2 KB each */
+  /** a platform thread's stack past the switch, and the levels it is counted for: cold levels in three
+   * quarters of it, the rest for what a thread starts with */
   private val bigStack = 1L << 30
-  private val bigRoom = (bigStack / 2048).toInt
+  private val bigRoom = (bigStack / 4 * 3 / coldBytesPerLevel).toInt
 
   /** switches made, for the tests: a program the stack could hold must
    * make none */
