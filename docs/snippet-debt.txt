@@ -174,7 +174,6 @@ docs/continuations/07-stop-in-the-middle.md	val p = !.run(Shift.resumable[Q, A, 
 docs/continuations/07-stop-in-the-middle.md	val result = !.run(Shift.drive(p)(q => okay.pure(answerFor(q))))
 docs/continuations/07-stop-in-the-middle.md	val x = !Shift.pause(question)
 docs/continuations/08-on-the-way-back.md	!Shift.onReturn(a => transform(a))       // 2. register, from the middle
-docs/continuations/08-on-the-way-back.md	"x"
 docs/continuations/08-on-the-way-back.md	...                                      // 3. untouched code
 docs/continuations/08-on-the-way-back.md	Shift.delimited[Answer, Row]:
 docs/continuations/08-on-the-way-back.md	answer                                   // 4. leaves through the hook

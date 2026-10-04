@@ -2496,6 +2496,43 @@ appends go through the Raft log, and every node applies committed
 entries to its local store in log order. Every suite that binds a port
 is tagged `Live`, so `liveOnly; okay2Persist/test` runs them.
 
+On top of the log sits the durable workflow. `Dialogue` is a paused
+program whose journal is a topic partition. The journal holds the
+answers the program was given, and where it stands is found again by
+running the program over them. Each record carries the name of the
+program that wrote it and the position its writer expected. A record
+from another deploy stops the fold, and of two writers answering one
+dialogue only one is accepted. `Dialogue.workflow` journals the
+runtime's questions as well (`now`, `uuid`, `patch`, timers, signals,
+children), and `Worker` drives many runs of one program, leaving each
+where it stopped:
+
+```scala
+    city <- w.pause("which city?")           // the WORLD answers
+    start <- w.now                           // the RUNTIME answers, once
+    _ <- w.sleep(24 * 3600 * 1000L)          // the run ENDS here and resumes tomorrow
+    ok <- w.awaitSignal("payment")           // somebody sends this, whenever
+```
+
+```scala
+    assertEquals(drive(worker.start("booking-42")), Worker.Progress.Sleeping(1700000000000L + 24 * 3600 * 1000L): Worker.Progress[String])
+```
+
+The program's row stays replayable. The oracle, which actually talks to
+the outside world, runs in any wider row such as `Async`, and receives
+the `Dialogue.Attempt` (id and position) to use as an idempotency key.
+The side tables are each one more compacted topic, and each is
+optional: `Timers`, `Signals`, `Cancels`, `Children`, `Leases`,
+`Statuses`, and the in-memory `Resume` cache of programs in hand.
+Losing any of them costs wake-ups or a view, never correctness.
+`Retire` answers the questions asked before deleting old code: which
+programs still own records, and which runs took which side of a
+`patch`. `Saga` is the older shape, with steps and compensations
+journalled intent-first (Garcia-Molina and Salem, "Sagas", SIGMOD
+1987). The engine follows the durable-execution model of Temporal and
+Azure Durable Functions, where the event history is replayed through
+deterministic code.
+
 The segment log is Kafka's design (Kreps, Narkhede and Rao, "Kafka: a
 Distributed Messaging System for Log Processing", NetDB 2011). The
 crash rule, where a torn tail is truncated, is how write-ahead logs

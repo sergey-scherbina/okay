@@ -8,10 +8,10 @@ package okay2.persist
  *
  * okay2-persist holds the log's primitives — Record, Ack, Policy, Topic,
  * Store, the typed view, Offsets, Snapshots and the memory engine, what
- * okay2-jdbc's Writes, Poll and SqlStore stand on — with Configs, the
- * streaming reads and, on the JVM, the file engine (specs/okay2.md stage
- * 56). The replicated engines, the wire and the durable workflow follow
- * in that stage's later lanes.
+ * okay2-jdbc's Writes, Poll and SqlStore stand on — and the rest of
+ * okay-persist on top (specs/okay2.md stage 56): Configs, the streaming
+ * reads, the file engine, replication, election and Raft, the wire, and
+ * the durable workflow over the log.
  */
 
 /** what the log stores; `key` may be empty (unkeyed append). The offset

@@ -2207,7 +2207,7 @@ needs okay2-codec's CBOR; they are the next lane.
 The three okay-jdbc pieces that stand on okay-persist. okay-persist is
 large (the file and replicated engines, the wire, Raft, the durable
 workflow); what they need is its log, so `okay2-persist` is that log and
-nothing more.
+nothing more. (Stage 56 ports the rest.)
 
 - [x] okay2-persist (JVM, Scala.js, Scala Native): `Record`, `Ack`,
       `Policy`, `Topic` (FNV-1a routing), `Store`, the typed view `Typed`
@@ -2911,10 +2911,50 @@ coordinator comes before the wire.
       TestRaftStore whole, TestStable's node test by name. okay-persist
       leaves the first three and TestWireNode untagged.
 
-### Lane 4 — the durable workflow over the log
-- [ ] `Dialogue`, `Worker`, `Saga`, `Signals`, `Timers`, `Cancels`,
-      `Children`, `Leases`, `Queues`, `Statuses`, `Retire`, `Resume`
-      over okay2-workflow's `Wf`
+### Lane 4 — okay2-persist-workflow: the durable workflow over the log
+- [x] `Dialogue` (shared): a paused program whose journal is a topic —
+      the `program`/`expect` envelope (a foreign deploy stops the fold, a
+      lost race is rejected), advance-then-journal (a refused answer is
+      not committed), the warm `step` and the cold `answer`, chapters,
+      `continueAs`, `diagnosis` naming the reader's own line, `runUntil`/
+      `runUntilIn` with the activity row `G <: F`, and `workflow` over
+      `Wf.replay` (TestDialogue, TestDialogueHardening, TestContinueAs,
+      TestDiagnosis, TestBookCheckpoints, TestWorkflow)
+- [x] a `Wf.Proc` term through the same engine, its journal equal to the
+      monadic one's, and the exhaustive crash at every leaf
+      (TestWorkflowProc, TestProcCut)
+- [x] `Retire`: census, states and the patch-branch census (TestRetire)
+- [x] `Timers`, `Signals`, `Cancels`, `Children`, `Leases`, `Statuses`,
+      `Queues`, `Resume` (shared; TestTimers, TestQueues)
+- [x] `Worker` (shared; driven on the JVM with an `Async` activity row):
+      sleeps, signals, children, cancellation, continuations, leases, the
+      status index with its three verdicts, isolation in `tick`,
+      `Incompatible` for a program that cannot read its own history,
+      retries with one `Attempt` per question, the warm `Resume` cache
+      (TestWorker, TestSignals, TestStatuses, TestStatusVerdicts,
+      TestCancel, TestChildren, TestLease, TestResume, TestAttemptKey,
+      TestTickIsolation, TestIncompatible, TestContinueAsWorker,
+      TestWorkflowGuide)
+- [x] `Saga`: intent-first steps with compensations, recovery by policy
+      (TestSaga)
+- [x] JVM, Scala.js and Scala Native; the worker and saga suites run on
+      the JVM, because driving an `Async` activity row to a value needs
+      `CanBlock`, as okay-persist keeps them
+
+### What differs from Scala 3 (lane 4)
+- The oracle is a plain `(Q, Dialogue.Attempt) => A ! G`, where Scala 3
+  hands the `Attempt` over as context (`Q => Attempt ?=> A ! G`).
+- The driver's row is any `G <: F`: rows are contravariant in okay2, so
+  `Row.Sub[F, G]` and `up[G]` are the bound and free widening.
+- Bodies are functions of their evidence (`Wf.Asks[Q, A, R, F] =>
+  R ! (Shift[Any] + F)`), written as for-comprehensions; Scala 3's are
+  context functions in `direct` style.
+- `Saga`'s fold holds its state as an `Option` instead of
+  `null.asInstanceOf[S]`.
+- `TestDocExamplesDurableProgram` pins a Scala 3 page and is not ported.
+- `Wf.Ans[A]` is an `Either`, which okay2-codec does not derive:
+  `Dialogue.answerSchema[A]` is its schema, the same `Left`/`Right` sum
+  with a `value` field each that Scala 3's derivation makes.
 
 ### What differs from Scala 3 (lane 3)
 - `Wire` cannot `export` the shared protocol, so it carries aliases

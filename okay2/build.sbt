@@ -369,12 +369,14 @@ lazy val okay2Pg = crossProject(JVMPlatform, JSPlatform)
  * them in scala-jvm; `Replicated`, `Election` and the `Raft` core
  * shared (okay2-persist-raft); the wire's shared client and, on the
  * JVM, its server, `RemoteStore`, `RaftWire` and `RaftStore`
- * (okay2-persist-wire) */
+ * (okay2-persist-wire); and the durable workflow over the log —
+ * `Dialogue`, `Worker`, `Saga` and their side tables (okay2-persist-workflow) */
 lazy val okay2Persist = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay2-persist"))
-  // okay2-platform for the wire's `Net` seam and its threads
-  .dependsOn(okay2Codec, okay2Stream, okay2Platform)
+  // okay2-platform for the wire's `Net` seam and its threads, okay2-workflow
+  // for the durable workflow over the log (`Wf`)
+  .dependsOn(okay2Codec, okay2Stream, okay2Platform, okay2Workflow)
   .settings(name := "okay2-persist", common)
   .jvmSettings(jvmOnlyTests, platformSources("scala-jvm"))
   .jsSettings(jsTests, platformTests("scala-js"))
