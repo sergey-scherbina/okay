@@ -398,12 +398,10 @@ object HandleFrames:
         case Free.Bind(i @ Free.Inject(e), k) =>
           val h = find(e, lo)
           if h < n then
-            stack(h).step(s(h), e) match
-              // the run under `h` stops: the handlers inside it are dropped, `h` answers, the outside walks on
-              case Handler.Halt(s2) => loop(h + 1, s, stack(h).halted[Any, Erased](s2))
-              case (s2, v) =>
-                s(h) = s2
-                loop(lo, s, feed(k, v))
+            val v = stack(h).stepAt(s, h, e)
+            // the run under `h` stops: the handlers inside it are dropped, `h` answers, the outside walks on
+            if v.asInstanceOf[AnyRef] eq Handler.Halted then loop(h + 1, s, stack(h).halted[Any, Erased](s(h)))
+            else loop(lo, s, feed(k, v))
           else
             // the rest of the row, once: every resumption of it gets the states as they were here (a multi-shot
             // handler outside resumes it more than once)

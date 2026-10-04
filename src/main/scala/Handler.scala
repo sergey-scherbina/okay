@@ -32,12 +32,23 @@ object Handler:
     def step(s: S, op: Any): (S, Any) | Halt[S]
     /** the answer of a program that ended with `a` in state `s` */
     def ret[A, F[+_]](s: S, a: A): O[A] ! F
+    /** `step` for a walk over a stack of handlers: the next state written to `s(i)`, the answer returned, or
+     * `Halted` with the halting state in `s(i)`. A handler that defines it itself, its step inline here, makes
+     * the walk allocate no pair (the walk's call is megamorphic; the pair is made and taken apart in here) */
+    def stepAt(s: Array[Any], i: Int, op: Any): Any =
+      step(s(i).asInstanceOf[S], op) match
+        case Halt(h) => s(i) = h; Halted
+        case done: (S, Any) @unchecked => s(i) = done._1; done._2
+
     /** the answer of a run a step halted; only a handler whose step can halt is ever asked */
     def halted[A, F[+_]](s: S): O[A] ! F =
       throw IllegalStateException(s"$this never halts, yet a step of it did")
 
   /** a step that stops the run (`Stepped.step`) */
   final case class Halt[S](s: S)
+
+  /** what `Stepped.stepAt` answers for a step that halted */
+  object Halted
 
   /** the evidence of nothing: always there */
   final class Nothing[F[+_]] private[Handler] ()
@@ -89,6 +100,7 @@ object Handler:
     def takes: TypeableK[F] = t
     def init: Unit = ()
     def step(s: Unit, op: Any): (Unit, Any) | Halt[Unit] = ((), f(op.asInstanceOf[F[Any]]))
+    override def stepAt(st: Array[Any], i: Int, op: Any): Any = f(op.asInstanceOf[F[Any]])
     def ret[A, G[+_]](s: Unit, a: A): A ! G = pure(a)
 
   /** 1 · the same from an `Answers[F]` (its own name: an overload would cost the lambda form its expected type) */
@@ -121,6 +133,11 @@ object Handler:
       def takes: TypeableK[F] = t
       def init: S = s0
       def step(s: S, op: Any): (S, Any) | Halt[S] = f(s, op.asInstanceOf[F[Any]])
+      // the clause inline here as well: the walk over a stack gets the answer and no pair
+      override def stepAt(st: Array[Any], i: Int, op: Any): Any =
+        val (s2, v) = f(st(i).asInstanceOf[S], op.asInstanceOf[F[Any]])
+        st(i) = s2
+        v
       def ret[A, G[+_]](s: S, a: A): (S, A) ! G = pure((s, a))
       def run[A, G[+_]](p: A ! F + G)(using A <:< Any, Distinct[F + G], Nothing[G]): (S, A) ! G =
         // one step, both faces (handler-one-step): the fold is built from it at this site

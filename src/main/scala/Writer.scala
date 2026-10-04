@@ -158,6 +158,9 @@ object Writer {
       def init: List[W] = Nil
       def step(s: List[W], op: Any): (List[W], Any) | Handler.Halt[List[W]] =
         (told[W](op) :: s, ())
+      override def stepAt(st: Array[Any], i: Int, op: Any): Any =
+        st(i) = told[W](op) :: st(i).asInstanceOf[List[W]]
+        ()
       def ret[A, F[+_]](s: List[W], a: A): (Seq[W], A) ! F = pure((s.reverse, a))
 
   def run[W, A, F[+_]](a: A ! Writer % W + F)(using Distinct[Writer % W + F])
