@@ -55,19 +55,19 @@ stack safety and the core effects behave identically.
 
 ## Behavior
 
-- [ ] a Java effect (sealed interface of records) performed and handled
+- [x] a Java effect (sealed interface of records) performed and handled
       by `answer`; by `into`; by `state`; by `control`
-- [ ] control resumes TWICE (all answers of a `Flip`), and NEVER (an
+- [x] control resumes TWICE (all answers of a `Flip`), and NEVER (an
       abort that answers the return clause's type)
-- [ ] an operation no handler takes: `run()` throws
+- [x] an operation no handler takes: `run()` throws
       `IllegalStateException` naming its class — not the operation
       returned as a value (the core's `Answers[Pure]` would do that)
-- [ ] two Java effects in one program, handled in either order
-- [ ] core effects from Java: Reader, State, Throws (`recover`), Async
+- [x] two Java effects in one program, handled in either order
+- [x] core effects from Java: Reader, State, Throws (`recover`), Async
       (`runAsync`, `sleep`)
-- [ ] a Java effect and a core one in one program
-- [ ] stack safety: a Java loop of 1 000 000 `defer`-ed steps over State
-- [ ] Scala ↔ Java: a Scala `A ! F` handled by a Java handler, and a Java
+- [x] a Java effect and a core one in one program
+- [x] stack safety: a Java loop of 1 000 000 `defer`-ed steps over State
+- [x] Scala ↔ Java: a Scala `A ! F` handled by a Java handler, and a Java
       `Eff` run by Scala handlers via `toScala[F]`; a stranger refused
 
 ## Decisions
@@ -85,3 +85,19 @@ stack safety and the core effects behave identically.
   abstract over: `Handler` keeps `A`, `StateHandler<S>` makes
   `Stated<S, A>`, `Control<A, B>` fixes both at construction (its return
   clause names them).
+
+## Results
+
+- 12 tests in `TestJavaEffects`, every program written in
+  `JavaEffects.java` (Java 17 source: records, sealed interfaces,
+  `instanceof` patterns). All Java sources compiled on the first javac run;
+  the only fixes were on the Scala side of the test.
+- Mutant: `run()` on the core's `Answers[Pure]` instead of the refusing
+  one — the refusal test fails with a `ClassCastException` where the
+  `IllegalStateException` naming `Counter$Next` belongs.
+- Not done, on purpose: no Java-side `Choose`/`Writer`/concurrency
+  (`par`, `race`) — a Java effect plus `Control` already expresses them,
+  and none was asked for. The control form allocates a capture per
+  operation even when the clause resumes once in tail position (the core
+  `Handler.control` elides that); a tail-resumptive Java effect should use
+  `answer`/`state`/`into`, which are the core's fast loops.

@@ -1,18 +1,75 @@
 # okay-java
 
 Interop with the JDK itself: `java.util.stream` and
-`java.util.function` — no dependency to add, it is the platform.
+`java.util.function` — no dependency to add, it is the platform — and
+okay's programs, effects and handlers written IN Java (`Eff`).
 
 Loads on JDK 17+; `Gather` and `Windowed.gatherer` need JDK 24+ at
 RUN time (JEP 485) and are linked lazily, so nothing else here does.
 
 | | |
 |---|---|
+| `Eff` | okay programs, effects and handlers FROM JAVA (specs/java-effects.md): `Eff<A>` a program, `Op<R>` a Java effect's operation, handlers in the core's four forms (`Handler.answer`/`into`, `StateHandler.of`, `Control.of` with a multi-shot `resume`), the core Reader/State/Throws/Async, and `Eff.from`/`toScala` across the seam |
 | `Gather` | an okay `Stage` IS a `java.util.stream.Gatherer` (JDK 24): `Gather.gatherer(stage)` runs a stage in `stream.gather(…)` — a stage that answers short-circuits even an infinite stream — and `Gather.stage(g)` runs any JDK gatherer in an okay pipeline |
 | `Collect` | an okay `Aggregator` IS a `java.util.stream.Collector` — the same fold vocabulary both ways, so a JDK stream can finish in okay's aggregators and vice versa |
 | `Parallel` | the `Bulk[D[_]]` seam (specs/bulk.md) on a machine's cores: a `java.util.List` is the collection, every step a parallel stream, the aggregation the `Collect` bridge — a platform-free ETL runs here as it runs on Spark |
 | `Streams` | `Chunks` <-> `java.util.stream` both ways; the spliterator splits per CHUNK, so the chunk size IS the parallel split size |
 | `Windowed` | an EVENT-TIME WINDOW as a `Collector`, and since java-gatherers as a `Gatherer` that pushes each pane downstream the moment the watermark closes it: an `okay.Windows` inside the accumulator, each pane folded into a downstream aggregator as the watermark closes it and evicted — so a JDK stream can window without keeping the whole history |
+
+## `Eff`: effects and handlers in Java
+
+An effect is a sealed interface of records, each naming the type it
+answers; a program is `Eff<A>`; a handler names the effect's class:
+
+```java
+sealed interface Counter<R> extends Op<R> {
+    record Next() implements Counter<Integer> {}
+}
+record Flip() implements Op<Boolean> {}
+
+Eff<Integer> two = Eff.perform(new Counter.Next())
+    .flatMap(a -> Eff.perform(new Counter.Next()).map(b -> a + b));
+
+two.handle(Handler.answer(Counter.class, op -> 21)).run();          // 42
+two.handle(StateHandler.of(Counter.class, 10,
+        (n, op) -> Stated.of(n + 1, n))).run();                     // Stated(12, 21)
+two.handle(Handler.into(Counter.class, op -> Eff.<Integer>modify(n -> n + 1)))
+   .handle(StateHandler.state(0)).run();                            // Stated(2, 3)
+
+// the continuation in hand: resumed twice, every answer of two flips
+Eff<Integer> flips = Eff.perform(new Flip())
+    .flatMap(a -> Eff.perform(new Flip()).map(b -> (a ? 1 : 0) + (b ? 2 : 0)));
+Control<Integer, List<Integer>> all = Control.of(Flip.class,
+    (Integer a) -> Eff.pure(List.of(a)),
+    (op, k) -> k.resume(true).flatMap(xs -> k.resume(false).map(ys -> concat(xs, ys))));
+flips.handle(all).run();                                           // [3, 1, 2, 0]
+```
+
+These are the core's four handler forms (specs/handler-forms.md), and
+underneath they ARE the core's — `Handler.answerOf`, `stateOf`,
+`intoOf`, `Effects.handle` — told which operations are theirs by the
+class a Java caller names, as a derived `TypeableK` tells them in Scala.
+The core effects are there too: `Eff.ask()` with `Handler.reader(env)`,
+`Eff.get()`/`put`/`modify` with `StateHandler.state(s0)`, `Eff.raise(e)`
+with `p.recover(e -> …)`, `Eff.async(…)`/`sleep(ms)` with `runAsync()`.
+A recursive Java program is stack-safe through `flatMap`, and a bare tail
+call through `Eff.defer(() -> loop(n - 1))` (a million deep in the test).
+
+What Java cannot have is the STATIC row. okay's row is a union of type
+constructors; okay-scala2 replaced it with a phantom intersection,
+`Eff[State[Int] with R, A]`, but Java allows an intersection only as a
+bound, never as a type argument. So `Eff<A>` records no row, and `run()`
+refuses an operation nothing handled BY NAME — `IllegalStateException:
+okay.java: no handler took …Counter$Next` — where the core's `Answers[Pure]`
+would have handed the operation back as the answer and failed later as a
+`ClassCastException` (the lane's mutant check). For the same reason a
+clause answers `Object`: a Java lambda cannot be polymorphic in the
+operation's answer type, so a wrong answer surfaces where the performing
+code uses it, as in any generic Java code. From Scala, `Eff.from(p)` takes
+any `A ! F` into Java, and `eff.toScala[F]` brings a Java program back
+under a `Member[F]` that refuses a stranger by name as it is performed.
+`okay-java/src/test/java/okay/java/examples/JavaEffects.java` is every
+example above, compiled by javac and asserted by `TestJavaEffects`.
 
 ## `Windowed`: what it fixes, and where it stops
 

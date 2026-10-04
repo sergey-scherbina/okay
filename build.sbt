@@ -945,7 +945,7 @@ lazy val okayKyo = (project in file("okay-kyo"))
  * java.util.function. No dependency to add — it is the platform.
  */
 lazy val okayJava = (project in file("okay-java"))
-  .dependsOn(okay.jvm, okayStream.jvm, compare % "test->compile")
+  .dependsOn(okay.jvm, okayStream.jvm, compare % "test->compile", okayTest.jvm % "test->compile")
   .settings(
     name := "okay-java",
     // `Gather` names java.util.stream.Gatherer (JDK 24, JEP 485): no
