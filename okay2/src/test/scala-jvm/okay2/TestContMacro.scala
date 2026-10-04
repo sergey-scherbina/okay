@@ -42,4 +42,19 @@ class TestContMacro extends munit.FunSuite {
     assertEquals(lit, 7)
     assertEquals(s2, 0L)
   }
+
+  // ---- Layer 1 B (cont-stack-okay2-macro, the Scala 3 core's cont-stack-layer1-b): a body that USES the answer
+  // of `k` is CPS-transformed onto an explicit stack of pending parts, so it nests no frame either
+
+  test("1M answer-using shifts k => k(x + 1) + 1 on a 128 KB stack: the answer and ZERO switches") {
+    val (a, s) = switchesDuring(SmallStack.run(128)(Cont.reset(row(n)(x => Cont.shift[Int, Int, Int](k => k(x + 1) + 1)))))
+    assertEquals(a, 2 * n)
+    assertEquals(s, 0L)
+  }
+
+  test("1M answer-using shifts through a val and a block, on 128 KB: ZERO switches") {
+    val (a, s) = switchesDuring(SmallStack.run(128)(Cont.reset(row(n)(x => Cont.shift[Int, Int, Int] { k => val y = k(x + 1); y + 1 }))))
+    assertEquals(a, 2 * n)
+    assertEquals(s, 0L)
+  }
 }

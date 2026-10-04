@@ -71,6 +71,10 @@ sealed abstract class ContModule {
   /** the same with no thunk, for a literal */
   def tailPure[A, S, R](v: A)(implicit ev: S <:< R): Rep[A, S, R]
 
+  /** an answer-using body after the macro's selective CPS transform (Layer 1 B): walked by the runner in its own
+   * loop. Public for the macro's expansion; not an API */
+  def cps[A, S, R](c: ContCps.Cps[A, S, R]): Rep[A, S, R]
+
   /** a bind whose LEFT side is deferred into the runner's own loop:
    * mutual tail recursion without a JVM frame per call */
   def defer[A, B, S, T, R](thunk: () => Rep[A, T, R])(f: A => Rep[B, S, T]): Rep[B, S, R]
@@ -132,6 +136,9 @@ private[okay2] object ContImpl extends ContModule {
 
   def tailPure[A, S, R](v: A)(implicit @unused ev: S <:< R): Rep[A, S, R] = Return(v)
 
+  // a `Cps` IS an `(A => S) => R`, so it is a leaf as `shiftLeaf` stores one; the runner tells it by its class
+  def cps[A, S, R](c: ContCps.Cps[A, S, R]): Rep[A, S, R] = shiftLeaf[A, S, R](c)
+
   def defer[A, B, S, T, R](thunk: () => Rep[A, T, R])(f: A => Rep[B, S, T]): Rep[B, S, R] = Free.defer(thunk)(f)
 
   def delay[A, S, R](thunk: () => Rep[A, S, R]): Rep[A, S, R] = Free.delay(thunk)
@@ -169,7 +176,8 @@ private[okay2] object ContImpl extends ContModule {
   def bind[A, B, S, S2, R](c: Rep[A, S, R])(f: A => Rep[B, S2, S]): Rep[B, S2, R] = c match {
     case Inject(s) => s match {
       // already absorbed one — see `Leaf` for why never twice
-      case _: Leaf[_, _, _] => Bind(c, f)
+      // a walked body is never absorbed: the runner walks it in-loop, a leaf would apply it as a function
+      case _: Leaf[_, _, _] | _: ContCps.Cps[_, _, _] => Bind(c, f)
       case _ => Inject[Shift, B](Absorbed[A, B, S2, S, R](shiftOp[A](s), f))
     }
     // Pure receivers build a node too: fusing `pure(a).flatMap(f)` at
@@ -180,13 +188,36 @@ private[okay2] object ContImpl extends ContModule {
 
   def mapped[A, B, S, R](c: Rep[A, S, R])(f: A => B): Rep[B, S, R] = c match {
     case Inject(s) => s match {
-      case _: Leaf[_, _, _] => Bind(c, (a: A) => Return[Shift, B](f(a)))
+      case _: Leaf[_, _, _] | _: ContCps.Cps[_, _, _] => Bind(c, (a: A) => Return[Shift, B](f(a)))
       case _ => Inject[Shift, B](Mapped[A, B, S, R](shiftOp[A](s), f))
     }
     case _ => Bind(c, (a: A) => Return[Shift, B](f(a)))
   }
 
-  def run[A, S, R](c: Rep[A, S, R])(k: A => S): R = step(c)(k)(StackSwitch.firstRoom)
+  def run[A, S, R](c: Rep[A, S, R])(k: A => S): R = step(c)(k)(StackSwitch.firstRoom)(NoPending)(null)
+
+  /**
+   * The explicit stack of pending body parts (Layer 1 B, the Scala 3 core's cont-stack-layer1-b): what is left to
+   * do with the answer of a call of `k`, pushed when the call is made, popped and fed when the program's answer
+   * arrives. `NoPending` is the empty stack; a run with no walked body never allocates one.
+   */
+  private final class Pending[S, R](val rest: S => ContCps.Body[R], val next: Pending[_, _]) {
+    /** `Shift.at`'s claim once more: the answer the runner reached is the `S` the facade typed this part for */
+    def deliver(s: Any): ContCps.Body[R] = rest(pinned[Any, S](s))
+  }
+  private val NoPending: Pending[_, _] = new Pending[Any, Nothing](_ => throw new IllegalStateException("empty"), null)
+
+  /** the program and continuation a walk starts with — never looked at: a walked body answers through its pending
+   * parts, and a program it continues carries its own */
+  private val noProgram: Rep[Any, Any, Any] = Return(())
+  private val noK: Any => Any = _ => throw new IllegalStateException("a walked body answers through its pending parts, never through k")
+
+  /** the runner's loop from a body: what a `Cps` does when applied as the function it means */
+  private[okay2] def walk[R](b: ContCps.Body[R]): R = step[Any, Any, R](noProgram)(noK)(StackSwitch.firstRoom)(NoPending)(b)
+
+  /** a `Call` through the runner's own continuation: the rest of the program in-loop, at THIS stack's room. The
+   * claim `callK` makes: a `Reentry[X, ..., T]` IS an `X => T`, and the call's argument is that `X` */
+  private def reentryOf(k: Any): Reentry[Any, Any, Any, Any] = k.asInstanceOf[Reentry[Any, Any, Any, Any]]
 
   /**
    * What a run's stack looked like at its last GRANT (specs/cont-stack.md
@@ -226,18 +257,18 @@ private[okay2] object ContImpl extends ContModule {
    * (`StackSwitch.more`), and only a stack with nothing left switches.
    * The rare road is `exhausted`, out of `enter` so `enter` inlines.
    */
-  private final class Reentry[X, B, S, T](f: X => Rep[B, S, T], var k: B => S, val room: Int) extends (X => T) {
+  private final class Reentry[X, B, S, T](val f: X => Rep[B, S, T], var k: B => S, val room: Int) extends (X => T) {
     def apply(x: X): T = enter(x, room)
 
     def enter(x: X, here: Int): T = {
       val r = if (here < room) here else room
-      if (r > 0) step(f(x))(k)(r) else exhausted(x)
+      if (r > 0) step(f(x))(k)(r)(NoPending)(null) else exhausted(x)
     }
 
     private def exhausted(x: X): T = {
       val more = StackSwitch.more(gaugeOf(k))
-      if (more > 0) step(f(x))(k)(more)
-      else StackSwitch.fresh(fresh => step(f(x))(k)(fresh))
+      if (more > 0) step(f(x))(k)(more)(NoPending)(null)
+      else StackSwitch.fresh(fresh => step(f(x))(k)(fresh)(NoPending)(null))
     }
 
     /** this chain root's gauge, attached on the first ask */
@@ -294,13 +325,69 @@ private[okay2] object ContImpl extends ContModule {
     case _ => at[X, S, R](s)(k)
   }
 
-  @tailrec private def step[A, S, R](c: Rep[A, S, R])(k: A => S)(room: Int): R = c match {
-    case Return(a) => pinned[S, R](callK(k, a, room))
-    case Inject(s) => leafAt[A, S, R](shiftOp[A](s), k, room)
-    case Bind(Inject(s), f) => at[Any, R, R](shiftOp[Any](s))(new Reentry[Any, A, S, R](f, k, room - 1))
-    case Bind(Bind(a, f), g) => step(Bind(a, (x: Any) => bind(f(x))(g)))(k)(room)
-    case Bind(Return(a), f) => step(f(a))(k)(room)
-    case Delay(t) => step(t())(k)(room)
-    case Bind(Delay(t), g) => step(Bind(t(), g))(k)(room)
+  /**
+   * WITH LAYER 1 B'S PENDING STACK: every exit that returned an answer — the `Return` case's `callK`, an opaque
+   * leaf, an opaque body under a `Bind` — now hands it to the part on top when one is pending, and walks on. The
+   * body being walked is the loop's last parameter (`null` when none), so the loop stays one `@tailrec` method: a
+   * `Call` continues the program through the `Reentry`'s fields in-loop. A nested runner (`Reentry.enter`, an
+   * opaque body's own call of `k`) starts with nothing pending and returns as before. Scala 2 has no `inline`, so
+   * the hand-off is written out at each exit.
+   */
+  @tailrec private def step[A, S, R](c: Rep[A, S, R])(k: A => S)(room: Int)(pending: Pending[_, _])(b: ContCps.Body[_]): R =
+    if (b ne null) b match {
+      case ContCps.Done(r) =>
+        if (pending eq NoPending) pinned[Any, R](r) else step[A, S, R](c)(k)(room)(pending.next)(pending.deliver(r))
+      case call: ContCps.Call[_, _, _] => call.k match {
+        case _: Reentry[_, _, _, _] =>
+          val re = reentryOf(call.k)
+          step[Any, Any, R](re.f(call.a))(re.k)(room)(new Pending(call.rest, pending))(null)
+        case kk => step[A, S, R](c)(k)(room)(pending)(call.rest(kk(call.a)))
+      }
+    }
+    else c match {
+      case Return(a) =>
+        val r = pinned[S, R](callK(k, a, room))
+        if (pending eq NoPending) r else step[A, S, R](c)(k)(room)(pending.next)(pending.deliver(r))
+      case Inject(s) => s match {
+        case cps: ContCps.Cps[_, _, _] => step[A, S, R](c)(k)(room)(pending)(cps.walkWith(k))
+        case _ =>
+          val r = leafAt[A, S, R](shiftOp[A](s), k, room)
+          if (pending eq NoPending) r else step[A, S, R](c)(k)(room)(pending.next)(pending.deliver(r))
+      }
+      case Bind(Inject(s), f) => s match {
+        case cps: ContCps.Cps[_, _, _] => step[A, S, R](c)(k)(room)(pending)(cps.walkWith(new Reentry[Any, A, S, R](f, k, room - 1)))
+        case _ =>
+          val r = at[Any, R, R](shiftOp[Any](s))(new Reentry[Any, A, S, R](f, k, room - 1))
+          if (pending eq NoPending) r else step[A, S, R](c)(k)(room)(pending.next)(pending.deliver(r))
+      }
+      case Bind(Bind(a, f), g) => step(Bind(a, (x: Any) => bind(f(x))(g)))(k)(room)(pending)(null)
+      case Bind(Return(a), f) => step(f(a))(k)(room)(pending)(null)
+      case Delay(t) => step(t())(k)(room)(pending)(null)
+      case Bind(Delay(t), g) => step(Bind(t(), g))(k)(room)(pending)(null)
+    }
+}
+
+/**
+ * LAYER 1 B's DATA (cont-stack-okay2-macro, the Scala 3 core's cont-stack-layer1-b): a body that USES the answer of
+ * `k` — `k(1) + k(10)`, `a :: k(x)`, a `val` bound to `k(x)` — after `ContMacro`'s selective CPS transform (Rompf,
+ * Maier & Odersky, ICFP 2009). Every `k(e)` becomes a `Call` naming what is left, the body is then DATA the runner
+ * walks in its own loop with the pending parts on an explicit stack, and a call of `k` continues the program
+ * in-loop: no body frame, no room counted, no switch, `k` multi-shot as before. Public because the macro's
+ * expansion at the user's call site builds it (an anonymous subclass per shift); not an API.
+ */
+object ContCps {
+  sealed abstract class Body[R]
+  /** the body's answer */
+  final case class Done[R](r: R) extends Body[R]
+  /** `k(a)`, then `rest` of the answer */
+  final case class Call[A, S, R](k: A => S, a: A, rest: S => Body[R]) extends Body[R]
+
+  /** a CPS-transformed body, as the `(A => S) => R` it still means */
+  abstract class Cps[A, S, R] extends ((A => S) => R) {
+    def body(k: A => S): Body[R]
+    final def apply(k: A => S): R = ContImpl.walk(body(k))
+    /** `Shift.at`'s door out, for the runner: the continuation it built for this leaf is the one the facade typed
+     * the leaf with */
+    private[okay2] def walkWith[X](k: X => Any): Body[_] = body(k.asInstanceOf[A => S])
   }
 }

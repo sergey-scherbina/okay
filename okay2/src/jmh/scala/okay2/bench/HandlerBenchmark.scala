@@ -99,6 +99,13 @@ class HandlerBenchmark {
         m.flatMap[State[Long], Long](_ => State.get[Long].flatMap(s => State.set[Long](s + 1)))
       })
 
+  /** a plain answer-using body, `k(x + 1) + 1`, M levels (the Scala 3 core's `contAnswer`): since
+   * cont-stack-okay2-macro's Layer 1 B walked by the runner (a `Call` and a pending part per level) instead of a
+   * frame per level */
+  @Benchmark
+  def contAnswer(): Int =
+    Cont.reset((1 to M).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => Cont.shift[Int, Int, Int](k => k(x + 1) + 1))))
+
   /** the same M-step workload as `stateEffect` on PState, the typestate road: every operation a shift whose
    * answer is a function (the Scala 3 core's `statePara`) */
   @Benchmark
