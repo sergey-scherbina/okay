@@ -1,5 +1,5 @@
 - delimited-next-per-step — refuted 2026-10-04 (history.d
-  delimited-next-slot, probe 3ec96a2c1 discarded). The `Next` that every
+  delimited-next-slot; the probe was discarded, never on master). The `Next` that every
   `Step` answers was replaced by ONE mutable slot per run, overwritten by
   each step: no allocation, and `step` stays out of `go`. Slower: statePara
   1.05x, fib100 1.01x, contAnswer 1.08x, delimGenerator 0.98x. Bytes did
