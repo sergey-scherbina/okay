@@ -255,3 +255,42 @@ Tests: TestHandleFramesCatch, TestHandleFramesResource, TestHandleFramesLogic
 StackOverflowError, and the old Throws fold silently answered a wrong value
 because it caught its own overflow).
 
+
+## A dropped continuation releases its scopes (resource-abort-releases, 2026-10-04)
+
+THE DEFECT (pinned by handle-frames-catch): a capture whose body drops `k`
+leaves every `Resource` scope inside `k` open — the scope's frame is in the
+dropped piece, and nothing tells it. The old fold did not release either (it
+threw `ClassCastException` on the same program).
+
+THE FIX: drop `k` by THROWING into it (OCaml 5's `discontinue`; Leijen,
+"Algebraic Effect Handlers with Resources and Deep Finalization", MSR-TR-2018-10,
+the `finally` clauses of a resumption that will not be resumed). The throw is
+`Shift.Discontinued`, delivered where `k` was captured (`Resumption.raise`):
+- a FINALIZING catch frame (`Catching.finalizes`: `Resource.run`'s scope)
+  answers it as any throw — releases what it holds, inner first, and throws
+  it on;
+- an ordinary catch frame (`try`, `Throws`) DECLINES it: it is no failure of
+  the code there, and answering it would run on in a continuation that was
+  dropped;
+- a frame under the dropped piece takes it back (`HandleFrames.dropping`); a
+  release that failed is attached to it, suppressed, and thrown from there as
+  the failure it is.
+
+WHEN:
+- `abort` (every form: one `Abort` operation) knows it drops `k` — the machine
+  discontinues the piece it cut, then answers the value. Only when the piece
+  holds a finalizing frame: an abort through no scope costs one walk of the
+  piece's boundaries, already in hand.
+- a `shift` body that never calls `k` cannot be told from one that stores `k`
+  to resume later (a generator, a dialogue driven later). That one says so
+  itself: `k.discontinue`. A `k` neither resumed nor discontinued keeps its
+  scopes open, as an OCaml continuation does — the contract, written down.
+
+Behaviour:
+- [ ] an abort through a scope releases it, inner scopes first, and answers the value
+- [ ] an abort through a `try` (`Throws`) and a scope: the try does not answer, the scope releases
+- [ ] a release that fails during an abort: the abort fails with it
+- [ ] an abort through no scope: unchanged (the value, nothing run)
+- [ ] `k.discontinue` in a body that drops `k`: the scope releases; the body's answer stands
+- [ ] a stored `k` resumed later still runs (no release at the capture)
