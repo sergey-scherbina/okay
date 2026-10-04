@@ -18,3 +18,5 @@
       Dark Worlds on Kaggle's skies okay-bayes-darkworlds; 6 streams and
       Bulk (online filter as a Stage, observeBulk) okay-bayes-streams.
       observeBulk on Spark okay-bayes-spark (Flink untested).
+      Stages 7 (kernels, resample-move) and 8 (Declared) landed. What is
+      left is filed in backlog.d/okay-bayes/ (operator, 2026-10-04).
