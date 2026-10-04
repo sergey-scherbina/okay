@@ -38,8 +38,11 @@ private[okay] object StackSwitch:
   /** levels the caller's stack is asked to hold before the first look; `-Dokay.cont.room=N` overrides.
    * Where `StackRoom` reads (JDK 22+ with native access), a small first room and then `more`; where it
    * cannot, a guess from the VM's default thread size, halved for the caller's own frames */
+  /** whether the end of a room reads the stack: where `StackRoom` can, unless `-Dokay.cont.read=false` */
+  val reads: Boolean = StackRoom.readable && System.getProperty("okay.cont.read") != "false"
+
   val firstRoom: Int = Integer.getInteger("okay.cont.room",
-    if StackRoom.readable then readFirstRoom else math.max(64L, defaultStackBytes / coldBytesPerLevel / 2).toInt)
+    if reads then readFirstRoom else math.max(64L, defaultStackBytes / coldBytesPerLevel / 2).toInt)
 
   /**
    * THE HOST STACK, KNOWN EXACTLY WHERE IT CAN BE (operator, 2026-10-04; specs/cont-stack.md): at the end of
@@ -49,7 +52,7 @@ private[okay] object StackSwitch:
    * road switches at the end of its room.
    */
   def more(): Int =
-    val sp = StackRoom.sp()
+    val sp = if reads then StackRoom.sp() else -1L
     if sp < 0 then 0
     else
       val floor = StackRoom.floor()
@@ -73,7 +76,7 @@ private[okay] object StackSwitch:
    * was statePara's 4.9x on the count road) */
   def fresh[R](body: Int => R): R =
     switches.incrementAndGet()
-    StackPool.run(bigStack)(() => body(if StackRoom.readable then readFirstRoom else bigRoom))
+    StackPool.run(bigStack)(() => body(if reads then readFirstRoom else bigRoom))
 
   /** levels one stack is given in all, read or counted: past it the rest goes to a fresh stack even where the
    * stack reads room left. A GC scans one thread's stack with one worker, so a million levels on ONE stack
