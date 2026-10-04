@@ -1,0 +1,3 @@
+2026-10-04	54be2a348	quiet	okay2_writerMap	21.80	21.65	1.01	okay2 HandlerBenchmark.writerMap; Writer.mapAt's walk an object per map (Mapping, closures capture this and k) against master's local go closing over the split and f; 242688 vs 250664 B/op (-8 B a tell, the parent's bytes back); round 1, ref first
+2026-10-04	54be2a348	quiet	okay2_writerMap	21.71	21.84	0.99	round 2
+2026-10-04	54be2a348	quiet	okay2_writerMap	21.35	21.96	0.97	round 3
