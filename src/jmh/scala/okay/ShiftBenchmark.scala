@@ -2,6 +2,7 @@ package okay
 
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
+import okay.Row.at
 
 /**
  * specs/shift-effect.md: `Shift % R` in the core against Cont and Shift on the same shapes (the probe's
@@ -46,6 +47,18 @@ class ShiftBenchmark {
   @Benchmark def shift_seqDF(): Int = !.run(reset[Int, P](seqDF(N)))
   @Benchmark def cont_seq(): Int = Cont.reset(contSeq(N))
   @Benchmark def delim_seq(): Int = !.run(Shift.reset[Int, P](p => delimSeq(p)(N)))
+
+  // resource-abort-releases: an abort through a `try` frame (the piece walked for a finalizer, none found) and one
+  // through a `Resource` scope (the piece discontinued, the scope released) — 100 resets each
+  given Failing[Shift % ? + P] = new Failing[Shift % ? + P]:
+    def guard[X](e: (Shift % ? + P)[X], onFailure: () => Unit): (Shift % ? + P)[X] = e
+  def abortTry(p: Prompt[Int]): Int ! Shift % ? + P =
+    summon[CanTry[[X] =>> X ! Shift % ? + P]].tryIn(Shift.abort[Int, Int, P](p)(1))(_ => pure(0))
+  def abortScope(p: Prompt[Int]): Int ! Shift % ? + P =
+    Resource.run[Int, Shift % ? + P](Resource.acquire(1)(_ => ()).at[Resource + Shift % ? + P].flatMap(_ =>
+      Shift.abort[Int, Int, P](p)(1).at[Resource + Shift % ? + P]))
+  @Benchmark def abort_try(): Int = { var s = 0; var i = 0; while i < 100 do { s += !.run(Shift.reset[Int, P](abortTry)); i += 1 }; s }
+  @Benchmark def abort_scope(): Int = { var s = 0; var i = 0; while i < 100 do { s += !.run(Shift.reset[Int, P](abortScope)); i += 1 }; s }
 
   @Benchmark def shift0_twoShot(): Int = { var s = 0; var i = 0; while i < 100 do { s += !.run(two); i += 1 }; s }
   @Benchmark def cont_twoShot(): Int = { var s = 0; var i = 0; while i < 100 do { s += Cont.reset(Cont.shift[Int, Int, Int](k => k(1) + k(10)).map(_ * 2)); i += 1 }; s }
