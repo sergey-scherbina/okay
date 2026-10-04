@@ -264,6 +264,10 @@ object HandleFrames:
   abstract class Run[B, G[+_]] extends Shift.Pending[B, G]:
     def at(depth: Int): B ! G
     final def apply(): B ! G = at(0)
+    /** set when this run IS a stepped handler's over a program (`handled`): the next `handle` builds a stack of
+     * two from it instead of nesting a second run (handler-single-pass) */
+    private[okay] var markedStep: Handler.Stepped[?, Any, ?] | Null = null
+    private[okay] var markedUnder: Any = null
 
   /** a loop's run as a value, its two faces written in place (one object, as `Run` says) */
   @scala.annotation.nowarn("msg=New anonymous class definition will be duplicated")
@@ -299,10 +303,21 @@ object HandleFrames:
    */
   def handled[A, O[_], F[+_]](p: Any, h: Handler.Stepped[?, ?, ?]): O[A] ! F =
     val one = erasedStep(h)
-    val node = p match
-      case Freer.Delay(st: Handled) => st.push(one)
-      case _ => Handled(p.asInstanceOf[Any ! Erased], Array(one))
-    Free.delay(node).asInstanceOf[O[A] ! F]
+    p match
+      // already a stack: one more on it
+      case Freer.Delay(st: Handled) => Free.delay(st.push(one)).asInstanceOf[O[A] ! F]
+      // a stepped handler's own run over a program: the two become a stack
+      case Freer.Delay(r: Run[?, ?]) if r.markedStep != null =>
+        Free.delay(Handled(r.markedUnder.asInstanceOf[Any ! Erased], Array(r.markedStep.nn, one))).asInstanceOf[O[A] ! F]
+      // anything else: the handler's own run, as alone it always was, marked so a next `handle` can stack on it
+      case _ =>
+        val own = runOf(one, p.asInstanceOf[Any ! Erased])
+        own match
+          case Freer.Delay(r: Run[?, ?]) =>
+            r.markedStep = one
+            r.markedUnder = p
+          case _ => ()
+        own.asInstanceOf[O[A] ! F]
 
   /** a stepped handler at the erased state its stack holds it at: the state is the handler's own, passed back to
    * it only (THE CLAIM: `init`'s value is what `step`, `ret` and `halted` are given, and nothing else is) */
@@ -311,8 +326,8 @@ object HandleFrames:
   /**
    * A HANDLED PROGRAM AS A STACK of stepped handlers, innermost first (`stack(0)` was applied first). Its fold is
    * ONE walk: an operation goes to the innermost handler of the stack that takes it, found through a table of
-   * the operation classes seen; the rest of the row leaves once. A stack of one is that handler's own `run`, the
-   * fold it has always had. Its frame is the handlers' own runs nested, so a machine meeting it steps into
+   * the operation classes seen; the rest of the row leaves once. A stack starts at TWO: one handler is its own
+   * `run`, marked (`Run.markedStep`), and the second `handle` turns the pair into a stack. Its frame is the handlers' own runs nested, so a machine meeting it steps into
    * frames as it always has.
    *
    * THE CLAIM this class makes, for the whole stack: `under` is a program of the innermost handler's row, every
@@ -332,8 +347,7 @@ object HandleFrames:
       p
 
     def at(depth: Int): Any ! Erased =
-      if stack.length == 1 then shallow(nested, depth)
-      else Walk(stack, depth).loop(0, Array.tabulate[Any](stack.length)(i => stack(i).init), under)
+      Walk(stack, depth).loop(0, Array.tabulate[Any](stack.length)(i => stack(i).init), under)
 
     def program: Shift.U[Erased, Any] = widened(nested)
 
@@ -354,6 +368,17 @@ object HandleFrames:
      * handler's own test (an instance by name shares its class with another), then the stack in order */
     private def find(op: Any, lo: Int): Int =
       val c = op.getClass
+      // the last class first: a program's operations of one effect come in runs
+      if (c eq lastClass) && lastIndex >= lo && stack(lastIndex).takes.test(op) then return lastIndex
+      val i = lookup(op, c, lo)
+      lastClass = c
+      lastIndex = i
+      i
+
+    private var lastClass: Class[?] | Null = null
+    private var lastIndex = 0
+
+    private def lookup(op: Any, c: Class[?], lo: Int): Int =
       var j = 0
       while j < filled && (classes(j) ne c) do j += 1
       if j < filled then
