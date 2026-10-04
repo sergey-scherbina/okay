@@ -805,9 +805,17 @@ exactly." A count of levels is a guess about frame sizes. This lane showed the g
    make 0 switches under a room of 64 (TestProgramAnswerStackFree), where a run nested per level would
    make over 1 500. `runSeq` and the Scala 2 facade's `Effect` have the same shape. Nothing to change.
 3. Only a body whose pending work lives in its own JVM frame (an opaque body answering a plain value: Zoom,
-   a user's `k(x) + 1` inside a lambda) uses the host stack, and its bound should be READ (the FFM reader,
-   JDK 22+ with native access), with the count as the fallback where nothing can be read. Backlog
-   cont-stack-exact-first.
+   a user's `k(x) + 1` inside a lambda) uses the host stack, and its bound is READ where it can be. DONE
+   (cont-stack-exact-first): where `StackRoom` reads (JDK 22+ with native access), the first room is
+   32 levels. At the end of every room `StackSwitch.more` reads the pointer and the floor (the guard zones
+   excluded) and grants half of what is left over a 64 KB margin, at a cold level's size. A grant under 16
+   levels switches. The count stays where nothing reads (JDK 17–21, no native access, Native), and
+   `-Dokay.cont.read=false` turns reading off. A stack is given `levelsPerStack` levels in all (309 733)
+   whether read or counted: a GC scans one thread's stack with one worker. TestColdRoom has a 256 KB
+   thread that the count overflows and the reader holds, and a 16 MB thread whose 2 000 cold levels need
+   no second thread. Cost, read against counted: 1.04x at 1 000 levels, 1.03x at 100 000, statePara
+   1.00x, but 2.31x at 1 000 000. There G1's workers spend 30% of the CPU stealing (10% counted) with the
+   same 4 switches. Its cause is open: backlog cont-stack-exact-million.
 
 ## Stages — what landed, and the plan after it (operator's ask, 2026-09-25 evening)
 

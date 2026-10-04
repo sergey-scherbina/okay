@@ -1,0 +1,4 @@
+2026-10-04	283774b7a	-	ContDepthBenchmark.strictLeaf depth=1000 us/op exact vs count	25.734	24.660	1.04	read at the end of each room (native access) vs counted; bytes 215184 vs 214288; 2 rounds
+2026-10-04	283774b7a	-	ContDepthBenchmark.strictLeaf depth=100000 us/op exact vs count	2365.4	2286.5	1.03	same; bytes 21647232 vs 21598352
+2026-10-04	283774b7a	-	ContDepthBenchmark.strictLeaf depth=1000000 us/op exact vs count	74805.7	32385.6	2.31	same, 4 switches in both (levelsPerStack); G1 steal_best_of_2 30% of CPU vs 10%: GC work imbalance, cause open (backlog cont-stack-exact-million)
+2026-10-04	283774b7a	-	HandlerBenchmark.statePara us/op exact vs count	42.4	42.6	1.00	same bytes

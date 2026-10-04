@@ -172,7 +172,13 @@ unchanged: its calls already happen later, from the loop.
 
 - `-Dokay.cont.room=N` — the levels the caller's stack is asked to hold
   before the switch (default: the VM's `ThreadStackSize` over 2.6 KB,
-  halved; 16 on Native).
+  halved; 16 on Native; 32 where the stack is read).
+- READ, NOT GUESSED, where it can be: on JDK 22+ with
+  `--enable-native-access=ALL-UNNAMED`, the end of every room reads the
+  stack pointer and the thread's bounds, and grants more of the same
+  stack while it has room. Then a thread of any size is safe, including
+  one made with a small explicit stack, which the count cannot see.
+  `-Dokay.cont.read=false` turns it off.
 - `-Dokay.cont.idleWorkers=N` (2), `-Dokay.cont.idleMillis=N` (30 000)
   — parked workers kept for the next switch, and how long.
 - `-Dokay.cont.spinMicros=N` (50) — how long a caller and a worker spin
