@@ -1,0 +1,4 @@
+2026-10-04	3ec96a2c1	-	HandlerBenchmark.statePara us/op	47.383	45.308	1.05	PROBE next-slot (one mutable Next per run, erased; discarded): 2 rounds mean; bytes 501392 vs 501368
+2026-10-04	3ec96a2c1	-	FibBenchmark.fib100 us/op	5046.7	4982.8	1.01	same probe; bytes 44368 vs 44344
+2026-10-04	3ec96a2c1	-	HandlerBenchmark.contAnswer us/op	32.039	29.781	1.08	same probe; bytes 366176 vs 390152 (-6%)
+2026-10-04	3ec96a2c1	-	DelimBenchmark.delimGenerator us/op	53.965	54.932	0.98	same probe; bytes 478448 vs 526447 (-9%)
