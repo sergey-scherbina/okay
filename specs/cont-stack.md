@@ -799,9 +799,11 @@ exactly." A count of levels is a guess about frame sizes. This lane showed the g
 
 1. The macro reads it: the lazy leaf, on the heap (unchanged; per-platform strict was declined,
    cont-leaf-by-platform).
-2. It answers a PROGRAM: the program leaf (`k(a)` returns a `Delay`, the machine runs the rest), whether or
-   not the macro can read it. Backlog cont-program-leaf-always. This covers every library body whose depth
-   the user controls (`runChoice`, `runSeq`, `runExact`, the Scala 2 facade's `Effect`).
+2. It answers a PROGRAM: no host stack whatever its leaf, ANSWERED (cont-program-leaf-always). A strict
+   `k(x)` runs the rest only to the next capture. That body answers its program unrun, so the call
+   returns, and the trampolined program goes on. `runChoice` and `runExact` over 100 000 choice points
+   make 0 switches under a room of 64 (TestProgramAnswerStackFree), where a run nested per level would
+   make over 1 500. `runSeq` and the Scala 2 facade's `Effect` have the same shape. Nothing to change.
 3. Only a body whose pending work lives in its own JVM frame (an opaque body answering a plain value: Zoom,
    a user's `k(x) + 1` inside a lambda) uses the host stack, and its bound should be READ (the FFM reader,
    JDK 22+ with native access), with the count as the fallback where nothing can be read. Backlog
