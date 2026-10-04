@@ -82,6 +82,32 @@ object HandleFrames:
     val back: A => Shift.U[G, Ans] = a => pure[Shift % ? + G, Ans]((s: S) => widened(ret(s, a)))
     Shift.dollar[A, Ans, G](frame)(back)(framed[A, H, G](x)).flatMap(g => g(s0))
 
+  /**
+   * ONE STEP, BOTH FACES (handler-one-step, PROBE): a TAIL-RESUMPTIVE state handler written once, as its step —
+   * `step(s, op)` answers the next state and the operation's value — with its fold and its frame both BUILT from
+   * it. Inline, with the step inline: at each call site the step expands into the fold's own loop, the shape of
+   * the hand-written folds (`val (s2, v) = f(s, op); loop(s2)(k(v))`). The resuming form `(s, op, resume)` cannot
+   * be the fold's: the `resume` it is handed is a closure, and a loop call inside a closure is no tail call
+   * (`@tailrec` refused it, measured).
+   */
+  @scala.annotation.nowarn("msg=New anonymous class definition will be duplicated")
+  inline def stateRun[F[+_], S, A, R, G[+_]](t: TypeableK[F], inline ret: (S, A) => R ! G)
+                                            (inline step: (S, Any) => (S, Any))(s0: S, x: A ! F + G): R ! G =
+    given TypeableK[F] = t
+    // a call from inside flatMap cannot be a jump; `again` takes it, so the walk stays a checked loop
+    def again(d: Int)(s: S)(y: A ! F + G): R ! G = loop(d)(s)(y)
+    @scala.annotation.tailrec def loop(d: Int)(s: S)(y: A ! F + G): R ! G = (y.resumeRun: @unchecked) match
+      case Free.Return(a) => ret(s, a)
+      // a lone operation is a bind with a pure continuation: one node, and the arm below knows the case
+      case Free.Inject(e) => loop(d)(s)(Free.Inject(e).flatMap(v => Free.Return(v)))
+      case Free.Bind(i @ Free.Inject(e), k) => split[F, G](e)(op => { val (s2, v) = step(s, op); loop(d)(s2)(feed(k, v)) })
+                                                             (_ => forwarded[F, G](i).flatMap(v => again(d)(s)(k(v))))
+      case z => loop(d)(s)(shallow(z, d))
+    run[R, G](d => loop(d)(s0)(x), stateful[F, S, A, R, G](t, ret)((s, op, resume) => { val (s2, v) = step(s, op); resume(s2, v) })(s0, x))
+
+  /** THE CLAIM the fold makes of its step: the value it resumes with is the operation's answer */
+  def feed[X, B](k: X => B, v: Any): B = k(v.asInstanceOf[X])
+
   /** the clause with `resume` made of the frame's continuation: `k(v)` answers `S => program`, applied to `s2` */
   private def clauseAt[S, R, G[+_]](step: (S, Any, (S, Any) => R ! G) => R ! G, s: S, op: Any, k: Any => Any): Shift.U[G, R] =
     widened(step(s, op, (s2, v) => answered[S => Shift.U[G, R], G](k(v)).flatMap(g => g(s2)).asInstanceOf[R ! G]))

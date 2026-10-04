@@ -125,37 +125,9 @@ object Writer {
                                          (inline step: (S, W) => S)
                                          (inline finish: (S, A) => R)
                                          (using TypeableK[Writer % W]): R ! F = {
-    def _loop(d: Int)(s: S)(x: A ! Writer % W + F): R ! F = loop(d)(s)(x)
-
-    // the walk as a frame of the machine, from state `s` (handle-frames-loops)
-    def frame(s: S)(x: A ! Writer % W + F): Shift.U[F, R] =
-      HandleFrames.stateful[Writer % W, S, A, R, F](summon[TypeableK[Writer % W]], (s, a) => pure(finish(s, a)))(
-        (s, op, resume) => resume(step(s, Writer.told[W](op)), ()))(s, x)
-
-    // `split`, not `<|>` (split-without-either): no Either per tell.
-    @tailrec def loop(d: Int)(s: S)(x: A ! Writer % W + F): R ! F = (x.resumeRun: @unchecked) match
-      case Return(a) => Return(finish(s, a))
-      case i @ Inject(e) => split[Writer % W, F](e) { w0 =>
-          // matching the constructor refines the answer type to Unit:
-          // the program ends here, and a tell ends it with nothing —
-          // the ascription is where the refined value meets the loop.
-          // `@unchecked` as in the Bind case below (freer-base-step-
-          // extractor): `e` is typed at the program's answer type now,
-          // and the checker cannot see `Say` is the only constructor
-          (w0: @unchecked) match
-            case Say(v) => Return(finish(step(s, v), ())): R ! F
-        } { _ => forwarded[Writer % W, F](i).map(finish(s, _)) }
-      case Bind(i @ Inject(e), k) => split[Writer % W, F](e) { w0 =>
-          // here it refines the CONTINUATION's domain, so this is an
-          // ordinary call and not an assertion; the checker cannot see
-          // that `Say` is the only constructor under an existential
-          // answer type — the same claim `resume`'s @unchecked makes
-          (w0: @unchecked) match
-            case Say(v) => loop(d)(step(s, v))(k(()))
-        } { _ => forwarded[Writer % W, F](i).flatMap(x => _loop(d)(s)(k(x))) }
-      case y => loop(d)(s)(HandleFrames.shallow(y, d))
-
-    HandleFrames.run[R, F](d => loop(d)(z)(a), frame(z)(a))
+    // one step, both faces (handler-one-step): a tell moves the state, answers `()`; fold and frame built from it
+    HandleFrames.stateRun[Writer % W, S, A, R, F](summon[TypeableK[Writer % W]], (s, a) => Return(finish(s, a)))(
+      (s, op) => (step(s, Writer.told[W](op)), ()))(z, a)
   }
 
   /**

@@ -1,8 +1,6 @@
 package okay
 
-import okay.Free.{Return, Inject, Bind}
 import okay.Row.up
-import scala.annotation.tailrec
 
 /**
  * A handler (Plotkin & Pretnar's sense, level 1, specs/api-levels.md): a VALUE that takes the effect `E` off
@@ -94,19 +92,9 @@ object Handler:
     // drop the pair it answers (handler-forms: 1.60x with the clause a function value)
     new Handler[F, [A] =>> (S, A)]:
       def run[A, G[+_]](p: A ! F + G)(using A <:< Any, Distinct[F + G], Nothing[G]): (S, A) ! G =
-        // a call from inside flatMap cannot be a jump; `again` takes it, so the walk stays a checked loop
-        def again(d: Int)(s: S)(x: A ! F + G): (S, A) ! G = loop(d)(s)(x)
-        @tailrec def loop(d: Int)(s: S)(x: A ! F + G): (S, A) ! G = (x.resumeRun: @unchecked) match
-          case Return(a) => Return((s, a))
-          case i @ Inject(e) => split[F, G](e)(op => { val (s2, v) = f(s, op); Return((s2, v)): (S, A) ! G })
-                                               (_ => forwarded[F, G](i).map((s, _)))
-          case Bind(i @ Inject(e), k) => split[F, G](e)(op => { val (s2, v) = f(s, op); loop(d)(s2)(k(v)) })
-                                                       (_ => forwarded[F, G](i).flatMap(x => again(d)(s)(k(x))))
-          case y => loop(d)(s)(HandleFrames.shallow(y, d))
-        // a value: run by whoever forces it, a frame for a machine that meets it
-        Free.delay(new HandleFrames.Run[(S, A), G]:
-          def at(d: Int): (S, A) ! G = loop(d)(init)(p)
-          def program: Shift.U[G, (S, A)] = HandleFrames.state[F, S, A, G](f, summon[TypeableK[F]])(init, p))
+        // one step, both faces (handler-one-step): the fold is built from it at this site
+        HandleFrames.stateRun[F, S, A, (S, A), G](summon[TypeableK[F]], (s, a) => Free.Return((s, a)))(
+          (s, op) => f(s, op.asInstanceOf[F[Any]]))(init, p)
 
   /** what `into` needs of the rest of the row: that it holds `G` */
   type Holds[G[+_]] = [R[+_]] =>> Row.Sub[G, R]
