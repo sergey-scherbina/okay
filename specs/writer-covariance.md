@@ -292,6 +292,13 @@ directions: an upcast that is free at the type level is not free
 operationally, and where work is DONE matters more than how much of
 it there is.
 
+**Addendum (2026-10-04, foreign-effects-in-tree): the invariance has a
+second reason, and it is the stronger one.** Under a covariant row a
+handler's inferred rest widens to a join (`Object & Enum`) as soon as two
+members remain; invariant, it is exact. The mixed-row `for` covariance
+seemed to promise comes from a union-writing bind instead, which works
+under invariance. specs/foreign-effects-in-tree.md, "Row variance".
+
 **Addendum (2026-09-23, windows-stage-rerun-loses-pane): the walk keeps a
 deferred head deferred.**
 
