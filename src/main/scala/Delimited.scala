@@ -303,18 +303,22 @@ object Delimited:
      * (`StackSwitch.more`), else a fresh stack */
     private def deeper[X](body: => X): X =
       val here = room - 1
-      if here > 0 then within(here, body)
+      if here > 0 then within(here, body) else roomEnd(() => body)
+
+    /** the end of a room, out of `deeper`: where the stack is read this branch is taken, and kept inline it grew
+     * the per-level path past what C2 inlines — a capture's `Segment` escaped, 2.2x at a million levels
+     * (cont-stack-exact-first) */
+    private def roomEnd[X](body: () => X): X =
+      val granted = math.min(StackSwitch.more(), budget)
+      if granted > 0 then
+        val left = budget
+        budget = left - granted
+        try within(granted, body()) finally budget = left
       else
-        val granted = math.min(StackSwitch.more(), budget)
-        if granted > 0 then
+        StackSwitch.fresh: first =>
           val left = budget
-          budget = left - granted
-          try within(granted, body) finally budget = left
-        else
-          StackSwitch.fresh: first =>
-            val left = budget
-            budget = StackSwitch.levelsPerStack - first
-            try within(first, body) finally budget = left
+          budget = StackSwitch.levelsPerStack - first
+          try within(first, body()) finally budget = left
 
     private def within[X](left: Int, body: => X): X =
       val saved = room
