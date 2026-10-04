@@ -261,10 +261,16 @@ object Writer {
   }
 
   /** `map` at the handler's own shape */
-  def mapAt[W, V, A, G <: Row](a: Free[Writer[W] with G, A])(f: W => V)(implicit effect: TypeableK[Writer[W]]): A ! (Writer[V] + G) = {
-    // the split tests the Writer side (the class of `Say`); G is taken by
-    // exclusion — as a pattern, made once per map (okay2-split-at-rest)
-    val Mine = Split.at[Writer[W]](effect)
+  def mapAt[W, V, A, G <: Row](a: Free[Writer[W] with G, A])(f: W => V)(implicit effect: TypeableK[Writer[W]]): A ! (Writer[V] + G) =
+    new Mapping[W, V, A, G](f, Split.at[Writer[W]](effect)).go(a)
+
+  /**
+   * `mapAt`'s walk, an OBJECT per map: its continuations capture `this` and `k`. As a local `go` closing over
+   * the split and `f` (okay2-split-at-rest) each one carried a field more — 8 B a tell, writerMap 1.05x against
+   * stage 45's parent (okay2-split-at-rest-regressions). The split tests the Writer side (the class of `Say`);
+   * G is taken by exclusion.
+   */
+  private final class Mapping[W, V, A, G <: Row](f: W => V, Mine: Split.At[Writer[W]]) {
     def go(a: Free[Writer[W] with G, A]): A ! (Writer[V] + G) = Free.resume(a) match {
       case Return(x) => Return(x)
       case Inject(e) => go(Bind(Inject[Writer[W] + G, A](e), (x: A) => Return[Writer[W] + G, A](x)))
@@ -273,6 +279,5 @@ object Writer {
       case Bind(Inject(g), k) => Free.Inject[G, Any](g).at[Writer[V] + G].flatMap(x => go(k(x)))
       case other => throw new IllegalStateException("resume left a non-head form: " + other)
     }
-    go(a)
   }
 }
