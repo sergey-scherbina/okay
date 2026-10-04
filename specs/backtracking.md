@@ -76,3 +76,46 @@ planner/solver consumer exists (agent-search is the likely one).
 ## Out of scope
 - committed-choice/pruning beyond once (cut scopes), tabling,
   unification — a Prolog is a user of this, not this
+
+## A resource shared by branches (logic-cut-releases, 2026-10-04)
+
+MEASURED FIRST (a probe on master): the entry as filed was wrong — `cut`
+over a scope leaks nothing, because the answer `msplit` returns has passed
+the end of every scope on its path. The real defect is the other way
+round: a resource acquired BEFORE a `choose` is acquired once and released
+once PER BRANCH — `runChoice` over three alternatives released it three
+times. The operator chose (2026-10-04): the resource is SHARED by the
+branches, as every effect of a search's prefix is ("run once, when
+crossed"), and released ONCE, when the last branch that can use it is
+done.
+
+THE MECHANISM, a reference count per acquisition:
+- a scope's acquisition is a `Held` with one holder, the path that took it;
+- a `Choose` passing OUT of a scope that holds acquisitions goes on with
+  its alternatives wrapped (`Forked`, still a `Seq`, still `Choose`): the
+  path's holder moves to the branch point (`Fork`), and every branch the
+  handler starts — the scope's continuation called — is one holder more;
+- a branch ends (its value through the scope, a throw, a final operation,
+  a discontinue): one holder fewer; the release runs at zero;
+- the branch point is done when every alternative has started (counted
+  against `knownSize`, or the alternatives run out for a lazy list), or
+  when it is ABANDONED: a handler that will start no more of them says so.
+
+WHO ABANDONS:
+- `Logic.cut` and `observe` drop the rest of a search: they abandon it
+  (`Logic.abandon(rest)`; `msplit`'s rest carries the branch points it
+  still holds, and a split of a rest inherits them);
+- a throw that leaves a search (`runChoice`, `msplit`) abandons the branch
+  points it holds: no handler will resume them;
+- a third-party handler that stops early: `Choose.abandon(c)`. One that
+  stops early without saying so keeps the resource open — the same
+  contract as a dropped continuation (`Shift.discontinue`).
+
+Behaviour:
+- [ ] every branch: the shared resource released once, after the last branch
+- [ ] `cut`: released once
+- [ ] `observe(n)` of more: released once; of an infinite choice: released once
+- [ ] a scope inside a branch: its own resource released once per branch, the shared one once
+- [ ] a throw out of the search: released once
+- [ ] on a machine (the frames): the same
+- [ ] a scope with nothing held when the choice passes: no wrapping, unchanged cost
