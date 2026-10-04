@@ -639,4 +639,13 @@ The operator: "Diag нужен только там, где индексы — н
   the system has two bridges by necessity, and one law joins them: where
   `Free` lives they agree, `Lift[F][Unit, Unit, X] = Unary[F][Unit, Unit,
   X] = F[X]`; `Lift` ignores the indexes, `Unary` requires them equal.
+  The operator's follow-up, `type Pure[+A] = Nothing` (the empty row a
+  lambda, so the solved `[X] =>> Nothing` IS `Pure`): it WORKS for Scala 3 —
+  core and every module compile once the empty row is written `Pure`, not
+  `Nothing`, in 87 files (`Resource.run[A, Nothing]` finds no
+  `Failing[Nothing]`). It is refuted by Scala 2.13: the okay-scala2 facade
+  reads okay through TASTy, and Scala 2's reader rejects a match type in
+  `Free`'s own definition ("Unsupported Scala 3 match type in bounds of
+  type Unary", okayScala2Probe) — `Unary` was harmless while only indexed
+  rows named it.
 
