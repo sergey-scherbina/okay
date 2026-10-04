@@ -2979,3 +2979,43 @@ okay2/backlog.d/modules/okay2-codec-tooling.
 - The token, type and declaration enums are sealed traits.
 - okay2-codec gained a `scala-jvm` main source directory for the two
   JVM files.
+
+## Stage 59 — okay2-codec-wire: the wire's format, compression and handshake (2026-10-04)
+
+Operator: "Делай то что нужно для okay2 только сразу всё" — lane 3 of
+okay2/backlog.d/modules/okay2-codec-tooling. JVM only, as in okay-codec
+(java.util.zip, javax.crypto, javax.net.ssl).
+
+- [x] `WireFormat` (json, cbor), `WireCompression` (preferred, off,
+      deflate, zlib; pooled Deflaters/Inflaters), `FrameFormat`,
+      `byName` for each and `WireChoice.named` (TestWire)
+- [x] `WireNegotiation.choose`: a preference walks deflate → zlib →
+      none and compresses only on a network link; an explicit choice
+      that was not announced is refused by name; R's unboxed one-element
+      list read (TestWire)
+- [x] `chooseFrames`, `configure`, `confirmed` (TestWire)
+- [x] `WireAuth`: HMAC-SHA256 (RFC 4231 case 2), mutual, refusals named
+      on each side, `fromEnv`/`fromFile`/`secret` (TestWire)
+- [x] `WireSecurity` (TLS trust by PEM, PEM from env, the JDK store) and
+      `WireDeadline`, as values: no okay2 engine opens a link yet
+- [x] `WireCbor` and `WireJson.whole`: 20 000 levels on a 256 KB stack,
+      a cut message refused at any byte (TestWireDepth, TestWire)
+- [x] `WireFrames`: lines, then length-prefixed frames, nothing lost
+      between (TestWire)
+- [ ] `Staging`: BLOCKED. Scala 2 has no `scala.quoted.staging`, and
+      okay2 has no staging module for the seam to find. See the backlog
+      item.
+
+### What differs from Scala 3
+- The choices are implicits in the companions. An import of an explicit
+  one (`import WireCompression.Deflate.deflate`) wins because Scala 2
+  finds imported implicits before it searches the implicit scope.
+- Refusals say "implicit" where okay-codec says "given".
+- `Trust.keyStore` answers an `Option` instead of `KeyStore | Null`. The
+  CBOR decoder's open container keeps an `Option` key instead of a
+  nullable one, and its leaf step answers `Option[Json]`.
+- The authentication announcement is a private sealed trait, where Scala
+  3 has a local enum.
+- The engine-level tests (`ForeignWorker.over`, deadlines in process)
+  belong to okay-py, which has no twin. TestWire drives
+  `WireNegotiation` directly.

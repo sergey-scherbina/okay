@@ -2155,6 +2155,27 @@ differs:
     assertEquals(TsCheck.same(generated, handwritten), Right(()))
 ```
 
+`Wire` is how a message tree that crosses to a foreign worker becomes
+bytes, on the JVM (stage 59). The format and the compression are
+implicits: JSON and a preference for compression by default, CBOR or a
+required compression by import. `WireNegotiation.choose` matches them
+against what the far side's hello announces. A preference falls back
+through deflate, then zlib, then none, and only compresses on a network
+link. An explicit choice that the far side did not announce is refused
+by name:
+
+```scala
+    assertEquals(wire(hello(speaksDeflate)), Right("json/deflate"))
+      import WireCompression.Deflate.deflate
+```
+
+`WireAuth` is a mutual HMAC-SHA256 challenge, and the secret itself
+never crosses. `WireSecurity` names a TLS trust, `WireDeadline` limits
+how long a call waits, and `WireChoice.named` picks all of these from
+configuration strings. `WireCbor` and `WireJson.whole` read a message as
+deep as the far side sends, on explicit stacks, and refuse a message
+that was cut short instead of reading it as a smaller one.
+
 ## 34. SQL: the relational seam
 
 `okay2-sql` is okay-sql, and `okay2-jdbc` is its JDBC driver (stage
