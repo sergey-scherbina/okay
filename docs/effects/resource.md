@@ -81,6 +81,45 @@ pre-thunk again on re-entry. A resource cannot be acquired again by
 re-entering, so here leaving by a capture releases nothing until the
 continuation is known to be dropped.
 
+## Shared by branches: a resource before a `choose`
+
+A scope that acquires and THEN chooses among alternatives hands the same
+resource to every branch the search starts. It was acquired once, so it
+is released once: when the last branch that can use it is done. Every
+other effect of a search's prefix behaves the same way: it runs once,
+when the search crosses it.
+
+```scala
+def shared(log: Log)(xs: Seq[Int]): Int ! R =
+  Resource.run[Int, R](Resource.acquire("a")(x => log += s"release $x").at[Resource + R].flatMap(_ =>
+    effect[Choose, Int](Choose(xs)).at[Resource + R].map { x => log += s"use $x"; x }))
+
+assertEquals(!.run(runChoice[Int, Pure](shared(log)(Seq(1, 2, 3)))), Seq(1, 2, 3))
+assertEquals(log.toList, List("use 1", "use 2", "use 3", "release a"))
+```
+
+A search that stops early still releases it once:
+
+```scala
+assertEquals(!.run(runChoice[Int, Pure](cut[Int, Pure](shared(log)(Seq(1, 2, 3))))), Seq(1))
+assertEquals(log.toList, List("use 1", "release a"))
+```
+
+How it works: each acquisition counts its holders. The path that took it
+is one holder. When the choice passes out of the scope, that holder moves
+to the BRANCH POINT, and every branch the handler starts becomes one more
+holder. A branch that ends (its value, a throw, a final operation, a
+discontinue) lets go of its hold. The branch point lets go when every
+alternative has started, or when the rest of the search is ABANDONED.
+`Logic.cut` and `observe` abandon what they drop, and so does a throw
+that leaves `runChoice` or `msplit`. A handler of one's own that stops
+early says `Choose.abandon(c)`, or `Logic.abandon(rest)` for a rest that
+`msplit` handed out. One that stops without saying so keeps the resource
+open, the same contract as a dropped continuation.
+
+A scope INSIDE a branch is the branch's own: it is acquired and released
+once per branch, as before.
+
 ## Notes
 
 - Release survives a handled abort and an exception in the middle of a

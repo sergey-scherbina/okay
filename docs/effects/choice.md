@@ -36,6 +36,9 @@ val firstTwo = !.run(Logic.observe(2)(sums))   // the first two: 11, 21
 
 ## Notes
 
+- A resource acquired before a `choose` is shared by the branches and
+  released once; `cut` and `observe` release it for the branches they
+  drop. See [Resource](resource.md), "Shared by branches".
 - Alternatives are a `Seq`, and a `LazyList` is a `Seq`, so infinite
   choice points cost nothing to build; fairness is what makes them
   searchable.

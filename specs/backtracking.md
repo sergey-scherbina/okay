@@ -112,10 +112,22 @@ WHO ABANDONS:
   contract as a dropped continuation (`Shift.discontinue`).
 
 Behaviour:
-- [ ] every branch: the shared resource released once, after the last branch
-- [ ] `cut`: released once
-- [ ] `observe(n)` of more: released once; of an infinite choice: released once
-- [ ] a scope inside a branch: its own resource released once per branch, the shared one once
-- [ ] a throw out of the search: released once
-- [ ] on a machine (the frames): the same
-- [ ] a scope with nothing held when the choice passes: no wrapping, unchanged cost
+- [x] every branch: the shared resource released once, after the last branch
+- [x] `cut`: released once
+- [x] `observe(n)` of more: released once; of an infinite choice: released once
+- [x] a scope inside a branch: its own resource released once per branch, the shared one once
+- [x] a throw out of the search: released once
+- [x] on a machine (the frames): the same
+- [x] a scope with nothing held when the choice passes: no wrapping, unchanged cost
+
+Results (TestSharedResource, cross, JVM and JS; red first on the seven that
+changed — three releases for three branches):
+- COST (history.d logic-cut-releases): `runChoice` with no scope 0.99x;
+  `observe` with no scope 1.02x (the branch points list `msplit` carries,
+  empty); 100 branches over one shared acquisition 1.11x, ~2.4 us — the
+  holders, the branch point and the guard that abandons on a throw,
+  against a ref that released the resource 100 times.
+- NOT COUNTED: an alternative a handler takes and never starts without
+  saying so (a filter of its own): the branch point waits for it, and the
+  resource stays open — the contract `Choose.abandon` is for.
+
