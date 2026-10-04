@@ -2059,6 +2059,23 @@ first, so one borrower's open transaction never reaches the next.
 `okay2-sql` has no `java.sql` and cross-builds. The java.time fields are
 `import okay2.sql.javatime._`, on the JVM only.
 
+`okay2-jdbc` also carries okay-jdbc's tools for databases you own and
+for bulk loads. `Migrate` applies versioned scripts in order and records
+each with its checksum in a table in the same database, so a script
+changed after it ran is refused by version and nothing else runs.
+`BulkLoad.load` writes a load id and the caller's COPY in one
+transaction, so a retry after a crash answers `AlreadyLoaded` instead
+of loading twice:
+
+```scala
+    val first = Run(Migrate(db, Seq(v1, v2)))
+    assertEquals(Run(BulkLoad.load(db, "load-2026-09-01-a", copy)), BulkLoad.Outcome.AlreadyLoaded: BulkLoad.Outcome)
+```
+
+The idea is Flyway's (versioned migrations with checksums) and the
+warehouses' load history (Snowflake per file, BigQuery per job), as
+okay-jdbc has them (specs/jdbc.md, specs/data.md).
+
 ## 35. HTTP: two plain types
 
 `okay2-http` is okay-http's transport half (stage 44, part A). HTTP is

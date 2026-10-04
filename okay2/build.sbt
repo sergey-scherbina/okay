@@ -346,15 +346,20 @@ lazy val okay2Http = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .jvmConfigure(_.withId("okay2Http").dependsOn(okay2Platform.jvm))
 
 /** okay-jdbc's driver for the Scala 2 core: `JdbcSql`, tested against
- * embedded SQLite and H2 */
+ * embedded SQLite and H2; `Migrate`, `BulkLoad` (tested on embedded
+ * DuckDB) and `JdbcInterop` beside it (okay2-jdbc-migrate). The
+ * platform at compile scope: Migrate and BulkLoad run a statement to
+ * its answer inside one Async operation, as the Scala 3 originals do,
+ * which parks on the platform's CanBlock */
 lazy val okay2Jdbc: Project = (project in file("okay2-jdbc"))
-  .dependsOn(okay2Sql.jvm, okay2Platform.jvm % "test->compile")
+  .dependsOn(okay2Sql.jvm, okay2Platform.jvm)
   .settings(
     name := "okay2-jdbc",
     common,
     libraryDependencies ++= Seq(
       "com.h2database" % "h2" % "2.3.232" % Test,
       "org.xerial" % "sqlite-jdbc" % "3.47.1.0" % Test,
+      "org.duckdb" % "duckdb_jdbc" % "1.3.2.0" % Test,
     ),
     // DriverManager registers drivers per classloader: a JVM of its own
     // (okay-jdbc forks for the same reason)
