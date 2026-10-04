@@ -366,19 +366,9 @@ object HandleFrames:
 
     /** the innermost handler at or past `lo` that takes `op`, or `n`: the table first, its entry checked by that
      * handler's own test (an instance by name shares its class with another), then the stack in order */
+    // NOT the last class first: SW, whose effects alternate, read 1.35x with it against 1.15x without
     private def find(op: Any, lo: Int): Int =
       val c = op.getClass
-      // the last class first: a program's operations of one effect come in runs
-      if (c eq lastClass) && lastIndex >= lo && stack(lastIndex).takes.test(op) then return lastIndex
-      val i = lookup(op, c, lo)
-      lastClass = c
-      lastIndex = i
-      i
-
-    private var lastClass: Class[?] | Null = null
-    private var lastIndex = 0
-
-    private def lookup(op: Any, c: Class[?], lo: Int): Int =
       var j = 0
       while j < filled && (classes(j) ne c) do j += 1
       if j < filled then
