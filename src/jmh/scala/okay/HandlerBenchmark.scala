@@ -154,6 +154,12 @@ class HandlerBenchmark {
   def contAnswer(): Int =
     Cont.reset((1 to M).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => Cont.shift[Int, Int, Int](k => k(x + 1) + 1))))
 
+  /** `contAnswer`'s body as the STRICT leaf (`Cont.shiftLeaf`, no macro): `k` a nested run per level, the
+   * body's `+ 1` waiting on the host stack (cont-leaf-forms: what the lazy leaf is worth) */
+  @Benchmark
+  def contAnswerStrict(): Int =
+    Cont.reset((1 to M).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => Cont.shiftLeaf[Int, Int, Int](k => k(x + 1) + 1))))
+
   @Benchmark
   def statePara(): (Long, Long) =
     PState.run(0L):
