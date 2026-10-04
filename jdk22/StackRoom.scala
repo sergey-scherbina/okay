@@ -120,6 +120,9 @@ private[okay] object StackRoom:
     val lay = layout
     if !enabled || lay == null then null else handlesFor(lay, "")
 
+  /** whether the stack can be read here at all: native access granted, a known layout, every handle made */
+  def readable: Boolean = handles != null
+
   /** whether this platform reads with `symbol` absent — false on every
    * JVM that cannot read at all; the tests hide `getcontext` to prove a
    * missing symbol falls through to the count instead of failing */

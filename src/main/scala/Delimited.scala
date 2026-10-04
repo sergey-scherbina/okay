@@ -296,11 +296,15 @@ object Delimited:
       case Return(t) => t
       case _ => throw IllegalStateException("a strict k performed an operation of an outer effect; give its body the lazy k")
 
-    /** `body` one level deeper, on a fresh stack when there is no room left here (`StackSwitch`) */
+    /** `body` one level deeper: at the end of a room, more of this stack where it is READ to have it
+     * (`StackSwitch.more`), else a fresh stack */
     private def deeper[X](body: => X): X =
       val here = room - 1
       if here > 0 then within(here, body)
-      else StackSwitch.fresh(fresh => within(fresh, body))
+      else
+        val granted = StackSwitch.more()
+        if granted > 0 then within(granted, body)
+        else StackSwitch.fresh(fresh => within(fresh, body))
 
     private def within[X](left: Int, body: => X): X =
       val saved = room

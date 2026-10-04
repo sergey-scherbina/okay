@@ -51,14 +51,14 @@ class TestContStack extends munit.FunSuite:
     val a = body
     (a, StackSwitch.switches.get() - before)
 
-  test("the bound is a level count: a fresh stack every first room, then the fresh stack's own room") {
-    // the suite runs with -Dokay.cont.room=64: 600 nested levels outgrow
-    // the caller's room once, and the fresh 1 GB stack holds the rest
-    // (cont-core-design: the stack is counted, never read — the exact
-    // road that read it through FFM and granted more is gone)
+  test("the bound: READ where the stack can be read, counted where it cannot") {
+    // the suite runs with -Dokay.cont.room=64 and native access. Where `StackRoom` reads (JDK 22+), the end
+    // of a room asks how much of THIS stack is left, and 600 levels fit a 2 MB thread with no second one
+    // (cont-stack-exact-first). Where it cannot, they outgrow the counted room and a fresh stack holds the rest.
     val (answer, switches) = switchesDuring(SmallStack.run(2048)(Cont.reset(tail(600))))
     assertEquals(answer, 600)
-    assert(switches >= 1 && switches <= 600 / 64 + 1, s"$switches switches")
+    if StackRoom.readable then assertEquals(switches, 0L, "read: the 2 MB thread had room, and it switched anyway")
+    else assert(switches >= 1 && switches <= 600 / 64 + 1, s"$switches switches")
   }
 
   test("a 256 KB thread still switches, and answers") {

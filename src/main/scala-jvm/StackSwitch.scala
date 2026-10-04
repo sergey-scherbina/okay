@@ -24,9 +24,40 @@ private[okay] object StackSwitch:
       bean.getVMOption("ThreadStackSize").getValue.toLong * 1024
     catch case _: Throwable => 1L << 20
 
-  /** levels the caller's stack is asked to hold before the first look;
-   * `-Dokay.cont.room=N` overrides */
-  val firstRoom: Int = Integer.getInteger("okay.cont.room", math.max(64L, defaultStackBytes / coldBytesPerLevel / 2).toInt)
+  /** left below the pointer that no grant reaches: room for the fattest frame a body is expected to have,
+   * over the guard zones `StackRoom.floor` already excludes */
+  val margin: Long = 64L * 1024
+
+  /** a grant smaller than this switches instead: a few levels a read is all read and no work */
+  private val minGrant = 16
+
+  /** the first room where the stack is READ: small, since every room after it is read (32 cold levels,
+   * ~83 KB), so a thread of any size past that holds it */
+  private val readFirstRoom = 32
+
+  /** levels the caller's stack is asked to hold before the first look; `-Dokay.cont.room=N` overrides.
+   * Where `StackRoom` reads (JDK 22+ with native access), a small first room and then `more`; where it
+   * cannot, a guess from the VM's default thread size, halved for the caller's own frames */
+  val firstRoom: Int = Integer.getInteger("okay.cont.room",
+    if StackRoom.readable then readFirstRoom else math.max(64L, defaultStackBytes / coldBytesPerLevel / 2).toInt)
+
+  /**
+   * THE HOST STACK, KNOWN EXACTLY WHERE IT CAN BE (operator, 2026-10-04; specs/cont-stack.md): at the end of
+   * a room, the levels this stack still takes, or 0 to switch. Where `StackRoom` reads, half of what is left
+   * between the pointer and the floor (the guard zones excluded) over `margin`, at a cold level's size: a
+   * level up to twice that still fits, and the next room is read again. Where it cannot read, 0 — the count
+   * road switches at the end of its room.
+   */
+  def more(): Int =
+    val sp = StackRoom.sp()
+    if sp < 0 then 0
+    else
+      val floor = StackRoom.floor()
+      if floor <= 0 then 0
+      else
+        val free = sp - floor - margin
+        val grant = if free <= 0 then 0L else free / 2 / coldBytesPerLevel
+        if grant < minGrant then 0 else math.min(grant, Int.MaxValue.toLong).toInt
 
   /** a platform thread's stack past the switch, and the levels it is counted for: cold levels in three
    * quarters of it, the rest for what a thread starts with */

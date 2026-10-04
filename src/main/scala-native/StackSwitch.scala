@@ -25,6 +25,9 @@ private[okay] object StackSwitch:
   private val bigStack = 1L << 30
   private val bigRoom = (bigStack / 4 * 3 / coldBytesPerLevel).toInt
 
+  /** at the end of a room, levels this stack still takes: none is known here (nothing reads the stack) */
+  def more(): Int = 0
+
   /** switches made, for the tests */
   val switches: AtomicLong = AtomicLong()
 

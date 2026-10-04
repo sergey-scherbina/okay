@@ -3,8 +3,9 @@ package okay
 /**
  * What the JVM can say about the stack it is running on — NOTHING, on
  * this side of JDK 22 (specs/cont-stack.md Layer 3). Every method
- * answers −1. Since cont-core-design (2026-10-01) Cont's runner counts
- * levels and never reads the stack; the reader is kept, unused by it.
+ * answers −1, and Cont's runner counts levels (`StackSwitch`). Where the
+ * 22+ variant reads, the runner asks it at the end of every room
+ * (cont-stack-exact-first, 2026-10-04).
  *
  * THE OTHER SIDE is `jdk22/StackRoom.scala` — the same object, compiled
  * with `-java-output-version 22` against `java.lang.foreign` and
@@ -25,5 +26,7 @@ private[okay] object StackRoom:
   def top(): Long = -1L
   /** the lowest address a frame may reach — the stack's end plus the VM's guard and shadow zones (the 22+ variant knows them) — or −1 */
   def floor(): Long = -1L
+  /** whether the stack can be read here at all — never, here */
+  def readable: Boolean = false
   /** whether this platform reads with `symbol` absent — never, here */
   def readableWithout(symbol: String): Boolean = false

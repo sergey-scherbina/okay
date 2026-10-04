@@ -25,7 +25,8 @@ class TestProgramAnswerStackFree extends munit.FunSuite:
   test("control: an answer-using strict body over a value does switch (the road that still needs the stack)") {
     val p = (1 to 2000).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) =>
       m.flatMap(x => Cont.shiftLeaf[Int, Int, Int](k => k(x + 1) + 1)))
+    // on a 256 KB thread, which 2 000 such levels outgrow whether the stack is read or counted
     val before = StackSwitch.switches.get()
-    assertEquals(Cont.reset(p), 4000)
+    assertEquals(SmallStack.run(256)(Cont.reset(p)), 4000)
     assert(StackSwitch.switches.get() - before >= 1)
   }
