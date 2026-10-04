@@ -55,7 +55,7 @@ object Prob {
     Effects.handle[Dist, R](p)(a => pure[R, Map[A, Double]](Map(a -> 1.0)))(
       new Interpr[Dist, Map[A, Double] ! R] {
         def apply[X](c: Dist.Op[X]): Cont[X, Map[A, Double] ! R, Map[A, Double] ! R] =
-          Cont.shift[X, Map[A, Double] ! R, Map[A, Double] ! R] { k =>
+          Cont.shiftLeaf[X, Map[A, Double] ! R, Map[A, Double] ! R] { k =>
             c.choices.foldLeft(pure[R, Map[A, Double]](Map.empty)) { case (acc, (x, w)) =>
               acc.flatMap(m => k(x).map(sub => merge(m, sub.map { case (a, v) => a -> v * w })))
             }

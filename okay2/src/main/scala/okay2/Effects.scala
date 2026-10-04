@@ -50,7 +50,7 @@ trait Effects[M[_, _]] {
     // each claimed operation answered in M, read back as the tree's: the definition, at one capture apiece
     val inTree: F !> (B ! G) = new Interpr[F, B ! G] {
       def apply[X](e: F#Op[X]): Cont[X, B ! G, B ! G] =
-        Cont.shift[X, B ! G, B ! G](k => Effects.reify[M, G, B](h[X](e) / (x => Effects.reflect[M, G, B](k(x))(E)))(E))
+        Cont.shiftLeaf[X, B ! G, B ! G](k => Effects.reify[M, G, B](h[X](e) / (x => Effects.reflect[M, G, B](k(x))(E)))(E))
     }
     Effects.reflect[M, G, B](Effects.handleWith[A, B, F, G](Effects.reify[M, F with G, A](m)(E))(a => Effects.reify[M, G, B](ret(a))(E))(inTree)(T, d))(E)
   }
@@ -101,7 +101,7 @@ trait Conversions {
    */
   def convert[M[_, _], N[_, _], F <: Row, A](m: M[F, A])(implicit M: Effects[M], N: Effects[N]): N[F, A] =
     M.foldCont[F, A, N[F, A]](m)(new Interpr[F, N[F, A]] {
-      def apply[X](e: F#Op[X]): Cont[X, N[F, A], N[F, A]] = Cont.shift[X, N[F, A], N[F, A]](k => N.flatMap(N.perform[F, X](e))(k))
+      def apply[X](e: F#Op[X]): Cont[X, N[F, A], N[F, A]] = Cont.shiftLeaf[X, N[F, A], N[F, A]](k => N.flatMap(N.perform[F, X](e))(k))
     }) / (a => N.pure[F, A](a))
 
   /** any Effects program materialized as a Free tree: building the syntax is itself an interpretation */

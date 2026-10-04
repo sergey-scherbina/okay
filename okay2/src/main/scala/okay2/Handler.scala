@@ -389,7 +389,7 @@ object Handler {
             val out = c[X, A, G](e, resume)
             // `resume(x)` once, as the clause's answer: the program goes on, nothing to capture
             if (resume.calls == 1 && (out eq resume.last)) Cont.Pure[X, O[A] ! G](resume.arg)
-            else Cont.shift[X, O[A] ! G, O[A] ! G] { k => resume.k = k; out }
+            else Cont.shiftLeaf[X, O[A] ! G, O[A] ! G] { k => resume.k = k; out }
           }
         })(T, d)
     }

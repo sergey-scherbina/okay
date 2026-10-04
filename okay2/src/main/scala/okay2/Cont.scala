@@ -1,6 +1,7 @@
 package okay2
 
-import scala.annotation.tailrec
+import scala.annotation.{tailrec, unused}
+import scala.language.experimental.macros
 
 /**
  * Final tagless interface of delimited control: the parameterised
@@ -20,7 +21,7 @@ object Control {
   /** the stack-safe data instance: the default carrier */
   implicit val cont: Control[Cont.Rep] = new Control[Cont.Rep] {
     def pure[A, R](a: A): Cont[A, R, R] = Cont.Pure(a)
-    def shift[A, S, R](f: (A => S) => R): Cont[A, S, R] = Cont.shift(f)
+    def shift[A, S, R](f: (A => S) => R): Cont[A, S, R] = Cont.shiftLeaf(f)
     def flatMap[A, B, S, S2, R](m: Cont[A, S, R])(f: A => Cont[B, S2, S]): Cont[B, S2, R] = Cont.bind(m)(f)
     // absorbed in its own right, not `flatMap(pure)`: see `Leaf.Mapped`
     override def map[A, B, S, R](m: Cont[A, S, R])(f: A => B): Cont[B, S, R] = Cont.mapped(m)(f)
@@ -55,8 +56,20 @@ sealed abstract class ContModule {
   /** a finished value */
   def Pure[A, R](a: A): Rep[A, R, R]
 
-  /** a computation as a function of its continuation — the shift of Danvy and Filinski */
-  def shift[A, S, R](f: (A => S) => R): Rep[A, S, R]
+  /** a computation as a function of its continuation — the shift of Danvy and Filinski. A MACRO
+   * (cont-stack-okay2-macro): a tail-shaped body is its value, read when the runner reaches it (`tailShift`), any
+   * other body the leaf (`shiftLeaf`). Inside okay2's own core, which a macro cannot expand in, write `shiftLeaf` */
+  def shift[A, S, R](f: (A => S) => R): Rep[A, S, R] = macro ContMacro.shift[A, S, R]
+
+  /** a body run as it is, its `k` the runner's continuation */
+  def shiftLeaf[A, S, R](f: (A => S) => R): Rep[A, S, R]
+
+  /** a tail body `k => { stats; k(v) }` as its value `v`, evaluated when the runner reaches it; `S <: R` (the
+   * evidence) makes the body's answer the shift's. Public for the macro's expansion; not an API */
+  def tailShift[A, S, R](v: () => A)(implicit ev: S <:< R): Rep[A, S, R]
+
+  /** the same with no thunk, for a literal */
+  def tailPure[A, S, R](v: A)(implicit ev: S <:< R): Rep[A, S, R]
 
   /** a bind whose LEFT side is deferred into the runner's own loop:
    * mutual tail recursion without a JVM frame per call */
@@ -112,7 +125,12 @@ private[okay2] object ContImpl extends ContModule {
 
   def Pure[A, R](a: A): Rep[A, R, R] = Return(a)
 
-  def shift[A, S, R](f: (A => S) => R): Rep[A, S, R] = Inject[Shift, A](f.asInstanceOf[Shift#Op[A]])
+  def shiftLeaf[A, S, R](f: (A => S) => R): Rep[A, S, R] = Inject[Shift, A](f.asInstanceOf[Shift#Op[A]])
+
+  // the tree keeps no answer type (`Rep` is `Free[Shift, A]`), so the evidence is the facade's alone
+  def tailShift[A, S, R](v: () => A)(implicit @unused ev: S <:< R): Rep[A, S, R] = Free.delay(() => Return[Shift, A](v()))
+
+  def tailPure[A, S, R](v: A)(implicit @unused ev: S <:< R): Rep[A, S, R] = Return(v)
 
   def defer[A, B, S, T, R](thunk: () => Rep[A, T, R])(f: A => Rep[B, S, T]): Rep[B, S, R] = Free.defer(thunk)(f)
 

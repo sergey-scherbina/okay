@@ -7,6 +7,7 @@ package okay2
  * rest continues on a fresh stack. Each test ran RED on a 2 MB thread
  * before the switch existed (20 000 levels overflow it).
  */
+// the RUNTIME layer: bodies built as leaves (`shiftLeaf`), past the macro, which would make a tail body a value
 class TestContStack extends munit.FunSuite {
 
   val n = 20000
@@ -15,33 +16,33 @@ class TestContStack extends munit.FunSuite {
     (1 to n).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(step))
 
   test("shifts in a row whose bodies return k(v): the answer, on a 2 MB thread") {
-    assertEquals(SmallStack.run(2048)(Cont.reset(row(n)(x => Cont.shift[Int, Int, Int](k => k(x + 1))))), n)
+    assertEquals(SmallStack.run(2048)(Cont.reset(row(n)(x => Cont.shiftLeaf[Int, Int, Int](k => k(x + 1))))), n)
   }
 
   test("shifts in a row whose bodies USE the answer: k(v) + 1") {
-    assertEquals(SmallStack.run(2048)(Cont.reset(row(n)(x => Cont.shift[Int, Int, Int](k => k(x + 1) + 1)))), 2 * n)
+    assertEquals(SmallStack.run(2048)(Cont.reset(row(n)(x => Cont.shiftLeaf[Int, Int, Int](k => k(x + 1) + 1)))), 2 * n)
   }
 
   test("an absorbed leaf in a row: shift(...).flatMap(...) each time") {
-    def step(x: Int): Int /> Int = Cont.shift[Int, Int, Int](k => k(x + 1)).flatMap(y => Cont.Pure[Int, Int](y))
+    def step(x: Int): Int /> Int = Cont.shiftLeaf[Int, Int, Int](k => k(x + 1)).flatMap(y => Cont.Pure[Int, Int](y))
     assertEquals(SmallStack.run(2048)(Cont.reset(row(n)(step))), n)
   }
 
   test("multi-shot across the switch: k called twice at every level") {
     val d = 14
-    val m = (1 to d).foldLeft(Cont.Pure[Long, Long](0L): Long /> Long)((m, _) => m.flatMap(x => Cont.shift[Long, Long, Long](k => k(x + 1) + k(x + 1))))
+    val m = (1 to d).foldLeft(Cont.Pure[Long, Long](0L): Long /> Long)((m, _) => m.flatMap(x => Cont.shiftLeaf[Long, Long, Long](k => k(x + 1) + k(x + 1))))
     assertEquals(SmallStack.run(2048)(Cont.reset(m)), (1L << d) * d)
   }
 
   test("an exception thrown deep crosses every switch") {
-    val m = row(n)(x => Cont.shift[Int, Int, Int](k => if (x == n / 2) throw new IllegalStateException("deep") else k(x + 1)))
+    val m = row(n)(x => Cont.shiftLeaf[Int, Int, Int](k => if (x == n / 2) throw new IllegalStateException("deep") else k(x + 1)))
     val e = intercept[IllegalStateException](SmallStack.run(2048)(Cont.reset(m)))
     assertEquals(e.getMessage, "deep")
   }
 
   test("a 256 KB thread still switches, and answers") {
     val before = StackSwitch.switches.get()
-    assertEquals(SmallStack.run(256)(Cont.reset(row(2000)(x => Cont.shift[Int, Int, Int](k => k(x + 1))))), 2000)
+    assertEquals(SmallStack.run(256)(Cont.reset(row(2000)(x => Cont.shiftLeaf[Int, Int, Int](k => k(x + 1))))), 2000)
     assert(StackSwitch.switches.get() - before >= 1, "a 256 KB stack cannot hold 2000 levels, and it never switched")
   }
 }

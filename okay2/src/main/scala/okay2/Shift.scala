@@ -1082,7 +1082,7 @@ object Shift {
 
   /** level 2: the program as a `Cont` whose answers are programs: `c / k` is `reset(q >>= k)` */
   def cont[A, R, F <: Row](q: A ! (Shift[R] + F))(implicit k: Key[R], n: Machine[F]): Cont[A, R ! F, R ! F] =
-    Cont.shift[A, R ! F, R ! F](kk => okay2.reset[R, F](q.flatMap[Shift[R] + F, R](a => kk(a))))
+    Cont.shiftLeaf[A, R ! F, R ! F](kk => okay2.reset[R, F](q.flatMap[Shift[R] + F, R](a => kk(a))))
 
   /** level 2: a whole `Cont` as one capture */
   def embed[A, R, F <: Row](c: Cont[A, R ! F, R ! F])(implicit k: Key[R], at: At): A ! (Shift[R] + F) =

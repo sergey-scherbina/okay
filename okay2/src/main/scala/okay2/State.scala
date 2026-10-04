@@ -157,10 +157,10 @@ object State {
  */
 object PState {
   /** read the state, leaving its type unchanged */
-  def get[S, R]: Cont[S, S => R, S => R] = Cont.shift[S, S => R, S => R](k => new GetAt[S, R](k))
+  def get[S, R]: Cont[S, S => R, S => R] = Cont.shiftLeaf[S, S => R, S => R](k => new GetAt[S, R](k))
 
   /** write a state of a possibly different type; the old state is the value */
-  def set[S, S2, R](s2: S2): Cont[S, S2 => R, S => R] = Cont.shift[S, S2 => R, S => R](k => new SetAt[S, S2, R](k, s2))
+  def set[S, S2, R](s2: S2): Cont[S, S2 => R, S => R] = Cont.shiftLeaf[S, S2 => R, S => R](k => new SetAt[S, S2, R](k, s2))
 
   // the two bodies as `Bounce`s: the rest of the program, `k(s)`, answered with its state, never applied here
   private final class GetAt[S, R](k: S => S => R) extends Bounce[S, R] {
