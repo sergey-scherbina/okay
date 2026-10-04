@@ -1,6 +1,6 @@
 # refine-dispatch — hierarchical routing by document kind, written as a `match`
 
-Status: stage 1 landed (2026-10-01); spec 2026-10-01 (operator ask: "hierarchical routing
+Status: stage 1 landed (2026-10-01), stage 4 (okay2) 2026-10-04; spec 2026-10-01 (operator ask: "hierarchical routing
 (dispatch) by document type in streams, Spark, Flink, Kafka — convenient,
 like pattern matching, or even using pattern matching itself"). Builds on
 specs/refine.md: `Refine` recognises, `Routable` is what a table runs over
@@ -85,7 +85,15 @@ Stage 3 — Flink streaming: one pass with side outputs:
       (the bounded case is already covered: `FlinkBulk` is a `Bulk`)
 
 Stage 4 — okay2: the same, in Scala 2 (`ClassTag`, no unions; exhaustiveness
-the same, sealed traits).
+the same, sealed traits):
+- [x] `okay2.refine.Dispatch` with stage 1's surface (`lane`, `To`,
+      `unrouted`, `table(b)`/`table(b, by)`, `lanes`, `tag`, `decide`,
+      `split` over every `Routable`, `Split`), `Routed.under`; a lane's
+      test is a `ClassTag` (primitive lanes included); TestDispatch ports
+      stage 1's six tests, TestRefineMatch routes with extractor patterns
+      on JVM, JS and Native
+- [x] over a `sealed` trait a missing case does not build — verified by a
+      probe, not pinned (Results)
 
 ## 4. Decisions
 
@@ -120,6 +128,26 @@ Found on the way: the verdict's path names the STEPS that took the input,
 not a `map`'s name — a table routing on the path matches step names.
 FlinkBulk is covered by being a `Bulk` (proven for SparkBulk in
 TestSparkRoutes), not by a Flink test of its own.
+
+Stage 4 (2026-10-04, okay2-refine-dispatch). `okay2/okay2-refine`'s
+`Dispatch` is stage 1's class in Scala 2: the `TypeTest` became a
+`ClassTag`, which checks the CLASS — `lane[List[Int]]` is checked as a
+`List` — and that is enough, because a value reaches a lane's slot only
+through that lane's typed `apply`; the test only takes it back out of a
+carrier holding every lane as `Any`. `lane[Double]` works (the tag knows
+the boxed class), on JS and Native too. `Split` keeps the `Routable`
+rather than stage 1's polymorphic function values (Scala 2 has none),
+as okay2's `Routes.Split` does. TestDispatch 6 (JVM, the Source carrier
+needs a scheduler) + one cross test in TestRefineMatch.
+EXHAUSTIVENESS, by a probe compiled and deleted: a sub-table over
+`sealed trait Rate` forgetting `Cds` gave scalac's `match may not be
+exhaustive. It would fail on the following input: Cds(_, _)` — as an
+ERROR, since the okay2 build makes warnings fatal. Not pinned as a test,
+for stage 1's reason: munit's `compileErrors` runs the typer only, and
+the exhaustivity check is the later patmat phase. Found on the way:
+munit's `intercept` rethrows an `ExceptionInInitializerError` (a
+`LinkageError`, fatal to `NonFatal`), so "a lane name is declared twice"
+catches it by hand.
 
 ## 6. Open questions
 

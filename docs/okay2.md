@@ -2651,6 +2651,38 @@ okay's `Bulk.read` does inside. TestSparkRoutes (okay2-spark) runs 400
 documents on Spark `local[4]` and in one JVM and asserts every lane, the
 rejects and the counts agree.
 
+A table a person writes and a compiler checks is `Dispatch`
+(okay's specs/refine-dispatch.md, stage 4 here): the table is a plain
+`match` over what the pattern recognised, a sub-table is a method, lanes
+are typed handles named by path, and every case returns a `To` — made
+only by a lane (`eurSwaps(s)` compiles only for a `Swap`) or by
+`unrouted(why)`:
+
+```scala
+  object Desk extends Dispatch(any) {
+    val eurSwaps = lane[Swap]("rates/swaps/eur")
+    val credit = lane[String]("rates/credit")
+    def table(i: Instrument): To = i match {
+      case r: Rate => rates(r)
+      case f: Fx => fxs(f)
+      case p: Payment => unrouted(s"payment ${p.id} has no positive amount")
+    def rates(r: Rate): To = r match {
+      case s: Swap if s.ccy == "EUR" => eurSwaps(s)
+      case c: Cds => credit(c.name) // a lane may carry a projection, typed by the lane
+    val out = Desk.split(docs)
+    assertEquals(counts.under("rates"), 4)
+```
+
+Over a `sealed` trait a forgotten case is scalac's "match may not be
+exhaustive" warning, and a warning is red here, so a forgotten kind does
+not build. `split` takes the same carriers as `Routes`; `Routed.under`
+sums a subtree of lanes; `table(b, by)` can route on the verdict's path;
+a table that throws for one document rejects that document, named, and
+routes the rest. The Scala 2 difference: a lane's test is a `ClassTag`,
+not a `TypeTest`, so it checks the class (`lane[Double]` works; a
+`lane[List[Int]]` is checked as a `List`) — enough, because only that
+lane's own typed `apply` puts a value in its slot.
+
 What is different from Scala 3: dispatch is the trait's own methods
 rather than a match over the tree, because Scala 2 does not refine a
 generic case class's existential type across a match (`case AndThen(f,
