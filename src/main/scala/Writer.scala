@@ -68,7 +68,6 @@ object Writer {
     try k(()) catch case e: Throwable => Free.Delay(() => throw e)
 
 
-  import scala.annotation.tailrec
   import !.*
 
   /**
@@ -143,31 +142,9 @@ object Writer {
   def foldUntil[W, S, A, R, F[+_]](a: A ! Writer % W + F)(using Distinct[Writer % W + F])
                                   (using TypeableK[Writer % W], FoldUntil[W, S, R]): R ! F = {
     val K = summon[FoldUntil[W, S, R]]
-    def _loop(d: Int)(s: S)(x: A ! Writer % W + F): R ! F = loop(d)(s)(x)
-
-    // the fold as a frame (handle-frames-loops): a clause that is done does not resume — the producer stops
-    def frame(s: S)(x: A ! Writer % W + F): Shift.U[F, R] =
-      HandleFrames.stateful[Writer % W, S, A, R, F](summon[TypeableK[Writer % W]], (s, _) => pure(K.end(s)))(
-        (s, op, resume) =>
-          val s2 = K.add(s, Writer.told[W](op))
-          if K.done(s2) then pure(K.end(s2)) else resume(s2, ()))(s, x)
-
-    @tailrec def loop(d: Int)(s: S)(x: A ! Writer % W + F): R ! F =
-      if K.done(s) then Return(K.end(s))
-      else (x.resumeRun: @unchecked) match
-        case Return(_) => Return(K.end(s))
-        case i @ Inject(e) => split[Writer % W, F](e) { w0 =>
-            (w0: @unchecked) match
-              case Say(v) => Return(K.end(K.add(s, v))): R ! F
-          } { _ => forwarded[Writer % W, F](i).map(_ => K.end(s)) }
-        case Bind(i @ Inject(e), k) => split[Writer % W, F](e) { w0 =>
-            (w0: @unchecked) match
-              case Say(v) => loop(d)(K.add(s, v))(k(()))
-          } { _ => forwarded[Writer % W, F](i).flatMap(x => _loop(d)(s)(k(x))) }
-        case y => loop(d)(s)(HandleFrames.shallow(y, d))
-
-    if K.done(K.init) then Return(K.end(K.init))
-    else HandleFrames.run[R, F](d => loop(d)(K.init)(a), frame(K.init)(a))
+    // one step, both faces (handler-one-step): a tell adds to the state; done, the run stops there
+    HandleFrames.stateRunUntil[Writer % W, S, A, R, F](summon[TypeableK[Writer % W]], K.done(_), K.end(_))(
+      (s, op) => (K.add(s, Writer.told[W](op)), ()))(K.init, a)
   }
 
   /** collect everything told, in order, forwarding the effects F */

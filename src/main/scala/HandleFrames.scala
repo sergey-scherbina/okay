@@ -106,6 +106,30 @@ object HandleFrames:
       case z => loop(d)(s)(shallow(z, d))
     run[R, G](d => loop(d)(s0)(x), stateful[F, S, A, R, G](t, ret)((s, op, resume) => { val (s2, v) = step(s, op); resume(s2, v) })(s0, x))
 
+  /**
+   * `stateRun` that STOPS (handler-one-step stage 2, specs/fold-until.md): the moment the state is `done` — at the
+   * start, or after a step — the run answers `end(s)` and goes no further: the continuation is not called, so
+   * nothing past that operation is built and an operation of `G` that would have followed is never performed. Its
+   * frame is the same: a clause whose state is done does not resume.
+   */
+  @scala.annotation.nowarn("msg=New anonymous class definition will be duplicated")
+  inline def stateRunUntil[F[+_], S, A, R, G[+_]](t: TypeableK[F], inline done: S => Boolean, inline end: S => R)
+                                                 (inline step: (S, Any) => (S, Any))(s0: S, x: A ! F + G): R ! G =
+    given TypeableK[F] = t
+    def again(d: Int)(s: S)(y: A ! F + G): R ! G = loop(d)(s)(y)
+    @scala.annotation.tailrec def loop(d: Int)(s: S)(y: A ! F + G): R ! G =
+      if done(s) then Free.Return(end(s))
+      else (y.resumeRun: @unchecked) match
+        case Free.Return(_) => Free.Return(end(s))
+        case i @ Free.Inject(e) => split[F, G](e)(op => { val (s2, _) = step(s, op); Free.Return(end(s2)): R ! G })
+                                                 (_ => forwarded[F, G](i).map(_ => end(s)))
+        case Free.Bind(i @ Free.Inject(e), k) => split[F, G](e)(op => { val (s2, v) = step(s, op); loop(d)(s2)(feed(k, v)) })
+                                                               (_ => forwarded[F, G](i).flatMap(v => again(d)(s)(k(v))))
+        case z => loop(d)(s)(shallow(z, d))
+    if done(s0) then Free.Return(end(s0))
+    else run[R, G](d => loop(d)(s0)(x), stateful[F, S, A, R, G](t, (s, _) => pure(end(s)))(
+      (s, op, resume) => { val (s2, v) = step(s, op); if done(s2) then pure(end(s2)) else resume(s2, v) })(s0, x))
+
   /** THE CLAIM the fold makes of its step: the value it resumes with is the operation's answer */
   inline def feed[X, B](k: X => B, v: Any): B = k(v.asInstanceOf[X])
   /** the same claim for a lone operation, whose answer is the program's */

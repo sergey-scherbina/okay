@@ -168,24 +168,9 @@ object Producer {
    * per chunk held until the end.
    */
   def fold[W, S, A, G[+_] : TypeableK](p: A ! Produce + G)(z: S)(f: (S, W) => S): (S, A) ! G =
-    import !.*
-    import scala.annotation.tailrec
-    def again(d: Int)(acc: S)(x: A ! Produce + G): (S, A) ! G = loop(d)(acc)(x)
-    // the walk as a frame (handle-frames-loops)
-    def frame(acc: S)(x: A ! Produce + G): Shift.U[G, (S, A)] =
-      HandleFrames.stateful[Produce, S, A, (S, A), G](producing[G], (s, a) => pure((s, a)))(
-        (s, w, resume) => resume(f(s, produced[W](w)), w))(acc, x)
-    @tailrec def loop(d: Int)(acc: S)(x: A ! Produce + G): (S, A) ! G =
-      (x.resumeRun: @unchecked) match
-        case Free.Return(a) => pure((acc, a))
-        case i @ Inject(e) => split[G, Produce](e)
-          (_ => forwarded[Produce, G](i).map(a => (acc, a)): (S, A) ! G)
-          (w => pure((f(acc, produced[W](w)), produced[A](w))))
-        case Bind(i @ Inject(e), k) => split[G, Produce](e)
-          (_ => forwarded[Produce, G](i).flatMap(x => again(d)(acc)(k(x))))
-          (w => loop(d)(f(acc, produced[W](w)))(k(w)))
-        case y => loop(d)(acc)(HandleFrames.shallow(y, d))
-    HandleFrames.run[(S, A), G](d => loop(d)(z)(p), frame(z)(p))
+    // one step, both faces (handler-one-step): a production folds into the state and answers itself
+    HandleFrames.stateRun[Produce, S, A, (S, A), G](producing[G], (s, a) => pure((s, a)))(
+      (s, w) => (f(s, produced[W](w)), w))(z, p)
 
   /**
    * `fold` with a stop (specs/fold-until.md): the same split walk with
@@ -197,28 +182,9 @@ object Producer {
    * makes the same choice for the same reason).
    */
   def foldUntil[W, S, R, A, G[+_] : TypeableK](p: A ! Produce + G)(using K: FoldUntil[W, S, R]): R ! G =
-    import !.*
-    import scala.annotation.tailrec
-    def again(d: Int)(s: S)(x: A ! Produce + G): R ! G = loop(d)(s)(x)
-    // the fold as a frame (handle-frames-loops): a clause that is done does not resume
-    def frame(s: S)(x: A ! Produce + G): Shift.U[G, R] =
-      HandleFrames.stateful[Produce, S, A, R, G](producing[G], (s, _) => pure(K.end(s)))(
-        (s, w, resume) =>
-          val s2 = K.add(s, produced[W](w))
-          if K.done(s2) then pure(K.end(s2)) else resume(s2, w))(s, x)
-    @tailrec def loop(d: Int)(s: S)(x: A ! Produce + G): R ! G =
-      if K.done(s) then pure(K.end(s))
-      else (x.resumeRun: @unchecked) match
-        case Free.Return(_) => pure(K.end(s))
-        case i @ Inject(e) => split[G, Produce](e)
-          (_ => forwarded[Produce, G](i).map(_ => K.end(s)): R ! G)
-          (w => pure(K.end(K.add(s, produced[W](w)))))
-        case Bind(i @ Inject(e), k) => split[G, Produce](e)
-          (_ => forwarded[Produce, G](i).flatMap(x => again(d)(s)(k(x))))
-          (w => loop(d)(K.add(s, produced[W](w)))(k(w)))
-        case y => loop(d)(s)(HandleFrames.shallow(y, d))
-    if K.done(K.init) then pure(K.end(K.init))
-    else HandleFrames.run[R, G](d => loop(d)(K.init)(p), frame(K.init)(p))
+    // one step, both faces (handler-one-step): a production adds to the state; done, the run stops there
+    HandleFrames.stateRunUntil[Produce, S, A, R, G](producing[G], K.done(_), K.end(_))(
+      (s, w) => (K.add(s, produced[W](w)), w))(K.init, p)
 
   /**
    * A producer of CHUNKS as one Vector of their elements — the drain
@@ -240,23 +206,9 @@ object Producer {
    * TestFoldUntil pins it here.
    */
   def each[W, A, G[+_] : TypeableK](p: A ! Produce + G)(f: W => Unit): A ! G =
-    import !.*
-    def again(d: Int)(x: A ! Produce + G): A ! G = loop(d)(x)
-    // the walk as a frame (handle-frames-loops)
-    def frame(x: A ! Produce + G): Shift.U[G, A] =
-      HandleFrames.stateful[Produce, Unit, A, A, G](producing[G], (_, a) => pure(a))(
-        (_, w, resume) => { f(produced[W](w)); resume((), w) })((), x)
-    @tailrec def loop(d: Int)(x: A ! Produce + G): A ! G =
-      (x.resumeRun: @unchecked) match
-        case Free.Return(a) => pure(a)
-        case Inject(e) => split[G, Produce](e)
-          (g => Inject(g): A ! G)
-          (w => { f(produced[W](w)); pure(produced[A](w)) })
-        case Bind(i @ Inject(e), k) => split[G, Produce](e)
-          (_ => forwarded[Produce, G](i).flatMap(x => again(d)(k(x))): A ! G)
-          (w => { f(produced[W](w)); loop(d)(k(w)) })
-        case y => loop(d)(HandleFrames.shallow(y, d))
-    HandleFrames.run[A, G](d => loop(d)(p), frame(p))
+    // one step, both faces (handler-one-step): no state, the production answers itself
+    HandleFrames.stateRun[Produce, Unit, A, A, G](producing[G], (_, a) => pure(a))(
+      (_, w) => { f(produced[W](w)); ((), w) })((), p)
 
   /** an Answers printing each produced value on the way through */
   def log(prefix: String = "", suffix: String = "\n"): Answers[Produce] = new:
@@ -391,7 +343,6 @@ given [G[+_] : TypeableK]: Stream[[A] =>> A ! Produce + G, G] with
         elem
 
 import scala.math.Numeric.Implicits.given
-import scala.annotation.tailrec
 
 /** the naturals: 0, 1, 2, ... */
 inline def nats[N: Numeric as N, F[_] : Put]: F[N] =
