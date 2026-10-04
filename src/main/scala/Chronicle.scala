@@ -61,9 +61,20 @@ object Chronicle:
   /** the handler: every recorded error, in order, and whether the
    * program finished; forwards the effects F */
   /** the handler as a value: `p.handle(Chronicle.verdict)`, every problem collected beside the answer */
-  def verdict[E]: Handler[Chronicle % E, [A] =>> Verdict[E, A]] = new Handler[Chronicle % E, [A] =>> Verdict[E, A]]:
+  def verdict[E]: Handler[Chronicle % E, [A] =>> Verdict[E, A]] = new Handler.Stepped[Chronicle % E, List[E], [A] =>> Verdict[E, A]]:
     def run[A, F[+_]](p: A ! Chronicle % E + F)(using A <:< Any, Distinct[Chronicle % E + F], Handler.Nothing[F]): Verdict[E, A] ! F =
       Chronicle.run(p)
+    // the step `run` walks with, exposed for a walk over a stack of handlers (handler-single-pass): a halt
+    // stops with the record
+    def takes: TypeableK[Chronicle % E] = summon[TypeableK[Chronicle % E]]
+    def init: List[E] = Nil
+    def step(errs: List[E], op: Any): (List[E], Any) | Handler.Halt[List[E]] =
+      (op.asInstanceOf[Chronicle[E, Any]]: @unchecked) match
+        case Dictate(err) => (err :: errs, ())
+        case Halt() => Handler.Halt(errs)
+    def ret[A, F[+_]](errs: List[E], a: A): Verdict[E, A] ! F =
+      pure(if errs.isEmpty then Clean(a) else Warned(a, errs.reverse.toVector))
+    override def halted[A, F[+_]](errs: List[E]): Verdict[E, A] ! F = pure(Failed(errs.reverse.toVector))
 
   def run[E, A, F[+_]](p: A ! Chronicle % E + F)(using Distinct[Chronicle % E + F]): Verdict[E, A] ! F = {
     def verdict[B](errs: List[E], a: B): Verdict[E, B] =

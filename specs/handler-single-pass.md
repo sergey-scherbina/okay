@@ -127,7 +127,12 @@ Limits written down now:
    says what stages 2–4 can win. The design stands on its own (one walk, one place for dispatch), but its
    cost estimate comes from here.
 1. **`Stepped`**: the step exposed by `stateOf`, `answerOf` and the built-ins' handler values, nothing fused
-   yet. Zero behaviour change, pinned by the existing suites.
+   yet. Zero behaviour change, pinned by the existing suites. DONE 2026-10-04: `Handler.Stepped[E, S, O]`
+   (`takes`, `init`, `step(s, op): (S, Any) | Halt[S]`, `ret`, `halted`), implemented by `stateOf` (State,
+   `Handler.state`), `answerOf` (Reader, `Handler.answer`), `Writer.log`, `Once.memo`, `Fresh.counter`,
+   `Supply.from` and `Chronicle.verdict` (its halt). Each `run` is unchanged. TestStepped walks each
+   through its step alone and gets what `p.handle(h)` gets. The public types stay `Handler[E, O]`: the
+   fused walk recognises a `Stepped` at run time.
 2. **Registration and the fused loop**: `handle` pushes onto a `Handled` node, and the loop dispatches over
    the stack. Only `Stepped` handlers so far: an `Opaque` one is a node of its own, as today. The laws (the
    oracle) land with it.

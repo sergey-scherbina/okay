@@ -16,6 +16,29 @@ object Handler:
   trait Full[E[+_], I, O[_], Needs[_[+_]]]:
     def run[A, F[+_]](p: A ! E + F)(using A <:< I, Distinct[E + F], Needs[F]): O[A] ! F
 
+  /**
+   * A handler that is ONE STEP (handler-single-pass stage 1, specs/handler-single-pass.md): what a walk over a
+   * whole stack of handlers needs of it, and nothing more. These are the operations it takes, its state at
+   * the start, the step that answers one operation, and the answer at the end. `run` stays the handler's
+   * own, a loop over this same step, so a handler used alone costs what it did.
+   */
+  trait Stepped[E[+_], S, O[_]] extends Full[E, Any, O, Nothing]:
+    /** which operations are this handler's */
+    def takes: TypeableK[E]
+    /** the state before the first operation */
+    def init: S
+    /** one operation answered: the next state and the answer, or `Halt(s)`: the run stops at this operation
+     * and answers `halted(s)`, the continuation never called */
+    def step(s: S, op: Any): (S, Any) | Halt[S]
+    /** the answer of a program that ended with `a` in state `s` */
+    def ret[A, F[+_]](s: S, a: A): O[A] ! F
+    /** the answer of a run a step halted; only a handler whose step can halt is ever asked */
+    def halted[A, F[+_]](s: S): O[A] ! F =
+      throw IllegalStateException(s"$this never halts, yet a step of it did")
+
+  /** a step that stops the run (`Stepped.step`) */
+  final case class Halt[S](s: S)
+
   /** the evidence of nothing: always there */
   final class Nothing[F[+_]] private[Handler] ()
   object Nothing:
@@ -60,9 +83,13 @@ object Handler:
     /** a polymorphic function, typed by the compiler with no macro */
     def poly(f: [X] => F[X] => X)(using TypeableK[F]): Handler[F, [A] =>> A] = answerOf[F](f)
 
-  def answerOf[F[+_]](f: [X] => F[X] => X)(using TypeableK[F]): Handler[F, [A] =>> A] = new Handler[F, [A] =>> A]:
+  def answerOf[F[+_]](f: [X] => F[X] => X)(using t: TypeableK[F]): Stepped[F, Unit, [A] =>> A] = new Stepped[F, Unit, [A] =>> A]:
     def run[A, G[+_]](p: A ! F + G)(using A <:< Any, Distinct[F + G], Nothing[G]): A ! G =
       Effects.relay[A, A, F, G](p)(pure(_))([X, Y] => (e: F[X]) => Cont.Pure[X, Y](f(e)))
+    def takes: TypeableK[F] = t
+    def init: Unit = ()
+    def step(s: Unit, op: Any): (Unit, Any) | Halt[Unit] = ((), f(op.asInstanceOf[F[Any]]))
+    def ret[A, G[+_]](s: Unit, a: A): A ! G = pure(a)
 
   /** 1 · the same from an `Answers[F]` (its own name: an overload would cost the lambda form its expected type) */
   def from[F[+_]](a: Answers[F])(using TypeableK[F]): Handler[F, [A] =>> A] =
@@ -87,14 +114,18 @@ object Handler:
       stateOf[F, S](init)(f)
 
   @scala.annotation.nowarn("msg=New anonymous class definition will be duplicated")
-  inline def stateOf[F[+_], S](init: S)(inline f: [X] => (S, F[X]) => (S, X))(using TypeableK[F]): Handler[F, [A] =>> (S, A)] =
+  inline def stateOf[F[+_], S](s0: S)(inline f: [X] => (S, F[X]) => (S, X))(using t: TypeableK[F]): Stepped[F, S, [A] =>> (S, A)] =
     // a class per call site is the point: the clause expands into that site's own loop, where the JIT can
     // drop the pair it answers (handler-forms: 1.60x with the clause a function value)
-    new Handler[F, [A] =>> (S, A)]:
+    new Stepped[F, S, [A] =>> (S, A)]:
+      def takes: TypeableK[F] = t
+      def init: S = s0
+      def step(s: S, op: Any): (S, Any) | Halt[S] = f(s, op.asInstanceOf[F[Any]])
+      def ret[A, G[+_]](s: S, a: A): (S, A) ! G = pure((s, a))
       def run[A, G[+_]](p: A ! F + G)(using A <:< Any, Distinct[F + G], Nothing[G]): (S, A) ! G =
         // one step, both faces (handler-one-step): the fold is built from it at this site
-        HandleFrames.stateRun[F, S, A, (S, A), G](summon[TypeableK[F]], (s, a) => Free.Return((s, a)))(
-          (s, op) => f(s, op.asInstanceOf[F[Any]]))(init, p)
+        HandleFrames.stateRun[F, S, A, (S, A), G](t, (s, a) => Free.Return((s, a)))(
+          (s, op) => f(s, op.asInstanceOf[F[Any]]))(s0, p)
 
   /** what `into` needs of the rest of the row: that it holds `G` */
   type Holds[G[+_]] = [R[+_]] =>> Row.Sub[G, R]

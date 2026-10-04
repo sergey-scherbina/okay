@@ -31,8 +31,13 @@ object Fresh:
   inline def next: Long ! Fresh = Supply.next[Long]
 
   /** the handler as a value: `p.handle(Fresh.counter)` — fresh numbers from 0 */
-  def counter: Handler[Fresh, [A] =>> A] = new Handler[Fresh, [A] =>> A]:
+  def counter: Handler[Fresh, [A] =>> A] = new Handler.Stepped[Fresh, Long, [A] =>> A]:
     def run[A, F[+_]](p: A ! Fresh + F)(using A <:< Any, Distinct[Fresh + F], Handler.Nothing[F]): A ! F = Fresh.run(p)
+    // the step `run` walks with, exposed for a walk over a stack of handlers (handler-single-pass)
+    def takes: TypeableK[Fresh] = summon[TypeableK[Fresh]]
+    def init: Long = 0L
+    def step(n: Long, op: Any): (Long, Any) | Handler.Halt[Long] = (n + 1, n)
+    def ret[A, F[+_]](n: Long, a: A): A ! F = pure(a)
 
   /** handle Fresh from 0, forwarding the effects F */
   def run[A, F[+_]](p: A ! Fresh + F)(using Distinct[Fresh + F]): A ! F =
@@ -54,9 +59,14 @@ object Supply:
    * refuted it).
    */
   /** the handler as a value: `p.handle(Supply.from(first)(step))`, answering the next supply and `A` */
-  def from[S](first: S)(step: S => S): Handler[Supply % S, [A] =>> (S, A)] = new Handler[Supply % S, [A] =>> (S, A)]:
+  def from[S](first: S)(next: S => S): Handler[Supply % S, [A] =>> (S, A)] = new Handler.Stepped[Supply % S, S, [A] =>> (S, A)]:
     def run[A, F[+_]](p: A ! Supply % S + F)(using A <:< Any, Distinct[Supply % S + F], Handler.Nothing[F]): (S, A) ! F =
-      Supply.run(first)(step)(p)
+      Supply.run(first)(next)(p)
+    // the step `run` walks with, exposed for a walk over a stack of handlers (handler-single-pass)
+    def takes: TypeableK[Supply % S] = summon[TypeableK[Supply % S]]
+    def init: S = first
+    def step(s: S, op: Any): (S, Any) | Handler.Halt[S] = (next(s), s)
+    def ret[A, F[+_]](s: S, a: A): (S, A) ! F = pure((s, a))
 
   def run[S](first: S)(step: S => S)[A, F[+_]](p: A ! Supply % S + F)
             (using Distinct[Supply % S + F]): (S, A) ! F = {

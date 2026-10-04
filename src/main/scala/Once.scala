@@ -123,8 +123,13 @@ object Once:
       case Some(v) => (c, stored(v))
 
   /** the handler as a value: `p.handle(Once.memo)` — each `once` runs at most once, its answer shared */
-  def memo: Handler[Once, [A] =>> A] = new Handler[Once, [A] =>> A]:
+  def memo: Handler[Once, [A] =>> A] = new Handler.Stepped[Once, Cells, [A] =>> A]:
     def run[A, F[+_]](p: A ! Once + F)(using A <:< Any, Distinct[Once + F], Handler.Nothing[F]): A ! F = Once.run(p)
+    // the step `run` walks with, exposed for a walk over a stack of handlers (handler-single-pass)
+    def takes: TypeableK[Once] = summon[TypeableK[Once]]
+    def init: Cells = Map.empty
+    def step(c: Cells, op: Any): (Cells, Any) | Handler.Halt[Cells] = Once.step(c, op.asInstanceOf[Once[Any]])
+    def ret[A, F[+_]](c: Cells, a: A): A ! F = pure(a)
 
   /**
    * the handler: a bespoke tail-recursive loop threading the cells,

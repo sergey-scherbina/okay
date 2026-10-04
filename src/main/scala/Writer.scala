@@ -150,9 +150,15 @@ object Writer {
   /** collect everything told, in order, forwarding the effects F */
   /** the handler as a value: `p.handle(Writer.log)` answers what was told, in order, and `A` */
   def log[W](using t: TypeableK[Writer % W]): Handler[Writer % W, [A] =>> (Seq[W], A)] =
-    new Handler[Writer % W, [A] =>> (Seq[W], A)]:
+    new Handler.Stepped[Writer % W, List[W], [A] =>> (Seq[W], A)]:
       def run[A, F[+_]](p: A ! Writer % W + F)(using A <:< Any, Distinct[Writer % W + F], Handler.Nothing[F]): (Seq[W], A) ! F =
         Writer.run(p)
+      // the step `run` walks with, exposed for a walk over a stack of handlers (handler-single-pass)
+      def takes: TypeableK[Writer % W] = t
+      def init: List[W] = Nil
+      def step(s: List[W], op: Any): (List[W], Any) | Handler.Halt[List[W]] =
+        (told[W](op) :: s, ())
+      def ret[A, F[+_]](s: List[W], a: A): (Seq[W], A) ! F = pure((s.reverse, a))
 
   def run[W, A, F[+_]](a: A ! Writer % W + F)(using Distinct[Writer % W + F])
                       (using TypeableK[Writer % W]): (Seq[W], A) ! F =
