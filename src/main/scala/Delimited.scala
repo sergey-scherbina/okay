@@ -321,10 +321,7 @@ object Delimited:
           budget = StackSwitch.levelsPerStack - first
           try within(first, body()) finally budget = left
 
-    // inline: each caller its own call of `body`. One shared call saw three closure classes once the end of a
-    // room grants on the stack it reads (deeper's, the grant's, the fresh stack's), went megamorphic, and the
-    // levels it runs stopped inlining: a capture's `Segment` escaped, 2.2x at a million levels
-    private inline def within[X](left: Int, inline body: X): X =
+    private def within[X](left: Int, body: => X): X =
       val saved = room
       room = left
       try body finally room = saved
