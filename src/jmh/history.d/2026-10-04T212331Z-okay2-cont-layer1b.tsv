@@ -1,0 +1,2 @@
+2026-10-04	ed5814731	quiet	okay2_contAnswer_walked	26.97	25.92	1.04	okay2 HandlerBenchmark.contAnswer (M=1000 k(x+1)+1, new lane, ref = master with the lane copied in): Layer 1 B walked (Call + Pending a level, no frame) vs the direct leaf; 245904 vs 198008 B/op (+48 B a level); round 1, ref first. The Scala 3 core paid 1.24x for the same road
+2026-10-04	ed5814731	quiet	okay2_contAnswer_walked	26.75	26.03	1.03	round 2
