@@ -220,3 +220,14 @@ stateForeign), FibBenchmark.fib100 — arms alternated against master.
   doubles `go`'s largest arm for an operation rare on the machine). Cont's deferred
   force (`Op.Program`) needs no depth accounting: its `k(a)` answers a program
   without running it (TestContProgramAnswerSmallStack, a million on 128 KB).
+- 2026-10-04 (handlers-as-frames, PROBE, REFUTED): every handler run as its frame
+  — the folds and `HandleFrames.Limit` deleted — with the tail-resumptive frames
+  (State, Writer) answered IN PLACE by the machine (a `Tailing` mark holding the
+  state, no capture: Koka's tail-resumptive operations). Against master's folds:
+  stateSmall 4.34x (a machine assembled per small run), stateHandle 1.79x,
+  writerTell 2.03x, mixedList 1.48x (it was 7.4x on λ$ with a capture an
+  operation). An operation on the machine is a step — `Outer`, `holds` with a
+  `takes(op)` lambda, `Steps.at`, a `Next` — where a fold is `split` and a call.
+  The folds stay. What would reopen it: an in-place answer that allocates
+  nothing (no lambda, no `Next`) and a machine that costs nothing to start —
+  both measured here as the price, not assumed.
