@@ -208,3 +208,7 @@
       test process in the affected-set gate of cont-stack-layer1-c
       (while; ContMacro touched, so every dependent ran, 9616 tests).
       Recorded per the ledger.
+      2026-10-04, okayParseNative, GREEN on the rerun alone: lost its
+      test process in the affected-set gate of resource-abort-releases
+      (core Shift/HandleFrames touched, 9814 tests, box load ~45).
+      Recorded per the ledger.
