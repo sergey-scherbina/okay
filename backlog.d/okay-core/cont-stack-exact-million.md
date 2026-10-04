@@ -6,7 +6,7 @@
       run), the flag (native access without reading is 1.00x), one
       deep stack (`levelsPerStack` gives both roads 4 switches), the
       shape of `deeper` (`roomEnd` out of line) and a megamorphic `within`
-      (inlined). Seen: G1's workers spend 30% of the CPU in
+      (inlined: no change, reverted). Seen: G1's workers spend 30% of the CPU in
       `steal_best_of_2` against 10% counted, and a capture's `Segment`
       (`segmentAtTop`) escapes only when reading. Next: `-Xlog:gc*` on
       both arms, and `-XX:+PrintCompilation` / LogCompilation for
