@@ -48,7 +48,7 @@ infix type ![A, F[+_]] = Free[F, A]
 // Effects.scala:28 — fix a signature's first parameter
 infix type %[F[_, _], S] = F[S, *]
 // Effects.scala:34 — the empty effect row
-type Pure = Nothing
+type Pure[+A] = Nothing
 // F + G is a union of signatures; a row is built with % and +
 // Effects.scala:59 — a Cont-valued handler
 infix type !>[F[_], S] = Interpr[F, Cont, S]
