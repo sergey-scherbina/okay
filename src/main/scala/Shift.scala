@@ -151,7 +151,7 @@ object Shift {
     extends (A => R ! Shift % ? + F):
     def apply(x: A): R ! Shift % ? + F = resumeWith(okay.pure(x))
     def resumeWith(m: A ! Shift % ? + F): R ! Shift % ? + F =
-      claim[R ! Shift % ? + F](Free.delay(Resume[Any, A, R, F](p, piece, m, held)))
+      claim[R ! Shift % ? + F](Free.delay(Nested[R, F](op[R, F](Resume[Any, A, R, F](p, piece, m, held)), nested = true)))
     /** resume by THROWING `t` inside it, where it was captured: its own `try`s — catch frames, a `Resource` — answer
      * it as they would a throw from the code that captured ("throwing into a continuation"); none does, it is
      * thrown on out of the run */
@@ -188,13 +188,7 @@ object Shift {
    * `body` run inside them; `held` what kinds of frame the run that captured it had installed (`Steps.held`) */
   private[okay] final case class Resume[K, A, R, F[+_]](p: Prompt[R], k: Delimited.Piece[Freer.Lift[Shift % ? + F], A, Unit, R, Unit],
                                                         body: A ! Shift % ? + F, held: Int)
-    extends Pending[R, F], Shift[K, R]:
-    /** stepped into: the operation itself, its own program — no `Nested` beside it (delimited-cleanups) */
-    def program: R ! Shift % ? + F = Freer.Inject[Freer.Lift[Shift % ? + F], Unit, Unit, R](this)
-    /** forced by anyone else: a run of its own, no barrier */
-    def apply(): R ! F =
-      val s = Steps[F](nested = true)
-      Delimited.over[Shift % ? + F, F](s, s).value(program)
+    extends Shift[K, R]
 
   /** the prompt an operation names */
   private def promptOf(x: Any): Prompt[?] | Null = x match
@@ -224,7 +218,7 @@ object Shift {
   /**
    * A RUN AS A VALUE: a `Delay`'s thunk, forced by whoever holds it, STEPPED INTO by a machine for the row already
    * running (`Steps.enter`) — so a run nested in a run, a reset in a reset or a handler in a handler, is one loop and
-   * not a host frame. `Nested` and `Resume` are Shift's own; a handler's run (`HandleFrames.Run`) is the other.
+   * not a host frame. `Nested` is Shift's own; a handler's run (`HandleFrames.Run`) is the other.
    */
   abstract class Pending[R, F[+_]] extends (() => R ! F), Freer.Suspended:
     def program: R ! Shift % ? + F

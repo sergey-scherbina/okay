@@ -1,0 +1,3 @@
+2026-10-04	-	quiet	delimGenerator_resume_pending	60.234	54.964	1.10	REFUTED: Resume as its own Pending (no Nested beside it): 502 KB vs 542 KB, slower — fewer objects, a worse loop (cf. delimited-simplify-costs); min of 2 alternating rounds vs master 2fc77b32e
+2026-10-04	-	quiet	delimDollarResume_resume_pending	64.717	61.782	1.05	REFUTED with it: 652 KB vs 692 KB
+2026-10-04	-	quiet	delimGenerator_piece_one	54.822	55.387	0.99	kept: Piece starts at One (no empty piece a capture); parity, simpler

@@ -211,3 +211,12 @@ stateForeign), FibBenchmark.fib100 — arms alternated against master.
 - Not taken: `Cont.under` — a Cont with outer effects needs its own representation
   (a `Sum` row), a public type of its own; `pause`'s cast is a claim about the
   direct block's row, not about `k`.
+- 2026-10-04 (delimited-cleanups): a `Piece` starts at its first segment (`One`) —
+  no empty piece per capture; delimGenerator 0.99x, kept for the shape. REFUTED:
+  `Resume` as its own `Pending` (no `Nested` beside it) — 40 KB fewer, yet
+  delimGenerator 1.10x, delimDollarResume 1.05x: fewer objects, a worse loop, the
+  pattern of delimited-simplify-costs. Not done: dropping `Shift.Cut` (a dollar's
+  capture builds a new piece anyway) and a `Diag` arm without the `Inject` (it
+  doubles `go`'s largest arm for an operation rare on the machine). Cont's deferred
+  force (`Op.Program`) needs no depth accounting: its `k(a)` answers a program
+  without running it (TestContProgramAnswerSmallStack, a million on 128 KB).
