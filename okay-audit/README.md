@@ -19,3 +19,19 @@ inventory DORA asks for (Regulation (EU) 2022/2554, Art. 8).
 Zero dependencies. The report says what the check chose not to count
 (compiler bootstraps, the lazy-val idiom) in its header, every run. It is
 evidence for an auditor to read, not a compliance claim.
+
+## Maven and Gradle
+
+Build the `okay-audit` artifact once, then invoke its JVM main class from a
+Maven `exec` goal or a Gradle `JavaExec` task; the audited project needs no
+SBT classes or settings:
+
+```sh
+java -cp okay-audit.jar:scala3-library.jar:scala-library.jar okay.audit.Main \
+  --manifest audit.json --report build/audit
+```
+
+`audit.json` names the built class directories and dependency jars under each
+layer, package-prefix handler exceptions, and named allow decisions. Its
+complete schema and exit-code contract are in
+[`specs/audit-cli-standalone.md`](../specs/audit-cli-standalone.md).

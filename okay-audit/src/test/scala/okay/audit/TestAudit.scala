@@ -173,3 +173,43 @@ class TestAudit extends munit.FunSuite:
     assert(r.passed, r.text)
     assertEquals(r.unusedAllows.size, 1)
     assertEquals(r.untracked, Vector("nobody"))
+
+  test("Main: the standalone JSON manifest resolves paths beside itself, writes both reports, and returns one for a finding"):
+    val classes = only("Sockets")
+    val root = classes.getParent
+    val manifest = root.resolve("audit.json")
+    Files.writeString(manifest,
+      s"""{"modules":[{"name":"biz","layer":"business","paths":["${classes.getFileName}"]}]}""")
+    val out = root.resolve("report")
+    assertEquals(Main.run(Array("--manifest", manifest.toString, "--report", out.toString)), 1)
+    assert(Files.readString(out.resolve("report.txt")).contains("fixture.Sockets"))
+    assert(Files.readString(out.resolve("report.json")).contains("\"passed\":false"))
+
+  test("Main: a JSON package handler is inventoried while its business sibling stays checked"):
+    val classes = only("Pure", "io/Door")
+    val root = classes.getParent
+    val manifest = root.resolve("audit-packages.json")
+    Files.writeString(manifest,
+      s"""{"modules":[{"name":"biz","layer":"business","paths":["${classes.getFileName}"],"packages":{"fixture.io":"handlers"}}]}""")
+    val out = root.resolve("report-packages")
+    assertEquals(Main.run(Array("--manifest", manifest.toString, "--report", out.toString)), 0)
+    assert(Files.readString(out.resolve("report.txt")).contains("biz:fixture.io [handlers]"))
+
+  test("Main: malformed standalone JSON is refused by name before scanning"):
+    val dir = Files.createTempDirectory("audit-json-refusal")
+    val unknown = dir.resolve("unknown.json")
+    Files.writeString(unknown, """{"modules":[{"name":"biz","layer":"pure","paths":["missing"]}]}""")
+    assertEquals(Main.run(Array("--manifest", unknown.toString, "--report", dir.resolve("out").toString)), 2)
+    val malformed = dir.resolve("malformed.json")
+    Files.writeString(malformed, "{" )
+    assertEquals(Main.run(Array("--manifest", malformed.toString, "--report", dir.resolve("out2").toString)), 2)
+    val duplicate = dir.resolve("duplicate.json")
+    Files.writeString(duplicate,
+      """{"modules":[{"name":"biz","layer":"business","paths":["."]},{"name":"biz","layer":"business","paths":["."]}]}""")
+    assertEquals(Main.run(Array("--manifest", duplicate.toString, "--report", dir.resolve("out3").toString)), 2)
+    val missingPaths = dir.resolve("missing-paths.json")
+    Files.writeString(missingPaths, """{"modules":[{"name":"biz","layer":"business"}]}""")
+    assertEquals(Main.run(Array("--manifest", missingPaths.toString, "--report", dir.resolve("out4").toString)), 2)
+    val nonStringPath = dir.resolve("non-string-path.json")
+    Files.writeString(nonStringPath, """{"modules":[{"name":"biz","layer":"business","paths":[true]}]}""")
+    assertEquals(Main.run(Array("--manifest", nonStringPath.toString, "--report", dir.resolve("out5").toString)), 2)

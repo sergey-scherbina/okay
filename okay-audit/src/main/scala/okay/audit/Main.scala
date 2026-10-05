@@ -2,7 +2,7 @@ package okay.audit
 
 import java.nio.file.{Files, Path, Paths}
 
-/** `okay.audit.Main <modules.tsv> <out-dir> [allows.tsv]`
+/** `okay.audit.Main --manifest audit.json --report out-dir`
   *
   * modules.tsv: one module a line, `name<TAB>layer<TAB>path1:path2:...[<TAB>pkg=layer;pkg=layer]`
   *   (layer: business | handlers | runtime | untracked; the fourth column
@@ -35,19 +35,30 @@ object Main:
       Allow(a(0), a(1), a(3), a(2))
     }
 
-  def main(args: Array[String]): Unit =
-    if args.length < 2 then
-      System.err.println("usage: okay.audit.Main <modules.tsv> <out-dir> [allows.tsv]"); System.exit(2)
-    val (layers, modules, packages) = readManifest(Paths.get(args(0)))
-    val allows = if args.length > 2 then readAllows(Paths.get(args(2))) else Vector.empty
-    val out = Paths.get(args(1))
-    Files.createDirectories(out)
+  /** Runs either the standalone JSON contract or the legacy TSV input. */
+  def run(args: Array[String]): Int =
     try
-      val report = Audit.run(Boundary(layers, allows = allows, packages = packages), modules)
-      Files.writeString(out.resolve("report.txt"), report.text)
-      Files.writeString(out.resolve("report.json"), report.json)
-      System.out.print(report.text)
-      System.out.println(s"audit: report written to ${out.resolve("report.txt")}")
-      if !report.passed then System.exit(1)
+      args.toList match
+        case "--manifest" :: manifest :: "--report" :: out :: Nil =>
+          val input = Manifest.read(Paths.get(manifest))
+          write(input, Paths.get(out))
+        case manifest :: out :: allows =>
+          if allows.size > 1 then throw Audit.Refused("usage: okay.audit.Main <modules.tsv> <out-dir> [allows.tsv]")
+          val (layers, modules, packages) = readManifest(Paths.get(manifest))
+          write(Manifest(layers, modules, packages, allows.headOption.map(Paths.get(_)).map(readAllows).getOrElse(Vector.empty)), Paths.get(out))
+        case _ => throw Audit.Refused("usage: okay.audit.Main --manifest audit.json --report out-dir")
     catch
-      case r: Audit.Refused => System.err.println(s"audit: refused — ${r.getMessage}"); System.exit(2)
+      case r: Audit.Refused =>
+        System.err.println(s"audit: refused — ${r.getMessage}")
+        2
+
+  def main(args: Array[String]): Unit = System.exit(run(args))
+
+  private def write(input: Manifest, out: Path): Int =
+    Files.createDirectories(out)
+    val report = Audit.run(Boundary(input.layers, allows = input.allows, packages = input.packages), input.modules)
+    Files.writeString(out.resolve("report.txt"), report.text)
+    Files.writeString(out.resolve("report.json"), report.json)
+    System.out.print(report.text)
+    System.out.println(s"audit: report written to ${out.resolve("report.txt")}")
+    if report.passed then 0 else 1

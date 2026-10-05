@@ -42,15 +42,15 @@ supported for the SBT task.
 
 ## Behavior
 
-- [ ] a JSON manifest whose business module contains the socket fixture exits
+- [x] a JSON manifest whose business module contains the socket fixture exits
   with a finding and writes both reports
-- [ ] a handler package within a business module is inventoried, while the
+- [x] a handler package within a business module is inventoried, while the
   rest of the module remains subject to the business rule
-- [ ] manifest paths are relative to the manifest rather than the process
+- [x] manifest paths are relative to the manifest rather than the process
   working directory
-- [ ] an unknown layer, duplicate module name, missing/non-string path or
+- [x] an unknown layer, duplicate module name, missing/non-string path or
   malformed JSON is refused by name before a scan
-- [ ] documented Maven/Gradle invocations call the JVM main class and need no
+- [x] documented Maven/Gradle invocations call the JVM main class and need no
   SBT runtime classes or SBT settings
 
 ## Out of scope
@@ -80,4 +80,7 @@ tests exercise the CLI contract without calling `System.exit`.
 
 ## Results
 
-Pending implementation.
+Implemented 2026-10-05. `Manifest` is a zero-dependency strict JSON parser
+and schema validator; `Main.run` makes the command's 0/1/2 result testable
+without terminating the test JVM. `TestAudit` covers the socket finding,
+package handler inventory, manifest-relative paths, and malformed input.
