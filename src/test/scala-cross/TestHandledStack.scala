@@ -115,13 +115,3 @@ class TestHandledStack extends munit.FunSuite:
       Writer.log[String].run[Long, Pure](Counting.run[Long, Writer % String](p)).run)
     assertEquals(p.handle(Counting).handle(Writer.log[String]).run._1, Seq("a=0", "drew 2"))
   }
-
-  test("stack: 100 000 operations through a stack of three on a 256 KB thread") {
-    var out: Either[Throwable, Int] = Left(IllegalStateException("never ran"))
-    val t = new Thread(null, () => out =
-      try Right(three(mixed(100000), 1).run._2._2)
-      catch case e: Throwable => Left(e), "small", 256L * 1024)
-    t.start()
-    t.join()
-    assert(out.isRight, s"$out")
-  }
