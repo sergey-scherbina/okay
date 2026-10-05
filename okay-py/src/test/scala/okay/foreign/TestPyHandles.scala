@@ -1,7 +1,7 @@
 package okay.foreign
 
 import okay.{!, given}
-import okay.agent.Durable
+import okay.durable.Durable
 
 object TestPyHandles:
   val module: String =
@@ -24,7 +24,7 @@ object TestPyHandles:
       |""".stripMargin
 
 /** foreign-object-handles against a LIVE python3 (specs/foreign-highlevel.md stage 3) */
-class TestPyHandles extends munit.FunSuite {
+class TestPyHandles extends okay.testkit.Munit.Diagnosed {
 
   override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
   override def munitIgnore: Boolean = TestPy.python.isEmpty
@@ -77,6 +77,7 @@ class TestPyHandles extends munit.FunSuite {
           }
       }
     val j = Durable.MemoryJournal()
+    onFailure(j.all.toString)
     assertEquals(steps(3).runWith(using Durable.over[PyEval](w.handler, j)()), Right(6L))
     // the whole program, answered from the journal: no Python
     assertEquals(steps(3).runWith(using Durable.replayingOver[PyEval](j)), Right(6L))

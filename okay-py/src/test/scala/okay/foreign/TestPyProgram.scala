@@ -1,7 +1,7 @@
 package okay.foreign
 
 import okay.{Choose, Reader, effect, runChoice, given}
-import okay.agent.Durable
+import okay.durable.Durable
 
 object TestPyProgram:
   val progs = Py.module("progs", """
@@ -20,7 +20,7 @@ object TestPyProgram:
   """)
 
 /** remote-foreign against a LIVE python3 (specs/remote-foreign.md) */
-class TestPyProgram extends munit.FunSuite {
+class TestPyProgram extends okay.testkit.Munit.Diagnosed {
   import TestPyProgram.*
 
   override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
@@ -63,6 +63,7 @@ class TestPyProgram extends munit.FunSuite {
 
   test("Durable journals the walk; a replay answers every node without Python") {
     val j = Durable.MemoryJournal()
+    onFailure(j.all.toString)
     val pairs = Py.program[Long]("progs:pairs").calling(Py.callbacks(choose))()
     val live = runChoice(pairs.program).runWith(using Durable.over[PyEval](w.handler, j)())
     assertEquals(j.all.map(_.op).distinct, Vector("program:progs:pairs", "continue"))

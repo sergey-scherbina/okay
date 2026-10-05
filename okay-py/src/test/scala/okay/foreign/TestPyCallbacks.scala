@@ -2,7 +2,7 @@ package okay.foreign
 
 import okay.{!, Reader, State}
 import okay.given
-import okay.agent.Durable
+import okay.durable.Durable
 
 object TestPyCallbacks:
   val module: String =
@@ -39,7 +39,7 @@ object TestPyCallbacks:
       |""".stripMargin
 
 /** foreign-callbacks against a LIVE python3 (specs/foreign-highlevel.md stage 7) */
-class TestPyCallbacks extends munit.FunSuite {
+class TestPyCallbacks extends okay.testkit.Munit.Diagnosed {
 
   override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
   override def munitIgnore: Boolean = TestPy.python.isEmpty
@@ -97,6 +97,7 @@ class TestPyCallbacks extends munit.FunSuite {
 
   test("Durable journals the dialogue; a replay answers every step without Python") {
     val j = Durable.MemoryJournal()
+    onFailure(j.all.toString)
     val prog = Py.fn[Long]("okaycb:twice").calling(Py.callbacks(inc))(5L)
     val live = State.handle(0)(prog).runWith(using Durable.over[PyEval](w.handler, j)())
     assertEquals(live, (2, Right(12L)))

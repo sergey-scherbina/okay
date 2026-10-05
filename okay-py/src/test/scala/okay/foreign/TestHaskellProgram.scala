@@ -1,7 +1,7 @@
 package okay.foreign
 
 import okay.{Choose, Reader, effect, runChoice, given}
-import okay.agent.Durable
+import okay.durable.Durable
 
 object TestHaskellProgram:
   // no margin: the docs quote these lines, and the snippet check reads them trimmed
@@ -40,7 +40,7 @@ main = serve [("pairs", pairs), ("priced", priced), ("boom", boom)]
 """
 
 /** remote-foreign against a LIVE GHC (specs/remote-foreign.md): the same wire, a Haskell far side */
-class TestHaskellProgram extends munit.FunSuite {
+class TestHaskellProgram extends okay.testkit.Munit.Diagnosed {
 
   override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
   private lazy val ghc = scala.util.Try(ProcessBuilder("ghc", "--version").start().waitFor() == 0).getOrElse(false)
@@ -78,6 +78,7 @@ class TestHaskellProgram extends munit.FunSuite {
 
   test("Durable journals a Haskell program's walk; the replay needs no Haskell") {
     val j = Durable.MemoryJournal()
+    onFailure(j.all.toString)
     val pairs = Foreign.program[Long]("pairs").calling(Foreign.callbacks(choose))()
     val live = runChoice(pairs.program).runWith(using Durable.over[ForeignEval](w.handler, j)())
     assertEquals(runChoice(pairs.program).runWith(using Durable.replayingOver[ForeignEval](j)), live)

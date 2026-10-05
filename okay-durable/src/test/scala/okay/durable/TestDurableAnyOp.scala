@@ -1,7 +1,7 @@
-package okay.agent
+package okay.durable
 
 import okay.Answers
-import okay.codec.Json
+import okay.codec.{Json, Journalled}
 
 /**
  * The seam proved by a SECOND operation type — which is the only way
@@ -19,7 +19,11 @@ import okay.codec.Json
  * it was ASKED, not what it will answer, which is the same freedom an
  * R instance needs for a million-row frame.
  */
-class TestDurableAnyOp extends munit.FunSuite {
+class TestDurableAnyOp extends okay.testkit.Munit.Diagnosed {
+
+  override def beforeEach(context: BeforeEach): Unit =
+    super.beforeEach(context)
+    note(context.test.name)
 
   enum Calc[+A]:
     case Add(x: Int, y: Int) extends Calc[Int]
@@ -49,6 +53,7 @@ class TestDurableAnyOp extends munit.FunSuite {
 
   test("an operation whose answer is not a String: executed once, journalled, decoded back") {
     val j = Durable.MemoryJournal()
+    onFailure(j.all.toString)
     val ran = java.util.concurrent.atomic.AtomicInteger(0)
 
     val first = Durable.over[Calc](adder(ran), j)()
@@ -69,6 +74,7 @@ class TestDurableAnyOp extends munit.FunSuite {
 
   test("replay answers from the journal and never reaches the inner handler") {
     val j = Durable.MemoryJournal()
+    onFailure(j.all.toString)
     val ran = java.util.concurrent.atomic.AtomicInteger(0)
     assertEquals(Durable.over[Calc](adder(ran), j)().handle(Calc.Add(7, 8)), 15)
 
@@ -79,6 +85,7 @@ class TestDurableAnyOp extends munit.FunSuite {
 
   test("a changed program is caught by the fingerprint, not answered wrongly") {
     val j = Durable.MemoryJournal()
+    onFailure(j.all.toString)
     val ran = java.util.concurrent.atomic.AtomicInteger(0)
     assertEquals(Durable.over[Calc](adder(ran), j)().handle(Calc.Add(2, 3)), 5)
 
@@ -89,6 +96,7 @@ class TestDurableAnyOp extends munit.FunSuite {
 
   test("the crash window: an answerless entry obeys the policy, per operation") {
     val j = Durable.MemoryJournal()
+    onFailure(j.all.toString)
     val ran = java.util.concurrent.atomic.AtomicInteger(0)
     // intent written, answer never — the process died in between
     j.append(Durable.Entry(0, "add", "add(2,3)", "add-0-1", None))
@@ -106,6 +114,7 @@ class TestDurableAnyOp extends munit.FunSuite {
 
   test("Reconcile answers in the journal's written form and is decoded for the program") {
     val j = Durable.MemoryJournal()
+    onFailure(j.all.toString)
     val ran = java.util.concurrent.atomic.AtomicInteger(0)
     j.append(Durable.Entry(0, "add", "add(2,3)", "add-0-1", None))
 
@@ -119,6 +128,7 @@ class TestDurableAnyOp extends munit.FunSuite {
 
   test("a parked question shows the fingerprint when the instance offers nothing better") {
     val j = Durable.MemoryJournal()
+    onFailure(j.all.toString)
     val ran = java.util.concurrent.atomic.AtomicInteger(0)
     val h = Durable.over[Calc](adder(ran), j)(policy = _ => Durable.OnRepeat.Await)
     val awaiting = intercept[Durable.Awaiting](h.handle(Calc.Add(2, 3)))

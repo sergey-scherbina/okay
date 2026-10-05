@@ -2493,6 +2493,26 @@ lazy val okayIntent = crossProject(JVMPlatform, JSPlatform)
       Seq(baseDirectory.value.getParentFile / "src" / "test" / "scala-cross"),
   )
 
+/** Generic per-operation journal and replay, independent of agent and storage. */
+lazy val okayDurable = crossProject(JVMPlatform, JSPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-durable"))
+  .dependsOn(okay, okayCodec, okayTest % "test->compile")
+  .settings(
+    name := "okay-durable",
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % "optional;test",
+  )
+
+/** Topic-backed journals; storage is optional for users of okay-durable. */
+lazy val okayDurablePersist = crossProject(JVMPlatform, JSPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-durable-persist"))
+  .dependsOn(okayDurable, okayPersist, okayTest % "test->compile")
+  .settings(
+    name := "okay-durable-persist",
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % "optional;test",
+  )
+
 lazy val okayAgent = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-agent"))
@@ -2501,7 +2521,8 @@ lazy val okayAgent = crossProject(JVMPlatform, JSPlatform)
   // okay-frame is the FORM a conversation fills: this module owns the
   // suspension and okay-frame owns the slots, which is the split that
   // ended two slot models living in one repository.
-  .dependsOn(okayLlm, okayRag, okayPersist, okayFrame)
+  .dependsOn(okayLlm, okayRag, okayPersist, okayFrame, okayDurablePersist)
+  .dependsOn(okayTest % "test->compile")
   .dependsOn(okayActor)   // agents as supervised actors (specs/agent-fleet.md)
   .settings(
     name := "okay-agent",
@@ -2821,9 +2842,9 @@ lazy val okaySecurityArgon2 = project
  * "wrong venv" a loud startup refusal.
  */
 lazy val okayPy = (project in file("okay-py"))
-  // okay-agent for TESTS only: its Durable journals these operations
+  // okay-durable for TESTS only: its neutral handler journals these operations
   // through their own `Journalled` instances (foreign-journalled)
-  .dependsOn(okay.jvm, okayCodec.jvm, okayArrow.jvm, okayStream.jvm, okayAgent.jvm % Test)
+  .dependsOn(okay.jvm, okayCodec.jvm, okayArrow.jvm, okayStream.jvm, okayDurable.jvm % Test, okayTest.jvm % "test->compile")
   // JMH for the wire's codecs (wire-compression-measured)
   .enablePlugins(JmhPlugin)
   .settings(
@@ -3031,13 +3052,13 @@ lazy val okayForeignCluster = (project in file("okay-foreign-cluster"))
 // dependency: Durable journals R steps because they are operations,
 // not because the modules know each other.
 lazy val okayR = (project in file("okay-r"))
-  // okay-agent for TESTS only: its Durable journals these operations
+  // okay-durable for TESTS only: its neutral handler journals these operations
   // through their own `Journalled` instances (foreign-journalled);
   // okay-arrow for frames as Arrow IPC streams (r-arrow), okay-py's twin;
   // okay-py for the ENGINE, value tree, effect and API every wire language
   // shares (foreign-one-r, foreign-one-value), and its conformance suites,
   // which R runs as one more row
-  .dependsOn(okay.jvm, okayCodec.jvm, okayArrow.jvm, okayStream.jvm, okayPy % "compile->compile;test->test", okayAgent.jvm % Test)
+  .dependsOn(okay.jvm, okayCodec.jvm, okayArrow.jvm, okayStream.jvm, okayPy % "compile->compile;test->test", okayDurable.jvm % Test, okayTest.jvm % "test->compile")
   .settings(
     name := "okay-r",
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
@@ -3736,6 +3757,7 @@ lazy val root = (project in file("."))
     okayTelegram.jvm, okayTelegram.js,
     okaySecurity.jvm, okaySecurity.js, okaySecurityArgon2, okayRust.jvm,
     okayFrame.jvm, okayFrame.js,
+    okayDurable.jvm, okayDurable.js, okayDurablePersist.jvm, okayDurablePersist.js,
     okayAgent.jvm, okayAgent.js, okayIntent.jvm, okayIntent.js, okayChatWeb.jvm, okayChatWeb.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo, okaySubscription, okayAdmin, okayChat, okayDlm, okayDlmRemote, okayDeploy, okayLive, okayScript,
     okayMcp.jvm, okayMcp.js, okayMcpHttp.jvm, okayMcpHttp.js,
     okayKernel.jvm, okayKernel.js, okayKernel.native, okayUi.jvm, okayUi.js, okayUi.native,

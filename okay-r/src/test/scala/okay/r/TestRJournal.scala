@@ -1,7 +1,7 @@
 package okay.r
 
 import okay.Answers
-import okay.agent.Durable
+import okay.durable.Durable
 import RValue.*
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -10,7 +10,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * (foreign-journalled, specs/foreign-highlevel.md stage 1). No R needed:
  * a canned handler stands in for it and counts what reached it.
  */
-class TestRJournal extends munit.FunSuite {
+class TestRJournal extends okay.testkit.Munit.Diagnosed {
 
   private def canned(ran: AtomicInteger): Answers[REval] = new Answers[REval]:
     def handle[A](op: REval[A]): A = op match
@@ -29,6 +29,7 @@ class TestRJournal extends munit.FunSuite {
 
   test("journalled, then replayed from the journal without reaching R") {
     val j = Durable.MemoryJournal()
+    onFailure(j.all.toString)
     val ran = AtomicInteger()
     val live = Durable.over[REval](canned(ran), j)()
     assertEquals(live.handle(REval.Call("stats::median", xs)), Right(Vec(Vector(F64(2.0)))))
@@ -43,6 +44,7 @@ class TestRJournal extends munit.FunSuite {
 
   test("NULL, typed NA and NaN come back from the journal distinct") {
     val j = Durable.MemoryJournal()
+    onFailure(j.all.toString)
     val _ = Durable.over[REval](canned(ran = AtomicInteger()), j)().handle(REval.Call("m::edges", Vector.empty))
     Durable.replayingOver[REval](j).handle(REval.Call("m::edges", Vector.empty)) match
       case Right(Vec(Vector(RNull, NA(RType.Integer), NA(RType.Character), F64(nan)))) =>
@@ -52,6 +54,7 @@ class TestRJournal extends munit.FunSuite {
 
   test("a frame round-trips through the journal, and drifted inputs are refused") {
     val j = Durable.MemoryJournal()
+    onFailure(j.all.toString)
     val ran = AtomicInteger()
     val in = RFrame(Vector("x" -> Vector(I32(1), I32(2), NA(RType.Integer))))
     val first = Durable.over[REval](canned(ran), j)().handle(REval.Frame("rev", in, Vector.empty))

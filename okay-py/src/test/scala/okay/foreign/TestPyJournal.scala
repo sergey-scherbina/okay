@@ -1,7 +1,7 @@
 package okay.foreign
 
 import okay.Answers
-import okay.agent.Durable
+import okay.durable.Durable
 import Value.*
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -11,7 +11,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * needed: a canned handler IS the Python (the TestRMock precedent), and
  * it counts what reached it, so a replay that touched the world shows.
  */
-class TestPyJournal extends munit.FunSuite {
+class TestPyJournal extends okay.testkit.Munit.Diagnosed {
 
   /** answers by address; counts every call that reached "Python" */
   private def canned(ran: AtomicInteger): Answers[PyEval] = new Answers[PyEval]:
@@ -39,6 +39,7 @@ class TestPyJournal extends munit.FunSuite {
 
   test("two calls journalled, then replayed from the journal without reaching Python") {
     val j = Durable.MemoryJournal()
+    onFailure(j.all.toString)
     val ran = AtomicInteger()
     val live = Durable.over[PyEval](canned(ran), j)()
     assertEquals(live.handle(PyEval.Call("statistics:median", xs)), Right(F64(2.0)))
@@ -55,6 +56,7 @@ class TestPyJournal extends munit.FunSuite {
 
   test("None, NaN, bytes and an integral float come back from the journal as they went in") {
     val j = Durable.MemoryJournal()
+    onFailure(j.all.toString)
     val ran = AtomicInteger()
     val _ = Durable.over[PyEval](canned(ran), j)().handle(PyEval.Call("m:edges", Vector.empty))
     Durable.replayingOver[PyEval](j).handle(PyEval.Call("m:edges", Vector.empty)) match
@@ -67,6 +69,7 @@ class TestPyJournal extends munit.FunSuite {
 
   test("a frame operation round-trips through the journal") {
     val j = Durable.MemoryJournal()
+    onFailure(j.all.toString)
     val ran = AtomicInteger()
     val in = Frame(Vector("x" -> Vector(I64(1), I64(2))))
     val first = Durable.over[PyEval](canned(ran), j)().handle(PyEval.Frame("m:count", in, Vector.empty))
@@ -78,6 +81,7 @@ class TestPyJournal extends munit.FunSuite {
 
   test("the fingerprint is the address plus a hash of what was ASKED: drifted inputs are refused") {
     val j = Durable.MemoryJournal()
+    onFailure(j.all.toString)
     val ran = AtomicInteger()
     val _ = Durable.over[PyEval](canned(ran), j)().handle(PyEval.Call("statistics:median", xs))
     assert(j.all.head.fingerprint.startsWith("statistics:median#"), j.all.head.fingerprint)
@@ -94,6 +98,7 @@ class TestPyJournal extends munit.FunSuite {
 
   test("handles journal too: hold, a method, a release — replayed without Python") {
     val j = Durable.MemoryJournal()
+    onFailure(j.all.toString)
     val ran = AtomicInteger()
     val live = Durable.over[PyEval](canned(ran), j)()
     val ref = live.handle(PyEval.Call("m:model", Vector.empty, held = true)).flatMap(Wire.asRef).toOption.get

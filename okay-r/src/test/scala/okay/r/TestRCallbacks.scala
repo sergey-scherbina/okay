@@ -2,7 +2,7 @@ package okay.r
 
 import okay.{!, Reader, State}
 import okay.given
-import okay.agent.Durable
+import okay.durable.Durable
 
 object TestRCallbacks:
   /** R functions that call back into okay, defined by `source`-ing this
@@ -17,7 +17,7 @@ object TestRCallbacks:
       |""".stripMargin
 
 /** foreign-callbacks against a LIVE R (specs/foreign-highlevel.md stage 7) */
-class TestRCallbacks extends munit.FunSuite {
+class TestRCallbacks extends okay.testkit.Munit.Diagnosed {
 
   override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
   override def munitIgnore: Boolean = TestR.rscript.isEmpty
@@ -64,6 +64,7 @@ class TestRCallbacks extends munit.FunSuite {
 
   test("Durable journals the dialogue; a replay answers every step without R") {
     val j = Durable.MemoryJournal()
+    onFailure(j.all.toString)
     val prog = R.fn[Long]("twice").calling(R.callbacks(inc))(5L)
     assertEquals(State.handle(0)(prog).runWith(using Durable.over[REval](r.handler, j)()), (2, Right(12L)))
     assertEquals(j.all.map(_.op), Vector("program:twice", "continue", "continue"))
