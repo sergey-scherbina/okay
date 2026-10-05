@@ -1,6 +1,6 @@
 ## durable-run-scoped-keys — isolate external keys by journal run identity
 
-Source commit ee8d4b69b: Journal.runId supplies stable identity;
+Source commit 34a76e0ba: Journal.runId supplies stable identity;
 MemoryJournal supports explicit IDs or one platform UUID per journal;
 TopicJournal exposes its existing run without changing version-1 bytes.
 Fresh scoped keys encode run and position rather than a 32-bit request
