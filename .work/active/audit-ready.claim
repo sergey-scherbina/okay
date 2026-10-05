@@ -1,0 +1,6 @@
+feature/audit-ready 2026-10-05T06:47:58Z
+agent: claude-code (session 3b422608)
+heartbeat: 2026-10-05T06:47:58Z
+status: in-progress
+done-so-far: spec lane — specs/audit-ready.md (the architecture an okay application follows to pass okay-audit and carry the DORA evidence) + backlog items
+next: land
