@@ -154,11 +154,17 @@ object Condition {
     // the Resume path is a WHILE loop, not a recursion (the
     // Resource.run shape): a decode loop signalling once per record
     // resumes a hundred thousand times in a row, and every one of
-    // them would otherwise be a JVM frame. Frames (Within) nest by
-    // lexical depth, which is bounded; forwarded effects suspend
-    // under flatMap, so their recursion lives in closures.
+    // them would otherwise be a JVM frame. A nested frame's region is
+    // DEFERRED into the program this loop answers (`Free.delay`), not
+    // entered by a direct call: frames do NOT nest by lexical depth
+    // alone — a recursive program opens one per level — and a direct
+    // call was a JVM frame each, 100 000 overflowing
+    // (condition-nested-frames). Forwarded effects suspend under
+    // flatMap, so their recursion lives in closures too.
     def loop[X](p0: X ! Op + F, menu: List[Frame]): Out[X] ! F =
-      val names = menu.map(_.name).toVector
+      // only a signal or an invoke reads the names: built per frame up
+      // front, n nested frames cost O(n^2) (condition-nested-frames)
+      lazy val names = menu.map(_.name).toVector
 
       /** one operation with its continuation, typed by the tree:
        * Left = the program continues here (the Resume path), Right =
@@ -180,7 +186,7 @@ object Condition {
           // machine's row — erased at the operation because F is not
           // the operation's to name, re-typed here where F is known
           val body = w.body.asInstanceOf[a ! Op + F]
-          Right(loop(body, Frame(w.name, w.id) :: menu).flatMap {
+          Right(Free.delay(() => loop(body, Frame(w.name, w.id) :: menu)).flatMap {
             case Out.Done(b) => loop(k(b), menu)
             case Out.Escape(t, x) if t == w.name || (t eq w.id) => loop(k(w.recover(w.accept(x))), menu)
             case Out.Escape(t, x) => pure(Out.Escape(t, x)) // an outer frame's

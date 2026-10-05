@@ -100,7 +100,7 @@ object Condition {
    * Run the conditions of `prog` under `policy`, which sees each condition and the restarts on offer (innermost
    * first). Other effects are forwarded. A nested frame's region is a program the outer one continues into, its
    * walk DEFERRED (`Free.delay`), so frames nested to any depth — a recursive program opening one per level — take
-   * no host frame each (the core recurses into it directly).
+   * no host frame each (as the Scala 3 core does since condition-nested-frames).
    */
   def run[A, F <: Row](policy: (Any, Vector[String]) => Decision)(prog: Free[Condition with F, A]): A ! F = {
     val Mine = Split.at[Condition]

@@ -101,8 +101,6 @@ okay-codec/src/main/scala/okay/codec/TsTypes.scala	272	primary	mutual		BOUNDED: 
 okay-codec/src/main/scala/okay/codec/TsTypes.scala	356	typeOf	direct		BOUNDED: per level of a TsType parsed from that same declaration file
 okay-demo/src/main/scala/okay/demo/RepoAgent.scala	47	walk	lambda	IterableOps.flatMap	BOUNDED: per directory level of a source tree on disk, which the OS caps by path length (PATH_MAX) — and `target`/`.git`/dot-dirs are skipped
 okay-deploy/src/main/scala/okay/deploy/Paas.scala	349	pretty	lambda	Vector.map	BOUNDED: per level of a manifest Json the program built for a deploy — its own document, printed for a person
-okay-direct/src/main/scala/Condition.scala	160	loop	mutual		BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
-okay-direct/src/main/scala/Condition.scala	166	step	mutual		BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
 okay-direct/src/main/scala/macros/DirectMacros.scala	145	go	direct		BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
 okay-direct/src/main/scala/macros/DirectMacros.scala	315	curry	lambda	Quotes$reflectModule$LambdaModule.apply	BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
 okay-direct/src/main/scala/macros/DirectCompiler.scala	103	compile	direct	DirectCompiler.bind,DirectCompiler.colourlessVal,DirectCompiler.nestedProgramDef	BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote

@@ -161,6 +161,15 @@ class TestCondition extends munit.FunSuite {
     assertEquals(e.restart, "elsewhere")
   }
 
+  test("frames nested a hundred thousand deep by a recursive program: no host frame each, not quadratic") {
+    // condition-nested-frames: a nested frame's region was entered by a direct call (a host frame each) and
+    // every frame built the menu's names up front (O(depth) a frame)
+    def nest(n: Int): Int ! Op =
+      if n == 0 then signal[Int]("bottom")
+      else within[Int, Pure]("level")(!.tailcall(nest(n - 1)).map(_ + 1))(_ => -1)
+    assertEquals(!.run(Condition.run[Int, Pure]((_, _) => Resume(0))(nest(100000))), 100000)
+  }
+
   test("a frame whose body completes normally is invisible") {
     var recovered = false
     val out = !.run(Condition.run[Int, Pure]((_, _) => Fail)(
