@@ -1,6 +1,0 @@
-feature/okay-audit 2026-10-05T05:24:45Z
-agent: claude-code (session 3b422608)
-heartbeat: 2026-10-05T05:24:45Z
-status: in-progress
-done-so-far: spec landed 82447a089; implementing stage 1 (module okay-audit, sbt audit task, dogfood)
-next: Scan + Boundary + Audit + tests
