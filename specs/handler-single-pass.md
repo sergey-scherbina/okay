@@ -135,7 +135,26 @@ Limits written down now:
    fused walk recognises a `Stepped` at run time.
 2. **Registration and the fused loop**: `handle` pushes onto a `Handled` node, and the loop dispatches over
    the stack. Only `Stepped` handlers so far: an `Opaque` one is a node of its own, as today. The laws (the
-   oracle) land with it.
+   oracle) land with it. DONE 2026-10-05 (operator: "ради архитектуры", and "слить сейчас" on the numbers
+   below). `Free.handleOne` sends a `Stepped` handler to `HandleFrames.handled`. A single one is its own
+   `run`, its `Run` node marked with the handler and the program (`markedStep`/`markedUnder`). The second
+   `handle` turns the pair into a `HandleFrames.Handled` stack, and every later one pushes onto it. The walk
+   (`Walk`) dispatches by a per-walk class table checked by the found handler's own test. A step answers
+   through `stepAt`: the next state into the stack's slot, the answer returned, no pair. `Halt` drops the
+   handlers inside and walks the halted answer outward. An operation of the rest of the row leaves once, and
+   each resumption gets the states as they were (a multi-shot handler outside). The frame face is the
+   handlers' own runs nested, so a machine steps into frames as before. Non-stepped handlers (Throws, Choose,
+   `control`) stay runs of their own, which the walk forces. TestHandledStack holds the laws against the
+   handlers' own runs nested: three handlers, a map between handles, a halt inside and outside, Choose
+   outside, Throws inside, a `ret` that performs outward, and 100 000 operations on a 256 KB thread.
+   COST, measured (history.d handler-single-pass-stage2): fold-built programs 0.91–0.95x (SW, TSW), the
+   right-nested shape of a recursion **1.17x** (SWr: a generic walk's find + megamorphic `stepAt` + feed
+   against two inlined loops), 37 KB less in all three, a single small `handle` 1.10x (100 of them; the
+   mark), a single `handle` over many operations 0.99x. Refuted on the way: a stack of one as a `Handled`
+   (1.55x on small handles: a second node and an array), the last-class fast path in `find` (1.35x on
+   alternating effects), and `stepAt` as the cure for the recursion shape (it removed the pair, not the
+   1.17x). The recursion's cost is level 2's to take back (Dispatch above): backlog
+   handler-single-pass-staged.
 3. **The control boundary**: an `Opaque` handler splits the stack, so a mixed stack fuses around it.
 4. **The machine face**: the fused loop as one `Delimited` frame.
 5. **Docs**: docs/your-own-effect.md, "Which one", says which handlers fuse: the forms 1–3 and every

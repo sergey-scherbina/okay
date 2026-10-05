@@ -44,4 +44,10 @@
       beats the chain from 4 handlers (0.78x, 0.66x at 8) and ties at 2.
       Stage 1 (`Stepped`) is next if the operator takes the design on that
       evidence.
+      STAGE 1 LANDED 1b1a3db1d (Stepped). STAGE 2 LANDED 2026-10-05
+      (registration, one walk, class table; spec stage 2 has the costs).
+      Left: stage 3 (the control boundary inside a stack: today a
+      non-stepped handler is a run of its own, correct but not fused),
+      stage 4 is in place (the frame is the runs nested), stage 5 docs, and
+      the recursion shape's 1.17x (handler-single-pass-staged).
 

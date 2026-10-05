@@ -1,0 +1,6 @@
+2026-10-05	6a54ed562	-	FusionBenchmark.handledSW stack vs nested us/op	28.626	31.402	0.91	handle registers, one walk (stepAt); 2 rounds; bytes 279232 vs 316384 (earlier version)
+2026-10-05	6a54ed562	-	FusionBenchmark.handledSWr stack vs nested us/op	13.507	11.536	1.17	right-nested (recursion): the generic walk's cost (find + megamorphic stepAt + feed) over two inlined loops; bytes 95680 vs 132832
+2026-10-05	6a54ed562	-	FusionBenchmark.handledTSW stack vs nested us/op	29.370	31.758	0.92	Writer+State a stack, Throws a run outside; earlier version; bytes 279336 vs 316488
+2026-10-05	6a54ed562	-	HandlerBenchmark.stateSmallHandle us/op	1.422	1.297	1.10	100 single handles: the run marked (two fields) + the Stepped test; same bytes
+2026-10-05	6a54ed562	-	HandlerFormsBenchmark.state_builtin us/op	12.642	12.803	0.99	one handle, 1000 ops: unchanged
+2026-10-05	6a54ed562	-	HandlerFormsBenchmark.reader_builtin us/op	35.970	36.303	0.99	one handle: unchanged
