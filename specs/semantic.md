@@ -61,7 +61,8 @@ tests depend on okay-test's diagnosed adapter. SQL adapter depends on the core
 and okay-sql, not JDBC. Standard engines are optional existing Sql implementations.
 No arbitrary expression trees or recursive graph walks in stage 1. Aggregation
 uses an iterative fold, bounded state per group/measure and decimal arithmetic.
-BigDecimal division uses Scala's decimal context; repeating fractions round.
+BigDecimal division uses DECIMAL128 (34 significant digits, HALF_EVEN);
+repeating fractions round independently of the input values' contexts.
 No currency conversion or unit inference: metric units are descriptive, and
 applications must explicitly filter/group currency when a dataset mixes currencies.
 The interpreter trusts authored extractors; their exceptions are application
