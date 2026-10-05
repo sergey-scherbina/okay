@@ -1,6 +1,7 @@
 feature/durable-withkey-first-attempt 2026-10-05T11:44:24Z
 agent: codex
-heartbeat: 2026-10-05T11:44:24Z
+heartbeat: 2026-10-05T14:01:37Z
 status: in-progress
 scope: first-attempt WithKey transport, regression tests and contract
 next: commit spec, prove red, fix and gate affected staged
+done-so-far: WithKey red reproduced; 9 targeted checks green; repairing extraction compatibility found by affected gate
