@@ -130,3 +130,43 @@ cont-fun-answer (2026-10-03, `PState.Bounce`), on every platform.
    passing) and user code — candidates: the function answer applied by a
    loop (DONE for PState, cont-fun-answer: `PState.Bounce`), a link-time IR transform
    of the methods on the path of `k`, the Wasm backend with JSPI.
+4. **The bridge by RE-EXECUTION** (operator, 2026-10-05: "Переисполнение",
+   chosen over a link-time IR transform and over stopping here). A strict
+   body that USES its `k`'s answer (`k => k(1) + 1`) cannot return before
+   `k` does, so without transforming the body its call nests the host
+   stack. Re-execution makes that stack DATA when it runs out:
+   - at the end of a room, the strict `k` of the INNERMOST body being run
+     throws `Delimited.Suspend` instead of nesting (or switching stacks);
+   - every strict body the throw passes on its way out records itself:
+     the body, its closed continuation, and the answers its `k` has
+     already given (`Replay`);
+   - the run's DRIVER, at its top, runs the deepest `k` from its argument
+     on the shallow stack, then runs each recorded body AGAIN, innermost
+     first: its `k` answers the recorded calls from memory and the
+     interrupted one with the value just computed, and the body's answer
+     goes on into its continuation, whose value is the next body's
+     missing answer. Every level is re-run at most once: linear.
+   - only the body being run may suspend: a `k` stored and called from a
+     lambda of the run (not replayable) never does, nor does a `k` called
+     from outside any run (that call starts a driver of its own).
+   CONTRACT: where it suspends, the part of a strict body before its
+   pending `k` call runs again — it must be free of effects (or
+   idempotent), as React's render is under Suspense (the same technique:
+   throw to unwind, re-render with the answer remembered). A body that
+   catches `Throwable` around `k` swallows the suspension. Nothing else
+   changes: no transform, no new type.
+   PLATFORMS: on by default on Scala.js, which has no second stack (a
+   room of fixed size); the JVM and Native keep `StackSwitch` by default
+   and run the same mechanism with `okay.cont.replay=true` (the tests
+   run it there too). OUT OF SCOPE: a run nested in user code of another
+   run (a fresh machine started from a lambda) starts a driver of its own
+   and is bounded as before.
+
+   Behaviour:
+   - [ ] a million nested strict bodies using `k`'s answer, on Scala.js, and with replay on a 128 KB JVM thread and Native
+   - [ ] a body calling `k` twice, and one calling it after an earlier `k`'s answer: answers as without suspension
+   - [ ] the prefix before `k` runs again only where a suspension crossed it (counted)
+   - [ ] a stored `k` called from a lambda of the run, and a `k` called after its run: never suspends, still right
+   - [ ] a thrown exception from a body or a continuation after a suspension: the same exception
+   - [ ] the differential oracle (TestDelimitedDifferential) green with replay on
+
