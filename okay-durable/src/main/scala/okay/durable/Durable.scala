@@ -217,9 +217,10 @@ object Durable {
           // never ran: execute and journal, intent first — unless
           // the answer is a person's, in which case there is no
           // effect to run and the question is what gets recorded
-          case None =>
-            if policy(name) == OnRepeat.Await then park(n, op, name, fp, key)
-            else execute(n, name, fp, key, op)
+          case None => policy(name) match
+            case OnRepeat.Await => park(n, op, name, fp, key)
+            case OnRepeat.WithKey => execute(n, name, fp, key, J.withKey(op, key))
+            case _ => execute(n, name, fp, key, op)
 
           case Some(entry) =>
             if entry.fingerprint != fp then throw Drift(entry.fingerprint, fp)
