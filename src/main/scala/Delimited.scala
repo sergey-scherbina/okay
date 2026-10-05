@@ -67,6 +67,14 @@ trait Delimited[G[_, _, +_]]:
    * was installed): until then a run pays nothing for exceptions */
   def guarding(): Unit
 
+  /**
+   * an OPAQUE body given a STRICT `k` — `k(x)` a nested run of `c` from `x`, its answer waited for — and the body's
+   * answer into `c`. The one place a run nests the host stack (the bridge); with `ContReplay.on`, at the end of the
+   * room the innermost such `k` SUSPENDS and the body is re-executed later, its `k`'s answers remembered
+   * (cont-js-depth stage 4)
+   */
+  def strict[A, T, R, Z](c: Closed[G, A, T, R, Z], body: (A => T) => R): Next[G, Z]
+
 /** a SEGMENT, `A => Freer[G, S, R, B]` as data: frames joined as `Bind` joins them. Contravariant in `A`: it
  * consumes a value. */
 enum Frames[G[_, _, +_], -A, B, S, R]:
@@ -192,6 +200,18 @@ object Delimited:
    * machine hands it to its step's `thrown`; anything else that forces it throws it again, the same object — so
    * it is a correct program everywhere, and typed at any answer with no claim (`() => Nothing`)
    */
+  /**
+   * A STRICT `k` OUT OF ROOM (cont-js-depth stage 4): thrown by the innermost strict body's `k` instead of nesting
+   * further, it unwinds the host stack to the run's driver; every strict body it passes records how to run it again
+   * (`again`, outermost last). The driver runs `k` from `x` on the shallow stack and those bodies again, innermost
+   * first. A control throwable: no stack trace, and `NonFatal` lets it pass — a body that catches `Throwable` around
+   * its `k` swallows it (the contract, docs/cont-stack.md).
+   */
+  final class Suspend private[Delimited] (private[Delimited] val run: AnyRef, private[Delimited] val k: Kont[?, ?, ?],
+                                          private[Delimited] val x: Any) extends scala.util.control.ControlThrowable:
+    /** what to run again, each given the value its pending `k` call answers: the innermost first */
+    private[Delimited] var again: List[Any => Any] = Nil
+
   final class Thrown(val t: Throwable) extends (() => Nothing):
     def apply(): Nothing = throw t
 
@@ -230,8 +250,11 @@ object Delimited:
   sealed abstract class Kont[G[_, _, +_], -A, T]:
     /** the run of it from `a`, its answer the run's result */
     def from(a: A): Next[G, T]
-    /** run it from `a` NOW, a nested run of the machine that captured it */
+    /** run it from `a` NOW, a nested run of the machine that captured it — a BARRIER to re-execution: a suspension
+     * inside it goes no further out (its caller may be no strict body) */
     private[Delimited] def forced(a: A): T
+    /** the same with no barrier: a strict body's own call, which a suspension may cross (cont-js-depth stage 4) */
+    private[Delimited] def forcedIn(a: A): T
     /** put back with `a`, its answer delivered through a fresh answer boundary into `out` over `rest` */
     def resume[B2, S2, X, Z](a: A, out: Frames[G, T, B2, S2, X], rest: Stack[G, B2, S2, X, Z]): Next[G, Z]
 
@@ -290,10 +313,100 @@ object Delimited:
 
     /** a machine alone run with `k` as the last frame: its answer (`Delimited.Machine`) */
     private[Delimited] def runAlone[A, S, R](c: Freer[G, S, R, A], k: A => S): R =
-      goAlone(c, frame((a: A) => Return[G, S, S](k(a)), end[S, S]), Stack.Answered[G, S, R]())
+      drive(goAlone(c, frame((a: A) => Return[G, S, S](k(a)), end[S, S]), Stack.Answered[G, S, R]()))
 
     /** a machine alone run to its value */
-    private[Delimited] def valueAlone[A, X](c: Freer[G, X, X, A]): A = goAlone(c, end[A, X], Stack.Done[G, A, X]())
+    private[Delimited] def valueAlone[A, X](c: Freer[G, X, X, A]): A = drive(goAlone(c, end[A, X], Stack.Done[G, A, X]()))
+
+    // ---- THE STRICT `k` BY RE-EXECUTION (cont-js-depth stage 4, specs/cont-js-depth.md)
+
+    /** a driver is running this run: a suspension has somewhere to go */
+    private var driving: Boolean = false
+    /** the strict `k` of the body being run — the only one that may suspend (a `k` called from a lambda of the run
+     * is not replayable); null inside the nested run a `k` call starts, until a strict body there sets its own */
+    private var current: AnyRef | Null = null
+    /** strict `k` calls nested on the host stack now */
+    private var levels: Int = 0
+
+    def strict[A, T, R, Z](c: Closed[G, A, T, R, Z], body: (A => T) => R): Next[G, Z] =
+      if !ContReplay.on then c.answer(body(x => c.forcedIn(x)))
+      else c.answer(strictRun(c, body, Nil))
+
+    /** `body` run with a recording `k`, `known` its first answers (a re-run); a suspension crossing it records how to
+     * run it again: with the answers it had, and the pending call's from the driver */
+    private def strictRun[A, T, R, Z](c: Closed[G, A, T, R, Z], body: (A => T) => R, known: List[Any]): R =
+      val k = StrictK[A, T](c, known)
+      val saved = current
+      current = k
+      try body(k)
+      catch case s: Suspend if s.run eq this =>
+        val had = k.answered
+        s.again = ((v: Any) => { val n = c.answer(strictRun(c, body, had :+ v)); goAlone(n.c, n.k, n.m) }) :: s.again
+        throw s
+      finally current = saved
+
+    /** a strict body's `k`: a nested run a call, the answers kept; a re-run's first calls answered from `known` */
+    private final class StrictK[A, T](c: Kont[G, A, T], private var known: List[Any]) extends (A => T):
+      private var got: List[Any] = Nil
+      def answered: List[Any] = got.reverse
+      def apply(x: A): T =
+        // a call from the continuation itself (re-entrant, inside a call of this `k`) is no call of the body's:
+        // neither recorded nor replayed, and it never suspends
+        if !(current eq this) then c.forced(x)
+        else
+          val v: T = known match
+            // THE CLAIM: a re-run makes the same calls in the same order (the contract), so the n-th call's answer is
+            // the n-th answer recorded, of this `k`'s type
+            case g :: more => known = more; g.asInstanceOf[T]
+            case Nil =>
+              if driving && levels >= ContReplay.room then throw Suspend(Run.this, c, x)
+              nested(x)
+          got = v :: got
+          v
+
+      private def nested(x: A): T =
+        val saved = current
+        current = null
+        levels += 1
+        try c.forcedIn(x) finally { levels -= 1; current = saved }
+
+    /**
+     * THE DRIVER: `start` run; a suspension it throws unwinds to here, where its `k` runs from its `x` on this
+     * shallow stack and the bodies it crossed run again, innermost first — each given the value the one before
+     * answered. A driver already running takes them (one per run).
+     */
+    private def drive[Z](start: => Z): Z =
+      if driving || !ContReplay.on then start
+      else
+        driving = true
+        // THE CLAIM: the last value is the top's — `start`'s, or what the outermost re-run body's continuation answered
+        try turn(() => start, Nil).asInstanceOf[Z]
+        finally driving = false
+
+    /**
+     * a nested run whose caller is no strict body — a `k` called from a lambda of the run, or from outside it: its
+     * own driver and room, so no suspension crosses the caller, which could not be run again. Its depth on the host
+     * stack is that caller's (specs/cont-js-depth.md, stage 4, out of scope: a run nested in user code)
+     */
+    private def barrier[X](body: => X): X =
+      if !ContReplay.on then body
+      else
+        val wasDriving = driving
+        val wasLevels = levels
+        val wasCurrent = current
+        driving = false
+        levels = 0
+        current = null
+        try drive(body) finally { driving = wasDriving; levels = wasLevels; current = wasCurrent }
+
+    @tailrec private def turn(act: () => Any, work: List[Any => Any]): Any =
+      (try act() catch case s: Suspend if s.run eq this => s) match
+        case s: Suspend if s.run eq this =>
+          val k = s.k.asInstanceOf[Kont[G, Any, Any]]   // THE CLAIM: a Suspend of this run carries one of its own `k`s
+          turn(() => k.forcedIn(s.x), s.again.reverse ::: work)
+        case v => work match
+          case Nil => v
+          case again :: rest => turn(() => again(v), rest)
 
     /** a run's answer, which a strict `k` cannot wait for an effect outside to give */
     private def answerOf[T](p: Free[F, T]): T = p match
@@ -482,7 +595,8 @@ object Delimited:
     /** the continuation a closed level holds when it is one segment: put back over an answer boundary */
     private abstract class Segment[A, S0, T, R, Z](k: Frames[G, A, S0, S0, T]) extends Closed[G, A, T, R, Z]:
       def from(a: A): Next[G, T] = next(Return(a), k, Stack.Answered[G, S0, T]())
-      private[Delimited] def forced(a: A): T = forceAt(k, a)
+      private[Delimited] def forced(a: A): T = barrier(forceAt(k, a))
+      private[Delimited] def forcedIn(a: A): T = forceAt(k, a)
       def resume[B2, S2, X, Z2](a: A, out: Frames[G, T, B2, S2, X], rest: Stack[G, B2, S2, X, Z2]): Next[G, Z2] =
         next(Return(a), k, Stack.Bound[G, S0, T, B2, S2, X, Z2](null, out, rest))
 
@@ -501,7 +615,8 @@ object Delimited:
     private abstract class Held[A0, T0, Y, S0, I, R, Z](piece: Piece[G, A0, T0, Y, I], last: Frames[G, Y, S0, S0, I])
       extends Closed[G, A0, T0, R, Z]:
       def from(a: A0): Next[G, T0] = reinstall(piece, Return(a), last, Stack.Answered[G, S0, T0]())
-      private[Delimited] def forced(a: A0): T0 =
+      private[Delimited] def forced(a: A0): T0 = barrier(forcedIn(a))
+      private[Delimited] def forcedIn(a: A0): T0 =
         if alone then deeper { val n = from(a); goAlone(n.c, n.k, n.m) }
         else answerOf(deeper { val n = from(a); go(n.c, n.k, n.m) })
       def resume[B2, S2, X, Z2](a: A0, out: Frames[G, T0, B2, S2, X], rest: Stack[G, B2, S2, X, Z2]): Next[G, Z2] =

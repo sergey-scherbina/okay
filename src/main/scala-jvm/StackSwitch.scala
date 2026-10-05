@@ -8,6 +8,9 @@ import java.util.concurrent.atomic.AtomicLong
  * the VM's default thread stack over a cold level, halved; a smaller explicit stack sets `-Dokay.cont.room`.
  */
 private[okay] object StackSwitch:
+  /** a fresh stack is this platform's answer to a deep strict `k`; re-execution (ContReplay, cont-js-depth stage 4)
+   * only with -Dokay.cont.replay=true */
+  val replayByDefault: Boolean = java.lang.Boolean.getBoolean("okay.cont.replay")
 
   /** bytes one level takes in a cold JVM, what every room is derived from. A strict `k` on `Delimited` is a
    * nested run, several frames a level: interpreted, 367 levels fit 1 MB, 784 fit 2 MB and 1 617 fit 4 MB,

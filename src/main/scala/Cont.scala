@@ -198,7 +198,7 @@ object Cont:
           val c = machine.closed(k, m)
           if c == null then throw IllegalStateException("a shift with no reset around it")
           leaf match
-            case Op.Strict(body) => c.answer(body(x => machine.force(c, x)))
+            case Op.Strict(body) => machine.strict(c, body)
             case Op.Program(body) => c.answer(body(c))
             case Op.Lazily(body) => c.instead(body(c))
             case Op.Resume(_, _) => throw IllegalStateException("unreachable: Resume is answered above")

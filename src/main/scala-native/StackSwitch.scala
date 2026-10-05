@@ -21,6 +21,9 @@ import scala.scalanative.unsafe.*
  * `pthread_attr_setstacksize`, and pages are committed only as touched.
  */
 private[okay] object StackSwitch:
+  /** a fresh stack is this platform's answer to a deep strict `k`; re-execution (ContReplay, cont-js-depth stage 4)
+   * only with -Dokay.cont.replay=true */
+  val replayByDefault: Boolean = java.lang.Boolean.getBoolean("okay.cont.replay")
 
   /** `ThreadInfo` as nativelib 0.5.12 lays it out; only the first six fields are read */
   private type ThreadInfo = CStruct6[CSize, CSize, Ptr[Byte], Ptr[Byte], Ptr[Byte], CBool]

@@ -4,6 +4,8 @@ package okay
 private[okay] object StackSwitch:
   val coldBytesPerLevel: Long = 2600L
   val firstRoom: Int = Int.MaxValue
+  /** no second stack here: a strict `k` too deep is RE-EXECUTED (ContReplay, cont-js-depth stage 4) */
+  val replayByDefault: Boolean = true
   /** at the end of a room, levels this stack still takes: none is known here (nothing reads the stack) */
   def more(): Int = 0
 
