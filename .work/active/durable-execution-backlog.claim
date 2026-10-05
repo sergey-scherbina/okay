@@ -1,0 +1,6 @@
+feature/durable-execution-backlog 2026-10-05T11:19:14Z
+agent: codex
+heartbeat: 2026-10-05T11:19:14Z
+status: in-progress
+scope: backlog durable execution follow-ups, no implementation
+next: record idempotency, recovery, demo, comparison and conditional adapter tasks
