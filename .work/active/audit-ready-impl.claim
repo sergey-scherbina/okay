@@ -1,0 +1,6 @@
+feature/audit-ready-impl 2026-10-05T06:56:59Z
+agent: claude-code (session 3b422608)
+heartbeat: 2026-10-05T06:56:59Z
+status: in-progress
+done-so-far: specs/audit-ready.md stages 1-3: audit-package-layers, clock-random-ports, data-clock-and-random-reach
+next: implement in ../okay-wt-audit-ready-impl
