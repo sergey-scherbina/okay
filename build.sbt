@@ -2140,6 +2140,31 @@ lazy val okayCache = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
   )
 
+/** Independent business definitions and validated analytics plans (specs/semantic.md). */
+lazy val okaySemantic = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-semantic"))
+  .dependsOn(okayTest % "test->compile")
+  .settings(
+    name := "okay-semantic",
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % "optional;test",
+  )
+
+lazy val okaySemanticSql = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-semantic-sql"))
+  .dependsOn(okaySemantic, okaySql, okayTest % "test->compile")
+  .settings(
+    name := "okay-semantic-sql",
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % "optional;test",
+  )
+  .jvmConfigure(_.dependsOn(okayJdbc % Test))
+  .jvmSettings(
+    libraryDependencies += "com.h2database" % "h2" % "2.3.232" % "optional;test",
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+  )
+
 /** the relational seam: the Sql driver trait and the typed layer
  * (rows/params/verify/transact) written once against it — no
  * java.sql anywhere, asserted by the JS and Native cross-builds
@@ -3748,6 +3773,8 @@ lazy val root = (project in file("."))
     okayRefine.jvm, okayRefine.js, okayRefine.native,
     okayBayes.jvm, okayBayes.js, okayBayes.native,
     okayPersist.jvm, okayPersist.js, okayPersist.native,
+    okaySemantic.jvm, okaySemantic.js, okaySemantic.native,
+    okaySemanticSql.jvm, okaySemanticSql.js, okaySemanticSql.native,
     okaySql.jvm, okaySql.js, okaySql.native, okayPg.jvm, okayPg.js,
     okayCrypto.jvm, okayCrypto.js, okayMail,
     okayCache.jvm, okayCache.js, okayCache.native,
