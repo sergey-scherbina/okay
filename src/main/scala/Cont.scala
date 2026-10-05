@@ -42,16 +42,16 @@ object Cont:
    * a tail body is a value (`tailShift`/`tailPure`), an answer-using body a program over a lazy `k`
    * (`lazyLeaf`), anything else gets a strict `k` (`shiftLeaf`).
    */
-  inline def shift[A, S, R](inline f: (A => S) => R)(using scope: Shifts): Rep[A, S, R] =
+  inline def shift[A, S, R](inline f: (A => S) => R)(using inline scope: Shifts): Rep[A, S, R] =
     ${ okay.macros.ContMacro.shift('f, 'scope) }
 
   /** delimit and run: `c / identity` */
   inline def reset[A, R](c: Rep[A, A, R]): R = run(c)(identity)
 
   /** an opaque body: run as it is, given a strict `k` (`Delimited.Resumption`) */
-  def shiftLeaf[A, S, R](f: (A => S) => R): Rep[A, S, R] = Inject[Sig, S, R, A](Op.Strict(f))
+  def shiftLeaf[A, S, R](f: (A => S) => R): Rep[A, S, R] = Inject[Sig, S, R, A](Op.Strict(f, true))
   /** an opaque body never re-executed (`noReplay`, `safe` scopes): its `k` a barrier, whatever the run-time mode */
-  def shiftLeafOnce[A, S, R](f: (A => S) => R): Rep[A, S, R] = Inject[Sig, S, R, A](Op.StrictOnce(f))
+  def shiftLeafOnce[A, S, R](f: (A => S) => R): Rep[A, S, R] = Inject[Sig, S, R, A](Op.Strict(f, false))
 
   /**
    * WHAT A STRICT LEAF DOES AT RUN TIME when its `k` runs out of room (cont-safe-mode, specs/cont-js-depth.md stage 5):
@@ -217,9 +217,7 @@ object Cont:
 
   object Op:
     /** an opaque body, given a strict `k`: a nested run, counted */
-    final case class Strict[S, R, A](body: (A => S) => R) extends Op[S, R, A]
-    /** an opaque body never re-executed (`shiftLeafOnce`) */
-    final case class StrictOnce[S, R, A](body: (A => S) => R) extends Op[S, R, A]
+    final case class Strict[S, R, A](body: (A => S) => R, replayable: Boolean) extends Op[S, R, A]
     /** a body answering a program, given `k` itself, from which it builds its lazy `k` */
     final case class Program[S, R, A](body: Delimited.Kont[Op, A, S] => R) extends Op[S, R, A]
     /** an answer-using body after the CPS transform: a program over the lazy `k`, answering `R` at its level */
@@ -241,8 +239,8 @@ object Cont:
           val c = machine.closed(k, m)
           if c == null then throw IllegalStateException("a shift with no reset around it")
           leaf match
-            case Op.Strict(body) => machine.strict(c, body, replayable = true)
-            case Op.StrictOnce(body) => machine.strict(c, body, replayable = false)
+            // `replayable` false: never re-executed (`shiftLeafOnce`; one case, so the step stays small)
+            case Op.Strict(body, replayable) => machine.strict(c, body, replayable)
             case Op.Program(body) => c.answer(body(c))
             case Op.Lazily(body) => c.instead(body(c))
             case Op.Resume(_, _) => throw IllegalStateException("unreachable: Resume is answered above")
