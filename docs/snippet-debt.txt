@@ -85,7 +85,6 @@ docs/building-a-chat-app.md	libraryDependencies ++= Seq(
 docs/building-a-chat-app.md	name := "chat-app",
 docs/building-a-chat-app.md	name := "chat-ui",
 docs/building-a-chat-app.md	object ChatUi:
-docs/building-a-chat-app.md	object Main:
 docs/building-a-chat-app.md	object Server:
 docs/building-a-chat-app.md	package example
 docs/building-a-chat-app.md	println(s"chat: http://127.0.0.1:${Jetty.port(s)}  (model: ${Chat.modeName})")

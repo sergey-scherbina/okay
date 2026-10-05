@@ -408,6 +408,7 @@ API reference, gotchas.
 | [`okay-scala2-workflow`](modules/okay-scala2-workflow.md) | okay-workflow for Scala 2.13: durable programs over a journal, and durable agents |
 | [`okay-scala2-services`](modules/okay-scala2-services.md) | okay-actor, -outbox, -obs, -ops, -kafka, -pg for Scala 2.13: the operations that answer programs |
 | [`okay-chat`](modules/okay-chat.md) | a streaming LLM chat component: the model seam, Cut-guarded SSE framing, the /chat route — extracted from the demo |
+| [`okay-audit`](modules/okay-audit.md) | the effect boundary checked in the bytecode at every build: `business` modules reach no network, files, time, threads or reflection; the rest listed by provider (DORA's inventory) |
 | [`okay-admin`](modules/okay-admin.md) | protected admin routes over the same bearer-token 401/403 ladder as every other protected route |
 | [`okay-subscription`](modules/okay-subscription.md) | gate a resource behind a paid period: free for the join month, then paid-this-period or gated, never deleted |
 | [`okay-live`](modules/okay-live.md) | broadcast (Hub) and per-key channels (Registry) over the core's own Channel |
