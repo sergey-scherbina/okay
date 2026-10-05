@@ -1,6 +1,0 @@
-feature/durable-neutral-module 2026-10-05T11:29:14Z
-agent: codex
-heartbeat: 2026-10-05T11:29:14Z
-status: in-progress
-scope: build.sbt new durable modules, generic handler and TopicJournal migration, compatibility and consumers
-next: commit extraction spec then implement and scope gates
