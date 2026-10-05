@@ -14,10 +14,25 @@ import scala.quoted.*
   /** the transform's "cannot read this" — caught once, at the top */
   private object Opaque extends scala.util.control.ControlThrowable
 
-  def shift[A: Type, S: Type, R: Type](f: Expr[(A => S) => R])(using q: Quotes): Expr[Cont[A, S, R]] =
+  def shift[A: Type, S: Type, R: Type](f: Expr[(A => S) => R], scope: Expr[Cont.Shifts])(using q: Quotes): Expr[Cont[A, S, R]] =
     import q.reflect.*
 
-    def fallback: Expr[Cont[A, S, R]] = '{ Cont.shiftLeaf[A, S, R]($f) }
+    /** the scope's compile-time choice (cont-safe-mode): `Cont.safe` — every body using `k` transformed or refused;
+     * `Cont.noReplay` — an opaque body kept, never re-executed */
+    val safeScope: Boolean = scope.asTerm.tpe.widen <:< TypeRepr.of[Cont.Safe]
+    val onceScope: Boolean = safeScope || scope.asTerm.tpe.widen <:< TypeRepr.of[Cont.NoReplay]
+
+    def fallback: Expr[Cont[A, S, R]] =
+      if onceScope then '{ Cont.shiftLeafOnce[A, S, R]($f) } else '{ Cont.shiftLeaf[A, S, R]($f) }
+
+    /** a body a safe scope cannot take: it would wait for `k` on the host stack, or be re-executed */
+    def refuse(why: String): Nothing =
+      report.errorAndAbort(
+        s"""Cont safe mode (import okay.Cont.safe.given): this shift body cannot be transformed — $why.
+           |At run time it would wait for k on the host stack (or be re-executed). Call k directly in the body
+           |(k(x), its answer used as a value: the macro reads that), or answer a program (its k is lazy), or take
+           |this body out of the safe scope (import okay.Cont.noReplay.given keeps it, never re-executed).""".stripMargin,
+        f.asTerm.pos)
 
     /** does `t` mention `k` anywhere */
     def mentions(k: Symbol, t: Tree): Boolean =
@@ -44,7 +59,9 @@ import scala.quoted.*
     /** an opaque body that calls `k` and answers a PROGRAM gets the lazy `k` (cont-program-answer): its `k(a)`
      * is a lazy run, never a nested one; a body that only passes `k` on keeps the strict leaf, at no cost */
     def opaque(p: Symbol, body: Term): Expr[Cont[A, S, R]] =
-      if calls(p, body) then programLeaf.getOrElse(fallback) else fallback
+      // a safe scope takes a program answer's lazy `k` whether the body calls `k` or passes it on; nothing else
+      if safeScope then programLeaf.getOrElse(refuse("it uses k in a form the transform does not read (k passed to a function, a k-using guard, a lazy val, ...)"))
+      else if calls(p, body) then programLeaf.getOrElse(fallback) else fallback
 
     /** `S` a program that can defer itself (`Cont.Later`: any `Freer`, an `A ! F` among them) */
     def programLeaf: Option[Expr[Cont[A, S, R]]] =
@@ -510,9 +527,9 @@ import scala.quoted.*
             '{ Cont.tailPure[A, S, R](${ v.asExprOf[A] })(using ${ tailEvidence.get }) }
           case Some(v) if tailEvidence.isDefined =>
             '{ Cont.tailShift[A, S, R](() => ${ v.changeOwner(Symbol.spliceOwner).asExprOf[A] })(using ${ tailEvidence.get }) }
-          case Some(_) => fallback
+          case Some(_) => if safeScope then refuse("its k is in tail position but the types give no S <: R to pass the value on") else fallback
           case None if !mentions(p.symbol, body) => fallback
           case None => cpsBody(body) match
             case Some(b) => '{ Cont.lazyLeaf[A, S, R]($b) }
             case None => opaque(p.symbol, body)
-      case _ => fallback
+      case _ => if safeScope then refuse("it is not a lambda literal, so the macro cannot read it") else fallback

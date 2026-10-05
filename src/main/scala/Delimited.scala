@@ -73,7 +73,7 @@ trait Delimited[G[_, _, +_]]:
    * room the innermost such `k` SUSPENDS and the body is re-executed later, its `k`'s answers remembered
    * (cont-js-depth stage 4)
    */
-  def strict[A, T, R, Z](c: Closed[G, A, T, R, Z], body: (A => T) => R): Next[G, Z]
+  def strict[A, T, R, Z](c: Closed[G, A, T, R, Z], body: (A => T) => R, replayable: Boolean): Next[G, Z]
 
 /** a SEGMENT, `A => Freer[G, S, R, B]` as data: frames joined as `Bind` joins them. Contravariant in `A`: it
  * consumes a value. */
@@ -328,8 +328,10 @@ object Delimited:
     /** strict `k` calls nested on the host stack now */
     private var levels: Int = 0
 
-    def strict[A, T, R, Z](c: Closed[G, A, T, R, Z], body: (A => T) => R): Next[G, Z] =
+    def strict[A, T, R, Z](c: Closed[G, A, T, R, Z], body: (A => T) => R, replayable: Boolean): Next[G, Z] =
       if !ContReplay.on then c.answer(body(x => c.forcedIn(x)))
+      // never re-executed (cont-safe-mode): its `k` a barrier, so no suspension from below crosses this body
+      else if !replayable then c.answer(body(x => c.forced(x)))
       else c.answer(strictRun(c, body, Nil))
 
     /** `body` run with a recording `k`, `known` its first answers (a re-run); a suspension crossing it records how to

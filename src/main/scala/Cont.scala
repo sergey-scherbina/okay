@@ -42,13 +42,54 @@ object Cont:
    * a tail body is a value (`tailShift`/`tailPure`), an answer-using body a program over a lazy `k`
    * (`lazyLeaf`), anything else gets a strict `k` (`shiftLeaf`).
    */
-  inline def shift[A, S, R](inline f: (A => S) => R): Rep[A, S, R] = ${ okay.macros.ContMacro.shift('f) }
+  inline def shift[A, S, R](inline f: (A => S) => R)(using scope: Shifts): Rep[A, S, R] =
+    ${ okay.macros.ContMacro.shift('f, 'scope) }
 
   /** delimit and run: `c / identity` */
   inline def reset[A, R](c: Rep[A, A, R]): R = run(c)(identity)
 
   /** an opaque body: run as it is, given a strict `k` (`Delimited.Resumption`) */
   def shiftLeaf[A, S, R](f: (A => S) => R): Rep[A, S, R] = Inject[Sig, S, R, A](Op.Strict(f))
+  /** an opaque body never re-executed (`noReplay`, `safe` scopes): its `k` a barrier, whatever the run-time mode */
+  def shiftLeafOnce[A, S, R](f: (A => S) => R): Rep[A, S, R] = Inject[Sig, S, R, A](Op.StrictOnce(f))
+
+  /**
+   * WHAT A STRICT LEAF DOES AT RUN TIME when its `k` runs out of room (cont-safe-mode, specs/cont-js-depth.md stage 5):
+   * `Auto` (the default) each platform's cheapest — re-execution on Scala.js, a fresh stack on the JVM and Native;
+   * `Replay` re-execution everywhere (a body's part before its pending `k` runs again: pure or idempotent bodies);
+   * `Safe` never re-execute — a fresh stack on the JVM and Native, the engine's stack on Scala.js, where the
+   * guarantee is the compile-time one (`Cont.safe`). Set at start: `-Dokay.cont.mode=auto|replay|safe`, or here.
+   */
+  enum Mode:
+    case Auto, Replay, Safe
+
+  def mode: Mode = ContReplay.mode
+  def setMode(m: Mode): Unit = ContReplay.set(m)
+
+  /**
+   * COMPILE-TIME SAFE SHIFTS in a scope: `import okay.Cont.safe.given`. Every `shift` body that uses `k` is CPS-
+   * transformed — `k` is data, nothing waits on the host stack, nothing is re-executed, on every platform, side
+   * effects run once and in order — or it is a compile error saying why. A body answering a program gets the lazy
+   * `k`. The run-time mode cannot reach these bodies: no strict leaf is left.
+   */
+  final class Safe private[okay] () extends Shifts
+  object safe:
+    given Safe = Safe()
+
+  /** COMPILE-TIME, a scope's opaque bodies NEVER re-executed (`import okay.Cont.noReplay.given`): they compile as
+   * before, and their `k` is a barrier whatever the run-time mode — for a body with effects the macro cannot read */
+  final class NoReplay private[okay] () extends Shifts
+  object noReplay:
+    given NoReplay = NoReplay()
+
+  /** A SCOPE'S COMPILE-TIME CHOICE for its `shift`s, which `shift` takes as a parameter (so the import is a use):
+   * `Default` with no import, `Safe` or `NoReplay` by one. Nothing at run time: the macro reads its type */
+  sealed trait Shifts
+  object Shifts:
+    /** no choice in scope: the macro's default — a body it reads transformed, an opaque one a strict leaf. A given
+     * of the IMPLICIT scope, so an imported `safe`/`noReplay` (the lexical scope, searched first) wins */
+    object Default extends Shifts
+    given default: Shifts = Default
 
   /**
    * an opaque body whose answer `S` is a PROGRAM and which calls `k` itself (cont-program-answer): its `k(a)`
@@ -177,6 +218,8 @@ object Cont:
   object Op:
     /** an opaque body, given a strict `k`: a nested run, counted */
     final case class Strict[S, R, A](body: (A => S) => R) extends Op[S, R, A]
+    /** an opaque body never re-executed (`shiftLeafOnce`) */
+    final case class StrictOnce[S, R, A](body: (A => S) => R) extends Op[S, R, A]
     /** a body answering a program, given `k` itself, from which it builds its lazy `k` */
     final case class Program[S, R, A](body: Delimited.Kont[Op, A, S] => R) extends Op[S, R, A]
     /** an answer-using body after the CPS transform: a program over the lazy `k`, answering `R` at its level */
@@ -198,7 +241,8 @@ object Cont:
           val c = machine.closed(k, m)
           if c == null then throw IllegalStateException("a shift with no reset around it")
           leaf match
-            case Op.Strict(body) => machine.strict(c, body)
+            case Op.Strict(body) => machine.strict(c, body, replayable = true)
+            case Op.StrictOnce(body) => machine.strict(c, body, replayable = false)
             case Op.Program(body) => c.answer(body(c))
             case Op.Lazily(body) => c.instead(body(c))
             case Op.Resume(_, _) => throw IllegalStateException("unreachable: Resume is answered above")
