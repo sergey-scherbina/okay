@@ -1,4 +1,6 @@
-package okay2
+package okay2.stm
+
+import okay2._
 import java.util.concurrent.atomic.AtomicInteger
 import scala.concurrent.{Await, Future}
 import scala.concurrent.duration.Duration

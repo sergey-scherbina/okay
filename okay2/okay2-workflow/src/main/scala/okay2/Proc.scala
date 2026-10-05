@@ -1,6 +1,7 @@
-package okay2
+package okay2.workflow
 
-import okay2.Optic.{Arrow, Choice}
+import okay2._
+import okay2.optics.Optic.{Arrow, Choice}
 
 /**
  * A PROCEDURE WHOSE EVERY STEP IS KNOWN BEFORE IT RUNS — the free arrow

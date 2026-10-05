@@ -1,8 +1,10 @@
 package okay2.persist
 
 import munit.FunSuite
-import okay2.{!, Optic, Proc, Wf}
-import okay2.Optic.arrows._
+import okay2.{!}
+import okay2.optics.Optic
+import okay2.workflow.{Proc, Wf}
+import okay2.optics.Optic.arrows._
 
 /** a term's helpers, shared by the static-workflow suites */
 object ProcFixtures {

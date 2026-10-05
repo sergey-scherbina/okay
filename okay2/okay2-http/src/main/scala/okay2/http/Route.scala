@@ -2,7 +2,7 @@ package okay2.http
 
 import java.nio.charset.StandardCharsets.UTF_8
 import scala.language.experimental.macros
-import okay2.Optic
+import okay2.optics.Optic
 import okay2.codec.Json
 
 /**

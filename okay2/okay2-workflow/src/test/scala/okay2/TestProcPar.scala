@@ -1,5 +1,6 @@
-package okay2
+package okay2.workflow
 
+import okay2._
 import WfFixtures._
 
 /** TWO INDEPENDENT BRANCHES, and what is parallel about them: the

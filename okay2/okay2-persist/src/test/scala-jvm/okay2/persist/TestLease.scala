@@ -1,7 +1,7 @@
 package okay2.persist
 
 import munit.FunSuite
-import okay2.Wf
+import okay2.workflow.Wf
 import okay2.async.Async
 
 /**

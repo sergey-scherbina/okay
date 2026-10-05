@@ -1,6 +1,7 @@
-package okay2
+package okay2.optics
 
-import okay2.Optic._
+import okay2._
+import okay2.optics.Optic._
 import OpticsFixtures._
 
 /** A TYPESTATE TRANSITION IS A PROFUNCTOR IN ITS STATE — the Scala 3
@@ -63,8 +64,8 @@ class TestContProfunctor extends munit.FunSuite {
   }
 
   test("there is no `Choice` for this carrier, and a LENS does resolve at it") {
-    assert(compileErrors("implicitly[okay2.Optic.Choice[okay2.PState.Zooming[Int, Int]#L]]").nonEmpty,
+    assert(compileErrors("implicitly[okay2.optics.Optic.Choice[okay2.PState.Zooming[Int, Int]#L]]").nonEmpty,
       "a Choice for the zooming carrier resolved — the refutation is stale")
-    assertEquals(compileErrors("implicitly[okay2.Optic.Strong[okay2.PState.Zooming[Int, Int]#L]]"), "")
+    assertEquals(compileErrors("implicitly[okay2.optics.Optic.Strong[okay2.PState.Zooming[Int, Int]#L]]"), "")
   }
 }

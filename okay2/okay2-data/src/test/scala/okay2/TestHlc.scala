@@ -1,4 +1,4 @@
-package okay2
+package okay2.data
 
 object TestDataClock {
   /** a clock the test drives */

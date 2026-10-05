@@ -1,5 +1,6 @@
-package okay2
+package okay2.optics
 
+import okay2._
 import scala.language.experimental.macros
 import scala.reflect.ClassTag
 
@@ -19,7 +20,7 @@ import scala.reflect.ClassTag
  * `Strong with Choice with Strong` — IS an `Affine`, where Scala 2's
  * type-lambda equality alone would not see it.
  *
- * Everything is reached with ONE import, `import okay2.Optic._`: the
+ * Everything is reached with ONE import, `import okay2.optics.Optic._`: the
  * families (`Lens`, `Prism`, ...) are type aliases, which Scala 2 can
  * only hold in an object, and a second module cannot add to okay2's
  * package object.
@@ -405,7 +406,7 @@ object Optic {
 
   /**
    * THE LITERATURE'S GLYPHS, BEHIND AN IMPORT (`import
-   * okay2.Optic.arrows._`) — Hughes (2000), `Control.Arrow`. Behind an
+   * okay2.optics.Optic.arrows._`) — Hughes (2000), `Control.Arrow`. Behind an
    * import because they apply to every two-parameter type. No glyph for
    * optic composition: `andThen` is that, one glyph, one meaning.
    */

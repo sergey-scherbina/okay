@@ -1,6 +1,7 @@
-package okay2
+package okay2.optics
 
-import okay2.Optic._
+import okay2._
+import okay2.optics.Optic._
 import OpticsFixtures._
 
 /** ONE OPTIC, SEVERAL EFFECTS — and no code in the optics for any of

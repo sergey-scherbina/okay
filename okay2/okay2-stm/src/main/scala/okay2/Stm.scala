@@ -1,5 +1,6 @@
-package okay2
+package okay2.stm
 
+import okay2._
 import scala.annotation.tailrec
 import scala.collection.mutable
 import Free.{Return, Inject, Bind}

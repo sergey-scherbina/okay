@@ -71,7 +71,7 @@ class TestRefine extends munit.FunSuite {
   }
 
   test("a step's prism obeys the prism laws: review then preview is identity; preview then review is identity where it previews") {
-    import okay2.Optic._
+    import okay2.optics.Optic._
     val p = int.prism
     assertEquals(p.preview("42"), Some(42))
     assertEquals(p.preview("x"), None)

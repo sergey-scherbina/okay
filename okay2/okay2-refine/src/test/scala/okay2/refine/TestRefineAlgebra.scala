@@ -1,5 +1,7 @@
 package okay2.refine
 
+import okay2.optics.Optic
+
 import okay2._
 import okay2.codec.Json
 import okay2.stream.Pipe.into

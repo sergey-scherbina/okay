@@ -1,6 +1,7 @@
-package okay2
+package okay2.optics
 
-import okay2.Optic._
+import okay2._
+import okay2.optics.Optic._
 import OpticsFixtures._
 
 /**
@@ -162,18 +163,18 @@ class TestOptics extends munit.FunSuite {
   }
 
   test("compiled is not offered for a traversal: a pair holds one focus, and the type says so") {
-    assert(compileErrors("okay2.Optic.Traversal.each[Int, Int].compiled").nonEmpty, "a traversal was allowed to compile to a one-focus pair")
+    assert(compileErrors("okay2.optics.Optic.Traversal.each[Int, Int].compiled").nonEmpty, "a traversal was allowed to compile to a one-focus pair")
   }
 
   test("Lens[S](_.f): the lambda is the getter; not a selector, and no such field, are compile errors") {
     val p = Person("ada", 36, None)
     assertEquals(Lens[Person](_.name).get(p), "ada")
     assertEquals(Lens[Person](_.name).modify(_.toUpperCase)(p), p.copy(name = "ADA"))
-    val notASelector = compileErrors("okay2.Optic.Lens[okay2.OpticsFixtures.Person](_.age + 1)")
+    val notASelector = compileErrors("okay2.optics.Optic.Lens[okay2.optics.OpticsFixtures.Person](_.age + 1)")
     assert(notASelector.contains("wants a field selector"), notASelector)
-    val noSuchField = compileErrors("okay2.Optic.Lens[okay2.OpticsFixtures.Person](_.agee)")
+    val noSuchField = compileErrors("okay2.optics.Optic.Lens[okay2.optics.OpticsFixtures.Person](_.agee)")
     assert(noSuchField.contains("agee"), noSuchField)
-    val noSuchName = compileErrors("""okay2.Optic.Lens.field[okay2.OpticsFixtures.Person]("agee")""")
+    val noSuchName = compileErrors("""okay2.optics.Optic.Lens.field[okay2.optics.OpticsFixtures.Person]("agee")""")
     assert(noSuchName.contains("agee is not a case field"), noSuchName)
   }
 

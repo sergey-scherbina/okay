@@ -1,6 +1,7 @@
-package okay2
+package okay2.workflow
 
-import okay2.Proc.{Path, Ran, Stopped, Walked}
+import okay2._
+import okay2.workflow.Proc.{Path, Ran, Stopped, Walked}
 
 /**
  * A DURABLE PROGRAM'S OWN NON-DETERMINISM — the Scala 3 core's
@@ -372,10 +373,10 @@ object Wf {
   }
 
   /** a durable procedure: a `Proc` over the questions above */
-  type Proc[Q, A, X, Y] = okay2.Proc[Asked[Q, A], X, Y]
+  type Proc[Q, A, X, Y] = okay2.workflow.Proc[Asked[Q, A], X, Y]
 
   object Proc {
-    import okay2.Proc.op
+    import okay2.workflow.Proc.op
 
     /** ask the outside world, through the author's own question type */
     def ask[Q, A, X](q: X => Q): Wf.Proc[Q, A, X, A] = asking[Q, A, X]("ask")(q)
@@ -395,7 +396,7 @@ object Wf {
     /** SLEEP, DURABLY — `now >>> arr(_ + millis) >>> timer`, so the
      * deadline is journalled, not computed on the fly */
     def sleep[Q, A, X](millis: Long): Wf.Proc[Q, A, X, Unit] = {
-      val Ar = okay2.Proc.procArrow[Asked[Q, A]]
+      val Ar = okay2.workflow.Proc.procArrow[Asked[Q, A]]
       Ar.compose(timer[Q, A], Ar.compose(Ar.arr((t: Long) => t + millis), now[Q, A, X]))
     }
 
@@ -451,7 +452,7 @@ object Wf {
      * decision is not in the journal, facing a record that answers
      * something else, answers `false` and does NOT eat the record —
      * `Wf.replaying`'s rule, asserted against it by the tests */
-    private final class Walk[Q, A](undos: Undos[Q, A]) extends okay2.Proc.Walker[Asked[Q, A], (Journal[A], Int), Halt[Q, A]] {
+    private final class Walk[Q, A](undos: Undos[Q, A]) extends okay2.workflow.Proc.Walker[Asked[Q, A], (Journal[A], Int), Halt[Q, A]] {
       def op[Y](q: Question[Q, A, Y], s: (Journal[A], Int), at: Path): Walked[(Journal[A], Int), Halt[Q, A], Y] = s match {
         case (Nil, used) => Stopped(Waits(Vector((at, q)), used))
         case (j @ (Right(_) :: _), used) if q.isPatch => q.read(Left(SysA.Flag(false))) match {
@@ -463,11 +464,11 @@ object Wf {
           case Right(v) => Ran(v, (rest, used + 1))
         }
       }
-      def completed(undo: okay2.Proc[Asked[Q, A], Unit, Unit]): Unit = { undos += undo; () }
+      def completed(undo: okay2.workflow.Proc[Asked[Q, A], Unit, Unit]): Unit = { undos += undo; () }
       /** the left branch waits, so the journal is empty: the right
        * branch's first question is knowable now — walked with a
        * THROWAWAY buffer, since nothing it "completes" has happened */
-      def parStopped[X, Z](left: Halt[Q, A], right: okay2.Proc[Asked[Q, A], X, Z], x: X, at: Path): Halt[Q, A] = left match {
+      def parStopped[X, Z](left: Halt[Q, A], right: okay2.workflow.Proc[Asked[Q, A], X, Z], x: X, at: Path): Halt[Q, A] = left match {
         case Waits(on, u) =>
           right.walk(x, (Nil: Journal[A], u), at, new Walk[Q, A](fresh[Q, A])) match {
             case Stopped(Waits(more, _)) => Waits(on ++ more, u)
@@ -495,8 +496,8 @@ object Wf {
     def compensating[Q, A, X, Y](p: Wf.Proc[Q, A, X, Y])(x: X, journal: Journal[A]): Wf.Proc[Q, A, Unit, Unit] = {
       val buf = fresh[Q, A]
       val _ = p.walk(x, (journal, 0), Path.root, new Walk[Q, A](buf))
-      buf.reverseIterator.reduceOption((a, b) => okay2.Proc.andThen(a, b))
-        .getOrElse(okay2.Proc.arr[Asked[Q, A], Unit, Unit](identity))
+      buf.reverseIterator.reduceOption((a, b) => okay2.workflow.Proc.andThen(a, b))
+        .getOrElse(okay2.workflow.Proc.arr[Asked[Q, A], Unit, Unit](identity))
     }
 
     /** the deploy check: this journal still fits this program */

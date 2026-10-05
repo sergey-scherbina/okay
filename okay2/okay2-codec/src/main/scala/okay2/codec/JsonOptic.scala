@@ -1,7 +1,8 @@
 package okay2.codec
 
-import okay2.{Applicative, Plate}
-import okay2.Optic._
+import okay2.Applicative
+import okay2.optics.Plate
+import okay2.optics.Optic._
 
 /**
  * Optics over `Json` (okay-codec's JsonOptic, specs/optics.md stage 1).

@@ -142,6 +142,35 @@ lazy val root: Project = (project in file("."))
     Test / unmanagedSourceDirectories := Nil,
     Compile / unmanagedResourceDirectories := Nil,
     Test / unmanagedResourceDirectories := Nil,
+    Jpms.jpmsCheck / aggregate := false,
+    Jpms.jpmsCheck := Jpms.verify(Seq(
+      (okay2.jvm / Compile / packageBin).value,
+      (okay2Data.jvm / Compile / packageBin).value,
+      (okay2Optics.jvm / Compile / packageBin).value,
+      (okay2Async.jvm / Compile / packageBin).value,
+      (okay2Platform.jvm / Compile / packageBin).value,
+      (okay2Stm.jvm / Compile / packageBin).value,
+      (okay2Workflow.jvm / Compile / packageBin).value,
+      (okay2Stream.jvm / Compile / packageBin).value,
+      (okay2Lex.jvm / Compile / packageBin).value,
+      (okay2Parse.jvm / Compile / packageBin).value,
+      (okay2Codec.jvm / Compile / packageBin).value,
+      (okay2Refine.jvm / Compile / packageBin).value,
+      (okay2Sql.jvm / Compile / packageBin).value,
+      (okay2Crypto.jvm / Compile / packageBin).value,
+      (okay2Pg.jvm / Compile / packageBin).value,
+      (okay2Persist.jvm / Compile / packageBin).value,
+      (okay2Http.jvm / Compile / packageBin).value,
+      (okay2Jdbc / Compile / packageBin).value,
+      (okay2Cats / Compile / packageBin).value,
+      (okay2Fs2 / Compile / packageBin).value,
+      (okay2Zio / Compile / packageBin).value),
+      (okay2Cats / Jpms.externalJars).value ++
+      (okay2Fs2 / Jpms.externalJars).value ++
+      (okay2Zio / Jpms.externalJars).value ++
+      (okay2Optics.jvm / Compile / dependencyClasspath).value.map(_.data).filter(f =>
+        f.getName.startsWith("scala-library-") || f.getName.startsWith("scala-reflect-")),
+      baseDirectory.value, target.value / "jpms", streams.value.log),
   )
 
 /**
@@ -185,6 +214,7 @@ lazy val okay2Jdk22 = versioned("okay2Jdk22", "jdk22", 22, "okay2")
 
 lazy val okay2 = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
+  .jvmSettings(Jpms.settings)
   .in(file("."))
   .settings(name := "okay2", common)
   // one blackbox macro family (`Replayable`, `Distinct`) over an
@@ -207,10 +237,11 @@ lazy val okay2 = crossProject(JVMPlatform, JSPlatform, NativePlatform)
  * as traits, par/race/timeout/supervised/attempt/sleep, Retry, Par */
 lazy val okay2Async = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
+  .jvmSettings(Jpms.settings)
   .in(file("okay2-async"))
   .dependsOn(okay2 % "compile->compile;test->test")
   .settings(name := "okay2-async", common)
-  .jvmSettings(jvmOnlyTests)
+  .jvmSettings(jvmOnlyTests, platformSources("scala-jvm"))
   .jsSettings(jsTests)
   .jvmConfigure(_.withId("okay2Async"))
 
@@ -221,6 +252,7 @@ lazy val okay2Async = crossProject(JVMPlatform, JSPlatform, NativePlatform)
  * where `Schedulers.hasVirtualThreads`). */
 lazy val okay2Platform = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
+  .jvmSettings(Jpms.settings)
   .in(file("okay2-platform"))
   .dependsOn(okay2Async % "compile->compile;test->test")
   .settings(name := "okay2-platform", common)
@@ -236,6 +268,7 @@ lazy val okay2Platform = crossProject(JVMPlatform, JSPlatform, NativePlatform)
  * the simulator) — specs/okay2.md stage 17 */
 lazy val okay2Stm = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
+  .jvmSettings(Jpms.settings)
   .in(file("okay2-stm"))
   .dependsOn(okay2Async, okay2Platform % "test->test")
   .settings(name := "okay2-stm", common)
@@ -247,6 +280,7 @@ lazy val okay2Stm = crossProject(JVMPlatform, JSPlatform, NativePlatform)
  * the pipeline as a value, lines, event-time windows */
 lazy val okay2Stream = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
+  .jvmSettings(Jpms.settings)
   .in(file("okay2-stream"))
   .dependsOn(okay2 % "compile->compile;test->test", okay2Async, okay2Platform % "test->test")
   .settings(
@@ -276,6 +310,7 @@ lazy val okay2Stream = crossProject(JVMPlatform, JSPlatform, NativePlatform)
  * `Hlc` and the sortable id `Uid` over it — specs/okay2.md stage 22 */
 lazy val okay2Data = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
+  .jvmSettings(Jpms.settings)
   .in(file("okay2-data"))
   .dependsOn(okay2)
   .settings(name := "okay2-data", common)
@@ -289,6 +324,7 @@ lazy val okay2Data = crossProject(JVMPlatform, JSPlatform, NativePlatform)
  * stage 24 */
 lazy val okay2Optics = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
+  .jvmSettings(Jpms.settings)
   .in(file("okay2-optics"))
   .dependsOn(okay2)
   .settings(name := "okay2-optics", common)
@@ -303,6 +339,7 @@ lazy val okay2Optics = crossProject(JVMPlatform, JSPlatform, NativePlatform)
  * (Stage, Chunks, fold, relex), `Mealy` as an arrow, and the JSON dialect */
 lazy val okay2Lex = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
+  .jvmSettings(Jpms.settings)
   .in(file("okay2-lex"))
   .dependsOn(okay2Stream, okay2Optics)
   .settings(name := "okay2-lex", common)
@@ -314,6 +351,7 @@ lazy val okay2Lex = crossProject(JVMPlatform, JSPlatform, NativePlatform)
  * builder into a lossless CST, incremental reparse, and the JSON driver */
 lazy val okay2Parse = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
+  .jvmSettings(Jpms.settings)
   .in(file("okay2-parse"))
   .dependsOn(okay2Lex)
   .settings(
@@ -331,6 +369,7 @@ lazy val okay2Parse = crossProject(JVMPlatform, JSPlatform, NativePlatform)
  * reader */
 lazy val okay2Codec = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
+  .jvmSettings(Jpms.settings)
   .in(file("okay2-codec"))
   .dependsOn(okay2Parse)
   .settings(
@@ -350,6 +389,7 @@ lazy val okay2Codec = crossProject(JVMPlatform, JSPlatform, NativePlatform)
  * (JSON, XML, YAML, CBOR) */
 lazy val okay2Refine = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
+  .jvmSettings(Jpms.settings)
   .in(file("okay2-refine"))
   // okay2-stream: `verdicts`/`taken` are Stages (refine-algebra)
   .dependsOn(okay2Codec, okay2Optics, okay2Stream,
@@ -367,6 +407,7 @@ lazy val okay2Refine = crossProject(JVMPlatform, JSPlatform, NativePlatform)
  * java.sql, so it cross-builds; java.time instances on the JVM only */
 lazy val okay2Sql = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
+  .jvmSettings(Jpms.settings)
   .in(file("okay2-sql"))
   .dependsOn(okay2Codec, okay2Stream)
   .settings(name := "okay2-sql", common)
@@ -380,6 +421,7 @@ lazy val okay2Sql = crossProject(JVMPlatform, JSPlatform, NativePlatform)
  * node:crypto on Scala.js — and nothing that drags a dependency */
 lazy val okay2Crypto = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
+  .jvmSettings(Jpms.settings)
   .in(file("okay2-crypto"))
   .settings(name := "okay2-crypto", common)
   .jvmSettings(platformSources("scala-jvm"))
@@ -394,6 +436,7 @@ lazy val okay2Crypto = crossProject(JVMPlatform, JSPlatform)
  * okay2Pg/test`); the two-driver acceptance borrows okay2-jdbc on H2 */
 lazy val okay2Pg = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
+  .jvmSettings(Jpms.settings)
   .in(file("okay2-pg"))
   .dependsOn(okay2Sql, okay2Platform, okay2Crypto)
   .settings(name := "okay2-pg", common)
@@ -414,6 +457,7 @@ lazy val okay2Pg = crossProject(JVMPlatform, JSPlatform)
  * `Dialogue`, `Worker`, `Saga` and their side tables (okay2-persist-workflow) */
 lazy val okay2Persist = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
+  .jvmSettings(Jpms.settings)
   .in(file("okay2-persist"))
   // okay2-platform for the wire's `Net` seam and its threads, okay2-workflow
   // for the durable workflow over the log (`Wf`)
@@ -429,6 +473,7 @@ lazy val okay2Persist = crossProject(JVMPlatform, JSPlatform, NativePlatform)
  * Scala.js `fetch` and the global `WebSocket` */
 lazy val okay2Http = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
+  .jvmSettings(Jpms.settings)
   .in(file("okay2-http"))
   .dependsOn(okay2Codec, okay2Stream)
   .settings(name := "okay2-http", common)
@@ -461,6 +506,7 @@ lazy val okay2Http = crossProject(JVMPlatform, JSPlatform, NativePlatform)
  * its answer inside one Async operation, as the Scala 3 originals do,
  * which parks on the platform's CanBlock */
 lazy val okay2Jdbc: Project = (project in file("okay2-jdbc"))
+  .settings(Jpms.settings)
   // okay2-persist backs Writes' journal, Poll's watermark and SqlStore's
   // Store; test->test borrows its StoreSuite for SqlStore's contract run
   .dependsOn(okay2Sql.jvm, okay2Platform.jvm, okay2Persist.jvm % "compile->compile;test->test")
@@ -483,6 +529,7 @@ lazy val okay2Jdbc: Project = (project in file("okay2-jdbc"))
  * specs/okay2.md stage 27 */
 lazy val okay2Workflow = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
+  .jvmSettings(Jpms.settings)
   .in(file("okay2-workflow"))
   .dependsOn(okay2, okay2Optics)
   .settings(name := "okay2-workflow", common)
@@ -493,6 +540,7 @@ lazy val okay2Workflow = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 /** cats: `Monad`/`MonadError` for programs, a fold into any monad, the
  * `Io` row (an operation IS an `IO`), `cats.free.Free` both ways */
 lazy val okay2Cats: Project = (project in file("okay2-cats"))
+  .settings(Jpms.settings)
   // by NAME: the root aggregates this project and this project depends
   // on the root, and two lazy vals naming each other overflow at load.
   // okay2-async for `toIO`/`fromIO`/`scheduler` (okay2-interop-async);
@@ -509,6 +557,7 @@ lazy val okay2Cats: Project = (project in file("okay2-cats"))
 
 /** fs2: a Writer program IS a stream, and a stream is a Writer program */
 lazy val okay2Fs2: Project = (project in file("okay2-fs2"))
+  .settings(Jpms.settings)
   .dependsOn(okay2Cats % "compile->compile;test->test")
   .settings(
     name := "okay2-fs2",
@@ -518,6 +567,7 @@ lazy val okay2Fs2: Project = (project in file("okay2-fs2"))
 
 /** zio: the `Zio` row, a fold into any ZIO, a Writer program as a ZStream */
 lazy val okay2Zio: Project = (project in file("okay2-zio"))
+  .settings(Jpms.settings)
   // by NAME: the root aggregates this project and this project depends
   // on the root, and two lazy vals naming each other overflow at load.
   // okay2-async for `toZIO`/`fromZIO`/`scheduler` (okay2-interop-async);

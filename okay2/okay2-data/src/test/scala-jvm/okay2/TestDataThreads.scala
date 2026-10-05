@@ -1,4 +1,4 @@
-package okay2
+package okay2.data
 
 /** The two laws of the clock and the id that need REAL threads — JVM
  * only, as the Scala 3 core keeps its `TestUidConcurrent` (okay2-cross).

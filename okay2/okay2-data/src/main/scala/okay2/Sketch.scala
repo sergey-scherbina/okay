@@ -1,5 +1,6 @@
-package okay2
+package okay2.data
 
+import okay2._
 import scala.util.hashing.MurmurHash3
 
 /**

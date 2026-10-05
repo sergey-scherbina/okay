@@ -1,8 +1,9 @@
 package okay2.refine
 
 import scala.reflect.ClassTag
-import okay2.{!, Choose, Optic, Throws, pure}
-import okay2.Optic.Prism
+import okay2.{!, Choose, Throws, pure}
+import okay2.optics.Optic
+import okay2.optics.Optic.Prism
 import okay2.stream.Stage
 import okay2.codec.{Json, Schema}
 

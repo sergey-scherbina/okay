@@ -1,5 +1,6 @@
-package okay2
+package okay2.workflow
 
+import okay2._
 /** the fixtures the workflow suites share, at the top level */
 object WfFixtures {
   type P = Pure

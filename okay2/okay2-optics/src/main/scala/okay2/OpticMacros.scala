@@ -1,4 +1,4 @@
-package okay2
+package okay2.optics
 
 import scala.reflect.macros.{blackbox, whitebox}
 import scala.annotation.tailrec
@@ -29,7 +29,7 @@ object OpticMacros {
     if (!fields.contains(name))
       c.abort(c.enclosingPosition, s"${name.decodedName} is not a case field of $S; the fields are ${fields.map(_.decodedName).mkString(", ")}")
     c.Expr[Optic.Lens[S, S, A, A]](
-      q"_root_.okay2.Optic.Lens.apply[$S, $S, $A, $A]($get, (s: $S, a: $A) => s.copy($name = a))")
+      q"_root_.okay2.optics.Optic.Lens.apply[$S, $S, $A, $A]($get, (s: $S, a: $A) => s.copy($name = a))")
   }
 
   /** `Lens.field[S]("name")`: whitebox, so the answer carries the
@@ -45,7 +45,7 @@ object OpticMacros {
       .getOrElse(c.abort(c.enclosingPosition, s"$n is not a case field of $S"))
     val A = accessor.typeSignatureIn(S).finalResultType
     val f = TermName(n).encodedName.toTermName
-    q"_root_.okay2.Optic.Lens.apply[$S, $S, $A, $A]((s: $S) => s.$f, (s: $S, a: $A) => s.copy($f = a))"
+    q"_root_.okay2.optics.Optic.Lens.apply[$S, $S, $A, $A]((s: $S) => s.$f, (s: $S, a: $A) => s.copy($f = a))"
   }
 
   /** `TypedZipper.field("name")`: the prefix is the `FieldOps` view,
@@ -67,7 +67,7 @@ object OpticMacros {
     val zz = TermName(c.freshName("z"))
     q"""{
       val $zz = ${c.prefix.tree}.z
-      _root_.okay2.TypedZipper.Below[$s, $a, $e, $z]($zz, (p: $a) => _root_.scala.util.Right[$a, $e](p.$f), (p: $a, v: $e) => p.copy($f = v), $zz.focus.$f, false, _root_.scala.Some($n))
+      _root_.okay2.optics.TypedZipper.Below[$s, $a, $e, $z]($zz, (p: $a) => _root_.scala.util.Right[$a, $e](p.$f), (p: $a, v: $e) => p.copy($f = v), $zz.focus.$f, false, _root_.scala.Some($n))
     }"""
   }
 }

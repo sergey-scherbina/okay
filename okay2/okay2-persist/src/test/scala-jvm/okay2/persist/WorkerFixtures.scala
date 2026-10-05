@@ -1,6 +1,7 @@
 package okay2.persist
 
-import okay2.{!, Pure, Wf}
+import okay2.{!, Pure}
+import okay2.workflow.Wf
 import okay2.async.Async
 import okay2.platform._
 

@@ -1,6 +1,7 @@
-package okay2
+package okay2.optics
 
-import okay2.Optic._
+import okay2._
+import okay2.optics.Optic._
 import ZipperFixtures._
 
 /** the typed zipper: frames are optics, the parent's type comes back
@@ -41,7 +42,7 @@ class TestTypedZipper extends munit.FunSuite {
     val z: Int = c.field("address").field("zip").focus
     assertEquals(z, 50001)
     assertEquals(c.field("address").field("city").set("Poznań").root.customer.address.city, "Poznań")
-    val errors = compileErrors("""okay2.TypedZipper(okay2.ZipperFixtures.Order(1, null, Vector.empty)).field("customre")""")
+    val errors = compileErrors("""okay2.optics.TypedZipper(okay2.optics.ZipperFixtures.Order(1, null, Vector.empty)).field("customre")""")
     assert(errors.contains("customre is not a case field"), errors)
   }
 

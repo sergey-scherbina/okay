@@ -1,7 +1,7 @@
-package okay2
+package okay2.optics
 
 import scala.annotation.tailrec
-import okay2.Optic._
+import okay2.optics.Optic._
 
 /**
  * How a tree exposes its children — Uniplate's `children`/`descend`

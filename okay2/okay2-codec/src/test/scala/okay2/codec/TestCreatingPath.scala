@@ -1,6 +1,6 @@
 package okay2.codec
 
-import okay2.Optic._
+import okay2.optics.Optic._
 
 /**
  * The lawful way to create a missing parent (okay-codec's

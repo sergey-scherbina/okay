@@ -1,5 +1,6 @@
-package okay2
+package okay2.workflow
 
+import okay2._
 import WfFixtures._
 
 /** A DRIVER THAT CAN STOP — the Scala 3 core's TestWfSuspend: timers,

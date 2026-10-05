@@ -1,5 +1,6 @@
-package okay2
+package okay2.stm
 
+import okay2._
 import okay2.async._
 
 /** the transaction language behaves the same behind every handler: tl2

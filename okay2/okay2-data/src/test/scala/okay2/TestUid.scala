@@ -1,4 +1,4 @@
-package okay2
+package okay2.data
 
 /** The six laws of the sortable id — the Scala 3 core's okay-data
  * TestUid and TestUidConcurrent. Every law that can run against a

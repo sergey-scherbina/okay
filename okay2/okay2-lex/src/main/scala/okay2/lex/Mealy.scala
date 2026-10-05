@@ -1,6 +1,6 @@
 package okay2.lex
 
-import okay2.Optic
+import okay2.optics.Optic
 
 /**
  * A Mealy machine: one input, one output, a new machine — okay-lex's

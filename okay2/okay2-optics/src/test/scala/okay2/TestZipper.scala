@@ -1,6 +1,7 @@
-package okay2
+package okay2.optics
 
-import okay2.Optic._
+import okay2._
+import okay2.optics.Optic._
 import ZipperFixtures._
 
 /** the cursor's laws over a rose tree, the plate built from a traversal

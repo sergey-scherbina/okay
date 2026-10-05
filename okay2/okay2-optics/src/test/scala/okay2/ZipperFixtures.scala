@@ -1,6 +1,7 @@
-package okay2
+package okay2.optics
 
-import okay2.Optic._
+import okay2._
+import okay2.optics.Optic._
 
 /** the trees and records the zipper suites walk, at the top level */
 object ZipperFixtures {

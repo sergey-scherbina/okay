@@ -1,7 +1,7 @@
 package okay2.codec
 
-import okay2.Zipper
-import okay2.Optic._
+import okay2.optics.Zipper
+import okay2.optics.Optic._
 import Json._
 
 /**

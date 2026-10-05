@@ -1,5 +1,6 @@
-package okay2
+package okay2.optics
 
+import okay2._
 /** the records the optics suites use: at the top level, since a case
  * class nested in a suite trips -Xlint's outer-reference check */
 object OpticsFixtures {

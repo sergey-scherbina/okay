@@ -2,7 +2,7 @@ package okay2.codec
 
 import scala.annotation.tailrec
 import okay2.Applicative
-import okay2.Optic._
+import okay2.optics.Optic._
 
 /**
  * A PROJECTION POLICY (okay-codec's Policy, specs/optics-outside.md

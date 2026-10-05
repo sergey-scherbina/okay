@@ -1,5 +1,6 @@
-package okay2
+package okay2.data
 
+import okay2._
 /** Approximate aggregators: stated error bounds, associative merges —
  * the Scala 3 core's okay-data TestSketch */
 class TestSketch extends munit.FunSuite {

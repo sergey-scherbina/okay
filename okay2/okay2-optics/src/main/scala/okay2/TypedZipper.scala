@@ -1,8 +1,8 @@
-package okay2
+package okay2.optics
 
 import scala.language.experimental.macros
 import scala.reflect.ClassTag
-import okay2.Optic._
+import okay2.optics.Optic._
 
 /**
  * THE TYPED ZIPPER: a cursor whose position is a type — the Scala 3

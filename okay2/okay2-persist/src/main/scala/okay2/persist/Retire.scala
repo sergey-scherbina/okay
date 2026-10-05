@@ -1,6 +1,7 @@
 package okay2.persist
 
-import okay2.{!, +, At, Replayable, Row, Shift, Wf, pure}
+import okay2.{!, +, At, Replayable, Row, Shift, pure}
+import okay2.workflow.Wf
 import okay2.codec.Schema
 
 /**

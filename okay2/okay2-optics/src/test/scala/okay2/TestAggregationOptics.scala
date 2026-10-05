@@ -1,6 +1,7 @@
-package okay2
+package okay2.optics
 
-import okay2.Optic._
+import okay2._
+import okay2.optics.Optic._
 import OpticsFixtures._
 
 /** The aggregating families — the Scala 3 core's TestAggregationOptics:
@@ -48,8 +49,8 @@ class TestAggregationOptics extends munit.FunSuite {
   }
 
   test("an ordinary lens does NOT reach the aggregating road, and the algebraic one does") {
-    assert(compileErrors("okay2.Optic.Lens[Int, Int, Int, Int](i => i, (_, b) => b).aggregate(_.sum)").nonEmpty,
+    assert(compileErrors("okay2.optics.Optic.Lens[Int, Int, Int, Int](i => i, (_, b) => b).aggregate(_.sum)").nonEmpty,
       "a Strong-only lens must not compile at Aggregating")
-    assertEquals(compileErrors("import okay2.Optic._; AlgebraicLens[Int, Int, Int, Int](i => i, (is, b) => is.sum + b).aggregate(_.sum)"), "")
+    assertEquals(compileErrors("import okay2.optics.Optic._; AlgebraicLens[Int, Int, Int, Int](i => i, (is, b) => is.sum + b).aggregate(_.sum)"), "")
   }
 }

@@ -1,4 +1,4 @@
-package okay2
+package okay2.data
 
 /**
  * A SORTABLE 128-BIT IDENTITY — the Scala 3 core's okay-data `Uid`:

@@ -1,6 +1,6 @@
 package okay2.codec
 
-import okay2.Optic._
+import okay2.optics.Optic._
 
 final case class JoAddress(city: String, zip: Int)
 object JoAddress { implicit lazy val schema: Schema[JoAddress] = Schema.derived }

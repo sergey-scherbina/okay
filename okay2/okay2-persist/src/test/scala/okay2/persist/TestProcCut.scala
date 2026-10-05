@@ -1,8 +1,9 @@
 package okay2.persist
 
 import munit.FunSuite
-import okay2.{!, Wf, pure}
-import okay2.Optic.arrows._
+import okay2.{!, pure}
+import okay2.workflow.Wf
+import okay2.optics.Optic.arrows._
 
 /**
  * THE EXHAUSTIVE CUT (okay-persist's TestProcCut; specs/static-workflow.md

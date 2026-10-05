@@ -1,6 +1,7 @@
-package okay2
+package okay2.optics
 
-import okay2.Optic._
+import okay2._
+import okay2.optics.Optic._
 import OpticsFixtures._
 
 /** a program over a PART of the state runs over the whole, and the
@@ -69,8 +70,8 @@ class TestZoom extends munit.FunSuite {
 
   test("PState.zoom: misusing the state's new type does not compile") {
     val e = compileErrors("""
-      import okay2.Optic._
-      import okay2.OpticsFixtures.Box
+      import okay2.optics.Optic._
+      import okay2.optics.OpticsFixtures.Box
       val item: Lens[Box[String], Box[Int], String, Int] = Lens[Box[String], Box[Int], String, Int](_.item, (b, i) => Box(i, b.tag))
       def parse[R]: okay2.Cont[Int, Int => R, String => R] =
         okay2.PState.get[String, R].flatMap(s => okay2.PState.set[String, Int, R](s.length).map(_ => s.length))

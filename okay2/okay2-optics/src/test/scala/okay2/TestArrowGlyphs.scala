@@ -1,7 +1,8 @@
-package okay2
+package okay2.optics
 
-import okay2.Optic._
-import okay2.Optic.arrows._
+import okay2._
+import okay2.optics.Optic._
+import okay2.optics.Optic.arrows._
 
 /** THE GLYPHS, AGAINST THE METHODS THEY SPELL — the Scala 3 core's
  * TestArrowGlyphs, on `Function1` whose equality is observable */

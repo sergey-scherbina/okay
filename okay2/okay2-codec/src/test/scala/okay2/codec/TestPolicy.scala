@@ -1,6 +1,6 @@
 package okay2.codec
 
-import okay2.Optic._
+import okay2.optics.Optic._
 import Json._
 
 final case class PoAddress(city: String, zip: Int)

@@ -1,7 +1,8 @@
 package okay2.persist
 
 import munit.FunSuite
-import okay2.{!, Shift, Wf}
+import okay2.{!, Shift}
+import okay2.workflow.Wf
 
 /**
  * EVIDENCE FOR DELETING CODE (okay-persist's TestRetire;

@@ -1,6 +1,6 @@
 package okay2.lex
 
-import okay2.Optic
+import okay2.optics.Optic
 
 /**
  * okay-lex's TestMealy: a scanner is a Mealy machine, and a Mealy machine

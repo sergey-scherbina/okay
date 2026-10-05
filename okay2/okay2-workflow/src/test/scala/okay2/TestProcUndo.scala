@@ -1,6 +1,9 @@
-package okay2
+package okay2.workflow
 
-import okay2.Optic.arrows._
+import okay2.optics.Optic
+
+import okay2._
+import okay2.optics.Optic.arrows._
 import WfFixtures._
 
 /** COMPENSATION AS STRUCTURE — the Scala 3 core's TestProcUndo: the
