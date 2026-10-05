@@ -38,11 +38,12 @@ class TestAudit extends munit.FunSuite:
     assert(raw.contains("java.lang.runtime.ObjectMethods"), raw.toString)
     assert(r.text.contains("carve-out (compiler bootstraps, never a finding): java.lang.invoke.LambdaMetafactory"))
 
-  test("Class.forName, MethodHandles.lookup, ObjectInputStream and a native method are findings — the escape hatches are closed"):
+  test("Class.forName, Lookup.findStatic, ObjectInputStream and a native method are findings — the escape hatches are closed"):
     val r = business(only("Reflect", "Natives"))
     val members = r.findings.map(_.ref.member).toSet
     assert(members.contains("java.lang.Class#forName"), members.toString)
-    assert(members.contains("java.lang.invoke.MethodHandles#lookup"), members.toString)
+    assert(members.contains("java.lang.invoke.MethodHandles$Lookup#findStatic"), members.toString)
+    assert(!members.contains("java.lang.invoke.MethodHandles#lookup"), "lookup() alone reaches nothing: " + members)
     assert(members.contains("java.io.ObjectInputStream#<init>"), members.toString)
     val native = r.findings.find(_.ref.kind == Ref.Kind.Native).getOrElse(fail(r.text))
     assertEquals(native.ref.member, "fixture.Natives#tick")
@@ -53,6 +54,13 @@ class TestAudit extends munit.FunSuite:
     val members = r.findings.map(_.ref.member).toSet
     assertEquals(members, Set("java.lang.System#currentTimeMillis", "java.util.Date#<init>", "java.util.Random#<init>", "java.util.Random#nextInt", "java.util.Random"))
     assert(r.findings.forall(_.rule.why.startsWith("time and randomness")))
+
+  test("a Scala 3 lazy val — lookup, findVarHandle, VarHandle.compareAndSet — is the compiler's idiom, not a reach"):
+    val raw = Scan.directory(only("Lazy")).map(_.member).toSet
+    assert(raw.contains("java.lang.invoke.MethodHandles$Lookup#findVarHandle"), raw.toString)
+    val r = business(only("Lazy"))
+    assert(r.passed, r.text)
+    assert(r.text.contains("the lazy-val idiom java.lang.invoke.MethodHandles#lookup, java.lang.invoke.MethodHandles$Lookup#findVarHandle, java.lang.invoke.VarHandle"))
 
   test("a pure class passes, and Pure is listed in no inventory because it is business"):
     val r = business(only("Pure"))

@@ -100,17 +100,17 @@ buyer's own additions (`com.example.legacy.`) are rules like any other.
 
 ## Behavior
 
-- [ ] a business class that constructs `java.net.Socket` is a finding naming the class, the member, the API and the rule's `why`; the build fails
-- [ ] a lambda (`LambdaMetafactory` bootstrap), a string concatenation (`StringConcatFactory`) and a record's `ObjectMethods` in a business class are NOT findings
-- [ ] `Class.forName`, `MethodHandles.lookup`, `ObjectInputStream` and an `ACC_NATIVE` method in a business class are findings — the escape hatches are closed by the same check
-- [ ] a jar on a business project's classpath is scanned under the business rules and a finding names the jar, so a library that does I/O must move to the handler layer or be allowed by name
-- [ ] a handler module's references are listed, never failed; the inventory groups them by provider (the owner's top package) and names the module
-- [ ] okay core and its platform are the `Runtime` layer: listed as such, their thread and socket use is not a finding anywhere
-- [ ] an `Allow` has a module, an API, a reason and an owner; one without a reason is refused by name before any scan; an allow nothing matched is reported as unused
-- [ ] the report's inputs carry each jar's and directory's sha-256 so a report ties to one build; `text` and `json` are deterministic (sorted) for the same inputs
-- [ ] a project without a layer is `Untracked` in the report, not failed
-- [ ] dogfood: `audit` over okay's own build with `okay`/`okay-async`/platform as `Runtime`, the I/O modules (`okay-http`, `okay-sql`, `okay-persist`, `okay-r`, `okay-py`, ...) as `Handlers`, and `okay-java`'s examples plus one chosen pure module as `Business` passes, and its inventory names every provider those modules touch — the first inventory for the evidence pack
-- [ ] cost: the whole okay classpath scans under the time of one small test suite (measure and record in Results)
+- [x] a business class that constructs `java.net.Socket` is a finding naming the class, the member, the API and the rule's `why`; the build fails
+- [x] a lambda (`LambdaMetafactory` bootstrap), a string concatenation (`StringConcatFactory`) and a record's `ObjectMethods` in a business class are NOT findings
+- [x] `Class.forName`, `Lookup.findStatic`, `ObjectInputStream` and an `ACC_NATIVE` method in a business class are findings — the escape hatches are closed by the same check
+- [x] a jar on a business project's classpath is scanned under the business rules and a finding names the jar, so a library that does I/O must move to the handler layer or be allowed by name
+- [x] a handler module's references are listed, never failed; the inventory groups them by provider (the owner's top package) and names the module
+- [x] okay core and its platform are the `Runtime` layer: listed as such, their thread and socket use is not a finding anywhere
+- [x] an `Allow` has a module, an API, a reason and an owner; one without a reason is refused by name before any scan; an allow nothing matched is reported as unused
+- [x] the report's inputs carry each jar's and directory's sha-256 so a report ties to one build; `text` and `json` are deterministic (sorted) for the same inputs
+- [x] a project without a layer is `Untracked` in the report, not failed
+- [x] dogfood: `audit` over okay's own build with `okay`/`okay-async`/platform as `Runtime`, the I/O modules (`okay-http`, `okay-sql`, `okay-persist`, `okay-r`, `okay-py`, ...) as `Handlers`, and `okay-java`'s examples plus one chosen pure module as `Business` passes, and its inventory names every provider those modules touch — the first inventory for the evidence pack
+- [x] cost: the whole okay classpath scans under the time of one small test suite (measure and record in Results)
 
 ## Out of scope
 
@@ -162,6 +162,9 @@ buyer's own additions (`com.example.legacy.`) are rules like any other.
   job here is to be LISTED. A finding is a reach from where none should be.
 - **Allows need an owner and a reason** — the Ack pattern of
   specs/security.md: anything weaker than the default is a named decision.
+- **Carve-outs are listed in the report's header, every run** — the
+  bootstraps, the bootstrap types, the lazy-val idiom. A reader who
+  distrusts the check sees exactly what it chose not to count.
 
 ## Stages
 
@@ -179,4 +182,46 @@ buyer's own additions (`com.example.legacy.`) are rules like any other.
 
 ## Results
 
-(after stage 1)
+Stage 1 (2026-10-05, this lane). `okay-audit`: `Scan`, `Boundary`, `Audit`,
+`Report`, `Main`; sbt `auditLayer` per project, root `audit`; `TestAudit`,
+12 tests on Java and Scala fixtures.
+
+**Dogfood, 24 JVM projects + the Scala library as one `runtime` row, 53
+scanned inputs (class directories and third-party jars), 21 s warm for the
+whole task including sbt.** The first run FAILED with 232 findings, and
+all of them were right:
+
+- **The lazy-val idiom.** Every Scala 3 module with a `lazy val` reached
+  `MethodHandles#lookup`, `Lookup#findVarHandle`, `VarHandle#compareAndSet`
+  (okay-optics, okay-lex, okay-crdt: exactly these 4 references each).
+  A VarHandle reaches memory, not the world, and `lookup()` alone reaches
+  nothing — carved out (`Boundary.LazyValIdiom`); `Lookup#findStatic`,
+  `#findVirtual`, `#unreflect*`, `#defineClass` stay findings and the
+  `Reflect` fixture calls `findStatic` to prove it.
+- **Bootstrap types as bare classes.** javac writes `MethodHandles`,
+  `MethodHandles$Lookup`, `MethodType`, `CallSite` into the pool as bare
+  `CONSTANT_Class` entries (InnerClasses) for every lambda; a bare class
+  reference to one of `Boundary.BootstrapTypes` is part of the carve-out, a
+  MEMBER reference is not.
+- **Native methods needed their own rule**: an own `ACC_NATIVE` method has
+  the class itself as owner, so no API rule matched it — `Boundary.Native`.
+- **Four modules were not business.** okay-codec (files, processes, TLS,
+  SecureRandom, `sys.env`), okay-bayes (`scala.util.Random` in 50 places,
+  a shutdown hook, `Thread`), okay-java (`Files.lines`, `reflect.Array`),
+  okay-data (`Hlc` reads `System.currentTimeMillis`, `Uid` reads
+  `Random.nextLong`). All four moved to `handlers`; okay-data's two are
+  genuine design findings — a clock and a random source in a data module —
+  filed in backlog.d/okay-data.
+- Business after the first run: okay-optics, okay-parse, okay-lex,
+  okay-crdt — PASS. Untracked: none of the 24.
+- **The inventory shows what nothing else in the build does**: okay-kafka's
+  jars reach JNI (`LZ4JNI`, `XXHashJNI`, snappy's `BitShuffleNative`) and
+  `sun.misc.Unsafe`; okay-jetty reaches `javax.naming`, `java.sql.DriverManager`
+  and three randoms; the Scala library itself reaches `Class.forName`,
+  `ClassLoader`, `URL#openStream`. That is the Art. 8 inventory an auditor
+  asks for, from one command.
+
+Deviation from the Interface above: `Report.json` is written by a
+twenty-line writer of its own, not okay-codec's `Json` — the module stays
+at zero dependencies so a Maven/Gradle user of the Java facade (stage 2)
+can run it alone.

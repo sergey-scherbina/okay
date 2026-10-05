@@ -22,7 +22,7 @@ final case class Report(
     val sb = StringBuilder()
     sb ++= (if passed then "audit: PASS — no business module reaches past the boundary\n"
             else s"audit: FAIL — ${findings.size} reach(es) past the boundary\n")
-    sb ++= s"carve-out (compiler bootstraps, never a finding): ${Boundary.Bootstraps.mkString(", ")}; bare class references to ${Boundary.BootstrapTypes.toVector.sorted.mkString(", ")}\n\n"
+    sb ++= s"carve-out (compiler bootstraps, never a finding): ${Boundary.Bootstraps.mkString(", ")}; bare class references to ${Boundary.BootstrapTypes.toVector.sorted.mkString(", ")}; the lazy-val idiom ${Boundary.LazyValIdiom.toVector.sorted.mkString(", ")}, java.lang.invoke.VarHandle\n\n"
     if findings.nonEmpty then
       sb ++= "FINDINGS\n"
       findings.groupBy(_.module).toVector.sortBy(_._1).foreach { (m, fs) =>

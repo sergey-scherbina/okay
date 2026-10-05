@@ -1,4 +1,4 @@
-- [ ] okay-audit — the effect boundary checked at every build: a bytecode
+- [ ] okay-audit — STAGE 1 LANDED (2026-10-05, this lane; specs/okay-audit.md Results); stages 2–4 open: JSON with allows via CLI for Maven/Gradle, launcher-flags check, hermetic replay in okay-watch. The effect boundary checked at every build: a bytecode
       scanner (constant-pool references, JVMS §4) over each module's classes
       and classpath jars; `Business` modules may reference none of the
       default rule set (network, files, console, sql, processes, time,

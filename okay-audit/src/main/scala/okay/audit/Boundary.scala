@@ -52,8 +52,18 @@ object Boundary:
     Set("java.lang.invoke.MethodHandles", "java.lang.invoke.MethodHandles$Lookup", "java.lang.invoke.MethodHandle",
       "java.lang.invoke.MethodType", "java.lang.invoke.CallSite", "java.lang.invoke.TypeDescriptor")
 
+  /** Scala 3's `lazy val` compiles to `MethodHandles.lookup().findVarHandle(...)`
+    * and `VarHandle.compareAndSet` in the class's own initializer (measured on
+    * the dogfood: every module with a lazy val, 4 references each). A VarHandle
+    * reaches MEMORY, not the world, and `lookup()` alone reaches nothing, so
+    * these three are carved out; `Lookup#findVirtual`, `#findStatic`,
+    * `#unreflect*`, `#defineClass` — the ones that reach code — stay findings */
+  val LazyValIdiom: Set[String] =
+    Set("java.lang.invoke.MethodHandles#lookup", "java.lang.invoke.MethodHandles$Lookup#findVarHandle")
+
   def isBootstrap(r: Ref): Boolean =
-    Bootstraps.contains(r.owner) || (r.kind == Ref.Kind.Class && BootstrapTypes.contains(r.owner))
+    Bootstraps.contains(r.owner) || (r.kind == Ref.Kind.Class && BootstrapTypes.contains(r.owner)) ||
+      r.owner == "java.lang.invoke.VarHandle" || LazyValIdiom.contains(r.member)
 
   /** an own `ACC_NATIVE` method: always a finding in a business module — code the JVM cannot see */
   val Native: Rule = Rule("native", "a native method: code neither the JVM nor this check can see")

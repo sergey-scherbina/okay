@@ -3779,19 +3779,23 @@ lazy val auditProjects: Seq[ProjectReference] = Seq(
 
 // the dogfood's layers (specs/okay-audit.md, Behavior): the core and its
 // platform are the runtime; the modules that open sockets, files, databases
-// and interpreters are handlers; pure computation is business
+// and interpreters are handlers; pure computation is business. The first run
+// (2026-10-05) moved four modules from business to handlers on what it found:
+// okay-codec (files, processes, TLS, SecureRandom), okay-bayes (Random, a
+// shutdown hook, threads), okay-java (Files.lines, reflect.Array) and
+// okay-data (Hlc reads the clock, Uid reads Random — backlog, okay-data)
 okay.jvm / auditLayer := "runtime"
 okayAsync.jvm / auditLayer := "runtime"
 okayPlatform.jvm / auditLayer := "runtime"
 okayStream.jvm / auditLayer := "runtime"
 okayOptics.jvm / auditLayer := "business"
-okayData.jvm / auditLayer := "business"
+okayData.jvm / auditLayer := "handlers"
 okayParse.jvm / auditLayer := "business"
 okayLex.jvm / auditLayer := "business"
-okayCodec.jvm / auditLayer := "business"
+okayCodec.jvm / auditLayer := "handlers"
 okayCrdt.jvm / auditLayer := "business"
-okayBayes.jvm / auditLayer := "business"
-okayJava / auditLayer := "business"
+okayBayes.jvm / auditLayer := "handlers"
+okayJava / auditLayer := "handlers"
 okayHttp.jvm / auditLayer := "handlers"
 okaySql.jvm / auditLayer := "handlers"
 okayPersist.jvm / auditLayer := "handlers"
