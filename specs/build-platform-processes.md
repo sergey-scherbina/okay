@@ -13,7 +13,9 @@ scripts/build.sh jvm|js|native|all [task], task defaults to test.
 Uses scripts/gate.sh from the repository root. compile and Test/compile
 are supported as single task names. Whole gates retain the CI lock.
 Bare root sbt test is still sbt's raw aggregated task; use this entry point
-for separated builds. No source modules or dependency graph change.
+for separated builds. No source modules or dependency graph change. The shared gate is also used
+from okay2, which has no family command: its bare test must remain untouched.
+GitHub's full/affected branches use the managed gate too.
 
 ## Behavior
 
@@ -27,6 +29,7 @@ for separated builds. No source modules or dependency graph change.
   output is retained in the main log and verdict counts their results.
 - [ ] Explicit command chains remain one sbt session, including set commands;
   their implicit affected expansion separates JS/Native commands in order.
+- [ ] okay2/other builds without project/Affected.scala retain bare test.
 - [ ] build entry point dispatches all platforms/tasks and rejects malformed
   arguments without starting sbt. CI family all uses the separated path.
 
