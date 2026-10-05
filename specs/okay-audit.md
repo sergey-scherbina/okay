@@ -239,7 +239,14 @@ module-info discarded) okay is one automatic module and the rule holds.
   file; and gains `Audit.runtime()` — a self-check an app calls at startup
   that writes the boot layer's modules, their requires, native-access grants
   and the input arguments into its evidence journal (okay-watch first).
-- **B. The deployable as a named module (okay-watch).** okay as one automatic
+- **B. The deployable as a named module (okay-watch).**
+  Implemented as the strict opt-in headless profile in okay-watch's
+  `specs/jpms-deployment.md`, not a replacement for desktop/JDBC installs.
+  The shipped assembly runs the offline synthetic scenario, retains seven
+  providers, and verifies SQL/Unsafe/reflection/native refusals. Its scanner
+  manifest is inventory-only (mixed app handlers, dependency runtime);
+  domain-policy classification remains audit-ready Stage 4.
+  The original deployment goal is okay as one automatic
   module (the assembly), the app's own code (`okaywatch.*`) as a named module
   with an explicit `requires` list, jlinked without `java.sql`/`jdk.unsupported`
   unless a handler needs them, launched with `--illegal-native-access=deny`
