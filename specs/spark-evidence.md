@@ -22,10 +22,10 @@ caller. No payloads or credentials enter task logs.
 
 ## Behavior
 
-- [ ] Real local Spark returns one summary per partition and correct counts.
-- [ ] Repeated execution has the same logical digest, ignoring attempt IDs.
-- [ ] Record framing distinguishes ambiguous concatenations.
-- [ ] Sink failure yields no committed receipt.
+- [x] Real local Spark returns one summary per partition and correct counts.
+- [x] Repeated execution has the same logical digest, ignoring attempt IDs.
+- [x] Record framing distinguishes ambiguous concatenations.
+- [x] Sink failure yields no committed receipt.
 
 ## Scope
 
