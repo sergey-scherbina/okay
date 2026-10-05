@@ -1,6 +1,6 @@
 - [ ] durable-recovery-contract-tests — P1 / evidence: prove crash and
       concurrency guarantees through the actual durable storage path.
-      DEPENDS: durable-withkey-first-attempt + durable-run-scoped-keys
+      DEPENDS: durable-run-scoped-keys (first-attempt WithKey is fixed)
       for the okay-agent branch; the existing workflow branch can be
       audited independently. Context: docs/durable-workflows.md,
       okay-durable Durable / okay-durable-persist TopicJournal, okay-persist Dialogue/Worker,

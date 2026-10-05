@@ -22,8 +22,8 @@
       deliberately colliding old fingerprints cannot alias independent
       attempts; recovery honors legacy persisted keys; drift remains
       rejected. Gate TestDurable/TopicJournal consumers and affected
-      behavior consumers. Pair with durable-withkey-first-attempt before
-      claiming externally idempotent recovery.
+      behavior consumers. First-attempt WithKey propagation is fixed; retain
+      TestWithKey crash-window regressions when changing key identity.
       MODULE EXTRACTION 2026-10-05: the implementation is now in
       okay-durable; okay.agent.Durable forwards generic methods. Keep
       agent Tool tests as compatibility acceptance and put generic

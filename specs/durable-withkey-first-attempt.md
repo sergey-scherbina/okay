@@ -62,4 +62,8 @@ Red reproduction: TestWithKey failed twice on the old handler. The crash
 case recorded requests None then Some(journalKey), two provider actions,
 and receipt-2 on retry. After the fix, the four neutral scenarios pass
 on JVM and JS, and the Tool key-precedence regression passes (9 results).
-Affected staged gate pending before landing.
+Affected staged gate GREEN: 2094 test results, no compile warnings.
+The actual Scala 2 probe and foreign-workflow compilation now pass after
+replacing exported type aliases with explicit type/value facades and
+migrating the last neutral foreign consumer. Targeted compatibility
+checks passed five results before the full staged gate.
