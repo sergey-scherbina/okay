@@ -35,7 +35,18 @@ final case class Allow(module: String, api: String, reason: String, owner: Strin
   private val rule = Rule(api, reason)
   def matches(module: String, r: Ref): Boolean = this.module == module && rule.matches(r)
 
-final case class Boundary(layers: Map[String, Layer], rules: Vector[Rule] = Boundary.Default, allows: Vector[Allow] = Vector.empty)
+/** `layers`: module -> layer. `packages`: module -> package prefix -> layer, for a
+  * product that is ONE module by design with business and handlers side by
+  * side (okay-watch: `okaywatch.trace` is business, `okaywatch.collect` is
+  * handlers, one jar). A class takes the longest matching prefix's layer,
+  * else its module's (specs/audit-ready.md, stage 1). */
+final case class Boundary(layers: Map[String, Layer], rules: Vector[Rule] = Boundary.Default, allows: Vector[Allow] = Vector.empty,
+                          packages: Map[String, Map[String, Layer]] = Map.empty):
+  /** the prefix that classifies `cls`, if any: the longest one it is under */
+  def prefixOf(module: String, cls: String): Option[String] =
+    packages.getOrElse(module, Map.empty).keys.filter(p => cls == p || cls.startsWith(p + ".")).maxByOption(_.length)
+  def layerOf(module: String, cls: String): Layer =
+    prefixOf(module, cls).flatMap(packages.get(module).flatMap(_.get)).getOrElse(layers.getOrElse(module, Layer.Untracked))
 
 object Boundary:
   /** the three bootstraps every compiler emits — a lambda, a string

@@ -63,7 +63,7 @@ class TestCrdt extends munit.FunSuite {
 
   test("OrSet: add, remove, add again — and the element is back") {
     // the bug a remove-set cannot avoid, and the reason tags exist
-    val gen = Uid.at(() => 1_700_000_000_000L)
+    val gen = Uid.at(() => 1_700_000_000_000L, () => 0L)
     var s = OrSet.empty[String]
     s = s.add("x", gen.next())
     assert(s.contains("x"))
@@ -74,7 +74,7 @@ class TestCrdt extends munit.FunSuite {
   }
 
   test("OrSet: a concurrent add survives a remove that never saw it") {
-    val gen = Uid.at(() => 1_700_000_000_000L)
+    val gen = Uid.at(() => 1_700_000_000_000L, () => 0L)
     val g = summon[Crdt[OrSet[String]]]
     val start = OrSet.empty[String].add("x", gen.next())
 
@@ -88,7 +88,7 @@ class TestCrdt extends munit.FunSuite {
   }
 
   test("OrSet: a remove that saw every tag does remove") {
-    val gen = Uid.at(() => 1_700_000_000_000L)
+    val gen = Uid.at(() => 1_700_000_000_000L, () => 0L)
     val g = summon[Crdt[OrSet[String]]]
     val both = OrSet.empty[String].add("x", gen.next()).add("x", gen.next())
     val gone = both.remove("x")

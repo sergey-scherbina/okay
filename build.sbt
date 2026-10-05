@@ -574,7 +574,9 @@ lazy val okayDirect = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 lazy val okayPlatform = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-platform"))
-  .dependsOn(okayAsync, okayTest % "test->compile")
+  // okay-data: `Ambient` carries the ambient Hlc and Uid generators, so
+  // okay-data itself reads no clock and no random (specs/audit-ready.md)
+  .dependsOn(okayAsync, okayData, okayTest % "test->compile")
   .settings(
     name := "okay-platform",
   )
@@ -967,8 +969,10 @@ lazy val okayJava = (project in file("okay-java"))
  * `handlers`: Main reads jars and writes the report.
  */
 lazy val auditLayer = settingKey[String]("okay-audit layer of this project: business | handlers | runtime | untracked (specs/okay-audit.md)")
+lazy val auditLayers = settingKey[Map[String, String]]("okay-audit layers by PACKAGE prefix inside this project, for a project that holds business and handlers side by side (specs/audit-ready.md stage 1): Map(\"okaywatch.trace\" -> \"business\", \"okaywatch.collect\" -> \"handlers\")")
 lazy val audit = taskKey[Unit]("okay-audit over the build: target/audit/report.{txt,json}; fails on a business project reaching past the boundary")
 ThisBuild / auditLayer := "untracked"
+ThisBuild / auditLayers := Map.empty
 
 lazy val okayAudit = (project in file("okay-audit"))
   .settings(
@@ -1879,7 +1883,7 @@ lazy val npmPackage = taskKey[File]("okay-ts-npm as an npm package directory: th
 lazy val okayTsNpm = crossProject(JSPlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-ts-npm"))
-  .dependsOn(okayTs, okayCrdt, okayStream)
+  .dependsOn(okayTs, okayCrdt, okayStream, okayPlatform)   // `Ambient.uid()` for orset.add
   .settings(
     name := "okay-ts-npm",
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
@@ -2615,7 +2619,7 @@ lazy val okayTelegram = crossProject(JVMPlatform, JSPlatform)
 lazy val okaySecurity = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-security"))
-  .dependsOn(okayHttp, okayData, okayCrypto)   // the four primitives are okay-crypto's (security-crypto-dedup)
+  .dependsOn(okayHttp, okayData, okayPlatform, okayCrypto)   // the four primitives are okay-crypto's (security-crypto-dedup); okayPlatform for `Ambient.uid()`
   .dependsOn(okayPersist)                        // the roster is a fold of a topic (specs/identity-roster.md)
   // TestReadmes runs the README's agent-with-a-principal example; the
   // agent came through okay-http until http-mcp-agent-edge
@@ -3811,6 +3815,7 @@ lazy val auditFilter = ScopeFilter(inProjects(auditProjects: _*), inConfiguratio
 audit := Def.taskDyn {
   val names = name.all(auditFilter).value
   val layers = auditLayer.all(auditFilter).value
+  val pkgs = auditLayers.all(auditFilter).value
   val prods = (Compile / products).all(auditFilter).value
   val ext = (Compile / externalDependencyClasspath).all(auditFilter).value
   val outDir = target.value / "audit"
@@ -3819,7 +3824,7 @@ audit := Def.taskDyn {
   val sep = java.io.File.pathSeparator
   val rows = names.indices.map { i =>
     val paths = prods(i) ++ ext(i).map(_.data).filterNot(scalaRt)
-    s"${names(i)}\t${layers(i)}\t${paths.map(_.getAbsolutePath).mkString(sep)}"
+    s"${names(i)}\t${layers(i)}\t${paths.map(_.getAbsolutePath).mkString(sep)}\t${pkgs(i).map { case (k, v) => s"$k=$v" }.mkString(";")}"
   }
   val rt = ext.flatten.map(_.data).filter(scalaRt).distinct
   val manifest = outDir / "modules.tsv"

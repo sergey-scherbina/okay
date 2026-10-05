@@ -1,6 +1,6 @@
 package okay.security
 
-import okay.Uid
+import okay.{Ambient, Uid}
 
 /**
  * A CAPABILITY THAT ITS HOLDER CAN NARROW (specs/coordination-free.md
@@ -136,7 +136,7 @@ object Capability:
    * "nothing issued before T" rule a comparison.
    */
   def issue(rootKey: Array[Byte], subject: String)(using c: Crypto): Capability =
-    val id = Uid.next().ulid
+    val id = Ambient.uid().ulid
     Capability(id, subject, Vector.empty, hex(chain(rootKey, id, subject, Vector.empty)))
 
   /** the same, with the id supplied — for a caller that mints ids its

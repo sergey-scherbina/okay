@@ -103,28 +103,40 @@ object Audit:
     val used = scala.collection.mutable.Set.empty[Allow]
     modules.toVector.sortBy(_._1).foreach { (module, paths) =>
       val layer = boundary.layers.getOrElse(module, Layer.Untracked)
-      layer match
-        case Layer.Untracked => untracked += module
-        case _ =>
-          val refs = paths.toVector.flatMap { p =>
-            inputs += ((module, p, Scan.digest(p)))
-            Scan.path(p)
-          }.filterNot(Boundary.isBootstrap)
-          layer match
+      // untracked: no layer of its own, and nothing in `packages` could cover it
+      if layer == Layer.Untracked && boundary.packages.get(module).forall(_.isEmpty) then untracked += module
+      else
+        val refs = paths.toVector.flatMap { p =>
+          inputs += ((module, p, Scan.digest(p)))
+          Scan.path(p)
+        }.filterNot(Boundary.isBootstrap)
+        // a class under a package prefix belongs to that prefix's layer and is
+        // reported under `module:prefix`; the rest of the module under its own
+        val byRow: Map[(String, Layer), Vector[Ref]] = refs.groupBy { r =>
+          boundary.prefixOf(module, r.from) match
+            case Some(p) => (s"$module:$p", boundary.packages(module)(p))
+            case None => (module, layer)
+        }
+        // a class no prefix covers, in a module with no layer of its own, is untracked
+        if layer == Layer.Untracked && (byRow.isEmpty || byRow.contains((module, Layer.Untracked))) then untracked += module
+        byRow.toVector.sortBy(_._1._1).foreach { case ((row, rowLayer), rs) =>
+          rowLayer match
+            case Layer.Untracked =>
             case Layer.Business =>
-              refs.foreach { r =>
+              rs.foreach { r =>
                 (if r.kind == Ref.Kind.Native then Some(Boundary.Native) else boundary.rules.find(_.matches(r))).foreach { rule =>
-                  val f = Finding(module, r, rule)
+                  val f = Finding(row, r, rule)
                   boundary.allows.find(_.matches(module, r)) match
                     case Some(a) => used += a; allowed += ((a, f))
                     case None => findings += f
                 }
               }
             case _ =>
-              // the inventory lists what the module touches OUTSIDE itself and the JDK's pure core:
+              // the inventory lists what the row touches OUTSIDE itself and the JDK's pure core:
               // every reference under a rule is a reach; the rest is plain computation
-              val reaches = refs.filter(r => r.kind == Ref.Kind.Native || boundary.rules.exists(_.matches(r)))
-              inventory += Inventory(module, layer, reaches.groupBy(r => provider(r.owner)))
+              val reaches = rs.filter(r => r.kind == Ref.Kind.Native || boundary.rules.exists(_.matches(r)))
+              inventory += Inventory(row, rowLayer, reaches.groupBy(r => provider(r.owner)))
+        }
     }
     Report(inputs.result(), findings.result(), inventory.result(), untracked.result(),
       boundary.allows.filterNot(used.contains), allowed.result())

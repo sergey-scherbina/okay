@@ -95,7 +95,7 @@ class TestCrdtFold extends munit.FunSuite {
   }
 
   test("mergeAll: the whole of a replica's history, in one call") {
-    val gen = Uid.at(() => 1_700_000_000_000L)
+    val gen = Uid.at(() => 1_700_000_000_000L, () => 0L)
     val sets = List(
       OrSet.empty[String].add("x", gen.next()),
       OrSet.empty[String].add("y", gen.next()),

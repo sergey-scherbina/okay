@@ -36,7 +36,7 @@ class TestUid extends munit.FunSuite {
 
   test("1. monotonic: successive ids strictly increase, inside one millisecond too") {
     val clock = Fake(Epoch)
-    val gen = Uid.at(clock.source)
+    val gen = Uid.at(clock.source, () => 0L)
     val ord = summon[Ordering[Uid]]
     var prev = gen.next()
     var i = 0
@@ -49,7 +49,7 @@ class TestUid extends munit.FunSuite {
 
   test("2. sortable as text: lexicographic order of the ULID is the value's order") {
     val clock = Fake(Epoch)
-    val gen = Uid.at(clock.source)
+    val gen = Uid.at(clock.source, () => 0L)
     val ord = summon[Ordering[Uid]]
     val ids = (0 until 2000).map { i =>
       if i % 100 == 0 then clock.advance(1)
@@ -68,7 +68,7 @@ class TestUid extends munit.FunSuite {
     // the law the whole design exists for: NTP steps, a VM suspends,
     // and System.currentTimeMillis is not monotonic
     val clock = Fake(Epoch)
-    val gen = Uid.at(clock.source)
+    val gen = Uid.at(clock.source, () => 0L)
     val ord = summon[Ordering[Uid]]
     var prev = gen.next()
     var i = 0
@@ -83,7 +83,7 @@ class TestUid extends munit.FunSuite {
   }
 
   test("4. RFC 9562: version 7 and variant 0b10, in the value and in the text") {
-    val gen = Uid.at(Fake(Epoch).source)
+    val gen = Uid.at(Fake(Epoch).source, () => 0L)
     var i = 0
     while i < 100 do
       val u = gen.next()
@@ -97,7 +97,7 @@ class TestUid extends munit.FunSuite {
   }
 
   test("5. round trip: both spellings parse back to the same value, garbage does not") {
-    val gen = Uid.at(Fake(Epoch).source)
+    val gen = Uid.at(Fake(Epoch).source, () => 0L)
     var i = 0
     while i < 500 do
       val u = gen.next()
@@ -116,7 +116,7 @@ class TestUid extends munit.FunSuite {
   }
 
   test("5b. Crockford's confusions: I and L read as 1, O reads as 0") {
-    val gen = Uid.at(Fake(Epoch).source)
+    val gen = Uid.at(Fake(Epoch).source, () => 0L)
     val u = gen.next()
     val s = u.ulid
     val typed = retype(s) { c => if c == '1' then 'l' else if c == '0' then 'O' else c }
@@ -127,7 +127,7 @@ class TestUid extends munit.FunSuite {
 
   test("the millisecond survives the round trip and reads as a time") {
     val clock = Fake(Epoch)
-    val u = Uid.at(clock.source).next()
+    val u = Uid.at(clock.source, () => 0L).next()
     assertEquals(u.millis, Epoch)
     assertEquals(Uid.parseUlid(u.ulid).get.millis, Epoch)
     assertEquals(Uid.parseUuid(u.uuid).get.millis, Epoch)
@@ -135,7 +135,7 @@ class TestUid extends munit.FunSuite {
 
   test("the counter borrows a millisecond rather than repeating or failing") {
     val clock = Fake(Epoch)
-    val gen = Uid.at(clock.source)
+    val gen = Uid.at(clock.source, () => 0L)
     // 4096 fit in one millisecond; the 4097th must move to the next
     val ids = (0 until 4098).map(_ => gen.next())
     assertEquals(ids.head.millis, Epoch)

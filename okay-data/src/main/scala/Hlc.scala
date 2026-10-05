@@ -31,7 +31,7 @@ import java.util.concurrent.atomic.AtomicLong
  * THE CLOCK IS A PARAMETER, deliberately. The hazard this class
  * exists to survive is time going backwards, and a design whose
  * central hazard cannot be reached from a test is not designed. `at`
- * takes the source; `Hlc.next()` is the convenience over the system
+ * takes the source; `Ambient.stamp()` (okay-platform) is the convenience over the system
  * clock for callers who do not care.
  *
  * WHAT IT DOES NOT GIVE. Not a global physical time. Two nodes that
@@ -163,11 +163,6 @@ object Hlc:
   def at(source: () => Long, counterBits: Int = CounterBits): Clock =
     Clock(source, counterBits)
 
-  /** the ambient clock over the system's wall time */
-  val system: Clock = Clock(() => System.currentTimeMillis(), CounterBits)
-
-  /** the next stamp from the ambient clock */
-  def next(): Stamp = system.next()
-
-  /** merge a remote stamp into the ambient clock */
-  def observe(remote: Stamp): Stamp = system.observe(remote)
+  // The ambient clock over the system's wall time is `Ambient.hlc` in
+  // okay-platform (specs/audit-ready.md, stage 3): this module reads no
+  // clock, so okay-audit lists it as business.

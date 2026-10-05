@@ -68,7 +68,7 @@ class TestCrdtWire extends munit.FunSuite {
   }
 
   test("OrSet: round trips, with both the adds and each element's TAGS sorted") {
-    val gen = Uid.at(() => 1_700_000_000_000L)
+    val gen = Uid.at(() => 1_700_000_000_000L, () => 0L)
     val t1 = gen.next(); val t2 = gen.next(); val t3 = gen.next()
     // the same value assembled two ways: different insertion order at
     // BOTH levels, since one unsorted level is enough to break this
@@ -91,7 +91,7 @@ class TestCrdtWire extends munit.FunSuite {
   }
 
   test("Uid and NodeId travel as text, and a Uid sorts as its text does") {
-    val gen = Uid.at(() => 1_700_000_000_000L)
+    val gen = Uid.at(() => 1_700_000_000_000L, () => 0L)
     val u = gen.next()
     assertEquals(Json.write(u), "\"" + u.ulid + "\"")
     assertEquals(Json.read[Uid](Json.write(u)), Right(u))
@@ -116,7 +116,7 @@ class TestCrdtWire extends munit.FunSuite {
   test("THE MERGE SURVIVES THE WIRE: OrSet, including its tombstones") {
     // the case that would expose a dropped tombstone: one replica
     // removed what the other never saw removed
-    val gen = Uid.at(() => 1_700_000_000_000L)
+    val gen = Uid.at(() => 1_700_000_000_000L, () => 0L)
     val start = OrSet.empty[String].add("x", gen.next()).add("y", gen.next())
     mergeSurvives(start.remove("x"), start.add("x", gen.next()))
   }

@@ -40,7 +40,7 @@ class TestCrdtLaws extends munit.FunSuite {
   }
 
   test("OrSet obeys the three laws") {
-    val gen = Uid.at(() => 1_700_000_000_000L)
+    val gen = Uid.at(() => 1_700_000_000_000L, () => 0L)
     val x = OrSet.empty[String].add("a", gen.next()).add("b", gen.next())
     val y = x.remove("a").add("c", gen.next())
     val z = OrSet.empty[String].add("a", gen.next())

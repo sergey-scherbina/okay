@@ -13,6 +13,9 @@ class TestAudit extends munit.FunSuite:
       Files.list(classesDir.resolve("fixture")).filter(p => p.getFileName.toString.matches(s"$n(\\$$.*)?\\.class"))
         .forEach(p => Files.copy(p, dir.resolve("fixture").resolve(p.getFileName.toString)): Unit)
     }
+    if names.contains("io/Door") then
+      Files.createDirectories(dir.resolve("fixture/io"))
+      Files.copy(classesDir.resolve("fixture/io/Door.class"), dir.resolve("fixture/io/Door.class")): Unit
     dir
 
   def business(paths: Path*): Report =
@@ -136,16 +139,37 @@ class TestAudit extends munit.FunSuite:
     assertEquals(Audit.provider("com.zaxxer.hikari.HikariDataSource"), "com.zaxxer.hikari")
     assertEquals(Audit.provider("okay.Async"), "okay")
 
+  test("PACKAGES: a business module whose `fixture.io` package is its handler layer passes, and the package is listed as `biz:fixture.io`; without the prefix it fails"):
+    val dir = only("Pure", "io/Door")
+    val plain = business(dir)
+    assert(!plain.passed, plain.text)
+    val r = Audit.run(Boundary(Map("biz" -> Layer.Business), packages = Map("biz" -> Map("fixture.io" -> Layer.Handlers))), Map("biz" -> Seq(dir)))
+    assert(r.passed, r.text)
+    val inv = r.inventory.find(_.module == "biz:fixture.io").getOrElse(fail(r.text))
+    assertEquals(inv.layer, Layer.Handlers)
+    assert(inv.byProvider("java.net").exists(_.member == "java.net.Socket#<init>"))
+    assert(r.text.contains("biz:fixture.io [handlers]"))
+    // the longest prefix wins: `fixture` as business, `fixture.io` as handlers
+    val r2 = Audit.run(Boundary(Map.empty, packages = Map("biz" -> Map("fixture" -> Layer.Business, "fixture.io" -> Layer.Handlers))), Map("biz" -> Seq(dir)))
+    assert(r2.passed, r2.text)
+    assertEquals(r2.untracked, Vector.empty)
+    assertEquals(r2.inventory.map(_.module), Vector("biz:fixture.io"))
+
+    val other = Audit.run(Boundary(Map("biz" -> Layer.Business, "other" -> Layer.Business), packages = Map("biz" -> Map("fixture.io" -> Layer.Handlers))), Map("biz" -> Seq(dir), "other" -> Seq(dir)))
+    assert(!other.passed, other.text)
+    assert(other.findings.exists(_.module == "other"), other.text)
+
   test("Main: the TSV manifest in, report.txt and report.json out"):
     val dir = Files.createTempDirectory("audit-main")
     val manifest = dir.resolve("modules.tsv")
-    Files.writeString(manifest, s"biz\tbusiness\t${only("Pure")}\nio\thandlers\t${only("Sockets")}\nnobody\tuntracked\t\n")
+    Files.writeString(manifest, s"biz\tbusiness\t${only("Pure", "io/Door")}\tfixture.io=handlers\nio\thandlers\t${only("Sockets")}\nnobody\tuntracked\t\n")
     val allows = dir.resolve("allows.tsv")
     Files.writeString(allows, "biz\tjava.sql.\tops\tnever\n")
-    val (layers, modules) = Main.readModules(manifest)
+    val (layers, modules, packages) = Main.readManifest(manifest)
     assertEquals(layers, Map("biz" -> Layer.Business, "io" -> Layer.Handlers, "nobody" -> Layer.Untracked))
     assertEquals(modules("nobody"), Seq.empty)
-    val r = Audit.run(Boundary(layers, allows = Main.readAllows(allows)), modules)
+    assertEquals(packages, Map("biz" -> Map("fixture.io" -> Layer.Handlers), "io" -> Map.empty, "nobody" -> Map.empty))
+    val r = Audit.run(Boundary(layers, allows = Main.readAllows(allows), packages = packages), modules)
     assert(r.passed, r.text)
     assertEquals(r.unusedAllows.size, 1)
     assertEquals(r.untracked, Vector("nobody"))

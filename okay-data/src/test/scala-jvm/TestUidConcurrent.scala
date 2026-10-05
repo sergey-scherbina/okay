@@ -24,7 +24,7 @@ class TestUidConcurrent extends munit.FunSuite {
     t
 
   test("no duplicate ids when several threads share one generator") {
-    val gen = Uid.at(frozen)
+    val gen = Uid.at(frozen, () => 0L)
     val out = java.util.concurrent.ConcurrentHashMap[Uid, Boolean]()
     val threads = (0 until 8).map(_ => started { () =>
       var i = 0

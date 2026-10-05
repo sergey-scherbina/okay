@@ -184,7 +184,7 @@ object Okay:
   @JSExportTopLevel("orset")
   val orset: js.Object & js.Dynamic = js.Dynamic.literal(
     empty = () => Ts.toJs(OrSet.empty[String]),
-    add = (s: js.Any, x: String) => Ts.toJs(read[OrSet[String]]("orset.add", s).add(x, okay.Uid.system.next())),
+    add = (s: js.Any, x: String) => Ts.toJs(read[OrSet[String]]("orset.add", s).add(x, okay.Ambient.uid())),
     remove = (s: js.Any, x: String) => Ts.toJs(read[OrSet[String]]("orset.remove", s).remove(x)),
     has = (s: js.Any, x: String) => read[OrSet[String]]("orset.has", s).contains(x),
     values = (s: js.Any) => read[OrSet[String]]("orset.values", s).value.toVector.sorted.toJSArray,

@@ -99,17 +99,12 @@ object Uid:
       Uid(hi, lo)
 
   /** a generator over a millisecond source and an entropy source */
-  def at(source: () => Long, random: () => Long = () => scala.util.Random.nextLong()): Gen =
+  def at(source: () => Long, random: () => Long): Gen =
     new Gen(Hlc.at(source, counterBits = 12), random)
 
-  /** the ambient generator: the system clock, `scala.util.Random`.
-   * NOT a cryptographic source — a UUIDv7 is unique, not unguessable,
-   * and a secret should be made by okay-security instead. */
-  val system: Gen = new Gen(Hlc.at(() => System.currentTimeMillis(), counterBits = 12),
-                        () => scala.util.Random.nextLong())
-
-  /** the next id from the ambient generator */
-  def next(): Uid = system.next()
+  // The ambient generator — the system clock, the platform's random — is
+  // `Ambient.uids` / `Ambient.uid()` in okay-platform (specs/audit-ready.md,
+  // stage 3): this module reads neither, so okay-audit lists it as business.
 
   /** hi then lo, both UNSIGNED — the variant bit sets lo's sign bit on
    * every id there will ever be, so a signed compare of `lo` would
