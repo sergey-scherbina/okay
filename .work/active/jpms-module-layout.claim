@@ -1,0 +1,6 @@
+feature/jpms-module-layout 2026-10-05T19:07:47Z
+agent: codex
+heartbeat: 2026-10-05T19:07:47Z
+status: in-progress
+done-so-far: inspected okay2 module graph; root package is shared by core, data, optics, STM and workflow
+next: specify namespace migration and named JVM packaging; move noncore root definitions, compile consumers, verify module path and handler services
