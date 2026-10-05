@@ -1,0 +1,6 @@
+feature/durable-withkey-first-attempt 2026-10-05T11:44:24Z
+agent: codex
+heartbeat: 2026-10-05T11:44:24Z
+status: in-progress
+scope: first-attempt WithKey transport, regression tests and contract
+next: commit spec, prove red, fix and gate affected staged
