@@ -957,6 +957,28 @@ lazy val okayJava = (project in file("okay-java"))
   )
 
 /**
+ * the effect boundary, checked at every build (specs/okay-audit.md):
+ * a class-file scanner over each project's classes and third-party jars.
+ * A `business` project may reference none of `Boundary.Default` (network,
+ * files, sql, processes, time, randomness, threads, reflection, ...) —
+ * it reaches the world through effects; `handlers` and `runtime`
+ * projects are LISTED by provider, never failed, and that listing is the
+ * dependency inventory (DORA Art. 8). Zero dependencies. Its own layer is
+ * `handlers`: Main reads jars and writes the report.
+ */
+lazy val auditLayer = settingKey[String]("okay-audit layer of this project: business | handlers | runtime | untracked (specs/okay-audit.md)")
+lazy val audit = taskKey[Unit]("okay-audit over the build: target/audit/report.{txt,json}; fails on a business project reaching past the boundary")
+ThisBuild / auditLayer := "untracked"
+
+lazy val okayAudit = (project in file("okay-audit"))
+  .settings(
+    name := "okay-audit",
+    auditLayer := "handlers",
+    Compile / run / fork := true,            // Main exits 1 on a finding; forked, that is a failed task, not a dead sbt
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+  )
+
+/**
  * interop with CLOJURE (specs/clojure.md): `Clj` calls into Clojure
  * through its own Java API, and a `Stage` IS a transducer both ways —
  * `Transducers.of(stage)` runs in `into`/`transduce`/`sequence`,
@@ -3691,7 +3713,7 @@ lazy val gtkProjects: Seq[ProjectReference] = if (gtkAvailable) Seq(okayUiGtk) e
 lazy val root = (project in file("."))
   .aggregate(gtkProjects: _*)
   .aggregate(okay.jvm, okay.js, okay.native, okayJdk22, okayAsync.jvm, okayAsync.js, okayAsync.native, okayDirect.jvm, okayDirect.js, okayDirect.native, okayPlatform.jvm, okayPlatform.js, okayPlatform.native, okayPlatformJdk25, okayStream.jvm, okayStream.js, okayStream.native, okayWorkflow.jvm, okayWorkflow.js, okayWorkflow.native, okayData.jvm, okayData.js, okayData.native, okayOptics.jvm, okayOptics.js, okayOptics.native, okayStm.jvm, okayStm.js, okayStm.native, okayStaging, okayCats.jvm, okayCats.js, okayCats.native, okayZio, okayKyo, okayFs2, okayReactive, okayActor.jvm, okayActor.js, okayActor.native, okayKafka,
-    okayJava, okayClojure, okayFrege, okayScala2, okayScala2Codec, okayScala2Http, okayScala2Sql, okayScala2Agent, okayScala2Ui, okayScala2Ws, okayScala2Resilience, okayScala2Persist, okayScala2Stm, okayScala2Stores, okayScala2Llm, okayScala2Rag, okayScala2Mcp, okayScala2Optics, okayScala2Workflow, okayScala2Services, okayScala2Prelude, okayScala2Probe, okaySpark, okayFlink, okayJdbc, okayR2dbc, okayDelta,
+    okayJava, okayAudit, okayClojure, okayFrege, okayScala2, okayScala2Codec, okayScala2Http, okayScala2Sql, okayScala2Agent, okayScala2Ui, okayScala2Ws, okayScala2Resilience, okayScala2Persist, okayScala2Stm, okayScala2Stores, okayScala2Llm, okayScala2Rag, okayScala2Mcp, okayScala2Optics, okayScala2Workflow, okayScala2Services, okayScala2Prelude, okayScala2Probe, okaySpark, okayFlink, okayJdbc, okayR2dbc, okayDelta,
     okayLex.jvm, okayLex.js, okayLex.native, okayCrdt.jvm, okayCrdt.js, okayCrdt.native, okayChain.jvm, okayChain.js, okayChain.native, okayScalus, okayScalusSpark, okayScalusFlink, okayX402.jvm, okayX402.js, okayX402Evm, okayX402Cdp, okayX402Signers, okayX402Mcp.jvm, okayX402Mcp.js,
     okayParse.jvm, okayParse.js, okayParse.native,
     okayCodec.jvm, okayCodec.js, okayCodec.native, okayLlm.jvm, okayLlm.js,
@@ -3741,6 +3763,68 @@ lazy val root = (project in file("."))
     Compile / sources := Seq(),
     Test / sources := Seq(),
   )
+
+/**
+ * the dogfood of specs/okay-audit.md: the JVM projects below, each under
+ * its layer, scanned by okay-audit. A business project's OWN classes and
+ * THIRD-PARTY jars are scanned under the business rules; what it takes
+ * from another project of this build is that project's layer, not its
+ * own, so internal dependencies are left to their own rows and the Scala
+ * library is one `runtime` row. `sbt audit` — report in target/audit/.
+ */
+lazy val auditProjects: Seq[ProjectReference] = Seq(
+  okay.jvm, okayAsync.jvm, okayPlatform.jvm, okayStream.jvm,
+  okayOptics.jvm, okayData.jvm, okayParse.jvm, okayLex.jvm, okayCodec.jvm, okayCrdt.jvm, okayBayes.jvm, okayJava,
+  okayHttp.jvm, okaySql.jvm, okayPersist.jvm, okayJdbc, okayR, okayPy, okayNetty, okayJetty, okayKafka, okayBlob.jvm, okayCache.jvm, okayAudit)
+
+// the dogfood's layers (specs/okay-audit.md, Behavior): the core and its
+// platform are the runtime; the modules that open sockets, files, databases
+// and interpreters are handlers; pure computation is business
+okay.jvm / auditLayer := "runtime"
+okayAsync.jvm / auditLayer := "runtime"
+okayPlatform.jvm / auditLayer := "runtime"
+okayStream.jvm / auditLayer := "runtime"
+okayOptics.jvm / auditLayer := "business"
+okayData.jvm / auditLayer := "business"
+okayParse.jvm / auditLayer := "business"
+okayLex.jvm / auditLayer := "business"
+okayCodec.jvm / auditLayer := "business"
+okayCrdt.jvm / auditLayer := "business"
+okayBayes.jvm / auditLayer := "business"
+okayJava / auditLayer := "business"
+okayHttp.jvm / auditLayer := "handlers"
+okaySql.jvm / auditLayer := "handlers"
+okayPersist.jvm / auditLayer := "handlers"
+okayJdbc / auditLayer := "handlers"
+okayR / auditLayer := "handlers"
+okayPy / auditLayer := "handlers"
+okayNetty / auditLayer := "handlers"
+okayJetty / auditLayer := "handlers"
+okayKafka / auditLayer := "handlers"
+okayBlob.jvm / auditLayer := "handlers"
+okayCache.jvm / auditLayer := "handlers"
+lazy val auditFilter = ScopeFilter(inProjects(auditProjects: _*), inConfigurations(Compile))
+audit := Def.taskDyn {
+  val names = name.all(auditFilter).value
+  val layers = auditLayer.all(auditFilter).value
+  val prods = (Compile / products).all(auditFilter).value
+  val ext = (Compile / externalDependencyClasspath).all(auditFilter).value
+  val outDir = target.value / "audit"
+  IO.createDirectory(outDir)
+  val scalaRt = (f: File) => f.getName.matches("scala(3)?-library.*\\.jar|scala-reflect.*\\.jar")
+  val sep = java.io.File.pathSeparator
+  val rows = names.indices.map { i =>
+    val paths = prods(i) ++ ext(i).map(_.data).filterNot(scalaRt)
+    s"${names(i)}\t${layers(i)}\t${paths.map(_.getAbsolutePath).mkString(sep)}"
+  }
+  val rt = ext.flatten.map(_.data).filter(scalaRt).distinct
+  val manifest = outDir / "modules.tsv"
+  IO.write(manifest, (rows :+ s"scala-library\truntime\t${rt.map(_.getAbsolutePath).mkString(sep)}").mkString("\n") + "\n")
+  val allows = (ThisBuild / baseDirectory).value / "okay-audit" / "allows.tsv"
+  val args = s" okay.audit.Main ${manifest.getAbsolutePath} ${outDir.getAbsolutePath}" + (if (allows.exists) s" ${allows.getAbsolutePath}" else "")
+  (okayAudit / Compile / runMain).toTask(args)
+}.value
+
 
 /** comparison benchmarks against the ecosystem: the heavy dependencies live here */
 /**
