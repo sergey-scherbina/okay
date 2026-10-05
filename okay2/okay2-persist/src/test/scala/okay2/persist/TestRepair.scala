@@ -1,0 +1,73 @@
+package okay2.persist
+
+import okay2.{!, Condition, Pure}
+import okay2.Condition.Decision._
+import okay2.codec.Schema
+
+object TestRepairFixture {
+  final case class Ev(id: String, n: Int)
+  implicit val schema: Schema[Ev] = Schema.derived
+}
+
+/**
+ * The repair road over a real topic (okay2-condition-repair, the Scala 3 core's TestRepair): damaged records ask,
+ * and ONE log answers three ways under three policies — patched in place, skipped, or aborted naming the offset.
+ */
+class TestRepair extends munit.FunSuite {
+  import TestRepairFixture._
+
+  private def bytes(s: String): Array[Byte] = s.getBytes("UTF-8")
+
+  /** a topic with damage in the middle: offsets 0 and 2 decode, offset 1 is garbage bytes */
+  def seeded(): Typed[Ev] = {
+    val t = new MemoryStore().topic("events")
+    val typed = new Typed[Ev](t, 1, Map.empty)
+    typed.append(0, bytes("k"), Ev("a", 1), Ack.Durable): Unit
+    t.append(0, bytes("k"), Array[Byte](9, 9, 9), Ack.Durable): Unit
+    typed.append(0, bytes("k"), Ev("c", 3), Ack.Durable): Unit
+    typed
+  }
+
+  def road(typed: Typed[Ev]): Vector[(Long, Ev)] ! Condition = Repair.read(typed, 0, 0L, 10)
+
+  test("patch: the corrected value flows in exactly where the damage sat") {
+    val out = !.run(Condition.run[Vector[(Long, Ev)], Pure] {
+      case (Repair.Damaged(off, _, raw), menu) =>
+        assertEquals(menu, Vector("skip"))
+        assertEquals(off, 1L)
+        assert(raw.value.nonEmpty)
+        Resume(Ev("patched", 2))
+      case _ => Fail
+    }(road(seeded())))
+    assertEquals(out, Vector((0L, Ev("a", 1)), (1L, Ev("patched", 2)), (2L, Ev("c", 3))))
+  }
+
+  test("skip: the element vanishes, order and offsets of the rest survive") {
+    val out = !.run(Condition.run[Vector[(Long, Ev)], Pure] {
+      case (_: Repair.Damaged, _) => Invoke("skip", ())
+      case _ => Fail
+    }(road(seeded())))
+    assertEquals(out, Vector((0L, Ev("a", 1)), (2L, Ev("c", 3))))
+  }
+
+  test("fail: the abort names the offset and the error") {
+    val e = intercept[Condition.Unhandled](!.run(Condition.run[Vector[(Long, Ev)], Pure]((_, _) => Fail)(road(seeded()))))
+    e.condition match {
+      case Repair.Damaged(off, err, _) =>
+        assertEquals(off, 1L)
+        assert(err.nonEmpty)
+      case other => fail(s"expected Damaged, got $other")
+    }
+    assertEquals(e.menu, Vector("skip"))
+  }
+
+  test("a clean slice never signals: the policy is never consulted") {
+    val t = new MemoryStore().topic("clean")
+    val typed = new Typed[Ev](t, 1, Map.empty)
+    typed.append(0, bytes("k"), Ev("a", 1), Ack.Durable): Unit
+    var consulted = false
+    val out = !.run(Condition.run[Vector[(Long, Ev)], Pure] { (_, _) => consulted = true; Fail }(Repair.read(typed, 0, 0L, 10)))
+    assertEquals(out.map(_._2), Vector(Ev("a", 1)))
+    assert(!consulted)
+  }
+}
