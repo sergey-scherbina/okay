@@ -1,0 +1,6 @@
+feature/build-platform-processes 2026-10-05T20:15:45Z
+agent: codex
+heartbeat: 2026-10-05T20:15:45Z
+status: in-progress
+scope: scripts/gate.sh, scripts/build.sh, gate fixtures and docs
+next: spec then platform subprocess implementation
