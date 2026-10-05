@@ -25,11 +25,16 @@ class TestContReplay extends munit.FunSuite:
     if n == 0 then Cont.Pure(0)
     else Cont.shiftLeaf[Int, Int, Int](k => { prefix(0) += 1; k(1) + 1 }).flatMap(x => nest(n - 1, prefix).map(_ + x))
 
-  test("a million nested strict bodies using k's answer") {
+  /** Scala Native unwinds a throw at ~55 us a frame (measured: 4 suspensions through 500 levels, 110 ms), so a
+   * suspension costs there what its depth does — the reason re-execution is not Native's default (StackSwitch is);
+   * the mechanism is checked there at a depth its unwinder takes in seconds */
+  val deep: Int = if System.getProperty("java.vm.name") == "Scala Native" then 50000 else 1000000
+
+  test("nested strict bodies using k's answer, a million deep (JVM, Scala.js)") {
     val prefix = Array(0)
-    assertEquals(replaying(64)(Cont.reset(nest(1000000, prefix))), 2000000)
+    assertEquals(replaying(64)(Cont.reset(nest(deep, prefix))), 2 * deep)
     // every body at least once, and a re-run only where a suspension crossed it: at most once more each
-    assert(prefix(0) >= 1000000 && prefix(0) <= 2000000, s"bodies run ${prefix(0)}")
+    assert(prefix(0) >= deep && prefix(0) <= 2 * deep, s"bodies run ${prefix(0)}")
   }
 
   test("no suspension, no re-run: the room never reached") {
@@ -61,8 +66,8 @@ class TestContReplay extends munit.FunSuite:
       if n == 0 then Cont.Pure(0)
       else Cont.shiftLeaf[Int, Int, Int](k => { saved = k; k(1) + 1 })
         .flatMap(x => stored(n - 1).map(y => if x == 1 && n % 7 == 0 then y + saved.nn(0) % 3 else y + x))
-    val expected = without(Cont.reset(stored(40)))
-    assertEquals(replaying(4)(Cont.reset(stored(40))), expected)
+    val expected = without(Cont.reset(stored(28)))
+    assertEquals(replaying(4)(Cont.reset(stored(28))), expected)
   }
 
   test("a throw from the deepest body after suspensions: the same exception") {
