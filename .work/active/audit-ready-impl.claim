@@ -1,6 +1,0 @@
-feature/audit-ready-impl 2026-10-05T06:56:59Z
-agent: codex
-heartbeat: 2026-10-05T07:43:00Z
-status: in-progress
-done-so-far: inherited 18 uncommitted files implementing specs/audit-ready.md stages 1-3; Stage 1 was reviewed, stages 2-3 are under review
-next: review each change, run the owning scoped suites, then commit and land the coherent implementation
