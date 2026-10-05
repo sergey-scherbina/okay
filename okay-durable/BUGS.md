@@ -17,3 +17,15 @@ Contract and acceptance: specs/durable-withkey-first-attempt.md.
 Reproduced red (two actions) and fixed: first and retry transport the
 same recorded key. JVM/JS targeted regressions and affected staged gate
 passed (2094 results), with no compile warnings.
+
+## durable-run-scoped-keys — independent runs alias external attempt keys
+<!-- status: open
+     lane: durable-run-scoped-keys
+     area: recovery
+     gate: okay-durable/src/test/scala/okay/durable/TestRunKeys.scala -->
+
+Source baseline: same operation name/sequence/fingerprint in two journals
+produces the same key; distinct fingerprint Strings can have the same
+32-bit hash. TopicJournal run namespaces its storage, not the external key.
+Contract: specs/durable-run-scoped-keys.md. Reuse persisted legacy keys;
+never repair namespace isolation by regenerating in-flight attempt keys.
