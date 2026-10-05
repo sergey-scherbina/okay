@@ -9,8 +9,29 @@ type OpTrace = okay.durable.OpTrace
 type Journalled[Op[_]] = okay.codec.Journalled[Op]
 
 object Durable:
-  export okay.durable.Durable.{OnRepeat, Entry, Journal, MemoryJournal,
-    Drift, Unresolved, Awaiting, argsOf, awaiting, over, replayingOver}
+  // Explicit aliases keep class/enum types readable by Scala 2's TASTy reader.
+  type OnRepeat = okay.durable.Durable.OnRepeat
+  val OnRepeat = okay.durable.Durable.OnRepeat
+  type Entry = okay.durable.Durable.Entry
+  val Entry = okay.durable.Durable.Entry
+  type Journal = okay.durable.Durable.Journal
+  type MemoryJournal = okay.durable.Durable.MemoryJournal
+  object MemoryJournal:
+    def apply(): MemoryJournal = new okay.durable.Durable.MemoryJournal
+  type Drift = okay.durable.Durable.Drift
+  object Drift:
+    def apply(expected: String, got: String): Drift =
+      new okay.durable.Durable.Drift(expected, got)
+  type Unresolved = okay.durable.Durable.Unresolved
+  object Unresolved:
+    def apply(op: String, key: String): Unresolved =
+      new okay.durable.Durable.Unresolved(op, key)
+  type Awaiting = okay.durable.Durable.Awaiting
+  object Awaiting:
+    def apply(op: String, seq: Int, key: String, args: okay.codec.Json): Awaiting =
+      new okay.durable.Durable.Awaiting(op, seq, key, args)
+
+  export okay.durable.Durable.{argsOf, awaiting, over, replayingOver}
 
   /** The Tool wire field, owned by the Tool adapter. */
   val KeyField = "idempotency_key"

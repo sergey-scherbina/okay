@@ -1,7 +1,7 @@
 package okay.foreign.workflow
 
 import okay.{Choose, effect, runChoice, given}
-import okay.agent.Durable
+import okay.durable.Durable
 import okay.foreign.{Foreign, ForeignEval, ForeignWorker, Reliable, TestPy}
 
 /**
@@ -13,7 +13,7 @@ import okay.foreign.{Foreign, ForeignEval, ForeignWorker, Reliable, TestPy}
  * continuations from those answers, and the first live step re-derives
  * them on the new far side.
  */
-class TestDurableForeign extends munit.FunSuite:
+class TestDurableForeign extends okay.testkit.Munit.Diagnosed:
   override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
   override def munitIgnore: Boolean = TestPy.python.isEmpty
 
@@ -39,6 +39,7 @@ class TestDurableForeign extends munit.FunSuite:
 
   test("a HOST crash mid multi-shot program: a fresh host on the same journal finishes every branch") {
     val journal = Durable.MemoryJournal()
+    onFailure(journal.all.toString)
     val run = firstHost(journal)
     // the resumed host keeps the run (its id is in the fingerprint Durable
     // checks) with the rest of its state
@@ -52,6 +53,7 @@ class TestDurableForeign extends munit.FunSuite:
 
   test("without the witness the resumed host is refused by name, never answered wrongly") {
     val journal = Durable.MemoryJournal()
+    onFailure(journal.all.toString)
     val run = firstHost(journal)
     val sup = ForeignWorker.supervised(fresh())
     try
