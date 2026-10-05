@@ -199,15 +199,64 @@ never suspends: its run gets a driver of its own, and its depth is its
 caller's.
 
 On the JVM and Native the same mechanism runs with
-`-Dokay.cont.replay=true`; there the default stays the fresh stack. On
+`-Dokay.cont.mode=replay`; there the default stays the fresh stack. On
 Native in particular a suspension is expensive: its unwinder takes ~55 µs
 a frame (4 suspensions through 500 levels, 110 ms, measured), where a
 fresh stack costs ~4 µs.
 
+## Safe mode: full trampolining, no re-execution, on every platform
+
+Re-execution asks a strict body to be pure, or idempotent, up to its
+`k` call. A body with side effects that must run exactly once needs the
+other road. That road is a COMPILE-TIME property. A body that needs its
+`k`'s value now, and that the compiler did not transform, can only wait
+on the host stack. Where there is no second stack (Scala.js), nothing at
+run time can trampoline it without running it again.
+
+So a scope chooses, by an import:
+
+```scala
+  import okay.Cont.safe.given
+    else Cont.shift[Int, Int, Int](k => { log(0) += 1; val r = k(1); log(1) += 1; r + 1 }).flatMap(x => nest(n - 1, log).map(_ + x))
+```
+
+In a `safe` scope, every `shift` body that uses `k` is CPS-transformed
+(Rompf, Maier & Odersky's selective CPS, as Kotlin compiles a `suspend`
+function). `k` becomes data and nothing waits on the host stack, on the
+JVM, Scala.js and Native alike. The body above runs a million deep with
+each effect exactly once, in the order a strict body would run them
+(TestContSafeMode). A body the transform cannot read (`k` passed to a
+function it cannot see into, for one) is a COMPILE ERROR that says how to
+write it. A body that answers a program keeps a lazy `k` and compiles.
+
+```scala
+  import okay.Cont.noReplay.given
+```
+
+In a `noReplay` scope an opaque body compiles as before but is NEVER
+re-executed, whatever the run-time mode. Its `k` is a barrier with a
+driver of its own, so no suspension from below crosses it. Its depth is
+the host stack's: a fresh stack on the JVM and Native, the engine's
+stack on Scala.js.
+
+At run time, for the strict leaves no scope transformed:
+
+```scala
+    Cont.setMode(m)
+```
+
+`Cont.Mode.Auto` is the default, the optimized one: re-execution on
+Scala.js, a fresh stack on the JVM and Native. `Replay` re-executes
+everywhere. `Safe` never re-executes. Set it at start with
+`-Dokay.cont.mode=auto|replay|safe`, or in code. Under `Safe`, Scala.js
+bounds a strict body by the engine's stack; the guarantee there is the
+compile-time one.
+
 ## The knobs
 
-- `-Dokay.cont.replay=true` — re-execution instead of a fresh stack on
-  the JVM and Native (the default on Scala.js).
+- `-Dokay.cont.mode=auto|replay|safe` — what a strict leaf does when its
+  `k` runs out of room (above); `Cont.setMode` in code. `auto` is the
+  default; `-Dokay.cont.replay=true`, stage 4's spelling, is `replay`.
 
 - `-Dokay.cont.room=N` — the levels the caller's stack is asked to hold
   before the switch (default: the VM's `ThreadStackSize` over 2.6 KB,

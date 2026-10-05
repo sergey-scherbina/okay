@@ -234,8 +234,21 @@ cont-fun-answer (2026-10-03, `PState.Bounce`), on every platform.
    `-Dokay.cont.replay=true` (stage 4) is `-Dokay.cont.mode=replay`.
 
    Behaviour:
-   - [ ] safe scope: a body with side effects before and after `k`, a million deep, on JVM, Scala.js and Native: every effect exactly once, in order
-   - [ ] safe scope: an opaque body (`k` passed to a function) is a compile error naming the fix
-   - [ ] safe scope: a body answering a program, `k` passed on: compiles (lazy `k`)
-   - [ ] noReplay scope: an opaque body with a side effect under the replay mode and a small room: run exactly once
-   - [ ] run time `safe`: no strict body re-executed (counted); `replay`: re-executed past the room; `auto`: the platform's default
+   - [x] safe scope: a body with side effects before and after `k`, a million deep, on JVM, Scala.js and Native: every effect exactly once, in order
+   - [x] safe scope: an opaque body (`k` passed to a function) is a compile error naming the fix
+   - [x] safe scope: a body answering a program, `k` passed on: compiles (lazy `k`)
+   - [x] noReplay scope: an opaque body with a side effect under the replay mode and a small room: run exactly once
+   - [x] run time `safe`: no strict body re-executed (counted); `replay`: re-executed past the room; `auto`: the platform's default
+
+   Results (TestContSafeMode, cross, JVM, Scala.js and Native):
+   - the scope's choice reaches the macro as `shift`'s USING PARAMETER
+     (`Cont.Shifts`), not by `Expr.summon`: summoned, the import read as
+     unused (E198) at every user's site. A default ARGUMENT for it crashed
+     the compiler (TreePickler, "method $anonfun") where `shift` is called
+     inside another inline method (`Cont.Monadic.reflect`); `Shifts.default`
+     is a given of the implicit scope instead, which an imported one —
+     the lexical scope, searched first — overrides.
+   - the backlog's cont-replay-jvm-default is answered by the modes: the
+     JVM's default stays `Auto` (a fresh stack), `replay` and `safe` are
+     one flag away, and a scope can fix its own bodies at compile time.
+
