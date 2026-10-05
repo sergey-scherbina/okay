@@ -1,5 +1,7 @@
 package okay.durable.persist
 
+import okay.Answers
+import okay.codec.Journalled
 import okay.durable.Durable
 import okay.persist.{Ack, MemoryStore, Topic}
 
@@ -21,6 +23,7 @@ class TestTopicJournalWire extends okay.testkit.Munit.Diagnosed:
     val journal = TopicJournal(topic, "legacy-run")
     note("read explicit pre-extraction envelope and CBOR field/case names")
     onFailure(journal.all.toString)
+    assertEquals(journal.runId, Some("legacy-run"))
     assertEquals(journal.all, Vector(entry))
     assertEquals(TopicJournal(topic, "other-run").all, Vector.empty)
   }
@@ -37,4 +40,30 @@ class TestTopicJournalWire extends okay.testkit.Munit.Diagnosed:
         assertEquals(rs.map(_.value.toVector), Vector(intent.toVector, complete.toVector))
       case other => fail(s"unexpected $other")
     assertEquals(TopicJournal(topic, "legacy-run").all, Vector(entry))
+  }
+
+  enum Op[+A]:
+    case Ask extends Op[String]
+
+  given Journalled[Op] with
+    def name[A](op: Op[A]): String = "ask"
+    def fingerprint[A](op: Op[A]): String = "ask()"
+    def withKey[A](op: Op[A], key: String): Op[A] = op
+    def perform[A](op: Op[A], inner: Answers[Op]): (A, String) = op match
+      case Op.Ask =>
+        val answer = inner.handle(Op.Ask)
+        (answer, answer)
+    def decode[A](op: Op[A], written: String): A = op match
+      case Op.Ask => written
+
+  test("topic run identity preserves new keys across refold and separates runs") {
+    val topic = MemoryStore().topic("scoped", partitions = 4)
+    val first = TopicJournal(topic, "tenant-a/run-1")
+    val key = Durable.keyFor(first, 0, Op.Ask)
+    first.append(Durable.Entry(0, "ask", "ask()", key, None))
+    val restarted = TopicJournal(topic, "tenant-a/run-1")
+    onFailure(s"first=${first.all} restarted=${restarted.all}")
+    assertEquals(Durable.keyFor(restarted, 0, Op.Ask), key)
+    assertEquals(restarted.all.head.key, key)
+    assertNotEquals(Durable.keyFor(TopicJournal(topic, "tenant-b/run-1"), 0, Op.Ask), key)
   }

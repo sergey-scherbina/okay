@@ -18,6 +18,7 @@ object Durable:
   type MemoryJournal = okay.durable.Durable.MemoryJournal
   object MemoryJournal:
     def apply(): MemoryJournal = new okay.durable.Durable.MemoryJournal
+    def apply(run: String): MemoryJournal = new okay.durable.Durable.MemoryJournal(run)
   type Drift = okay.durable.Durable.Drift
   object Drift:
     def apply(expected: String, got: String): Drift =
@@ -38,6 +39,9 @@ object Durable:
 
   def keyFor(seq: Int, c: ToolCall): String =
     okay.durable.Durable.keyFor(seq, Tool.Call(c))
+
+  def keyFor(journal: Journal, seq: Int, c: ToolCall): String =
+    okay.durable.Durable.keyFor(journal, seq, Tool.Call(c))
 
   /**
    * The durable TOOL handler: `over` at `Tool`, and the signature the

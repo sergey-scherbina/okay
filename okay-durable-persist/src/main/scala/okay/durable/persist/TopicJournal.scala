@@ -28,6 +28,7 @@ import okay.persist.{Ack, Topic, Typed}
  * nothing after it is guessed at.
  */
 final class TopicJournal(topic: Topic, run: String) extends Durable.Journal:
+  override val runId: Option[String] = Some(run)
   import TopicJournal.*
 
   private val typed = Typed[Rec](topic, version = 1, upcasts = Map.empty)

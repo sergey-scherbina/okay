@@ -22,6 +22,8 @@ class TestDurableCompatibility extends okay.testkit.Munit.Diagnosed:
     val op = Tool.Call(call)
     onFailure(journal.all.toString)
     assertEquals(Durable.keyFor(0, call), okay.durable.Durable.keyFor(0, op))
+    assertEquals(Durable.keyFor(journal, 0, call), okay.durable.Durable.keyFor(neutral, 0, op))
+    assertEquals(Durable.MemoryJournal("explicit-run").runId, Some("explicit-run"))
     assertEquals(Durable.tools(inner, journal)(trace = Some(trace)).handle(op), "answer")
     assertEquals(okay.durable.Durable.replayingOver[Tool](neutral).handle(op), "answer")
     assertEquals(spans, 1)

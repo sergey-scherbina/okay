@@ -1,7 +1,7 @@
 package okay.durable
 
 import okay.Answers
-import okay.codec.{Json, Journalled}
+import okay.codec.{Base64, Json, Journalled}
 
 /**
  * The overlay seam (obs-durable-overlay, specs/obs.md "The Durable
@@ -71,14 +71,19 @@ object Durable {
   final case class Entry(seq: Int, op: String, fingerprint: String,
                          key: String, answer: Option[String])
 
-  /** the journal: append-only, and that is the whole interface —
-   * memory here, a file or a table behind the same three methods */
+  /** Append-only journal with stable run identity; memory here,
+   * a file or a table behind the same storage methods. */
   trait Journal:
+    /** Stable identity, unique in the provider's deduplication namespace.
+     * Include tenant/workflow identity when local run numbers can repeat. */
+    def runId: Option[String] = None
     def append(e: Entry): Unit
     def complete(seq: Int, answer: String): Unit
     def all: Vector[Entry]
 
-  final class MemoryJournal extends Journal:
+  final class MemoryJournal(run: String) extends Journal:
+    def this() = this(RunId.fresh())
+    override val runId: Option[String] = Some(run)
     private var entries = Vector.empty[Entry]
     def append(e: Entry): Unit = entries = entries :+ e
     def complete(seq: Int, answer: String): Unit =
@@ -144,9 +149,25 @@ object Durable {
   def awaiting(journal: Journal): Option[Entry] =
     journal.all.sortBy(_.seq).find(_.answer.isEmpty)
 
-  /** Stable operation identity using its journalled request. */
+  /** Legacy unscoped identity, retained for archived entries and source compatibility. */
   def keyFor[Op[_], A](seq: Int, op: Op[A])(using J: Journalled[Op]): String =
     keyOf(J.name(op), seq, J.fingerprint(op))
+
+  /** Identity for a new step. Persist the run identity across restarts.
+   * Unscoped journals retain the legacy helper; fresh WithKey requires runId. */
+  def keyFor[Op[_], A](journal: Journal, seq: Int, op: Op[A])
+                      (using J: Journalled[Op]): String =
+    journal.runId match
+      case Some(run) => scopedKey(run, seq)
+      case None => keyOf(J.name(op), seq, J.fingerprint(op))
+
+  private def scopedKey(run: String, seq: Int): String =
+    val bytes = run.getBytes("UTF-8")
+    require(bytes.nonEmpty && bytes.length <= 96, "durable runId must contain 1..96 UTF-8 bytes")
+    require(new String(bytes, "UTF-8") == run, "durable runId must be well-formed Unicode")
+    require(seq >= 0, "durable sequence must be non-negative")
+    val encoded = Base64.encode(bytes).replace('+', '-').replace('/', '_').takeWhile(_ != '=')
+    s"okay-$encoded-$seq"
 
   /** the same rule for any operation — name, position, fingerprint,
    * and nothing that varies per process */
@@ -202,24 +223,30 @@ object Durable {
 
     private var seq = 0
     private val recorded = journal.all
+    private val scope = journal.runId
 
     def handle[A](op: Op[A]): A =
       val n = seq
       seq += 1
       val name = J.name(op)
       val fp = J.fingerprint(op)
-      val key = keyOf(name, n, fp)
+      val entryAt = recorded.find(_.seq == n)
+      val key = entryAt match
+        case Some(entry) => entry.key
+        case None => scope.fold(keyOf(name, n, fp))(scopedKey(_, n))
 
       // the overlay span: same identity as the journal entry (the
       // key), so a later replay lays over exactly this operation
       traced(trace, name, key, n) {
-        recorded.find(_.seq == n) match
+        entryAt match
           // never ran: execute and journal, intent first — unless
           // the answer is a person's, in which case there is no
           // effect to run and the question is what gets recorded
           case None => policy(name) match
             case OnRepeat.Await => park(n, op, name, fp, key)
-            case OnRepeat.WithKey => execute(n, name, fp, key, J.withKey(op, key))
+            case OnRepeat.WithKey =>
+              require(scope.isDefined, "fresh WithKey requires a stable journal runId")
+              execute(n, name, fp, key, J.withKey(op, key))
             case _ => execute(n, name, fp, key, op)
 
           case Some(entry) =>
@@ -291,8 +318,10 @@ object Durable {
       val fp = J.fingerprint(op)
       // replay=true: the overlay span is marked as the re-run, but
       // carries the SAME key, so it lands over the original
-      traced(trace, name, keyOf(name, n, fp), n, replay = true) {
-        recorded.find(_.seq == n) match
+      val entryAt = recorded.find(_.seq == n)
+      val key = entryAt.fold(keyOf(name, n, fp))(_.key)
+      traced(trace, name, key, n, replay = true) {
+        entryAt match
           case Some(entry) if entry.fingerprint != fp => throw Drift(entry.fingerprint, fp)
           case Some(Entry(_, _, _, _, Some(a))) => J.decode(op, a)
           case Some(entry) => throw Unresolved(name, entry.key)

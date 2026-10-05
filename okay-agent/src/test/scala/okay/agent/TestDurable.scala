@@ -11,7 +11,7 @@ import scala.collection.mutable
  * not the happy path, but the crash window and the code drift. A
  * feature that silently charges a card twice is worse than none.
  */
-class TestDurable extends munit.FunSuite {
+class TestDurable extends okay.testkit.Munit.Diagnosed {
 
   def run[A](prog: A ! Agent)(model: Answers[Model], tool: Answers[Tool],
                               ctx: Answers[Context]): A =
@@ -47,7 +47,8 @@ class TestDurable extends munit.FunSuite {
     assertEquals(touched.length, 1)
     assertEquals(j.all.length, 1)
     assertEquals(j.all.head.answer, Some("receipt-1"))
-    assert(j.all.head.key.startsWith("charge-"), j.all.head.key)
+    onFailure(j.all.toString)
+    assertEquals(j.all.head.key, Durable.keyFor(j, 0, charge))
   }
 
   test("recovery from a COMPLETE journal does not touch the world again") {

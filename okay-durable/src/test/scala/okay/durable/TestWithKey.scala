@@ -36,6 +36,7 @@ class TestWithKey extends okay.testkit.Munit.Diagnosed:
         })
 
   private class CompleteFailsOnce(val underlying: Durable.MemoryJournal) extends Durable.Journal:
+    override def runId: Option[String] = underlying.runId
     private var fail = true
     def append(entry: Durable.Entry): Unit = underlying.append(entry)
     def all: Vector[Durable.Entry] = underlying.all
@@ -78,6 +79,7 @@ class TestWithKey extends okay.testkit.Munit.Diagnosed:
 
   test("failed intent append never executes the external request") {
     val j = new Durable.Journal:
+      override def runId: Option[String] = Some("intent-case")
       def append(entry: Durable.Entry): Unit = throw IllegalStateException("intent unavailable")
       def complete(seq: Int, answer: String): Unit = fail("complete must not run")
       def all: Vector[Durable.Entry] = Vector.empty
