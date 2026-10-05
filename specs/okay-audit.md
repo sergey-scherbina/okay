@@ -80,6 +80,10 @@ is zero untracked.
 
 CLI (stage 2): `okay-audit --business a.jar,b.jar --handlers h.jar --runtime okay-core.jar [--allow allows.conf] --report out/` — the same scanner for Maven and Gradle users of the Java facade.
 
+The concrete stage-2 JSON contract is `specs/audit-cli-standalone.md`; it
+replaces the illustrative layer flags above so package layers and named allows
+stay structured.
+
 ### The default rules (`Boundary.Default`)
 
 API prefixes and members a business module may not reference directly; each
