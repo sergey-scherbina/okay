@@ -1,0 +1,6 @@
+feature/durable-run-scoped-keys 2026-10-05T14:07:43Z
+agent: codex
+heartbeat: 2026-10-05T14:07:43Z
+status: in-progress
+scope: journal run identity, scoped key generation and legacy replay compatibility
+next: commit contract, implement portable tests, gate affected staged
