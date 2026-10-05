@@ -313,7 +313,7 @@ runs it on the same wire. The guide is
 ## Journalled by Durable
 
 A Python call is an operation, and `PyEval` carries its own
-`Journalled` instance (in its companion, so no import): okay-agent's
+`Journalled` instance (in its companion, so no import): [okay-durable](okay-durable.md)'s
 `Durable` records each call and answers it from the journal on replay,
 without starting Python.
 

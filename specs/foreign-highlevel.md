@@ -755,3 +755,10 @@ trait macro), 6 streams, 8 managed environments.
 - What is still open is in backlog `polyglot`: remote-foreign's
   program-as-data half (for GHC), schema stubs for the far side, and
   lift cancellation.
+
+## Neutral durable module (2026-10-05)
+
+Generic Durable now lives in okay-durable, and Python/R journal suites
+import okay.durable.Durable. Their test dependencies no longer include
+okay-agent. Journalled stays in okay-codec, and the agent API forwards to
+the neutral implementation. TestDurableAnyOp moved into okay-durable.

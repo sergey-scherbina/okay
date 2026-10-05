@@ -13,7 +13,7 @@ programs DURABLE:
 
 | layer | what it is | where a foreign call stands today |
 |---|---|---|
-| `Durable` (okay-agent) | a journal over any handler: replay without the effect | works: `TestPyJournal`, `TestHaskellProgram` journal `ForeignEval` walks |
+| `Durable` (okay-durable; agent facade) | a journal over any handler: replay without the effect | works: `TestPyJournal`, `TestHaskellProgram` journal `ForeignEval` walks |
 | `Wf` workflows (okay-workflow, okay-persist) | questions answered by an oracle, the answers journalled in a topic, written in do-notation (`direct:` with `!w.pause`) | no road: a workflow's author writes the oracle by hand |
 | static `Proc` (specs/static-workflow.md) | the same workflow as an arrow term whose leaves are known before it runs | no road |
 | proc-notation (specs/proc-notation.md) | `direct` at an arrow | no road |
@@ -183,7 +183,7 @@ journal but never shows them to the supervisor.
     `val`.
 
 - Stage 3 (2026-09-24).
-  - okay-agent `Durable.over` gains `replayed` (a polymorphic callback,
+  - generic `Durable.over` gains `replayed` (a polymorphic callback,
     a no-op by default), called at the one place a record is answered from
     the journal. okay-py `SupervisedWorker.witness` rebuilds `runs` and
     `konts` from replayed `Program`/`Continue`/`Forget`, under the

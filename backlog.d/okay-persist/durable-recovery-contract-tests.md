@@ -3,7 +3,7 @@
       DEPENDS: durable-withkey-first-attempt + durable-run-scoped-keys
       for the okay-agent branch; the existing workflow branch can be
       audited independently. Context: docs/durable-workflows.md,
-      okay-agent Durable/TopicJournal, okay-persist Dialogue/Worker,
+      okay-durable Durable / okay-durable-persist TopicJournal, okay-persist Dialogue/Worker,
       Leases and JVM FileStore. Source review is not a crash-test result.
       FIRST inventory existing TestDurable, TestFileStore, TestWorker,
       TestContinueAsWorker, TestDialogueHardening and TestProcCut cases;
@@ -28,3 +28,6 @@
       (storage ACK, restart, concurrency, provider assumptions), scoped
       gates for the suites touched. No generic exactly-once claim; a
       shared-DB transaction and a remote API are different boundaries.
+      Extraction: TestDurableAnyOp now lives in okay-durable; adapter
+      wire tests live in okay-durable-persist. Agent tests cover legacy
+      Tool APIs. Fixed-wire coverage is not process-crash coverage.

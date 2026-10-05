@@ -3,6 +3,7 @@ okay-data
 okay-lex
 build
 okay-codec
+okay-durable
 okay-agent-okay-intent
 okay-rag
 okay-r

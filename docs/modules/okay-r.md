@@ -286,7 +286,7 @@ assertEquals(run(okay.through(numbers(6))(acc.stage[Double, Double](chunk = 2)))
 ## Journalled by Durable
 
 `REval` carries its own `Journalled` instance, as okay-py's `PyEval`
-does, so okay-agent's `Durable` journals an R call and answers it from
+does, so [okay-durable](okay-durable.md)'s `Durable` journals an R call and answers it from
 the journal on replay without R:
 
 ```scala

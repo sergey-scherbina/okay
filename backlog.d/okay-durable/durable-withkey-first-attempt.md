@@ -2,7 +2,7 @@
       idempotency key on the FIRST attempt as well as every retry.
       Operator request 2026-10-05, after the durable-execution review.
       BASELINE (source review, not a failing test run):
-      `okay-agent/src/main/scala/okay/agent/Durable.scala`, `over.handle`:
+      `okay-durable/src/main/scala/okay/durable/Durable.scala`, `over.handle`:
       the fresh `case None` calls `execute(..., op)`, while incomplete
       `OnRepeat.WithKey` calls `execute(..., J.withKey(op, entry.key))`.
       The remote service therefore need not see the journal key on the
@@ -21,3 +21,7 @@
       Adopt Diagnosed in edited suites; gate TestDurable and affected
       behavior consumers, per AGENTS.md. No real financial API required.
       Related: durable-run-scoped-keys; durable-recovery-contract-tests.
+      MODULE EXTRACTION 2026-10-05: the implementation is now in
+      okay-durable; okay.agent.Durable forwards generic methods. Keep
+      agent Tool tests as compatibility acceptance and put generic
+      regression tests in okay-durable. This bug remains open.

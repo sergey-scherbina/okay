@@ -334,6 +334,8 @@ API reference, gotchas.
 | [`okay-bayes`](modules/okay-bayes.md) | Bayesian inference without Python: a model as a program of named draws and observations, Metropolis–Hastings and likelihood weighting as handlers, posterior summaries; measured against *Bayesian Methods for Hackers* and PyMC |
 | [`okay-refine`](modules/okay-refine.md) | reading anything out of anything: patterns as prisms in a typed hierarchy, verdicts that say which took and which declined; the format level (cbor/json/xml/yaml) first |
 | [`okay-llm`](modules/okay-llm.md) | language models as streams; two protocols over one seam; structured output that cuts generation |
+| [`okay-durable`](modules/okay-durable.md) | generic operation journaling, recovery policies and deterministic replay |
+| [`okay-durable-persist`](modules/okay-durable-persist.md) | TopicJournal storage adapter for durable operations |
 | [`okay-agent`](modules/okay-agent.md) | agents as programs: tools as operations, context as a fold, search as Logic |
 | [`okay-frame`](modules/okay-frame.md) | what a form is: named slots, typed answers, the language of the exchange, and what is still missing |
 | [`okay-intent`](modules/okay-intent.md) | a message to a class and a filled frame, with a model or without one: one Schema is the taxonomy, the frame and the parser — and 73.3% of traffic answered at 88.6% with no network at all |

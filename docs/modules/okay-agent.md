@@ -6,6 +6,12 @@
 
 Depends on: `okay-llm` (and through it the whole total text stack).
 
+Generic operation journaling now lives in [okay-durable](okay-durable.md);
+its topic adapter is [okay-durable-persist](okay-durable-persist.md).
+The agent Durable/OpTrace/TopicJournal names remain source-compatible
+facades; Tool-specific convenience methods stay here. Recompile clients
+when upgrading, since aliases do not retain the old JVM class names.
+
 ## Guide
 
 **A fleet of agents, a hierarchy the parent grows** (specs/agent-fleet.md).

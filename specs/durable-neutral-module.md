@@ -23,15 +23,15 @@ Workflow notation and Dialogue/Worker remain in their existing modules.
 
 ## Behavior
 
-- [ ] A custom typed operation records, resumes, replays and rejects drift
+- [x] A custom typed operation records, resumes, replays and rejects drift
   using only the neutral module, without agent or persistent storage.
-- [ ] Existing agent Tool/Conversation/FileVersions/observability APIs
+- [x] Existing agent Tool/Conversation/FileVersions/observability APIs
   compile and preserve recovery, exception and trace behavior.
-- [ ] TopicJournal reads the existing version-1 Intent/Complete envelope
+- [x] TopicJournal reads the existing version-1 Intent/Complete envelope
   and retains its partition/key/ACK behavior; no storage migration.
-- [ ] Python and R journal tests use the neutral module without agent
+- [x] Python and R journal tests use the neutral module without agent
   in their test dependency graph.
-- [ ] JVM and JS compile and run the portable neutral tests; adapters
+- [x] JVM and JS compile and run the portable neutral tests; adapters
   retain JVM/JS support. Native support is outside this extraction.
 
 ## Design
@@ -68,4 +68,19 @@ docs guards prove module independence and registration. No benchmarks.
 
 ## Results
 
-Pending implementation and scoped verification.
+85 scoped test results passed: typed Calc on JVM/JS (12), fixed-wire
+adapter tests on JVM/JS (4), legacy agent/Conversation/FileVersions (45),
+Python/R canned journal suites (9), tracing overlay (2), docs guards (11),
+and explicit legacy/neutral compatibility (2). Agent JS test sources and
+Scala2 agent facade compile. No compile warnings in the changed modules.
+Live Python/R processes were not required; the edited live suites compile
+with their existing Live tags and retain provider-dependent acceptance.
+
+Classpath checks: neutral Compile has no persist/workflow/agent/LLM/RAG;
+adapter Compile and Python/R Test have no agent/LLM/RAG. The neutral
+module remains JVM/JS only. Fixed legacy CBOR envelopes decode, and new
+writes match those bytes exactly. Initial compatibility compile exposed
+that a type alias with a companion does not retain universal apply;
+an explicit forwarding TopicJournal.apply fixes that, with both old
+constructor forms now covered. Outstanding idempotency issues remain
+open in backlog.d/okay-durable with updated source pointers.

@@ -1,7 +1,7 @@
 - [ ] durable-run-scoped-keys — P1 / correctness: isolate external
       idempotency keys between independent durable runs.
       BASELINE (source review, 2026-10-05): `Durable.keyFor/keyOf` in
-      `okay-agent/src/main/scala/okay/agent/Durable.scala` uses operation
+      `okay-durable/src/main/scala/okay/durable/Durable.scala` uses operation
       name + sequence + `math.abs(fingerprint.hashCode)`. Identical calls
       at the same position in different runs get identical keys; the
       32-bit fingerprint hash also admits collisions. TopicJournal's
@@ -24,3 +24,7 @@
       rejected. Gate TestDurable/TopicJournal consumers and affected
       behavior consumers. Pair with durable-withkey-first-attempt before
       claiming externally idempotent recovery.
+      MODULE EXTRACTION 2026-10-05: the implementation is now in
+      okay-durable; okay.agent.Durable forwards generic methods. Keep
+      agent Tool tests as compatibility acceptance and put generic
+      regression tests in okay-durable. This bug remains open.

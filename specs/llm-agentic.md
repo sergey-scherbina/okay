@@ -1026,3 +1026,11 @@ Tested over the real protocol (`TestStateMcp`: initialize, list, call
 subprocess talking newline-delimited JSON-RPC over actual pipes
 (manual verification: initialize, tools/list, update_state, get_state,
 the file on disk after).
+
+## Neutral module extraction (2026-10-05)
+
+The generic Durable handler lives in okay-durable (package okay.durable),
+with TopicJournal in okay-durable-persist. Agent names forward to that
+implementation and retain Tool helpers. Journalled remains in okay-codec.
+See specs/durable-neutral-module.md for source/wire compatibility and
+remaining correctness work.
