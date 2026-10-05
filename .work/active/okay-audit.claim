@@ -1,0 +1,6 @@
+feature/okay-audit 2026-10-05T05:14:06Z
+agent: claude-code (session 3b422608)
+heartbeat: 2026-10-05T05:14:06Z
+status: in-progress
+done-so-far: spec lane only — specs/okay-audit.md + backlog item; implementation is a later claim
+next: write the spec, land
