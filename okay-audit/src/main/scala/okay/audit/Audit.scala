@@ -15,7 +15,8 @@ final case class Report(
     inventory: Vector[Inventory],             // handlers and runtime
     untracked: Vector[String],                // modules with no layer
     unusedAllows: Vector[Allow],
-    allowed: Vector[(Allow, Finding)]):       // what the allows swallowed, so nothing is silent
+    allowed: Vector[(Allow, Finding)],        // what the allows swallowed, so nothing is silent
+    jpms: JpmsEvidence = JpmsEvidence(Vector.empty, Vector.empty, Vector.empty)):
   def passed: Boolean = findings.isEmpty
 
   def text: String =
@@ -50,6 +51,14 @@ final case class Report(
       }
     }
     if untracked.nonEmpty then sb ++= s"\nUNTRACKED (no layer declared): ${untracked.sorted.mkString(", ")}\n"
+    sb ++= "\nJPMS (descriptor evidence; enforcement requires named-module deployment)\n"
+    jpms.modules.foreach { m =>
+      sb ++= s"  ${m.module}  ${m.path}  ${m.name.getOrElse("unnamed")}\n"
+      if m.requires.nonEmpty then sb ++= s"    requires: ${m.requires.mkString(", ")}\n"
+      sb ++= s"    enforcement: ${m.enforcement.map((r, e) => s"$r=${e.text}").mkString(", ")}\n"
+    }
+    jpms.splits.foreach(x => sb ++= s"  split package ${x.name}: ${x.inputs.mkString(", ")}\n")
+    if jpms.launcherOptions.nonEmpty then sb ++= s"  launcher: ${jpms.launcherOptions.mkString(" ")}\n"
     sb ++= "\nINPUTS\n"
     inputs.sortBy(i => (i._1, i._2.toString)).foreach((m, p, h) => sb ++= s"  $m  $p  sha256:$h\n")
     sb.result()
@@ -70,13 +79,16 @@ final case class Report(
     val al = allowed.sortBy((a, f) => (a.module, f.ref.member)).map((a, f) =>
       s"""{"module":${s(a.module)},"api":${s(a.api)},"owner":${s(a.owner)},"reason":${s(a.reason)},"ref":${ref(f.ref)}}""")
     val un = unusedAllows.map(a => s"""{"module":${s(a.module)},"api":${s(a.api)},"owner":${s(a.owner)}}""")
+    val jm = jpms.modules.map(m => s"""{"module":${s(m.module)},"path":${s(m.path.toString)},"name":${m.name.map(s).getOrElse("null")},"requires":[${m.requires.map(s).mkString(",")}],"enforcement":{${m.enforcement.map((r, e) => s"${s(r)}:${s(e.text)}").mkString(",")}}}""")
+    val splits = jpms.splits.map(x => s"""{"package":${s(x.name)},"inputs":[${x.inputs.map(s).mkString(",") }]}""")
     s"""{"passed":$passed,"bootstraps":[${Boundary.Bootstraps.map(s).mkString(",")}],"findings":[${fs.mkString(",")}],""" +
       s""""allowed":[${al.mkString(",")}],"unusedAllows":[${un.mkString(",")}],"inventory":[${inv.mkString(",")}],""" +
-      s""""untracked":[${untracked.sorted.map(s).mkString(",")}],"inputs":[${ins.mkString(",")}]}"""
+      s""""untracked":[${untracked.sorted.map(s).mkString(",")}],"inputs":[${ins.mkString(",")}],"jpms":{"modules":[${jm.mkString(",")}],"splits":[${splits.mkString(",")}],"launcherOptions":[${jpms.launcherOptions.map(s).mkString(",")}]}}"""
 
   private def desc(r: Ref) = if r.kind == Ref.Kind.Native then " (native method)" else ""
 
 object Audit:
+  def runtime(): RuntimeEvidence = Jpms.runtime()
   /** a refusal before any scan: an allow without its reason or owner */
   final class Refused(msg: String) extends IllegalArgumentException(msg)
 
@@ -91,7 +103,7 @@ object Audit:
 
   /** `modules`: name -> the class directories and jars that ARE that module
     * (its own classes and its classpath; a jar inherits the module's layer) */
-  def run(boundary: Boundary, modules: Map[String, Seq[Path]]): Report =
+  def run(boundary: Boundary, modules: Map[String, Seq[Path]], launcherOptions: Vector[String] = Vector.empty): Report =
     boundary.allows.find(a => a.reason.trim.isEmpty || a.owner.trim.isEmpty).foreach { a =>
       throw Refused(s"allow ${a.module}: ${a.api} has no ${if a.reason.trim.isEmpty then "reason" else "owner"} — an exception is a named decision")
     }
@@ -101,6 +113,10 @@ object Audit:
     val untracked = Vector.newBuilder[String]
     val allowed = Vector.newBuilder[(Allow, Finding)]
     val used = scala.collection.mutable.Set.empty[Allow]
+    val jpmsInputs = modules.toVector.sortBy(_._1).filter { (module, _) =>
+      boundary.layers.getOrElse(module, Layer.Untracked) != Layer.Untracked || boundary.packages.get(module).exists(_.nonEmpty)
+    }.flatMap((module, paths) => paths.map(module -> _))
+    val jpms = Jpms.evidence(jpmsInputs, launcherOptions)
     modules.toVector.sortBy(_._1).foreach { (module, paths) =>
       val layer = boundary.layers.getOrElse(module, Layer.Untracked)
       // untracked: no layer of its own, and nothing in `packages` could cover it
@@ -138,5 +154,6 @@ object Audit:
               inventory += Inventory(row, rowLayer, reaches.groupBy(r => provider(r.owner)))
         }
     }
-    Report(inputs.result(), findings.result(), inventory.result(), untracked.result(),
-      boundary.allows.filterNot(used.contains), allowed.result())
+    val scanned = inputs.result()
+    Report(scanned, findings.result(), inventory.result(), untracked.result(),
+      boundary.allows.filterNot(used.contains), allowed.result(), jpms)

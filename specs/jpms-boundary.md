@@ -14,14 +14,19 @@ audited input that has `module-info.class`, it records the module name,
 requires and the enforcement state of every default rule:
 
 - `jvm-enforced`: the rule is wholly in a JPMS module the descriptor does not
-  read (for example `java.sql` without `requires java.sql`);
+  read: a descriptor requiring only `java.base` proves this. Descriptors with
+  other dependencies remain `scan-only`, since those may grant transitive
+  readability and this report does not resolve a deployment module graph;
 - `scan-only`: the input is unnamed/automatic, the rule reaches `java.base`,
   or the descriptor reads that module.
 
 The section also records package names appearing in more than one scanned
 input as split packages, and relevant launcher arguments from an optional
 `jvmOptions` file in the JSON manifest: `--illegal-native-access`,
-`--add-opens`, `--add-exports` and `--enable-native-access`.
+`--add-opens`, `--add-exports`, `--add-reads` and `--enable-native-access`.
+The enforcement label is conditional on deployment as a named module, not
+on the classpath. Any recorded `--add-reads` conservatively makes all labels
+`scan-only`; this report does not resolve launcher overrides.
 
 ```json
 {
@@ -35,16 +40,17 @@ arguments, and native-access arguments for an application evidence journal.
 
 ## Behavior
 
-- [ ] a named descriptor that omits `requires java.sql` marks the SQL rules
+- [x] a java.base-only named descriptor that omits `requires java.sql` marks the SQL rules
   `jvm-enforced`; one that requires it marks them `scan-only`
-- [ ] a `java.base` rule such as `java.net.` stays `scan-only` for every
+- [x] a `java.base` rule such as `java.net.` stays `scan-only` for every
   descriptor
-- [ ] two scanned inputs defining the same package are named as a split
+- [x] two scanned inputs defining the same package are named as a split
   package in text and JSON
-- [ ] allowed launcher arguments are recorded from a manifest-relative
+- [x] allowed launcher arguments are recorded from a manifest-relative
   `jvmOptions` file; other options are absent from the evidence
-- [ ] `Audit.runtime()` reports the boot layer and current JVM arguments
-- [ ] a missing or malformed descriptor/options file is refused by name
+- [x] `Audit.runtime()` reports the boot layer and current JVM arguments
+- [x] a malformed descriptor or missing/malformed options file is refused by name;
+  an absent descriptor denotes an unnamed input
 
 ## Out of scope
 
@@ -72,4 +78,8 @@ enforced.
 
 ## Results
 
-Pending implementation.
+Implemented Stage A. The focused TestAudit suite covers directory and JAR
+descriptors, SQL readability, java.base and sun rules, launcher overrides,
+split-package deduplication, manifest options, runtime evidence and refusal.
+Stages B and C remain deployment work, not a claim that JPMS now constrains
+the existing classpath application.

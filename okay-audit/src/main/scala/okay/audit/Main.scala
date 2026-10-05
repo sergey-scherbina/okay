@@ -56,7 +56,7 @@ object Main:
 
   private def write(input: Manifest, out: Path): Int =
     Files.createDirectories(out)
-    val report = Audit.run(Boundary(input.layers, allows = input.allows, packages = input.packages), input.modules)
+    val report = Audit.run(Boundary(input.layers, allows = input.allows, packages = input.packages), input.modules, input.jvmOptions)
     Files.writeString(out.resolve("report.txt"), report.text)
     Files.writeString(out.resolve("report.json"), report.json)
     System.out.print(report.text)

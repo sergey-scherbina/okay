@@ -1,5 +1,12 @@
 # okay-audit — the effect boundary, checked at every build
 
+Reports include JPMS descriptor names, requires, per-rule enforcement,
+split packages and optional manifest-relative `jvmOptions` evidence.
+`jvm-enforced` is conditional on named-module deployment; classpath inputs
+and unresolved dependency graphs remain `scan-only`.
+See [JPMS evidence](../specs/jpms-boundary.md). `Audit.runtime()` supplies
+boot-layer modules and launcher arguments for application journals.
+
 The type `A ! Db + Payments` says what a program *declares*. On the JVM
 nothing stops its body from opening a socket as well. This module checks
 the bytecode: a `business` module may reference none of the APIs that reach

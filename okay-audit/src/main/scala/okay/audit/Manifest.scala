@@ -6,7 +6,7 @@ import java.nio.file.{Files, Path, Paths}
   * command accepts, rather than a general JSON model: no dependency belongs
   * on an audit tool's runtime classpath. */
 final case class Manifest(layers: Map[String, Layer], modules: Map[String, Seq[Path]],
-                          packages: Map[String, Map[String, Layer]], allows: Vector[Allow])
+                          packages: Map[String, Map[String, Layer]], allows: Vector[Allow], jvmOptions: Vector[String] = Vector.empty)
 
 object Manifest:
   private enum Token:
@@ -70,6 +70,7 @@ object Manifest:
       openObject("manifest")
       var modules: Option[Vector[(String, Layer, Seq[Path], Map[String, Layer])]] = None
       var allows: Option[Vector[Allow]] = None
+      var jvmOptions: Option[Vector[String]] = None
       while token != Token.CloseObject do
         val key = string("manifest field")
         colon(key)
@@ -78,6 +79,7 @@ object Manifest:
             if modules.nonEmpty then refuse("manifest names modules twice")
             modules = Some(moduleArray())
           case "allows" => allows = once(allows, "allows", allowArray())
+          case "jvmOptions" => jvmOptions = once(jvmOptions, "jvmOptions", Jpms.launcherOptions(resolve(string("jvmOptions"))))
           case other => refuse(s"manifest has unknown field '$other'")
         separator("manifest")
       take()
@@ -87,7 +89,11 @@ object Manifest:
       names.groupBy(identity).collectFirst { case (name, xs) if xs.size > 1 => name }
         .foreach(name => refuse(s"manifest names module '$name' more than once"))
       Manifest(rows.map(r => r._1 -> r._2).toMap, rows.map(r => r._1 -> r._3).toMap,
-        rows.map(r => r._1 -> r._4).toMap, allows.getOrElse(Vector.empty))
+        rows.map(r => r._1 -> r._4).toMap, allows.getOrElse(Vector.empty), jvmOptions.getOrElse(Vector.empty))
+
+    private def resolve(raw: String): Path =
+      val path = Paths.get(raw)
+      if path.isAbsolute then path.normalize else base.resolve(path).normalize
 
     private def moduleArray(): Vector[(String, Layer, Seq[Path], Map[String, Layer])] =
       openArray("modules")

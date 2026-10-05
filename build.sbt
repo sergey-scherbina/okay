@@ -977,6 +977,7 @@ ThisBuild / auditLayer := "untracked"
 ThisBuild / auditLayers := Map.empty
 
 lazy val okayAudit = (project in file("okay-audit"))
+  .dependsOn(okayTest.jvm % "test->compile")
   .settings(
     name := "okay-audit",
     auditLayer := "handlers",

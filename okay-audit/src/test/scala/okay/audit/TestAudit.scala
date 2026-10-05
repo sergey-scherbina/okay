@@ -2,7 +2,65 @@ package okay.audit
 
 import java.nio.file.{Files, Path, Paths}
 
-class TestAudit extends munit.FunSuite:
+class TestAudit extends munit.FunSuite with okay.testkit.Munit.Diagnosed:
+  test("JPMS descriptors distinguish SQL from java.base and unresolved transitive readability"):
+    def descriptor(source: String): Path =
+      val dir = Files.createTempDirectory("audit-module")
+      val file = dir.resolve("module-info.java")
+      Files.writeString(file, source): Unit
+      val compiler = javax.tools.ToolProvider.getSystemJavaCompiler
+      assert(compiler != null, "descriptor fixture requires a JDK")
+      assertEquals(compiler.run(null, null, null, "-d", dir.toString, file.toString), 0)
+      dir
+    val isolated = descriptor("module fixture.isolated {}")
+    val sql = descriptor("module fixture.sql { requires java.sql; }")
+    val evidence = Jpms.evidence(Vector("isolated" -> isolated, "sql" -> sql))
+    note(evidence.toString)
+    val states = evidence.modules.map(m => m.module -> m.enforcement.toMap).toMap
+    assertEquals(states("isolated")("java.sql."), Enforcement.JvmEnforced)
+    assertEquals(states("sql")("java.sql."), Enforcement.ScanOnly)
+    assertEquals(states("isolated")("java.net."), Enforcement.ScanOnly)
+    assertEquals(states("isolated")("sun."), Enforcement.ScanOnly)
+    val overridden = Jpms.evidence(Vector("isolated" -> isolated), Vector("--add-reads=fixture.isolated=java.sql"))
+    assertEquals(overridden.modules.head.enforcement.toMap.apply("java.sql."), Enforcement.ScanOnly)
+    val jarPath = Files.createTempFile("audit-module", ".jar")
+    val jar = new java.util.jar.JarOutputStream(Files.newOutputStream(jarPath))
+    try
+      jar.putNextEntry(new java.util.jar.JarEntry("module-info.class"))
+      jar.write(Files.readAllBytes(isolated.resolve("module-info.class")))
+      jar.closeEntry()
+    finally jar.close()
+    assertEquals(Jpms.evidence(Vector("jar" -> jarPath)).modules.head.name, Some("fixture.isolated"))
+
+  test("JPMS split packages identify distinct class inputs, not repeated classpaths"):
+    val first = only("Pure")
+    val second = only("Sockets")
+    val report = Audit.run(Boundary(Map("a" -> Layer.Handlers, "b" -> Layer.Handlers)), Map("a" -> Seq(first), "b" -> Seq(second)))
+    assertEquals(report.jpms.splits.map(_.name), Vector("fixture"))
+    assert(report.text.contains("split package fixture"))
+    assert(report.json.contains("\"package\":\"fixture\""))
+    assertEquals(Jpms.evidence(Vector("a" -> first, "b" -> first)).splits, Vector.empty)
+
+  test("JPMS launcher options resolve beside the manifest and runtime evidence includes java.base"):
+    val dir = Files.createTempDirectory("audit-options")
+    Files.writeString(dir.resolve("jvm.options"), "--add-opens=java.base/java.lang=ALL-UNNAMED\n-Xmx1g\n--illegal-native-access=deny\n"): Unit
+    val manifest = dir.resolve("audit.json")
+    Files.writeString(manifest, """{"modules":[],"jvmOptions":"jvm.options"}"""): Unit
+    val input = Manifest.read(manifest)
+    assertEquals(input.jvmOptions.size, 2)
+    val report = Audit.run(Boundary(Map.empty), Map.empty, input.jvmOptions)
+    assert(report.json.contains("--illegal-native-access=deny"))
+    assert(Audit.runtime().modules.exists(_.name == "java.base"))
+    assertEquals(Audit.runtime().inputArguments, java.lang.management.ManagementFactory.getRuntimeMXBean.getInputArguments.toArray.toVector.map(_.toString).sorted)
+    val missingOptions = intercept[Audit.Refused](Jpms.launcherOptions(dir.resolve("missing.options")))
+    assert(missingOptions.getMessage.contains("missing.options"))
+    Files.writeString(dir.resolve("jvm.options"), "--add-opens\n"): Unit
+    val invalidOptions = intercept[Audit.Refused](Manifest.read(manifest))
+    assert(invalidOptions.getMessage.contains("needs a value"))
+    val broken = dir.resolve("module-info.class")
+    Files.write(broken, Array[Byte](0, 1)): Unit
+    val invalidDescriptor = intercept[Audit.Refused](Audit.run(Boundary(Map("broken" -> Layer.Handlers)), Map("broken" -> Seq(dir))))
+    assert(invalidDescriptor.getMessage.contains("JPMS descriptor"))
   /** the test classes directory holding the fixture classes; `only` copies the named ones into a temp dir */
   val classesDir: Path = Paths.get(getClass.getResource("/fixture/Pure.class").toURI).getParent.getParent
 
