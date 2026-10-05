@@ -192,3 +192,50 @@ cont-fun-answer (2026-10-03, `PState.Bounce`), on every platform.
      stack switch"; the JVM and Native still switch by default, for the
      4.94x and the contract above.
 
+
+5. **A SAFE mode, chosen at compile time and at run time** (operator,
+   2026-10-05: "Должен быть опциональный safe режим полного трамплининга
+   без реплеев на всех платформах для функций с побочными эффектами без
+   требований идемпотентности. Режим с оптимизациями … может быть по
+   умолчанию. Но должна быть возможность выбора на этапе компиляции и в
+   рантайме").
+
+   WHAT IS POSSIBLE, said first: a body that needs its `k`'s VALUE now,
+   and that the macro cannot read, can only wait on the host stack. With
+   no replay and no second stack (Scala.js), nothing at run time can
+   trampoline it. So the guarantee "full trampolining, no replay, every
+   platform" is a COMPILE-TIME property: the body is CPS-transformed (the
+   macro's lazy leaf: `k` is data, nothing nests), or it is refused.
+
+   COMPILE TIME, per scope, by an import:
+   - default: as stage 4 — a body the macro reads is transformed; an
+     opaque one is a strict leaf that follows the run-time mode;
+   - `import okay.Cont.safe.given` — SAFE: every body using `k` is
+     transformed, or is a COMPILE ERROR that says why and how to write it
+     (a lambda literal; `k` called, not passed to a function the macro
+     cannot see into; or a program answer, whose `k` is lazy). Side
+     effects run exactly once, in order: the transformed body's statements
+     before `k` run when it does, the ones after it in `k`'s continuation.
+     Full trampolining with no replay on JVM, Scala.js and Native;
+   - `import okay.Cont.noReplay.given` — an opaque body is allowed and is
+     NEVER re-executed, whatever the run-time mode: its `k` is a barrier
+     (a driver of its own), so no suspension crosses it. Bounded by the
+     host stack where nothing else helps (Scala.js); a fresh stack on the
+     JVM and Native.
+
+   RUN TIME, for the strict leaves the compiler left (`-Dokay.cont.mode`,
+   `Cont.setMode`):
+   - `auto` (the default, the optimized mode): re-execution on Scala.js,
+     the fresh stack on the JVM and Native — each platform's cheapest;
+   - `replay`: re-execution everywhere;
+   - `safe`: never re-execute: the fresh stack on the JVM and Native; on
+     Scala.js a strict body nests on the engine's stack (bounded) — there
+     the guarantee is the compile-time one.
+   `-Dokay.cont.replay=true` (stage 4) is `-Dokay.cont.mode=replay`.
+
+   Behaviour:
+   - [ ] safe scope: a body with side effects before and after `k`, a million deep, on JVM, Scala.js and Native: every effect exactly once, in order
+   - [ ] safe scope: an opaque body (`k` passed to a function) is a compile error naming the fix
+   - [ ] safe scope: a body answering a program, `k` passed on: compiles (lazy `k`)
+   - [ ] noReplay scope: an opaque body with a side effect under the replay mode and a small room: run exactly once
+   - [ ] run time `safe`: no strict body re-executed (counted); `replay`: re-executed past the room; `auto`: the platform's default
