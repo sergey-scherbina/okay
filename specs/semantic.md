@@ -30,9 +30,12 @@ by AND and apply before aggregation. Group ordering is first encounter order.
 `okay.semantic.sql.Render(plan, Binding(table, dimensionColumns, measureColumns))`
 returns a parameterized `Statement` or named errors. Identifiers are restricted
 to ASCII SQL identifiers; dotted names and arbitrary expressions are refused.
-`Statement.execute(using Sql)` yields `Result ! Async` through the existing
+`Statement.execute(using Sql)` yields `Either[Vector[String], Result] ! Async` through the existing
 SQL seam. SQL binding is explicit and separate from the business definition;
 the SQL interpreter supports exact Num, I32, I64 cells and refuses F64 totals.
+SQL aggregates sums and non-null counts; the same decimal finalizer computes
+averages and ratios, avoiding integer division and backend rounding differences.
+SQL totals are subject to the database numeric precision.
 SQL result group order is backend-defined; parity compares groups by key.
 
 ## Behavior
@@ -47,7 +50,7 @@ SQL result group order is backend-defined; parity compares groups by key.
       empty grouped input returns no groups.
 - [ ] Invalid extracted dimension kinds return named errors rather than coercion.
 - [ ] Result and explanation retain model source/version and business grain.
-- [ ] SQL uses bound filter values, IS NULL, NULLIF and explicit column binding;
+- [ ] SQL uses bound filter values, IS NULL and explicit column binding;
       refuses invalid/missing identifiers and decodes output without casts.
 - [ ] Memory and SQL agree on sums, counts, averages, ratios, filters and nulls.
 - [ ] The modules compile on JVM, JS and Native without any agent dependency.
