@@ -253,6 +253,10 @@ module-info discarded) okay is one automatic module and the rule holds.
   and no `--add-opens`. The JVM then enforces the first table for the app's
   business code; the scanner covers `java.base`. The two reports must agree.
 - **C. One package per module, `module-info` everywhere — okay2, not okay.**
+  Implemented in `specs/jpms-module-layout.md` (2026-10-05): 21 own
+  JVM artifacts, disjoint migrated namespaces, named BlockingDefaults
+  service, packaged module-path probe and optional interop bundle.
+  `okay2/MODULES.md` records the source/binary migration contract.
   The rename is the price and okay2 is where it is affordable; then
   `uses`/`provides` can state handlers as services ("this module provides
   the Db handler"), and the descriptor itself becomes the effect/handler map.

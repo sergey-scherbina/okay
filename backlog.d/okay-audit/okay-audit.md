@@ -3,7 +3,8 @@
       specs/jpms-boundary.md). JPMS Stage B's strict opt-in headless
       profile is implemented in okay-watch; desktop/JDBC is unchanged.
       Remaining: domain/handler classification and hermetic replay in
-      okay-watch; okay2 Stage C (jpms-module-layout). The effect boundary checked at every build: a bytecode
+      okay-watch. okay2 JPMS Stage C is implemented (jpms-module-layout,
+      specs/jpms-module-layout.md). The effect boundary checked at every build: a bytecode
       scanner (constant-pool references, JVMS §4) over each module's classes
       and classpath jars; `Business` modules may reference none of the
       default rule set (network, files, console, sql, processes, time,

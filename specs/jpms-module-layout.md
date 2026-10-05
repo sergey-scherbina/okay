@@ -86,8 +86,8 @@ and conflicting-class fixtures refuse by name; identical class copies
 deduplicate. Both interop and dependency-free named profiles pass with
 native access denied and no opens/reads overrides.
 
-The nine changed JVM modules' suites passed individually (866 tests).
+The final combined gate passed the nine changed JVM modules (866 tests)
+and jpmsCheck without compile warnings.
 JS and Native Test/compile passes cover data, optics, STM, workflow,
 lex, codec, refine, HTTP and persist plus their dependencies. The 58
-recursion inventory entries remain valid. Final combined scoped gate
-and landing bookkeeping are in progress.
+recursion inventory entries remain valid. Implementation: 488e02e89.

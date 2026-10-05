@@ -25,6 +25,12 @@ compiled by scalac 2.13.18 under `-Xlint -Werror`. `okay2/` is its own
 sbt build (it shares nothing with the Scala 3 build but the
 repository), gated with `cd okay2 && ../scripts/gate.sh test`.
 
+Named JVM modules now own distinct packages. Core stays in `okay2`;
+the data, optics, STM and workflow definitions live in `okay2.data`,
+`okay2.optics`, `okay2.stm` and `okay2.workflow`. External callers must
+update imports and recompile. See the [module and migration guide](../okay2/MODULES.md)
+for the complete type list and the verified module-path profile.
+
 Contents:
 
 1. [The build](#1-the-build)
@@ -1808,7 +1814,7 @@ traversal without anyone writing that down. One import brings the
 families, the constructors and the operations:
 
 ```scala
-import okay2.Optic._
+import okay2.optics.Optic._
   val age: Lens[Person, Person, Int, Int] = Lens[Person](_.age)
     val personZip: Affine[Person, Person, Int, Int] = address.andThen(Prism.some[Address, Address]).andThen(zip)
     assertEquals(personZip.set(7)(p), p.copy(address = Some(Address("Warszawa", 7))))
