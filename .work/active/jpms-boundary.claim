@@ -1,6 +1,0 @@
-feature/jpms-boundary 2026-10-05T05:57:25Z
-agent: claude-code (session 3b422608)
-heartbeat: 2026-10-05T05:57:25Z
-status: in-progress
-done-so-far: docs lane — JPMS decision in specs/okay-audit.md + backlog item jpms-boundary
-next: land
