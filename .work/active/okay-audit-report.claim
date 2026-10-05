@@ -1,6 +1,0 @@
-feature/okay-audit-report 2026-10-05T05:46:12Z
-agent: claude-code (session 3b422608)
-heartbeat: 2026-10-05T05:46:12Z
-status: in-progress
-done-so-far: docs lane — the dogfood report committed under okay-audit/dogfood/ as the linkable self-report
-next: land
