@@ -1,0 +1,6 @@
+feature/durable-module-backlog 2026-10-05T11:26:44Z
+agent: codex
+heartbeat: 2026-10-05T11:26:44Z
+status: in-progress
+scope: backlog modularization plan only
+next: record neutral Durable module and compatibility boundaries
