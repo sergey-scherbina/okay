@@ -186,6 +186,8 @@ buyer's own additions (`com.example.legacy.`) are rules like any other.
 
 ## JPMS — what the JVM's module system adds, and what it cannot (decided 2026-10-05)
 
+The executable Stage-A contract is in `specs/jpms-boundary.md`.
+
 The question: can JDK 9+ modules enforce the boundary this spec checks by
 scanning? Partly, and the part it enforces is worth taking; the part it
 cannot is why the scanner stays.
