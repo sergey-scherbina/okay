@@ -23,6 +23,7 @@ refuted-declined-or-answered
 json-raw-nesting-jmh-pending
 okay-script
 okay-security
+okay-audit
 okay-plutus
 okay-x402
 okay-scala2
