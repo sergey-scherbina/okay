@@ -34,5 +34,29 @@ this extraction does not promise JVM binary compatibility.
 WithKey injects the journal key on the first request and every retry;
 the original request fingerprint remains unchanged. A supplied Tool key
 is replaced by the journal key. External deduplication still depends on
-the provider, and run-scoped-key isolation remains open in the backlog.
+the provider.
 The module does not establish distributed writer ownership.
+
+## Run identities and keys
+
+A journal's `runId` must be stable across restart and unique across the
+provider's deduplication namespace. Include tenant and workflow identity
+when local run numbers can repeat. `MemoryJournal()` creates one UUID per
+journal; `MemoryJournal(run)` accepts an explicit identity. The JS default
+requires Web Crypto.randomUUID; other JS hosts supply an explicit identity. Memory storage
+alone does not survive a process restart.
+
+For new steps, `keyFor(journal, seq, op)` encodes that identity and position
+as `okay-<base64url(run UTF-8)>-<seq>`, without padding. Run IDs must contain
+1–96 UTF-8 bytes of well-formed Unicode; positions must be non-negative.
+Keys contain only ASCII alphanumerics, '-' and '_', at most 144 characters.
+Check the provider's key limits and deduplication retention window.
+Fingerprints detect changed inputs; they do not determine scoped keys.
+
+Custom journals implement `runId: Option[String]`. Fresh WithKey requests
+without it are rejected before intent append or external execution. Other
+unscoped policies retain their legacy behavior. Recorded `Entry.key` is
+always authoritative, including incomplete legacy entries and replay spans;
+no migration rewrites outstanding external keys. The two-argument
+`keyFor(seq, op)` keeps the old unscoped algorithm for compatibility and
+archived entries; use the journal-aware helper for new scoped steps.

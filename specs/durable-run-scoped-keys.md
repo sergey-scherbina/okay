@@ -65,4 +65,8 @@ legacy Tool/obs/Scala2 acceptance; then affected master staged.
 
 ## Results
 
-Pending implementation and verification.
+JVM regressions passed. The first JS link exposed Scala.js UUID.randomUUID
+requiring absent java.security.SecureRandom. Use platform-local RunId.fresh:
+JVM standard UUID and JS standard Web Crypto.randomUUID, without an added
+library dependency. JS hosts without Web Crypto must supply an explicit
+run identity. Verification continues.

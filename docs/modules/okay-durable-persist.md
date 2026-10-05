@@ -6,7 +6,11 @@ depends on okay-durable and [okay-persist](okay-persist.md).
 ## Journal
 
 `okay.durable.persist.TopicJournal(topic, run)` implements `Durable.Journal`.
-The run key selects a partition. Intent and completion are separate records
+The run key selects a partition and is exposed as `runId` for new external
+operation keys. Choose it uniquely across the provider's deduplication
+namespace, including tenant/workflow identity; topic partitioning alone
+does not separate external keys. See the [run identity contract](okay-durable.md#run-identities-and-keys).
+Intent and completion are separate records
 written with `Ack.Durable`; reading refolds that run's records. A new
 journal instance over the same topic recovers the same history.
 

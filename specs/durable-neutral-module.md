@@ -84,3 +84,11 @@ that a type alias with a companion does not retain universal apply;
 an explicit forwarding TopicJournal.apply fixes that, with both old
 constructor forms now covered. Outstanding idempotency issues remain
 open in backlog.d/okay-durable with updated source pointers.
+
+Follow-ups, 2026-10-05: specs/durable-withkey-first-attempt.md fixes key
+transport on the fresh request, foreign-workflow imports and actual
+Scala 2 TASTy-reader compatibility (explicit agent type/factory aliases).
+specs/durable-run-scoped-keys.md adds stable journal identity and new scoped
+keys; the old helper is retained only for compatibility/archived entries.
+The extraction's outstanding P1 key issues are resolved by those lanes;
+process-crash and concurrency evidence remains a separate backlog item.
