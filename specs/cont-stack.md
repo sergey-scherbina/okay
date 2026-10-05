@@ -163,7 +163,7 @@ is not landed: see Results.
 |---|---|---|---|
 | JVM, every JDK | a platform thread with a 1 GB stack (Decision 8) | ~309 000 by count since cont-stack-cold-bytes-per-level (~500 000 before), exact with Layer 3 | on the waiting threads' stacks, pages committed only as touched, unmapped when the segment returns |
 | Native | a platform thread with a 1 GB stack | the same | the same |
-| JS | none | unbounded count | **the bound**: the depth of nested opaque bodies is limited by the engine's stack, written here and in the docs |
+| JS | none | unbounded count | **the bound**: the depth of nested opaque bodies is limited by the engine's stack, written here and in the docs — SUPERSEDED 2026-10-05 (specs/cont-js-depth.md stage 4): a strict body is RE-EXECUTED past 64 levels, no bound |
 
 The lane's first cut used a VIRTUAL thread on JDK 21+ (a waiting
 virtual thread unmounts and its frames freeze into heap `StackChunk`s),
@@ -291,7 +291,7 @@ the room can be read exactly.
 | JVM 22–24 | the same | the same | the core's `jdk22/` FFM reader (JEP 238 picks it), when `Module.isNativeAccessEnabled` (22+); 24 is where the WARNING starts for callers that did not enable it | the default `Test / javaHome` when it is one of these |
 | JVM 25+ | the same | the same | the same reader; a later release will REFUSE the call instead of warning (JEP 472), and the gate is the same boolean either way | JDK 26, the default `Test / javaHome` |
 | JVM, caller on a VIRTUAL thread (any JDK 21+; okay's own default scheduler) | the same: the virtual thread parks on the `join` and unmounts, no carrier pinned | the same: a mounted virtual thread grows on its CARRIER's stack, which is `ThreadStackSize` | the reader sees the carrier's bounds (measured), which is the stack in use; `worst` is updated only when the bounds match the previous read's, since the thread may have moved carriers between two exhaustions | TestContStack on a virtual thread |
-| Scala.js | none: no thread to switch to, no way to grow a stack synchronously | unbounded count (`Int.MaxValue`: nothing happens at zero, so nothing is counted) | nothing to read | the cross suite: a shallow program unchanged; **the bound**, in docs: nested opaque bodies are limited by the engine's stack (~10 800 frames on V8's default 984 KB; `node --stack-size` raises it) |
+| Scala.js | none: no thread to switch to, no way to grow a stack synchronously | unbounded count (`Int.MaxValue`: nothing happens at zero, so nothing is counted) | nothing to read | the cross suite: a shallow program unchanged; **the bound**, in docs: nested opaque bodies are limited by the engine's stack (~10 800 frames on V8's default 984 KB; `node --stack-size` raises it) — SUPERSEDED 2026-10-05: re-execution past 64 strict levels (specs/cont-js-depth.md stage 4) |
 | Scala Native | platform thread, 1 GB (`Thread(group, r, name, stackSize)`: the javalib passes it to `NativeThread.create`, page-aligned plus its guard pages, `≤ Int.MaxValue` asserted) | ThreadInfo's own `maxStackSize` / 1.2 KB / 2 | ALWAYS, and in the core: the runtime keeps `ThreadInfo { stackTop, stackBottom, stackGuardPage, maxStackSize, isMainThread }` per thread (nativelib `nativeThreadTLS.h`, `scalanative_currentThreadInfo()`), the main thread's from the OS soft limit, and the address of a `stackalloc` is the pointer — no pthread call, no per-OS layout | a test in `src/test/scala-native` on a 128 KB thread |
 
 The first room is `firstRoom` only until Layer 1 lands; with it, a
