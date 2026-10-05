@@ -1,0 +1,6 @@
+feature/audit-cli-standalone 2026-10-05T10:41:00Z
+agent: codex
+heartbeat: 2026-10-05T10:41:00Z
+status: in-progress
+done-so-far: planned standalone JSON CLI for Maven/Gradle and moved it to sprint doing
+next: add the CLI contract and parser, test it against audit fixtures, then land it
