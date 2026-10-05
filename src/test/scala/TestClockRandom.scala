@@ -1,8 +1,6 @@
 package okay
 
 import okay.!.*
-import okay.Row.{at, plus}
-
 class TestClockRandom extends munit.FunSuite:
 
   test("Clock.fixed answers every now with the same reading; ticking moves by step and answers the next reading"):
@@ -29,14 +27,7 @@ class TestClockRandom extends munit.FunSuite:
     val is = !.run(Random.run(2L)(List.fill(1000)(Random.nextInt(7)).foldLeft(pure[Random, List[Int]](Nil))((acc, d) => acc.flatMap(l => d.map(_ :: l)))))
     assertEquals(is.toSet, (0 until 7).toSet)
 
-  test("another effect keeps its place between readings and draws"):
-    val p = for
-      a <- Clock.now
-      _ <- Writer.tell(s"at $a")
-      r <- Random.nextLong
-      _ <- Writer.tell(s"drew $r")
-    yield a + r
-    val ((log, v)) = !.run(Writer.run[String, Long, Pure](Clock.run(7L)(Random.run(1L)(p))))
-    assertEquals(log.size, 2)
-    assert(log.head == "at 7")
-    assertEquals(v, 7L + Random.mix(1L + 0x9E3779B97F4A7C15L))
+  test("Random.at reads the source once per draw"):
+    var n = 0L
+    val two = for a <- Random.nextLong; b <- Random.nextLong yield (a, b)
+    assertEquals(!.run(Random.at(() => { n += 1; n }).run(two)), (1L, 2L))

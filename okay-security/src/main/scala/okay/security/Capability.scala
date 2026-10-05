@@ -1,6 +1,6 @@
 package okay.security
 
-import okay.{Ambient, Uid}
+import okay.Ambient
 
 /**
  * A CAPABILITY THAT ITS HOLDER CAN NARROW (specs/coordination-free.md

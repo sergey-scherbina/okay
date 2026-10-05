@@ -122,4 +122,13 @@ medium one; none changes a public signature except by adding a default.
 
 ## Results
 
-(after stage 1)
+Stages 1 through 3 are now in the library: `auditLayers` classifies a
+single artifact by longest package prefix without leaking a rule into another
+module; `Clock` and `Random` are core operations with deterministic test
+handlers and platform handlers; and `Hlc` / `Uid` take their sources as
+parameters, moving the ambient sources to `okay-platform`. `okay-data` is
+therefore again a `business` module and `sbt audit` passes.
+
+The journaled/replayed treatment of these ports belongs with stage 4's
+okay-watch evidence work. It is deliberately not represented here as an
+existing handler.

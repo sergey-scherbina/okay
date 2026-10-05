@@ -968,8 +968,10 @@ lazy val okayJava = (project in file("okay-java"))
  * dependency inventory (DORA Art. 8). Zero dependencies. Its own layer is
  * `handlers`: Main reads jars and writes the report.
  */
-lazy val auditLayer = settingKey[String]("okay-audit layer of this project: business | handlers | runtime | untracked (specs/okay-audit.md)")
-lazy val auditLayers = settingKey[Map[String, String]]("okay-audit layers by PACKAGE prefix inside this project, for a project that holds business and handlers side by side (specs/audit-ready.md stage 1): Map(\"okaywatch.trace\" -> \"business\", \"okaywatch.collect\" -> \"handlers\")")
+// `audit` reads these with `.all` in a dynamic task, which sbt's unused-key
+// lint cannot see. They remain documented build settings, not dead keys.
+lazy val auditLayer = settingKey[String]("okay-audit layer of this project: business | handlers | runtime | untracked (specs/okay-audit.md)").withRank(KeyRanks.Invisible)
+lazy val auditLayers = settingKey[Map[String, String]]("okay-audit layers by PACKAGE prefix inside this project, for a project that holds business and handlers side by side (specs/audit-ready.md stage 1): Map(\"okaywatch.trace\" -> \"business\", \"okaywatch.collect\" -> \"handlers\")").withRank(KeyRanks.Invisible)
 lazy val audit = taskKey[Unit]("okay-audit over the build: target/audit/report.{txt,json}; fails on a business project reaching past the boundary")
 ThisBuild / auditLayer := "untracked"
 ThisBuild / auditLayers := Map.empty
@@ -3787,13 +3789,14 @@ lazy val auditProjects: Seq[ProjectReference] = Seq(
 // (2026-10-05) moved four modules from business to handlers on what it found:
 // okay-codec (files, processes, TLS, SecureRandom), okay-bayes (Random, a
 // shutdown hook, threads), okay-java (Files.lines, reflect.Array) and
-// okay-data (Hlc reads the clock, Uid reads Random — backlog, okay-data)
+// okay-data now takes its clock and random source as parameters; the real
+// sources live in okay-platform, so data is a business module.
 okay.jvm / auditLayer := "runtime"
 okayAsync.jvm / auditLayer := "runtime"
 okayPlatform.jvm / auditLayer := "runtime"
 okayStream.jvm / auditLayer := "runtime"
 okayOptics.jvm / auditLayer := "business"
-okayData.jvm / auditLayer := "handlers"
+okayData.jvm / auditLayer := "business"
 okayParse.jvm / auditLayer := "business"
 okayLex.jvm / auditLayer := "business"
 okayCodec.jvm / auditLayer := "handlers"

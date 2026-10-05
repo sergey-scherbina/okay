@@ -46,7 +46,7 @@ final case class Boundary(layers: Map[String, Layer], rules: Vector[Rule] = Boun
   def prefixOf(module: String, cls: String): Option[String] =
     packages.getOrElse(module, Map.empty).keys.filter(p => cls == p || cls.startsWith(p + ".")).maxByOption(_.length)
   def layerOf(module: String, cls: String): Layer =
-    prefixOf(module, cls).flatMap(packages.get(module).flatMap(_.get)).getOrElse(layers.getOrElse(module, Layer.Untracked))
+    prefixOf(module, cls).flatMap(p => packages.get(module).flatMap(_.get(p))).getOrElse(layers.getOrElse(module, Layer.Untracked))
 
 object Boundary:
   /** the three bootstraps every compiler emits — a lambda, a string

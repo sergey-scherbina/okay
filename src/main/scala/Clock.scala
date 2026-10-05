@@ -32,14 +32,14 @@ object Clock:
   /** every reading is `millis`: a test's clock */
   def fixed(millis: Long): Handler[Clock, [A] =>> A] = at(() => millis)
 
-  /** readings `first`, `first + step`, …: a test's clock that moves */
-  def ticking(first: Long, step: Long): Handler[Clock, [A] =>> (Long, A)] = new Handler.Stepped[Clock, Long, [A] =>> (Long, A)]:
+  /** readings `first`, `first + increment`, …: a test's clock that moves */
+  def ticking(first: Long, increment: Long): Handler[Clock, [A] =>> (Long, A)] = new Handler.Stepped[Clock, Long, [A] =>> (Long, A)]:
     def run[A, F[+_]](p: A ! Clock + F)(using A <:< Any, Distinct[Clock + F], Handler.Nothing[F]): (Long, A) ! F =
       HandleFrames.stateRun[Clock, Long, A, (Long, A), F](summon[TypeableK[Clock]], (s, a) => pure((s, a)))(
-        (s, _) => (s + step, s))(first, p)
+        (s, _) => (s + increment, s))(first, p)
     def takes: TypeableK[Clock] = summon[TypeableK[Clock]]
     def init: Long = first
-    def step(s: Long, op: Any): (Long, Any) | Handler.Halt[Long] = (s + step, s)
+    def step(s: Long, op: Any): (Long, Any) | Handler.Halt[Long] = (s + increment, s)
     def ret[A, F[+_]](s: Long, a: A): (Long, A) ! F = pure((s, a))
 
   /** answer every `now` with `millis`, forwarding the effects F */
