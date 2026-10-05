@@ -46,6 +46,13 @@ class ShiftBenchmark {
   @Benchmark def shift0_seq(): Int = !.run(reset[Int, P](seq0(N)))
   @Benchmark def shift_seqDF(): Int = !.run(reset[Int, P](seqDF(N)))
   @Benchmark def cont_seq(): Int = Cont.reset(contSeq(N))
+
+  // cont-js-depth stage 4: an OPAQUE body (`shiftLeaf`, the strict `k` the macro gives a body it cannot read), N deep —
+  // past the JVM's first room: a fresh stack by default, re-execution with -Dokay.cont.replay=true
+  def strictSeq(n: Int): Cont[Int, Int, Int] =
+    if n == 0 then Cont.Pure(0)
+    else Cont.shiftLeaf[Int, Int, Int](k => k(1) + 0).flatMap(x => Cont.delay(() => strictSeq(n - 1)).map(_ + x))
+  @Benchmark def cont_strict_seq(): Int = Cont.reset(strictSeq(N))
   @Benchmark def delim_seq(): Int = !.run(Shift.reset[Int, P](p => delimSeq(p)(N)))
 
   // resource-abort-releases: an abort through a `try` frame (the piece walked for a finalizer, none found) and one

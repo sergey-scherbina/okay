@@ -142,7 +142,7 @@ platform — specs/cont-core.md, step 7.)
 |---|---|---|
 | JVM 17+ | the VM's default thread stack over a cold level (2.6 KB), halved for the caller: ~400 levels on a 2 MB thread, ~200 on 1 MB | one switch per first room on the caller's stack, then ~309 000 levels per segment: ~4 µs to hand off to a parked worker, ~0.01 µs a level after |
 | Scala Native | 16 levels, then READ: the runtime's own `ThreadInfo` gives the stack's bounds, a `stackalloc` the pointer (a few ns, no system call), and every room after the first is granted from what is really left | as the JVM's |
-| Scala.js | — no thread to switch to | **the bound**: nested bodies of the second kind are limited by the engine's stack (~10 800 frames on Node's default; `node --stack-size` raises it) |
+| Scala.js | — no thread to switch to; 64 strict levels, then RE-EXECUTION (below) | a suspension per 64 levels: the bodies it crossed run once more; a million levels in ~2.3 s |
 
 ## A body that calls `k` and answers a program: no nesting at all
 
@@ -168,7 +168,46 @@ rest of the program runs), where a strict `k` ran the rest first. A body
 that only PASSES `k` on (`perform(e).flatMap(k)`, a `foldM` step) is
 unchanged: its calls already happen later, from the loop.
 
+## A strict body on Scala.js: re-execution
+
+A body that USES its `k`'s answer and answers a plain value
+(`k => k(1) + 1`) cannot return before `k` does, so its call nests the
+host stack. The JVM and Native move to a fresh stack. Scala.js has none,
+and since cont-js-depth stage 4 (2026-10-05) it RE-EXECUTES instead.
+After 64 nested strict calls, the innermost body's `k` throws a
+suspension that unwinds the host stack to the run's driver. Every strict
+body on the way records itself: its continuation and the answers its `k`
+has already given. The driver runs the deepest `k` on the shallow stack,
+then each recorded body again, innermost first. Its `k` answers the
+recorded calls from memory and the interrupted one with the value just
+computed. Every level is re-run at most once, so a million nested
+bodies run in linear time:
+
+```scala
+    else Cont.shiftLeaf[Int, Int, Int](k => { prefix(0) += 1; k(1) + 1 }).flatMap(x => nest(n - 1, prefix).map(_ + x))
+    assertEquals(replaying(64)(Cont.reset(nest(deep, prefix))), 2 * deep)
+```
+
+**The contract:** where a suspension crosses a strict body, the part of
+the body BEFORE its pending `k` call runs again. Keep it free of side
+effects (or idempotent), as React asks of a render under Suspense, the
+same technique: throw to unwind, render again with the answer
+remembered. A body that catches `Throwable` around `k` swallows the
+suspension; `NonFatal` lets it pass. A `k` called from anywhere but its
+own body (stored and called from a lambda of the run, or after the run)
+never suspends: its run gets a driver of its own, and its depth is its
+caller's.
+
+On the JVM and Native the same mechanism runs with
+`-Dokay.cont.replay=true`; there the default stays the fresh stack. On
+Native in particular a suspension is expensive: its unwinder takes ~55 µs
+a frame (4 suspensions through 500 levels, 110 ms, measured), where a
+fresh stack costs ~4 µs.
+
 ## The knobs
+
+- `-Dokay.cont.replay=true` — re-execution instead of a fresh stack on
+  the JVM and Native (the default on Scala.js).
 
 - `-Dokay.cont.room=N` — the levels the caller's stack is asked to hold
   before the switch (default: the VM's `ThreadStackSize` over 2.6 KB,
@@ -194,8 +233,10 @@ unchanged: its calls already happen later, from the loop.
   room is halved for exactly that margin; an opaque body whose own
   frames take more than that per level can overflow before the switch.
   Lower `-Dokay.cont.room` for such a program.
-- **Scala.js**: the engine's stack, as above — for a body whose answer is
-  not a program; one whose answer is a program has no bound (above).
+- **Scala.js**: none for a strict body since re-execution (above), within
+  its contract. A run started from user code of another run (a fresh
+  `Cont.reset` inside a lambda) is bounded by that caller's depth, as on
+  every platform.
 
 ## What it costs when it does not switch
 

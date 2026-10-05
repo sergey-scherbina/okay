@@ -1,0 +1,4 @@
+2026-10-05	9c4792bb7	quiet	ShiftBenchmark.cont_seq us/op	44.574/44.829	44.675/44.995	1.00	cont-js-depth stage 4, re-execution OFF (the JVM default): a readable body (a lazy leaf), the checks only; alternating, 2 rounds
+2026-10-05	9c4792bb7	quiet	ShiftBenchmark.cont_twoShot us/op	7.295/7.289	7.353/7.383	0.99	cont-js-depth stage 4, re-execution OFF
+2026-10-05	9c4792bb7	quiet	ShiftBenchmark.cont_strict_seq us/op	39.059/38.220	38.370/38.133	1.01	cont-js-depth stage 4, re-execution OFF: 1000 nested OPAQUE bodies (shiftLeaf), the fresh-stack road
+2026-10-05	9c4792bb7	quiet	ShiftBenchmark.cont_strict_seq us/op	185.164/192.796	38.370/38.133	4.94	cont-js-depth stage 4, re-execution ON (-Dokay.cont.replay=true, room 64) against the fresh-stack ref: ~150 ns a level, every level re-run once — why the JVM keeps the fresh stack by default

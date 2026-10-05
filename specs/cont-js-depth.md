@@ -1,6 +1,6 @@
 # cont-js-depth — the machine apart, and no stack overflow in principle
 
-Status: stages 1-2 and 3a done, differential oracle landed, 2026-10-02. Owner lane: `cont-js-depth`.
+Status: stages 1-4 done (4: re-execution, 2026-10-05), differential oracle landed. Owner lane: `cont-js-depth`.
 Sprint item of the same name; follows specs/cont-stack.md and
 specs/freer-kont.md.
 
@@ -163,10 +163,32 @@ cont-fun-answer (2026-10-03, `PState.Bounce`), on every platform.
    and is bounded as before.
 
    Behaviour:
-   - [ ] a million nested strict bodies using `k`'s answer, on Scala.js, and with replay on a 128 KB JVM thread and Native
-   - [ ] a body calling `k` twice, and one calling it after an earlier `k`'s answer: answers as without suspension
-   - [ ] the prefix before `k` runs again only where a suspension crossed it (counted)
-   - [ ] a stored `k` called from a lambda of the run, and a `k` called after its run: never suspends, still right
-   - [ ] a thrown exception from a body or a continuation after a suspension: the same exception
-   - [ ] the differential oracle (TestDelimitedDifferential) green with replay on
+   - [x] a million nested strict bodies using `k`'s answer, on Scala.js, and with replay on a 128 KB JVM thread and Native
+   - [x] a body calling `k` twice, and one calling it after an earlier `k`'s answer: answers as without suspension
+   - [x] the prefix before `k` runs again only where a suspension crossed it (counted)
+   - [x] a stored `k` called from a lambda of the run, and a `k` called after its run: never suspends, still right
+   - [x] a thrown exception from a body or a continuation after a suspension: the same exception
+   - [x] ~~the differential oracle with replay on~~ NOT APPLICABLE: the oracle generates `Delimited` programs (Shift's captures, `k` as data); a strict `k` is Cont's leaf only, which the oracle never builds — TestContReplay compares against the run with the mechanism off instead
+
+   Results (TestContReplay cross, TestContReplaySmallStack JVM; red first:
+   "Maximum call stack size exceeded" at a million on Scala.js):
+   - a million nested strict bodies: Scala.js ~2.3 s; the JVM with the
+     mechanism on, 128 KB thread, no stack switched; Native at 50 000.
+   - FOUND ON THE WAY, twice: (1) a call of `k` from its own continuation
+     (re-entrant, inside a call of the same `k`) was recorded among the
+     body's answers and replayed as its first one — only the body's own
+     calls are recorded now; (2) a suspension crossing a `k` called from a
+     lambda of the run unwound that lambda, which cannot be run again —
+     such a call is a BARRIER now (`forced`; the body's own call is
+     `forcedIn`), its nested run its own driver.
+   - NATIVE: a throw unwinds at ~55 us a FRAME (4 suspensions through 500
+     levels 110 ms; room 64 and 1 024 took the same time at 100 000 levels,
+     so the cost is frames unwound, once each, not suspensions) — StackSwitch
+     stays Native's default.
+   - COST (history.d cont-replay): off, as the JVM runs by default, 1.00x
+     /0.99x/1.01x (cont_seq, cont_twoShot, cont_strict_seq); on, the JVM,
+     1 000 opaque levels: 4.94x against the fresh stack, ~150 ns a level.
+   - OPEN (backlog cont-replay-jvm-default): the operator's bar was "no
+     stack switch"; the JVM and Native still switch by default, for the
+     4.94x and the contract above.
 
