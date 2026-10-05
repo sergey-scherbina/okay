@@ -19,17 +19,27 @@ with the journal key: the journal's key is authoritative for transport.
 
 ## Behavior
 
-- [ ] Fresh WithKey calls transport the journal key and original intent
+- [x] Fresh WithKey calls transport the journal key and original intent
   is appended before the external request is performed.
-- [ ] Remote success followed by failed journal completion leaves an
+- [x] Remote success followed by failed journal completion leaves an
   incomplete intent; recovery sends the identical key and the provider
   applies one business action across both requests.
-- [ ] Completed recovery and offline replay make no provider call;
+- [x] Completed recovery and offline replay make no provider call;
   changed input is rejected before key injection or external execution.
-- [ ] Tool adapters replace pre-existing key fields on the first call,
+- [x] Tool adapters replace pre-existing key fields on the first call,
   preserve other arguments, and journal the original fingerprint.
-- [ ] Failure of intent append prevents external execution; other
+- [x] Failure of intent append prevents external execution; other
   first-attempt policies do not inject an idempotency key.
+
+## Compatibility prerequisite found by the affected gate
+
+The prior module extraction left TestDurableForeign importing agent
+through the now-neutral Python test graph, and Scala 2's TASTy reader
+rejects the exported enum type OnRepeat with addChild inapplicable.
+Before landing this fix, migrate that remaining generic consumer to the
+neutral import and use an explicit type/value alias for the enum in the
+agent facade. Verify the actual Scala 2 probe, not only its Scala 3 bridge.
+No recovery policy or wire enum value changes are intended.
 
 ## Decisions
 
@@ -48,4 +58,8 @@ regression suite, then affected master staged. No real payment API.
 
 ## Results
 
-Pending red reproduction and scoped gates.
+Red reproduction: TestWithKey failed twice on the old handler. The crash
+case recorded requests None then Some(journalKey), two provider actions,
+and receipt-2 on retry. After the fix, the four neutral scenarios pass
+on JVM and JS, and the Tool key-precedence regression passes (9 results).
+Affected staged gate pending before landing.

@@ -31,6 +31,8 @@ their journals and runtime remain separate from this operation handler.
 Tool convenience methods as source-compatible facades. Recompile clients:
 this extraction does not promise JVM binary compatibility.
 
-Behavior is preserved, including the outstanding first-attempt WithKey
-and run-scoped-key issues in the backlog. Moving modules does not resolve
-external exactly-once outcomes or establish distributed writer ownership.
+WithKey injects the journal key on the first request and every retry;
+the original request fingerprint remains unchanged. A supplied Tool key
+is replaced by the journal key. External deduplication still depends on
+the provider, and run-scoped-key isolation remains open in the backlog.
+The module does not establish distributed writer ownership.
