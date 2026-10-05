@@ -28,20 +28,20 @@ The provider's own limits and retention/deduplication behavior still apply.
 
 ## Behavior
 
-- [ ] Independent runs (including tenant-local run numbers) have different
+- [x] Independent runs (including tenant-local run numbers) have different
   external keys; an explicit run/step identity is stable across restart.
-- [ ] Colliding old fingerprints cannot merge independent requests;
+- [x] Colliding old fingerprints cannot merge independent requests;
   changed input at the same recorded position still raises Drift.
-- [ ] Both completed and incomplete legacy Entry.key values are reused
+- [x] Both completed and incomplete legacy Entry.key values are reused
   verbatim; recovery/replay spans carry that stored key, not a new key.
-- [ ] Fresh WithKey on a custom journal lacking runId fails before append
+- [x] Fresh WithKey on a custom journal lacking runId fails before append
   or external execution. Legacy incomplete recovery still works without
   a runId. Other unscoped policies retain legacy behavior.
-- [ ] MemoryJournal default identity is created once per journal;
+- [x] MemoryJournal default identity is created once per journal;
   TopicJournal derives identity from its existing run without wire changes.
-- [ ] Key constraints reject malformed/oversized/empty run identities and
+- [x] Key constraints reject malformed/oversized/empty run identities and
   negative positions; valid Unicode IDs remain distinct.
-- [ ] Existing agent/Scala2/foreign/obs APIs and first-attempt WithKey
+- [x] Existing agent/Scala2/foreign/obs APIs and first-attempt WithKey
   regressions remain valid on JVM and portable tests on JS.
 
 ## Decisions
@@ -69,4 +69,16 @@ JVM regressions passed. The first JS link exposed Scala.js UUID.randomUUID
 requiring absent java.security.SecureRandom. Use platform-local RunId.fresh:
 JVM standard UUID and JS standard Web Crypto.randomUUID, without an added
 library dependency. JS hosts without Web Crypto must supply an explicit
-run identity. Verification continues.
+run identity. CrossType.Pure's platform source directories supply those
+implementations without a build or dependency change.
+
+Final validation: 47 targeted results across JVM/JS, fixed-wire adapter,
+agent facade and the actual Scala 2 reader. The rebased lane then passed
+`affected master staged`: 2110 results, no compile warnings (111 module
+compiles) and no unnamed recursion. Generic tests demonstrate independent
+tenants/runs, old hash collisions, restart-stable identity, original stored
+keys in recovery/replay traces, missing/invalid identity rejection before
+append/call and unchanged first-attempt crash-window behavior.
+
+These checks do not establish process-crash, power-loss or multi-writer
+safety; durable-recovery-contract-tests remains the next evidence task.

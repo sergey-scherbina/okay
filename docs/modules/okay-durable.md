@@ -40,7 +40,9 @@ The module does not establish distributed writer ownership.
 ## Run identities and keys
 
 A journal's `runId` must be stable across restart and unique across the
-provider's deduplication namespace. Include tenant and workflow identity
+provider's deduplication namespace. Use one journal per ordered operation
+sequence; coordinating concurrent handlers is outside this module.
+Include tenant and workflow identity
 when local run numbers can repeat. `MemoryJournal()` creates one UUID per
 journal; `MemoryJournal(run)` accepts an explicit identity. The JS default
 requires Web Crypto.randomUUID; other JS hosts supply an explicit identity. Memory storage
