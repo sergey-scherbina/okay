@@ -221,6 +221,10 @@ all of them were right:
   `ClassLoader`, `URL#openStream`. That is the Art. 8 inventory an auditor
   asks for, from one command.
 
+The self-report is committed as `okay-audit/dogfood/report.txt` (local paths
+relativised; `maven2:` for the Coursier cache) so it can be read and linked
+without a build; `sbt audit` regenerates it.
+
 Deviation from the Interface above: `Report.json` is written by a
 twenty-line writer of its own, not okay-codec's `Json` — the module stays
 at zero dependencies so a Maven/Gradle user of the Java facade (stage 2)
