@@ -12,14 +12,21 @@ This is a resource bound, not proof of the precise cause of that report.
 scripts/build.sh jvm|js|native|all [task], task defaults to test.
 Uses scripts/gate.sh from the repository root. compile and Test/compile
 are supported as single task names. Whole gates retain the CI lock.
-Bare root sbt test is still sbt's raw aggregated task; use this entry point
-for separated builds. No source modules or dependency graph change. The shared gate is also used
+Operator steering: the root aggregate contains ONLY JVM projects, so bare
+sbt compile/test defaults to JVM. jsBuild and nativeBuild are separate
+aggregate entry projects, with no dependencies between the three roots.
+They share the module definitions and sources. Select with project jsBuild
+or project nativeBuild. Module dependency graphs remain unchanged.
+The family/affected graph explicitly includes all three roots, so splitting
+the default aggregate must not silently drop JS/Native from CI. The shared gate is also used
 from okay2, which has no family command: its bare test must remain untouched.
 GitHub's full/affected branches use the managed gate too.
 
 ## Behavior
 
-- [ ] gate test and family all [task] run JVM, JS, Native in this order,
+- [ ] Root aggregate contains JVM only; jsBuild contains JS only and
+  nativeBuild Native only, with no missing/duplicated previous members.
+- [ ] gate test defaults to JVM; family all [task] runs JVM, JS, Native in this order,
   one fresh sbt process per platform, holding the lock through all stages.
 - [ ] Short affected ref [staged] runs three fresh processes, retaining
   own/dependent stage order within each platform and no whole-build lock.
