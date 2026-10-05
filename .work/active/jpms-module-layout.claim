@@ -1,6 +1,0 @@
-feature/jpms-module-layout 2026-10-05T19:07:47Z
-agent: codex
-heartbeat: 2026-10-05T19:23:00Z
-status: in-progress
-done-so-far: committed migration spec; moved four namespaces and macro names; data 24 and optics 63 JVM tests pass; descriptor generation and typed JVM service implemented
-next: finish scoped STM/workflow gates, packaged module-path probe, JS/Native consumer compilation; land Stage C before audit-domain-classification in okay-watch
