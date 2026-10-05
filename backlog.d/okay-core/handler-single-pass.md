@@ -50,4 +50,8 @@
       non-stepped handler is a run of its own, correct but not fused),
       stage 4 is in place (the frame is the runs nested), stage 5 docs, and
       the recursion shape's 1.17x (handler-single-pass-staged).
+      STAGE 2 LANDED f5bf6b12a. What is left, each its own item:
+      handler-single-pass-staged (the recursion's 1.17x, a macro-staged
+      walk), handler-single-pass-control (stage 3: a control handler splits
+      the stack inside one node), handler-single-pass-docs (stage 5).
 
