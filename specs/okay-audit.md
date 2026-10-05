@@ -228,12 +228,14 @@ module-info discarded) okay is one automatic module and the rule holds.
 **Decision — three stages, none blocking the other:**
 
 - **A. okay-audit reads descriptors (stage 3, cheap, no packaging change).**
-  `Scan` reads `module-info.class` where present (`ModuleDescriptor.read`),
+  Implemented in `specs/jpms-boundary.md`. `Jpms` reads `module-info.class` where present (`ModuleDescriptor.read`),
   and the report says per rule whether it is *JVM-enforced* for that module
-  (descriptor present and the module not required) or *scan-only*; detects
+  (named deployment, java.base-only descriptor, absent target and no
+  add-reads override) or *scan-only*; unresolved transitive dependencies
+  stay scan-only. This is direct-linkage evidence, not a sandbox. It detects
   split packages across inputs ("not JPMS-ready: package `okay` in okay-optics
   and okay-data"); records the launcher flags (`--illegal-native-access`,
-  `--add-opens`, `--add-exports`, `--enable-native-access`) from a jvm-options
+  `--add-opens`, `--add-exports`, `--add-reads`, `--enable-native-access`) from a jvm-options
   file; and gains `Audit.runtime()` — a self-check an app calls at startup
   that writes the boot layer's modules, their requires, native-access grants
   and the input arguments into its evidence journal (okay-watch first).

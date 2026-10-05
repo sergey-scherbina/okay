@@ -1,4 +1,7 @@
-- [ ] okay-audit — STAGE 1 LANDED (2026-10-05, this lane; specs/okay-audit.md Results); stages 2–4 open: launcher-flags check, hermetic replay in okay-watch. The effect boundary checked at every build: a bytecode
+- [ ] okay-audit — stages 1/2 and JPMS Stage A implemented (2026-10-05;
+      specs/okay-audit.md, specs/audit-cli-standalone.md,
+      specs/jpms-boundary.md). Remaining: actual named-module deployment
+      (jpms-deployment), hermetic replay in okay-watch. The effect boundary checked at every build: a bytecode
       scanner (constant-pool references, JVMS §4) over each module's classes
       and classpath jars; `Business` modules may reference none of the
       default rule set (network, files, console, sql, processes, time,

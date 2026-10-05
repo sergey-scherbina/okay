@@ -83,3 +83,5 @@ descriptors, SQL readability, java.base and sun rules, launcher overrides,
 split-package deduplication, manifest options, runtime evidence and refusal.
 Stages B and C remain deployment work, not a claim that JPMS now constrains
 the existing classpath application.
+The post-rebase scoped gate passed 203 tests without warnings. Root audit
+passed and its saved report names split packages `okay` and `okay.macros`.
