@@ -13,8 +13,8 @@ inventory DORA asks for (Regulation (EU) 2022/2554, Art. 8).
   [`dogfood/report.txt`](dogfood/report.txt) — regenerate with `sbt audit`
   (`target/audit/report.{txt,json}`)
 - What is left: [`backlog.d/okay-audit/`](../backlog.d/okay-audit/okay-audit.md)
-  (CLI for Maven/Gradle, launcher-flags check, hermetic replay) and the first
-  real findings, [`backlog.d/okay-data/`](../backlog.d/okay-data/data-clock-and-random-reach.md)
+  (CLI for Maven/Gradle, launcher-flags check, hermetic replay). The first
+  real findings are resolved in [`specs/audit-ready.md`](../specs/audit-ready.md).
 
 Zero dependencies. The report says what the check chose not to count
 (compiler bootstraps, the lazy-val idiom) in its header, every run. It is
