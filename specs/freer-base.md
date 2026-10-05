@@ -989,6 +989,25 @@ What the probe did not predict, each found by the compiler:
   =>> Delim[A] | F[A]` now satisfies `R ! Delim + F` without explicit
   type arguments, which the old enum refused (shape 3 there pinned the
   refusal; it pins the acceptance now).
+  WHAT WAS TRIED INSTEAD, bare dotc 3.9.0 on a 30-line copy of the
+  base (the operator asked, 2026-09-29): an abstract alias with equal
+  bounds, `type Lift[F[+_]] >: ([S, R, X] =>> F[X]) <: (…)`, does not
+  REDUCE, so `Freer.Inject(e: F[A])` and `case Inject(e)` fail (three
+  E007); `opaque type Lift[F[+_]] = [S, R, X] =>> F[X]` is refused
+  outright ("opaque type alias cannot have multiple type parameter
+  lists"); the bare lambda fails the `tracing` shape whether the base
+  is in the same compilation run or read from TASTy. The projection is
+  not deprecated: Scala 3 dropped `T#A` only for ABSTRACT `T`, a
+  member of a class type is the form it kept, and the copy compiles
+  under `-source future -deprecation -feature` without a warning.
+  ONE MEASURED CAVEAT: the copy's `tracing` shape infers with the
+  projection only when the base comes from TASTy (definitions in one
+  run, the call in the next); in a single run dotty dealiases the
+  projection early and infers `F1 := Users + F` as the lambda does.
+  Every user of `okay.Free` reads it from TASTy — dependents and the
+  core's own tests alike — so nothing in the repository sits on the
+  wrong side; a shape like `tracing`'s written INSIDE the core's main
+  sources would, and would need its row spelt.
 - **`+R`.** `Cont.tailShift[A, S, R]` emits `Return(v): Cont[A, S, S]`
   for a body whose own typing said `S <: R`; on an invariant base that
   is not a `Cont[A, S, R]`. The base is covariant in `R` (the Variance
