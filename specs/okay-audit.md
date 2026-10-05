@@ -180,6 +180,74 @@ buyer's own additions (`com.example.legacy.`) are rules like any other.
    recorded case with no network and a read-only filesystem; byte-identical
    or the job fails.
 
+## JPMS — what the JVM's module system adds, and what it cannot (decided 2026-10-05)
+
+The question: can JDK 9+ modules enforce the boundary this spec checks by
+scanning? Partly, and the part it enforces is worth taking; the part it
+cannot is why the scanner stays.
+
+**What JPMS enforces at run time, per module, with no scanner:**
+
+| Reach | JPMS mechanism | Covers rule |
+|---|---|---|
+| `java.sql`, `javax.sql` | not readable without `requires java.sql` | databases |
+| `javax.naming`, `java.rmi`, `java.net.http`, `java.util.logging`, `java.management`, `java.scripting`, `java.desktop` | each its own module; unreadable unless required | network (part), console (logging) |
+| `sun.misc.Unsafe` | lives in `jdk.unsupported`; unreadable unless required | escape hatch |
+| `java.lang.foreign`, JNI `System.load*` | restricted methods (JEP 472): denied unless `--enable-native-access=<module>`; `--illegal-native-access=deny` turns the warning into a refusal | foreign, native |
+| deep reflection into the JDK and into other modules | strong encapsulation: fails without `--add-opens` / `opens` | reflection (part) |
+
+**What it cannot enforce, ever:** everything in `java.base` — `java.net`
+(sockets), `java.nio.file`, `java.io.File*`, `Thread`, `System.currentTimeMillis`,
+`Random`, `Class.forName`, `MethodHandles`, `ClassLoader`. Every module
+reads `java.base`. So the business rules that matter most for replay (time,
+randomness, files, sockets) are scanner-only; JPMS adds a second,
+JVM-enforced witness for the rest, and the launcher flags for native code.
+
+**What JPMS adds beyond enforcement — the inventory from the live JVM:**
+`ModuleLayer.boot().modules()` and each `ModuleDescriptor.requires()` name
+what is actually loaded, at run time, not at build. okay-watch already
+derives its shipped runtime this way (`jdeps --print-module-deps` → `jlink`,
+okay-watch specs/deploy.md): a jlinked image that carries no `java.sql`
+module cannot run SQL, whatever the jar contains. That image's module list
+is inventory evidence too.
+
+**The obstacle in okay itself: split packages.** okay's modules share the
+package `okay` (`okay.Optic` in okay-optics, `okay.Hlc` in okay-data, the
+core's `okay.*`), and JPMS forbids one package in two modules — named OR
+automatic, on the module path. So okay's modules cannot become named
+modules without one package per module, and cannot even sit on the module
+path as separate automatic modules. As ONE shaded jar (okay-watch's assembly,
+module-info discarded) okay is one automatic module and the rule holds.
+
+**Decision — three stages, none blocking the other:**
+
+- **A. okay-audit reads descriptors (stage 3, cheap, no packaging change).**
+  `Scan` reads `module-info.class` where present (`ModuleDescriptor.read`),
+  and the report says per rule whether it is *JVM-enforced* for that module
+  (descriptor present and the module not required) or *scan-only*; detects
+  split packages across inputs ("not JPMS-ready: package `okay` in okay-optics
+  and okay-data"); records the launcher flags (`--illegal-native-access`,
+  `--add-opens`, `--add-exports`, `--enable-native-access`) from a jvm-options
+  file; and gains `Audit.runtime()` — a self-check an app calls at startup
+  that writes the boot layer's modules, their requires, native-access grants
+  and the input arguments into its evidence journal (okay-watch first).
+- **B. The deployable as a named module (okay-watch).** okay as one automatic
+  module (the assembly), the app's own code (`okaywatch.*`) as a named module
+  with an explicit `requires` list, jlinked without `java.sql`/`jdk.unsupported`
+  unless a handler needs them, launched with `--illegal-native-access=deny`
+  and no `--add-opens`. The JVM then enforces the first table for the app's
+  business code; the scanner covers `java.base`. The two reports must agree.
+- **C. One package per module, `module-info` everywhere — okay2, not okay.**
+  The rename is the price and okay2 is where it is affordable; then
+  `uses`/`provides` can state handlers as services ("this module provides
+  the Db handler"), and the descriptor itself becomes the effect/handler map.
+  Spark (okay-spark) stays out: its own JPMS story is unfinished upstream
+  (the `--add-opens` list in build.sbt is Spark's, not ours).
+
+Not chosen: `SecurityManager` (removed in JDK 24); a custom
+`ModuleLayer` for business code that excludes `java.sql` etc. — real, but
+stage B gives the same with jlink and no runtime machinery of ours.
+
 ## Results
 
 Stage 1 (2026-10-05, this lane). `okay-audit`: `Scan`, `Boundary`, `Audit`,
