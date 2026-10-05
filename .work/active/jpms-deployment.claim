@@ -1,0 +1,6 @@
+feature/jpms-deployment 2026-10-05T14:17:31Z
+agent: codex
+heartbeat: 2026-10-05T14:17:31Z
+status: in-progress
+done-so-far: inspected okay-watch assembly and native runtime dependencies
+next: implement opt-in headless named-module profile in okay-watch; verify synthetic run and JVM refusals; retain okay2 Stage C
