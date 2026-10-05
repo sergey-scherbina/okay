@@ -1,0 +1,6 @@
+feature/jpms-boundary 2026-10-05T11:00:00Z
+agent: codex
+heartbeat: 2026-10-05T11:00:00Z
+status: in-progress
+done-so-far: promoted jpms-boundary into sprint doing
+next: specify stage-A report and manifest contract, then implement descriptor and launcher evidence
