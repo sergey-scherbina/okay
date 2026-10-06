@@ -118,3 +118,30 @@ type Ctl[G[_, _, +_]] = [S, R, A] =>> Control[G, S, R, A]
   decide it; the machine will.
 - "Diagonal effect types": read as operations declared at `F[T, T, A]`
   (`Unary[F]` today), which Results 3 already relies on for dispatch.
+
+## Results, continued: the arity of `G` (2026-10-06, probe `FreerDiag.scala`)
+
+The operator asked whether the three-place `G[S, R, A]` earns its place
+beyond continuations, or whether a unary `F[A]` with the monad still
+three-place would do. Measured on the model:
+
+5. A unary signature lifted to the row by an index-ignoring lambda
+   (`Diag[F] = [S, R, A] =>> F[A]`) through a node of its own,
+   `Op[F, T, A](op: F[A]) extends Freer[Diag[F], T, T, A]`, recovers
+   `T = R` from the node but LOSES the dispatch: from `Diag[F$] <: Row`
+   the compiler does not invert the lambda, `F$`'s bound is
+   `[_] =>> Any`, and `op: F$[X]` is not `Ask[X] | Say[X]`. That is
+   master's cast, seen from the other side.
+6. The DIAGONAL node over the three-place row instead —
+   `Op[G, T, A](op: G[T, T, A]) extends Freer[G, T, T, A]` — compiles
+   cast-free: the node gives `T = R`, and the pointwise bound
+   `G$[T, T, X] <: Row[T, T, X] = Ask[X] | Say[X]` gives the dispatch.
+   Unary effects stay `enum Ask[+A]`, enter by
+   `effect(op): Freer[Diag[F], T, T, A]`, and a mixed program over
+   `Diag[Ask] + Diag[Say] + PState` with the index moving `Int ->
+   String` through `PState.Put` builds beside them. 100 000 left-nested
+   maps, constant stack, as before.
+
+So the four-node form, `Return | Op (diagonal) | Perform (index-moving)
+| Bind`, is what keeps unary effects unary AND keeps the signature
+open to index-moving operations. See "The arity of G" in Decisions.
