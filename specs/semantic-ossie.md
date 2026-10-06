@@ -34,7 +34,9 @@ Bind explicit typed dimensions/measures to logical dataset.field identifiers,
 with an explicit fact dataset, source/version, grain and units per metric.
 No serialized Scala extractors or inferred currency/timezone. Compile selected
 metric dependency closures: SUM/COUNT/AVG/MIN/MAX, COUNT(DISTINCT field), arithmetic
-+ - * /, parentheses, exact numeric constants and references to named metrics.
++ - * /, parentheses, exact numeric scale factors and references to named metrics.
+Constant-only metrics and additive offsets are refused because the core has no
+constant-aggregate calculation; no synthetic data rows are invented.
 Use an iterative tokenizer/shunting-yard worklist, no stack recursion. Preserve
 unsupported dialect expressions; executing them returns named capability errors.
 ANSI_SQL and OSSIE_SQL_2026 are selectable explicitly; do not choose the first
