@@ -1,0 +1,6 @@
+feature/semantic-expressions 2026-10-06T17:42:20Z
+agent: codex
+heartbeat: 2026-10-06T17:42:20Z
+status: in-progress
+done-so-far: inspected expression and core contracts
+next: spec, portable row/group/window engine, adapters and regression gates
