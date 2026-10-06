@@ -21,7 +21,9 @@ without SQL, agents or external engines.
   language normalizers are selected explicitly, never arbitrary source SQL.
 - Plans consume collections, Source/chunks, Bulk/Tables and decoded JSON through
   the same evaluator. SQL/Arrow callers supply decoded typed rows through these
-  interfaces; no source expression or source declaration is sent to a database.
+  interfaces. ArrowData adds overloads for expression plans; ExpressionSql reads
+  explicitly bound identifier-only projections through a typed decoder. No source
+  expression or source declaration is sent to a database.
 
 ## Behavior
 - [ ] Constants, offsets and both orders of arithmetic execute, including /3,
