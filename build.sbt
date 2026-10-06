@@ -2938,6 +2938,10 @@ lazy val okayFreer = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     name := "okay-freer",
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
   )
+  .jvmConfigure(_.enablePlugins(JmhPlugin))
+  .jvmSettings(
+    Jmh / sourceDirectory := baseDirectory.value.getParentFile / "src" / "jmh",
+  )
 
 /**
  * okay-test (specs/okay-diagnose.md, "okay-test"): what only tests need,
