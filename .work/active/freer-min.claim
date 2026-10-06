@@ -1,6 +1,6 @@
 feature/freer-min 2026-10-06T03:38:40Z
 agent: claude-code
-heartbeat: 2026-10-06T06:48:23Z
+heartbeat: 2026-10-06T06:59:27Z
 status: in-progress
-done-so-far: stage 7: prompts out of the kernel (nearest delimiter = head of the stack index), ternary effects only, 7 nodes, 0 casts; 20 green JVM, JS+Native compile
-next: operator's call on Inject vs ternary-only; JMH vs master
+done-so-far: stage 8: unary effects + Inject restored (8 nodes), no prompts, stack index Σ; 20 green JVM, JS+Native compile
+next: operator's call on dropping Σ (means prompt identity back, stage-3 shape); JMH vs master
