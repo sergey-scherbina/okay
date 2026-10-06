@@ -1,6 +1,6 @@
 feature/build-platform-processes 2026-10-05T20:15:45Z
 agent: codex
-heartbeat: 2026-10-05T20:25:53Z
+heartbeat: 2026-10-06T03:12:13Z
 status: in-progress
 scope: build.sbt, project/Affected.scala, scripts/gate.sh and platform build fixtures/docs
-next: JVM-default aggregate roots and platform inventory verification
+next: resolved inventory passed (125 JVM, 56 JS, 35 Native); final scoped probes then land
