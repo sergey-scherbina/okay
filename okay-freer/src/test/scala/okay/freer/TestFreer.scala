@@ -70,8 +70,7 @@ class TestFreer extends okay.testkit.Munit.Diagnosed:
     assert(typed.isInstanceOf[Bind[?, ?, ?, ?, ?, ?]])
 
   test("a delimiter is a node of the tree, in a row with the effects"):
-    val p = Prompt[Fx, Int]("p")
-    val c: Top[Fx, Int] = reset(p)(one).flatMap(y => inject(Ask.Number).map(_ + y))
+    val c: Top[Fx, Int] = reset[Fx, Int](one).flatMap(y => inject(Ask.Number).map(_ + y))
     assertEquals(run(c, 1, StringBuilder()), 3)
 
   test("delay and defer: a million mutual tail calls in constant stack, through the one loop"):

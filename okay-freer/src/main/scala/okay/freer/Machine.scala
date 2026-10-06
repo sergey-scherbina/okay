@@ -122,7 +122,7 @@ object Machine:
     m match
       case Stack.Run(out, rest) => cut(Piece.Over(piece, out), rest, p, sub)
       case d @ Stack.Delim(_: p.type, _, _, _, _) => found(d)(piece)
-      case Stack.Delim(q, _, _, _, _) => throw NotNearest(p.label, q.label)
+      case Stack.Delim(_, _, _, _, _) => throw NotNearest()
       case Stack.Done() => Cut.Gone(link(piece, Stack.Done[F, A, Tp, T](), sub), summon)
 
   private def found[F[+_], H[+_], G0[+_], Sp, S, R, B0, S20, U, S0, R0, Z](d: Stack.Delim[F, H, G0, Sp, S, R, B0, S20, U, S0, R0, Z])

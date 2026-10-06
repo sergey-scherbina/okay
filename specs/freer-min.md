@@ -853,3 +853,16 @@ answer types and rows are independent indices, Freer is covariant in the row, so
 shift's, never known equal to it. The one way without a name is an invariant row, which costs `pure` fitting
 anywhere and rows built by `flatMap`. So the prompt stays, as the NAME OF THE ROW; `NotNearest` is its one runtime
 failure, a missing-handler kind of error, and a shift whose body does not export `k` would not need it.
+
+## Stage 12: the prompt is the reset's context (2026-10-06)
+
+The operator's call: a shift inherits its delimiter from the reset it is written in, through a context function.
+`reset[H, S](body: Prompt[H, S] ?=> Freer[H, S, R, S])` makes the prompt and gives it to its body as the given;
+`shift[X](using Prompt[H, S])(k => …)` takes it from the context. Nested resets resolve to the inner given
+(`reset[Pure, Int](reset[Pure, Int](shift[Int](k => k(1)).map(_ + 10)).map(_ * 2))` is 22), so the shift's delimiter
+is the nearest by construction, and a capture to the outer one is written only by naming the outer given
+(`reset[Pure, Int]: p ?=> reset[Pure, Int](shift[Int](using p)(…))`), the one way to reach `NotNearest`. A fragment
+with a shift declares its delimiter: `def loop(n: Int)(using Prompt[Pure, Int])`. `Prompt` has no label and no
+user constructor in the sugar; the row `H` and the answer `S` are written on the reset, Danvy–Filinski's annotation
+of the delimiter — a type in a context function's parameter is fixed before its body is typed, so `reset[H, S]` is
+a two-stage call like `shift[X]`. `PState`: `State[H, W](using Prompt[H, ?])`, `reset[H, St[H, S1, W]](body(State()) …)`.

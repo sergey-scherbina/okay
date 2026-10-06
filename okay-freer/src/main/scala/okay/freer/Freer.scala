@@ -11,9 +11,10 @@ infix type +[G[+_], H[+_]] = [A] =>> G[A] | H[A]
  * body delivers. `S` is for inference alone: an expected type does not reach a method's receiver, so a shift cannot
  * learn the answer at its hole from its context. The machine does not tie the delimiter to it: after a shift, the
  * delimiter is put back at the shift body's own answer — Gunter, Rémy and Riecke's prompt pins that, and loses
- * answer-type modification; this one does not */
-final class Prompt[H[+_], S](val label: String):
-  override def toString: String = label
+ * answer-type modification; this one does not. NOT A VALUE OF THE USER'S: `reset` makes it and gives it to its
+ * body as the context, `shift` takes it from the context — so a shift's delimiter is the reset it is written in,
+ * the nearest, and a capture to another's is not a thing one writes */
+final class Prompt[H[+_], S]
 
 /**
  * THE MINIMAL BASIS (specs/freer-min.md): the freer monad with Danvy–Filinski's shift and reset as nodes of the
@@ -56,15 +57,22 @@ def inject[F[+_], T, A](op: F[A]): Freer[F, T, T, A] = Freer.Inject(op)
 def delay[G[+_], S, R, A](t: => Freer[G, S, R, A]): Freer[G, S, R, A] = Freer.Delay(() => t)
 def defer[G[+_], S, T, R, A, B](t: => Freer[G, T, R, A])(f: A => Freer[G, S, T, B]): Freer[G, S, R, B] =
   Freer.Bind(Freer.Delay(() => t), f)
-/** `reset_p body`: the body is written at the prompt's answer `S` */
-def reset[H[+_], S, R, U](p: Prompt[H, S])(body: Freer[H, S, R, S]): Freer[H, U, U, R] = Freer.Reset(p, body)
-/** `shift[X](p)(k => …)` written in `p`'s body: the hole `X` is the one thing nothing else says. A shift written in
- * a shift's body is the node `Shift`, its `T` named */
+/** `reset[H, S](body)`: the body is written at the row `H` and the answer `S`, Danvy–Filinski's annotation of the
+ * delimiter (a type in a context function's parameter is fixed before its body is typed, so both are named), and
+ * has the delimiter as its context */
+def reset[H[+_], S]: ResetAt[H, S] = ResetAt[H, S]()
+final class ResetAt[H[+_], S]:
+  def apply[R, U](body: Prompt[H, S] ?=> Freer[H, S, R, S]): Freer[H, U, U, R] =
+    val p = Prompt[H, S]()
+    Freer.Reset(p, body(using p))
+/** `shift[X](k => …)` written in a reset's body: the hole `X` is the one thing nothing else says; the delimiter is
+ * the context's. A shift written in a shift's body is the node `Shift`, its `T` named */
 def shift[X]: ShiftAt[X] = ShiftAt[X]()
 final class ShiftAt[X]:
-  def apply[H[+_], S, R, V](p: Prompt[H, S])(f: ([U] => X => Freer[H, U, U, S]) => Freer[H, V, R, V]): Freer[H, S, R, X] =
+  def apply[H[+_], S, R, V](using p: Prompt[H, S])(f: ([U] => X => Freer[H, U, U, S]) => Freer[H, V, R, V]): Freer[H, S, R, X] =
     Freer.Shift[H, S, S, R, X, V](p, f)
 
-/** a capture whose nearest delimiter is another prompt's: not in the basis (see `Freer`) */
-final class NotNearest(val wanted: String, val found: String)
-  extends RuntimeException(s"the capture to '$wanted' met the delimiter of '$found' first; a capture across a delimiter is not in the basis")
+/** a capture whose nearest delimiter is another prompt's: not in the basis (see `Freer`), and not written with
+ * `reset`/`shift`, whose delimiter is the context's; only a `Prompt` passed by hand reaches here */
+final class NotNearest
+  extends RuntimeException("the capture met another delimiter first; a capture across a delimiter is not in the basis")

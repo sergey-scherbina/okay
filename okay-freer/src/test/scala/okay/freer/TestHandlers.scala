@@ -34,14 +34,13 @@ class TestHandlers extends okay.testkit.Munit.Diagnosed:
       case Return(a) => a
       case other => fail(s"not a value: $other")
 
-  val p = Prompt[Pure, Int]("p")
 
   test("a handler inside a delimiter; a capture crosses it and is resumed twice, each time with the handler's count"):
-    val prog: Freer[Pure, Int, Int, Int] = reset(p)(
+    val prog: Freer[Pure, Int, Int, Int] = reset[Pure, Int](
       counting(0)(
         for
           a <- inject(Counter.Next)
-          x <- shift[Int](p)(k => k(1).flatMap(y => k(y)))
+          x <- shift[Int](k => k(1).flatMap(y => k(y)))
           b <- inject(Counter.Next)
         yield a + b + x))
     // first resumption: a = 0 captured, x = 1, b = 1 → 2; second, k(2): a = 0, x = 2, b = 1 → 3

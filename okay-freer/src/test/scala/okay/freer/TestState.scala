@@ -8,8 +8,8 @@ class TestState extends okay.testkit.Munit.Diagnosed:
   /** the answer of a stateful program: given the state, the rest of the run; `W` the run's value */
   type St[H[+_], S, W] = S => Freer[H, W, W, W]
 
-  /** the operations at one delimiter; `W` the run's value. The prompt's answer is the run's business, not the operations' */
-  final class State[H[+_], W](p: Prompt[H, ?]):
+  /** the operations at the run's delimiter, its context; `W` the run's value */
+  final class State[H[+_], W](using p: Prompt[H, ?]):
     /** read the state, its type `S` unchanged: `shift(k => s => k(s)(s))` */
     def get[S]: Freer[H, St[H, S, W], St[H, S, W], S] =
       Freer.Shift(p, (k: [U] => S => Freer[H, U, U, St[H, S, W]]) => pure((s: S) => k(s).flatMap(f => f(s))))
@@ -21,8 +21,7 @@ class TestState extends okay.testkit.Munit.Diagnosed:
 
   /** run from an initial state `S0`; the state ends at `S1`; the delimiter's answer is the function, applied once outside */
   def runState[H[+_], S0, S1, W](s0: S0)(body: State[H, W] => Freer[H, St[H, S1, W], St[H, S0, W], W]): Freer[H, W, W, W] =
-    val p = Prompt[H, St[H, S1, W]]("state")
-    reset(p)(body(State(p)).map(a => (_: S1) => pure(a))).flatMap(f => f(s0))
+    reset[H, St[H, S1, W]](body(State()).map(a => (_: S1) => pure(a))).flatMap(f => f(s0))
 
   def value[U, A](p: Freer[Pure, U, U, A]): A =
     val head: Freer[Pure, U, U, A] = Machine.run(p)
