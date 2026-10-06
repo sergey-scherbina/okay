@@ -70,13 +70,15 @@ def reset[H[_, _, +_], Σ <: Tuple, S, Y, L <: String & Singleton](p: Prompt[L, 
   Freer.Reset(p, body(using In()))
 
 /** `shift0[X](p)(k => …)` at the prompt's answer index: `Σ` from the stack in force, the stack under `p` computed,
- * the witness searched last. No delimiter of `p` in force: no witness, a compile error */
+ * the witness searched last. No delimiter of `p` in force: no witness, a compile error. The body is WRITTEN inside
+ * the delimiters but RUNS outside `p`'s, so it sees the stack under `p`, not the one it is written in */
 def shift0[X]: Shift0At[X] = Shift0At[X]()
 final class Shift0At[X]:
   def apply[H[_, _, +_], Σ <: Tuple, S, Y, L <: String & Singleton](p: Prompt[L, H, S, Y])(using In[Σ])
-           (f: (X => Freer[H, Under[Σ, At[L, Freer[H, EmptyTuple, S, S, Y]]], S, S, Y]) => Freer[H, Under[Σ, At[L, Freer[H, EmptyTuple, S, S, Y]]], S, S, Y])
+           (f: In[Under[Σ, At[L, Freer[H, EmptyTuple, S, S, Y]]]] ?=>
+                 (X => Freer[H, Under[Σ, At[L, Freer[H, EmptyTuple, S, S, Y]]], S, S, Y]) => Freer[H, Under[Σ, At[L, Freer[H, EmptyTuple, S, S, Y]]], S, S, Y])
            (using has: Has[Σ, At[L, Freer[H, EmptyTuple, S, S, Y]], Under[Σ, At[L, Freer[H, EmptyTuple, S, S, Y]]]]): Freer[H, Σ, S, S, X] =
-    Freer.Shift0[H, Σ, Under[Σ, At[L, Freer[H, EmptyTuple, S, S, Y]]], S, S, S, X, Y, L](p, has, f)
+    Freer.Shift0[H, Σ, Under[Σ, At[L, Freer[H, EmptyTuple, S, S, Y]]], S, S, S, X, Y, L](p, has, f(using In()))
 
 /** `ret $_p body`, derived: typed as `Bind(body, ret)` is, the delimiter between the two */
 def dollar[H[_, _, +_], Σ <: Tuple, S, T, R, X, Y, L <: String & Singleton](p: Prompt[L, H, S, Y])(using In[Σ])(ret: X => Freer[H, Σ, S, T, Y])

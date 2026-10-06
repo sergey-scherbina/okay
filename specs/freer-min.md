@@ -619,3 +619,33 @@ Decided on the way, each by a failure:
 - [x] the same prompt twice: the innermost delimiter (Head before Tail)
 - [x] `dollar` 7, escaped `k` is a program of the outside, 100 000
       captures in constant stack, a head form idempotent under `run`
+
+## Stage 6 — are prompts needed at all? (probe `five/Nearest.scala`, 2026-10-06)
+
+The operator's question. Measured: the crossing capture of the nested
+test — `reset_p (reset_q (shift0_p (k => k(1) >>= k) + 10) * 2)`, 64 —
+is reproduced WITHOUT naming `p` from inside `q`, by two captures to the
+NEAREST delimiter: `shift0_q (k1 => shift0_p (k2 => f(x => dollar_p (k2)
+(k1(x)))))`. The inner continuation runs again under a fresh delimiter of
+`p` whose `ret` is the outer continuation, which is exactly what the
+machine's `Under` piece builds (λ$'s `$` rule: `k` carries `ret`); both
+answer 64. This is Materzok–Biernacki's result that `shift0` expresses
+the hierarchy, in the kernel's own terms.
+
+So a named prompt is not a KERNEL concept. With the delimiter stack in
+the index, the nearest delimiter's row, answer index and value are the
+HEAD of the index, and a capture to it is typed with no name:
+`Shift0[H, O, S, T, R, X, Y](f) extends Freer[H, Entry[H, S, Y] *: O, T,
+R, X]`. Capturing across inner delimiters is a derived combinator over
+`shift0` and `dollar`, typed by the index (each step's types are the
+head). What the kernel would lose: `Prompt` and its labels, `Has` and
+its givens, `Under`, `Piece.Under`, `cut`'s `tail`/`crossed` and their
+inventoried mutual recursion, the `At` label. What stays: `Reset(body)`,
+`Shift0(f)`, `Resume`, the `In` given (an expected type still does not
+reach a receiver). Not done; the operator's call.
+
+Found by the probe, FIXED in the module (gate green, 22): a `shift0`
+body is WRITTEN inside the delimiters but RUNS outside its prompt's, so
+the sugar must give it the stack under the prompt (`In[Under[Σ, …]]
+?=>`), not the stack it is written in — with the stack it was written
+in, a `dollar` inside the body typed at the wrong level.
