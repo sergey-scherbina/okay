@@ -1175,3 +1175,28 @@ Kernel 308 lines, six nodes, 30 tests on the JVM, JS and Native compile.
   are. The general clause keeps its capture, and its price.
 
 30 tests on the JVM, JS and Native compile, no cast, no warning.
+
+## Stage 23: the capture path trimmed; STATE answering in place (DONE, 2026-10-06)
+
+The operator: do it. Of the three named, two; the third stated for what it is.
+
+- ONE CAPTURE THROUGH THE DELIMITERS BETWEEN — not in this machine's types. The level constants (`H`, `Hf`, `D` of
+  each level) are preserved by every frame by construction, but `Frames[G, A, B, I, O]` does not say so, and at the
+  second delimiter crossed the one found is not tied to the node's claim; the proof needs either a cast or a
+  machine whose frames carry the head apart (stage 16's shape, at every frame). The forwarding by one capture a
+  level is what the types support; a general clause through `n` delimiters pays `n` captures. Not done.
+- THE CAPTURE PATH, one allocation less: `Frames` IS a piece (`Piece` a sealed trait, `Frames` extends it, `Over` a
+  case class over the next segment) — no `Hole` wrapper. `link` matches the enum's cases by product pattern (a typed
+  pattern on `Frames[G, A0, A, I, O]` is unchecked at run time, E092). Measured: `handlePrebuilt`, general clauses,
+  309.5 ± 3 µs against 338.1 — 8.5 %, 2.3× master now. `Step` stays: it is the typed pair of existentials a walk
+  answers with, and a scratch cell could not re-pair them without a cast.
+- STATE ANSWERING IN PLACE: `State[S, +A]` (`Get`, `Put`), `StateCell` an `Answering` handler with the state in a
+  cell of its own, one per `handle`; `state(s0)(body)` answers the last state with the value. `get`/`put` are
+  answered where performed, no capture. A resumption shares the cell: a body resumed twice sees ONE state, the
+  second resumption the first's last — tested, `(2, List(0, 1))` under `every` — not a replay; the replay is the
+  answer type's (`PState`, TestState). Measured, 1 000 × get, put: 22.1 ± 0.4 µs against master's `stateEffect`
+  18.4 ± 0.3 (1.2×) and the state-passing answer's 46.1 (2.1× faster than it).
+- A name clash to know: `org.openjdk.jmh.annotations.*` has a `State`; in a benchmark `okay.cont.State` is imported
+  under another name.
+
+32 tests on the JVM, JS and Native compile, no cast, no warning.

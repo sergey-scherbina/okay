@@ -11,11 +11,17 @@ object Widen:
   def sub[H[+A] <: G[A], G[+_]]: Widen[H, G] = new Widen[H, G]:
     def apply[I <: Tuple, O <: Tuple, A](p: Cont[H, I, O, A]): Cont[G, I, O, A] = p
 
+/** a captured piece: the segments from the hole up to the delimiter, it not included, composed as one segment — a
+ * segment is one (`Frames`), and `Over` is one over the next */
+sealed trait Piece[G[+_], -A0, B, I <: Tuple, O <: Tuple]
 /** a segment over the row `G`: `A => Cont[G, I, O, B]` as data, composed as `Bind` composes; contravariant in what
  * it consumes */
-enum Frames[G[+_], -A, B, I <: Tuple, O <: Tuple]:
+enum Frames[G[+_], -A, B, I <: Tuple, O <: Tuple] extends Piece[G, A, B, I, O]:
   case End[G[+_], A, Σ <: Tuple]() extends Frames[G, A, A, Σ, Σ]
   case Frame[G[+_], A, X, B, I <: Tuple, T <: Tuple, O <: Tuple](f: A => Cont[G, T, O, X], rest: Frames[G, X, B, I, T]) extends Frames[G, A, B, I, O]
+/** a piece over the next segment: the hole's segments end in `X` at `T`, the segment takes `X` to `B` */
+final case class Over[G[+_], A0, X, B, I <: Tuple, T <: Tuple, O <: Tuple](prev: Piece[G, A0, X, T, O], out: Frames[G, X, B, I, T])
+  extends Piece[G, A0, B, I, O]
 
 /**
  * THE STACK: closes a level over `G` — value `B`, from `I` to `O` — into the run's result over `F`, from `I0` to
@@ -30,11 +36,6 @@ enum Stack[F[+_], G[+_], B, I <: Tuple, O <: Tuple, I0 <: Tuple, O0 <: Tuple, Z]
   case Delim[F[+_], H[+_], Hf[+_], G[+_], D <: Tuple, O <: Tuple, S, R, B, I2 <: Tuple, I0 <: Tuple, O0 <: Tuple, Z](
       up: Widen[Hf, G], out: Frames[G, R, B, I2, D], rest: Stack[F, G, B, I2, O, I0, O0, Z])
     extends Stack[F, H, S, At[H, Hf, D, S] *: D, At[H, Hf, D, R] *: O, I0, O0, Z]
-
-/** a captured piece: the segments from the hole up to the delimiter, it not included, composed as one segment */
-enum Piece[G[+_], A0, B, I <: Tuple, O <: Tuple]:
-  case Hole[G[+_], A0, B, I <: Tuple, O <: Tuple](k: Frames[G, A0, B, I, O]) extends Piece[G, A0, B, I, O]
-  case Over[G[+_], A0, X, B, I <: Tuple, T <: Tuple, O <: Tuple](prev: Piece[G, A0, X, T, O], out: Frames[G, X, B, I, T]) extends Piece[G, A0, B, I, O]
 
 /** a captured continuation: the piece from the hole, `X` at the answer `T` with the stacks `I` outside, to its
  * delimiter's level, value-and-answer `S`, the stacks `D` outside; put back under a delimiter of its own, it
@@ -94,7 +95,7 @@ object Machine:
       case Delay(t) => go(t(), k, m)
       // the three that move a level answer with the machine's next state, each where its node's types are names
       case r: Reset[?, hf, ?, ?, ?, ?] => val n = enter(r, Widen.sub[hf, G], k, m); go(n.c, n.k, n.m)
-      case s: Shift0[h, hf, d, i, o, t, r, x] => val n = cut[F, G, x, t, B, I, r, o, I0, O0, Z, h, hf, d, i](s, s.f, Piece.Hole(k), m); go(n.c, n.k, n.m)
+      case s: Shift0[h, hf, d, i, o, t, r, x] => val n = cut[F, G, x, t, B, I, r, o, I0, O0, Z, h, hf, d, i](s, s.f, k, m); go(n.c, n.k, n.m)
       case r: Resume[hf, ?, ?, ?, ?] => val n = resume(r, Widen.sub[hf, G], k, m); go(n.c, n.k, n.m)
 
   /** into the delimiter: its level pushed, the body at its start */
@@ -116,8 +117,8 @@ object Machine:
       c: Cont[G, At[H, Hf, D, T] *: Ik, At[H, Hf, D, R] *: O, X], f: (X => Cont[Hf, D, Ik, T]) => Cont[Hf, D, O, R],
       piece: Piece[G, X, A, I, At[H, Hf, D, T] *: Ik], m: Stack[F, G, A, I, At[H, Hf, D, R] *: O, I0, O0, Z]): Step[F, I0, O0, Z] =
     m match
-      case Stack.Run(out, rest) => cut(c, f, Piece.Over(piece, out), rest)
-      case d @ Stack.Delim(_, _, _) => found(d)(piece, f)
+      case Stack.Run(out, rest) => cut(c, f, Over(piece, out), rest)
+      case d @ Stack.Delim(_, _, _) => found(d)[X, T, Ik](piece, f)
       case Stack.Done() =>
         val n = link(piece, Stack.Done[F, A, I, At[H, Hf, D, T] *: Ik]())
         step(Bind(c, n), Frames.End(), Stack.Done())
@@ -131,8 +132,9 @@ object Machine:
   @tailrec private[cont] def link[F[+_], G[+_], A0, A, I <: Tuple, O <: Tuple, I0 <: Tuple, O0 <: Tuple, Z](
       piece: Piece[G, A0, A, I, O], m: Stack[F, G, A, I, O, I0, O0, Z]): Resumption[F, A0, I0, O0, Z] =
     piece match
-      case Piece.Hole(k0) => resumption(k0, m)
-      case Piece.Over(prev, out) => link(prev, Stack.Run(out, m))
+      case Over(prev, out) => link(prev, Stack.Run(out, m))
+      case e @ Frames.End() => resumption(e, m)
+      case f @ Frames.Frame(_, _) => resumption(f, m)
 
   private def resumption[F[+_], G0[+_], A0, B0, I1 <: Tuple, T1 <: Tuple, I0 <: Tuple, O0 <: Tuple, Z](
       k0: Frames[G0, A0, B0, I1, T1], m0: Stack[F, G0, B0, I1, T1, I0, O0, Z]): Resumption[F, A0, I0, O0, Z] =

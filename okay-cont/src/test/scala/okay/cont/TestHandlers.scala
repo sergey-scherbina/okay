@@ -40,3 +40,23 @@ class TestHandlers extends okay.testkit.Munit.Diagnosed:
       .map(_.sum)
     // k2(1): the handler's body with x = 1, every world: [11, 21], the reset sums, 32; k2(2): [12, 22], 34; 66
     assertEquals(value(prog), 66)
+
+  test("state answering in place: get and put from the handler's cell, no capture; the last state with the value"):
+    val prog: Top[Pure, (Int, String)] = state[Int, Pure, String](1):
+      for
+        a <- perform(State.Get[Int]())
+        _ <- perform(State.Put(a + 41))
+        b <- perform(State.Get[Int]())
+      yield b.toString
+    assertEquals(value(prog), (42, "42"))
+
+  test("state answering in place under a multi-shot handler: ONE cell, the second resumption sees the first's last state"):
+    val prog: Top[Pure, (Int, List[Int])] = state[Int, Pure, List[Int]](0):
+      handle(every[[X] =>> State[Int, X] | Pure[X], Int]):
+        for
+          _ <- perform(Choose.Flip)
+          n <- perform(State.Get[Int]())
+          _ <- perform(State.Put(n + 1))
+        yield n
+    // true: get 0, put 1; false (resumed from the same flip): get 1, put 2 — no replay of the state
+    assertEquals(value(prog), (2, List(0, 1)))

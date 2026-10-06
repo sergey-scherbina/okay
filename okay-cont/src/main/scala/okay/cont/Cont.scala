@@ -173,6 +173,24 @@ sealed trait PerformLow:
       (using o: Perform[E, H2, Oc]): Perform[E, H, C] with
     def apply[X](op: E[X], c: C): Cont[H, c.Here, c.Here, X] =
       Cont.Shift0[H, Hf, c.D, c.D, c.D, S, S, X](k => o(op, c.outer).flatMap(x => k(x)))
+/** STATE, answering in place: the state in a cell of the handler, one per `handle`, so `get` and `put` are answered
+ * where they are performed, no capture. A resumption shares the cell: a body resumed twice sees ONE state, the
+ * second resumption the first's last — not a replay. The replay is the answer type's (TestState, `PState`) */
+enum State[S, +A]:
+  case Get[S]() extends State[S, S]
+  case Put[S](s: S) extends State[S, Unit]
+final class StateCell[S, G[+_], A](var state: S) extends Answering[[X] =>> State[S, X], G, A, (S, A)]:
+  def ret(a: A): (S, A) = (state, a)
+  def value[X](op: State[S, X]): X = op match
+    case State.Get() => state
+    case State.Put(s) => state = s
+/** `state(s0)(body)`: the body with `get`/`put` answered from a cell starting at `s0`; the last state and the value */
+def state[S, G[+_], A](s0: S)(using o: Ctx)
+         (body: Answers[[X] =>> State[S, X], [X] =>> State[S, X] | G[X], G, (S, A), o.type] ?=>
+                Cont[[X] =>> State[S, X] | G[X], At[[X] =>> State[S, X] | G[X], G, o.Here, (S, A)] *: o.Here, At[[X] =>> State[S, X] | G[X], G, o.Here, (S, A)] *: o.Here, A])
+  : Cont[G, o.Here, o.Here, (S, A)] =
+  handle[[X] =>> State[S, X], G, A, (S, A)](StateCell[S, G, A](s0))(body)
+
 /** the value of `E` answered in place in the context `C`: its handler answers, or a context outside does */
 trait Answered[E[+_], C <: Ctx]:
   def apply[X](op: E[X], c: C): X

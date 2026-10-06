@@ -3,6 +3,7 @@ package okay.cont
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 import Cont.*
+import okay.cont.State as SE
 
 /** an operation carrying its own answer, as master's `Ask` (HandlerBenchmark) */
 enum Ask[+A]:
@@ -125,6 +126,18 @@ class ContBenchmark {
       (1 to M).foldLeft(st.put[Long](0L)): (m, _) =>
         m.flatMap(_ => st.get[Long].flatMap(s => st.put[Long](s + 1)))
       .flatMap(_ => st.get[Long]))
+
+  /** M times get then put, answered from the cell (master: `stateEffect`, the handler) */
+  @Benchmark
+  def stateAnswering(): Long =
+    def body(using c: In[[X] =>> SE[Long, X] | Pure[X], Pure, (Long, Long), ?], p: Perform[[X] =>> SE[Long, X], [X] =>> SE[Long, X] | Pure[X], c.type]): c.Body[Long] =
+      var m: c.Body[Unit] = perform(SE.Put(0L))
+      var i = 0
+      while i < M do
+        m = m.flatMap(_ => perform(SE.Get[Long]()).flatMap(s => perform(SE.Put(s + 1))))
+        i += 1
+      m.flatMap(_ => perform(SE.Get[Long]()))
+    value(state[Long, Pure, Long](0L)(body))._1
 
   @Param(Array("1", "16", "256"))
   var depth: Int = 0
