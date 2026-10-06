@@ -4,8 +4,8 @@ package okay
  * THE CONTROL INTERFACE, common to every monad of delimited continuations: Danvy–Filinski's `shift` and `/`
  * (`reset` is `/ identity`) over a parameterised monad `M[A, S, R]`, `(A => S) => R`. The instances: `Cont`
  * (okay-freer: the freer tree read as continuations, data, stack-safe), `Func` (closures, the reference, not
- * stack-safe), and what a machine of its own brings (okay-cont). The interface is the core's; the data instance is
- * the module's, and the core says how it is a `Control` here, beside the closures'.
+ * stack-safe), and the machine's `Carrier` (okay-cont). The interface and every instance are the core's: the two
+ * modules know nothing of each other, nor of this.
  */
 trait Control[M[_, _, _]] extends ParaMonad[M]:
   def shift[A, S, R](f: (A => S) => R): M[A, S, R]
@@ -43,3 +43,15 @@ given Control[Func] with
       k => m(f(_)(k))
     // composed directly, no `pure` per element
     override inline def map[B](f: A => B): Func[B, S, R] = k => m(x => k(f(x)))
+
+/** THE MACHINE (okay-cont) as a Control: `shift` is `Shift0` at the top level, `/` the delimiter around a `Bind`, `flatMap` a `Bind`. The `k` a body
+ * is given is STRICT — a run of its own, on the host stack (as `Func`'s is; the machine's own `k` is a
+ * program, `okay.cont.shift0`) */
+given Control[cont.Carrier] with
+  def pure[A, R](a: A): cont.Carrier[A, R, R] = cont.Cont.Return(a)
+  def shift[A, S, R](f: (A => S) => R): cont.Carrier[A, S, R] =
+    cont.Cont.Shift0[EmptyTuple, EmptyTuple, EmptyTuple, S, R, A](k => cont.Cont.Return(f(a => cont.Machine.value(k(a)))))
+  extension [A, S, R](m: cont.Carrier[A, S, R])
+    infix def /(k: A => S): R = cont.Machine.value(cont.Cont.Reset[EmptyTuple, EmptyTuple, S, R](cont.Cont.Bind(m, (a: A) => cont.Cont.Return(k(a)))))
+    def flatMap[B, S2](f: A => cont.Carrier[B, S2, S]): cont.Carrier[B, S2, R] = cont.Cont.Bind(m, f)
+    override def map[B](f: A => B): cont.Carrier[B, S, R] = cont.Cont.Bind(m, (a: A) => cont.Cont.Return(f(a)))

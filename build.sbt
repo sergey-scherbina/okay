@@ -437,7 +437,7 @@ lazy val okayFreer = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 lazy val okay = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("."))
-  .dependsOn(okayFreer)
+  .dependsOn(okayFreer, okayCont)
   .settings(
     name := "okay",
   )
@@ -2301,9 +2301,11 @@ _root_.okay.deploy.sbt.OkayModules.settings(
     "okay-ops renders what it is handed; okay-docs brings two database drivers (ops-docs-edge)"),
   _root_.okay.deploy.sbt.OkayModules.forbid("okayFreer(JVM|JS|Native)", ".*",
     "the freer monad is dependency-free (specs/modules-infra.md)"),
-  _root_.okay.deploy.sbt.OkayModules.forbid("okay(JVM|JS|Native)", "(?!okayFreer(JVM|JS|Native)$).*",
-    "the core depends on the freer monad only, no library (specs/modules-infra.md)"),
-  _root_.okay.deploy.sbt.OkayModules.forbid("okayKernel(JVM|JS|Native)", "(?!okay(Freer)?(JVM|JS|Native)$).*",
+  _root_.okay.deploy.sbt.OkayModules.forbid("okayCont(JVM|JS|Native)", ".*",
+    "the continuation machine is dependency-free: it and the freer monad know nothing of each other (specs/modules-infra.md)"),
+  _root_.okay.deploy.sbt.OkayModules.forbid("okay(JVM|JS|Native)", "(?!okay(Freer|Cont)(JVM|JS|Native)$).*",
+    "the core depends on the two monads only, no library (specs/modules-infra.md)"),
+  _root_.okay.deploy.sbt.OkayModules.forbid("okayKernel(JVM|JS|Native)", "(?!okay(Freer|Cont)?(JVM|JS|Native)$).*",
     "the kernel depends on the core only: every plugin carries what it does"),
 )
 
@@ -2976,7 +2978,7 @@ lazy val okayDiagnose = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 lazy val okayCont = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-cont"))
-  .dependsOn(okay, okayTest % "test->compile")
+  .dependsOn(okayTest % "test->compile")
   .settings(
     name := "okay-cont",
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,

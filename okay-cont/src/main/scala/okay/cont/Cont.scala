@@ -1,7 +1,5 @@
 package okay.cont
 
-import okay.Control
-
 /** a level of a stack: the stacks OUTSIDE its delimiter `D` — where the delimiter's continuation lives, so where a
  * capture to it is a program — constant along the level; and its ANSWER at this point. The head of a stack is the
  * nearest level's; the top is empty */
@@ -53,19 +51,6 @@ enum Cont[I <: Tuple, O <: Tuple, +A]:
 /** THE MACHINE AS A CONTROL CARRIER: a program at ONE level, the top's, whose answer moves from `S` to `R` —
  * Danvy–Filinski's `(A => S) => R`, the stacks of the level outside empty */
 type Carrier[A, S, R] = Cont[At[EmptyTuple, S] *: EmptyTuple, At[EmptyTuple, R] *: EmptyTuple, A]
-
-object Cont:
-  /** `shift` is `Shift0` at the top level, `/` the delimiter around a `Bind`, `flatMap` a `Bind`. The `k` a body
-   * is given is STRICT — a run of its own, on the host stack (as `Func`'s is; the machine's own `k` is a
-   * program, `okay.cont.shift0`) */
-  given control: Control[Carrier] with
-    def pure[A, R](a: A): Carrier[A, R, R] = Return(a)
-    def shift[A, S, R](f: (A => S) => R): Carrier[A, S, R] =
-      Shift0[EmptyTuple, EmptyTuple, EmptyTuple, S, R, A](k => Return(f(a => Machine.value(k(a)))))
-    extension [A, S, R](m: Carrier[A, S, R])
-      infix def /(k: A => S): R = Machine.value(Reset[EmptyTuple, EmptyTuple, S, R](Bind(m, (a: A) => Return(k(a)))))
-      def flatMap[B, S2](f: A => Carrier[B, S2, S]): Carrier[B, S2, R] = Bind(m, f)
-      override def map[B](f: A => B): Carrier[B, S, R] = Bind(m, (a: A) => Return(f(a)))
 
 /** HOW FAR an operation reaches, from the index `N` it is performed at: its handler's delimiter is the nearest
  * (`Here`: the target's stacks outside and answer are `N`'s head's), or it is outside the nearest, whose outside

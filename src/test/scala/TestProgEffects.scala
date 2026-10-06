@@ -1,11 +1,10 @@
-package okay.cont
+package okay
 
-import okay.{Effects, Free, Pure, Eager, Produce, !, +}
-import okay.given
+import okay.cont.Carrier
 import Prog.given
 
 /** specs/freer-min.md, stage 30: the machine as an `Effects` encoding, chosen by the given */
-class TestProg extends okay.testkit.Munit.Diagnosed:
+class TestProgEffects extends munit.FunSuite:
 
   def prog[M[_[+_], _]](using E: Effects[M]): M[Produce, Int] =
     E.perform[Produce, Int](1).flatMap(x => E.perform[Produce, Int](x + 1).map(y => x + y))
@@ -44,10 +43,10 @@ class TestProg extends okay.testkit.Munit.Diagnosed:
       if n == 0 then E.pure(acc) else E.perform[Produce, Int](1).flatMap(x => loop(n - 1, acc + x))
     val folded: Carrier[Int, Int, Int] = loop(100000, 0).foldCont[Int]([X] => (op: Produce[X]) => E.control.pure(op))
     assertEquals(E.control./(folded)(identity), 100000)
-    assertEquals(E.control./(loop(1000, 0).foldCont(okay.interpr[Carrier, Produce, Int]))(identity), loop(1000, 0).runWith)
+    assertEquals(E.control./(loop(1000, 0).foldCont(interpr[Carrier, Produce, Int]))(identity), loop(1000, 0).runWith)
 
   test("the interface's own handle, on the machine: an abort through `control.shift`, the rest forwarded"):
-    enum Stop[+A] derives okay.Effect:
+    enum Stop[+A] derives Effect:
       case Now extends Stop[Nothing]
     val E = Effects[Prog]
     val p: Prog[Stop + Produce, Int] =

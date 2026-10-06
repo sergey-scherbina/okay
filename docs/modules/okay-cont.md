@@ -5,7 +5,9 @@ A monad of delimited continuations typed by two stacks of answer types,
 modification, handlers as delimiters, operations as one capture to their
 handler through the delimiters between — and a machine that runs it: seven
 nodes, no cast, no prompt, no row (specs/freer-min.md, stages 1–30). It
-depends on the core and runs on the JVM, Scala.js and Scala Native.
+has no dependency and runs on the JVM, Scala.js and Scala Native; the
+core depends on it, beside okay-freer, and the two know nothing of each
+other.
 
 | | |
 |---|---|
@@ -14,8 +16,7 @@ depends on the core and runs on the JVM, Scala.js and Scala Native.
 | `Handler[E, A, Ans]`, `handle(h)(body)` | a handler is a delimiter: deep, its clauses outside it; `Answering` answers in place, no capture |
 | `perform(op)` | the operation, to its handler found in the context's types at compile time: none in scope, no program |
 | `Free[R, A]` | a program over a nominal row `Ask :+: Say :+: RNil`, built with no handler in sight, run under them |
-| `Prog[F, A]`, `Effects[Prog]` | the machine as an `Effects` encoding, beside `Effects[Free]` and `Effects[Eager]`, chosen by the given; its carrier is the machine's own |
-| `Carrier[A, S, R]`, `Cont.control` | the machine as a `Control`: a program one level over the top, `(A => S) => R`; `Effects[Prog]` folds into it, so the interface's `handle` runs on the machine |
+| `Carrier[A, S, R]` | the machine as a `Control` carrier: a program one level over the top, `(A => S) => R`; the instance `Control[Carrier]` and `Prog`, the machine as an `Effects` encoding, are the core's (Control.scala, Prog.scala) — this module knows nothing of the core |
 | `Machine.run`, `Machine.value` | a run to its typed end, `Head`: a value, or a capture handed out for a machine outside |
 
 ## Using it
