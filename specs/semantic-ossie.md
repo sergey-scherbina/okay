@@ -49,7 +49,9 @@ checked enrichment outside this bridge; no implicit joins or metric fanout.
 The application can choose a single-dataset metric subset from a larger document.
 Export core model declarations through explicit logical field mappings; keep
 units/grain/source/version/time/cardinality details in OKAY extensions. Reimport
-preserves those extensions. Unsupported model exports return errors, not a
+preserves those extensions. Export.business reads origin/grain/units and
+Export.temporal reads bucket/calendar metadata with named validation errors.
+Unsupported model exports return errors, not a
 partial document. SQL expression text is never forwarded directly to a driver.
 
 ## Behavior
