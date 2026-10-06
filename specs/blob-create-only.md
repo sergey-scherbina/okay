@@ -17,7 +17,7 @@ for Object Lock retention uploads. SHA-256 remains the content identity.
 - [x] GET returns None only on 404; other errors throw.
 - [x] GET enforces the byte limit while reading and releases responses on failure.
 - [x] Invalid limits and oversized writes fail before network IO.
-- [ ] Bounded PUT includes a correct signed Content-MD5 checksum.
+- [x] Bounded PUT includes a correct signed Content-MD5 checksum.
 
 ## Decisions
 - Additive capability separate from Blob: no fake check-then-write default.
