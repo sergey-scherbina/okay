@@ -1,6 +1,0 @@
-feature/semantic-core 2026-10-05T20:21:01.829431+00:00
-agent: codex
-heartbeat: 2026-10-05T20:21:01.829431+00:00
-status: in-progress
-done-so-far: reviewed architecture and module boundaries
-next: spec then standalone semantic core and single-table SQL adapter
