@@ -1,4 +1,6 @@
-package okay.freer
+//> using scala 3.9.0
+//> using options -Werror -Wunused:all -feature -deprecation
+package okay.k5
 
 type Pure = [S, R, A] =>> Nothing
 infix type +[G[_, _, +_], H[_, _, +_]] = [S, R, A] =>> G[S, R, A] | H[S, R, A]

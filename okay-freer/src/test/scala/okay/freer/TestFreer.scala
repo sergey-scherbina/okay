@@ -3,56 +3,47 @@ package okay.freer
 import scala.annotation.tailrec
 import Freer.*
 
-/** specs/freer-min.md: the stage-0 probes as a suite — what the four-node tree proves on its own */
+/** specs/freer-min.md: the tree on its own — rows built by flatMap, dispatch without a cast, the answer pair as a
+ * type-changing state, the handler's rest */
 class TestFreer extends okay.testkit.Munit.Diagnosed:
-  // two unary signatures, as today
   enum Ask[+A]:
     case Number extends Ask[Int]
   enum Say[+A]:
     case Line(s: String) extends Say[Unit]
-  // a diagonal three-place signature
   enum Cnt[S, R, +A]:
     case Tick[T]() extends Cnt[T, T, Unit]
-  // an index-moving one: type-changing state (Atkey), read `R => (S, A)` — before `R`, after `S`
+  /** type-changing state (Atkey), read `R => (S, A)`: before `R`, after `S` */
   enum PState[S, R, +A]:
     case Get[S]() extends PState[S, S, S]
     case Put[S, T](t: T) extends PState[T, S, Unit]
 
   type Fx = Diag[Ask] + Diag[Say]
+  type Top[G[_, _, +_], A] = Freer[G, EmptyTuple, Unit, Unit, A]
 
-  val one: Freer[Fx, Unit, Unit, Int] =
+  /** a program with no capture is POLYMORPHIC in the delimiter stack: usable at the top and under any delimiter */
+  def one[Σ <: Tuple]: Freer[Fx, Σ, Unit, Unit, Int] =
     for
       n <- inject(Ask.Number)
       _ <- inject(Say.Line(n.toString))
     yield n + 1
 
-  /** one operation answered: the node gave `T = R`, the pointwise bound `G$[T, T, X] <: Ask[X] | Say[X]` gives the
-   * dispatch — no cast */
-  def step[X, B](op: Ask[X] | Say[X], k: X => Freer[Fx, Unit, Unit, B], in: Int, out: StringBuilder)
-    : Freer[Fx, Unit, Unit, B] = op match
+  /** one operation answered: `Inject` gave `T = R`, the pointwise bound gives the dispatch — no cast */
+  def step[X, B](op: Ask[X] | Say[X], k: X => Top[Fx, B], in: Int, out: StringBuilder): Top[Fx, B] = op match
     case Ask.Number => k(in)
     case Say.Line(l) => out.append(l).append('\n'): Unit; k(())
 
-  @tailrec final def run[A](p: Freer[Fx, Unit, Unit, A], in: Int, out: StringBuilder): A =
-    val head: Freer[Fx, Unit, Unit, A] = Machine.run(p)
+  @tailrec final def run[A](p: Top[Fx, A], in: Int, out: StringBuilder): A =
+    val head: Top[Fx, A] = Machine.run(p)
     head match
       case Return(a) => a
-      case Inject(op) => run(step(op, (x: A) => Return(x), in, out), in, out)
-      case Perform(op) => run(step(op, (x: A) => Return(x), in, out), in, out)
-      // `inject` is the only door for a unary operation, so under a `Bind` the head is an `Inject` — the node
-      // that gives `T = R`; a `Perform` of a diagonal row would leave `T` unknown, and nothing builds one
       case Bind(h, k) => (h: @unchecked) match
         case Inject(op) => run(step(op, k, in, out), in, out)
       case other => fail(s"not handled: $other")
 
-  /** the type-changing state run: `Get` keeps the index, `Put` moves it; the GADT match types every step */
-  @tailrec final def runState[S, R, A](p: Freer[PState, S, R, A], s: R): (S, A) =
-    val head: Freer[PState, S, R, A] = Machine.run(p)
+  @tailrec final def runState[S, R, A](p: Freer[PState, EmptyTuple, S, R, A], s: R): (S, A) =
+    val head: Freer[PState, EmptyTuple, S, R, A] = Machine.run(p)
     head match
       case Return(a) => (s, a)
-      // a bare operation: one step through the `Bind` case, its continuation the value
-      case Inject(op) => runState(Bind(Inject(op), (x: A) => Return(x)), s)
-      case Perform(op) => runState(Bind(Perform(op), (x: A) => Return(x)), s)
       case Bind(h, k) => (h: @unchecked) match
         case Inject(op) => op match
           case PState.Get() => runState(k(s), s)
@@ -62,16 +53,10 @@ class TestFreer extends okay.testkit.Munit.Diagnosed:
           case PState.Put(t) => runState(k(()), t)
       case other => fail(s"not handled: $other")
 
-  /** a program of the empty row has only a value */
-  def runPure[A](p: Freer[Pure, Unit, Unit, A]): A =
-    val head: Freer[Pure, Unit, Unit, A] = Machine.run(p)
+  def runPure[A](p: Top[Pure, A]): A =
+    val head: Top[Pure, A] = Machine.run(p)
     head match
       case Return(a) => a
-      case Inject(op) => op
-      case Perform(op) => op
-      case Bind(h, _) => (h: @unchecked) match
-        case Inject(op) => op
-        case Perform(op) => op
       case other => fail(s"not a value: $other")
 
   test("a for over two signatures builds the union row, and runs"):
@@ -80,56 +65,44 @@ class TestFreer extends okay.testkit.Munit.Diagnosed:
     assertEquals(out.toString.trim, "41")
 
   test("(F + G) + F is accepted where F + G is expected; pure is a program of every row"):
-    val two: Freer[Fx, Unit, Unit, Int] = one.flatMap(a => inject(Ask.Number).map(_ + a))
-    val three: Freer[Fx, Unit, Unit, Int] = pure(3)
+    val two: Top[Fx, Int] = one.flatMap(a => inject(Ask.Number).map(_ + a))
+    val three: Top[Fx, Int] = pure(3)
     val out = StringBuilder()
     assertEquals(run(two, 41, out), 83)
     assertEquals(run(three, 0, out), 3)
 
   test("100 000 left-nested maps run in constant stack"):
-    val chain = (1 to 100000).foldLeft(pure[Int, Unit](0): Freer[Fx, Unit, Unit, Int])((p, _) => p.map(_ + 1))
+    val chain = (1 to 100000).foldLeft(pure[Int, EmptyTuple, Unit](0): Top[Fx, Int])((p, _) => p.map(_ + 1))
     assertEquals(run(chain, 0, StringBuilder()), 100000)
 
-  test("type-changing state: the index moves Int -> String through Put"):
-    val prog: Freer[PState, String, Int, Int] =
+  test("type-changing state: the answer index moves Int -> String through Put"):
+    val prog: Freer[PState, EmptyTuple, String, Int, Int] =
       for
         s <- perform(PState.Get[Int]())
         _ <- perform(PState.Put[Int, String]((s + 41).toString))
         t <- perform(PState.Get[String]())
       yield t.length
-    note(s"program: ${prog.getClass.getSimpleName}")
     assertEquals(runState(prog, 1), ("42", 2))
-
-  test("an index-moving signature and unary effects in one row"):
-    val mixed: Freer[Fx + PState, String, Int, Unit] =
-      for
-        n <- inject(Ask.Number)
-        s <- perform(PState.Get[Int]())
-        _ <- perform(PState.Put[Int, String]((s + n).toString))
-        _ <- inject(Say.Line("moved"))
-      yield ()
-    assert(mixed.isInstanceOf[Bind[?, ?, ?, ?, ?, ?]])
 
   test("a handler's rest infers positionally"):
     type Rest = Diag[Say] + Cnt
-    val three: Freer[Diag[Ask] + Rest, Unit, Unit, Int] =
+    val three: Top[Diag[Ask] + Rest, Int] =
       for
         n <- inject(Ask.Number)
         _ <- inject(Say.Line("x"))
         _ <- Freer.Inject(Cnt.Tick[Unit]())
       yield n
-    def runAsk[G[_, _, +_], A](p: Freer[Diag[Ask] + G, Unit, Unit, A]): Freer[G, Unit, Unit, A] = p.asInstanceOf[Freer[G, Unit, Unit, A]]
-    val rest = runAsk(three)
-    val typed: Freer[Rest, Unit, Unit, Int] = rest
-    assert(typed.isInstanceOf[Bind[?, ?, ?, ?, ?, ?]])
+    def runAsk[G[_, _, +_], A](p: Top[Diag[Ask] + G, A]): Top[G, A] = p.asInstanceOf[Top[G, A]]
+    val typed: Top[Rest, Int] = runAsk(three)
+    assert(typed.isInstanceOf[Bind[?, ?, ?, ?, ?, ?, ?]])
 
   test("a delimiter is a node of the tree, in a row with the effects"):
     val p = Prompt[Fx, Unit, Int]("p")
-    val c: Freer[Fx, Unit, Unit, Int] = reset(p)(one).flatMap(y => inject(Ask.Number).map(_ + y))
-    assert(c.isInstanceOf[Bind[?, ?, ?, ?, ?, ?]])
+    val c: Top[Fx, Int] = reset(p)(one).flatMap(y => inject(Ask.Number).map(_ + y))
+    assertEquals(run(c, 1, StringBuilder()), 3)
 
   test("delay and defer: a million mutual tail calls in constant stack, through the one loop"):
-    def even(n: Int): Freer[Pure, Unit, Unit, Boolean] = if n == 0 then pure(true) else delay(odd(n - 1))
-    def odd(n: Int): Freer[Pure, Unit, Unit, Boolean] = if n == 0 then pure(false) else defer(even(n - 1))(b => pure(b))
+    def even(n: Int): Top[Pure, Boolean] = if n == 0 then pure(true) else delay(odd(n - 1))
+    def odd(n: Int): Top[Pure, Boolean] = if n == 0 then pure(false) else defer(even(n - 1))(b => pure(b))
     assertEquals(runPure(even(1000000)), true)
     assertEquals(runPure(odd(1000001)), true)

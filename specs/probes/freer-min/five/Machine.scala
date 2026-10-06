@@ -1,4 +1,4 @@
-package okay.freer
+package okay.k5
 
 import scala.annotation.tailrec
 import Freer.*
@@ -72,7 +72,7 @@ object Machine:
   def run[F[_, _, +_], S, R, A](p: Freer[F, EmptyTuple, S, R, A]): Freer[F, EmptyTuple, S, R, A] =
     go(p, Frames.End(), Stack.Done(), Widen.refl[F])
 
-  @tailrec private[freer] def go[F[_, _, +_], G[_, _, +_], A, B, Σ <: Tuple, S, T, R, S0, Z](
+  @tailrec private[k5] def go[F[_, _, +_], G[_, _, +_], A, B, Σ <: Tuple, S, T, R, S0, Z](
       c: Freer[G, Σ, T, R, A], k: Frames[G, A, B, Σ, S, T], m: Stack[F, G, B, Σ, S, S0, Z], sub: Widen[G, F]): Freer[F, EmptyTuple, S0, R, Z] =
     c match
       case Return(a) => k match
@@ -148,7 +148,7 @@ object Machine:
                                                                            rest: Has[TT, At[PP, Freer[H2, EmptyTuple, Sp, Sp, Y]], O]): Cut[F, X, H2, O, Sp, T0, Y, S0, Z] =
     cut(Piece.Under(d.up, d.out, piece), d.rest, rest, d.sub)
 
-  @tailrec private[freer] def link[F[_, _, +_], G[_, _, +_], A0, Σ0 <: Tuple, T0, A, Σ <: Tuple, T, S0, Z](
+  @tailrec private[k5] def link[F[_, _, +_], G[_, _, +_], A0, Σ0 <: Tuple, T0, A, Σ <: Tuple, T, S0, Z](
       piece: Piece[G, A0, Σ0, T0, A, Σ, T], m: Stack[F, G, A, Σ, T, S0, Z], sub: Widen[G, F]): Next[F, A0, T0, S0, Z] =
     piece match
       case Piece.Hole(k0) => linked(k0, m, sub)

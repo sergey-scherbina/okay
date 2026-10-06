@@ -571,3 +571,51 @@ What the typestate kernel is smaller by: `Perform` (one node), prompt
 identity (no `eq`, no singleton test, no label at run time), `NoPrompt`.
 What it is larger by: `Has`, `In`, `Under`, `At` — four small types —
 and the lexical discipline. `Widen` is the same in both.
+
+## Stage 5 — both: the delimiter stack beside the answer pair (DONE, 2026-10-06)
+
+The operator kept typestate effects as user signatures, so the answer
+pair stays, and the static prompts come in as the fifth parameter:
+
+```
+Freer[+G[_, _, +_], Σ <: Tuple, S, R, +A]
+```
+
+`Σ` is which delimiters are in force (what `Reset` pushes and `Shift0`
+captures to), the pair `S`, `R` is the answer type (what `Perform`
+moves). Every node keeps `Σ` but `Reset`'s body. The module's kernel is
+this now (`okay-freer`, 253 lines of kernel): 22 tests green on the
+JVM, JS and Native compile, `grep asInstanceOf|@unchecked|NoPrompt|eq`
+over the kernel: 0. The merge was mechanical: stage 4's stack machinery
+(`Has`, `In`, `Under`, `At`, the witness-guided `cut`, `Done` at the
+empty stack) with stage 3's pair threaded through `Frames`, `Stack`,
+`Piece`, `Captured` and `Next`.
+
+Decided on the way, each by a failure:
+- The prompt names its answer index again, `Prompt[L, H, S, Y]`, and the
+  stack entry is `At[L, Freer[H, EmptyTuple, S, S, Y]]`: a capture's
+  result index is the PROMPT's, fixed, while the level's index changes
+  across the `Run` nodes a walk crosses — so it cannot come from the
+  walk.
+- `Next` names the index its value is due at (`Next[F, A, T, S0, Z]`):
+  the splice of a `Resume` continues at the hole's index, which the
+  node's own type carries.
+- A program with no capture is POLYMORPHIC in the stack (`def one[Σ <:
+  Tuple]: Freer[Fx, Σ, …]`): the index is exact, so a program written
+  at the empty stack is not a body for a delimiter. `pure`, `inject`,
+  `perform` already are polymorphic; a `val` program is not.
+- The walk crossing delimiters (`cut -> tail -> crossed -> cut`) is a
+  mutual recursion BOUNDED by the length of the index, a static tuple;
+  it is inventoried as such (specs/stack-safety-okay.tsv).
+
+### Behavior (TestFreer 8 + TestMachine 14 = 22)
+- [x] everything of stages 1–3, under the stack
+- [x] answer-type modification WITH static prompts: `Put` in a shift0 body
+      moves the state `Int -> String` across the delimiter; the nodes
+      written out with their indexes, the witness `Has.Head()` by hand
+- [x] a capture with no delimiter in force is a compile error (no
+      witness); a program claiming a delimiter it did not install cannot
+      be run (`run` takes the empty stack only)
+- [x] the same prompt twice: the innermost delimiter (Head before Tail)
+- [x] `dollar` 7, escaped `k` is a program of the outside, 100 000
+      captures in constant stack, a head form idempotent under `run`
