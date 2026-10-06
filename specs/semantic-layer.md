@@ -44,7 +44,11 @@ Core `okay-semantic` remains standard-library-only and cross-platform.
   Origin records both source versions, and grain is the fact's grain.
 
 `okay-semantic-sql` extends SQL statistics with min/max and count-distinct,
-comparison filters, fixed-bucket dimension bindings and derived finalization.
+comparison filters, fixed-bucket dimension metadata and derived finalization.
+Time.dimension carries its transformation in the definition, so SQL derives it
+without a second declaration. Civil calendar dimensions require an explicitly
+materialized column when SQL cannot push down that calendar; otherwise rendering
+refuses by name. They can always run on typed SQL rows through Data.source.
 Having/order/page use the shared finalizer. Explicit lookup join bindings quote
 qualified columns through structured references; preflight duplicate-key queries
 run in the caller's transaction and reject cardinality violations before facts
