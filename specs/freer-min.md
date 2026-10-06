@@ -820,3 +820,16 @@ on the same pair, and only one can be the delimiter's typing; (4) a
 captured continuation must be answer-polymorphic or every bind after it
 is pinned to the hole's answer; (5) polymorphic function types have no
 variance.
+
+## PState on the basis (2026-10-06)
+
+Master's `PState` is already Danvy–Filinski's state: `get: Cont[S, S => R, S => R]`, `set: Cont[S, S2 => R, S => R]`,
+the state's type carried by the answer type (Asai–Kameyama). On the basis it is the same two shifts,
+`okay-freer/src/test/scala/okay/freer/TestState.scala`: the answer is `St[H, S, W] = S => Freer[H, W, W, W]`
+(monadic, since `k(x)` is a program, not a value), `get[S] : S [St[S], St[S]]`, `put[S](s2: S2) : Unit [St[S2], St[S]]`,
+and `Bind` composes the moves: `put[Int]("x") >>= get[String]` types, `put[String](2) >>= get[Int]` does not.
+No `Put[S, T]` signature, no indexed effect in the row: the "sequential typestate" IS the answer-type pair.
+Found on the way: a type that appears only in a lambda parameter's type (`State[H, S1, W]`) is instantiated to
+`Any` before the body is typed, so the capability carries `Prompt[H, ?]` and the run names `S1` from the body's
+answer; the sugar `shift[X](p)` pins the hole's answer to the prompt's `S`, so `put` is the node `Freer.Shift`
+with `k`'s type written (the prompt's `S` is the run's, not the operations').
