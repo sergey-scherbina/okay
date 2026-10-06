@@ -27,7 +27,10 @@ class TestExpressionSources extends okay.testkit.Munit.Diagnosed:
     val bytes = new java.io.ByteArrayOutputStream()
     val output = new java.io.ObjectOutputStream(bytes)
     try output.writeObject(plan) finally output.close()
-    val input = new java.io.ObjectInputStream(new java.io.ByteArrayInputStream(bytes.toByteArray))
+    val loader = getClass.getClassLoader
+    val input = new java.io.ObjectInputStream(new java.io.ByteArrayInputStream(bytes.toByteArray)):
+      override def resolveClass(description: java.io.ObjectStreamClass): Class[?] =
+        Class.forName(description.getName,false,loader)
     val restored = try input.readObject() finally input.close()
     restored match
       case p: ExpressionPlan[?] =>
