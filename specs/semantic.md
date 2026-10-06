@@ -39,21 +39,21 @@ SQL totals are subject to the database numeric precision.
 SQL result group order is backend-defined; parity compares groups by key.
 
 ## Behavior
-- [ ] Catalog refuses duplicate/empty ids and dangling relation endpoints.
-- [ ] Model refuses duplicate names, blank metadata and missing metric measures.
-- [ ] Planning refuses unknown or duplicate selections, no metrics, invalid filters.
-- [ ] Sum is exact decimal addition; absent values are ignored and all-null is None.
-- [ ] Count/average distinguish null from zero; averages divide sum by non-null count.
-- [ ] Ratios aggregate both operands first; zero or absent denominator produces None.
-- [ ] Filters precede grouping; dimension order is request order, groups stable in memory.
-- [ ] Empty ungrouped input returns one group (count zero, other metrics None);
+- [x] Catalog refuses duplicate/empty ids and dangling relation endpoints.
+- [x] Model refuses duplicate names, blank metadata and missing metric measures.
+- [x] Planning refuses unknown or duplicate selections, no metrics, invalid filters.
+- [x] Sum is exact decimal addition; absent values are ignored and all-null is None.
+- [x] Count/average distinguish null from zero; averages divide sum by non-null count.
+- [x] Ratios aggregate both operands first; zero or absent denominator produces None.
+- [x] Filters precede grouping; dimension order is request order, groups stable in memory.
+- [x] Empty ungrouped input returns one group (count zero, other metrics None);
       empty grouped input returns no groups.
-- [ ] Invalid extracted dimension kinds return named errors rather than coercion.
-- [ ] Result and explanation retain model source/version and business grain.
-- [ ] SQL uses bound filter values, IS NULL and explicit column binding;
+- [x] Invalid extracted dimension kinds return named errors rather than coercion.
+- [x] Result and explanation retain model source/version and business grain.
+- [x] SQL uses bound filter values, IS NULL and explicit column binding;
       refuses invalid/missing identifiers and decodes output without casts.
-- [ ] Memory and SQL agree on sums, counts, averages, ratios, filters and nulls.
-- [ ] The modules compile on JVM, JS and Native without any agent dependency.
+- [x] Memory and SQL agree on sums, counts, averages, ratios, filters and nulls.
+- [x] The modules compile on JVM, JS and Native without any agent dependency.
 
 ## Design
 CrossType.Pure modules. Core depends only on the standard Scala library;
@@ -87,4 +87,21 @@ and traversal; RDF/OWL/SHACL adapters and inference; permission-aware context
 assembly and agent tools. These are separate increments, not hidden stubs.
 
 ## Results
-Pending focused tests and cross-platform compile gates.
+Implemented in okay-semantic and okay-semantic-sql. Ten core/example tests
+pass on each of JVM, JS and Native. Six SQL tests pass against H2 through
+JdbcSql, including generated datasets, null/empty inputs, quoted filter values,
+exact decimal aggregates and decode rejection. All six new platform targets
+pass Test/compile. Nineteen documentation/index/board/changelog checks pass;
+the compiled documentation example passes TestDocSnippets again after addition.
+Focused gates report no compile warnings in the changed modules and recscan
+finds no recursion. Existing ReleaseWave meta-build task-lint warning was seen
+on the initial cold load; it is already tracked as release-wave-task-lint.
+
+The affected compile gate used explicit new source paths: the build diff only
+adds new projects/aggregate entries, so recompiling every existing project would
+not prove an additional dependency edge. Both new modules and their actual
+platform dependency closure compiled; the post-merge CI runner owns the whole
+build. No benchmark or full suite was run by this lane.
+
+Subsequent work is recorded as semantic-joins, semantic-time-derived,
+knowledge-facts and semantic-context on the boards.
