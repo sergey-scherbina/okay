@@ -1,6 +1,6 @@
 feature/freer-min 2026-10-06T03:38:40Z
 agent: claude-code
-heartbeat: 2026-10-06T04:17:50Z
+heartbeat: 2026-10-06T04:39:34Z
 status: in-progress
-done-so-far: module okay-freer (provisional name; okay-kernel is taken) with Freer, Control, TestFreer green on JVM; spec specs/freer-min.md with decisions
-next: the machine (Frames, Stack, five rules) over Control; JS+Native compile; JMH against master's lanes
+done-so-far: okay-freer (tree, Control over Row[F], the machine: five rules) TestFreer+TestMachine 16 green on JVM, spec specs/freer-min.md stage 1
+next: JS+Native compile; JMH against master's lanes; row-inference ergonomics for reset/shift0
