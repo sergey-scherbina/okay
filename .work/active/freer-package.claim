@@ -1,0 +1,6 @@
+feature/freer-package 2026-10-06T19:40:01Z
+agent: claude-code
+heartbeat: 2026-10-06T19:40:01Z
+status: in-progress
+done-so-far: claimed
+next: Freer back in package okay inside okay-freer; the core alias and the okay.freer imports gone
