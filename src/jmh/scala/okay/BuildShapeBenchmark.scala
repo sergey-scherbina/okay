@@ -243,8 +243,8 @@ class BuildShapeBenchmark {
     def go(i: Int, acc: B): B ! F =
       if i >= n then pure(acc)
       else f(acc, v(i)) match
-        case b: Free.Bind[F, x, B] @unchecked => b.f match
-          case k: Free.Mapped[F, x, B] @unchecked => Free.Bind(b.a, (y: x) => go(i + 1, k.f(y)))
+        case b: Freer.Bind[Unary[F], Unit, Unit, Unit, x, B] @unchecked => b.f match
+          case k: Freer.Mapped[Unary[F], Unit, x, B] @unchecked => Free.Bind(b.a, (y: x) => go(i + 1, k.f(y)))
           case _ => Free.Bind(b, (y: B) => go(i + 1, y))
         case m => Free.Bind(m, (y: B) => go(i + 1, y))
     Free.delay(() => go(0, z))
