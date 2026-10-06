@@ -1,5 +1,7 @@
 package okay
 
+import okay.freer.Free
+
 /**
  * Generators from delimited control: take is the input of a loop
  * iteration, put is the output, and generate ties them into an

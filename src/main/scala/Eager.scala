@@ -1,5 +1,7 @@
 package okay
 
+import okay.freer.Free
+
 /**
  * The opt-in EAGER encoding (specs/eager.md): the kyo trick as a
  * third Effects instance. A pure computation IS its value — the union

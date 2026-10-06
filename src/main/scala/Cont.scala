@@ -1,6 +1,6 @@
 package okay
 
-import okay.Freer.{Return, Inject, Bind, Delay}
+import okay.freer.Freer.{Return, Inject, Bind, Delay}
 import scala.collection.LinearSeq
 
 /**

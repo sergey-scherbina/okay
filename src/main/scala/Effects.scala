@@ -1,5 +1,7 @@
 package okay
 
+import okay.freer.{Free, Freer}
+
 import okay.Row.{at, plus}
 import scala.annotation.tailrec
 import scala.collection.immutable.ArraySeq

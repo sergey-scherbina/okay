@@ -1,5 +1,7 @@
 package okay
 
+import okay.freer.Free
+
 import scala.annotation.tailrec
 import okay.!.*
 import okay.Row.plus

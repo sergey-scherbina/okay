@@ -1,5 +1,7 @@
 package okay
 
+import okay.freer.Free
+
 
 /**
  * Call-by-need for programs, as an EFFECT (direct-once, 2026-09-16).

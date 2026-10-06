@@ -440,7 +440,6 @@ docs/many-instances.md	Instances.exhausted[State % Int, ...](done)   // asserts 
 docs/many-instances.md	State.run(0)(Tag.untag["small", State % Int](twice))
 docs/many-instances.md	a <- Tag.tag["small", State % Int](count).plus[Big]
 docs/many-instances.md	b <- Tag.tag["big",   State % Int][Int, Pure](count).at[Small + Big]
-docs/many-instances.md	enum State[S, +A]:
 docs/many-instances.md	given writerK[W](using t: Typeable[W]): TypeableK.ByValue[Writer % W]
 docs/many-instances.md	summon[Distinct[Reader % Int + Reader % String]]        // refused
 docs/many-instances.md	summon[Distinct[Reader % Int + Writer % String]]        // fine

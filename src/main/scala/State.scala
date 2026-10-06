@@ -1,5 +1,7 @@
 package okay
 
+import okay.freer.Freer
+
 import scala.annotation.tailrec
 import okay.!.*
 

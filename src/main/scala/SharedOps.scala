@@ -1,5 +1,7 @@
 package okay
 
+import okay.freer.Freer
+
 /**
  * The shared nodes of the fieldless operations (specs/effect-op-cost.md):
  * every `State.get` is this one `Inject(Get())`, every `Reader.ask` this

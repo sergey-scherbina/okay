@@ -1,5 +1,7 @@
 package okay
 
+import okay.freer.{Free, Freer}
+
 import okay.Row.plus
 import scala.quoted.*
 import scala.annotation.implicitNotFound

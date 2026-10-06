@@ -99,7 +99,7 @@ class TestInlineBudget extends munit.FunSuite {
   test("Freer.resume fits FreqInlineSize: every interpreter loop inlines it") {
     // `Freer` since freer-base-step-extractor: one rotation for the effect
     // tree and for Cont, index-polymorphic, the same bytecode either way
-    within("Freer.resume", sizeOf("Freer", "resume"),
+    within("Freer.resume", sizeOf("freer/Freer", "resume"),
       "relayPrebuilt AND handlePrebuilt/handleCapture — a resume crossing the line re-decides both")
   }
 
@@ -121,6 +121,6 @@ class TestInlineBudget extends munit.FunSuite {
     // and the measured hot methods are in the range Effects.scala records (resume 323, handle loop 318)
     // since handle-frames-forms `relay` builds its run object (a `Delay` of a `HandleFrames.Run`) around the loop
     assert(sizeOf("Effects$", "relay") < 40, "relay is a small wrapper around its loop")
-    assert(sizeOf("Freer", "resume") > 250, "resume read implausibly small: is this the right method?")
+    assert(sizeOf("freer/Freer", "resume") > 250, "resume read implausibly small: is this the right method?")
   }
 }

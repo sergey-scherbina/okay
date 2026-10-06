@@ -1,5 +1,7 @@
 package okay
 
+import okay.freer.Free
+
 import scala.reflect.*
 import scala.util.*
 import scala.annotation.implicitNotFound

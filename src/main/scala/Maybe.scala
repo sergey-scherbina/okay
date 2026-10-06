@@ -1,5 +1,7 @@
 package okay
 
+import okay.freer.Free
+
 import okay.Row.at
 
 /**
