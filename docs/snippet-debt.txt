@@ -423,7 +423,6 @@ docs/existentials.md	case _ => A
 docs/existentials.md	case _ => W & A
 docs/existentials.md	def answer[W, A](w: Writer[W, A]): A = told[W, A].flip(out(w))
 docs/existentials.md	def told[W, A]: A =:= W = refl.asInstanceOf[A =:= W]
-docs/existentials.md	enum Writer[W, +A]:
 docs/existentials.md	opaque type ChunkBuf[A] = Array[?]      // works
 docs/existentials.md	opaque type ChunkBuf[A] = Array[A]      // ClassCastException
 docs/existentials.md	opaque type Writer[W, +A] <: A = W & A
