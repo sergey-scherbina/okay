@@ -1095,3 +1095,37 @@ more than once. What it took, and what it found:
 Kernel 300 lines, 30 tests on the JVM, JS and Native compile, no cast, no `@unchecked` anywhere — the `Distinct`
 claim of a handler over a union is gone with the loop: a handler never dispatches an operation by class, the
 delimiter it is the clause of is the one its operations reach.
+
+## Stage 20: THE BASIS AGAINST MASTER — JMH (DONE, 2026-10-06)
+
+`okay-freer/src/jmh/scala/okay/freer/FreerBenchmark.scala`: master's HandlerBenchmark and DelimDepthBenchmark
+workloads on handlers that are delimiters. One lane per `Jmh/run`, each side from the same worktree (the branch
+rebased onto master for it), 2 forks × 5 iterations:
+
+| lane (same workload both sides)                           | master                | okay-freer            | freer / master |
+|-----------------------------------------------------------|-----------------------|-----------------------|---------------:|
+| handlePrebuilt — 10 000 ops, 1 % handled, 99 % forwarded   | 133.2 ± 2.5 µs        | 347.6 ± 36.5 µs       | 2.6×           |
+| handleForward — the same, built each call                  | 156.2 ± 0.4 µs        | 363.9 ± 2.8 µs        | 2.3×           |
+| buildOnly — the 10 000-node tree alone                     | 28.8 ± 0.1 µs         | 28.5 ± 1.6 µs         | 1.0×           |
+| tailcallChain — 10 000 mutual tail calls                   | 26.4 ± 0.1 µs         | 22.0 ± 0.7 µs         | 0.83×          |
+| state — 1 000 × get, set (master `statePara`, PState)       | 41.7 ± 1.3 µs         | 46.1 ± 0.6 µs         | 1.1×           |
+| state — 1 000 × get, set (master `stateEffect`, the handler)| 18.4 ± 0.3 µs         | 46.1 ± 0.6 µs         | 2.5×           |
+| delimCaptureDepth — 16 binds, k once                       | 244 ± 1 ns            | 203 ± 2 ns            | 0.83×          |
+| delimCaptureDepth — 256 binds, k 8 times                   | 11 275 ± 708 ns       | 10 856 ± 126 ns       | 0.96×          |
+
+What the numbers say:
+- THE MACHINE is on par with master or ahead: construction equal, a capture through binds and its resumptions
+  0.83–0.96×, the deferred-call loop 0.83×, the state-passing answer 1.1× of master's own PState. The index in the
+  type costs nothing at run time, as it must — it is erased.
+- THE HANDLER PATH is 2.6× — and that is the price of "every operation is a capture": each of the 10 000 operations
+  cuts the stack to its delimiter, builds a `Piece`, a `Captured`, a `Resume`, and pushes a `Delim` back when the
+  clause resumes; the 9 900 forwarded ones do it twice (to the inner delimiter, then to the outer). Master's loop
+  answers a tail-resumptive operation by applying `k` in place, no capture. The remedy is known (Koka, Effekt):
+  a clause that resumes exactly once as its last act needs no capture — the machine can answer it in place, the
+  delimiter untouched; the handler would declare it (an `answer: op => value` clause beside the general one), and
+  `perform` for it would be a node that is not a capture. Not in this stage; it is the next measurement.
+- Master's own `BuildShapeBenchmark.scala` does not compile on master (5 errors, `Free.Bind`/`Free.Mapped` gone from
+  `Free.scala`; `Test/compile` does not reach Jmh sources, AGENTS.md): set aside, uncommitted, for the master lanes.
+  A dotty 3.9.0 assertion (`wildApprox failed to remove uninstantiated G`, implicit search) on a `?` for the outer
+  context in a fragment's using-parameter: the fragment is polymorphic in it and `handle` takes explicit type
+  arguments.

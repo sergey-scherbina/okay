@@ -98,11 +98,13 @@ class FreerBenchmark {
   def runState[H[+_], S0, S1, W](s0: S0)(body: State[H, W] => Freer[H, At[H, H, EmptyTuple, St[H, S1, W]] *: EmptyTuple, At[H, H, EmptyTuple, St[H, S0, W]] *: EmptyTuple, W]): Top[H, W] =
     Freer.Reset[H, H, EmptyTuple, EmptyTuple, St[H, S1, W], St[H, S0, W]](body(State()).map(a => (_: S1) => pure(a))).flatMap(f => f(s0))
 
+  /** M times get then set, as master's `stateEffect`; one `get` at the end for the value */
   @Benchmark
   def stateAtm(): Long =
     value(runState(0L): st =>
-      (1 to M).foldLeft(st.get[Long]): (m, _) =>
-        m.flatMap(_ => st.get[Long].flatMap(s => st.put[Long](s + 1)).flatMap(_ => st.get[Long])))
+      (1 to M).foldLeft(st.put[Long](0L)): (m, _) =>
+        m.flatMap(_ => st.get[Long].flatMap(s => st.put[Long](s + 1)))
+      .flatMap(_ => st.get[Long]))
 
   @Param(Array("1", "16", "256"))
   var depth: Int = 0
