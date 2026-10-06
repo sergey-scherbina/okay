@@ -44,8 +44,8 @@ unsupported dialect expressions; executing them returns named capability errors.
 ANSI_SQL and OSSIE_SQL_2026 are selectable explicitly; do not choose the first
 vendor dialect silently. Unquoted identifiers resolve case-insensitively;
 quoted identifiers resolve exactly; ambiguity is an error. Unsupported fields,
-aggregations and functions are refused. Cross-dataset operands require explicit
-checked enrichment outside this bridge; no implicit joins or metric fanout.
+aggregations and functions are refused. This bridge refuses cross-dataset operands; checked Lookup enrichment remains
+a separate application execution workflow. No implicit joins or metric fanout.
 The application can choose a single-dataset metric subset from a larger document.
 Export core model declarations through explicit logical field mappings; keep
 units/grain/source/version/time/cardinality details in OKAY extensions. Reimport

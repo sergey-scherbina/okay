@@ -369,6 +369,7 @@ API reference, gotchas.
 | [`okay-semantic`](modules/okay-semantic.md) | independent business definitions, validated metric plans and memory execution |
 | [`okay-semantic-data`](modules/okay-semantic-data.md) | semantic execution over Source, Bulk, Tables, CSV/JSON and a JSON query API |
 | [`okay-semantic-arrow`](modules/okay-semantic-arrow.md) | typed Arrow/IPC analytics, with Parquet through the existing file seam |
+| [`okay-semantic-ossie`](modules/okay-semantic-ossie.md) | version-pinned Ossie JSON/YAML interchange and explicit execution bindings |
 | [`okay-semantic-sql`](modules/okay-semantic-sql.md) | parameterized SQL plans with checked lookup joins |
 | [`okay-sql`](modules/okay-sql.md) | the relational seam: SqlValue/Col and the typed layer once, drivers underneath (JDBC, the pg wire, sqlite) |
 | [`okay-pg`](modules/okay-pg.md) | the Postgres v3 protocol spoken natively: SCRAM (phase objects), the extended protocol, no JVM driver in between |
