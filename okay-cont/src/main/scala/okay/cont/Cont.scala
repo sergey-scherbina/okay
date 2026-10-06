@@ -38,8 +38,9 @@ enum Cont[I <: Tuple, O <: Tuple, +A]:
    * capture, one resumption; it moves nothing (the diagonal shift), which is what lets the machine prove each
    * delimiter it reaches is the one the node names: a level's OUT index is one along the level, and the
    * delimiter's record is tied to it. A clause that returns `k(x)` as its whole body is answered where the
-   * operation was, the stack as it stands, nothing built */
-  case Op[N <: Tuple, X, Dn <: Tuple, Ansn](at: Reach[N, Dn, Ansn], f: (X => Cont[Dn, Dn, Ansn]) => Cont[Dn, Dn, Ansn]) extends Cont[N, N, X]
+   * operation was, the stack as it stands, nothing built. The operation and its clause are fields, no closure:
+   * the clause is the handler's, made once with the reach, where the context is (`Perform`) */
+  case Op[N <: Tuple, X, Dn <: Tuple, Ansn, E[+_]](at: Reach[N, Dn, Ansn], op: E[X], clause: Clause[E, Dn, Ansn]) extends Cont[N, N, X]
   /** `k(x)` pending: the machine puts the captured piece back under a delimiter of its own */
   case Resume[D <: Tuple, I <: Tuple, X, T](x: X, k: Captured[D, I, X, T, ?]) extends Cont[D, I, T]
 
@@ -53,6 +54,10 @@ enum Cont[I <: Tuple, O <: Tuple, +A]:
 enum Reach[N <: Tuple, Dn <: Tuple, Ansn]:
   case Here[D <: Tuple, Ans]() extends Reach[At[D, Ans] *: D, D, Ans]
   case Out[Ans, N2 <: Tuple, Dn <: Tuple, Ansn](next: Reach[N2, Dn, Ansn]) extends Reach[At[N2, Ans] *: N2, Dn, Ansn]
+
+/** a handler's clause as the machine calls it: at the handler's outside `D`, with the captured `k` */
+trait Clause[E[+_], D <: Tuple, Ans]:
+  def apply[X](op: E[X], k: X => Cont[D, D, Ans]): Cont[D, D, Ans]
 
 /** a program at the top: no delimiter in force, nothing outside, the stacks empty; its answer is its value,
  * Danvy–Filinski's `⟨e⟩ : τ` */
@@ -143,19 +148,22 @@ def handle[E[+_], A, Ans](h: Answering[E, A, Ans])(using o: Ctx)
 /** `perform(op)`: to the handler of `E` in the context — answered in place if it answers, one capture to its
  * delimiter if not, through the delimiters between. The handler is found in the context's types, at compile time;
  * none, no program */
-def perform[E[+_], X](op: E[X])(using c: In[?, ?], p: Perform[E, c.type]): c.Body[X] = p(op, c)
+def perform[E[+_], X](op: E[X])(using c: In[?, ?], p: Perform[E, c.type]): c.Body[X] = p(op)
 /** how `E` is performed in a context `C`: `answered` (in place) where its handler answers, else `reaches` (one
- * capture) — chosen at compile time, by the given's priority */
+ * capture) — chosen at compile time, by the given's priority. It is OF ITS CONTEXT, `c`, taken where it is
+ * summoned: the reach to the handler and its clause are made once, here, not at each operation */
 trait Perform[E[+_], C <: In[?, ?]]:
-  def apply[X](op: E[X], c: C): Cont[c.Here, c.Here, X]
+  val c: C
+  def apply[X](op: E[X]): Cont[c.Here, c.Here, X]
 object Perform extends PerformLow:
-  given answered[E[+_], C <: In[?, ?]](using a: Answered[E, C]): Perform[E, C] with
-    def apply[X](op: E[X], c: C): Cont[c.Here, c.Here, X] = Cont.Delay(() => Cont.Return(a(op, c)))
+  given answered[E[+_], C <: In[?, ?]](using c0: C, a: Answered[E, C]): Perform[E, C] with
+    val c: C = c0
+    def apply[X](op: E[X]): Cont[c.Here, c.Here, X] = Cont.Delay(() => Cont.Return(a(op, c)))
 sealed trait PerformLow:
-  given reaches[E[+_], C <: In[?, ?]](using r: Reaches[E, C]): Perform[E, C] with
-    def apply[X](op: E[X], c: C): Cont[c.Here, c.Here, X] =
-      val t = r.target(c)
-      Cont.Op[c.Here, X, t.Dn, t.Ansn](t.reach, t.clause(op))
+  given reaches[E[+_], C <: In[?, ?]](using c0: C, r: Reaches[E, C]): Perform[E, C] with
+    val c: C = c0
+    val t: Target[E, c.Here] = r.target(c)
+    def apply[X](op: E[X]): Cont[c.Here, c.Here, X] = Cont.Op[c.Here, X, t.Dn, t.Ansn, E](t.reach, op, t.clause)
 /** the handler of `E` reached from a context `C`: where its delimiter is, and its clause */
 trait Reaches[E[+_], C <: Ctx]:
   def target(c: C): Target[E, c.Here]
@@ -164,15 +172,16 @@ sealed trait Target[E[+_], N <: Tuple]:
   type Dn <: Tuple
   type Ansn
   def reach: Reach[N, Dn, Ansn]
-  def clause[X](op: E[X]): (X => Cont[Dn, Dn, Ansn]) => Cont[Dn, Dn, Ansn]
+  def clause: Clause[E, Dn, Ansn]
 object Reaches:
   /** the context is the handler's: its delimiter is the nearest */
   given here[E[+_], Ans, C <: Handling[E, Ans, ?]]: Reaches[E, C] with
     def target(c: C): Target[E, c.Here] = new Target[E, c.Here]:
       type Dn = c.D
       type Ansn = Ans
-      def reach: Reach[c.Here, c.D, Ans] = Reach.Here[c.D, Ans]()
-      def clause[X](op: E[X]): (X => Cont[c.D, c.D, Ans]) => Cont[c.D, c.D, Ans] = k => c.handler(using c.outer)(op, k)
+      val reach: Reach[c.Here, c.D, Ans] = Reach.Here[c.D, Ans]()
+      val clause: Clause[E, c.D, Ans] = new Clause[E, c.D, Ans]:
+        def apply[X](op: E[X], k: X => Cont[c.D, c.D, Ans]): Cont[c.D, c.D, Ans] = c.handler(using c.outer)(op, k)
   /** the context is another delimiter's: one level out, the outer context's reach after it */
   given out[E[+_], Oc <: In[?, ?], C <: In[?, Oc]](using o: Reaches[E, Oc]): Reaches[E, C] with
     def target(c: C): Target[E, c.Here] =
@@ -180,8 +189,8 @@ object Reaches:
       new Target[E, c.Here]:
         type Dn = t.Dn
         type Ansn = t.Ansn
-        def reach: Reach[c.Here, t.Dn, t.Ansn] = Reach.Out[c.Sa, c.D, t.Dn, t.Ansn](t.reach)
-        def clause[X](op: E[X]): (X => Cont[t.Dn, t.Dn, t.Ansn]) => Cont[t.Dn, t.Dn, t.Ansn] = t.clause(op)
+        val reach: Reach[c.Here, t.Dn, t.Ansn] = Reach.Out[c.Sa, c.D, t.Dn, t.Ansn](t.reach)
+        val clause: Clause[E, t.Dn, t.Ansn] = t.clause
 /** the value of `E` answered in place in the context `C`: its handler answers, or a context outside does */
 trait Answered[E[+_], C <: Ctx]:
   def apply[X](op: E[X], c: C): X

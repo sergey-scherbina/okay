@@ -94,7 +94,7 @@ object Machine:
       // the four that move a level answer with the machine's next state, each where its node's types are names
       case r: Reset[?, ?, ?, ?] => val n = enter(r, k, m); go(n.c, n.k, n.m)
       case s: Shift0[d, i, o, t, r, x] => val n = cut[x, t, B, I, r, o, I0, O0, Z, d, i](s, s.f, k, m); go(n.c, n.k, n.m)
-      case s: Op[n, x, dn, ansn] => val n = cutN[x, B, I, I0, O0, Z, n, dn, ansn, B, I, n](s.at, s.f, k, m, k, m); go(n.c, n.k, n.m)
+      case s: Op[n, x, dn, ansn, e] => val n = cutN[x, B, I, I0, O0, Z, n, dn, ansn, B, I, n, e](s.at, s.op, s.clause, k, m, k, m); go(n.c, n.k, n.m)
       case r: Resume[?, ?, ?, ?] => val n = under(r.x, r.k.piece, Stack.Delim(k, m)); go(n.c, n.k, n.m)
 
   /** into the delimiter: its level pushed, the body at its start */
@@ -124,17 +124,17 @@ object Machine:
    * its record into the piece, the walk going on at the level outside, whose index the reach names; at the target,
    * the clause, and if it returned `k(x)` as its whole body, `x` where the operation was, the stack as it stands
    * (`k0`, `m0`); the run's bottom instead hands the operation out, with the reach left, as a program of the run */
-  @tailrec private def cutN[X, A, I <: Tuple, I0 <: Tuple, O0 <: Tuple, Z, N <: Tuple, Dn <: Tuple, Ansn, B0, Ih <: Tuple, N0 <: Tuple](
-      at: Reach[N, Dn, Ansn], f: (X => Cont[Dn, Dn, Ansn]) => Cont[Dn, Dn, Ansn],
+  @tailrec private def cutN[X, A, I <: Tuple, I0 <: Tuple, O0 <: Tuple, Z, N <: Tuple, Dn <: Tuple, Ansn, B0, Ih <: Tuple, N0 <: Tuple, E[+_]](
+      at: Reach[N, Dn, Ansn], op: E[X], clause: Clause[E, Dn, Ansn],
       piece: Piece[X, A, I, N], m: Stack[A, I, N, I0, O0, Z], k0: Frames[X, B0, Ih, N0], m0: Stack[B0, Ih, N0, I0, O0, Z]): Step[I0, O0, Z] =
     m match
-      case Stack.Run(out, rest) => cutN(at, f, Over(piece, out), rest, k0, m0)
+      case Stack.Run(out, rest) => cutN(at, op, clause, Over(piece, out), rest, k0, m0)
       case d @ Stack.Delim(_, _) => at match
-        case Reach.Here() => foundN(d)[X, B0, Ih, N0](piece, f, k0, m0)
-        case Reach.Out(next) => cutN(next, f, crossed(d)[X](piece), d.rest, k0, m0)
+        case Reach.Here() => foundN(d)[X, B0, Ih, N0, E](piece, op, clause, k0, m0)
+        case Reach.Out(next) => cutN(next, op, clause, crossed(d)[X](piece), d.rest, k0, m0)
       case Stack.Done() =>
         val n = link(piece, Stack.Done[A, I, N]())
-        step(Bind(Op(at, f), n), Frames.End(), Stack.Done())
+        step(Bind(Op(at, op, clause), n), Frames.End(), Stack.Done())
 
   /** the delimiter crossed: the piece so far under its record, a piece of the level outside, at the delimiter's
    * outside — which the reach names as the next level's index */
@@ -143,10 +143,10 @@ object Machine:
     Crossed(piece, d.out)
 
   private def foundN[D <: Tuple, S, Ans, B0, I2 <: Tuple, I0 <: Tuple, O0 <: Tuple, Z](d: Stack.Delim[D, D, S, Ans, B0, I2, I0, O0, Z])
-      [X, Bh, Ih <: Tuple, N0 <: Tuple](piece: Piece[X, S, At[D, S] *: D, At[D, Ans] *: D], f: (X => Cont[D, D, Ans]) => Cont[D, D, Ans],
+      [X, Bh, Ih <: Tuple, N0 <: Tuple, E[+_]](piece: Piece[X, S, At[D, S] *: D, At[D, Ans] *: D], op: E[X], clause: Clause[E, D, Ans],
       k0: Frames[X, Bh, Ih, N0], m0: Stack[Bh, Ih, N0, I0, O0, Z]): Step[I0, O0, Z] =
     val captured = Captured(piece)
-    val body = f(captured)
+    val body = clause(op, captured)
     val r = captured.tail(body)
     if r != null then step(Return(r.x), k0, m0) else step(body, d.out, d.rest)
 

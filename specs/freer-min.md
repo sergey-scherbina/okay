@@ -1339,3 +1339,34 @@ instead, which is the shorter answer anyway. Two recursions by the row (`Has.at`
 inventory: per effect of a row the program's TYPE names.
 
 Seven nodes in the kernel, 37 tests on the JVM, JS and Native compile, no cast, no warning.
+
+## Stage 28: `Op` WITHOUT A CLOSURE, THE REACH MADE ONCE PER CONTEXT (DONE, 2026-10-06)
+
+The two things named at stage 26 as left on the general path, both promised. (1) `Op` held a closure, `k =>
+c.handler(using c.outer)(op, k)`, built at each operation over the operation and the handler; now it holds the
+OPERATION and the handler's CLAUSE as fields — `Op[N, X, Dn, Ansn, E](at, op: E[X], clause: Clause[E, Dn, Ansn])`,
+`Clause.apply[X](op, k)` one virtual call at the delimiter — and the machine passes the two down `cutN` to
+`foundN`, which calls `clause(op, captured)`. (2) `Perform.reaches` built a `Target` at each operation —
+`r.target(c)`: the `Reach` chain, `Out` by `Out`, and the clause — though for a context they are constant; now a
+`Perform` is OF ITS CONTEXT: `trait Perform[E, C] { val c: C; def apply[X](op: E[X]): Cont[c.Here, c.Here, X] }`,
+its givens take the context where they are summoned (`using c0: C`), and `reaches` keeps `val t: Target[E,
+c.Here]` — reach and clause made once per summoning of the capability, which is once per fragment, not per
+operation. `perform(op)(using c, p: Perform[E, c.type]) = p(op)`: dotty takes `p.c.Here` as `c.Here` when `C` is
+the singleton `c.type`, so nothing is said twice. The `Target`'s `reach` and `clause` are `val`s.
+
+Measured, the same lanes, the box at load 5–7 (noisier than the stage-26 run):
+
+| lane | stage 26 | now | master |
+|---|---|---|---|
+| handlePrebuilt, general clauses | 186.6 ± 6 | 171.4 ± 2.0 | 133.2 |
+| handlePrebuiltAnswering | 139.0 ± 1.6 | 133.5 ± 1.2 | 133.2 |
+| handleForward | 211.5 | 200.2 ± 2.1 | 156.2 |
+| tailcallChain | 22.0 | 22.6 ± 0.6 | 26.4 |
+| stateAnswering | 22.2 | 22.1 ± 0.4 | 18.4 |
+
+The general path 8 % off (1.29× master from 1.40×), answering at master's. What is left on the general path is
+the capture itself: `Captured`, the piece, the `Stack.Delim` put back on resumption — one capture per operation,
+which is the semantics, not an allocation to spare. The `Free` layer's `Cap.perform` still builds its target at
+each operation (it has no context value at `lift`); when `Free` is measured, that is where to look.
+
+Seven nodes, 37 tests on the JVM, JS and Native compile, no cast, no warning.

@@ -38,7 +38,7 @@ enum Cap[E[+_], C <: Ctx]:
     case Answers(a) => Cont.Delay(() => Cont.Return(a(op, c)))
     case Reaching(r) =>
       val t = r.target(c)
-      Cont.Op[c.Here, X, t.Dn, t.Ansn](t.reach, t.clause(op))
+      Cont.Op[c.Here, X, t.Dn, t.Ansn, E](t.reach, op, t.clause)
   def lift[C2 <: In[?, C]]: Cap[E, C2] = this match
     case Answers(a) => Answers(Answered.outside[E, C, C2](using a))
     case Reaching(r) => Reaching(Reaches.out[E, C, C2](using r))
