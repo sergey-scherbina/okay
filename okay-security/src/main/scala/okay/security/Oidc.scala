@@ -2,7 +2,6 @@ package okay.security
 
 import okay.{!, +, %, Async, Throws, pure, raise, runEither}
 import okay.Row.at
-import okay.given_Effects_Free
 import okay.codec.Json
 import okay.http.{Http, Request}
 
