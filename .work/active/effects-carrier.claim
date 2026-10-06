@@ -1,0 +1,6 @@
+feature/effects-carrier 2026-10-06T18:26:35Z
+agent: claude-code
+heartbeat: 2026-10-06T18:26:35Z
+status: in-progress
+done-so-far: claimed
+next: Effects[M] gets the continuation carrier C with its Control: foldCont, runWith, handle, convert through Control[C]; Free/Eager/Prog at C = Cont, the outside unchanged
