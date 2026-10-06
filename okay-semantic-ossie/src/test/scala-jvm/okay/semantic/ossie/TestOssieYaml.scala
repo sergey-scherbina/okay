@@ -15,6 +15,7 @@ class TestOssieYaml extends okay.testkit.Munit.Diagnosed:
     assertEquals(Document.readYaml(document.yaml)(using SnakeYaml).toOption.get.raw,raw)
     assert(Document.readYaml(block).isLeft)
     assert(SnakeYaml.byName("snakeyaml").isRight)
+    assertEquals(Syntax.byName("snakeyaml")(using SnakeYaml),Right(SnakeYaml))
     assert(Syntax.byName("alien").isLeft)
     assert(SnakeYaml.missing(new ClassLoader(null) {}).nonEmpty)
   }

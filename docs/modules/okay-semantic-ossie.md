@@ -40,7 +40,7 @@ points and emits JSON flow syntax, which is also valid YAML 1.2. This default
 works on JVM, JavaScript and Native. Ordinary block/flow YAML on JVM uses
 SnakeYaml with the optional org.snakeyaml:snakeyaml-engine 2.9 dependency;
 import SnakeYaml.given or pass it explicitly as the Syntax instance. No caller
-or business model changes. SnakeYaml.byName("snakeyaml") selects it by name;
+or business model changes. Syntax.byName("snakeyaml") selects the imported instance by name;
 SnakeYaml.missing reports an absent jar. Other names are refused.
 
 The optional YAML interpreter accepts quoted strings, block scalars and flow

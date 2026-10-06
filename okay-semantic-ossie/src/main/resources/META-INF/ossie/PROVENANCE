@@ -1,0 +1,4 @@
+Apache Ossie core schema 0.2.0.dev0
+Revision: 891f007945b5666464a45e2c75c1a0a8be9cd7f7
+Source: https://github.com/apache/ossie/blob/891f007945b5666464a45e2c75c1a0a8be9cd7f7/core-spec/ossie-schema.json
+Pinned.scala embeds this schema for portable runtime validation.

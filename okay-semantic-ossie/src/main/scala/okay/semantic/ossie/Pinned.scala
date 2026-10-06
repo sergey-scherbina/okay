@@ -1,6 +1,7 @@
 package okay.semantic.ossie
 
-// Apache-2.0 schema snapshot; attribution in OSSIE-NOTICE/OSSIE-LICENSE test resources.
+// SPDX-License-Identifier: Apache-2.0
+// Apache schema snapshot; attribution in META-INF/ossie/NOTICE and LICENSE.
 // Generated from apache/ossie revision 891f007945b5666464a45e2c75c1a0a8be9cd7f7.
 private[ossie] object Pinned:
   val revision = "891f007945b5666464a45e2c75c1a0a8be9cd7f7"

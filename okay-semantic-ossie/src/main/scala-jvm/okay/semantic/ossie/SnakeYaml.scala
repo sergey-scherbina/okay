@@ -10,6 +10,8 @@ import org.snakeyaml.engine.v2.nodes.{Node, ScalarNode, SequenceNode, MappingNod
 
 /** Optional YAML interpreter; the portable module never names SnakeYAML. */
 object SnakeYaml extends Syntax:
+  val name = "snakeyaml"
+  override def unavailable: Option[String] = missing()
   given Syntax = this
   def missing(loader: ClassLoader = getClass.getClassLoader): Option[String] =
     scala.util.Try(Class.forName("org.snakeyaml.engine.v2.api.LoadSettings",false,loader)).failed.toOption

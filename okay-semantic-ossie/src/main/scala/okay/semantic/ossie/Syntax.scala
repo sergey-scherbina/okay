@@ -6,18 +6,22 @@ import okay.lex.Json.K
 
 /** Storage syntax is optional and independent of business/execution validation. */
 trait Syntax:
+  def name: String
+  def unavailable: Option[String] = None
   def readJson(text: String): Either[Vector[String], Json]
   def readYaml(text: String): Either[Vector[String], Json]
   def writeJson(value: Json): String
   def writeYaml(value: Json): String
 object Syntax:
   given Syntax = PortableSyntax
-  def byName(name: String): Either[String, Syntax] =
+  def byName(name: String)(using candidate: Syntax): Either[String, Syntax] =
     if name == "portable" then Right(PortableSyntax)
+    else if name == candidate.name then candidate.unavailable.toLeft(candidate)
     else Left(s"syntax $name: import the optional platform adapter explicitly")
 
 /** JSON is also YAML 1.2 flow syntax; block YAML requires a platform adapter. */
 object PortableSyntax extends Syntax:
+  val name = "portable"
   def readJson(text: String): Either[Vector[String], Json] =
     val errors = Vector.newBuilder[String]
     var work = List(Json.cst(text))
