@@ -41,7 +41,9 @@ Core `okay-semantic` remains standard-library-only and cross-platform.
   fail; OneToOne also checks non-null left keys. Missing/null keys are retained
   as absent dimensions. No fact multiplication. Chaining explicit lookups supports
   federation and snowflakes; ambiguous automatic path inference is not performed.
-  Origin records both source versions, and grain is the fact's grain.
+  Origin records both source versions, and grain is the fact's grain. The enriched
+  model carries its relation declarations; SQL bindings must name those same
+  relations/cardinalities, so storage cannot weaken the business declaration.
 
 `okay-semantic-sql` extends SQL statistics with min/max and count-distinct,
 comparison filters, fixed-bucket dimension metadata and derived finalization.
