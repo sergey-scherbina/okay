@@ -5,7 +5,6 @@ import okay.given
 import okay.semantic.*
 import okay.sql.SqlValue
 import okay.jdbc.JdbcSql
-import java.sql.DriverManager
 
 class TestSemanticSql extends okay.testkit.Munit.Diagnosed:
   case class Sale(segment: Option[String], amount: Option[BigDecimal], cost: Option[BigDecimal])
@@ -33,7 +32,7 @@ class TestSemanticSql extends okay.testkit.Munit.Diagnosed:
     val plan = model.plan(request).toOption.get
     val statement = Render(plan, binding).toOption.get
     note(plan.explain); note(statement.sql); note(s"params: ${statement.params}")
-    val conn = DriverManager.getConnection("jdbc:h2:mem:")
+    val conn = H2Fixture.open()
     try
       val setup = conn.createStatement()
       try setup.executeUpdate("CREATE TABLE \"sales\" (\"segment\" VARCHAR, \"amount\" NUMERIC(38,10), \"cost\" NUMERIC(38,10))"): Unit
@@ -55,6 +54,20 @@ class TestSemanticSql extends okay.testkit.Munit.Diagnosed:
       if request.order.nonEmpty then assertEquals(actual.groups, expected.groups)
     finally conn.close()
 
+  test("SQL fixture works without globally registered JDBC drivers") {
+    val executable = java.nio.file.Path.of(System.getProperty("java.home"), "bin", "java").toString
+    val classes = java.nio.file.Path.of(classOf[H2Fixture].getProtectionDomain.getCodeSource.getLocation.toURI).toString
+    val h2 = java.nio.file.Path.of(classOf[org.h2.Driver].getProtectionDomain.getCodeSource.getLocation.toURI).toString
+    val child = new ProcessBuilder(executable, "-cp", classes + java.io.File.pathSeparator + h2, classOf[H2Fixture].getName)
+      .redirectErrorStream(true).start()
+    val finished = child.waitFor(30L, java.util.concurrent.TimeUnit.SECONDS)
+    if !finished then child.destroyForcibly(): Unit
+    assert(finished, "isolated H2 fixture exceeded 30 seconds")
+    val output = new String(child.getInputStream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+    note(output)
+    assertEquals(child.exitValue(), 0, output)
+    assert(output.contains("registry absent; direct query returned 42"), output)
+  }
   test("real SQL agrees on exact sums, counts, weighted ratios and null groups") {
     parity(Request(metrics.map(_.id), Vector("segment")), rows)
     parity(Request(metrics.map(_.id)), rows)
@@ -123,7 +136,7 @@ class TestSemanticSql extends okay.testkit.Munit.Diagnosed:
       dimensionRefs = Map("customer.tier" -> ColumnRef("tier", "c")))
     val statement = Render(p, bound).toOption.get
     note(statement.sql)
-    val conn = DriverManager.getConnection("jdbc:h2:mem:")
+    val conn = H2Fixture.open()
     try
       val setup = conn.createStatement()
       try
@@ -156,7 +169,7 @@ class TestSemanticSql extends okay.testkit.Munit.Diagnosed:
     val p = m.plan(Request(Vector("rows"), Vector("bucket"), order = Vector(Order("bucket")))).toOption.get
     val statement = Render(p, Binding("times", Map("bucket" -> "at"), Map.empty)).toOption.get
     note(statement.sql)
-    val conn = DriverManager.getConnection("jdbc:h2:mem:")
+    val conn = H2Fixture.open()
     try
       val setup = conn.createStatement()
       try
