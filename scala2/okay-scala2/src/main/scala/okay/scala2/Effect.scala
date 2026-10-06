@@ -48,9 +48,10 @@ abstract class Effect[F[_]](implicit tag: ClassTag[F[Any]]) { self =>
 
   /** handle this effect: `ret` for the answer, `h` for each operation */
   def handle[R, A, B](e: Eff[Effect[F] & R, A])(ret: A => Eff[R, B])(h: Handler[F, R, B]): Eff[R, B] =
-    Eff.of(Effects[Free].handle[Op, Top](using test)[A, B](Rows.coerce(e.program))(a => ret(a).program)(
+    val E = Effects[Free]
+    Eff.of(E.handle[Op, Top](using test)[A, B](Rows.coerce(e.program))(a => ret(a).program)(
       [X] => (op: Op[X]) =>
-        okay.Cont.shift[X, Free[Top, B], Free[Top, B]](k => h(narrow(op), (x: X) => Eff.of[R, B](k(x))).program)))
+        E.control.shift[X, Free[Top, B], Free[Top, B]](k => h(narrow(op), (x: X) => Eff.of[R, B](k(x))).program)))
 
   /**
    * handle the LAST effect and answer. Not a convenience: `handle` at the
