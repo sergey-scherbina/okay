@@ -1,6 +1,6 @@
 feature/freer-min 2026-10-06T03:38:40Z
 agent: claude-code
-heartbeat: 2026-10-06T04:39:34Z
+heartbeat: 2026-10-06T05:35:24Z
 status: in-progress
-done-so-far: okay-freer (tree, Control over Row[F], the machine: five rules) TestFreer+TestMachine 16 green on JVM, spec specs/freer-min.md stage 1
-next: JS+Native compile; JMH against master's lanes; row-inference ergonomics for reset/shift0
+done-so-far: stage 2: eight-node tree (Reset/Shift0/Resume nodes, Delay back), per-level rows with Widen witnesses, ZERO casts in the kernel, 19 green JVM
+next: JS+Native; decide the one loop (Machine.run vs resume) by measurement; JMH vs master
