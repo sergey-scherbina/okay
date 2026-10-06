@@ -572,3 +572,15 @@ Gate: the hang itself is a soak, not a gate, so the law is stated on
 the deque instead — conservation, everything pushed comes out exactly
 once, on the growing-under-thieves shape. It fails on the old line in
 29 ms and passes on the new one.
+
+## ci-selftest-darwin-session — zero session IDs cause a false isolation failure
+<!-- status: open
+     area: build-harness
+     gate: scripts/ci-runner-selftest.sh -->
+
+Found 2026-10-06 while validating platform builds. Case 9c reports both
+runner/kicker sess IDs as zero; ps also reports SESS 0 for this shell.
+The unchanged runner fixtures otherwise pass, including group signal
+logging, lock release and no push after interruption. No production
+runner change in this lane. Track the portable probe fix in
+backlog.d/build/ci-selftest-darwin-session.md.
