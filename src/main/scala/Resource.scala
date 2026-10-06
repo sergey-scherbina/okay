@@ -1,6 +1,5 @@
 package okay
 
-import okay.freer.Free
 
 import okay.!.*
 import okay.Row.plus

@@ -295,7 +295,7 @@ API reference, gotchas.
 | module | what it is |
 |---|---|
 | `okay` (core) | effects, continuations, the algebra — covered by the guide/tutorial/typepedia above |
-| [`okay-freer`](modules/okay-freer.md) | the freer monad on its own, below the core: `Freer`, `Free`, `Unary` and the type classes they instantiate; the core names them at its door |
+| [`okay-freer`](modules/okay-freer.md) | the freer monad on its own, below the core: the indexed tree `Freer` and the type classes it instantiates; the core names it at its door |
 | [`okay-cont`](modules/okay-cont.md) | delimited continuations typed by two stacks of answer types, handlers as delimiters, and the machine that runs them; `Effects[Prog]` beside `Effects[Free]` |
 | [`okay-async`](modules/okay-async.md) | the portable `Async` effect and its callback-based runtime semantics, with no platform default instances of its own |
 | [`okay-direct`](modules/okay-direct.md) | the optional direct syntax (`direct { ... }`) and its compile-time macro implementation |

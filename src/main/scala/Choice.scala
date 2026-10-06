@@ -1,6 +1,5 @@
 package okay
 
-import okay.freer.Free
 
 /**
  * The nondeterminism effect: choose one of several values, and let

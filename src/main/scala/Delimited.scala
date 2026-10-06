@@ -1,6 +1,6 @@
 package okay
 
-import okay.freer.{Free, Freer}
+import okay.freer.Freer
 
 import okay.freer.Freer.{Return, Inject, Bind, Delay}
 import scala.annotation.tailrec

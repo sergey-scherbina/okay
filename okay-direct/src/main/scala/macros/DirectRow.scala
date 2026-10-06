@@ -18,7 +18,7 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
   /** the tree's class: `Freer` since freer-base-step-extractor (2026-09-29),
    * `A ! Row` being `Freer[Unary[Row], Unit, Unit, A]` */
   lazy val freeClass = Symbol.requiredClass("okay.freer.Freer")
-  private lazy val liftedClass = TypeRepr.of[okay.freer.Diagonal[Option]].typeSymbol
+  private lazy val liftedClass = TypeRepr.of[okay.Diagonal[Option]].typeSymbol
   private lazy val liftAlias = TypeRepr.of[okay.Unary[Option]].typeSymbol
 
   /**
@@ -102,7 +102,7 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
     rowOf.exists(r => TypeRepr.of[Once[Unit]] <:< r.appliedTo(TypeRepr.of[Unit]))
 
   lazy val injectApply: Symbol =
-    Symbol.requiredModule("okay.freer.Free.Inject").methodMember("apply").head
+    Symbol.requiredModule("okay.Free.Inject").methodMember("apply").head
 
   /**
    * SHARED OPERATION NODES (specs/effect-op-cost.md D2). `State.get`
@@ -148,9 +148,9 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
     case None => injectTerm(op, elem, row)
 
   lazy val pureApply: Symbol =
-    Symbol.requiredModule("okay.freer.Free.Return").methodMember("apply").head
+    Symbol.requiredModule("okay.Free.Return").methodMember("apply").head
   lazy val bindApply: Symbol =
-    Symbol.requiredModule("okay.freer.Free.Bind").methodMember("apply").head
+    Symbol.requiredModule("okay.Free.Bind").methodMember("apply").head
   /** THE SAME NODES BY THEIR OTHER NAMES (freer-base-step-extractor,
    * 2026-09-29): `Free.Inject`/`Return`/`Bind` are wrapper objects over
    * the enum `Freer`, and an INLINE door — `effect`, `pure`,

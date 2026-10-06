@@ -1,6 +1,6 @@
 package okay
 
-import okay.freer.{Free, Freer}
+import okay.freer.Freer
 
 import okay.Row.plus
 import scala.quoted.*

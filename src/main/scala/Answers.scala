@@ -1,6 +1,5 @@
 package okay
 
-import okay.freer.Free
 
 import scala.annotation.implicitNotFound
 import scala.quoted.*
@@ -25,8 +24,9 @@ import scala.quoted.*
 @implicitNotFound("no Direct.Effect[${F}]: auto-coloring is OPT-IN per signature.\nRegister the effect once — `given Direct.Effect[${F}] with {}` — or use the explicit marks\n(.reflect / .? / !prog), which need no marker.")
 trait DirectEffect[F[_]]
 
-/** `DirectCtx`, the evidence installed only while a `direct` block is being compiled, is the tree's own
- * (okay.freer, Free.scala): the colouring given lives in `Freer`'s companion, where it is found with no import */
+/** Evidence installed only while a `direct` block is being compiled. */
+@implicitNotFound("no DirectCtx[${F}]: auto-coloring works only INSIDE a direct block.\nWrap the code in direct[F] { ... } — or use the explicit marks (.reflect / .? / !prog),\nwhich need no capability.")
+final class DirectCtx[F[_]] private[okay] ()
 
 /** ∀X, the runtime test for F[X], by the erasure of F */
 @implicitNotFound("no TypeableK[${F}].\nSplitting a row needs a runtime test for ${F}'s operations, and a signature declares its own:\n  enum YourOp[+A] derives Effect\nA parameterised one says the same: `enum YourOp[S, +A] derives Effect` abstracts the LAST\nparameter, and the test is then by class only (a row may hold one of it).\nA ROW needs no instance: the split tests one side and takes the other by exclusion.")

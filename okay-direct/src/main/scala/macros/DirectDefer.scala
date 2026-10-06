@@ -99,7 +99,7 @@ private[okay] trait DirectDefer[F[_]] extends DirectMarks[F] with DirectRow[F]:
           else programOf(app.tpe) match
             case Some((r, elem)) if r =:= row => Some(elem)
             case _ => None
-        lazy val delayApply = Symbol.requiredModule("okay.freer.Free").methodMember("delay").head
+        lazy val delayApply = Symbol.requiredModule("okay.Free").methodMember("delay").head
         // the `[F, A]` overload, BY SHAPE: `methodMember` answers every
         // `reflect` (a generator's `[W]` one among them) in an order that
         // moved under freer-base-step-extractor, and `.head` picked the

@@ -1,6 +1,5 @@
 package okay
 
-import okay.freer.Free
 
 /**
  * The opt-in EAGER encoding (specs/eager.md): the kyo trick as a

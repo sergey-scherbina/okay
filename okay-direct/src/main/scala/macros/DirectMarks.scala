@@ -20,7 +20,7 @@ private[okay] trait DirectMarks[F[_]] extends DirectPhase[F]:
     // in `Freer`'s companion since freer-base-step-extractor: `Free` is an
     // alias now, and a `given` is found through the implicit scope of what
     // an alias dealiases to
-    Symbol.requiredModule("okay.freer.Freer").methodMember("directColor")).toSet
+    Symbol.requiredModule("okay.Diagonal").methodMember("directColor")).toSet
 
   /** the GENERIC mark `reflect[F[_], A]` — by arity, since `reflect[W]`
    * on a generator value (specs/generators.md) shares the name */

@@ -1394,6 +1394,19 @@ dependency-free (specs/modules-infra.md)" was `forbid("okay(JVM|JS|Native)", ".*
 dependency-free one and the core may depend on it alone, the kernel on either — the rule's sense (no library)
 kept, its letter moved one module down, in the spec.
 
+THE SECOND CUT, after the pre-merge gate (the same day): `Free`, `Unary`, `Diagonal` and `DirectCtx` went BACK to
+the core, and the module is `Freer` with the type classes alone. The gate found what the first cut had moved
+out of reach: `p.handle` and `p.run` as top-level extensions of package `okay` were lost to a selective
+`import okay.{!, …}` (okay-cats, TestIOMembers) and a top-level `run` was ambiguous beside any other
+wildcard-imported `run` (okay-ui, TestPWizard) — they had been found in `Freer`'s companion, the implicit scope of
+every `A ! F`, with no import at all. The core's own anchor in that scope is `Diagonal`: `Unary[F]` is
+`Diagonal[F]#L`, a member's projection, and a member's prefix anchors its implicit scope (checked by the build:
+the two sites compile again with the doors in `object Diagonal`). So the doors — the three `handle`s, `run`,
+`directColor`, the tree's `Monad` and `TailRecM` — are `Diagonal`'s companion's, and `okay-direct` names
+`directColor` there. The core's files import `Freer` from its home (an explicit import beats the package alias,
+and costs no getter: through the alias `Effects[Free].handle`'s loop had grown past the inlining budget,
+TestInlineBudget). The alias `Freer` stays at the door for everyone else.
+
 Checked: the core and the module on the JVM, JS and Native; the nearest core suites (TestEager, TestReflect,
 TestFreerPara, TestBangLoop, TestFoldCont, TestFoldMap, TestFoldUntil) and the whole `okay-direct` suite — 500
 green; the test classes of `okay-cont`, `okay-spring` and the core compile. Not run: the rest of the build's

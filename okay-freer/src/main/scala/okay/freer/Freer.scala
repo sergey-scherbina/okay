@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.{Monad, ParaMonad, TailRecM}
+import okay.ParaMonad
 import scala.annotation.tailrec
 
 /**
@@ -105,29 +105,6 @@ object Freer {
   /** a deferred call with NOTHING after it, `!.tailcall`'s node. Not `defer(thunk)(pure)`: resumed, that
    * pushes a `.flatMap(pure)` down every bind of the deferred subprogram; `Delay` has nothing to push */
   def delay[G[_, _, +_], S, R, A](thunk: () => Freer[G, S, R, A]): Freer[G, S, R, A] = Delay(thunk)
-
-  /**
-   * A program value as its answer INSIDE a `direct` block: `Direct.selfColor` for this monad, found here with
-   * no import (a conversion's implicit scope is its source type's, and `Free` dealiases to `Freer`).
-   * `DirectCtx` exists only inside a block, so outside one a program stays a program; the body never runs.
-   * A program of ANOTHER row colours too: the macro, which knows both rows, checks the membership and coerces
-   * or refuses by name (searched here, the row's halves would still be free variables).
-   */
-  given directColor[R[+_], R2[+_], A](using DirectCtx[[X] =>> Free[R, X]]): Conversion[Free[R2, A], A] =
-    _ => throw new IllegalStateException(
-      "Direct auto-coloring escaped macro rewriting — this call belongs inside direct { ... }")
-
-  /** Free[F, *] is a Monad for every signature F, with no constraint on F */
-  given [F[+_]]: Monad[Free[F, *]] with
-    override inline def pure[A](a: A): Free[F, A] = Return(a)
-    extension [A](a: Free[F, A])
-      override inline def flatMap[B](f: A => Free[F, B]): Free[F, B] = a.flatMap(f)
-
-  /** a program's loop is `!.loop`: the recursion sits in a `Bind` the
-   * interpreter resumes, never on the caller's stack
-   * (specs/eager-carrier-depth.md) */
-  given [F[+_]]: TailRecM[Free[F, *]] with
-    def tailRecM[A, B](a: A)(f: A => Free[F, Either[A, B]]): Free[F, B] = Free.loop(a)(f)
 
   /** the tree in `ParaMonad`'s order, value first (`Freer` keeps `A` last for inference) */
   type Para[G[_, _, +_]] = [A, S, R] =>> Freer[G, S, R, A]

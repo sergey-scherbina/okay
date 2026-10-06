@@ -1,6 +1,5 @@
 package okay
 
-import okay.freer.Free
 
 /**
  * The Writer effect IS a stream: telling w emits w, and a writer

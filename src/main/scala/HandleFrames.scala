@@ -1,6 +1,6 @@
 package okay
 
-import okay.freer.{Free, Freer}
+import okay.freer.Freer
 
 /**
  * HANDLERS AS FRAMES OF THE ONE MACHINE (handle-frames, specs/handle-frames.md; on `Delimited` since cont-atm,
