@@ -1,6 +1,6 @@
 feature/freer-min 2026-10-06T03:38:40Z
 agent: claude-code
-heartbeat: 2026-10-06T03:38:40Z
+heartbeat: 2026-10-06T03:43:58Z
 status: in-progress
-done-so-far: worktree created
-next: spec specs/freer-min.md with the minimal Freer definition
+done-so-far: spec specs/freer-min.md + stage-0 probe committed on the branch
+next: operator's answers on home module and Shift0 typing; then the machine
