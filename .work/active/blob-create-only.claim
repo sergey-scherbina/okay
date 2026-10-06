@@ -1,0 +1,7 @@
+feature/blob-create-only 2026-10-06T18:20:26Z
+agent: codex
+heartbeat: 2026-10-06T18:20:26Z
+status: in-progress
+done-so-far: inspected S3; conditional writes absent
+next: additive ConditionalObjects facade and S3 implementation, scoped tests
+scope: okay-blob new ConditionalObjects.scala, S3.scala additive methods, TestConditionalObjects.scala, specs/blob-create-only.md
