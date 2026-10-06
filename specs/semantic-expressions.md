@@ -9,7 +9,8 @@ without SQL, agents or external engines.
 ## Interface
 - Core `Calculation.Constant(BigDecimal)` represents constants; existing
   `Bridge.bind` compiles offsets and reciprocals through core arithmetic, including
-  DECIMAL128 division at execution, never a prematurely rounded reciprocal.
+  exact terminating division at execution with DECIMAL128 fallback for recurring
+  decimal results, never a prematurely rounded reciprocal.
 - `Execution.bind(document, dataset, bindings, dialect, functions, language)`
   produces an `ExpressionModel[A]`; `.plan(Request)` produces an
   `ExpressionPlan[A]`; `.run(IterableOnce[A], tables)` returns the existing Result.
@@ -53,7 +54,7 @@ without SQL, agents or external engines.
 An arena of expression nodes avoids recursive evaluation. Parsing is explicitly
 bounded to 128 nested syntactic constructs (checked before descent), metric
 ordering and join routing use worklists. Arithmetic is exact for +,-,* and rounds
-only division to DECIMAL128. SQL boolean/null rules apply inside expressions.
+only nonterminating division to DECIMAL128. SQL boolean/null rules apply inside expressions.
 Holistic and window execution materializes the selected input, with an explicit
 row budget; it makes no claim to constant-memory distributed median or windows.
 The existing decomposable Plan continues to serve streaming/SQL pushdown workloads.
@@ -72,4 +73,12 @@ The existing decomposable Plan continues to serve streaming/SQL pushdown workloa
   vendor's entire query language, subqueries or DDL.
 
 ## Results
-Pending execution and verification.
+- Initial cross-platform pass: 73 feature checks green. Full affected semantic
+  closure: 365 tests green, no module warnings (19 compiles), bounded parser
+  inventory checked. JVM serialization restored and ran typed data; class loading
+  uses the worker loader, as the existing distributed-plan test does.
+- Final precision audit: replacing the old exact finite reciprocal Scale with
+  unconditional DECIMAL128 division would round terminating results over 34
+  digits. Preserve those exactly and use DECIMAL128 only for recurring decimals.
+  The large-coefficient /4 regression is the acceptance check before landing.
+
