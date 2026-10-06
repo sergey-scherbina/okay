@@ -57,16 +57,37 @@ Unsupported model exports return errors, not a
 partial document. SQL expression text is never forwarded directly to a driver.
 
 ## Behavior
-- [ ] JSON/YAML interchange retains metadata, omissions and opaque expressions.
-- [ ] Pinned schema shape/enums and semantic references reject damaged documents.
-- [ ] Composite keys, unknown AI members, custom extensions and time-role defaults work.
-- [ ] Unsupported versions, legacy envelopes, duplicate keys and unsafe numbers fail.
-- [ ] Supported selected expressions produce the same metrics as authored core plans.
-- [ ] Unsupported dialects/functions/cross-dataset references fail only execution.
-- [ ] Deep expression/dependency inputs are stack safe and errors name their location.
-- [ ] Core export and reimport retain analytical meaning and OKAY metadata.
-- [ ] Optional YAML adapter and portable implementation interoperate; missing jar is named.
-- [ ] Focused JVM/JS/Native tests and doc guards pass with no module warnings.
+- [x] JSON/YAML interchange retains metadata, omissions and opaque expressions.
+- [x] Pinned schema shape/enums and semantic references reject damaged documents.
+- [x] Composite keys, unknown AI members, custom extensions and time-role defaults work.
+- [x] Unsupported versions, legacy envelopes, duplicate keys and unsafe numbers fail.
+- [x] Supported selected expressions produce the same metrics as authored core plans.
+- [x] Unsupported dialects/functions/cross-dataset references fail only execution.
+- [x] Deep expression/dependency inputs are stack safe and errors name their location.
+- [x] Core export and reimport retain analytical meaning and OKAY metadata.
+- [x] Optional YAML adapter and portable implementation interoperate; missing jar is named.
+- [x] Focused JVM/JS/Native tests and doc guards pass with no module warnings.
 
 ## Results
-Pending implementation.
+Implemented in okay-semantic-ossie. Final focused gate passed 15 JVM tests,
+10 JavaScript tests, 10 Native tests and 22 documentation/board checks (57
+total), with no module compile warnings. Recscan names zero recursive methods
+in the new module. The dependent-closure plan contains only its three platform
+projects and no dependents; the new root build entries register this module.
+The serialized post-landing CI runner owns the whole-build check.
+
+Tests cover real upstream Flights YAML, a byte-identical schema snapshot,
+metadata/extension round trips, composite keys, scalar and metric type errors,
+explicit execution refusals, core-plan parity and business/time recovery.
+20,000 nested parentheses, 20,000 levels of arbitrary AI context and 2,000
+metric dependencies pass on all three platforms. An isolated child JVM without
+SnakeYAML proves the optional adapter loads and refuses by name. Block/flow
+YAML, quoted/block strings, parser depth, aliases, tags and multiple documents
+are covered on JVM; portable JSON/YAML flow interchange is shared.
+
+Adversarial tests found and fixed chained schema $ref resolution, the JVM-only
+Locale dependency, malformed explicitly tagged YAML scalars and incompatible
+numeric metric declarations. Nonterminating constant division was intentionally
+refused: converting it to an approximate Scale changed the analytical result.
+Optional YAML syntax and source attribution are packaged behind the facade;
+LICENSE/NOTICE/PROVENANCE ship in META-INF/ossie.
