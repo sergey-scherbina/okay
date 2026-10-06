@@ -1,7 +1,7 @@
 package okay.java
 
 import okay.testkit.Munit.Diagnosed
-import java.nio.file.{Files, Path}
+import java.nio.file.Files
 import javax.tools.{Diagnostic, DiagnosticCollector, JavaFileObject, ToolProvider}
 import scala.jdk.CollectionConverters.*
 
