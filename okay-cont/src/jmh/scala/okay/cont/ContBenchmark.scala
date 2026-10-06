@@ -2,7 +2,6 @@ package okay.cont
 
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
-import Cont.*
 import Machine.value
 import okay.cont.State as SE
 
@@ -132,6 +131,18 @@ class ContBenchmark {
         i += 1
       m.flatMap(_ => perform(SE.Get[Long]()))
     value(state[Long, Long](0L)(body))._1
+
+  /** M tells, logged in place (the core: `writerTell`, the classic handler) */
+  @Benchmark
+  def writerTell(): Int =
+    def body(using c: In[(List[Int], Int), ?], p: Perform[[X] =>> Writer[Int, X], c.type]): c.Body[Int] =
+      var m: c.Body[Unit] = tell(0)
+      var i = 0
+      while i < M do
+        m = m.flatMap(_ => tell(i))
+        i += 1
+      m.map(_ => M)
+    value(writer[Int, Int](body))._1.length
 
   @Param(Array("1", "16", "256"))
   var depth: Int = 0

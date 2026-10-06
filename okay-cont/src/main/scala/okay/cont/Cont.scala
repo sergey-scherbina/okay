@@ -132,23 +132,33 @@ trait Answering[E[+_], A, Ans] extends Handler[E, A, Ans]:
   final def apply[X, Oc <: Ctx](using o: Oc)(op: E[X], k: X => Cont[o.Here, o.Here, Ans]): Cont[o.Here, o.Here, Ans] = k(value(op))
 /** the context of a handler's body: it handles `E` */
 sealed trait Handling[E[+_], Ans, Oc <: Ctx] extends In[Ans, Oc]:
-  def handler: Handler[E, ?, Ans]
+  /** the handler's clause at this delimiter's outside, made once at the install: what an operation's `Op` carries */
+  def clause: Clause[E, D, Ans]
 /** the context of an answering handler's body: its type says so, and `perform` answers in place */
 sealed trait Answers[E[+_], Ans, Oc <: Ctx] extends Handling[E, Ans, Oc]:
   def answering: Answering[E, ?, Ans]
 /** `handle(h)(body)`: the delimiter of the handler `h`; what the body may perform is what its context reaches */
 def handle[E[+_], A, Ans](h: Handler[E, A, Ans])(using o: Ctx)
           (body: Handling[E, Ans, o.type] ?=> Cont[At[o.Here, Ans] *: o.Here, At[o.Here, Ans] *: o.Here, A]): Cont[o.Here, o.Here, Ans] =
+  handle[E, A, Ans](h.ret)(new Clause[E, o.Here, Ans]:
+    def apply[X](op: E[X], k: X => Cont[o.Here, o.Here, Ans]): Cont[o.Here, o.Here, Ans] = h(using o)(op, k))(body)
+/** `handle(ret)(clause)(body)`: the delimiter of a handler written AT THIS LEVEL — its clause at the stacks
+ * outside, `o.Here`, by name: a clause that keeps the continuation as a value (a generator's next step, a
+ * dialogue's rest) says where that value runs */
+def handle[E[+_], A, Ans](ret: A => Ans)(clause0: Clause[E, ?, Ans])(using o: Ctx)
+          (body: Handling[E, Ans, o.type] ?=> Cont[At[o.Here, Ans] *: o.Here, At[o.Here, Ans] *: o.Here, A])
+          (using ev: clause0.type <:< Clause[E, o.Here, Ans]): Cont[o.Here, o.Here, Ans] =
   val in = new Handling[E, Ans, o.type]:
     val outer: o.type = o
-    def handler: Handler[E, ?, Ans] = h
-  Cont.Reset[o.Here, o.Here, Ans, Ans](body(using in).map(h.ret))
+    val clause: Clause[E, o.Here, Ans] = ev(clause0)
+  Cont.Reset[o.Here, o.Here, Ans, Ans](body(using in).map(ret))
 /** `handle(h)(body)` for an answering handler: the body's context says it answers */
 def handle[E[+_], A, Ans](h: Answering[E, A, Ans])(using o: Ctx)
           (body: Answers[E, Ans, o.type] ?=> Cont[At[o.Here, Ans] *: o.Here, At[o.Here, Ans] *: o.Here, A]): Cont[o.Here, o.Here, Ans] =
   val in = new Answers[E, Ans, o.type]:
     val outer: o.type = o
-    def handler: Handler[E, ?, Ans] = h
+    val clause: Clause[E, o.Here, Ans] = new Clause[E, o.Here, Ans]:
+      def apply[X](op: E[X], k: X => Cont[o.Here, o.Here, Ans]): Cont[o.Here, o.Here, Ans] = h(using o)(op, k)
     def answering: Answering[E, ?, Ans] = h
   Cont.Reset[o.Here, o.Here, Ans, Ans](body(using in).map(h.ret))
 
@@ -187,8 +197,7 @@ object Reaches:
       type Dn = c.D
       type Ansn = Ans
       val reach: Reach[c.Here, c.D, Ans] = Reach.Here[c.D, Ans]()
-      val clause: Clause[E, c.D, Ans] = new Clause[E, c.D, Ans]:
-        def apply[X](op: E[X], k: X => Cont[c.D, c.D, Ans]): Cont[c.D, c.D, Ans] = c.handler(using c.outer)(op, k)
+      val clause: Clause[E, c.D, Ans] = c.clause
   /** the context is another delimiter's: one level out, the outer context's reach after it */
   given out[E[+_], Oc <: In[?, ?], C <: In[?, Oc]](using o: Reaches[E, Oc]): Reaches[E, C] with
     def target(c: C): Target[E, c.Here] =
@@ -206,20 +215,3 @@ object Answered:
     def apply[X](op: E[X], c: C): X = c.answering.value(op)
   given outside[E[+_], Oc <: Ctx, C <: In[?, Oc]](using o: Answered[E, Oc]): Answered[E, C] with
     def apply[X](op: E[X], c: C): X = o(op, c.outer)
-
-/** STATE, answering in place: the state in a cell of the handler, one per `handle`, so `get` and `put` are answered
- * where they are performed, no capture. A resumption shares the cell: a body resumed twice sees ONE state, the
- * second resumption the first's last — not a replay. The replay is the answer type's (TestState, `PState`) */
-enum State[S, +A]:
-  case Get[S]() extends State[S, S]
-  case Put[S](s: S) extends State[S, Unit]
-final class StateCell[S, A](var state: S) extends Answering[[X] =>> State[S, X], A, (S, A)]:
-  def ret(a: A): (S, A) = (state, a)
-  def value[X](op: State[S, X]): X = op match
-    case State.Get() => state
-    case State.Put(s) => state = s
-/** `state(s0)(body)`: the body with `get`/`put` answered from a cell starting at `s0`; the last state and the value */
-def state[S, A](s0: S)(using o: Ctx)
-         (body: Answers[[X] =>> State[S, X], (S, A), o.type] ?=> Cont[At[o.Here, (S, A)] *: o.Here, At[o.Here, (S, A)] *: o.Here, A])
-  : Cont[o.Here, o.Here, (S, A)] =
-  handle[[X] =>> State[S, X], A, (S, A)](StateCell[S, A](s0))(body)

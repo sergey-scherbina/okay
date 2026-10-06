@@ -18,6 +18,7 @@ other.
 | `Free[R, A]` | a program over a nominal row `Ask :+: Say :+: RNil`, built with no handler in sight, run under them |
 | `Carrier[A, S, R]` | the machine as a `Control` carrier: a program one level over the top, `(A => S) => R`; the instance `Control[Carrier]` and `Prog`, the machine as an `Effects` encoding, are the core's (Control.scala, Prog.scala) — this module knows nothing of the core |
 | `Machine.run`, `Machine.value` | a run to its typed end, `Head`: a value, or a capture handed out for a machine outside |
+| `state`, `reader`, `writer`, `throws`, `choose`, `collect`, `generate`, `dialogue` | THE EFFECT LIBRARY (stage 35): each a handler as a delimiter and doors as fragments — `get`/`put`/`modify`, `ask`/`asks`, `tell`, `raise`, `among`, `yield_`, `question`; answered in place where the handler is tail-resumptive, a capture where it is not (an abort, every path, a lazy generator's next step, a dialogue's rest) |
 
 ## Using it
 

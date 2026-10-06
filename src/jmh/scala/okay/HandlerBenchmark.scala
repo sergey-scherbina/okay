@@ -154,6 +154,11 @@ class HandlerBenchmark {
       (1 to M).foldLeft(0L.state[Long]): (m, _) =>
         m.flatMap(_ => State.get[Long].flatMap(s => State.set[Long](s + 1)))
 
+  /** M tells under the classic Writer handler (okay-cont: `writerTell`, the machine's log in place) */
+  @Benchmark
+  def writerTell(): Int =
+    !.run(Writer.run[Int, Int, Pure]((1 to M).foldLeft(Writer.tell(0).map(_ => 0))((m, i) => m.flatMap(_ => Writer.tell(i).map(_ => i)))))._1.length
+
   /** handle-frames: a handler's run per CALL — 100 small `State.run`s, two operations each — prices what a
    * handler costs to start (since handle-frames a `Delay` and a `Handled` before its loop), not per operation */
   /** `stateSmall` through `p.handle(State(s))`: a handler REGISTERED on a stack of one (handler-single-pass

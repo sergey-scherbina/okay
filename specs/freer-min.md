@@ -1556,3 +1556,34 @@ already said. Gone with it: the core's alias at the door (`type Freer`/`val Free
 in seven core files and two of the module's, the home-naming in okay-direct's macros (`okay.Freer` again), the
 five `okay.freer.Freer[?, ?, ?, ?]` (`Freer[?, ?, ?, ?]` as it was), TestInlineBudget's class path. Nothing else
 moved: the layering of stages 29–33 stands, only the name is one.
+
+## Stage 35: THE EFFECT LIBRARY OF THE MACHINE (DONE, 2026-10-06)
+
+The operator's "Окей" to level 3: the machine's own effects beside the classic ones, the classic as the layer of
+compatibility, numbers before any default moves. In okay-cont, one file an effect, each the same shape — the
+operations an enum, the handler a delimiter, the doors fragments `(using c: In[?, ?], p: Perform[E, c.type]):
+c.Body[X]` — `State` (`get`, `put`, `modify`; the cell, as before), `Reader` (`ask`, `asks`, answered in place),
+`Writer` (`tell`, the log in place), `Throws` (`raise`, an abort: the clause never resumes), `Choose` (`among`,
+every path, a fold of `k` over the elements), `Emit` (`yield_`: `collect` in place, or `generate` LAZY — each
+yield captures the rest as the next step, a program at the generator's level, `Gen[W, D]`), `Dialogue`
+(`question`: `Paused[Q, A, R, D]`, the rest a program at the level given the answer; `Paused.drive` at the top).
+
+What the kernel needed: a handler that keeps the continuation as a VALUE must say at which level that value
+runs — `Handler.apply` is polymorphic in the install context, so a `Gen[W, D]` could not be built in it. So a
+`Handling` context now carries the handler's `clause: Clause[E, D, Ans]` at its own `D`, made once at the
+install (an `Op` carries it, `Reaches.here` reads it: the closure stage 28 built per target is gone too), and
+`handle` has a second form, `handle(ret)(clause)(body)`, with the clause at `o.Here` by name — `generate` and
+`dialogue` are written in it. Eleven tests: each effect alone; an abort through a delimiter between (state keeps
+what was put); the paths of `choose` sharing one cell; an operation inside two delimiters; a generator that runs
+nothing past a yield until pulled; a dialogue driven, and resumed twice from one pause; 100 000 operations.
+
+Measured, M = 1000 operations, each lane beside its classic twin (the box at load 4–10):
+
+| | machine (okay-cont) | classic (core) |
+|---|---|---|
+| state, get+put per step | `stateAnswering` 21.9 ± 0.3 | `stateEffect` 18.8 ± 0.6 |
+| writer, a tell per step | `writerTell` 18.5 ± 0.3 | `writerTell` 27.7 ± 0.2 |
+
+Not here, by design: `Shift` as an effect in the row — on the machine `shift0`/`reset` are the monad's own and
+the delimiter is the context's; the dynamic prompts (`Key`, `At`, `Stacked`, `dynamic`) have no counterpart,
+on purpose (stage 12). The classic layer keeps them, under `okay.cps`.
