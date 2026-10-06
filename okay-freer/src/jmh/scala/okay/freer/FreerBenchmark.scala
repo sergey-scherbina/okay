@@ -2,7 +2,7 @@ package okay.freer
 
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
-import Freer.*
+import Cont.*
 
 /** an operation carrying its own answer, as master's `Ask` (HandlerBenchmark) */
 enum Ask[+A]:
@@ -36,13 +36,13 @@ class FreerBenchmark {
   /** an operation's own value: the inner handler, of `Ask`, leaving `Tick` */
   val askH: Handler[Ask, Tick + Pure, Int, Int] = new Handler[Ask, Tick + Pure, Int, Int]:
     def ret(a: Int): Int = a
-    def apply[X, Oc <: Ctx](using o: Oc)(op: Ask[X], k: X => Freer[Tick + Pure, o.Here, o.Here, Int]): Freer[Tick + Pure, o.Here, o.Here, Int] =
+    def apply[X, Oc <: Ctx](using o: Oc)(op: Ask[X], k: X => Cont[Tick + Pure, o.Here, o.Here, Int]): Cont[Tick + Pure, o.Here, o.Here, Int] =
       op match
         case Ask.Value(a) => k(a)
   /** the outer handler, of `Tick`, leaving nothing */
   val tickH: Handler[Tick, Pure, Int, Int] = new Handler[Tick, Pure, Int, Int]:
     def ret(a: Int): Int = a
-    def apply[X, Oc <: Ctx](using o: Oc)(op: Tick[X], k: X => Freer[Pure, o.Here, o.Here, Int]): Freer[Pure, o.Here, o.Here, Int] =
+    def apply[X, Oc <: Ctx](using o: Oc)(op: Tick[X], k: X => Cont[Pure, o.Here, o.Here, Int]): Cont[Pure, o.Here, o.Here, Int] =
       op match
         case Tick.Value(a) => k(a)
 
@@ -89,14 +89,14 @@ class FreerBenchmark {
   type St[H[+_], S, W] = S => Top[H, W]
   final class State[H[+_], W]:
     type Outer = EmptyTuple
-    def get[S]: Freer[H, At[H, H, Outer, St[H, S, W]] *: Outer, At[H, H, Outer, St[H, S, W]] *: Outer, S] =
-      Freer.Shift0((k: S => Freer[H, Outer, Outer, St[H, S, W]]) => pure((s: S) => k(s).flatMap(f => f(s))))
+    def get[S]: Cont[H, At[H, H, Outer, St[H, S, W]] *: Outer, At[H, H, Outer, St[H, S, W]] *: Outer, S] =
+      Cont.Shift0((k: S => Cont[H, Outer, Outer, St[H, S, W]]) => pure((s: S) => k(s).flatMap(f => f(s))))
     def put[S]: PutFrom[S] = PutFrom[S]()
     final class PutFrom[S]:
-      def apply[S2](s2: S2): Freer[H, At[H, H, Outer, St[H, S2, W]] *: Outer, At[H, H, Outer, St[H, S, W]] *: Outer, Unit] =
-        Freer.Shift0((k: Unit => Freer[H, Outer, Outer, St[H, S2, W]]) => pure((_: S) => k(()).flatMap(f => f(s2))))
-  def runState[H[+_], S0, S1, W](s0: S0)(body: State[H, W] => Freer[H, At[H, H, EmptyTuple, St[H, S1, W]] *: EmptyTuple, At[H, H, EmptyTuple, St[H, S0, W]] *: EmptyTuple, W]): Top[H, W] =
-    Freer.Reset[H, H, EmptyTuple, EmptyTuple, St[H, S1, W], St[H, S0, W]](body(State()).map(a => (_: S1) => pure(a))).flatMap(f => f(s0))
+      def apply[S2](s2: S2): Cont[H, At[H, H, Outer, St[H, S2, W]] *: Outer, At[H, H, Outer, St[H, S, W]] *: Outer, Unit] =
+        Cont.Shift0((k: Unit => Cont[H, Outer, Outer, St[H, S2, W]]) => pure((_: S) => k(()).flatMap(f => f(s2))))
+  def runState[H[+_], S0, S1, W](s0: S0)(body: State[H, W] => Cont[H, At[H, H, EmptyTuple, St[H, S1, W]] *: EmptyTuple, At[H, H, EmptyTuple, St[H, S0, W]] *: EmptyTuple, W]): Top[H, W] =
+    Cont.Reset[H, H, EmptyTuple, EmptyTuple, St[H, S1, W], St[H, S0, W]](body(State()).map(a => (_: S1) => pure(a))).flatMap(f => f(s0))
 
   /** M times get then set, as master's `stateEffect`; one `get` at the end for the value */
   @Benchmark
@@ -115,7 +115,7 @@ class FreerBenchmark {
   @Benchmark
   def delimCaptureDepth(): Int =
     value(reset[Pure, Int] { in ?=>
-      def callK(k: Unit => Freer[Pure, in.D, in.D, Int], n: Int, acc: Int): Freer[Pure, in.D, in.D, Int] =
+      def callK(k: Unit => Cont[Pure, in.D, in.D, Int], n: Int, acc: Int): Cont[Pure, in.D, in.D, Int] =
         if n == 0 then pure(acc) else k(()).flatMap(r => callK(k, n - 1, acc + r))
       var p: in.Body[Int] = shift0[Unit](k => callK(k, shots, 0)).map(_ => 1)
       var i = 0

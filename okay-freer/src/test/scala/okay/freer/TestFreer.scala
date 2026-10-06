@@ -1,6 +1,6 @@
 package okay.freer
 
-import Freer.*
+import Cont.*
 
 /** specs/freer-min.md: HANDLERS AS DELIMITERS — an operation is a capture to the handler's delimiter, the clause
  * runs outside; the effect is discharged from the row outside; a handler not the nearest is reached through the
@@ -14,13 +14,13 @@ class TestFreer extends okay.testkit.Munit.Diagnosed:
   /** a reader: `Number` is `n`; the value as it is */
   def reader[G[+_], A](n: Int): Handler[Ask, G, A, A] = new Handler[Ask, G, A, A]:
     def ret(a: A): A = a
-    def apply[X, Oc <: Ctx](using o: Oc)(op: Ask[X], k: X => Freer[G, o.Here, o.Here, A]): Freer[G, o.Here, o.Here, A] = op match
+    def apply[X, Oc <: Ctx](using o: Oc)(op: Ask[X], k: X => Cont[G, o.Here, o.Here, A]): Cont[G, o.Here, o.Here, A] = op match
       case Ask.Number => k(n)
 
   /** a writer: the lines said, beside the value; deep — `k` brings the delimiter, each line goes in front */
   def writer[G[+_], A]: Handler[Say, G, A, (List[String], A)] = new Handler[Say, G, A, (List[String], A)]:
     def ret(a: A): (List[String], A) = (Nil, a)
-    def apply[X, Oc <: Ctx](using o: Oc)(op: Say[X], k: X => Freer[G, o.Here, o.Here, (List[String], A)]): Freer[G, o.Here, o.Here, (List[String], A)] =
+    def apply[X, Oc <: Ctx](using o: Oc)(op: Say[X], k: X => Cont[G, o.Here, o.Here, (List[String], A)]): Cont[G, o.Here, o.Here, (List[String], A)] =
       op match
         case Say.Line(s) => k(()).map((log, a) => (s :: log, a))
 

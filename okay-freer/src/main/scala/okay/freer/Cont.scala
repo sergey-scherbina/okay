@@ -13,10 +13,11 @@ infix type +[G[+_], H[+_]] = [A] =>> G[A] | H[A]
 final class At[H[+_], Hf[+_], D <: Tuple, S]
 
 /**
- * THE HIERARCHY, HANDLERS AS DELIMITERS (specs/freer-min.md, stage 19): the freer monad with shift0 and reset as
- * nodes of the same tree, typed by TWO STACKS of answer types, a level each — Danvy–Filinski's `(A => S) => R` with
- * `S` and `R` grown into the stacks `I` and `O`: `Freer[G, I, O, A]` is a program of value `A` over the row `G`
- * which, with a continuation answering `I`, answers `O`. `Bind` composes them end to end, as states, at every
+ * THE HIERARCHY, HANDLERS AS DELIMITERS (specs/freer-min.md, stages 19–21): the monad of delimited continuations —
+ * shift0 and reset as nodes of one tree, and nothing else, since an operation is a capture to its handler's
+ * delimiter — typed by TWO STACKS of answer types, a level each: Danvy–Filinski's `(A => S) => R` with `S` and `R`
+ * grown into the stacks `I` and `O`. `Cont[G, I, O, A]` is a program of value `A` over the row `G` which, with a
+ * continuation answering `I`, answers `O`. Not a freer monad any more: there is no functor it is free over. `Bind` composes them end to end, as states, at every
  * level at once; `Return` keeps them; `Reset` and `Shift0` move the head's.
  *
  *  - `G` is what the program may do: a unary row, a union of signatures, built by `flatMap`, never declared. EVERY
@@ -36,29 +37,32 @@ final class At[H[+_], Hf[+_], D <: Tuple, S]
  * OUTSIDE the delimiter, in its place (shift0), at `Hf`, from `D` to the stacks the context expects, `O`, and its
  * value is the delimiter's answer `R`. Six nodes, no cast, no prompt.
  */
-enum Freer[+G[+_], I <: Tuple, O <: Tuple, +A]:
-  case Return[Σ <: Tuple, A](a: A) extends Freer[Pure, Σ, Σ, A]
-  case Bind[G[+_], I <: Tuple, T <: Tuple, O <: Tuple, A, B](m: Freer[G, T, O, A], k: A => Freer[G, I, T, B]) extends Freer[G, I, O, B]
-  case Delay[G[+_], I <: Tuple, O <: Tuple, A](t: () => Freer[G, I, O, A]) extends Freer[G, I, O, A]
+enum Cont[+G[+_], I <: Tuple, O <: Tuple, +A]:
+  case Return[Σ <: Tuple, A](a: A) extends Cont[Pure, Σ, Σ, A]
+  /** the rows joined in the node: `m`'s and `k`'s, each its own */
+  case Bind[F[+_], G[+_], I <: Tuple, T <: Tuple, O <: Tuple, A, B](m: Cont[F, T, O, A], k: A => Cont[G, I, T, B]) extends Cont[F + G, I, O, B]
+  /** a program built when the machine gets to it. Derivable — `Bind(Return(()), _ => t)` — and kept: the one node
+   * is one step of the machine where the bind is three, 2.8× on a chain of tail calls (stage 21) */
+  case Delay[G[+_], I <: Tuple, O <: Tuple, A](t: () => Cont[G, I, O, A]) extends Cont[G, I, O, A]
   /** `reset body`: the body's value is its initial answer `S`, at its own level; the delimiter answers `R` outside,
    * at the row it leaves, `Hf`, from `D` to `O`, as the body moved the outside */
-  case Reset[H[+_], Hf[+_], D <: Tuple, O <: Tuple, S, R](body: Freer[H, At[H, Hf, D, S] *: D, At[H, Hf, D, R] *: O, S])
-    extends Freer[Hf, D, O, R]
+  case Reset[H[+_], Hf[+_], D <: Tuple, O <: Tuple, S, R](body: Cont[H, At[H, Hf, D, S] *: D, At[H, Hf, D, R] *: O, S])
+    extends Cont[Hf, D, O, R]
   /** `shift0 (k => e)`: `k` is the context up to the nearest delimiter, it included, pure, a program outside it at
    * `Hf`, from `D` to the stacks at the hole `I`, delivering the answer at the hole `T`; `e` runs in the delimiter's
    * place, at `Hf`, from `D` to what the context expects, `O`, and its value is the delimiter's answer `R` */
-  case Shift0[H[+_], Hf[+_], D <: Tuple, I <: Tuple, O <: Tuple, T, R, X](f: (X => Freer[Hf, D, I, T]) => Freer[Hf, D, O, R])
-    extends Freer[H, At[H, Hf, D, T] *: I, At[H, Hf, D, R] *: O, X]
+  case Shift0[H[+_], Hf[+_], D <: Tuple, I <: Tuple, O <: Tuple, T, R, X](f: (X => Cont[Hf, D, I, T]) => Cont[Hf, D, O, R])
+    extends Cont[H, At[H, Hf, D, T] *: I, At[H, Hf, D, R] *: O, X]
   /** `k(x)` pending: the machine puts the captured piece back under a delimiter of its own */
-  case Resume[Hf[+_], D <: Tuple, I <: Tuple, X, T](x: X, k: Captured[?, Hf, D, I, X, T, ?]) extends Freer[Hf, D, I, T]
+  case Resume[Hf[+_], D <: Tuple, I <: Tuple, X, T](x: X, k: Captured[?, Hf, D, I, X, T, ?]) extends Cont[Hf, D, I, T]
 
   /** the stacks composed end to end: `this` from `I` to `O`, `f`'s from `I2` to `I` */
-  def flatMap[G2[+_], I2 <: Tuple, B](f: A => Freer[G2, I2, I, B]): Freer[G + G2, I2, O, B] = Bind(this, f)
-  def map[B](f: A => B): Freer[G, I, O, B] = Bind(this, a => Return(f(a)))
+  def flatMap[G2[+_], I2 <: Tuple, B](f: A => Cont[G2, I2, I, B]): Cont[G + G2, I2, O, B] = Bind(this, f)
+  def map[B](f: A => B): Cont[G, I, O, B] = Bind(this, a => Return(f(a)))
 
 /** a program at the top: no delimiter in force, nothing outside, the stacks empty; its answer is its value,
  * Danvy–Filinski's `⟨e⟩ : τ` */
-type Top[G[+_], A] = Freer[G, EmptyTuple, EmptyTuple, A]
+type Top[G[+_], A] = Cont[G, EmptyTuple, EmptyTuple, A]
 
 /** the context a program is WRITTEN in, by the stacks at its position, `Here`: what a reset written here has
  * outside. STRUCTURAL, down to the top, where there is nothing: so a body knows the levels outside it and may move
@@ -81,24 +85,24 @@ sealed trait In[H[+_], Hf[+_], S, Oc <: Ctx] extends Ctx:
   type D = outer.Here
   type Here = At[H, Hf, D, S] *: D
   /** a program in the body this context is for, its stacks unchanged */
-  type Body[A] = Freer[H, Here, Here, A]
+  type Body[A] = Cont[H, Here, Here, A]
 /** the context of a fragment written for the body of a `reset[H, S]`: `def f(using in: Under[H, S]): in.Body[A]` */
 type Under[H[+_], S] = In[H, H, S, ?]
 
-def pure[A, Σ <: Tuple](a: A): Freer[Pure, Σ, Σ, A] = Freer.Return(a)
-def delay[G[+_], I <: Tuple, O <: Tuple, A](t: => Freer[G, I, O, A]): Freer[G, I, O, A] = Freer.Delay(() => t)
-def defer[G[+_], I <: Tuple, T <: Tuple, O <: Tuple, A, B](t: => Freer[G, T, O, A])(f: A => Freer[G, I, T, B]): Freer[G, I, O, B] =
-  Freer.Bind(Freer.Delay(() => t), f)
+def pure[A, Σ <: Tuple](a: A): Cont[Pure, Σ, Σ, A] = Cont.Return(a)
+def delay[G[+_], I <: Tuple, O <: Tuple, A](t: => Cont[G, I, O, A]): Cont[G, I, O, A] = Cont.Delay(() => t)
+def defer[G[+_], I <: Tuple, T <: Tuple, O <: Tuple, A, B](t: => Cont[G, T, O, A])(f: A => Cont[G, I, T, B]): Cont[G, I, O, B] =
+  Cont.Bind(Cont.Delay(() => t), f)
 /** `reset[H, S](body)`: the body is written at the row `H` and the answer `S`, Danvy–Filinski's annotation of the
  * delimiter (a type in a context function's parameter is fixed before its body is typed, so both are named), in the
  * context where the reset is written, with the delimiter on top; it leaves the row as it is */
 def reset[H[+_], S]: ResetAt[H, S] = ResetAt[H, S]()
 final class ResetAt[H[+_], S]:
   def apply[O <: Tuple, R](using o: Ctx)
-           (body: In[H, H, S, o.type] ?=> Freer[H, At[H, H, o.Here, S] *: o.Here, At[H, H, o.Here, R] *: O, S]): Freer[H, o.Here, O, R] =
+           (body: In[H, H, S, o.type] ?=> Cont[H, At[H, H, o.Here, S] *: o.Here, At[H, H, o.Here, R] *: O, S]): Cont[H, o.Here, O, R] =
     val in = new In[H, H, S, o.type]:
       val outer: o.type = o
-    Freer.Reset[H, H, o.Here, O, S, R](body(using in))
+    Cont.Reset[H, H, o.Here, O, S, R](body(using in))
 /** `shift0[X](k => …)` written in a delimiter's body: the hole `X` is the one thing nothing else says; the delimiter
  * is the context's, its answer the one the body is written at. The shift's body is written inside the delimiter
  * but runs outside it, at the row the delimiter leaves, in the context outside, and may move it. `k` leaves the
@@ -106,26 +110,26 @@ final class ResetAt[H[+_], S]:
 def shift0[X]: Shift0At[X] = Shift0At[X]()
 final class Shift0At[X]:
   def apply[H[+_], Hf[+_], S, Oc <: Ctx, O <: Tuple, R](using in: In[H, Hf, S, Oc])
-           (f: Oc ?=> (X => Freer[Hf, in.D, in.D, S]) => Freer[Hf, in.D, O, R]): Freer[H, At[H, Hf, in.D, S] *: in.D, At[H, Hf, in.D, R] *: O, X] =
-    Freer.Shift0[H, Hf, in.D, in.D, O, S, R, X](f(using in.outer))
+           (f: Oc ?=> (X => Cont[Hf, in.D, in.D, S]) => Cont[Hf, in.D, O, R]): Cont[H, At[H, Hf, in.D, S] *: in.D, At[H, Hf, in.D, R] *: O, X] =
+    Cont.Shift0[H, Hf, in.D, in.D, O, S, R, X](f(using in.outer))
 
 /** A HANDLER IS A DELIMITER: of the effect `E`, leaving the row `G`; the body's value `A`, the answer `Ans`. A deep
  * handler: `k` brings the delimiter along, so the handler stays in force through a resumption. The clauses run
  * outside the delimiter, in the context outside, `o`, at any stacks there */
 trait Handler[E[+_], G[+_], A, Ans]:
   def ret(a: A): Ans
-  def apply[X, Oc <: Ctx](using o: Oc)(op: E[X], k: X => Freer[G, o.Here, o.Here, Ans]): Freer[G, o.Here, o.Here, Ans]
+  def apply[X, Oc <: Ctx](using o: Oc)(op: E[X], k: X => Cont[G, o.Here, o.Here, Ans]): Cont[G, o.Here, o.Here, Ans]
 /** the context of a handler's body: it handles `E`, at the row `H = E + G` */
 sealed trait Handling[E[+_], H[+_], G[+_], Ans, Oc <: Ctx] extends In[H, G, Ans, Oc]:
   def handler: Handler[E, Out, ?, Ans]
 /** `handle(h)(body)`: the delimiter of the handler `h`, its body at `E + G`, the effect `E` discharged outside */
 def handle[E[+_], G[+_], A, Ans](h: Handler[E, G, A, Ans])(using o: Ctx)
-          (body: Handling[E, E + G, G, Ans, o.type] ?=> Freer[E + G, At[E + G, G, o.Here, Ans] *: o.Here, At[E + G, G, o.Here, Ans] *: o.Here, A])
-  : Freer[G, o.Here, o.Here, Ans] =
+          (body: Handling[E, E + G, G, Ans, o.type] ?=> Cont[E + G, At[E + G, G, o.Here, Ans] *: o.Here, At[E + G, G, o.Here, Ans] *: o.Here, A])
+  : Cont[G, o.Here, o.Here, Ans] =
   val in = new Handling[E, E + G, G, Ans, o.type]:
     val outer: o.type = o
     def handler: Handler[E, G, ?, Ans] = h
-  Freer.Reset[E + G, G, o.Here, o.Here, Ans, Ans](body(using in).map(h.ret))
+  Cont.Reset[E + G, G, o.Here, o.Here, Ans, Ans](body(using in).map(h.ret))
 
 /** `perform(op)`: a capture to the handler of `E` in the context — the nearest delimiter if it is the handler, or
  * through each delimiter between, which forwards: a shift to it whose body performs outside and resumes `k`
@@ -133,16 +137,16 @@ def handle[E[+_], G[+_], A, Ans](h: Handler[E, G, A, Ans])(using o: Ctx)
 def perform[E[+_], X, H[+_]](op: E[X])(using c: In[H, ?, ?, ?], p: Perform[E, H, c.type]): c.Body[X] = p(op, c)
 /** how `E` is performed in a context `C` of row `H` */
 trait Perform[E[+_], H[+_], C <: In[H, ?, ?, ?]]:
-  def apply[X](op: E[X], c: C): Freer[H, c.Here, c.Here, X]
+  def apply[X](op: E[X], c: C): Cont[H, c.Here, c.Here, X]
 object Perform extends PerformLow:
   /** the context is the handler's: a shift to its delimiter, the clause the body */
   given direct[E[+_], H[+_], Ans, Oc <: Ctx, C <: Handling[E, H, ?, Ans, Oc]]: Perform[E, H, C] with
-    def apply[X](op: E[X], c: C): Freer[H, c.Here, c.Here, X] =
-      Freer.Shift0[H, c.Out, c.D, c.D, c.D, Ans, Ans, X](k => c.handler(using c.outer)(op, k))
+    def apply[X](op: E[X], c: C): Cont[H, c.Here, c.Here, X] =
+      Cont.Shift0[H, c.Out, c.D, c.D, c.D, Ans, Ans, X](k => c.handler(using c.outer)(op, k))
 sealed trait PerformLow:
   /** the context is another delimiter's, which leaves at least the row outside it: a shift to it, performed
    * outside, `k` resumed with the result */
   given forward[E[+_], H[+_], Hf[+_], S, H2[+A] <: Hf[A], Oc <: In[H2, ?, ?, ?], C <: In[H, Hf, S, Oc]]
       (using o: Perform[E, H2, Oc]): Perform[E, H, C] with
-    def apply[X](op: E[X], c: C): Freer[H, c.Here, c.Here, X] =
-      Freer.Shift0[H, Hf, c.D, c.D, c.D, S, S, X](k => o(op, c.outer).flatMap(x => k(x)))
+    def apply[X](op: E[X], c: C): Cont[H, c.Here, c.Here, X] =
+      Cont.Shift0[H, Hf, c.D, c.D, c.D, S, S, X](k => o(op, c.outer).flatMap(x => k(x)))

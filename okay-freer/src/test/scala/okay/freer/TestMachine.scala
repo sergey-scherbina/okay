@@ -1,6 +1,6 @@
 package okay.freer
 
-import Freer.*
+import Cont.*
 
 /** specs/freer-min.md, the machine: one rule per node, no cast, shift0 and reset, Danvy–Filinski's answer types */
 class TestMachine extends okay.testkit.Munit.Diagnosed:
@@ -10,7 +10,7 @@ class TestMachine extends okay.testkit.Munit.Diagnosed:
   /** a reader: `Number` is `n` */
   def reader[G[+_], A](n: Int): Handler[Ask, G, A, A] = new Handler[Ask, G, A, A]:
     def ret(a: A): A = a
-    def apply[X, Oc <: Ctx](using o: Oc)(op: Ask[X], k: X => Freer[G, o.Here, o.Here, A]): Freer[G, o.Here, o.Here, A] = op match
+    def apply[X, Oc <: Ctx](using o: Oc)(op: Ask[X], k: X => Cont[G, o.Here, o.Here, A]): Cont[G, o.Here, o.Here, A] = op match
       case Ask.Number => k(n)
 
   def value[A](p: Top[Pure, A]): A =
@@ -48,7 +48,7 @@ class TestMachine extends okay.testkit.Munit.Diagnosed:
   type O1 = At[Pure, Pure, L2, String] *: L2
 
   test("THE HIERARCHY: a shift's body, outside its delimiter, shifts to the next delimiter and MOVES ITS ANSWER, Int to String"):
-    val inner: Freer[Pure, D1, O1, Int] = Reset[Pure, Pure, D1, O1, Int, Int](
+    val inner: Cont[Pure, D1, O1, Int] = Reset[Pure, Pure, D1, O1, Int, Int](
       Shift0[Pure, Pure, D1, D1, O1, Int, Int, Int](_ => Shift0[Pure, Pure, L2, L2, L2, Int, String, Int](_ => pure("a"))).map(_ + 10))
     val prog: Top[Pure, String] = Reset[Pure, Pure, L2, L2, Int, String](inner.map(_ * 2))
     assertEquals(value(prog), "a")
@@ -61,7 +61,7 @@ class TestMachine extends okay.testkit.Munit.Diagnosed:
 
   test("the hierarchy, resumed: the inner body resumes its own k, then shifts out through the outer delimiter, which resumes twice"):
     type D1i = At[Pure, Pure, EmptyTuple, Int] *: EmptyTuple
-    val inner: Freer[Pure, D1i, D1i, Int] = Reset[Pure, Pure, D1i, D1i, Int, Int](
+    val inner: Cont[Pure, D1i, D1i, Int] = Reset[Pure, Pure, D1i, D1i, Int, Int](
       Shift0[Pure, Pure, D1i, D1i, D1i, Int, Int, Int](k => k(1).flatMap(a => Shift0[Pure, Pure, EmptyTuple, EmptyTuple, EmptyTuple, Int, Int, Int](k2 => k2(a).flatMap(b => k2(b))))).map(_ + 10))
     val prog: Top[Pure, Int] = Reset[Pure, Pure, EmptyTuple, EmptyTuple, Int, Int](inner.map(_ * 2))
     // inner: k(1) = 11; outer: k2(11) = 22, k2(22) = 44
@@ -70,7 +70,9 @@ class TestMachine extends okay.testkit.Munit.Diagnosed:
   test("a capture with no delimiter on the run is handed out as a head form, for a machine outside"):
     // the node itself, at a stack claiming a delimiter: the sugar refuses a capture with no delimiter in scope
     val head = Machine.run(Shift0[Pure, Pure, EmptyTuple, EmptyTuple, EmptyTuple, Int, Int, Int](k => k(1)))
-    head match
+    // at the row `Pure` dotty holds a `Bind` (at `F + G`) unreachable — `Pure + Pure` is `Pure`, but not to the
+    // reachability check; the scrutinee at any row
+    (head: Cont[[A] =>> Any, At[Pure, Pure, EmptyTuple, Int] *: EmptyTuple, At[Pure, Pure, EmptyTuple, Int] *: EmptyTuple, Int]) match
       case Bind(Shift0(_), _) => ()
       case other => fail(s"not a capture handed out: $other")
 
@@ -105,10 +107,10 @@ class TestMachine extends okay.testkit.Munit.Diagnosed:
     // the body knows the level outside only as the context's `in.Out`: the escaped `k` is a program there, and is
     // run there, by a fragment of that context
     def escaping(using in: Under[Pure, Int]): (in.Body[Int], () => Int) =
-      var saved: Int => Freer[Pure, in.D, in.D, Int] = null
+      var saved: Int => Cont[Pure, in.D, in.D, Int] = null
       val body = shift0[Int](k => { saved = x => k(x); pure(0) }).map(_ + 1)
       def run(): Int =
-        val head: Freer[Pure, in.D, in.D, Int] = Machine.run(saved(41))
+        val head: Cont[Pure, in.D, in.D, Int] = Machine.run(saved(41))
         head match
           case Return(a) => a
           case other => fail(s"not a value: $other")

@@ -1129,3 +1129,23 @@ What the numbers say:
   A dotty 3.9.0 assertion (`wildApprox failed to remove uninstantiated G`, implicit search) on a `?` for the outer
   context in a fragment's using-parameter: the fragment is polymorphic in it and `handle` takes explicit type
   arguments.
+
+## Stage 21: it is `Cont`; the rows joined in `Bind`; `Delay` measured (DONE, 2026-10-06)
+
+- The operator: this monad is no longer `Freer` but `Cont`. Right — without a node for an operation there is no
+  functor it is free over: it is the monad of delimited continuations, `shift0` and `reset` as nodes, typed by the
+  two stacks. The enum is `Cont` (`okay-freer/src/main/scala/okay/freer/Cont.scala`); the module and the package
+  keep their names for now, the operator's call.
+- The operator's `Bind`: `Bind[F, G, I, T, O, A, B](m: Cont[F, T, O, A], k: A => Cont[G, I, T, B]) extends
+  Cont[F + G, I, O, B]` — the rows joined IN THE NODE, each side its own, instead of one row widened by covariance.
+  The machine is unchanged (its level row is abstract, and `F + G <: G` is what the bind rule needs); `flatMap` is
+  `Bind(this, f)` with nothing widened. Measured: `handlePrebuilt` 343.0 ± 7.7 µs against 347.6 before — nothing.
+  One cost: dotty's reachability holds a `Bind` pattern unreachable on a scrutinee at the row `Pure` (`Pure + Pure`
+  is `Pure`, but not to that check); the one test that matches a head form on a `Pure` program ascribes the
+  scrutinee at any row. Nobody else matches `Bind` at a concrete row: handlers are delimiters, the machine's row is
+  abstract.
+- `Delay`, asked again: derivable, `Bind(Return(()), _ => t)`, the lambda is the laziness. Removed and measured:
+  `tailcallChain` 61.2 ± 0.6 µs against 22.0 ± 0.7 with the node — 2.8×, three steps of the machine and two nodes
+  where one. Kept, with the number on it.
+
+Kernel 308 lines, six nodes, 30 tests on the JVM, JS and Native compile.

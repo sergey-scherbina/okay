@@ -1,21 +1,21 @@
 package okay.freer
 
 import scala.annotation.tailrec
-import Freer.*
+import Cont.*
 
 /** the witness that the row `G` lies inside `F`: a polymorphic identity, made where the compiler knows it */
 trait Widen[G[+_], F[+_]]:
-  def apply[I <: Tuple, O <: Tuple, A](p: Freer[G, I, O, A]): Freer[F, I, O, A]
+  def apply[I <: Tuple, O <: Tuple, A](p: Cont[G, I, O, A]): Cont[F, I, O, A]
 object Widen:
   /** where the compiler knows `H` lies in `G`: the identity, as that knowledge made a value */
   def sub[H[+A] <: G[A], G[+_]]: Widen[H, G] = new Widen[H, G]:
-    def apply[I <: Tuple, O <: Tuple, A](p: Freer[H, I, O, A]): Freer[G, I, O, A] = p
+    def apply[I <: Tuple, O <: Tuple, A](p: Cont[H, I, O, A]): Cont[G, I, O, A] = p
 
-/** a segment over the row `G`: `A => Freer[G, I, O, B]` as data, composed as `Bind` composes; contravariant in what
+/** a segment over the row `G`: `A => Cont[G, I, O, B]` as data, composed as `Bind` composes; contravariant in what
  * it consumes */
 enum Frames[G[+_], -A, B, I <: Tuple, O <: Tuple]:
   case End[G[+_], A, Σ <: Tuple]() extends Frames[G, A, A, Σ, Σ]
-  case Frame[G[+_], A, X, B, I <: Tuple, T <: Tuple, O <: Tuple](f: A => Freer[G, T, O, X], rest: Frames[G, X, B, I, T]) extends Frames[G, A, B, I, O]
+  case Frame[G[+_], A, X, B, I <: Tuple, T <: Tuple, O <: Tuple](f: A => Cont[G, T, O, X], rest: Frames[G, X, B, I, T]) extends Frames[G, A, B, I, O]
 
 /**
  * THE STACK: closes a level over `G` — value `B`, from `I` to `O` — into the run's result over `F`, from `I0` to
@@ -40,19 +40,19 @@ enum Piece[G[+_], A0, B, I <: Tuple, O <: Tuple]:
  * delimiter's level, value-and-answer `S`, the stacks `D` outside; put back under a delimiter of its own, it
  * delivers the answer at the hole, outside, at the row the delimiter leaves `Hf`, from `D` to `I` */
 final class Captured[H[+_], Hf[+_], D <: Tuple, I <: Tuple, X, T, S](val piece: Piece[H, X, S, At[H, Hf, D, S] *: D, At[H, Hf, D, T] *: I])
-  extends (X => Freer[Hf, D, I, T]):
-  def apply(x: X): Freer[Hf, D, I, T] = Resume(x, this)
+  extends (X => Cont[Hf, D, I, T]):
+  def apply(x: X): Cont[Hf, D, I, T] = Resume(x, this)
 
 /** the machine's state with a value `A` due: the segment `k`, level `G`, over `m`. As a function it is the rest of
  * a run after something handed out: applied by whoever answers it, the run goes on */
-sealed abstract class Resumption[F[+_], A, I0 <: Tuple, O0 <: Tuple, Z] extends (A => Freer[F, I0, O0, Z]):
+sealed abstract class Resumption[F[+_], A, I0 <: Tuple, O0 <: Tuple, Z] extends (A => Cont[F, I0, O0, Z]):
   type G[+_]
   type B
   type I <: Tuple
   type T <: Tuple
   def k: Frames[G, A, B, I, T]
   def m: Stack[F, G, B, I, T, I0, O0, Z]
-  def apply(a: A): Freer[F, I0, O0, Z] = Machine.go(Return(a), k, m)
+  def apply(a: A): Cont[F, I0, O0, Z] = Machine.go(Return(a), k, m)
 
 /** the machine's next state with its program: what a capture's walk of the stack answers with — the shift's body
  * at the delimiter's level, or the capture handed out at the run's bottom — its level's types its own */
@@ -63,7 +63,7 @@ sealed abstract class Step[F[+_], I0 <: Tuple, O0 <: Tuple, Z]:
   type I <: Tuple
   type T <: Tuple
   type O <: Tuple
-  def c: Freer[G, T, O, A]
+  def c: Cont[G, T, O, A]
   def k: Frames[G, A, B, I, T]
   def m: Stack[F, G, B, I, O, I0, O0, Z]
 
@@ -71,10 +71,10 @@ sealed abstract class Step[F[+_], I0 <: Tuple, O0 <: Tuple, Z]:
 object Machine:
   /** run to a head form: `Return(z)`, or `Bind(shift0, rest)` — a capture whose delimiter is outside this run, for
    * the machine outside. At any level: a handler's clause may run a program of its own */
-  def run[F[+_], I <: Tuple, O <: Tuple, A](p: Freer[F, I, O, A]): Freer[F, I, O, A] = go(p, Frames.End(), Stack.Done())
+  def run[F[+_], I <: Tuple, O <: Tuple, A](p: Cont[F, I, O, A]): Cont[F, I, O, A] = go(p, Frames.End(), Stack.Done())
 
   @tailrec private[freer] def go[F[+_], G[+_], A, B, I <: Tuple, T <: Tuple, O <: Tuple, I0 <: Tuple, O0 <: Tuple, Z](
-      c: Freer[G, T, O, A], k: Frames[G, A, B, I, T], m: Stack[F, G, B, I, O, I0, O0, Z]): Freer[F, I0, O0, Z] =
+      c: Cont[G, T, O, A], k: Frames[G, A, B, I, T], m: Stack[F, G, B, I, O, I0, O0, Z]): Cont[F, I0, O0, Z] =
     c match
       case Return(a) => k match
         case Frames.Frame(f, rest) => go(f(a), rest, m)
@@ -113,7 +113,7 @@ object Machine:
    * capture is handed out whole as a program of the run, the rest of this run after it, re-closed by a `Done` at
    * the hole — built here, where the run's types are names */
   @tailrec private def cut[F[+_], G[+_], X, T, A, I <: Tuple, R, O <: Tuple, I0 <: Tuple, O0 <: Tuple, Z, H[+_], Hf[+_], D <: Tuple, Ik <: Tuple](
-      c: Freer[G, At[H, Hf, D, T] *: Ik, At[H, Hf, D, R] *: O, X], f: (X => Freer[Hf, D, Ik, T]) => Freer[Hf, D, O, R],
+      c: Cont[G, At[H, Hf, D, T] *: Ik, At[H, Hf, D, R] *: O, X], f: (X => Cont[Hf, D, Ik, T]) => Cont[Hf, D, O, R],
       piece: Piece[G, X, A, I, At[H, Hf, D, T] *: Ik], m: Stack[F, G, A, I, At[H, Hf, D, R] *: O, I0, O0, Z]): Step[F, I0, O0, Z] =
     m match
       case Stack.Run(out, rest) => cut(c, f, Piece.Over(piece, out), rest)
@@ -124,7 +124,7 @@ object Machine:
 
   private def found[F[+_], H[+_], Hf[+_], G0[+_], D <: Tuple, O <: Tuple, S, R, B0, I2 <: Tuple, I0 <: Tuple, O0 <: Tuple, Z](
       d: Stack.Delim[F, H, Hf, G0, D, O, S, R, B0, I2, I0, O0, Z])
-      [X, T, Ik <: Tuple](piece: Piece[H, X, S, At[H, Hf, D, S] *: D, At[H, Hf, D, T] *: Ik], f: (X => Freer[Hf, D, Ik, T]) => Freer[Hf, D, O, R]): Step[F, I0, O0, Z] =
+      [X, T, Ik <: Tuple](piece: Piece[H, X, S, At[H, Hf, D, S] *: D, At[H, Hf, D, T] *: Ik], f: (X => Cont[Hf, D, Ik, T]) => Cont[Hf, D, O, R]): Step[F, I0, O0, Z] =
     step(d.up(f(Captured(piece))), d.out, d.rest)
 
   /** the piece put back over `m`: a value due at the hole */
@@ -145,7 +145,7 @@ object Machine:
       def m = m0
 
   private def step[F[+_], G0[+_], A0, B0, I1 <: Tuple, T1 <: Tuple, O1 <: Tuple, I0 <: Tuple, O0 <: Tuple, Z](
-      c0: Freer[G0, T1, O1, A0], k0: Frames[G0, A0, B0, I1, T1], m0: Stack[F, G0, B0, I1, O1, I0, O0, Z]): Step[F, I0, O0, Z] =
+      c0: Cont[G0, T1, O1, A0], k0: Frames[G0, A0, B0, I1, T1], m0: Stack[F, G0, B0, I1, O1, I0, O0, Z]): Step[F, I0, O0, Z] =
     new Step[F, I0, O0, Z]:
       type G[+A1] = G0[A1]
       type A = A0

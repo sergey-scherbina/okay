@@ -1,6 +1,6 @@
 package okay.freer
 
-import Freer.*
+import Cont.*
 
 /** specs/freer-min.md: a handler is a delimiter, deep — `k` brings the delimiter, so the handler is in force through
  * a resumption, and a clause may resume more than once */
@@ -11,7 +11,7 @@ class TestHandlers extends okay.testkit.Munit.Diagnosed:
   /** every way: `Flip` is both, the answers of both resumptions, in order */
   def every[G[+_], A]: Handler[Choose, G, A, List[A]] = new Handler[Choose, G, A, List[A]]:
     def ret(a: A): List[A] = List(a)
-    def apply[X, Oc <: Ctx](using o: Oc)(op: Choose[X], k: X => Freer[G, o.Here, o.Here, List[A]]): Freer[G, o.Here, o.Here, List[A]] = op match
+    def apply[X, Oc <: Ctx](using o: Oc)(op: Choose[X], k: X => Cont[G, o.Here, o.Here, List[A]]): Cont[G, o.Here, o.Here, List[A]] = op match
       case Choose.Flip => k(true).flatMap(xs => k(false).map(ys => xs ++ ys))
 
   def value[A](p: Top[Pure, A]): A =
