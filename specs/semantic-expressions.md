@@ -31,23 +31,23 @@ without SQL, agents or external engines.
   custom functions must capture serializable application state.
 
 ## Behavior
-- [ ] Constants, offsets and both orders of arithmetic execute, including /3,
+- [x] Constants, offsets and both orders of arithmetic execute, including /3,
   exact large coefficients, empty groups, null operands and zero denominators.
-- [ ] Row expressions inside aggregates support arithmetic, predicates, searched
+- [x] Row expressions inside aggregates support arithmetic, predicates, searched
   and simple CASE, null literals, COALESCE/NULLIF/IF, ROUND and scalar functions.
-- [ ] Aggregate DISTINCT and FILTER, median, statistical and percentile functions
+- [x] Aggregate DISTINCT and FILTER, median, statistical and percentile functions
   execute with correct empty/null semantics and exact decimal arithmetic.
-- [ ] Window aggregates and ranking/offset functions execute at the requested
+- [x] Window aggregates and ranking/offset functions execute at the requested
   result grain, before having/order/pagination; partition, ordering, peers and
   explicit ROWS frames have documented semantics.
-- [ ] Qualified cross-dataset fields follow checked composite-key lookup routes;
+- [x] Qualified cross-dataset fields follow checked composite-key lookup routes;
   duplicate right keys, ambiguous routes and missing tables return diagnoses.
-- [ ] Unknown identifiers, functions, malformed syntax, mixed row/group levels,
+- [x] Unknown identifiers, functions, malformed syntax, mixed row/group levels,
   metric cycles and unavailable dialects fail during planning where possible.
-- [ ] Registered functions and explicit language adapters extend the same plan;
+- [x] Registered functions and explicit language adapters extend the same plan;
   common SQL-family dialects can use explicit portable translation.
-- [ ] Source/chunk/Bulk/Tables/JSON consumption agrees with collection results.
-- [ ] Existing import/export and Bridge contracts remain tested; new core
+- [x] Source/chunk/Bulk/Tables/JSON consumption agrees with collection results.
+- [x] Existing import/export and Bridge contracts remain tested; new core
   constants export/reimport. All platform checks and affected staged gates pass.
 
 ## Design
@@ -80,5 +80,14 @@ The existing decomposable Plan continues to serve streaming/SQL pushdown workloa
 - Final precision audit: replacing the old exact finite reciprocal Scale with
   unconditional DECIMAL128 division would round terminating results over 34
   digits. Preserve those exactly and use DECIMAL128 only for recurring decimals.
-  The large-coefficient /4 regression is the acceptance check before landing.
+  The large-coefficient /4 regression was observed RED, then GREEN on all three
+  platforms after sharing DecimalMath between core and expression execution.
+- Final affected gate: 365 tests GREEN (16 semantic/doc projects), no compile
+  warnings. Feature coverage: JVM 32, JS 24, Native 24. Exact/recurring division,
+  core constants, SQL H2, Arrow IPC, files/Bulk/Tables/JSON, Source/chunks, API,
+  serialization, joins, windows, nulls, type/unit errors and budgets are exercised.
+- Gate command uses explicit changed semantic module files because build.sbt only
+  changes their dependency edges. This closes over all five semantic modules on
+  every platform plus the doc project; the whole build belongs to ci-runner.
+
 
