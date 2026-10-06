@@ -947,3 +947,18 @@ pair by nature, `(A => S) => R`, and `Bind` cancels the middle. The pair of the 
 entry, `Lvl[H, S, R]`, at the cost of `Bind` taking the head apart and a second rule at the empty stack; the
 information is the same. Two tuples, in and out, with `S`, `R` their heads, are the full hierarchy. The basis is the
 one pair beside the stack.
+
+## Stage 15: the stack stays; simplified (DONE, 2026-10-06)
+
+- `Cut` (an enum, `Found` | `Gone`, matched in `go`) is one class `Step`: the machine's next state WITH its program
+  (`c`, `k`, `m`, `sub`), built by `cut` where the level's types are names — the shift's body at the delimiter's
+  level, or at the run's bottom the capture handed out, as a program over `End`/`Done`: the head-form rule of `go`
+  returns it as it is, so `Gone` is no case of anything.
+- `Next` (a value due: `k`, `m`, `sub`) IS the data of `Resumption`; one class, a function of the value, built by
+  `link`; `Inject` hands out with it.
+- The identity `Widen[h, G]` built twice in `go` is `Widen.sub[H <: G, G]`, the compiler's knowledge made a value.
+- Aliases for what a user writes: `Top[G, A]` (no delimiter in force), `Under[H, S]` (the context of a fragment for
+  the body of a top `reset[H, S]`), `Body[H, S, A]` (a program in that body): `def loop(n: Int)(using Under[Pure,
+  Int]): Body[Pure, Int, Int]`.
+
+Kernel 268 lines (94 + 174), 25 tests on the JVM, JS and Native compile, no cast, no warning.

@@ -8,8 +8,6 @@ class TestMachine extends okay.testkit.Munit.Diagnosed:
   enum Ask[+A]:
     case Number extends Ask[Int]
 
-  /** a program at the top: its answer is its value, Danvy–Filinski's `⟨e⟩ : τ` */
-  type Top[G[+_], A] = Freer[G, EmptyTuple, A, A, A]
 
   def value[U, A](p: Freer[Pure, EmptyTuple, U, U, A]): A =
     val head: Freer[Pure, EmptyTuple, U, U, A] = Machine.run(p)
@@ -75,7 +73,7 @@ class TestMachine extends okay.testkit.Munit.Diagnosed:
 
   test("100 000 captures and resumptions in one delimiter run in constant stack"):
     // a fragment with a shift says which delimiter it is under: its context, and its index
-    def loop(n: Int)(using In[Lvl[Pure] *: EmptyTuple, Int *: EmptyTuple]): Freer[Pure, Lvl[Pure] *: EmptyTuple, Int, Int, Int] =
+    def loop(n: Int)(using Under[Pure, Int]): Body[Pure, Int, Int] =
       if n == 0 then pure(0) else shift0[Int](k => k(1)).flatMap(x => loop(n - 1).map(_ + x))
     assertEquals(value(reset[Pure, Int](loop(100000))), 100000)
 

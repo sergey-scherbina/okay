@@ -11,8 +11,10 @@ trait Widen[G[+_], F[+_]]:
     new Widen[G, E]:
       def apply[Σ <: Tuple, S, R, A](p: Freer[G, Σ, S, R, A]): Freer[E, Σ, S, R, A] = next(self(p))
 object Widen:
-  def refl[F[+_]]: Widen[F, F] = new Widen[F, F]:
-    def apply[Σ <: Tuple, S, R, A](p: Freer[F, Σ, S, R, A]): Freer[F, Σ, S, R, A] = p
+  /** where the compiler knows `H` lies in `G`: the identity, as that knowledge made a value */
+  def sub[H[+A] <: G[A], G[+_]]: Widen[H, G] = new Widen[H, G]:
+    def apply[Σ <: Tuple, S, R, A](p: Freer[H, Σ, S, R, A]): Freer[G, Σ, S, R, A] = p
+  def refl[F[+_]]: Widen[F, F] = sub[F, F]
 
 /** a segment over the row `G` under `Σ`: `A => Freer[G, Σ, S, R, B]` as data; contravariant in what it consumes */
 enum Frames[G[+_], -A, B, Σ <: Tuple, S, R]:
@@ -50,17 +52,12 @@ final class Captured[H[+_], X, T, S, O <: Tuple](val piece: Piece[H, X, Lvl[H] *
     type Out = Out0
     def apply[U](x: X0): Freer[H, O, U, U, T] = Captured.this.apply[U](x)
   def under[F[+_], G[+_], B, S2, U, Σ0 <: Tuple, S0, R0, Z](up: Widen[H, G], sub: Widen[G, F], out: Frames[G, T, B, O, S2, U],
-                                                           rest: Stack[F, G, O, B, S2, U, Σ0, S0, R0, Z]): Next[F, X, T, Σ0, S0, R0, Z] =
+                                                           rest: Stack[F, G, O, B, S2, U, Σ0, S0, R0, Z]): Resumption[F, X, T, Σ0, S0, R0, Z] =
     Machine.link(piece, Stack.Delim(up, sub, out, rest), up.andThen(sub))
 
-/** the rest of a run after something handed out: applied by whoever answers it, the run goes on */
-final class Resumption[F[+_], G[+_], A, B, Σ <: Tuple, S, T, Σ0 <: Tuple, S0, R0, Z](
-    k: Frames[G, A, B, Σ, S, T], m: Stack[F, G, Σ, B, S, T, Σ0, S0, R0, Z], sub: Widen[G, F])
-  extends (A => Freer[F, Σ0, S0, R0, Z]):
-  def apply(a: A): Freer[F, Σ0, S0, R0, Z] = Machine.go(Return(a), k, m, sub)
-
-/** the machine's next state: a value `A` is due at the answer `T`, at the segment `k`, level `G` under `Σ`, over `m` */
-sealed abstract class Next[F[+_], A, T, Σ0 <: Tuple, S0, R0, Z]:
+/** the machine's state with a value `A` due at the answer `T`: the segment `k`, level `G` under `Σ`, over `m`. As
+ * a function it is the rest of a run after something handed out: applied by whoever answers it, the run goes on */
+sealed abstract class Resumption[F[+_], A, T, Σ0 <: Tuple, S0, R0, Z] extends (A => Freer[F, Σ0, S0, R0, Z]):
   type G[+_]
   type B
   type Σ <: Tuple
@@ -68,17 +65,22 @@ sealed abstract class Next[F[+_], A, T, Σ0 <: Tuple, S0, R0, Z]:
   def k: Frames[G, A, B, Σ, S, T]
   def m: Stack[F, G, Σ, B, S, T, Σ0, S0, R0, Z]
   def sub: Widen[G, F]
+  def apply(a: A): Freer[F, Σ0, S0, R0, Z] = Machine.go(Return(a), k, m, sub)
 
-/** what a capture meets walking down: the nearest delimiter (`Found`: the body of the shift, given `k`, goes on
- * at the level outside in the delimiter's place — built there, where that level's answer is known), or the run's
- * bottom (`Gone`: the delimiter is outside this run; the capture is handed out whole as a program of the run, with
- * the rest of this run, resumed from the hole, after it — re-closed by a `Done` at the hole's answer `T`, a fresh
- * one, nothing re-typed) */
-enum Cut[F[+_], Σ0 <: Tuple, S0, R0, Z]:
-  case Found[F[+_], Σ0 <: Tuple, S0, R0, Z, G0[+_], R, B0, O <: Tuple, S20, U](
-      c: Freer[G0, O, U, U, R], out: Frames[G0, R, B0, O, S20, U], rest: Stack[F, G0, O, B0, S20, U, Σ0, S0, R0, Z], sub: Widen[G0, F])
-    extends Cut[F, Σ0, S0, R0, Z]
-  case Gone[F[+_], Σ0 <: Tuple, S0, R0, Z](out: Freer[F, Σ0, S0, R0, Z]) extends Cut[F, Σ0, S0, R0, Z]
+/** the machine's next state with its program: what a capture's walk of the stack answers with — the shift's body
+ * at the delimiter's level, or the capture handed out at the run's bottom — its level's types its own */
+sealed abstract class Step[F[+_], Σ0 <: Tuple, S0, R0, Z]:
+  type G[+_]
+  type A
+  type B
+  type Σ <: Tuple
+  type S
+  type T
+  type R
+  def c: Freer[G, Σ, T, R, A]
+  def k: Frames[G, A, B, Σ, S, T]
+  def m: Stack[F, G, Σ, B, S, R, Σ0, S0, R0, Z]
+  def sub: Widen[G, F]
 
 /** one loop, one rule per node, nothing else */
 object Machine:
@@ -97,7 +99,7 @@ object Machine:
           // the body returned: its answer is the program's final one, and the delimiter delivers it
           case Stack.Delim(_, subOut, out, rest) => go(Return(a), out, rest, subOut)
       case Bind(c0, f) => f match
-        case _: Resumption[?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?] => c0 match
+        case _: Resumption[?, ?, ?, ?, ?, ?, ?] => c0 match
           case Inject(_) | Shift0(_) => k match
             case Frames.End() => m match
               case Stack.Done() => sub(c)
@@ -107,52 +109,68 @@ object Machine:
         case _ => go(c0, Frames.Frame(f, k), m, sub)
       case Delay(t) => go(t(), k, m, sub)
       // handed out as a program of the run: an operation carries no answer and no stack, so it is re-injected at the run's
-      case Inject(op) => Bind(sub(Inject(op)), Resumption(k, m, sub))
+      case Inject(op) => Bind(sub(Inject(op)), resumption(k, m, sub))
       case r: Reset[h, ?, ?, ?, ?] =>
-        val up = new Widen[h, G]:
-          def apply[Σ2 <: Tuple, S2, R2, A2](p: Freer[h, Σ2, S2, R2, A2]): Freer[G, Σ2, S2, R2, A2] = p
+        val up = Widen.sub[h, G]
         go(r.body, Frames.End(), Stack.Delim(up, sub, k, m), up.andThen(sub))
+      // the body runs in the delimiter's place, at the level outside, its value the delimiter's answer; a capture
+      // whose delimiter is outside this run is a head form, handed out
       case s: Shift0[h, o, ?, ?, x] =>
-        cut[F, G, x, T, B, S, R, Σ0, S0, R0, Z, h, o](s, s.f, Piece.Hole(k), m, sub) match
-          // the body runs in the delimiter's place, at the level outside, its value the delimiter's answer
-          case Cut.Found(c, out, rest, subOut) => go(c, out, rest, subOut)
-          case Cut.Gone(out) => out
+        val n = cut[F, G, x, T, B, S, R, Σ0, S0, R0, Z, h, o](s, s.f, Piece.Hole(k), m, sub)
+        go(n.c, n.k, n.m, n.sub)
       case r: Resume[h, ?, ?, ?, ?] =>
-        val up = new Widen[h, G]:
-          def apply[Σ2 <: Tuple, S2, R2, A2](p: Freer[h, Σ2, S2, R2, A2]): Freer[G, Σ2, S2, R2, A2] = p
-        val n = r.k.under(up, sub, k, m)
+        val n = r.k.under(Widen.sub[h, G], sub, k, m)
         go(Return(r.x), n.k, n.m, n.sub)
 
-  /** down the stack to the nearest delimiter — the index says its row; the run's bottom instead means the delimiter
-   * is outside this run, and the capture is handed out here, where the run's types are known */
+  /** down the stack to the nearest delimiter — the index says its row — and the shift's body, given `k`, at the
+   * level outside, where that level's answer is a name; the run's bottom instead means the delimiter is outside
+   * this run: the capture is handed out whole as a program of the run, the rest of this run after it, re-closed by
+   * a `Done` at the hole's answer `T` — built here, where the run's types are names */
   @tailrec private def cut[F[+_], G[+_], X, T, A, Tp, R, Σ0 <: Tuple, S0, R0, Z, H[+_], O <: Tuple](
       c: Freer[G, Lvl[H] *: O, T, R, X], f: (k: Continue[H, O, X, T]) => Freer[H, O, k.Out, k.Out, R],
-      piece: Piece[G, X, Lvl[H] *: O, T, A, Tp], m: Stack[F, G, Lvl[H] *: O, A, Tp, R, Σ0, S0, R0, Z], sub: Widen[G, F]): Cut[F, Σ0, S0, R0, Z] =
+      piece: Piece[G, X, Lvl[H] *: O, T, A, Tp], m: Stack[F, G, Lvl[H] *: O, A, Tp, R, Σ0, S0, R0, Z], sub: Widen[G, F]): Step[F, Σ0, S0, R0, Z] =
     m match
       case Stack.Run(out, rest) => cut(c, f, Piece.Over(piece, out), rest, sub)
       case d @ Stack.Delim(_, _, _, _) => found(d)(piece, f)
       case Stack.Done() =>
         val n = link(piece, Stack.Done[F, Lvl[H] *: O, A, Tp, T](), sub)
-        Cut.Gone(Bind(sub(c), Resumption(n.k, n.m, n.sub)))
+        step(Bind(sub(c), n), Frames.End(), Stack.Done(), Widen.refl[F])
 
   private def found[F[+_], H[+_], G0[+_], O <: Tuple, S, R, B0, S20, U, Σ0 <: Tuple, S0, R0, Z](
       d: Stack.Delim[F, H, G0, O, S, R, B0, S20, U, Σ0, S0, R0, Z])
-      [X, T](piece: Piece[H, X, Lvl[H] *: O, T, S, S], f: (k: Continue[H, O, X, T]) => Freer[H, O, k.Out, k.Out, R]): Cut[F, Σ0, S0, R0, Z] =
-    Cut.Found(d.up(f(Captured(piece).kAt[X, U])), d.out, d.rest, d.sub)
+      [X, T](piece: Piece[H, X, Lvl[H] *: O, T, S, S], f: (k: Continue[H, O, X, T]) => Freer[H, O, k.Out, k.Out, R]): Step[F, Σ0, S0, R0, Z] =
+    step(d.up(f(Captured(piece).kAt[X, U])), d.out, d.rest, d.sub)
 
+  /** the piece put back over `m`: a value due at the hole */
   @tailrec private[freer] def link[F[+_], G[+_], A0, Σ <: Tuple, T0, A, T, Σ0 <: Tuple, S0, R0, Z](
-      piece: Piece[G, A0, Σ, T0, A, T], m: Stack[F, G, Σ, A, T, T0, Σ0, S0, R0, Z], sub: Widen[G, F]): Next[F, A0, T0, Σ0, S0, R0, Z] =
+      piece: Piece[G, A0, Σ, T0, A, T], m: Stack[F, G, Σ, A, T, T0, Σ0, S0, R0, Z], sub: Widen[G, F]): Resumption[F, A0, T0, Σ0, S0, R0, Z] =
     piece match
-      case Piece.Hole(k0) => linked(k0, m, sub)
+      case Piece.Hole(k0) => resumption(k0, m, sub)
       case Piece.Over(prev, out) => link(prev, Stack.Run(out, m), sub)
 
-  private def linked[F[+_], G0[+_], A0, B0, Σ1 <: Tuple, S1, T0, Σ0 <: Tuple, S0, R0, Z](
-      k0: Frames[G0, A0, B0, Σ1, S1, T0], m0: Stack[F, G0, Σ1, B0, S1, T0, Σ0, S0, R0, Z], sub0: Widen[G0, F]): Next[F, A0, T0, Σ0, S0, R0, Z] =
-    new Next[F, A0, T0, Σ0, S0, R0, Z]:
+  private def resumption[F[+_], G0[+_], A0, B0, Σ1 <: Tuple, S1, T0, Σ0 <: Tuple, S0, R0, Z](
+      k0: Frames[G0, A0, B0, Σ1, S1, T0], m0: Stack[F, G0, Σ1, B0, S1, T0, Σ0, S0, R0, Z], sub0: Widen[G0, F]): Resumption[F, A0, T0, Σ0, S0, R0, Z] =
+    new Resumption[F, A0, T0, Σ0, S0, R0, Z]:
       type G[+A1] = G0[A1]
       type B = B0
       type Σ = Σ1
       type S = S1
+      def k = k0
+      def m = m0
+      def sub = sub0
+
+  private def step[F[+_], G0[+_], A0, B0, Σ1 <: Tuple, S1, T1, R1, Σ0 <: Tuple, S0, R0, Z](
+      c0: Freer[G0, Σ1, T1, R1, A0], k0: Frames[G0, A0, B0, Σ1, S1, T1], m0: Stack[F, G0, Σ1, B0, S1, R1, Σ0, S0, R0, Z], sub0: Widen[G0, F])
+    : Step[F, Σ0, S0, R0, Z] =
+    new Step[F, Σ0, S0, R0, Z]:
+      type G[+A1] = G0[A1]
+      type A = A0
+      type B = B0
+      type Σ = Σ1
+      type S = S1
+      type T = T1
+      type R = R1
+      def c = c0
       def k = k0
       def m = m0
       def sub = sub0

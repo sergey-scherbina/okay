@@ -65,6 +65,13 @@ trait Continue[H[+_], Σ <: Tuple, X, T]:
   type Out
   def apply[U](x: X): Freer[H, Σ, U, U, T]
 
+/** a program at the top, no delimiter in force: its answer is its value, Danvy–Filinski's `⟨e⟩ : τ` */
+type Top[G[+_], A] = Freer[G, EmptyTuple, A, A, A]
+/** the context of a fragment written for the body of a `reset[H, S]` at the top: `def f(using Under[H, S]): Body[H, S, A]` */
+type Under[H[+_], S] = In[Lvl[H] *: EmptyTuple, S *: EmptyTuple]
+/** a program in the body of a `reset[H, S]` at the top, its answer unchanged */
+type Body[H[+_], S, A] = Freer[H, Lvl[H] *: EmptyTuple, S, S, A]
+
 def pure[A, Σ <: Tuple, R](a: A): Freer[Pure, Σ, R, R, A] = Freer.Return(a)
 def inject[F[+_], Σ <: Tuple, T, A](op: F[A]): Freer[F, Σ, T, T, A] = Freer.Inject(op)
 def delay[G[+_], Σ <: Tuple, S, R, A](t: => Freer[G, Σ, S, R, A]): Freer[G, Σ, S, R, A] = Freer.Delay(() => t)

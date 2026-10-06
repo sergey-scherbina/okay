@@ -13,8 +13,6 @@ class TestFreer extends okay.testkit.Munit.Diagnosed:
     case Tick extends Cnt[Unit]
 
   type Fx = Ask + Say
-  /** a program at the top: its answer is its value, Danvy–Filinski's `⟨e⟩ : τ` */
-  type Top[G[+_], A] = Freer[G, EmptyTuple, A, A, A]
 
   /** a program with no capture is written for any stack: the index is exact, so one at the top is no body for a delimiter */
   def one[Σ <: Tuple]: Freer[Fx, Σ, Int, Int, Int] =
