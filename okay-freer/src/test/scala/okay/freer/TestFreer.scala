@@ -1,79 +1,74 @@
 package okay.freer
 
-import scala.annotation.tailrec
 import Freer.*
 
-/** specs/freer-min.md: the tree on its own — rows built by flatMap, dispatch without a cast, the handler's rest */
+/** specs/freer-min.md: HANDLERS AS DELIMITERS — an operation is a capture to the handler's delimiter, the clause
+ * runs outside; the effect is discharged from the row outside; a handler not the nearest is reached through the
+ * delimiters between, each forwarding, found in the context at compile time */
 class TestFreer extends okay.testkit.Munit.Diagnosed:
   enum Ask[+A]:
     case Number extends Ask[Int]
   enum Say[+A]:
     case Line(s: String) extends Say[Unit]
-  enum Cnt[+A]:
-    case Tick extends Cnt[Unit]
 
-  type Fx = Ask + Say
+  /** a reader: `Number` is `n`; the value as it is */
+  def reader[G[+_], A](n: Int): Handler[Ask, G, A, A] = new Handler[Ask, G, A, A]:
+    def ret(a: A): A = a
+    def apply[X, Oc <: Ctx](using o: Oc)(op: Ask[X], k: X => Freer[G, o.Here, o.Here, A]): Freer[G, o.Here, o.Here, A] = op match
+      case Ask.Number => k(n)
 
-  /** a program with no capture is written for any stack: the index is exact, so one at the top is no body for a delimiter */
-  def one[Σ <: Tuple]: Freer[Fx, Σ, Σ, Int] =
-    for
-      n <- inject(Ask.Number)
-      _ <- inject(Say.Line(n.toString))
-    yield n + 1
+  /** a writer: the lines said, beside the value; deep — `k` brings the delimiter, each line goes in front */
+  def writer[G[+_], A]: Handler[Say, G, A, (List[String], A)] = new Handler[Say, G, A, (List[String], A)]:
+    def ret(a: A): (List[String], A) = (Nil, a)
+    def apply[X, Oc <: Ctx](using o: Oc)(op: Say[X], k: X => Freer[G, o.Here, o.Here, (List[String], A)]): Freer[G, o.Here, o.Here, (List[String], A)] =
+      op match
+        case Say.Line(s) => k(()).map((log, a) => (s :: log, a))
 
-  /** one operation answered: `Inject` gave `T = R`, the pointwise bound gives the dispatch — no cast */
-  def step[X, B](op: Ask[X] | Say[X], k: X => Top[Fx, B], in: Int, out: StringBuilder): Top[Fx, B] = op match
-    case Ask.Number => k(in)
-    case Say.Line(l) => out.append(l).append('\n'): Unit; k(())
-
-  @tailrec final def run[A](p: Top[Fx, A], in: Int, out: StringBuilder): A =
-    val head: Top[Fx, A] = Machine.run(p)
-    head match
-      case Return(a) => a
-      case Bind(h, k) => (h: @unchecked) match
-        case Inject(op) => run(step(op, k, in, out), in, out)
-      case other => fail(s"not handled: $other")
-
-  def runPure[A](p: Top[Pure, A]): A =
+  def value[A](p: Top[Pure, A]): A =
     val head: Top[Pure, A] = Machine.run(p)
     head match
       case Return(a) => a
       case other => fail(s"not a value: $other")
 
-  test("a for over two signatures builds the union row, and runs"):
-    val out = StringBuilder()
-    assertEquals(run(one, 41, out), 42)
-    assertEquals(out.toString.trim, "41")
+  test("one handler: the operation is a capture to its delimiter, the clause outside; the effect is gone from the row outside"):
+    val prog: Top[Pure, Int] = handle(reader[Pure, Int](41))(perform(Ask.Number).map(_ + 1))
+    assertEquals(value(prog), 42)
 
-  test("(F + G) + F is accepted where F + G is expected; pure is a program of every row"):
-    val two: Top[Fx, Int] = one.flatMap(a => inject(Ask.Number).map(_ + a))
-    val three: Top[Fx, Int] = pure(3)
-    val out = StringBuilder()
-    assertEquals(run(two, 41, out), 83)
-    assertEquals(run(three, 0, out), 3)
+  test("two handlers: the inner one forwards what it does not handle — found in the context, at compile time"):
+    val prog: Top[Pure, (List[String], Int)] =
+      handle(reader[Pure, (List[String], Int)](41)):
+        handle(writer[Ask + Pure, Int]):
+          for
+            n <- perform(Ask.Number)
+            _ <- perform(Say.Line(n.toString))
+            m <- perform(Ask.Number)
+            _ <- perform(Say.Line((n + m).toString))
+          yield n + 1
+    assertEquals(value(prog), (List("41", "82"), 42))
 
-  test("100 000 left-nested maps run in constant stack"):
-    val chain = (1 to 100000).foldLeft(pure(0): Top[Fx, Int])((p, _) => p.map(_ + 1))
-    assertEquals(run(chain, 0, StringBuilder()), 100000)
+  test("an operation with no handler in the context is no program"):
+    val errors = compileErrors("""
+      val prog: Top[Pure, Int] = reset[Pure, Int](perform(Ask.Number).map(_ + 1))""")
+    note(errors)
+    assert(errors.nonEmpty, errors)
 
-  test("a handler's rest infers positionally"):
-    type Rest = Say + Cnt
-    val three: Top[Ask + Rest, Int] =
-      for
-        n <- inject(Ask.Number)
-        _ <- inject(Say.Line("x"))
-        _ <- inject(Cnt.Tick)
-      yield n
-    def runAsk[G[+_], A](p: Top[Ask + G, A]): Top[G, A] = p.asInstanceOf[Top[G, A]]
-    val typed: Top[Rest, Int] = runAsk(three)
-    assert(typed.isInstanceOf[Bind[?, ?, ?, ?, ?, ?]])
+  test("a handler's body row says what is handled; a program claiming more is refused"):
+    val errors = compileErrors("""
+      val prog: Top[Pure, Int] = handle(reader[Pure, Int](1))(perform(Say.Line("x")).map(_ => 1))""")
+    assert(errors.nonEmpty, errors)
 
-  test("a delimiter is a node of the tree, in a row with the effects"):
-    val c: Top[Fx, Int] = reset[Fx, Int](one).flatMap(y => inject(Ask.Number).map(_ + y))
-    assertEquals(run(c, 1, StringBuilder()), 3)
+  test("100 000 operations, each a capture to the handler, in constant stack"):
+    def loop(n: Int, acc: Int)(using c: In[Ask + Pure, Pure, Int, Root.type], p: Perform[Ask, Ask + Pure, c.type]): c.Body[Int] =
+      if n == 0 then pure(acc) else perform(Ask.Number).flatMap(x => loop(n - 1, acc + x))
+    val prog: Top[Pure, Int] = handle(reader[Pure, Int](1))(loop(100000, 0))
+    assertEquals(value(prog), 100000)
 
   test("delay and defer: a million mutual tail calls in constant stack, through the one loop"):
     def even(n: Int): Top[Pure, Boolean] = if n == 0 then pure(true) else delay(odd(n - 1))
     def odd(n: Int): Top[Pure, Boolean] = if n == 0 then pure(false) else defer(even(n - 1))(b => pure(b))
-    assertEquals(runPure(even(1000000)), true)
-    assertEquals(runPure(odd(1000001)), true)
+    assertEquals(value(even(1000000)), true)
+    assertEquals(value(odd(1000001)), true)
+
+  test("100 000 left-nested maps run in constant stack"):
+    val chain = (1 to 100000).foldLeft(pure(0): Top[Pure, Int])((p, _) => p.map(_ + 1))
+    assertEquals(value(chain), 100000)

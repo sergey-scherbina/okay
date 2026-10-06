@@ -1058,3 +1058,40 @@ Kernel 280 lines, 28 tests on the JVM, JS and Native compile, no cast, no warnin
   the bottom re-enters the loop once, and a boolean cannot give the GADT what `sub(c)` needs.
 
 Kernel 276 lines, 28 tests on the JVM, JS and Native compile, no cast, no warning, no prompt, no named run.
+
+## Stage 19: HANDLERS AS DELIMITERS (DONE, 2026-10-06)
+
+The operator's call. A handler is a delimiter, an operation a capture to it, the clause the shift's body, running
+outside; deep: `k` brings the delimiter, so the handler is in force through a resumption, and a clause may resume
+more than once. What it took, and what it found:
+
+- THE ROW OUTSIDE is in the level: `At[H, Hf, D, S]` — the body's row `H`, what the delimiter leaves `Hf`, the stacks
+  outside `D`, the answer. `Reset[H, Hf, …] extends Freer[Hf, D, O, R]`: the discharge of an effect is `H = E + G`,
+  `Hf = G`. A shift's body and its `k` are at `Hf` (they run outside). `enter` builds `Widen[hf, G]` from the GADT
+  bound of the node's row in the level's, as before.
+- `Inject` IS GONE, six nodes: with a delimiter that discharges `E`, an operation handed out past it to the run's loop
+  would need `Widen[E + G, F]`, which the compiler refused to build in `enter` — the types found that the two
+  models cannot coexist. Every effect goes through a delimiter now; the run's loop handles nothing; `Machine.run`
+  answers `Return(z)` or a capture whose delimiter is outside the run. With it went `sub: Widen[G, F]` on every
+  level, `Widen.andThen` and `refl`: a capture reaching the run's bottom is at the run's row by the `Done` match.
+- `Handler[E, G, A, Ans]`: `ret` and the clauses, `apply[X, Oc <: Ctx](using o: Oc)(op: E[X], k: X => Freer[G,
+  o.Here, o.Here, Ans]): Freer[G, o.Here, o.Here, Ans]` — written outside the delimiter, in the context outside,
+  at its stacks. `handle(h)(body)` is `Reset[E + G, G, …](body.map(h.ret))` with the context `Handling[E, …]` holding
+  `h`. A handler's state with replay across resumptions is the answer type's business (`PState`, TestState), not a
+  closure's: `k` holds the handler, and a resumption cannot swap it.
+- `perform(op)`: the handler is FOUND IN THE CONTEXT AT COMPILE TIME — `Perform[E, H, C]` for the context `C`:
+  `direct` when `C` is the handler's (`Handling[E, …]`), `forward` when it is another delimiter's, whose row
+  outside includes the outer body's (`H2 <: Hf`): a shift to it whose body performs outside and resumes `k` after —
+  `Shift0(k1 => o(op, c.outer).flatMap(k1))`. Static evidence passing, by the structure of the context; the
+  delimiters between forward. No handler, no program (a compile error, tested). Inference of a higher-kinded
+  parameter from a BOUND on another parameter instantiates it to `Nothing` before the bound is checked (twice met):
+  the handler is typed by the context's member `c.Out`, and `forward`'s bound names only what it uses.
+- Measured: a reader (`Number` is `n`), a writer (the lines said, in front of the value), a reader outside a writer
+  with the inner forwarding, `(List("41", "82"), 42)`; a reader outside a plain `reset` forwarding through it, with
+  a capture to the reset in the same body, 12; nondeterminism (`Flip`, both ways, `List(a)`), four worlds; a
+  capture out THROUGH a handler to a reset by hand, `Perform.forward`'s law, the reset resumed twice, 66; 100 000
+  operations in constant stack.
+
+Kernel 300 lines, 30 tests on the JVM, JS and Native compile, no cast, no `@unchecked` anywhere — the `Distinct`
+claim of a handler over a union is gone with the loop: a handler never dispatches an operation by class, the
+delimiter it is the clause of is the one its operations reach.
