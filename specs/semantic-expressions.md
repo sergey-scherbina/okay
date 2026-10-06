@@ -89,5 +89,3 @@ The existing decomposable Plan continues to serve streaming/SQL pushdown workloa
 - Gate command uses explicit changed semantic module files because build.sbt only
   changes their dependency edges. This closes over all five semantic modules on
   every platform plus the doc project; the whole build belongs to ci-runner.
-
-
