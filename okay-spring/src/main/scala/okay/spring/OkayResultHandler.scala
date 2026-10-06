@@ -25,7 +25,7 @@ final class OkayResultHandler(delegate: ResponseBodyResultHandler) extends Handl
   override def getOrder: Int = delegate.getOrder - 1
 
   override def supports(result: HandlerResult): Boolean =
-    classOf[Freer[?, ?, ?, ?]].isAssignableFrom(result.getReturnTypeSource.getParameterType) && delegate.supports(result)
+    classOf[okay.freer.Freer[?, ?, ?, ?]].isAssignableFrom(result.getReturnTypeSource.getParameterType) && delegate.supports(result)
 
   override def handleResult(exchange: ServerWebExchange, result: HandlerResult): Mono[Void] =
     // index 3: `A ! F` is `Freer[Unary[F], Unit, Unit, A]` since

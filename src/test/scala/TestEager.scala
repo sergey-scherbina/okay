@@ -47,7 +47,7 @@ class TestEager extends munit.FunSuite {
   test("operations still suspend; toFree normalizes at any point") {
     val E = summon[Effects[Eager]]
     val m = E.flatMap(E.perform[Produce, Int](20))(x => E.pure(x + 22))
-    assert(m.isInstanceOf[Freer[?, ?, ?, ?]])
+    assert(m.isInstanceOf[okay.freer.Freer[?, ?, ?, ?]])
     assertEquals(Eager.toFree(m).runWith, 42)
     assertEquals(m.runWith, 42)
   }

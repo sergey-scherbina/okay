@@ -55,38 +55,8 @@ import scala.quoted.*
 /** the union of two indexed signatures — `+` at three parameters */
 infix type +~[F[_, _, +_], G[_, _, +_]] = [S, R, X] =>> F[S, R, X] | G[S, R, X]
 
-/** a unary effect as a member of an indexed row: `F[X]` on the
- * diagonal, and nothing off it — see the header */
-type Unary[F[+_]] = Diagonal[F]#L
-
-/**
- * `Unary`'s body, a projection on a class rather than a bare type lambda, for inference: two lambdas applied to a
- * row `Users + F` beta-reduce to unions, which give nothing to solve `F1` and `G` from; a projection compares by its
- * prefix (`Diagonal[Users + F]` against `Diagonal[F1 + G]`), so the row's `+` matches application to application.
- * The member reduces to `F[X]` wherever its two indexes are one type — every `A ! F`, at `Unit` — and to nothing
- * elsewhere (one-bridge: `Free`'s bridge and the indexed rows' are this one; `Lift`, which ignored the indexes,
- * is gone).
- */
-/**
- * THE BRIDGE'S EXTRACTOR (unary-extractor): a node of a unary member's operation ON THE DIAGONAL, answered at the
- * operation's own type. Its field is typed by the bridge, `Unary[F][R, R, A]` — a match type, which reduces in an
- * expression but not as the scrutinee of a nested pattern, so `case Unary(Writer.Say(c))` on the plain node would
- * refine nothing; viewed at `Unary.Op[F]` the field IS `F[A]`, and a constructor pattern on it refines `A` as a GADT
- * match does. A product match: the node itself, nothing allocated. `Free.Inject` is this at `Unit, Unit`.
- */
-object Unary:
-  /** `F` with its two indexes ignored: what the bridge IS on the diagonal */
-  type Op[F[+_]] = [S, R, X] =>> F[X]
-
-  def unapply[F[+_], R, A](i: Freer.Inject[Unary[F], R, R, A]): Freer.Inject[Op[F], R, R, A] =
-    // THE CLAIM, the bridge's own definition read back: on the diagonal `Unary[F]` reduces to `F` — the same
-    // operation, the same node, read at the signature that says so
-    i.asInstanceOf[Freer.Inject[Op[F], R, R, A]]
-
-sealed trait Diagonal[F[+_]]:
-  type L[S, R, +X] = S match
-    case R => F[X]
-    case _ => Nothing
+/** `Unary`, `Diagonal` and the bridge's extractor are the tree's own (okay.freer, Free.scala), named at the
+ * core's door (Free.scala here) */
 
 /** ∀S R X, the runtime test for F[S, R, X] — `TypeableK` at three
  * parameters; by class, since the indexes are erased and a row may

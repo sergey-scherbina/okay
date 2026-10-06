@@ -270,17 +270,7 @@ object Effects {
   inline def tailcall[F[+_], A](thunk: => A ! F): A ! F =
     Free.delay(() => thunk)
 
-  /**
-   * `tailRecM` for programs (specs/fold-until.md): run `f` from `s`, continue from a `Left`, answer a `Right`.
-   * Stack-safe with no trampoline of its own: the recursive call sits inside the `flatMap`'s continuation. In
-   * this object, not top-level: Generate.scala's `loop(f)(a)` has the same shape, and the overload would be
-   * ambiguous.
-   */
-  def loop[S, A, F[+_]](s: S)(f: S => Either[S, A] ! F): A ! F =
-    f(s).flatMap {
-      case Left(next) => loop(next)(f)
-      case Right(a) => Return(a)
-    }
+  // `loop`, `tailRecM` for programs (specs/fold-until.md), is `Free.loop`: exported above, as the four names are
 
   /**
    * A fold that performs, BUILT RIGHT-NESTED: `f` runs on each element in order, with the answer of the one

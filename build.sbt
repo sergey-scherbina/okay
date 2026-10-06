@@ -393,9 +393,22 @@ Seq(
  * Channel and parMap stay jvm-only for now. The full suite runs on
  * the JVM; the cross suite (src/test/scala-cross) also runs on JS.
  */
+/**
+ * okay-freer: THE FREER MONAD on its own — `Freer`, the indexed tree; `Free`, the effect tree at `Unary`; and
+ * the type classes they instantiate (Monad.scala). Package `okay.freer` for the tree, `okay` for the classes;
+ * the core is the library over it and names the tree at its door (src/main/scala/Free.scala). No dependency.
+ */
+lazy val okayFreer = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-freer"))
+  .settings(
+    name := "okay-freer",
+  )
+
 lazy val okay = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("."))
+  .dependsOn(okayFreer)
   .settings(
     name := "okay",
   )
@@ -2258,9 +2271,11 @@ _root_.okay.deploy.sbt.OkayModules.settings(
     "okay-http is a wire; an agent, an LLM client and RAG are not (http-mcp-agent-edge)"),
   _root_.okay.deploy.sbt.OkayModules.forbid("okayOps(JVM|JS)", "okayDocs(JVM|JS|Native)",
     "okay-ops renders what it is handed; okay-docs brings two database drivers (ops-docs-edge)"),
-  _root_.okay.deploy.sbt.OkayModules.forbid("okay(JVM|JS|Native)", ".*",
-    "the core is dependency-free (specs/modules-infra.md)"),
-  _root_.okay.deploy.sbt.OkayModules.forbid("okayKernel(JVM|JS|Native)", "(?!okay(JVM|JS|Native)$).*",
+  _root_.okay.deploy.sbt.OkayModules.forbid("okayFreer(JVM|JS|Native)", ".*",
+    "the freer monad is dependency-free (specs/modules-infra.md)"),
+  _root_.okay.deploy.sbt.OkayModules.forbid("okay(JVM|JS|Native)", "(?!okayFreer(JVM|JS|Native)$).*",
+    "the core depends on the freer monad only, no library (specs/modules-infra.md)"),
+  _root_.okay.deploy.sbt.OkayModules.forbid("okayKernel(JVM|JS|Native)", "(?!okay(Freer)?(JVM|JS|Native)$).*",
     "the kernel depends on the core only: every plugin carries what it does"),
 )
 
@@ -2933,7 +2948,7 @@ lazy val okayDiagnose = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 lazy val okayCont = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-cont"))
-  .dependsOn(okayTest % "test->compile")
+  .dependsOn(okay, okayTest % "test->compile")
   .settings(
     name := "okay-cont",
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
@@ -3823,7 +3838,7 @@ lazy val platformMembers: Seq[ProjectReference] = gtkProjects ++ Seq[ProjectRefe
     okayDocs.jvm, okayDocs.js, okayDocs.native,
     okayConf.jvm, okayConf.js, okayConf.native,
     okayObs.jvm, okayObs.js, okayObs.native,
-    okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy, okayArrow.jvm, okayArrow.js, okayArrow.native, okayParquet.jvm, okayParquet.js, okayParquet.native, okayLake, okayCompress.jvm, okayCompress.js, okayCompress.native, okayDiagnose.jvm, okayDiagnose.js, okayDiagnose.native, okayCont.jvm, okayCont.js, okayCont.native, okayTest.jvm, okayTest.js, okayTest.native, okayForeignWorkflow, okayR, okayForeignCluster,
+    okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy, okayArrow.jvm, okayArrow.js, okayArrow.native, okayParquet.jvm, okayParquet.js, okayParquet.native, okayLake, okayCompress.jvm, okayCompress.js, okayCompress.native, okayDiagnose.jvm, okayDiagnose.js, okayDiagnose.native, okayCont.jvm, okayCont.js, okayCont.native, okayFreer.jvm, okayFreer.js, okayFreer.native, okayTest.jvm, okayTest.js, okayTest.native, okayForeignWorkflow, okayR, okayForeignCluster,
     okayTelegram.jvm, okayTelegram.js,
     okaySecurity.jvm, okaySecurity.js, okaySecurityArgon2, okayRust.jvm,
     okayFrame.jvm, okayFrame.js,

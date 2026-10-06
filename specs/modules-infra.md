@@ -4,7 +4,10 @@
 The build grows from one root into a family: the core stays plain
 `okay` (no suffix — the user's naming decision), every satellite
 carries one. Modules are kept SMALL. The core is dependency-free
-forever; ScalaCheck is allowed in test scope only.
+forever — no library; ScalaCheck is allowed in test scope only. Since
+2026-10-06 (freer-min, stage 29) the monad it is written over is a
+module of its own BELOW it, `okay-freer`, which is dependency-free in
+the same sense: the one edge the core has, and not a library.
 
 ## Interface (the layout)
 - `okay` — the core, crossProject (JVM / JS / Native): effects,
