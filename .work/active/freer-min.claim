@@ -1,6 +1,6 @@
 feature/freer-min 2026-10-06T03:38:40Z
 agent: claude-code
-heartbeat: 2026-10-06T06:40:52Z
+heartbeat: 2026-10-06T06:48:23Z
 status: in-progress
-done-so-far: stage 6: prompts shown derivable (nearest shift0 + dollar reproduces the crossing capture); shift0 body stack fixed; 22 green
-next: operator's call: drop Prompt/Has/Under from the kernel; then JMH vs master
+done-so-far: stage 7: prompts out of the kernel (nearest delimiter = head of the stack index), ternary effects only, 7 nodes, 0 casts; 20 green JVM, JS+Native compile
+next: operator's call on Inject vs ternary-only; JMH vs master
