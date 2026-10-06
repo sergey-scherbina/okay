@@ -1,0 +1,7 @@
+feature/load-owned-thread-check 2026-10-06T03:10:51Z
+agent: codex
+heartbeat: 2026-10-06T03:10:51Z
+status: in-progress
+scope: okay-test/src/test/scala-jvm/okay/testkit/TestLoadStress.scala
+done-so-far: CI reproduced JVM-wide thread-count assertion at line 19; Load joins all its own threads.
+next: deterministic unrelated-thread control, scoped regression, land and publish through CI runner.
