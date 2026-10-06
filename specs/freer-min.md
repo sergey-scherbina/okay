@@ -833,3 +833,23 @@ Found on the way: a type that appears only in a lambda parameter's type (`State[
 `Any` before the body is typed, so the capability carries `Prompt[H, ?]` and the run names `S1` from the body's
 answer; the sugar `shift[X](p)` pins the hole's answer to the prompt's `S`, so `put` is the node `Freer.Shift`
 with `k`'s type written (the prompt's `S` is the run's, not the operations').
+
+## Stage 11, tried and not taken: no prompt, the capture to the nearest delimiter (2026-10-06)
+
+`NotNearest` is the runtime side of the one proof the prompt gives: that the delimiter reached has the shift's row
+`H`. The machine always cuts to the NEAREST delimiter; the name can only agree or disagree with it, and disagreement
+is a multi-prompt program (`reset(p)(reset(q)(shift(p)…)))`, out of the basis), reported at run time. So: can the
+name go? The shift's body would be written for EVERY row the delimiter may have, `k.Row >: H`, a path-dependent
+row (`specs/probes/freer-min/nearest/`): `Continue[H, X, T] { type Row[+A] >: H[A]; def apply[U](x: X): Freer[Row, U, U, T] }`,
+`Shift[H, T, R, X, V](f: (k: Continue[H, X, T]) => Freer[k.Row, V, R, V])`, the machine instantiating `Row := G`
+at the level it meets (the GADT bound `h <: G` of the match on the node is the proof). It compiles, with no prompt,
+no `Delim(_: p.type, …)`, no `NotNearest`; 3.9.0 elaborates no monomorphic lambda into a polymorphic function type
+(even `val f: [A] => A => A = x => x` is refused), which is why the row is a type member and not `[G >: H] => …`.
+What it costs, found by the tests: a body knows `k`'s row only as `k.Row`, so it cannot EXPORT `k` at a concrete
+row. The escaped `k` is `Int => Freer[k.Row, …]`, not `Top[Pure, Int]`; and `PState`'s answer `S => Freer[H, W, W, W]`
+wraps `k` in a function at the run's row `H` — `k(s).flatMap(f => f(s))` is at `k.Row + H`, and nothing says
+`k.Row <: H`. That is exactly the proof the prompt's identity gives (`Row = H`), and the only proof there is:
+answer types and rows are independent indices, Freer is covariant in the row, so the delimiter's row is above the
+shift's, never known equal to it. The one way without a name is an invariant row, which costs `pure` fitting
+anywhere and rows built by `flatMap`. So the prompt stays, as the NAME OF THE ROW; `NotNearest` is its one runtime
+failure, a missing-handler kind of error, and a shift whose body does not export `k` would not need it.
