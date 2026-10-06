@@ -79,7 +79,8 @@ The execution subset supports SUM, COUNT, AVG, MIN, MAX, COUNT(DISTINCT field),
 named metric references, parentheses, unary signs and + - * / over metrics.
 Numeric literals remain exact decimal values.
 Constants and offsets now compile to core Constant and arithmetic calculations.
-Division rounds once at execution with DECIMAL128, never an intermediate reciprocal.
+Terminating quotients stay exact; recurring decimals round at execution with
+DECIMAL128, never through an intermediate reciprocal.
 Unquoted references are case-insensitive; quoted references are exact; ambiguity
 is an error. ANSI_SQL and OSSIE_SQL_2026 can be selected explicitly. Supporting
 this subset does not claim complete OSSIE_SQL_2026 language conformance.
@@ -113,14 +114,15 @@ needs row expressions, holistic aggregates or windows. Its model has the same
 `plan(Request)` and `run(rows)` shape, and returns the existing semantic `Result`.
 `Bridge.bind` remains the decomposable core-plan path. It now supports literal
 constants, offsets, constant numerators and division such as revenue / 3, including
-constant-only metrics. Division happens at execution with DECIMAL128 precision;
+constant-only metrics. Terminating division happens exactly at execution; recurring decimals use
+DECIMAL128 precision;
 no reciprocal is rounded before multiplication. Zero denominators produce null.
 
 The expression plan supports:
 
 | Category | Default implementation |
 |---|---|
-| Arithmetic | Exact decimal +, -, *, DECIMAL128 /, %, unary signs |
+| Arithmetic | Exact decimal +, -, *, terminating /, %, DECIMAL128 recurring /, unary signs |
 | Predicates | Comparisons, AND/OR/NOT, SQL three-valued null logic, IS NULL/IS NOT NULL, IN, BETWEEN, LIKE/ILIKE |
 | Conditional | Searched and simple CASE, IF/IFF, COALESCE, NULLIF, IFNULL/NVL, NVL2, ZEROIFNULL, NULLIFZERO |
 | Aggregates | SUM, COUNT, AVG, MIN/MAX, DISTINCT operands, FILTER, MEDIAN, PERCENTILE_CONT/DISC WITHIN GROUP, sample/population variance and standard deviation |

@@ -270,7 +270,7 @@ final class Plan[A] private[semantic] (val model: Model[A], val request: Request
       val distinctByName = distinctDimensions.map(_.id).zip(distinct).toMap
       val values = scala.collection.mutable.Map.empty[String, Option[BigDecimal]]
       def divide(n: Option[BigDecimal], d: Option[BigDecimal]): Option[BigDecimal] =
-        for x <- n; y <- d if y != 0 yield BigDecimal(x.bigDecimal.divide(y.bigDecimal, java.math.MathContext.DECIMAL128))
+        for x <- n; y <- d; value <- DecimalMath.divide(x,y) yield value
       def combine(l: String, r: String)(f: (BigDecimal, BigDecimal) => BigDecimal): Option[BigDecimal] =
         for x <- values(l); y <- values(r) yield f(x, y)
       calculations.foreach { m =>

@@ -98,7 +98,7 @@ object Functions:
 private[ossie] object Scalar:
   import Value.*
   def divide(x: BigDecimal, y: BigDecimal): Value =
-    if y == 0 then Null else Number(BigDecimal(x.bigDecimal.divide(y.bigDecimal,java.math.MathContext.DECIMAL128)))
+    okay.semantic.DecimalMath.divide(x,y).fold[Value](Null)(Number.apply)
   def unary(op: String, v: Value): Either[String,Value] = (op,v) match
     case ("IS NULL",_) => Right(Bool(v == Null))
     case ("IS NOT NULL",_) => Right(Bool(v != Null))
