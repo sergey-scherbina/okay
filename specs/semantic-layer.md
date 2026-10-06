@@ -39,8 +39,10 @@ Core `okay-semantic` remains standard-library-only and cross-platform.
   plus named right-side dimensions to Model[(A,Option[B])]. Relation endpoints
   must match model IDs; only ManyToOne/OneToOne are accepted. Right key duplicates
   fail; OneToOne also checks non-null left keys. Missing/null keys are retained
-  as absent dimensions. No fact multiplication. Chaining explicit lookups supports
-  federation and snowflakes; ambiguous automatic path inference is not performed.
+  as absent dimensions. No fact multiplication. Chaining typed lookups supports federation and snowflakes. Catalog.route finds
+  a unique fanout-safe path between entities; multiple paths, relevant cycles or
+  fanout-only routes are refused. Explicit relation IDs can disambiguate a route;
+  typed key bindings remain supplied by the application.
   Origin records both source versions, and grain is the fact's grain. The enriched
   model carries its relation declarations; SQL bindings must name those same
   relations/cardinalities, so storage cannot weaken the business declaration.
