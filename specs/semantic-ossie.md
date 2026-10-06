@@ -37,6 +37,8 @@ metric dependency closures: SUM/COUNT/AVG/MIN/MAX, COUNT(DISTINCT field), arithm
 + - * /, parentheses, exact numeric scale factors and references to named metrics.
 Constant-only metrics and additive offsets are refused because the core has no
 constant-aggregate calculation; no synthetic data rows are invented.
+Division by a constant compiles to Scale only when its reciprocal terminates
+exactly; otherwise execution is refused rather than rounding before the divide.
 Use an iterative tokenizer/shunting-yard worklist, no stack recursion. Preserve
 unsupported dialect expressions; executing them returns named capability errors.
 ANSI_SQL and OSSIE_SQL_2026 are selectable explicitly; do not choose the first
