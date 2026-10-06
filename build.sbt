@@ -2185,6 +2185,20 @@ lazy val okaySemanticArrow = crossProject(JVMPlatform, JSPlatform, NativePlatfor
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % "optional;test",
   )
 
+lazy val okaySemanticOssie = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-semantic-ossie"))
+  .dependsOn(okaySemantic, okayCodec, okayTest % "test->compile")
+  .settings(
+    name := "okay-semantic-ossie",
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % "optional;test",
+  )
+  .jvmSettings(
+    libraryDependencies += "org.snakeyaml" % "snakeyaml-engine" % "2.9" % "optional;test",
+    Compile / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
+    Test / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+  )
+
 lazy val okaySemanticSql = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-semantic-sql"))
@@ -3831,6 +3845,7 @@ lazy val platformMembers: Seq[ProjectReference] = gtkProjects ++ Seq[ProjectRefe
     okaySemantic.jvm, okaySemantic.js, okaySemantic.native,
     okaySemanticSql.jvm, okaySemanticSql.js, okaySemanticSql.native,
     okaySemanticData.jvm, okaySemanticData.js, okaySemanticData.native,
+    okaySemanticOssie.jvm, okaySemanticOssie.js, okaySemanticOssie.native,
     okaySemanticArrow.jvm, okaySemanticArrow.js, okaySemanticArrow.native,
     okaySql.jvm, okaySql.js, okaySql.native, okayPg.jvm, okayPg.js,
     okayCrypto.jvm, okayCrypto.js, okayMail,
