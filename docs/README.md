@@ -6,6 +6,9 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
 
 ## Start here
 
+- **[Platform builds](platform-builds.md)** — JVM, JS and Native commands,
+  separate heaps and the managed full-build sequence.
+
 - **[What okay is: the contract in three parts](contract.md)**: the
   kernel `Effects[M]`, the static `Applicative`/`Selective` ladder, and
   the vocabulary of effects, rows and handlers. Everything else is

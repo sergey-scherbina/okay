@@ -566,3 +566,13 @@ Two latent shell traps on the way, both macOS /bin/sh (bash 3.2): a
 `"$suites—"` reads the em-dash's first byte as part of the name under
 `set -u`. Mutants — revert the tip alone, skip the before-lane run —
 each turn the selftest red.
+
+## Platform roots and heaps (2026-10-05)
+
+specs/build-platform-processes.md splits the default root aggregate to
+JVM only; jsBuild/nativeBuild are explicit platform roots. Affected's
+platformRoots includes all three in the complete CI inventory. family all
+and short affected gates run JVM, JS and Native sequentially in fresh sbt
+processes under gate.sh, with Native tasks serialized. gate.sh test and
+build.sh with no platform select JVM; the runner still explicitly requests
+family all, holding the same CI lock through every platform.

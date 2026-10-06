@@ -490,10 +490,13 @@ module with its own page under docs/modules:
   the lake (`okay-delta`) and the distributed engine (`okay-dataflow`)
   sit beside it.
 
-Building: `sbt test` runs everything — 4736 tests across 93 module
-runs, on the JVM, under Node and as a linked native binary (the
-live suites — a local model, an npx-spawned MCP server — skip where
-their endpoint is absent). Scala 3.9.0 — the LTS line — with 3.6 as
+Building: `sbt compile` and `sbt test` default to JVM only. JS and
+Native have separate aggregate entry projects: `jsBuild` and
+`nativeBuild`. Use `sh scripts/build.sh js` or
+`sh scripts/build.sh native` for a platform, and
+`sh scripts/build.sh all` for all three sequentially in fresh sbt
+processes, with Native tasks serialized. See [platform builds](docs/platform-builds.md).
+Scala 3.9.0 — the LTS line — with 3.6 as
 the floor, for the redesigned given syntax, and no ceiling: okay-spark
 used to be one, and does not cap the build any more (build.sbt says
 what it took) — and sbt 1.13.0 (sbt 2 waits on

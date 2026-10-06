@@ -9,7 +9,7 @@ This is a resource bound, not proof of the precise cause of that report.
 
 ## Interface
 
-scripts/build.sh jvm|js|native|all [task], task defaults to test.
+scripts/build.sh [jvm|js|native|all] [task], defaults to JVM and test.
 Uses scripts/gate.sh from the repository root. compile and Test/compile
 are supported as single task names. Whole gates retain the CI lock.
 Operator steering: the root aggregate contains ONLY JVM projects, so bare
@@ -42,8 +42,7 @@ GitHub's full/affected branches use the managed gate too.
 
 ## Decisions
 
-Keep raw sbt tasks intact; changing the meaning of test in every selected
-sbt project would disrupt scoped use. The script is the managed full-build
+Keep scoped sbt tasks intact; split only the aggregate roots. The script is the managed full-build
 entry point and already carries watchdog, RAM guard and CI locking.
 Fresh processes release compiler analyses/classloaders between platforms.
 Native's task limit controls inter-module fanout, not codegen's internal
