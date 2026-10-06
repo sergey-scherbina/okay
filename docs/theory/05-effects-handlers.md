@@ -199,11 +199,14 @@ route agrees.
 ### The mechanism, line by line
 
 ```scala
-override def foldCont[S](h: F !> S): A /> S =
-  Free.fold(m)(Cont.Pure(_))([X] => e => k => h(e).flatMap(k(_).foldCont(h)))
+override def foldCont[S](h: Interpr[F, C0, S]): C0[A, S, S] =
+  Free.fold(m)(control.pure(_))([X] => e => k => control.flatMap(h(e))(k(_).foldCont(h)))
 ```
 
-Three parts, and each does one thing.
+Three parts, and each does one thing — at the instance's carrier `C0`,
+through its `control` (the machine's by default, the CPS `Cont` under
+`import okay.cps.{given_Effects_Free, *}`; `h` is then `F !> S` and the
+fold `A /> S`).
 
 `Free.fold` supplies the *normal form*. Its rotations (chapter 4) mean
 that whatever the shape of the tree, what reaches the second argument is
