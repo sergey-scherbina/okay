@@ -164,6 +164,12 @@ class TestExpressions extends okay.testkit.Munit.Diagnosed:
     val factor = "12345678901234567890123456789012345678901234567890"
     assertEquals(evaluate(s"SUM(amount) * $factor"),Some(BigDecimal(new java.math.BigDecimal(factor).multiply(new java.math.BigDecimal("12")))))
     assertEquals(evaluate(s"-$factor"),Some(BigDecimal(new java.math.BigDecimal(factor).negate())))
+    val exactQuotient = BigDecimal(new java.math.BigDecimal(factor).multiply(new java.math.BigDecimal("3")))
+    assertEquals(evaluate(s"SUM(amount) * $factor / 4"),Some(exactQuotient))
+    val quotientDoc = document("answer" -> s"SUM(amount) * $factor / 4")
+    val quotientBindings = bindings.copy(units = Map("answer" -> "EUR"))
+    assertEquals(Bridge.bind(quotientDoc,"orders",quotientBindings).toOption.get.plan(Request(Vector("answer"))).toOption.get
+      .run(input).toOption.get.groups.head.values,Vector(Some(exactQuotient)))
     assertEquals(evaluate("SUM(1)"),Some(BigDecimal(4)))
     val definitions = Vector.tabulate(1000)(i => s"m$i" -> (if i == 0 then "COUNT(*)" else s"m${i-1} + 1")) :+ ("unknown" -> "ALIEN(amount)")
     val b = bindings.copy(units = definitions.map((n,_) => n -> "count").toMap)
