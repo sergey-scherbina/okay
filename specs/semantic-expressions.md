@@ -23,7 +23,9 @@ without SQL, agents or external engines.
   the same evaluator. SQL/Arrow callers supply decoded typed rows through these
   interfaces. ArrowData adds overloads for expression plans; ExpressionSql reads
   explicitly bound identifier-only projections through a typed decoder. No source
-  expression or source declaration is sent to a database.
+  expression or source declaration is sent to a database. Existing data Api gains
+  expression-model overloads for local and Source-backed endpoints, using the
+  same JSON request/response protocol.
 
 ## Behavior
 - [ ] Constants, offsets and both orders of arithmetic execute, including /3,
