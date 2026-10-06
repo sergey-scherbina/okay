@@ -1043,3 +1043,18 @@ outer context is `outer`, with its type. `shift0`'s `k` leaves the outside as it
 moved it could not be resumed twice); the body may move it, `[D, O]`.
 
 Kernel 280 lines, 28 tests on the JVM, JS and Native compile, no cast, no warning, no prompt.
+
+## Stage 18: the top is empty; the machine's three control rules one shape (DONE, 2026-10-06)
+
+- The top is `EmptyTuple`: `Top[G, A] = Freer[G, EmptyTuple, EmptyTuple, A]` — Danvy–Filinski's `⟨e⟩ : τ` has nothing
+  outside, and there is nothing to name. `top[A]`, `Root[A]`, `Run[A]` are gone; `value(reset(…))` is plain. The
+  context is `Ctx { type Here }`: `Root` with `Here = EmptyTuple`, a global given, and `In[H, S, Oc <: Ctx]` the
+  body of a delimiter, `Here = At[H, D, S] *: D` with `D = o.Here` for the outer context `o`, down to the top. A
+  reset takes `using o: Ctx`. `reset[Fx, Int](one)` with `one[Σ]` polymorphic now infers: `o.Here` is a type.
+- The three rules that move a level are one shape: `val n = enter | cut | resume(…); go(n.c, n.k, n.m, n.sub)` —
+  each helper typed by its node, where the types are names; no explicit type-argument lists in `go`.
+  `Captured.under` is `Machine.resume`. The hand-out check in `go` is any `Bind` whose rest is a `Resumption` at a
+  run's bottom (the `Inject | Shift0` test was redundant); it must stay in `go`, not `run`: a capture handed out at
+  the bottom re-enters the loop once, and a boolean cannot give the GADT what `sub(c)` needs.
+
+Kernel 276 lines, 28 tests on the JVM, JS and Native compile, no cast, no warning, no prompt, no named run.

@@ -47,9 +47,6 @@ enum Piece[G[+_], A0, B, I <: Tuple, O <: Tuple]:
 final class Captured[H[+_], D <: Tuple, I <: Tuple, X, T, S](val piece: Piece[H, X, S, At[H, D, S] *: D, At[H, D, T] *: I])
   extends (X => Freer[H, D, I, T]):
   def apply(x: X): Freer[H, D, I, T] = Resume(x, this)
-  def under[F[+_], G[+_], B, I2 <: Tuple, I0 <: Tuple, O0 <: Tuple, Z](
-      up: Widen[H, G], sub: Widen[G, F], out: Frames[G, T, B, I2, D], rest: Stack[F, G, B, I2, I, I0, O0, Z]): Resumption[F, X, I0, O0, Z] =
-    Machine.link(piece, Stack.Delim(up, sub, out, rest), up.andThen(sub))
 
 /** the machine's state with a value `A` due: the segment `k`, level `G`, over `m`. As a function it is the rest of
  * a run after something handed out: applied by whoever answers it, the run goes on */
@@ -83,6 +80,7 @@ object Machine:
    * outside this run, for the machine outside. At any level: a handler is a run inside a delimiter */
   def run[F[+_], I <: Tuple, O <: Tuple, A](p: Freer[F, I, O, A]): Freer[F, I, O, A] = go(p, Frames.End(), Stack.Done(), Widen.refl[F])
 
+
   @tailrec private[freer] def go[F[+_], G[+_], A, B, I <: Tuple, T <: Tuple, O <: Tuple, I0 <: Tuple, O0 <: Tuple, Z](
       c: Freer[G, T, O, A], k: Frames[G, A, B, I, T], m: Stack[F, G, B, I, O, I0, O0, Z], sub: Widen[G, F]): Freer[F, I0, O0, Z] =
     c match
@@ -93,29 +91,32 @@ object Machine:
           case Stack.Run(out, rest) => go(Return(a), out, rest, sub)
           // the body returned: its answer is its final one, and the delimiter delivers it
           case Stack.Delim(_, subOut, out, rest) => go(Return(a), out, rest, subOut)
+      // a head form handed out (its rest is a `Resumption`), met at a run's bottom: as it is, a run over a run allocates nothing
       case Bind(c0, f) => f match
-        case _: Resumption[?, ?, ?, ?, ?] => c0 match
-          case Inject(_) | Shift0(_) => k match
-            case Frames.End() => m match
-              case Stack.Done() => sub(c)
-              case _ => go(c0, Frames.Frame(f, k), m, sub)
+        case _: Resumption[?, ?, ?, ?, ?] => k match
+          case Frames.End() => m match
+            case Stack.Done() => sub(c)
             case _ => go(c0, Frames.Frame(f, k), m, sub)
           case _ => go(c0, Frames.Frame(f, k), m, sub)
         case _ => go(c0, Frames.Frame(f, k), m, sub)
       case Delay(t) => go(t(), k, m, sub)
       // handed out as a program of the run: an operation carries no stack, so it is re-injected at the run's
       case Inject(op) => Bind(sub(Inject(op)), resumption(k, m, sub))
-      case r: Reset[h, d, o, s, rr] =>
-        val up = Widen.sub[h, G]
-        go(r.body, Frames.End[h, s, At[h, d, s] *: d](), Stack.Delim[F, h, G, d, o, s, rr, B, I, I0, O0, Z](up, sub, k, m), up.andThen(sub))
-      // the body runs in the delimiter's place, outside, its value the delimiter's answer; a capture whose
-      // delimiter is outside this run is a head form, handed out
-      case s: Shift0[h, d, i, o, t, r, x] =>
-        val n = cut[F, G, x, t, B, I, r, o, I0, O0, Z, h, d, i](s, s.f, Piece.Hole(k), m, sub)
-        go(n.c, n.k, n.m, n.sub)
-      case r: Resume[h, d, i, x, t] =>
-        val n = (r.k: Captured[h, d, i, x, t, ?]).under[F, G, B, I, I0, O0, Z](Widen.sub[h, G], sub, k, m)
-        go(Return(r.x), n.k, n.m, n.sub)
+      // the three that move a level answer with the machine's next state, each where its node's types are names
+      case r: Reset[h, ?, ?, ?, ?] => val n = enter(r, Widen.sub[h, G], k, m, sub); go(n.c, n.k, n.m, n.sub)
+      case s: Shift0[h, ?, ?, ?, ?, ?, ?] => val n = cut(s, s.f, Piece.Hole(k), m, sub); go(n.c, n.k, n.m, n.sub)
+      case r: Resume[h, ?, ?, ?, ?] => val n = resume(r, Widen.sub[h, G], k, m, sub); go(n.c, n.k, n.m, n.sub)
+
+  /** into the delimiter: its level pushed, the body at its start */
+  private def enter[F[+_], H[+_], G[+_], D <: Tuple, O <: Tuple, S, R, B, I <: Tuple, I0 <: Tuple, O0 <: Tuple, Z](
+      r: Reset[H, D, O, S, R], up: Widen[H, G], k: Frames[G, R, B, I, D], m: Stack[F, G, B, I, O, I0, O0, Z], sub: Widen[G, F]): Step[F, I0, O0, Z] =
+    step(r.body, Frames.End(), Stack.Delim(up, sub, k, m), up.andThen(sub))
+
+  /** `k(x)`: the piece put back under a delimiter of its own, the value at the hole */
+  private def resume[F[+_], H[+_], G[+_], D <: Tuple, I <: Tuple, X, T, B, I2 <: Tuple, I0 <: Tuple, O0 <: Tuple, Z](
+      r: Resume[H, D, I, X, T], up: Widen[H, G], k: Frames[G, T, B, I2, D], m: Stack[F, G, B, I2, I, I0, O0, Z], sub: Widen[G, F]): Step[F, I0, O0, Z] =
+    val n = link(r.k.piece, Stack.Delim(up, sub, k, m), up.andThen(sub))
+    step(Return(r.x), n.k, n.m, n.sub)
 
   /** down the stack to the nearest delimiter — the index says its row, and its `D` is the node's — and the shift's
    * body, given `k`, outside; the run's bottom instead means the delimiter is outside this run: the capture is
