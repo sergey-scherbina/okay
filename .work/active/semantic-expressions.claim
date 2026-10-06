@@ -1,6 +1,0 @@
-feature/semantic-expressions 2026-10-06T17:42:20Z
-agent: codex
-heartbeat: 2026-10-06T18:00:31Z
-status: in-progress
-done-so-far: core constants and portable row/group/window engine implemented; 73 platform checks green before final robustness changes
-next: final affected semantic-module gate, docs/spec verification, rebase and landing
