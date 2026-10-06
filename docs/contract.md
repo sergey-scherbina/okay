@@ -24,20 +24,25 @@ such programs form one final-tagless interface (`src/main/scala/Effects.scala`):
 
 ```scala
 trait Effects[M[_[+_], _]]:
+  type C[_, _, _]
+  def control: Control[C]
   def pure[F[+_], A](a: A): M[F, A]
   def perform[F[+_], A](e: F[A]): M[F, A]
   ...
   extension [F[+_], A](m: M[F, A])
     def flatMap[B](f: A => M[F, B]): M[F, B]
     ...
-    def foldCont[S](h: F !> S): A /> S
+    def foldCont[S](h: Interpr[F, C, S]): C[A, S, S]
   ...
   def run[A](m: M[Pure, A]): A = reify[M, Pure, A](m)(using this).run
 ```
 
 `flatMap` and `foldCont` are extension methods, so their first argument is
 the program itself, `m: M[F, A]`: `flatMap` is `M[F, A] => (A => M[F, B]) =>
-M[F, B]`, and `foldCont` is `M[F, A] => (F !> S) => A /> S`.
+M[F, B]`, and `foldCont` is `M[F, A] => Interpr[F, C, S] => C[A, S, S]` —
+`C` the encoding's own continuation carrier, a `Control`. For `Free` and
+`Eager` it is `Cont`, so a handler is `F !> S` and the fold `A /> S`; the
+machine of okay-cont folds into a carrier of its own (`Effects[Prog]`).
 
 Read by what each part gives:
 
