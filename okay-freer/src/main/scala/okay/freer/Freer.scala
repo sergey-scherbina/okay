@@ -52,36 +52,31 @@ enum Freer[+G[+_], I <: Tuple, O <: Tuple, +A]:
   def flatMap[G2[+_], I2 <: Tuple, B](f: A => Freer[G2, I2, I, B]): Freer[G + G2, I2, O, B] = Bind(this, f)
   def map[B](f: A => B): Freer[G, I, O, B] = Bind(this, a => Return(f(a)))
 
-/** the run's level: no delimiter, nothing outside, answering `A` */
-type Run[A] = At[Pure, EmptyTuple, A] *: EmptyTuple
-/** a program at the top, the run's level alone: its answer is its value, Danvy–Filinski's `⟨e⟩ : τ` */
-type Top[G[+_], A] = Freer[G, Run[A], Run[A], A]
+/** a program at the top: no delimiter in force, nothing outside, the stacks empty; its answer is its value,
+ * Danvy–Filinski's `⟨e⟩ : τ` */
+type Top[G[+_], A] = Freer[G, EmptyTuple, EmptyTuple, A]
 
-/** the context a body is WRITTEN in: `reset` gives its body one, `shift0` reads it and gives its own body the one
- * outside. `H`, `S` the row and the answer of the delimiter this context is the body of; `D` the stacks outside
- * that delimiter; `Here` the stacks at this position — what a reset written here has outside. STRUCTURAL: a nested
- * context's `D` is the outer's `Here`, down to the top, so a body knows the levels outside it and may move them
- * (the hierarchy). An expected type does not reach a method's receiver, which is why a shift learns its delimiter
- * lexically. For inference alone; the machine never sees it */
-sealed trait In[H[+_], S, Oc]:
+/** the context a program is WRITTEN in, by the stacks at its position, `Here`: what a reset written here has
+ * outside. STRUCTURAL, down to the top, where there is nothing: so a body knows the levels outside it and may move
+ * them (the hierarchy). An expected type does not reach a method's receiver, which is why a shift learns its
+ * delimiter lexically. For inference alone; the machine never sees it */
+sealed trait Ctx:
+  type Here <: Tuple
+/** the top: nothing outside */
+object Root extends Ctx:
+  type Here = EmptyTuple
+given Root.type = Root
+/** the context of the BODY of a delimiter: its row `H` and the answer `S` the body is written at, the stacks `D`
+ * outside it (the outer context's `Here`), and the context outside by its own type, `Oc` — a shift's body is
+ * written in it. `reset` gives its body one, `shift0` reads it */
+sealed trait In[H[+_], S, Oc <: Ctx] extends Ctx:
   type D <: Tuple
   type Here = At[H, D, S] *: D
-  /** the context outside, by its own type — a shift's body is written in it */
   def outer: Oc
   /** a program in the body this context is for, its stacks unchanged */
   type Body[A] = Freer[H, Here, Here, A]
 /** the context of a fragment written for the body of a `reset[H, S]`: `def f(using in: Under[H, S]): in.Body[A]` */
 type Under[H[+_], S] = In[H, S, ?]
-/** the run's context, the top: no delimiter in force, nothing outside, the run's answer `A` */
-type Root[A] = In[Pure, A, Unit] { type D = EmptyTuple }
-/** `top[A](program)`: a program at the top, the run's answer `A` named — a context is made before its body is
- * typed, and no expected type reaches a receiver, so nothing else could say it */
-def top[A]: TopAt[A] = TopAt[A]()
-final class TopAt[A]:
-  def apply[G[+_]](p: Root[A] ?=> Top[G, A]): Top[G, A] = p(using root[A])
-def root[A]: Root[A] = new In[Pure, A, Unit]:
-  type D = EmptyTuple
-  def outer: Unit = ()
 
 def pure[A, Σ <: Tuple](a: A): Freer[Pure, Σ, Σ, A] = Freer.Return(a)
 def inject[F[+_], Σ <: Tuple, A](op: F[A]): Freer[F, Σ, Σ, A] = Freer.Inject(op)
@@ -93,7 +88,7 @@ def defer[G[+_], I <: Tuple, T <: Tuple, O <: Tuple, A, B](t: => Freer[G, T, O, 
  * context where the reset is written, with the delimiter on top */
 def reset[H[+_], S]: ResetAt[H, S] = ResetAt[H, S]()
 final class ResetAt[H[+_], S]:
-  def apply[H2[+_], S2, Oc2, O <: Tuple, R](using o: In[H2, S2, Oc2])
+  def apply[O <: Tuple, R](using o: Ctx)
            (body: (in: In[H, S, o.type] { type D = o.Here }) ?=> Freer[H, At[H, o.Here, S] *: o.Here, At[H, o.Here, R] *: O, S]): Freer[H, o.Here, O, R] =
     val in = new In[H, S, o.type]:
       type D = o.Here
@@ -105,7 +100,7 @@ final class ResetAt[H[+_], S]:
  * `D` to `D` (a piece that moved it could not be resumed twice); the node is general */
 def shift0[X]: Shift0At[X] = Shift0At[X]()
 final class Shift0At[X]:
-  def apply[H[+_], S, Oc, O <: Tuple, R](using in: In[H, S, Oc])
+  def apply[H[+_], S, Oc <: Ctx, O <: Tuple, R](using in: In[H, S, Oc])
            (f: Oc ?=> (X => Freer[H, in.D, in.D, S]) => Freer[H, in.D, O, R])
     : Freer[H, At[H, in.D, S] *: in.D, At[H, in.D, R] *: O, X] =
     Freer.Shift0[H, in.D, in.D, O, S, R, X](f(using in.outer))

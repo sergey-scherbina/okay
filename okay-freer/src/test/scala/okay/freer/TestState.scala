@@ -12,7 +12,7 @@ class TestState extends okay.testkit.Munit.Diagnosed:
    * sugar: `put` moves the answer at the hole, which the sugar pins to the one the body is written at */
   final class State[H[+_], W]:
     /** the stacks outside the run's delimiter: the run's own level, answering `W` */
-    type Outer = Run[W]
+    type Outer = EmptyTuple
     /** read the state, its type `S` unchanged: `shift(k => s => k(s)(s))` */
     def get[S]: Freer[H, At[H, Outer, St[H, S, W]] *: Outer, At[H, Outer, St[H, S, W]] *: Outer, S] =
       Freer.Shift0((k: S => Freer[H, Outer, Outer, St[H, S, W]]) => pure((s: S) => k(s).flatMap(f => f(s))))
@@ -24,8 +24,8 @@ class TestState extends okay.testkit.Munit.Diagnosed:
 
   /** run from an initial state `S0`, at the top; the state ends at `S1`; the delimiter's answer is the function,
    * applied once outside */
-  def runState[H[+_], S0, S1, W](s0: S0)(body: State[H, W] => Freer[H, At[H, Run[W], St[H, S1, W]] *: Run[W], At[H, Run[W], St[H, S0, W]] *: Run[W], W]): Top[H, W] =
-    Freer.Reset[H, Run[W], Run[W], St[H, S1, W], St[H, S0, W]](body(State()).map(a => (_: S1) => pure(a))).flatMap(f => f(s0))
+  def runState[H[+_], S0, S1, W](s0: S0)(body: State[H, W] => Freer[H, At[H, EmptyTuple, St[H, S1, W]] *: EmptyTuple, At[H, EmptyTuple, St[H, S0, W]] *: EmptyTuple, W]): Top[H, W] =
+    Freer.Reset[H, EmptyTuple, EmptyTuple, St[H, S1, W], St[H, S0, W]](body(State()).map(a => (_: S1) => pure(a))).flatMap(f => f(s0))
 
   def value[A](p: Top[Pure, A]): A =
     val head: Top[Pure, A] = Machine.run(p)
