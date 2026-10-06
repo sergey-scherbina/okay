@@ -309,3 +309,54 @@ answer is an index and the value stays `Y`. This is McBride's reading
   explicitly (`reset[Pure, Unit, Unit, Int]`); the body's row does not
   solve `F` from `Row[F]` (the union lambda, Results 7). An expected
   type does. The row-inference ergonomics are a stage of their own.
+
+## Results 9 — row inference for `reset`/`shift0` (2026-10-06, probe `Inference.scala`)
+
+Measured over the module's own sources with scala-cli 3.9.0, six shapes:
+
+1. `reset(p)(body)`, nothing named, `body: Freer[Diag[Ask], …]`: `F` is
+   NOT solved (`F <: [_, _, _] =>> Any`). The body's row has to satisfy
+   `Diag[Ask] <: Row[F] = Ctl[F] + F`, a union with the variable in it,
+   and a union gives nothing to solve from (Results 7).
+2. The same under an expected type, `val b: Freer[Row[Diag[Ask]], …] =
+   reset(p)(body)`: compiles. `Row[F]` against `Row[Diag[Ask]]` is one
+   alias applied twice, matched application to application — the
+   positional mechanism of Results 8.
+3. The prompt names the row, `Prompt[F, S, Y]`: `F` is solved from the
+   prompt alone, and a body with no `flatMap` on the way checks by
+   subtyping.
+4. BUT a `for` written in place under that `reset`, or `k(n).flatMap(k)`
+   inside a `shift0` body, FAILS when its expected type is `Freer[Row[F],
+   …]` with `F` known: `-explain` shows `flatMap`'s `H` already fixed to
+   `Ctl[Diag[Ask]]` when `k` is checked. The mechanism: `flatMap`'s
+   result `Freer[G + H, …]` is constrained against the expected
+   `Freer[Ctl[F] + F, …]` BEFORE the argument is typed (dotty's
+   `constrainResult`), and a type-variable application `H[s, r, a]`
+   against a union `Control[…] | Ask[a]` COMMITS to the first alternative
+   that can be made to fit. The two tests that passed earlier with
+   `Row[Pure]` passed because `Ctl[Pure] + Pure` simplifies to one
+   member (`X | Nothing`), so there was no union to commit to. Writing
+   the row as `F + Ctl[F]` changes nothing (and breaks the machine's
+   GADT chains). Naming the hole (`shift0[X]`, or `(k: Int => …)`) fixes
+   `X` and `T` but not this.
+5. THE ROAD TAKEN — master's own rule, "an obligation over a row is
+   carried, never searched for at an abstract row", in its `Row.Sub`
+   form: the body's row `G` is a type parameter of its own, inferred
+   BOTTOM-UP (no expected row reaches the `for`, so `flatMap` joins what
+   the steps are), and membership is a `using ev: Freer[G, S, S, Y] <:<
+   Freer[Row[F], S, S, Y]` — no type variable in it once `F` comes from
+   the prompt, and the evidence IS the widening (`ev(body)`). With it: a
+   `for` in place under `reset` over two effects with `k` used twice,
+   nested delimiters with a capture to the outer one, and an effect
+   outside the prompt's row REFUSED with "Cannot prove … <:< …". The
+   only things named are the prompt's row (once, where the prompt is
+   made) and the hole, `shift0[Int](p)(k => …)`.
+6. The same shapes compile as `TestMachine` (17 green): the diagonal
+   `reset`/`shift0` by evidence; the index-moving forms stay
+   `Control.Reset`/`Control.Shift0` through `perform`, every index
+   named, which the ATM test writes in full.
+
+So the row is BUILT by `flatMap` and CHECKED by evidence; it is never
+pushed down into a `for`. That is the discipline for every door that
+takes a body: a handler's rest is inferred positionally (Results 8), a
+body's membership is proved by `<:<`.

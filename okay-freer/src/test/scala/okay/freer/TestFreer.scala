@@ -118,9 +118,8 @@ class TestFreer extends okay.testkit.Munit.Diagnosed:
     assert(typed.isInstanceOf[Bind[?, ?, ?, ?, ?, ?]])
 
   test("Control sits in a row with the effects"):
-    val p = Prompt[Unit, Int]("p")
-    val c: Freer[Row[Fx], Unit, Unit, Int] =
-      reset[Fx, Unit, Unit, Int](p)(one).flatMap(y => inject(Ask.Number).map(_ + y))
+    val p = Prompt[Fx, Unit, Int]("p")
+    val c: Freer[Row[Fx], Unit, Unit, Int] = reset(p)(one).flatMap(y => inject(Ask.Number).map(_ + y))
     assert(c.isInstanceOf[Bind[?, ?, ?, ?, ?, ?]])
 
   test("delay and defer: a million mutual tail calls in constant stack"):

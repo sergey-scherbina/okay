@@ -21,7 +21,7 @@ enum Stack[F[_, _, +_], B, S, R, S0, Z]:
   case Run[F[_, _, +_], B, S, R, B2, S2, S0, Z](out: Frames[Row[F], B, B2, S2, S], rest: Stack[F, B2, S2, R, S0, Z])
     extends Stack[F, B, S, R, S0, Z]
   /** a delimiter: the level is its body; its value goes through `ret`, then on into `out` */
-  case Delim[F[_, _, +_], X, S, T, R, Y, B, S2, S0, Z](p: Prompt[S, Y], ret: X => Freer[Row[F], S, T, Y],
+  case Delim[F[_, _, +_], X, S, T, R, Y, B, S2, S0, Z](p: Prompt[F, S, Y], ret: X => Freer[Row[F], S, T, Y],
                                                         out: Frames[Row[F], Y, B, S2, S], rest: Stack[F, B, S2, R, S0, Z])
     extends Stack[F, X, T, R, S0, Z]
 
@@ -31,7 +31,7 @@ enum Piece[F[_, _, +_], A0, T0, A, T]:
   case Hole[F[_, _, +_], A0, T0, B, S](k: Frames[Row[F], A0, B, S, T0]) extends Piece[F, A0, T0, B, S]
   case Over[F[_, _, +_], A0, T0, X, T2, B, S2](prev: Piece[F, A0, T0, X, T2], out: Frames[Row[F], X, B, S2, T2])
     extends Piece[F, A0, T0, B, S2]
-  case Under[F[_, _, +_], A0, T0, X, S, T2, Y, B, S2](prev: Piece[F, A0, T0, X, T2], p: Prompt[S, Y],
+  case Under[F[_, _, +_], A0, T0, X, S, T2, Y, B, S2](prev: Piece[F, A0, T0, X, T2], p: Prompt[F, S, Y],
                                                       ret: X => Freer[Row[F], S, T2, Y], out: Frames[Row[F], Y, B, S2, S])
     extends Piece[F, A0, T0, B, S2]
 
@@ -41,7 +41,7 @@ enum Piece[F[_, _, +_], A0, T0, A, T]:
  * the unit whose continuation (`Resume`) the machine recognises and splices, and any other interpreter forces,
  * which runs the machine on the piece alone — the continuation carries its own interpreter.
  */
-final class Captured[F[_, _, +_], X, T, S, Y, Xd, Td](val piece: Piece[F, X, T, Xd, Td], val p: Prompt[S, Y],
+final class Captured[F[_, _, +_], X, T, S, Y, Xd, Td](val piece: Piece[F, X, T, Xd, Td], val p: Prompt[F, S, Y],
                                                        val ret: Xd => Freer[Row[F], S, Td, Y])
   extends (X => Freer[Row[F], S, T, Y]):
   def apply(x: X): Freer[Row[F], S, T, Y] = Bind(Return(()), Resume(x, this))
@@ -175,7 +175,7 @@ object Machine:
 
   /** walk down to the delimiter of `p`, the piece growing outward; none: `NoPrompt` */
   @tailrec private def cut[F[_, _, +_], X, T, A, Tp, R, S0, Z, S, Y](piece: Piece[F, X, T, A, Tp], m: Stack[F, A, Tp, R, S0, Z],
-                                                                      p: Prompt[S, Y]): Found[F, X, T, S, Y, R, S0, Z] =
+                                                                      p: Prompt[F, S, Y]): Found[F, X, T, S, Y, R, S0, Z] =
     m match
       case d @ Stack.Delim(p2, ret, out, rest) =>
         // THE PROMPT CAST: a prompt is allocated once, at one type, and `eq` is that allocation — so the delimiter
