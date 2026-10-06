@@ -4,6 +4,7 @@ import okay.Row.*
 
 /** handle-frames on every platform: a handler per level, a hundred thousand levels, on the engine's own stack */
 class TestHandleFramesDepth extends munit.FunSuite:
+  import okay.cps.given_Effects_Free
 
   val n = 100000
 

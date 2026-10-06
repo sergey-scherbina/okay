@@ -1,6 +1,6 @@
 package okay.java
 
-import okay.{!, +, Answers, Async, Cont, Distinct, Effects, Foreign, Free, Member, TypeableK, effect, typeableK}
+import okay.{!, +, Answers, Async, Distinct, Effects, Foreign, Free, Member, TypeableK, effect, typeableK}
 import okay.given
 import java.util.function.{BiFunction, Function as JFunction, Supplier, UnaryOperator}
 
@@ -237,9 +237,10 @@ trait Clause[O, B] {
 /** form 4: a handler with the continuation in hand, its return clause turning the answer `A` into `B` */
 final class Control[A, B] private[java] (test: TypeableK[Top], ret: JFunction[? >: A, Eff[B]], clause: Clause[Any, B]) {
   private[java] def run(e: Eff[A]): Eff[B] =
-    new Eff(Effects[Free].handle[Top, Top](using test)[A, B](coerce(e.program))(a => ret.apply(a).program)(
+    val E = Effects[Free]
+    new Eff(E.handle[Top, Top](using test)[A, B](coerce(e.program))(a => ret.apply(a).program)(
       [X] => (op: Top[X]) =>
-        Cont.shift[X, Free[Top, B], Free[Top, B]](k => clause(op, x => new Eff(k(answered[X](x)))).program)))
+        E.control.shift[X, Free[Top, B], Free[Top, B]](k => clause(op, x => new Eff(k(answered[X](x)))).program)))
 }
 
 object Control {

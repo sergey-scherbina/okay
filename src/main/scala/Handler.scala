@@ -177,13 +177,14 @@ object Handler:
   def control[F[+_], O[_]](ret: [A] => A => O[A])(f: [X, A, G[+_]] => (F[X], X => O[A] ! G) => O[A] ! G)
                           (using TypeableK[F]): Handler[F, O] = new Handler[F, O]:
     def run[A, G[+_]](p: A ! F + G)(using A <:< Any, Distinct[F + G], Nothing[G]): O[A] ! G =
-      Effects[Free].handle[F, G](p)(a => pure[G, O[A]](ret(a)))(
+      val E = Effects[Free]
+      E.handle[F, G](p)(a => pure[G, O[A]](ret(a)))(
         [X] => (e: F[X]) =>
           val resume = new Resume[X, O[A], G]
           val out = f[X, A, G](e, resume)
           // `resume(x)` once, as the clause's answer: the program goes on, nothing to capture
-          if resume.calls == 1 && (out eq resume.last) then Cont.Pure[X, O[A] ! G](resume.arg)
-          else Cont.shift[X, O[A] ! G, O[A] ! G](k => { resume.k = k; out }))
+          if resume.calls == 1 && (out eq resume.last) then E.control.pure[X, O[A] ! G](resume.arg)
+          else E.control.shift[X, O[A] ! G, O[A] ! G](k => { resume.k = k; out }))
 
   /**
    * The `resume` a `control` clause gets. Called once and returned as the clause's answer, it is a tail

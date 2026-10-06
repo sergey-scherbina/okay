@@ -109,8 +109,9 @@ object Choose:
 
 /** all the results of all the branches, forwarding the effects F */
 def runChoice[A, F[+_]](a: A ! Choose + F): Seq[A] ! F =
-  Effects[Free].handle[Choose, F](a)(x => pure(Seq(x))):
-    [X] => c => Cont.shift: k =>
+  val E = Effects[Free]
+  E.handle[Choose, F](a)(x => pure(Seq(x))):
+    [X] => c => E.control.shift: k =>
       val all = okay.!.foldM(c.as)(Seq.empty[A])((s, x) => k(x).map(s ++ _))
       // a branch point something is shared through: a throw that leaves the search abandons it (logic-cut-releases)
       c.as match
@@ -141,8 +142,9 @@ def runChoice[A, F[+_]](a: A ! Choose + F): Seq[A] ! F =
  * same handler is the point.
  */
 def runSeq[S[+X] <: Seq[X], A, F[+_]](p: A ! S + F)(using TypeableK[S]): Seq[A] ! F =
-  Effects[Free].handle[S, F](p)(x => pure(Seq(x))):
-    [X] => (s: S[X]) => Cont.shift: k =>
+  val E = Effects[Free]
+  E.handle[S, F](p)(x => pure(Seq(x))):
+    [X] => (s: S[X]) => E.control.shift: k =>
       okay.!.foldM(s)(Seq.empty[A])((prev, x) => k(x).map(prev ++ _))
 
 /** the class IS the identity for a collection too: the element type

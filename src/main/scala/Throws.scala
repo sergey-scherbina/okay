@@ -44,7 +44,7 @@ inline def runEither[A, F[+_], E](a: A ! Throws % E + F)(using Distinct[Throws %
   // it as `Right[E, A]` (free-answer-variance, 2026-09-23). The instance by its object, not `Effects[Free]`: in
   // an inline body the summon is deferred and the carrier abstract, and the clause is written at `Cont`
   FreeEffects.handle[Throws % E, F](a)(a => pure[F, Either[E, A]](Right(a))):
-    [X] => e => Cont.shift(_ => pure[F, Either[E, A]](Left(e.e)))
+    [X] => e => FreeEffects.control.shift(_ => pure[F, Either[E, A]](Left(e.e)))
 
 /** handle Throws into the throws union (an Either already is one) */
 inline def runThrows[A, F[+_], E <: Unsafe](a: A ! Throws % E + F)(using Distinct[Throws % E + F]): (A throws E) ! F =
@@ -88,7 +88,7 @@ extension [E, A](e: Either[E, A])
 /** handle Throws by actually throwing: the JVM is the handler */
 inline def runUnsafe[A, F[+_], E <: Unsafe](a: A ! Throws % E + F)(using Distinct[Throws % E + F]): A ! F =
   FreeEffects.handle[Throws % E, F](a)(a => pure(a)):
-    [X] => e => Cont.shift(_ => throw e.e)
+    [X] => e => FreeEffects.control.shift(_ => throw e.e)
 
 /**
  * RECOVERY, in the row rather than around it: run the alternative

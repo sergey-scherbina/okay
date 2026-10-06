@@ -10,6 +10,7 @@ import okay.Row.*
  * the handler's loop, unless the one machine runs both.
  */
 class TestHandleInMachineSmallStack extends munit.FunSuite:
+  import okay.cps.given_Effects_Free
 
   type R = Shift % Int + Pure
 

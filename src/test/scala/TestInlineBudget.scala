@@ -112,7 +112,7 @@ class TestInlineBudget extends munit.FunSuite {
   test("handle's loop fits: it had to be cut to 318 once resume became inlinable") {
     // `.*loop`: since handle-frames the loop is reached from the run object's `apply` too, and a local def
     // reached from an inner class is lifted under a mangled public name (`okay$...$$$_$loop$2`)
-    within("Effects[Free].handle's loop", sizeOf("FreeEffects$", ".*loop\\$\\d+"),
+    within("Effects[Free].handle's loop", sizeOf("FreeEffectsAt", ".*loop\\$\\d+"),
       "handlePrebuilt and handleCapture (rows hff-*, de-*)")
   }
 

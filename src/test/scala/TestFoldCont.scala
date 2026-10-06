@@ -11,6 +11,7 @@ package okay
  * the only thing that changes.
  */
 class TestFoldCont extends munit.FunSuite:
+  import okay.cps.{given_Effects_Free, *}
 
   enum Op[+A]:
     case Pick(xs: List[Int]) extends Op[Int]

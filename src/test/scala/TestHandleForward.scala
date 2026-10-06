@@ -25,6 +25,7 @@ case class Claim[+A](a: A) derives Effect
  * order, and how many times.
  */
 class TestHandleForward extends munit.FunSuite {
+  import okay.cps.{given_Effects_Free, *}
 
   val E = summon[Effects[Free]]
 

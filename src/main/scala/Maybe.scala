@@ -49,10 +49,11 @@ object Maybe:
       Maybe.run(p)
 
   def run[A, F[+_]](p: A ! Maybe + F): Option[A] ! F =
-    Effects[Free].handle[Maybe, F](p)(a => pure[F, Option[A]](Some(a))):
+    val E = Effects[Free]
+    E.handle[Maybe, F](p)(a => pure[F, Option[A]](Some(a))):
       [X] => m => m.value match
-        case Some(x) => Cont.Pure(x)
-        case None => Cont.shift(_ => pure[F, Option[A]](None))
+        case Some(x) => E.control.pure(x)
+        case None => E.control.shift(_ => pure[F, Option[A]](None))
 
   /**
    * SKIP INSTEAD OF STOP. `run` answers a whole program's absence;

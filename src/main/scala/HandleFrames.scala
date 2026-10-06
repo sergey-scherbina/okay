@@ -230,10 +230,11 @@ object HandleFrames:
     Shift.dollar[A, B, G](frame)(a => widened(ret(a)))(answered[A, G](x))
 
   /** the control form (`Effects[Free].handle`, `Handler.control`) as a frame over `x`: the clause gets `k` */
-  def control[F[+_], A, B, G[+_]](ret: A => Free[G, B], h: F !> Free[G, B], t: TypeableK[F])(x: Free[F + G, A]): Shift.U[G, B] =
+  def control[F[+_], A, B, G[+_], C[_, _, _]](ctl: Control[C], ret: A => Free[G, B], h: Interpr[F, C, Free[G, B]], t: TypeableK[F])
+                                            (x: Free[F + G, A]): Shift.U[G, B] =
     val frame = new Handling[B]("handle"):
       def takes(op: Any): Boolean = t.test(op)
-      def clause(op: Any, k: Any => Any): Any = widened(h(op.asInstanceOf[F[Any]]) / k.asInstanceOf[Any => Free[G, B]])
+      def clause(op: Any, k: Any => Any): Any = widened(ctl./(h(op.asInstanceOf[F[Any]]))(k.asInstanceOf[Any => Free[G, B]]))
     Shift.dollar[A, B, G](frame)(a => widened(ret(a)))(framed[A, F + G, G](x))
 
   /** a frame program as a value: stepped into by a running machine, else run on a machine of its own */

@@ -134,13 +134,23 @@ trait Effects[M[_[+_], _]]:
 
 /** the freer monad, the initial encoding: `Inject` is a suspended shift, given its meaning by `foldCont`.
  * Choose it when the program is a thing — to step, inspect or relay it — stack-safe on any bind shape */
-given given_Effects_Free: Effects.Aux[Free, Cont] = FreeEffects
+/** THE DEFAULT: the tree with THE MACHINE (okay-cont) as its carrier — a handler `F !> S` is a program of the
+ * machine. The CPS `Cont` is one import away, `import okay.cps.*` (stage 33) */
+given given_Effects_Free: Effects.Aux[Free, cont.Carrier] = FreeEffects
+val FreeEffects: FreeEffectsAt[cont.Carrier] = FreeEffectsAt(summon[Control[cont.Carrier]])
 
-/** the instance, an object: its type names the carrier (`Effects.Aux`), so a handler's type is known wherever
- * the instance is reached by its type — `Effects[Free]`, `summon`, a `using` — and not only through the given */
-object FreeEffects extends Effects[Free]:
-  type C = Cont
-  def control: Control[Cont] = summon[Control[Cont]]
+/** the tree at the CPS carrier, `Cont`, as it was: `import okay.cps.{given_Effects_Free, *}` chooses it, with its `!>` and `handler` */
+object cps:
+  /** the SAME NAME as the default's: imported BY NAME it shadows the package's, so the search sees one instance (a `given` wildcard imports by type and shadows nothing) */
+  given given_Effects_Free: Effects.Aux[Free, Cont] = FreeEffectsAt(summon[Control[Cont]])
+  infix type !>[F[_], S] = Interpr[F, Cont, S]
+  inline def handler[F[_] : Answers as H, S]: F !> S = [X] => e => Cont.Pure(H.handle(e))
+
+/** the instance, a class over its CARRIER `C0` — whatever has a `Control`: the machine's (the default), the CPS
+ * `Cont` (`cps`) — its type naming the carrier (`Effects.Aux`), so a handler's type is known wherever the
+ * instance is reached by its type — `Effects[Free]`, `summon`, a `using` — and not only through the given */
+final class FreeEffectsAt[C0[_, _, _]](val control: Control[C0]) extends Effects[Free]:
+  type C = C0
 
   override inline def pure[F[+_], A](a: A): Free[F, A] = Free.Return(a)
   override inline def perform[F[+_], A](e: F[A]): Free[F, A] = Free.Inject(e)
@@ -151,8 +161,8 @@ object FreeEffects extends Effects[Free]:
 
   extension [F[+_], A](m: Free[F, A])
     override inline def flatMap[B](f: A => Free[F, B]): Free[F, B] = m.flatMap(f)
-    override def foldCont[S](h: F !> S): A /> S =
-      Free.fold(m)(Cont.Pure(_))([X] => e => k => h(e).flatMap(k(_).foldCont(h)))
+    override def foldCont[S](h: Interpr[F, C0, S]): C0[A, S, S] =
+      Free.fold(m)(control.pure(_))([X] => e => k => control.flatMap(h(e))(k(_).foldCont(h)))
     /** the same answer as the foldCont definition, in one pass instead of two */
     override def runWith(using Answers[F]): A = runFree(m)
 
@@ -179,23 +189,23 @@ object FreeEffects extends Effects[Free]:
    * committed to the `G` program, which a later abort cannot un-perform under the definition either
    * (TestHandleForward pins aborting and multi-shot forwarding, red first against a wrong arm).
    *
-   * A handler that answers with `Cont.Pure` continues the loop with one tail call; only a real capture
+   * A handler that answers with a `pure` continues the loop with one tail call; only a real capture
    * reifies the rest, under a `Delay` so a deep program trampolines. A `Delay` on EVERY handled operation
    * cost 59 µs of a 61 µs gap (`hff-*`): its `Pure` continuation rotates into a left-nested `Bind`.
    */
   override def handle[F[+_], G[+_]](using TypeableK[F])[A, B](m: Free[F + G, A])
                                    (ret: A => Free[G, B])
-                                   (h: F !> Free[G, B]): Free[G, B] =
+                                   (h: Interpr[F, C0, Free[G, B]]): Free[G, B] =
     // NOT @tailrec: the deferring arms mention `loop` inside a closure, which the annotation reads as a non-tail
     // call; the answered arm is a real tail call, and TestHandleForward's stack-safety tests guard the depth.
     // The terminal and capturing arms live in their own methods, as `relay`'s `last`, to keep this loop
     // small: `Free.resume` (323 bytes, under FreqInlineSize 325) is pasted into it, and a loop that is itself
     // too big to inline lost 15% on handlePrebuilt and handleCapture (`de-*`).
     def last(e: F[A] | G[A]): Free[G, B] =
-      split[F, G](e)(e => h(e) / ret)(e => Free.Inject(e).flatMap(ret))
+      split[F, G](e)(e => control./(h(e))(ret))(e => Free.Inject(e).flatMap(ret))
 
-    def capture[X](d: Int)(c: Cont[X, Free[G, B], Free[G, B]], k: X => Free[F + G, A]): Free[G, B] =
-      c / (x => Free.delay(() => loop(d)(k(x))))
+    def capture[X](d: Int)(c: C0[X, Free[G, B], Free[G, B]], k: X => Free[F + G, A]): Free[G, B] =
+      control./(c)(x => Free.delay(() => loop(d)(k(x))))
 
     // a call from inside flatMap cannot be a jump; `again` takes it, so the walk stays a checked loop
     def again(d: Int)(x: Free[F + G, A]): Free[G, B] = loop(d)(x)
@@ -212,7 +222,7 @@ object FreeEffects extends Effects[Free]:
           // read the same program, and a handler is not assumed pure
             (e => {
               val c = h(e)
-              Cont.onAnswer(c)(a => loop(d)(k(a)))(capture(d)(c, k))
+              if control.isAnswer(c) then loop(d)(k(control.answerOf(c))) else capture(d)(c, k)
             })
           (_ => forward(d)(i, k))
       // a run nested here: forced — its fold below HandleFrames.Limit, its frame on a machine at it
@@ -221,7 +231,7 @@ object FreeEffects extends Effects[Free]:
     // a value: run by whoever forces it, a frame for a machine that meets it
     Free.delay(new HandleFrames.Run[B, G]:
       def at(d: Int): Free[G, B] = loop(d)(m)
-      def program: Shift.U[G, B] = HandleFrames.control[F, A, B, G](ret, h, summon[TypeableK[F]])(m))
+      def program: Shift.U[G, B] = HandleFrames.control[F, A, B, G, C0](control, ret, h, summon[TypeableK[F]])(m))
 
 /**
  * Any Effects program in any other encoding: the interface's initiality as a function. An encoding is fixed
@@ -435,7 +445,7 @@ object Effects {
 
   /** `translate` as a frame: an operation is its program, then the continuation */
   private def intoFrame[A, F[+_] : TypeableK, G[+_]](h: F ==> ([X] =>> X ! G))(x: A ! F + G): Shift.U[G, A] =
-    HandleFrames.control[F, A, A, G](pure(_), [X] => (e: F[X]) => Cont.shift[X, A ! G, A ! G](k => h(e).flatMap(k)),
+    HandleFrames.control[F, A, A, G, Cont](summon[Control[Cont]], pure(_), [X] => (e: F[X]) => Cont.shift[X, A ! G, A ! G](k => h(e).flatMap(k)),
       summon[TypeableK[F]])(x)
 
   /**
@@ -451,7 +461,7 @@ object Effects {
     Free.delay(new HandleFrames.Run[B, G]:
       def at(d: Int): B ! G = new Relaying[A, B, F, G](d, f, g).loop(a)
       def program: Shift.U[G, B] =
-        HandleFrames.control[F, A, B, G](f, [X] => (e: F[X]) => g[X, B ! G](e), summon[TypeableK[F]])(a))
+        HandleFrames.control[F, A, B, G, Cont](summon[Control[Cont]], f, [X] => (e: F[X]) => g[X, B ! G](e), summon[TypeableK[F]])(a))
 
   /**
    * `relay`'s walk, an object per run: its depth for `HandleFrames.shallow` is a field, read in the cold arm

@@ -1501,3 +1501,35 @@ interface's own `handle`, `convert` and `reify` run on the machine: a multi-shot
 constant stack, `runWith` equal to `foldCont / identity` (TestProg).
 
 Seven nodes, 43 tests in okay-cont, the core's suites, no cast, no warning.
+
+## Stage 33: THE MACHINE BY DEFAULT — `okay-cont` BELOW THE CORE, `Effects[Free]` AT ITS CARRIER (DONE, 2026-10-06)
+
+The operator: "сделай чтобы по умолчанию было новое то что okay-cont", and on the layering, "Control должен
+находиться в ядре — okay-freer и okay-cont не должны вообще ничего знать друг о друге".
+
+The layers, as asked. `okay-cont` depends on nothing: `Prog` with `Effects[Prog]` and the `Control` instance of
+the machine's `Carrier` move to the core (Prog.scala, Control.scala), beside `Control[Cont]` and
+`Control[Func]`; the core depends on `okay-freer` and `okay-cont`, which know nothing of each other nor of the
+core; the module rules say so (specs/modules-infra.md).
+
+The default. `FreeEffects` is a CLASS over its carrier, `FreeEffectsAt[C0](control: Control[C0])`: `foldCont`
+folds the tree with `control.pure`/`control.flatMap`; the native `handle` loop asks `control.isAnswer`/`answerOf`
+— the probe `Cont.onAnswer` was, now every carrier's, in `Control` — and captures with `control./`; the frames'
+control form (`HandleFrames.control`) takes the carrier too. The package's given is at the machine's
+`Carrier`, so `F !> S` is `Interpr[F, cont.Carrier, S]`, `handler` answers with the machine's `Return`, and
+`Effects[Free].handle`, `foldCont`, `convert`, `reify` run on the machine; `Eager` follows the default. The CPS
+`Cont` is `object cps`: `given_Effects_Free: Effects.Aux[Free, Cont]` under THE SAME NAME, its `!>` and
+`handler` — `import okay.cps.{given_Effects_Free, *}` chooses the old, by shadowing (a `given` wildcard imports
+by type and shadows nothing; and inside package `okay` itself the import has to sit in a class or object, a
+file-level one does not take the package's member over — the four CPS-bound suites do so).
+
+The core's handlers are written through the instance's `control` — `Throws.runEither`/`runUnsafe`
+(`FreeEffects.control.shift`, the instance by its object in an inline body), `Maybe.run`, `Choice.runChoice`/
+`runSeq`, `Prob.runExact`, `Reader.local`, `Handler.control` (`val E = Effects[Free]`, then `E.control.shift`
+and `E.control.pure`), okay-java's `Eff.Control` — so each runs at whichever carrier the instance has; a
+`Cont.shift(k => k(x))` is `control.pure(x)`, the tail resume it was. Left on the CPS machine, as the
+Delimited frames they are (level 2's work, not this stage's): `relay`, `translate`, `HandleFrames` and the
+`Shift` effect.
+
+Checked: the lowering suite (`runWith` is `foldCont / identity`) at the default, the handler suites, the
+CPS-bound suites under the import, okay-java; 80 tests in the nearest set, no warning.

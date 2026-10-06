@@ -40,9 +40,10 @@ trait Effects[M[_[+_], _]]:
 `flatMap` and `foldCont` are extension methods, so their first argument is
 the program itself, `m: M[F, A]`: `flatMap` is `M[F, A] => (A => M[F, B]) =>
 M[F, B]`, and `foldCont` is `M[F, A] => Interpr[F, C, S] => C[A, S, S]` —
-`C` the encoding's own continuation carrier, a `Control`. For `Free` and
-`Eager` it is `Cont`, so a handler is `F !> S` and the fold `A /> S`; the
-machine of okay-cont folds into a carrier of its own (`Effects[Prog]`).
+`C` the encoding's own continuation carrier, a `Control`. By default it is
+the machine's (okay-cont), for `Free`, `Eager` and `Prog` alike: a handler
+`F !> S` is a program of the machine. The CPS `Cont` is one import away,
+`import okay.cps.{given_Effects_Free, *}`, with its own `!>` and `handler`.
 
 Read by what each part gives:
 

@@ -305,7 +305,7 @@ type Interpr[F[_], C[_, _, _], S] = F ==> C[*, S, S]
  *
  * That is, handlers are continuations.
  */
-infix type !>[F[_], S] = Interpr[F, Cont, S]
+infix type !>[F[_], S] = Interpr[F, cont.Carrier, S]
 
 /** A comonadic handler interprets each operation by its own value */
 @implicitNotFound("no Answers[${F}].\nAn Answers[F] answers each operation of F with a plain value (trait Answers: def handle[A](a: F[A]): A).\nFor a ROW, build the union from the parts: given Answers[F + G] = Answers.union[F, G]\n(each part needs its own Answers in scope first).")
@@ -330,7 +330,7 @@ extension [F[_]](h: Answers[F])
 
 /** A comonadic (per-operation) Answers at every answer type. */
 inline def handler[F[_] : Answers as H, S]: F !> S =
-  [X] => e => Cont.Pure(H.handle(e))
+  [X] => e => cont.Cont.Return(H.handle(e))
 
 /** the same, at any Control carrier */
 inline def interpr[C[_, _, _] : Control as C, F[_] : Answers as H, S]: Interpr[F, C, S] =

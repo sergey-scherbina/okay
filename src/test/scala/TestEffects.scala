@@ -70,7 +70,7 @@ class TestEffects extends munit.FunSuite {
     val E = summon[Effects[Free]]
     def run(b: Boolean): Int =
       E.handle[Throws % String, Produce](calc(b))(a => pure(a)):
-        [X] => _ => Cont.shift(_ => pure(-1))
+        [X] => _ => E.control.shift(_ => pure(-1))
       .runWith
 
     assertEquals(run(false), 5)
@@ -91,7 +91,7 @@ class TestEffects extends munit.FunSuite {
     inline def sprog[C[_, _, _]](h: Interpr[Produce, C, Int]): C[Int, Int, Int] =
       val C = Control[C]
       C.flatMap(h(1))(x => h(x + 1))
-    assertEquals(sprog[Cont](handler[Produce, Int]) / identity, 2)
+    assertEquals(sprog[Cont](interpr[Cont, Produce, Int]) / identity, 2)
     assertEquals(sprog[Func](interpr[Func, Produce, Int])(identity), 2)
   }
 

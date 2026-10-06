@@ -12,6 +12,10 @@ trait Control[M[_, _, _]] extends ParaMonad[M]:
   extension [A, S, R](m: M[A, S, R])
     infix def /(k: A => S): R
   inline def reset[A, R](m: M[A, A, R]): R = m / identity
+  /** is `m` an answer already — a `pure`, nothing captured? then `answerOf` has it, and a handler's loop goes on
+   * with a tail call instead of a continuation (`Effects.handle`'s tail answer). Closures cannot tell: never */
+  def isAnswer[A, S](m: M[A, S, S]): Boolean = false
+  def answerOf[A, S](m: M[A, S, S]): A = throw IllegalStateException("not an answer: ask isAnswer first")
 
 /** summons the instance at its precise type, so its inline operations resolve statically (Carette-Kiselyov-Shan staging) */
 transparent inline def Control[M[_, _, _]]: Control[M] =
@@ -30,6 +34,8 @@ given Control[Cont] with
       Cont.bind(m)(f)
     // overridden: the default `map` builds a `pure` per element
     override inline def map[B](f: A => B): Cont[B, S, R] = Cont.mapped(m)(f)
+  override def isAnswer[A, S](m: Cont[A, S, S]): Boolean = Cont.onAnswer(m)(_ => true)(false)
+  override def answerOf[A, S](m: Cont[A, S, S]): A = Cont.onAnswer(m)(a => a)(throw IllegalStateException("not an answer"))
 
 /** closures: the reference instance, fast, not stack-safe */
 type Func[A, S, R] = (A => S) => R
@@ -55,3 +61,9 @@ given Control[cont.Carrier] with
     infix def /(k: A => S): R = cont.Machine.value(cont.Cont.Reset[EmptyTuple, EmptyTuple, S, R](cont.Cont.Bind(m, (a: A) => cont.Cont.Return(k(a)))))
     def flatMap[B, S2](f: A => cont.Carrier[B, S2, S]): cont.Carrier[B, S2, R] = cont.Cont.Bind(m, f)
     override def map[B](f: A => B): cont.Carrier[B, S, R] = cont.Cont.Bind(m, (a: A) => cont.Cont.Return(f(a)))
+  override def isAnswer[A, S](m: cont.Carrier[A, S, S]): Boolean = m match
+    case cont.Cont.Return(_) => true
+    case _ => false
+  override def answerOf[A, S](m: cont.Carrier[A, S, S]): A = m match
+    case cont.Cont.Return(a) => a
+    case _ => throw IllegalStateException("not an answer")
