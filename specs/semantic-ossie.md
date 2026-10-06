@@ -23,6 +23,8 @@ syntax for JSON and YAML (JSON is valid YAML 1.2). It emits that same portable
 syntax. Optional JVM SnakeYaml adapter supports ordinary block/flow YAML through
 SnakeYAML Engine with safe composition, duplicate-key checks and bounded parser
 nesting. No mandatory third-party jar; a missing adapter is refused by name.
+Syntax.byName selects the imported Syntax instance, so configuration callers
+change only the import when choosing the optional implementation.
 All inputs containing numeric metadata that cannot survive the codec's Double
 projection exactly are refused, never silently rounded. Exact business numbers
 in expression strings and custom_extensions.data are preserved. The adapter is
