@@ -1,7 +1,0 @@
-feature/blob-create-only 2026-10-06T18:20:26Z
-agent: codex
-heartbeat: 2026-10-06T18:33:00Z
-status: in-progress
-done-so-far: create-only facade, S3 PUT/checksum and bounded GET green; affected compile green
-next: land platform prerequisite and verify financial cloud consumer against MinIO
-scope: okay-blob new ConditionalObjects.scala, S3.scala additive methods, TestConditionalObjects.scala, specs/blob-create-only.md
