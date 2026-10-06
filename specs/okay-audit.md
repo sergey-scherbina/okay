@@ -180,9 +180,11 @@ buyer's own additions (`com.example.legacy.`) are rules like any other.
 3. Launcher check: read a deployment's JVM flags and module descriptors,
    record `--illegal-native-access`, `--add-opens`, `--enable-native-access`
    into the report as configuration evidence.
-4. (okay-watch) hermetic replay job in `dagger/okay-watch.dsh`: replay a
-   recorded case with no network and a read-only filesystem; byte-identical
-   or the job fails.
+4. (okay-watch) implemented: Dagger runs `auditDomain`; evidence tests replay
+   kept port answers and require byte-identical reports. The Java-only
+   `tools/test-evidence-hermetic.sh` additionally proves export under macOS
+   OS-denied network access and writes to original evidence in a strict
+   jlinked image. Local checks passed; the full Dagger pipeline was not run.
 
 ## JPMS — what the JVM's module system adds, and what it cannot (decided 2026-10-05)
 
@@ -244,8 +246,9 @@ module-info discarded) okay is one automatic module and the rule holds.
   `specs/jpms-deployment.md`, not a replacement for desktop/JDBC installs.
   The shipped assembly runs the offline synthetic scenario, retains seven
   providers, and verifies SQL/Unsafe/reflection/native refusals. Its scanner
-  manifest is inventory-only (mixed app handlers, dependency runtime);
-  domain-policy classification remains audit-ready Stage 4.
+  manifest now classifies `okaywatch.domain` as business, mixed app code as
+  handlers and dependencies as runtime; audit-ready Stage 4 passed 219
+  domain classes without findings or allows (okay-watch `b24d2e0`).
   The original deployment goal is okay as one automatic
   module (the assembly), the app's own code (`okaywatch.*`) as a named module
   with an explicit `requires` list, jlinked without `java.sql`/`jdk.unsupported`

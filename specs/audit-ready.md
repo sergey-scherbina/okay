@@ -78,7 +78,7 @@ untouched (okay-watch specs/trace-evidence.md, TestTraceEvidence).
 - [ ] `main` is the only business-visible place where a real handler is named; a test swaps every handler with `provide` and no production code changes
 - [ ] the evidence pack of a build is: `target/audit/report.{txt,json}` (boundary + inventory, with input hashes), the forbidden-edge rules, the journal export of a run, and a replay report — four files, no narrative
 - [ ] okay-data passes as `business`: `Hlc` and `Uid` take their clock and random source as parameters with the platform's as the default given (backlog.d/okay-data)
-- [ ] okay-watch: `okaywatch.trace`, `okaywatch.screen`, `okaywatch.cases`, `okaywatch.filing`, `okaywatch.iso`, the rules in the root package are `business`; `okaywatch.collect`, `okaywatch.chain.Web`'s real transport, `okaywatch.feed`, `okaywatch.api` and the storage are `handlers` — and the audit can say so by PACKAGE, since okay-watch is one sbt project
+- [x] okay-watch: the pure rules, screening, trace decisions, case values, filing and ISO code live under `okaywatch.domain` as `business`; collectors, transports, feeds, APIs, storage and mixed I/O companions remain `handlers`. Package-prefix classification proves the boundary within one sbt project.
 
 ## What we change in our own code (the honest list)
 
@@ -90,7 +90,7 @@ rule's APIs, per package):
 | okay-audit | layers are per sbt PROJECT; okay-watch is one project with business and handlers side by side (`okaywatch.trace` 152 reaches in 17 files, `okaywatch.api` 246 in 47, `okaywatch.collect` 26) | `auditLayer` accepts package prefixes too: `auditLayers := Map("okaywatch.trace" -> "business", "okaywatch.collect" -> "handlers", …)`; a class is classified by the longest matching prefix, the project's layer is the default | small — one match in `Audit.run`, the manifest gains a column |
 | okay-data | `Hlc.system` reads `System.currentTimeMillis`; `Uid` reads `scala.util.Random.nextLong` | clock and random source as parameters, platform's as the default `given` in a `handlers` companion (`okay.data.platform`) or in okay-platform | small — two constructors; callers unchanged through the default |
 | okay (core) | there is no `Clock` / `Random` port in the core: every application re-invents them, and okay-watch reads `Instant.now` in 20 files | `okay.Clock` and `okay.Random` effects in the core (operations only), handlers in okay-platform (`SystemClock`, `SystemRandom`) and in the journal (`Journaled`, `Replayed` answer them from the record) | medium — new, additive; the `Replayable` doc already names them as the effects that are NOT replayable, which is exactly why they must be ports |
-| okay-watch `trace` | `Evidence` already journals `Web`; the clock is read beside it (`Job`, `Jobs`, `Evidence` itself, `Watch`) and not journaled, so a rebuilt trace carries the rebuild's time, not the run's | the trace's `now` through the `Clock` port, journaled with the `Web` answers | small — 20 call sites, mechanical |
+| okay-watch `trace` | `Evidence` already journals `Web`; legacy replay already retained the sealed report time, but did not record a typed Clock answer (the earlier rebuild-time diagnosis was refuted) | report time through the `Clock` port, journaled with `Web`; modern replay refuses missing answers, legacy replay preserves the sealed time | implemented in okay-watch |
 | okay-watch `api` | pages and routes read the clock, files and the network directly (246 reaches) — correct for an API layer, which IS a handler layer | classify as `handlers`; nothing to change | none |
 | okay-watch root (`Rule`, `Watch`, `Risk`) | the rules read `Instant.now` and `Random` (77 reaches in 21 files, most in `Demo` and `Synthetic`) | `Demo`/`Synthetic` are handlers (they make data); `Rule`/`Watch`/`Risk` take time from the `Clock` port | small |
 | okay-codec, okay-bayes, okay-java | reach files/processes/TLS/`Random`/reflection | stay `handlers`; okay-bayes gets its `Random` as a parameter when a replayable model is wanted (not now) | none now |
@@ -118,7 +118,7 @@ medium one; none changes a public signature except by adding a default.
 1. okay-audit: package-prefix layers (`auditLayers`), manifest column, the dogfood states okay-watch's packages. *(lane: audit-package-layers)*
 2. core: `Clock` and `Random` ports; okay-platform handlers; `Journaled`/`Replayed` answer them. *(lane: clock-random-ports)*
 3. okay-data: `Hlc`/`Uid` sources as parameters; okay-data back to `business`. *(lane: data-clock-and-random-reach, filed)*
-4. okay-watch: `trace`/rules read the clock through the port, journaled beside `Web`; `sbt audit` added to the Dagger pipeline with the packages classified; the evidence pack as a `make`-able artefact. *(okay-watch backlog)*
+4. okay-watch: domain classification, recorded Clock answers beside `Web`, `auditDomain` in Dagger and Java-only audit/evidence export. Implemented in okay-watch commits `b24d2e0`, `2d4ed53`, `fe0cb07` (specs/audit-domain-classification.md there).
 
 ## Results
 
@@ -129,6 +129,15 @@ handlers and platform handlers; and `Hlc` / `Uid` take their sources as
 parameters, moving the ambient sources to `okay-platform`. `okay-data` is
 therefore again a `business` module and `sbt audit` passes.
 
-The journaled/replayed treatment of these ports belongs with stage 4's
-okay-watch evidence work. It is deliberately not represented here as an
-existing handler.
+Stage 4 is implemented in okay-watch. Its unchanged boundary policy passes
+219 domain classes with no findings or allows; mixed I/O remains inventoried
+as handlers. Clock answers are sealed beside Web answers and modern replay
+refuses unrecorded operations by name. Legacy evidence still rebuilds byte
+for byte from its sealed report time.
+
+The Java-only evidence exporter verifies the original journal, copies kept
+answers and reports, replays the copy, and hashes the audit policy, report,
+build/dependency rules and exported files. Offline replay no longer opens SQL
+progress storage. A strict jlinked image without SQL/Unsafe passed export
+with OS-denied network access and writes to the original evidence. Scoped
+tests and local audit passed; the full Dagger container pipeline was not run.
