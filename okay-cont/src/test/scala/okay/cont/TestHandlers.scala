@@ -1,6 +1,6 @@
 package okay.cont
 
-import Cont.*
+import Machine.value
 
 /** specs/freer-min.md: a handler is a delimiter, deep — `k` brings the delimiter, so the handler is in force through
  * a resumption, and a clause may resume more than once */
@@ -14,11 +14,6 @@ class TestHandlers extends okay.testkit.Munit.Diagnosed:
     def apply[X, Oc <: Ctx](using o: Oc)(op: Choose[X], k: X => Cont[o.Here, o.Here, List[A]]): Cont[o.Here, o.Here, List[A]] = op match
       case Choose.Flip => k(true).flatMap(xs => k(false).map(ys => xs ++ ys))
 
-  def value[A](p: Top[A]): A =
-    val head: Top[A] = Machine.run(p)
-    head match
-      case Return(a) => a
-      case other => fail(s"not a value: $other")
 
   test("a multi-shot handler: two flips, four worlds, the handler in force in each"):
     val prog: Top[List[(Boolean, Boolean)]] = handle(every[(Boolean, Boolean)]):

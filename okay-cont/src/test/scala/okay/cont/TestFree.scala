@@ -1,6 +1,6 @@
 package okay.cont
 
-import Cont.*
+import Machine.value
 
 /** specs/freer-min.md, stage 27: `Free[R, A]` with rows, over `Cont` */
 class TestFree extends okay.testkit.Munit.Diagnosed:
@@ -25,11 +25,6 @@ class TestFree extends okay.testkit.Munit.Diagnosed:
     def apply[X, Oc <: Ctx](using o: Oc)(op: Choose[X], k: X => Cont[o.Here, o.Here, List[A]]): Cont[o.Here, o.Here, List[A]] = op match
       case Choose.Flip => k(true).flatMap(xs => k(false).map(ys => xs ++ ys))
 
-  def value[A](p: Top[A]): A =
-    val head: Top[A] = Machine.run(p)
-    head match
-      case Return(a) => a
-      case other => fail(s"not a value: $other")
 
   /** a program over a row, no handler in sight: the rows join as it is built */
   val prog: Free[Ask :+: Say :+: RNil, Int] =

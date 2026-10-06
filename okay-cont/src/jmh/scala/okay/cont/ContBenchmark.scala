@@ -3,6 +3,7 @@ package okay.cont
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 import Cont.*
+import Machine.value
 import okay.cont.State as SE
 
 /** an operation carrying its own answer, as master's `Ask` (HandlerBenchmark) */
@@ -69,12 +70,6 @@ class ContBenchmark {
   def prog: Top[Int] = handle[Tick, Int, Int](tickH)(handle[Ask, Int, Int](askH)(body))
   /** the same program under the answering handlers */
   def progA: Top[Int] = handle[Tick, Int, Int](tickA)(handle[Ask, Int, Int](askA)(body))
-
-  def value[A](p: Top[A]): A =
-    val head: Top[A] = Machine.run(p)
-    head match
-      case Return(a) => a
-      case other => throw new IllegalStateException(s"not a value: $other")
 
   @Benchmark
   def buildOnly(): Any = prog

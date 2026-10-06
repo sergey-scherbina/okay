@@ -1,6 +1,6 @@
 package okay.cont
 
-import Cont.*
+import Machine.value
 
 /** specs/freer-min.md: HANDLERS AS DELIMITERS — an operation is a capture to the handler's delimiter, the clause
  * runs outside; what a program may perform is what its context reaches; a handler not the nearest is reached by
@@ -24,11 +24,6 @@ class TestCont extends okay.testkit.Munit.Diagnosed:
       op match
         case Say.Line(s) => k(()).map((log, a) => (s :: log, a))
 
-  def value[A](p: Top[A]): A =
-    val head: Top[A] = Machine.run(p)
-    head match
-      case Return(a) => a
-      case other => fail(s"not a value: $other")
 
   test("one handler: the operation is a capture to its delimiter, the clause outside; the effect is gone from the row outside"):
     val prog: Top[Int] = handle(reader[Int](41))(perform(Ask.Number).map(_ + 1))

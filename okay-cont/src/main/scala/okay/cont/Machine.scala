@@ -52,7 +52,16 @@ sealed abstract class Resumption[A, I0 <: Tuple, O0 <: Tuple, Z] extends (A => C
   type T <: Tuple
   def k: Frames[A, B, I, T]
   def m: Stack[B, I, T, I0, O0, Z]
-  def apply(a: A): Cont[I0, O0, Z] = Machine.go(Return(a), k, m)
+  def apply(a: A): Cont[I0, O0, Z] = Machine.go(Return(a), k, m) match
+    case Head.Value(z) => Return(z)
+    case Head.Out(c) => c
+
+/** WHAT A RUN ENDS IN: a value, the stacks as they were; or a capture whose delimiter is outside this run — the
+ * program handed out whole, a head form `Bind(capture, rest)`, for a machine outside, at stacks that have a level
+ * to go to. At the top there is no level outside: a run there is a value, and nothing else (`value`) */
+enum Head[I <: Tuple, O <: Tuple, +A]:
+  case Value[Σ <: Tuple, A](a: A) extends Head[Σ, Σ, A]
+  case Out[I <: Tuple, D <: Tuple, R, O <: Tuple, A](c: Cont[I, At[D, R] *: O, A]) extends Head[I, At[D, R] *: O, A]
 
 /** the machine's next state with its program: what a capture's walk of the stack answers with, its level's types
  * its own */
@@ -68,25 +77,32 @@ sealed abstract class Step[I0 <: Tuple, O0 <: Tuple, Z]:
 
 /** one loop, one rule per node, nothing else */
 object Machine:
-  /** run to a head form: `Return(z)`, or `Bind(shift, rest)` — a capture whose delimiter is outside this run, for
-   * the machine outside. At any level: a handler's clause may run a program of its own */
-  def run[I <: Tuple, O <: Tuple, A](p: Cont[I, O, A]): Cont[I, O, A] = go(p, Frames.End(), Stack.Done())
+  /** run to its end: a value, or a capture whose delimiter is outside this run, handed out for the machine
+   * outside. At any level: a handler's clause may run a program of its own */
+  def run[I <: Tuple, O <: Tuple, A](p: Cont[I, O, A]): Head[I, O, A] = go(p, Frames.End(), Stack.Done())
+
+  /** a program at the top, run to its value: no delimiter is outside, so nothing is handed out */
+  def value[A](p: Top[A]): A = run(p) match
+    case Head.Value(a) => a
 
   @tailrec private[cont] def go[A, B, I <: Tuple, T <: Tuple, O <: Tuple, I0 <: Tuple, O0 <: Tuple, Z](
-      c: Cont[T, O, A], k: Frames[A, B, I, T], m: Stack[B, I, O, I0, O0, Z]): Cont[I0, O0, Z] =
+      c: Cont[T, O, A], k: Frames[A, B, I, T], m: Stack[B, I, O, I0, O0, Z]): Head[I0, O0, Z] =
     c match
       case Return(a) => k match
         case Frames.Frame(f, rest) => go(f(a), rest, m)
         case Frames.End() => m match
-          case Stack.Done() => Return(a)
+          case Stack.Done() => Head.Value(a)
           case Stack.Run(out, rest) => go(Return(a), out, rest)
           // the body returned: its answer is its final one, and the delimiter delivers it
           case Stack.Delim(out, rest) => go(Return(a), out, rest)
-      // a head form handed out (its rest is a `Resumption`), met at a run's bottom: as it is, a run over a run allocates nothing
+      // a head form handed out (its rest is a `Resumption`), met at a run's bottom: out as it is, a run over a run
+      // allocates nothing but its end (`out`, kept off this loop for its size: a loop too big to inline lost 15 %)
       case Bind(c0, f) => f match
         case _: Resumption[?, ?, ?, ?] => k match
           case Frames.End() => m match
-            case Stack.Done() => c
+            case Stack.Done() =>
+              val h = out(c0, c)
+              if h != null then h else go(c0, Frames.Frame(f, k), m)
             case _ => go(c0, Frames.Frame(f, k), m)
           case _ => go(c0, Frames.Frame(f, k), m)
         case _ => go(c0, Frames.Frame(f, k), m)
@@ -96,6 +112,17 @@ object Machine:
       case s: Shift0[d, i, o, t, r, x] => val n = cut[x, t, B, I, r, o, I0, O0, Z, d, i](s, s.f, k, m); go(n.c, n.k, n.m)
       case s: Op[n, x, dn, ansn, e] => val n = cutN[x, B, I, I0, O0, Z, n, dn, ansn, B, I, n, e](s.at, s.op, s.clause, k, m, k, m); go(n.c, n.k, n.m)
       case r: Resume[?, ?, ?, ?] => val n = under(r.x, r.k.piece, Stack.Delim(k, m)); go(n.c, n.k, n.m)
+
+  /** a capture handed out at a run's bottom, `Bind(capture, rest)`: its end — the capture's node says the
+   * stacks have a level to go to. A `Bind` of a resumption onto what is NOT a capture (`pure(x).flatMap(rest)`,
+   * a handed-out rest applied by hand) is no end: a program like any other, and the loop goes on with it */
+  private def out[T0 <: Tuple, T <: Tuple, O <: Tuple, A0, A](c0: Cont[T0, O, A0], c: Cont[T, O, A]): Head[T, O, A] | Null =
+    c0 match
+      case _: Shift0[d, ?, o, ?, r, ?] => Head.Out[T, d, r, o, A](c)
+      case s: Op[?, ?, ?, ?, ?] => s.at match
+        case _: Reach.Here[d, ans] => Head.Out[T, d, ans, d, A](c)
+        case _: Reach.Out[ans, n2, ?, ?] => Head.Out[T, n2, ans, n2, A](c)
+      case _ => null
 
   /** into the delimiter: its level pushed, the body at its start */
   private def enter[D <: Tuple, O <: Tuple, S, R, B, I <: Tuple, I0 <: Tuple, O0 <: Tuple, Z](

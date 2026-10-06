@@ -1,6 +1,6 @@
 package okay.cont
 
-import Cont.*
+import Machine.value
 
 /** `PState` on the basis: Danvy–Filinski's state-passing answer, the STATE'S TYPE carried by the ANSWER TYPE (Asai–Kameyama).
  * No `Put[S, T]` signature: `put` is a shift that moves the answer from `St[S2]` to `St[S]`, and `Bind` composes the moves */
@@ -27,11 +27,6 @@ class TestState extends okay.testkit.Munit.Diagnosed:
   def runState[S0, S1, W](s0: S0)(body: State[W] => Cont[At[EmptyTuple, St[S1, W]] *: EmptyTuple, At[EmptyTuple, St[S0, W]] *: EmptyTuple, W]): Top[W] =
     Cont.Reset[EmptyTuple, EmptyTuple, St[S1, W], St[S0, W]](body(State()).map(a => (_: S1) => pure(a))).flatMap(f => f(s0))
 
-  def value[A](p: Top[A]): A =
-    val head: Top[A] = Machine.run(p)
-    head match
-      case Return(a) => a
-      case other => fail(s"not a value: $other")
 
   test("state: get after put, the type unchanged"):
     val prog: Top[Int] = runState(1): st =>

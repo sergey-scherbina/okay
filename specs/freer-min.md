@@ -1370,3 +1370,61 @@ which is the semantics, not an allocation to spare. The `Free` layer's `Cap.perf
 each operation (it has no context value at `lift`); when `Free` is measured, that is where to look.
 
 Seven nodes, 37 tests on the JVM, JS and Native compile, no cast, no warning.
+
+## Stage 29: THE FREER MONAD AS A MODULE BELOW THE CORE — `okay-freer` (DONE, 2026-10-06)
+
+The operator: the freer monad out of the core, into package `okay.freer` and a module `okay-freer`; an `Effects`
+instance for the machine's `Cont`; the encoding chosen at compile time, by the given — "и сделать аккуратно и
+красиво", in this branch. The core was one knot: `Free.scala` named `Effects`, `Handler`, `HandleFrames`,
+`Distinct`, `DirectCtx`; `Monad.scala` named nothing of the core (its mentions of `Free`, `Choose`, `Row` were
+in doc strings). So the cut: the MONAD is `Freer` (the indexed tree, its `resume`, `Suspended`, `Mapped`, `defer`,
+`delay`, its `ParaMonad`/`Monad`/`TailRecM` givens), `Free` (the effect tree at `Unary`, the four names, `fold`,
+`loop`), the bridge `Unary`/`Diagonal` with its extractor, the direct marker `DirectCtx` (the colouring given
+lives in `Freer`'s companion, where it is found with no import — so the marker is the tree's), and the type
+classes they instantiate (Monad.scala, still package `okay`); the LIBRARY over it — `handleOne`, the `handle`
+extensions, `run` — stays in the core at the package's top. The core names the tree at its door
+(src/main/scala/Free.scala): an alias each, the companions by a stable path, so `Free.Return(a)` builds, `case
+Free.Bind(Free.Inject(e), k)` matches and `Freer.Return[G, R, A]` is a type, as before — 19 files of the core
+and 105 across the modules untouched; what changed is five sites of `Freer[?, ?, ?, ?]` (an alias with a
+higher-kinded parameter takes no wildcard there: written at its home) and `okay-direct`'s macros, which name
+the symbols by their home. `Effects.loop` is `Free.loop`, exported with the four names.
+
+The build: `okayFreer` (JVM, JS, Native, no dependency), the core on it. The module rule "the core is
+dependency-free (specs/modules-infra.md)" was `forbid("okay(JVM|JS|Native)", ".*")`; now the freer monad is the
+dependency-free one and the core may depend on it alone, the kernel on either — the rule's sense (no library)
+kept, its letter moved one module down, in the spec.
+
+Checked: the core and the module on the JVM, JS and Native; the nearest core suites (TestEager, TestReflect,
+TestFreerPara, TestBangLoop, TestFoldCont, TestFoldMap, TestFoldUntil) and the whole `okay-direct` suite — 500
+green; the test classes of `okay-cont`, `okay-spring` and the core compile. Not run: the rest of the build's
+tests, for a change that is a rename of a home; the landing's whole-build pass is theirs.
+
+## Stage 30: THE MACHINE AS AN `Effects` ENCODING — `Prog`, `Head` (DONE, 2026-10-06)
+
+`Effects[M]` asks five things of an encoding — `pure`, `perform`, `defer`, `flatMap`, `foldCont` — and gives the
+rest by `reify`/`reflect` through `Free`; `Eager` is that shape. For the machine: `Prog[F, A]` is a program over
+a signature `F` of the core's kind (a union) as a FUNCTION of how `F` is performed at a context, into `Cont`:
+`def run(using d: Dispatch[F]): Cont[d.c.Here, d.c.Here, A]`, `Dispatch[F]` the one capability for the whole
+row where `Perform` is one per effect. `Effects[Prog]` is in the companion: `Effects[Prog]`, `prog[Prog]`,
+`summon[Effects[Prog]]` find it with no import, beside `Effects[Free]` and `Effects[Eager]`, and the encoding is
+chosen where the program is run — the extension syntax rides `import okay.cont.Prog.given`, as `Eager`'s does.
+
+Native here: `runWith(using Answers[F])` answers every operation in place at the top; `tailcall` is `Delay`;
+`foldCont[S](h)` runs the program under ONE delimiter at the top, every operation a capture to it, whose clause
+answers with `h(op).flatMap(x => Machine.value(k(x)))` — the captured rest is a run of its own, inside the
+continuation the core's `Cont` is given, and the next operation's clause returns from it at once, so the fold is
+constant-stack (100 000 operations, TestProg) and a multi-shot `h` works (every choice, in order). `handle`,
+`shift`, `reset`, `foldMap` are the interface's own, through `foldCont` and `reify`: a native `handle` against
+`h: F !> M[G, B]` would have to put a machine continuation, which is at ONE context, into a `Prog`, which is at
+any — not typeable without a claim, so not done; the machine's own `handle` is the fast path, and `Prog` is
+the bridge.
+
+What `foldCont` needed of the machine: a VALUE out of a run. `Machine.run` answered the head form it ran to, a
+`Cont`, which a match could read as a value only with a fallback arm; now it answers `Head[I, O, A]` — `Value(a)`
+at stacks unchanged, or `Out(c)` a capture handed out whole for a machine outside, whose index says the stacks
+have a level to go to (`At[D, R] *: O`): at the top there is none, so `Machine.value(p: Top[A]): A` is one
+total arm. The proof for `Out` is the capture's node — `cut`'s `Shift0` carries it, an `Op`'s `Reach` does — read
+in `out`, a method of its own: inside the loop, the nested match cost 18 % on `handlePrebuilt` (202.7 from
+171.4, a loop past the inlining budget, as the core found at `resume`); off it, 172.4 ± 3.0.
+
+Seven nodes, 42 tests on the JVM, JS and Native compile, no cast, no warning.

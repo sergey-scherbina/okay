@@ -1,6 +1,7 @@
 package okay.cont
 
 import Cont.*
+import Machine.value
 
 /** specs/freer-min.md, the machine: one rule per node, no cast, shift0 and reset, Danvy–Filinski's answer types */
 class TestMachine extends okay.testkit.Munit.Diagnosed:
@@ -13,11 +14,6 @@ class TestMachine extends okay.testkit.Munit.Diagnosed:
     def apply[X, Oc <: Ctx](using o: Oc)(op: Ask[X], k: X => Cont[o.Here, o.Here, A]): Cont[o.Here, o.Here, A] = op match
       case Ask.Number => k(n)
 
-  def value[A](p: Top[A]): A =
-    val head: Top[A] = Machine.run(p)
-    head match
-      case Return(a) => a
-      case other => fail(s"not a value: $other")
 
   test("shift: the continuation, delimiter included, applied twice"):
     assertEquals(value(reset[Int](shift0[Int](k => k(1).flatMap(k(_))).map(_ * 2))), 4)
@@ -69,9 +65,8 @@ class TestMachine extends okay.testkit.Munit.Diagnosed:
 
   test("a capture with no delimiter on the run is handed out as a head form, for a machine outside"):
     // the node itself, at a stack claiming a delimiter: the sugar refuses a capture with no delimiter in scope
-    val head = Machine.run(Shift0[EmptyTuple, EmptyTuple, EmptyTuple, Int, Int, Int](k => k(1)))
-    head match
-      case Bind(Shift0(_), _) => ()
+    Machine.run(Shift0[EmptyTuple, EmptyTuple, EmptyTuple, Int, Int, Int](k => k(1))) match
+      case Head.Out(Bind(Shift0(_), _)) => ()
       case other => fail(s"not a capture handed out: $other")
 
   test("an operation inside a delimiter reaches its handler outside: the delimiter forwards, and the run goes on"):
@@ -99,19 +94,20 @@ class TestMachine extends okay.testkit.Munit.Diagnosed:
     def escaping(using in: Under[Int]): (in.Body[Int], () => Int) =
       var saved: Int => Cont[in.D, in.D, Int] = null
       val body = shift0[Int](k => { saved = x => k(x); pure(0) }).map(_ + 1)
-      def run(): Int =
-        val head: Cont[in.D, in.D, Int] = Machine.run(saved(41))
-        head match
-          case Return(a) => a
-          case other => fail(s"not a value: $other")
+      def run(): Int = Machine.run(saved(41)) match
+        case Head.Value(a) => a
+        case other => fail(s"not a value: $other")
       (body, () => run())
     var later: () => Int = null
     assertEquals(value(reset[Int] { val (body, run) = escaping; later = run; body }), 0)
     assertEquals(later(), 42)
 
-  test("a run over a run allocates nothing: a head form handed out comes back as itself"):
-    val head = Machine.run(Shift0[EmptyTuple, EmptyTuple, EmptyTuple, Int, Int, Int](k => k(1)))
-    assert(Machine.run(head) eq head)
+  test("a run over a run allocates nothing but its end: a head form handed out comes back as itself"):
+    Machine.run(Shift0[EmptyTuple, EmptyTuple, EmptyTuple, Int, Int, Int](k => k(1))) match
+      case Head.Out(head) => Machine.run(head) match
+        case Head.Out(again) => assert(again eq head)
+        case other => fail(s"not handed out again: $other")
+      case other => fail(s"not a capture handed out: $other")
 
   test("the machine runs plain programs too: a million deferred calls, 100 000 left-nested maps"):
     def even(n: Int): Top[Boolean] = if n == 0 then pure(true) else delay(odd(n - 1))
