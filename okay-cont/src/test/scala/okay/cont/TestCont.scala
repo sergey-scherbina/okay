@@ -72,3 +72,22 @@ class TestCont extends okay.testkit.Munit.Diagnosed:
   test("100 000 left-nested maps run in constant stack"):
     val chain = (1 to 100000).foldLeft(pure(0): Top[Pure, Int])((p, _) => p.map(_ + 1))
     assertEquals(value(chain), 100000)
+
+  enum Choose[+A]:
+    case Flip extends Choose[Boolean]
+  def every[G[+_], A]: Handler[Choose, G, A, List[A]] = new Handler[Choose, G, A, List[A]]:
+    def ret(a: A): List[A] = List(a)
+    def apply[X, Oc <: Ctx](using o: Oc)(op: Choose[X], k: X => Cont[G, o.Here, o.Here, List[A]]): Cont[G, o.Here, o.Here, List[A]] = op match
+      case Choose.Flip => k(true).flatMap(xs => k(false).map(ys => xs ++ ys))
+
+  test("THREE HANDLERS, ONE CAPTURE EACH: Ask crosses two delimiters, Say one, under a multi-shot handler — every world, every line, in order"):
+    val prog: Top[Pure, (List[String], List[Int])] =
+      handle(reader[Pure, (List[String], List[Int])](10)):
+        handle(writer[Ask + Pure, List[Int]]):
+          handle(every[Say + (Ask + Pure), Int]):
+            for
+              a <- perform(Choose.Flip)
+              n <- perform(Ask.Number)
+              _ <- perform(Say.Line(s"$a$n"))
+            yield if a then n else -n
+    assertEquals(value(prog), (List("true10", "false10"), List(10, -10)))

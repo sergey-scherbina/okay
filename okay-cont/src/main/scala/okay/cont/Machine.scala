@@ -14,6 +14,12 @@ enum Frames[G[+_], -A, B, I <: Tuple, O <: Tuple] extends Piece[G, A, B, I, O]:
 /** a piece over the next segment: the hole's segments end in `X` at `T`, the segment takes `X` to `B` */
 final case class Over[G[+_], A0, X, B, I <: Tuple, T <: Tuple, O <: Tuple](prev: Piece[G, A0, X, T, O], out: Frames[G, X, B, I, T])
   extends Piece[G, A0, B, I, O]
+/** a piece over a level CROSSED: the inner level's piece, up to its delimiter's value `S1`, and that delimiter's own
+ * frames at this level, taking its answer `R1` to `B` — the delimiter put back on a resumption, the row it leaves
+ * within this level's */
+final case class Crossed[H1[+_], G[+_], Hf1[+A] <: G[A], D1 <: Tuple, S1, R1, X, B, I2 <: Tuple](
+    inner: Piece[H1, X, S1, At[H1, Hf1, D1, S1] *: D1, At[H1, Hf1, D1, R1] *: D1], out: Frames[G, R1, B, I2, D1])
+  extends Piece[G, X, B, I2, D1]
 
 /**
  * THE STACK: closes a level over `G` — value `B`, from `I` to `O` — into the run's result over `F`, from `I0` to
@@ -99,7 +105,7 @@ object Machine:
       // the three that move a level answer with the machine's next state, each where its node's types are names
       case r: Reset[h, hf, d, o, s, rr] => val n = enter[F, h, G, hf, d, o, s, rr, B, I, I0, O0, Z](r, k, m); go(n.c, n.k, n.m)
       case s: Shift0[h, hf, d, i, o, t, r, x] => val n = cut[F, G, x, t, B, I, r, o, I0, O0, Z, h, hf, d, i](s, s.f, k, m); go(n.c, n.k, n.m)
-      case s: Op[h, hf, d, ans, x] => val n = cutOp[F, G, x, B, I, ans, I0, O0, Z, h, hf, d](s, s.f, k, m); go(n.c, n.k, n.m)
+      case s: Op[n, x, hfn, dn, ansn] => val n = cutN[F, G, x, B, I, I0, O0, Z, n, hfn, dn, ansn, G, B, I, n](s.at, s.f, k, m, k, m); go(n.c, n.k, n.m)
       case r: Resume[hf, d, i, x, t] => val n = resume[F, G, hf, d, i, x, t, B, I, I0, O0, Z](r, k, m); go(n.c, n.k, n.m)
 
   /** into the delimiter: its level pushed, the body at its start */
@@ -117,6 +123,7 @@ object Machine:
       x: A0, piece: Piece[G, A0, A, I, O], m: Stack[F, G, A, I, O, I0, O0, Z]): Step[F, I0, O0, Z] =
     piece match
       case Over(prev, out) => under(x, prev, Stack.Run(out, m))
+      case Crossed(inner, out) => under(x, inner, Stack.Delim(out, m))
       case e @ Frames.End() => step(Return(x), e, m)
       case f @ Frames.Frame(_, _) => step(Return(x), f, m)
 
@@ -139,31 +146,46 @@ object Machine:
       [X, T, Ik <: Tuple](piece: Piece[H, X, S, At[H, Hf, D, S] *: D, At[H, Hf, D, T] *: Ik], f: (X => Cont[Hf, D, Ik, T]) => Cont[Hf, D, O, R]): Step[F, I0, O0, Z] =
     step(f(Captured(piece)), d.out, d.rest)
 
-  /** `cut` for an operation: the same walk; at the delimiter the clause, and if it returned `k(x)` as its whole body,
-   * `x` under the delimiter as it stands — the same `Delim`, nothing built */
-  @tailrec private def cutOp[F[+_], G[+_], X, A, I <: Tuple, Ans, I0 <: Tuple, O0 <: Tuple, Z, H[+_], Hf[+_], D <: Tuple](
-      c: Cont[G, At[H, Hf, D, Ans] *: D, At[H, Hf, D, Ans] *: D, X], f: (X => Cont[Hf, D, D, Ans]) => Cont[Hf, D, D, Ans],
-      piece: Piece[G, X, A, I, At[H, Hf, D, Ans] *: D], m: Stack[F, G, A, I, At[H, Hf, D, Ans] *: D, I0, O0, Z]): Step[F, I0, O0, Z] =
+  /** `cut` for an operation: the walk to its handler's delimiter, `at` levels out — a delimiter between is CROSSED,
+   * its record into the piece, the walk going on at the level outside, whose index the reach names; at the target,
+   * the clause, and if it returned `k(x)` as its whole body, `x` where the operation was, the stack as it stands
+   * (`k0`, `m0`); the run's bottom instead hands the operation out, with the reach left, as a program of the run */
+  @tailrec private def cutN[F[+_], G[+_], X, A, I <: Tuple, I0 <: Tuple, O0 <: Tuple, Z, N <: Tuple, Hfn[+_], Dn <: Tuple, Ansn, G0[+_], B0, Ih <: Tuple, N0 <: Tuple](
+      at: Reach[N, Hfn, Dn, Ansn], f: (X => Cont[Hfn, Dn, Dn, Ansn]) => Cont[Hfn, Dn, Dn, Ansn],
+      piece: Piece[G, X, A, I, N], m: Stack[F, G, A, I, N, I0, O0, Z],
+      k0: Frames[G0, X, B0, Ih, N0], m0: Stack[F, G0, B0, Ih, N0, I0, O0, Z]): Step[F, I0, O0, Z] =
     m match
-      case Stack.Run(out, rest) => cutOp(c, f, Over(piece, out), rest)
-      case d @ Stack.Delim(_, _) => foundOp(d)[X](piece, f)
+      case Stack.Run(out, rest) => cutN(at, f, Over(piece, out), rest, k0, m0)
+      case d @ Stack.Delim(_, _) => at match
+        case Reach.Here() => foundN(d)[X, G0, B0, Ih, N0](piece, f, k0, m0)
+        case Reach.Out(next) => cutN(next, f, crossed(d)[X](piece), d.rest, k0, m0)
       case Stack.Done() =>
-        val n = link(piece, Stack.Done[F, A, I, At[H, Hf, D, Ans] *: D]())
-        step(Bind(c, n), Frames.End(), Stack.Done())
+        val n = link(piece, Stack.Done[F, A, I, N]())
+        step(Bind(Op(at, f), n), Frames.End(), Stack.Done())
 
-  private def foundOp[F[+_], H[+_], G0[+_], Hf[+A] <: G0[A], D <: Tuple, S, Ans, B0, I2 <: Tuple, I0 <: Tuple, O0 <: Tuple, Z](
+  /** the delimiter crossed: the piece so far under its record, a piece of the level outside, at the delimiter's
+   * outside — which the reach names as the next level's index */
+  private def crossed[F[+_], H[+_], G0[+_], Hf[+A] <: G0[A], D <: Tuple, S, R, B0, I2 <: Tuple, I0 <: Tuple, O0 <: Tuple, Z](
+      d: Stack.Delim[F, H, G0, Hf, D, D, S, R, B0, I2, I0, O0, Z])[X](piece: Piece[H, X, S, At[H, Hf, D, S] *: D, At[H, Hf, D, R] *: D])
+    : Piece[G0, X, B0, I2, D] =
+    Crossed(piece, d.out)
+
+  private def foundN[F[+_], H[+_], G0[+_], Hf[+A] <: G0[A], D <: Tuple, S, Ans, B0, I2 <: Tuple, I0 <: Tuple, O0 <: Tuple, Z](
       d: Stack.Delim[F, H, G0, Hf, D, D, S, Ans, B0, I2, I0, O0, Z])
-      [X](piece: Piece[H, X, S, At[H, Hf, D, S] *: D, At[H, Hf, D, Ans] *: D], f: (X => Cont[Hf, D, D, Ans]) => Cont[Hf, D, D, Ans]): Step[F, I0, O0, Z] =
+      [X, Gh[+_], Bh, Ih <: Tuple, N0 <: Tuple](
+      piece: Piece[H, X, S, At[H, Hf, D, S] *: D, At[H, Hf, D, Ans] *: D], f: (X => Cont[Hf, D, D, Ans]) => Cont[Hf, D, D, Ans],
+      k0: Frames[Gh, X, Bh, Ih, N0], m0: Stack[F, Gh, Bh, Ih, N0, I0, O0, Z]): Step[F, I0, O0, Z] =
     val captured = Captured(piece)
     val body = f(captured)
     val r = captured.tail(body)
-    if r != null then under(r.x, piece, d) else step(body, d.out, d.rest)
+    if r != null then step(Return(r.x), k0, m0) else step(body, d.out, d.rest)
 
   /** the piece put back over `m`: a value due at the hole */
   @tailrec private[cont] def link[F[+_], G[+_], A0, A, I <: Tuple, O <: Tuple, I0 <: Tuple, O0 <: Tuple, Z](
       piece: Piece[G, A0, A, I, O], m: Stack[F, G, A, I, O, I0, O0, Z]): Resumption[F, A0, I0, O0, Z] =
     piece match
       case Over(prev, out) => link(prev, Stack.Run(out, m))
+      case Crossed(inner, out) => link(inner, Stack.Delim(out, m))
       case e @ Frames.End() => resumption(e, m)
       case f @ Frames.Frame(_, _) => resumption(f, m)
 

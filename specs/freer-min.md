@@ -1224,3 +1224,40 @@ The operator: how, without a capture through the delimiters? Four things, each m
   handler as fields (one allocation of about thirteen a forwarded operation).
 
 Seven nodes. 32 tests on the JVM, JS and Native compile, no cast, no warning.
+
+## Stage 25: ONE CAPTURE THROUGH THE DELIMITERS BETWEEN (DONE, 2026-10-06)
+
+The operator asked again, and the proof was there: not on a level's IN index, which its frames move freely, but on
+its OUT index, `O` of `Stack`, which is one along the level — `Run` keeps it — and to which the next delimiter's
+record is tied: `At[H2, Hf2, D2, R2] *: O2 = D1`. And `D1` the node knows structurally, from the context. So an
+operation can name how far its handler is, and the machine can cross the delimiters between, proving each one is
+the one named. Stage 23's "not typeable" looked at the wrong index.
+
+- `Reach[N, Hfn, Dn, Ansn]`: from the index `N` the operation is performed at, `Here` (the nearest delimiter is the
+  handler's: its row left, stacks outside and answer are `N`'s head's) or `Out(next)` (the nearest's outside IS
+  the next level's index, the reach goes on from there). `Op[N, X, Hfn, Dn, Ansn](at: Reach[N, …], f)` is the
+  operation, at the row `Pure`: the index places it, the row of its level is the index's head, and so it is a
+  program of any run it is handed out of (the hand-out at a run's bottom is `Bind(Op(at, f), rest)` — the reach
+  left, from the run's level).
+- The machine's `cutN` walks the reach in lockstep with the stack: at a delimiter with `Here` the clause; with
+  `Out` the delimiter is CROSSED, its record into the piece (`Crossed(inner, out)`: the inner level's piece to the
+  delimiter's value, and the delimiter's own frames outside), the walk going on at `d.rest`, whose out index the
+  reach names as the next level's. `under` and `link` put a `Crossed` back as a `Delim` over the level outside.
+  The tail resumption is now answered at the HOLE'S own `(k, m)`, kept through the walk — nothing re-linked at
+  all, at any depth. A dotty note: the recursive call across a level must go through a helper typed by the
+  delimiter (`crossed(d)[X](piece)`): inference of the piece's new index through the GADT aliases fails inline.
+- `Reaches[E, C]` finds the handler through the context's types and builds the reach and the clause from the
+  context VALUE (`target(c)`, dependent: the levels' indices are paths); `here` for the handler's own context,
+  `out` for one level further. No row bound any more: the clause runs at the handler's outside, nothing of an
+  inner level runs anywhere else. `Perform` chooses `answered` (in place), else `reaches` (one capture).
+- Measured, `handlePrebuilt`, general clauses, 99 % forwarded through a delimiter: 184.4 ± 3.8 µs, from 261.5 —
+  1.4× master's 133.2 (was 2.0×). Three handlers with a multi-shot one inside, `Ask` crossing two delimiters,
+  `Say` one: every world, every line, in order (TestCont).
+
+What this shows, for the next stage: an operation's effect is checked by the CONTEXT CHAIN alone — `perform` needs
+a `Handling[E, …]` reachable through the context's types — and the `Op` node is at `Pure`. The row `G` of a program
+no longer says what it performs; the rows `H`, `Hf` in a level's entry are consulted by nothing but `handle`'s own
+annotation. Rows may leave the monad: `Cont[I, O, A]`, the index the handlers in force, as the operator said at
+the start — two stacks.
+
+Seven nodes, 33 tests on the JVM, JS and Native compile, no cast, no warning.
