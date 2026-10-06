@@ -189,7 +189,9 @@ The existing Render path still pushes decomposable core sufficient statistics.
 Holistic aggregates and windows materialize rows. `model.plan` has a default
 `maxRows` of 1,000,000; collection and transport paths return a diagnosed error
 on overflow. Bulk merges retain at most maxRows + 1 observations; no partition
-is silently dropped. Lookup tables have the same budget; Table.of accepts its
+is silently dropped. Plans and default functions are serializable for distributed
+Bulk workers; host readers and custom functions must capture serializable state.
+Lookup tables have the same budget; Table.of accepts its
 own explicit limit. The parser rejects nesting beyond 128 descent levels and
 limits decimal rounding scale to 10,000. Streaming transports must complete;
 these are terminal analytics plans rather than continuously updating views.

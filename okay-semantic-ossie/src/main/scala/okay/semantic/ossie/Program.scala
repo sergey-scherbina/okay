@@ -3,7 +3,7 @@ package okay.semantic.ossie
 import okay.semantic.Value
 
 /** A vendor adapter returns portable expression text; it never executes source SQL. */
-trait Language:
+trait Language extends Serializable:
   def normalize(dialect: String, expression: String): Either[String,String]
 object Language:
   val portable: Language = new Language:

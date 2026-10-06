@@ -22,3 +22,18 @@ class TestExpressionSources extends okay.testkit.Munit.Diagnosed:
     val source: Source[Sale] = Source(rows.head).flatMap(_ => effect[Writer % Sale + Async,Unit](Async.Run(() => throw IllegalStateException("source failed"))))
     assertEquals(intercept[IllegalStateException](plan.source(source).runWith).getMessage,"source failed")
   }
+
+  test("portable expression plans serialize for distributed Bulk workers") {
+    val bytes = new java.io.ByteArrayOutputStream()
+    val output = new java.io.ObjectOutputStream(bytes)
+    try output.writeObject(plan) finally output.close()
+    val input = new java.io.ObjectInputStream(new java.io.ByteArrayInputStream(bytes.toByteArray))
+    val restored = try input.readObject() finally input.close()
+    restored match
+      case p: ExpressionPlan[?] =>
+        note(s"serialized ${bytes.size()} bytes")
+        assertEquals(p.explain,plan.explain)
+        assertEquals(p.request,plan.request)
+        assertEquals(p.run(Vector.empty),plan.run(Vector.empty))
+      case _ => fail("restored object is not an ExpressionPlan")
+  }

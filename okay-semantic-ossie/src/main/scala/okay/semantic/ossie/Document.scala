@@ -22,7 +22,7 @@ final case class Metric(name: String, expression: Expression, description: Optio
 
 /** Immutable source tree preserves optional-property presence and opaque metadata. */
 final class Document private (val raw: Json, val name: String, val datasets: Vector[Dataset],
-                             val relationships: Vector[Relationship], val metrics: Vector[Metric]):
+                             val relationships: Vector[Relationship], val metrics: Vector[Metric]) extends Serializable:
   val version: String = Document.version
   def description: Option[String] = Read.optionalString(raw, "description")
   def aiContext: Option[Json] = Read.get(raw, "ai_context")

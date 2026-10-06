@@ -4,7 +4,7 @@ import okay.semantic.Value
 import Value.*
 
 /** Pure scalar functions. Implementations must declare arity before execution. */
-trait Functions:
+trait Functions extends Serializable:
   def accepts(name: String, arity: Int): Boolean
   def call(name: String, arguments: Vector[Value]): Either[String,Value]
 object Functions:

@@ -100,7 +100,7 @@ object Execution:
       else Left(s"${if fields.isEmpty then "unknown" else "ambiguous"} field ${name.text}")
 
 final class ExpressionModel[A] private[ossie] (val document: Document, val dataset: String, val bindings: Bindings[A],
-    private[ossie] val programs: Map[String,Bound], private[ossie] val ordered: Vector[String], private[ossie] val functions: Functions):
+    private[ossie] val programs: Map[String,Bound], private[ossie] val ordered: Vector[String], private[ossie] val functions: Functions) extends Serializable:
   def plan(request: Request, via: Vector[String] = Vector.empty, maxRows: Int = 1000000): Either[Vector[String],ExpressionPlan[A]] =
     val errors = scala.collection.mutable.ArrayBuffer.empty[String]
     val dimensionNames = (request.dimensions ++ request.filters.map(_.dimension)).distinct
@@ -192,7 +192,7 @@ final class ExpressionModel[A] private[ossie] (val document: Document, val datas
 
 final class ExpressionPlan[A] private[ossie] (val model: ExpressionModel[A], val request: Request,
     selected: Vector[String], dimensions: Map[String,FieldKey], routes: Map[String,Vector[Relationship]],
-    shell: okay.semantic.Plan[Unit], val maxRows: Int):
+    shell: okay.semantic.Plan[Unit], val maxRows: Int) extends Serializable:
   def explain: String = s"portable expression plan; dataset ${model.dataset}; row -> group -> window -> having/order/page; row budget $maxRows; metrics ${selected.mkString(", ")}; joins ${routes.values.flatten.map(_.name).toVector.distinct.mkString(", ")}"
   def run(rows: IterableOnce[A], tables: Map[String,Table] = Map.empty): Either[Vector[String],Result] =
     val errors = scala.collection.mutable.ArrayBuffer.empty[String]
