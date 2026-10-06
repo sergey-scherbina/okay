@@ -67,12 +67,13 @@ class TestMachine extends okay.testkit.Munit.Diagnosed:
     note(errors)
     assert(errors.contains("In["), errors)
 
-  test("a program that claims a delimiter it did not install cannot be run"):
-    val errors = compileErrors("""
-      val claims: Freer[Pure, Entry[Pure, Unit, Int] *: EmptyTuple, Unit, Unit, Int] = pure(1)
-      Machine.run(claims)""")
-    note(errors)
-    assert(errors.nonEmpty)
+  test("a run at a stack with a delimiter claimed but not installed hands the capture out as a head form"):
+    // a run may be nested in a delimiter's body (a handler's); a capture reaching its bottom is for the machine outside
+    def claims(using In[P *: EmptyTuple]): Freer[Pure, P *: EmptyTuple, Unit, Unit, Int] = shift0[Int](d)(k => k(1))
+    val head = Machine.run(claims(using In()))
+    head match
+      case Bind(Shift0(_), _) => ()
+      case other => fail(s"not a capture handed out: $other")
 
   test("answer-type modification across shift0: a Put in the body moves the state Int -> String"):
     // the index-moving forms are the nodes themselves, their indexes named

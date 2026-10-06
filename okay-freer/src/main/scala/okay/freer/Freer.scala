@@ -16,6 +16,29 @@ type Entry[H[_, _, +_], S, Y] = At[Freer[H, EmptyTuple, S, S, Y]]
 final class In[Σ <: Tuple]
 given top: In[EmptyTuple] = In()
 
+/** the witness that the row `G` lies inside `F`: a polymorphic identity, made where the compiler knows it */
+trait Widen[G[_, _, +_], F[_, _, +_]]:
+  def apply[Σ <: Tuple, S, R, A](p: Freer[G, Σ, S, R, A]): Freer[F, Σ, S, R, A]
+  def andThen[E[_, _, +_]](next: Widen[F, E]): Widen[G, E] =
+    val self = this
+    new Widen[G, E]:
+      def apply[Σ <: Tuple, S, R, A](p: Freer[G, Σ, S, R, A]): Freer[E, Σ, S, R, A] = next(self(p))
+object Widen:
+  def refl[F[_, _, +_]]: Widen[F, F] = new Widen[F, F]:
+    def apply[Σ <: Tuple, S, R, A](p: Freer[F, Σ, S, R, A]): Freer[F, Σ, S, R, A] = p
+
+/** every delimiter in force has a row inside `G`: what a handler over `E + G`, answering `E` and leaving `G`,
+ * needs to let a capture through — a capture's body runs at its delimiter, outside the handler, and may only use
+ * what the delimiter's row allows. Found by givens on the concrete stack, walked by the handler on the abstract
+ * one; what it yields is the `Widen` of the delimiter the capture names */
+enum Within[Σ <: Tuple, G[_, _, +_]]:
+  case Empty[G[_, _, +_]]() extends Within[EmptyTuple, G]
+  case Head[H[_, _, +_], S, Y, T <: Tuple, G[_, _, +_]](w: Widen[H, G], rest: Within[T, G]) extends Within[Entry[H, S, Y] *: T, G]
+object Within:
+  given empty[G[_, _, +_]]: Within[EmptyTuple, G] = Empty()
+  given head[G[_, _, +_], H[S1, R1, +A1] <: G[S1, R1, A1], S, Y, T <: Tuple](using rest: Within[T, G]): Within[Entry[H, S, Y] *: T, G] =
+    Head(new Widen[H, G] { def apply[Σ <: Tuple, S2, R2, A2](p: Freer[H, Σ, S2, R2, A2]): Freer[G, Σ, S2, R2, A2] = p }, rest)
+
 /**
  * `(A => S) => R`, or `R => (S, A)`, over the row `G`, under the delimiters `Σ`. The pair `S`, `R` is the answer
  * type (what an operation moves); the stack `Σ` says which delimiters are in force, and its HEAD is the one a

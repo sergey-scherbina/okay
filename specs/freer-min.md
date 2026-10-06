@@ -712,3 +712,41 @@ node that carries `S = R` so a handler recovers the middle index with no
 cast; `Perform` stays for the index-moving operations (`PState`, a
 protocol's steps). Eight nodes. 20 tests on the JVM, JS and Native
 compile, no cast in the kernel.
+
+## Stage 9 — what the delimiter stack means for effects (DONE, 2026-10-06)
+
+The operator's question: with the fifth parameter kept, what is the whole,
+and how does it touch effects? Measured by building the one thing it
+touches: a handler INSIDE a delimiter, crossed by a capture.
+
+- Effects themselves: not at all. An operation carries no stack; `inject`
+  and `perform` are polymorphic in it; a handler is a loop over head forms.
+- A program with no capture is written polymorphic in the stack (`def
+  one[Σ <: Tuple]`), or at the stack it is for; a `val` is at one stack.
+- A handler can live inside a delimiter: `Machine.run` runs at ANY stack
+  (`Done` at any `Σ`, the run's own stack `Σ0` a parameter of `Stack`),
+  and a capture that reaches the run's bottom is handed out as a head
+  form, `Bind(shift, rest)`, exactly as an operation is (`Cut.Gone`; the
+  equality of the run's stack and the capture's is a field, an `=:=`,
+  because the reachability check treats a method's type parameter as
+  rigid). The handler passes it through with its own continuation
+  re-wrapped, state in the closure, so the capture is multi-shot through
+  the handler: TestHandlers resumes twice through a counting handler and
+  the count replays (answer 3).
+- To let a capture through, a handler that REMOVES an effect from the row
+  needs one fact: every delimiter in force has a row inside what it
+  leaves (`Within[Σ, G]`, a GADT found by givens on the concrete stack and
+  walked on the abstract one); it yields the delimiter's own `Widen`, and
+  the capture's node widens by it — no cast. This is what the stack buys
+  for effects: a handler KNOWS the rows of the delimiters around it. The
+  capture's body runs at its delimiter, outside the handler, so it may
+  only use what the delimiter's row allows, and the type says so.
+- What stays a claim, outside the kernel: a handler answering `Counter` by
+  class on a row `Diag[Counter] + G` claims `G` holds no `Counter` and
+  that the union's other half is `G`'s — master's `Distinct[E + F]`; the
+  test states it in one function, twice `@unchecked`, with the reason.
+
+`run` taking any stack replaces "a program under a claimed delimiter cannot
+be run" with "its capture is handed out"; a consumer at the top types its
+parameter at `EmptyTuple` to forbid it. 21 tests on the JVM, JS and Native
+compile, no cast in the kernel.
