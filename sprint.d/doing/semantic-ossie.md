@@ -1,0 +1,1 @@
+- [ ] semantic-ossie — version-pinned Apache Ossie core document model, validation, JSON/YAML import/export preserving metadata, explicit supported-expression binding to okay-semantic; cross-platform tests and docs. Spec: specs/semantic-ossie.md. No ontology reasoning or arbitrary SQL execution.
