@@ -180,6 +180,8 @@ class TestExpressions extends okay.testkit.Munit.Diagnosed:
     assert(typed.run(input).left.toOption.get.exists(_.contains("declared type")))
     val condition = expressionModel("answer" -> "SUM(amount) FILTER (WHERE amount)").plan(Request(Vector("answer"))).toOption.get
     assert(condition.run(input).left.toOption.get.exists(_.contains("Boolean")))
+    val invalidIf = expressionModel("answer" -> "IF(SUM(amount), 1, 0)").plan(Request(Vector("answer"))).toOption.get
+    assert(invalidIf.run(input).left.toOption.get.exists(_.contains("Boolean")))
     val huge = input.take(2).zipWithIndex.map((r,i) => r.copy(amount = Some(BigDecimal(if i == 0 then "1e1000" else "-1e1000"))))
     val standardDeviation = expressionModel("answer" -> "STDDEV(amount)").plan(Request(Vector("answer"))).toOption.get
     assert(standardDeviation.run(huge).left.toOption.get.exists(_.contains("finite floating-point range")))

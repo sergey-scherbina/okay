@@ -42,4 +42,6 @@ class TestSemanticArrow extends okay.testkit.Munit.Diagnosed:
     assertEquals(ArrowData.table(expression,table),expression.run(rows))
     assertEquals(ArrowData.ipc(expression,summon[ArrowCodec].write(table)),expression.run(rows))
     assert(ArrowData.ipc(expression,Array[Byte](1,2,3)).isLeft)
+    val limited = Execution.bind(document,"events",bindings).toOption.get.plan(Request(Vector("median")),maxRows = 1).toOption.get
+    assert(ArrowData.table(limited,table).isLeft)
   }

@@ -38,7 +38,10 @@ object Functions:
         scala.util.Try {
           name match
             case "COALESCE" | "IFNULL" | "NVL" => a.find(_ != Null).getOrElse(Null)
-            case "IF" | "IFF" => if a(0) == Bool(true) then a(1) else a(2)
+            case "IF" | "IFF" => a(0) match
+              case Bool(true) => a(1)
+              case Bool(false) | Null => a(2)
+              case _ => throw new IllegalArgumentException("IF condition must be Boolean")
             case "NVL2" => if a(0) != Null then a(1) else a(2)
             case "ZEROIFNULL" => if a.head == Null then Number(BigDecimal(0)) else a.head
             case "NULLIFZERO" => if a.head == Number(BigDecimal(0)) then Null else a.head
@@ -64,7 +67,10 @@ object Functions:
               Value.compare(x,y) match
                 case Some(c) => if (c >= 0) == (name == "GREATEST") then x else y
                 case None => throw new IllegalArgumentException("incomparable arguments"))
-            case "BETWEEN" => Bool(Value.compare(a(0),a(1)).exists(_ >= 0) && Value.compare(a(0),a(2)).exists(_ <= 0))
+            case "BETWEEN" =>
+              val low = Value.compare(a(0),a(1)).getOrElse(throw new IllegalArgumentException("BETWEEN incomparable operands"))
+              val high = Value.compare(a(0),a(2)).getOrElse(throw new IllegalArgumentException("BETWEEN incomparable operands"))
+              Bool(low >= 0 && high <= 0)
             case "CONCAT" => Text(a.map(text).mkString)
             case "LOWER" => Text(text(a.head).toLowerCase)
             case "UPPER" => Text(text(a.head).toUpperCase)

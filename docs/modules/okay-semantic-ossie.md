@@ -180,7 +180,9 @@ A Bulk file reader feeds the same `bulk` method, so Parquet and other registered
 file formats use the same semantics. ArrowData.table/ipc accept expression plans
 and decode with the caller's Schema. ExpressionSql executes an identifier-only
 physical table/column projection with an explicitly typed row decoder, then runs
-the portable plan. This fallback supports median, CASE and windows regardless of
+the portable plan. Data Api.local/source also accept expression models and expose
+the same JSON query protocol for HTTP or tool transports. This fallback supports
+median, CASE and windows regardless of
 the database's native function catalogue. It does not push these expressions down.
 The existing Render path still pushes decomposable core sufficient statistics.
 

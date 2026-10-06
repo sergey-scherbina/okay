@@ -2166,7 +2166,7 @@ lazy val okaySemantic = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 lazy val okaySemanticData = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-semantic-data"))
-  .dependsOn(okaySemantic, okayStream, okayCodec, okayTest % "test->compile")
+  .dependsOn(okaySemantic, okaySemanticOssie, okayStream, okayCodec, okayTest % "test->compile")
   .settings(
     name := "okay-semantic-data",
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % "optional;test",
