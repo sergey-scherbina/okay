@@ -74,7 +74,7 @@ object Machine:
           case Stack.Delim(up, subOut, out, rest) => go(up(Return(a)), out, rest, subOut)
       case Bind(c0, f) => f match
         case _: Resumption[?, ?, ?, ?, ?, ?, ?, ?, ?] => c0 match
-          case Perform(_) => k match
+          case Inject(_) | Perform(_) => k match
             case Frames.End() => m match
               case Stack.Done() => sub(c)
               case _ => go(c0, Frames.Frame(f, k), m, sub)
@@ -82,6 +82,7 @@ object Machine:
           case _ => go(c0, Frames.Frame(f, k), m, sub)
         case _ => go(c0, Frames.Frame(f, k), m, sub)
       case Delay(t) => go(t(), k, m, sub)
+      case Inject(op) => Bind(sub(Inject(op)), Resumption(k, m, sub))
       case Perform(op) => Bind(sub(Perform(op)), Resumption(k, m, sub))
       case r: Reset[h, ?, ?, ?, ?] =>
         val up = new Widen[h, G]:

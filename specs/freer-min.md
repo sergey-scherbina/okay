@@ -703,3 +703,12 @@ foreign unary type (`IO`, `ZIO[R, E, *]`) cannot be declared so and
 needs a lifting signature of its own, one case class, one allocation
 per foreign operation. `Inject` would be the one node that pays both
 at once; it is a one-node addition if the costs prove too high.
+
+## Stage 8 — unary effects and `Inject` back (DONE, 2026-10-06)
+
+The operator's decision after stage 7's costs: effects are unary again,
+`enum Ask[+A]`, entering the row as `Diag[F]` through `Inject`, the one
+node that carries `S = R` so a handler recovers the middle index with no
+cast; `Perform` stays for the index-moving operations (`PState`, a
+protocol's steps). Eight nodes. 20 tests on the JVM, JS and Native
+compile, no cast in the kernel.

@@ -6,11 +6,10 @@ import Freer.*
 /** specs/freer-min.md: the tree on its own — ternary effects, rows built by flatMap, dispatch without a cast, the
  * answer pair as a type-changing state, the handler's rest */
 class TestFreer extends okay.testkit.Munit.Diagnosed:
-  /** a unary effect in ZIO's shape: its operations on the diagonal, polymorphic in the index */
-  enum Ask[S, R, +A]:
-    case Number[T]() extends Ask[T, T, Int]
-  enum Say[S, R, +A]:
-    case Line[T](s: String) extends Say[T, T, Unit]
+  enum Ask[+A]:
+    case Number extends Ask[Int]
+  enum Say[+A]:
+    case Line(s: String) extends Say[Unit]
   enum Cnt[S, R, +A]:
     case Tick[T]() extends Cnt[T, T, Unit]
   /** type-changing state (Atkey), read `R => (S, A)`: before `R`, after `S` */
@@ -18,30 +17,27 @@ class TestFreer extends okay.testkit.Munit.Diagnosed:
     case Get[S]() extends PState[S, S, S]
     case Put[S, T](t: T) extends PState[T, S, Unit]
 
-  type Fx = Ask + Say
+  type Fx = Diag[Ask] + Diag[Say]
   type Top[G[_, _, +_], A] = Freer[G, EmptyTuple, Unit, Unit, A]
 
   /** a program with no capture is polymorphic in the delimiter stack */
   def one[Σ <: Tuple]: Freer[Fx, Σ, Unit, Unit, Int] =
     for
-      n <- perform(Ask.Number[Unit]())
-      _ <- perform(Say.Line[Unit](n.toString))
+      n <- inject(Ask.Number)
+      _ <- inject(Say.Line(n.toString))
     yield n + 1
 
-  /** one operation answered: a type test on the union picks the signature, the GADT match on its diagonal operation
-   * recovers the middle index `T` and the value — no cast */
-  def step[T, X, B](op: Ask[T, Unit, X] | Say[T, Unit, X], k: X => Freer[Fx, EmptyTuple, Unit, T, B], in: Int,
-                    out: StringBuilder): Top[Fx, B] = op match
-    case a: Ask[T, Unit, X] => a match
-      case Ask.Number() => k(in)
-    case s: Say[T, Unit, X] => s match
-      case Say.Line(l) => out.append(l).append('\n'): Unit; k(())
+  /** one operation answered: `Inject` gave `T = R`, the pointwise bound gives the dispatch — no cast */
+  def step[X, B](op: Ask[X] | Say[X], k: X => Top[Fx, B], in: Int, out: StringBuilder): Top[Fx, B] = op match
+    case Ask.Number => k(in)
+    case Say.Line(l) => out.append(l).append('\n'): Unit; k(())
 
   @tailrec final def run[A](p: Top[Fx, A], in: Int, out: StringBuilder): A =
     val head: Top[Fx, A] = Machine.run(p)
     head match
       case Return(a) => a
-      case Bind(Perform(op), k) => run(step(op, k, in, out), in, out)
+      case Bind(h, k) => (h: @unchecked) match
+        case Inject(op) => run(step(op, k, in, out), in, out)
       case other => fail(s"not handled: $other")
 
   @tailrec final def runState[S, R, A](p: Freer[PState, EmptyTuple, S, R, A], s: R): (S, A) =
@@ -59,13 +55,13 @@ class TestFreer extends okay.testkit.Munit.Diagnosed:
       case Return(a) => a
       case other => fail(s"not a value: $other")
 
-  test("a for over two ternary signatures builds the union row, and runs"):
+  test("a for over two signatures builds the union row, and runs"):
     val out = StringBuilder()
     assertEquals(run(one, 41, out), 42)
     assertEquals(out.toString.trim, "41")
 
   test("(F + G) + F is accepted where F + G is expected; pure is a program of every row"):
-    val two: Top[Fx, Int] = one.flatMap(a => perform(Ask.Number[Unit]()).map(_ + a))
+    val two: Top[Fx, Int] = one.flatMap(a => inject(Ask.Number).map(_ + a))
     val three: Top[Fx, Int] = pure(3)
     val out = StringBuilder()
     assertEquals(run(two, 41, out), 83)
@@ -85,20 +81,20 @@ class TestFreer extends okay.testkit.Munit.Diagnosed:
     assertEquals(runState(prog, 1), ("42", 2))
 
   test("a handler's rest infers positionally"):
-    type Rest = Say + Cnt
-    val three: Top[Ask + Rest, Int] =
+    type Rest = Diag[Say] + Cnt
+    val three: Top[Diag[Ask] + Rest, Int] =
       for
-        n <- perform(Ask.Number[Unit]())
-        _ <- perform(Say.Line[Unit]("x"))
-        _ <- perform(Cnt.Tick[Unit]())
+        n <- inject(Ask.Number)
+        _ <- inject(Say.Line("x"))
+        _ <- Freer.Inject(Cnt.Tick[Unit]())
       yield n
-    def runAsk[G[_, _, +_], A](p: Top[Ask + G, A]): Top[G, A] = p.asInstanceOf[Top[G, A]]
+    def runAsk[G[_, _, +_], A](p: Top[Diag[Ask] + G, A]): Top[G, A] = p.asInstanceOf[Top[G, A]]
     val typed: Top[Rest, Int] = runAsk(three)
     assert(typed.isInstanceOf[Bind[?, ?, ?, ?, ?, ?, ?]])
 
   test("a delimiter is a node of the tree, in a row with the effects"):
     val d = Delimiter[Fx, Unit, Int]()
-    val c: Top[Fx, Int] = reset(d)(one).flatMap(y => perform(Ask.Number[Unit]()).map(_ + y))
+    val c: Top[Fx, Int] = reset(d)(one).flatMap(y => inject(Ask.Number).map(_ + y))
     assertEquals(run(c, 1, StringBuilder()), 3)
 
   test("delay and defer: a million mutual tail calls in constant stack, through the one loop"):

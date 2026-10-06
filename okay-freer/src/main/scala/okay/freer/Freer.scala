@@ -4,6 +4,8 @@ import scala.annotation.unused
 
 type Pure = [S, R, A] =>> Nothing
 infix type +[G[_, _, +_], H[_, _, +_]] = [S, R, A] =>> G[S, R, A] | H[S, R, A]
+/** a unary signature as a row: its operations stand at the diagonal, and the indexes are not its business */
+type Diag[F[+_]] = [S, R, A] =>> F[A]
 
 /** an entry of the delimiter stack: the delimiter's row, answer index and value, as the inhabited program type
  * `Freer[H, EmptyTuple, S, S, Y]`, wrapped invariantly. No name: the nearest delimiter is the head of the stack */
@@ -17,10 +19,14 @@ given top: In[EmptyTuple] = In()
 /**
  * `(A => S) => R`, or `R => (S, A)`, over the row `G`, under the delimiters `Σ`. The pair `S`, `R` is the answer
  * type (what an operation moves); the stack `Σ` says which delimiters are in force, and its HEAD is the one a
- * capture goes to. Seven nodes; every operation is three-place, on the diagonal or moving the index.
+ * capture goes to. Eight nodes.
  */
 enum Freer[+G[_, _, +_], Σ <: Tuple, S, R, +A]:
   case Return[Σ <: Tuple, R, A](a: A) extends Freer[Pure, Σ, R, R, A]
+  /** a DIAGONAL operation: the equation `S = R` on the node, so a unary effect's handler recovers the middle index
+   * with no cast; a unary signature enters here, as `Diag[F]` */
+  case Inject[G[_, _, +_], Σ <: Tuple, T, A](op: G[T, T, A]) extends Freer[G, Σ, T, T, A]
+  /** an operation that MOVES the index: a type-changing state, a step of a protocol */
   case Perform[G[_, _, +_], Σ <: Tuple, S, R, A](op: G[S, R, A]) extends Freer[G, Σ, S, R, A]
   case Bind[G[_, _, +_], Σ <: Tuple, S, T, R, A, B](m: Freer[G, Σ, T, R, A], k: A => Freer[G, Σ, S, T, B]) extends Freer[G, Σ, S, R, B]
   case Delay[G[_, _, +_], Σ <: Tuple, S, R, A](t: () => Freer[G, Σ, S, R, A]) extends Freer[G, Σ, S, R, A]
@@ -35,6 +41,7 @@ enum Freer[+G[_, _, +_], Σ <: Tuple, S, R, +A]:
   def map[B](f: A => B): Freer[G, Σ, S, R, B] = Bind(this, a => Return(f(a)))
 
 def pure[A, Σ <: Tuple, R](a: A): Freer[Pure, Σ, R, R, A] = Freer.Return(a)
+def inject[F[+_], Σ <: Tuple, T, A](op: F[A]): Freer[Diag[F], Σ, T, T, A] = Freer.Inject[Diag[F], Σ, T, A](op)
 def perform[G[_, _, +_], Σ <: Tuple, S, R, A](op: G[S, R, A]): Freer[G, Σ, S, R, A] = Freer.Perform(op)
 def delay[G[_, _, +_], Σ <: Tuple, S, R, A](t: => Freer[G, Σ, S, R, A]): Freer[G, Σ, S, R, A] = Freer.Delay(() => t)
 def defer[G[_, _, +_], Σ <: Tuple, S, T, R, A, B](t: => Freer[G, Σ, T, R, A])(f: A => Freer[G, Σ, S, T, B]): Freer[G, Σ, S, R, B] =

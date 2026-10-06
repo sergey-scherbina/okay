@@ -6,8 +6,8 @@ import Freer.*
 /** specs/freer-min.md, the machine: one rule per node, no cast, no prompt — the nearest delimiter is the head
  * of the stack in the index */
 class TestMachine extends okay.testkit.Munit.Diagnosed:
-  enum Ask[S, R, +A]:
-    case Number[T]() extends Ask[T, T, Int]
+  enum Ask[+A]:
+    case Number extends Ask[Int]
   enum PState[S, R, +A]:
     case Get[S]() extends PState[S, S, S]
     case Put[S, T](t: T) extends PState[T, S, Unit]
@@ -20,21 +20,25 @@ class TestMachine extends okay.testkit.Munit.Diagnosed:
       case Return(a) => a
       case other => fail(s"not a value: $other")
 
-  @tailrec final def runAsk[A](p: Top[Ask, A], in: Int): A =
-    val head: Top[Ask, A] = Machine.run(p)
+  @tailrec final def runAsk[A](p: Top[Diag[Ask], A], in: Int): A =
+    val head: Top[Diag[Ask], A] = Machine.run(p)
     head match
       case Return(a) => a
-      case Bind(Perform(op), k) => op match
-        case Ask.Number() => runAsk(k(in), in)
+      case Bind(Inject(op), k) => op match
+        case Ask.Number => runAsk(k(in), in)
       case other => fail(s"not handled: $other")
 
   @tailrec final def runState[S, R, A](p: Freer[PState, EmptyTuple, S, R, A], s: R): (S, A) =
     val head: Freer[PState, EmptyTuple, S, R, A] = Machine.run(p)
     head match
       case Return(a) => (s, a)
-      case Bind(Perform(op), k) => op match
-        case PState.Get() => runState(k(s), s)
-        case PState.Put(t) => runState(k(()), t)
+      case Bind(h, k) => (h: @unchecked) match
+        case Inject(op) => op match
+          case PState.Get() => runState(k(s), s)
+          case PState.Put(t) => runState(k(()), t)
+        case Perform(op) => op match
+          case PState.Get() => runState(k(s), s)
+          case PState.Put(t) => runState(k(()), t)
       case other => fail(s"not handled: $other")
 
   val d = Delimiter[Pure, Unit, Int]()
@@ -78,16 +82,16 @@ class TestMachine extends okay.testkit.Munit.Diagnosed:
     assertEquals(runState(prog, 1), ("s", 6))
 
   test("an effect inside a delimiter is handed out, answered outside, and the run goes on"):
-    val da = Delimiter[Ask, Unit, Int]()
+    val da = Delimiter[Diag[Ask], Unit, Int]()
     val prog = reset(da)(
       for
-        n <- perform(Ask.Number[Unit]())
+        n <- inject(Ask.Number)
         x <- shift0[Int](da)(k => k(n).flatMap(k))
       yield x + 1)
     assertEquals(runAsk(prog, 10), 12)
 
   test("a program wider than its delimiter's row: the k stays at the delimiter's row, the rest is wider"):
-    val wide: Top[Ask + Pure, Int] = reset(d)(shift0[Int](d)(k => k(1)).map(_ + 1)).flatMap(x => perform(Ask.Number[Unit]()).map(_ + x))
+    val wide: Top[Diag[Ask] + Pure, Int] = reset(d)(shift0[Int](d)(k => k(1)).map(_ + 1)).flatMap(x => inject(Ask.Number).map(_ + x))
     assertEquals(runAsk(wide, 10), 12)
 
   test("100 000 captures and resumptions in one delimiter run in constant stack"):
@@ -101,8 +105,8 @@ class TestMachine extends okay.testkit.Munit.Diagnosed:
     assertEquals(value(saved(41)), 42)
 
   test("a run over a run allocates nothing: a head form handed out comes back as itself"):
-    val da = Delimiter[Ask, Unit, Int]()
-    val head = Machine.run(reset(da)(perform(Ask.Number[Unit]()).map(_ + 1)))
+    val da = Delimiter[Diag[Ask], Unit, Int]()
+    val head = Machine.run(reset(da)(inject(Ask.Number).map(_ + 1)))
     assert(Machine.run(head) eq head)
 
   test("the machine runs plain programs too: a million deferred calls, 100 000 left-nested maps"):
