@@ -300,7 +300,7 @@ answer is an index and the value stays `Y`. This is McBride's reading
 (freer-base.md), and it is what lets `PState` and `Control` compose.
 
 ### Open
-- JS and Native: compile checked separately (below).
+- [x] JS and Native: `okayFreerJS/Test/compile; okayFreerNative/Test/compile` GREEN (2026-10-06).
 - Speed: nothing measured. Master's lanes to compare against:
   HandlerBenchmark (stepping), DelimDepthBenchmark (capture depth,
   k called 1 and 8 times), Fib/statePara (closure fusion, which this
