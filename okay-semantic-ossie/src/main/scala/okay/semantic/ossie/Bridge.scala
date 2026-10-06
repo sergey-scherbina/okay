@@ -66,7 +66,7 @@ object Bridge:
         errors += s"metric $id: numeric execution cannot produce declared ${definition.datatype.get}"
       val unit = bindings.units.getOrElse(id,"")
       if unit.trim.isEmpty then errors += s"metric $id: explicit unit required"
-      def created(calc: Calculation): Term =
+      def created(calc: Calculation): Term.Named =
         var fresh = s"__ossie_$serial"; serial += 1
         while reserved(fresh) do { fresh = s"__ossie_$serial"; serial += 1 }
         reserved += fresh
@@ -74,26 +74,16 @@ object Bridge:
         Term.Named(fresh)
       var stack = List.empty[Term]
       def bad(why: String): Unit = errors += s"metric $id: $why"
-      def operation(left: Term,right: Term,op: Char): Term = (left,right) match
-        case (Term.Constant(a),Term.Constant(b)) =>
-          if op == '/' && b == 0 then { bad("zero constant denominator"); Term.Constant(0) }
-          else Term.Constant(op match
-            case '+' => BigDecimal(a.bigDecimal.add(b.bigDecimal))
-            case '-' => BigDecimal(a.bigDecimal.subtract(b.bigDecimal))
-            case '*' => BigDecimal(a.bigDecimal.multiply(b.bigDecimal))
-            case _ => scala.util.Try(BigDecimal(a.bigDecimal.divide(b.bigDecimal))).getOrElse { bad("nonterminating constant division"); BigDecimal(0) })
-        case (Term.Named(a),Term.Named(b)) => created(op match
+      def named(term: Term): String = term match
+        case Term.Named(n) => n
+        case Term.Constant(n) => created(Calculation.Constant(n)).id
+      def operation(left: Term,right: Term,op: Char): Term =
+        val a = named(left); val b = named(right)
+        created(op match
           case '+' => Calculation.Add(a,b)
           case '-' => Calculation.Subtract(a,b)
           case '*' => Calculation.Multiply(a,b)
           case _ => Calculation.Divide(a,b))
-        case (Term.Named(a),Term.Constant(b)) if op == '*' => created(Calculation.Scale(a,b))
-        case (Term.Constant(a),Term.Named(b)) if op == '*' => created(Calculation.Scale(b,a))
-        case (Term.Named(a),Term.Constant(b)) if op == '/' && b != 0 =>
-          scala.util.Try(BigDecimal(java.math.BigDecimal.ONE.divide(b.bigDecimal))).toOption match
-            case Some(exact) => created(Calculation.Scale(a,exact))
-            case None => bad("nonterminating constant division"); Term.Constant(0)
-        case _ => bad("constant offsets/reciprocals are not executable by the core"); Term.Constant(0)
       tokens.foreach {
         case Token.Number(n) => stack = Term.Constant(n) :: stack
         case Token.MetricRef(ref) => metric(ref) match
@@ -137,7 +127,7 @@ object Bridge:
       }
       stack match
         case List(Term.Named(n)) => core += CoreMetric(id,definition.description.filter(_.trim.nonEmpty).getOrElse(id),unit,Calculation.Scale(n,BigDecimal(1)))
-        case List(Term.Constant(_)) => bad("constant-only metric is not executable by the core")
+        case List(Term.Constant(n)) => core += CoreMetric(id,definition.description.getOrElse(id),unit,Calculation.Constant(n))
         case _ => bad("incomplete expression")
     }
     val available = fact.toVector.flatMap(_.fields).map(f => FieldKey(dataset,f.name)).toSet

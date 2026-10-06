@@ -83,6 +83,7 @@ object Export:
       val metrics = model.metrics.map { m =>
         def metric(name: String): String = quoted(name)
         val text = m.calculation match
+          case Calculation.Constant(n) => n.bigDecimal.toPlainString
           case Calculation.Sum(n) => s"SUM(${field(n)})"
           case Calculation.Count(None) => "COUNT(*)"
           case Calculation.Count(Some(n)) => s"COUNT(${field(n)})"

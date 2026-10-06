@@ -2179,7 +2179,7 @@ lazy val okaySemanticData = crossProject(JVMPlatform, JSPlatform, NativePlatform
 lazy val okaySemanticArrow = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-semantic-arrow"))
-  .dependsOn(okaySemanticData, okayArrow, okayParquet % Test, okayTest % "test->compile")
+  .dependsOn(okaySemanticData, okaySemanticOssie, okayArrow, okayParquet % Test, okayTest % "test->compile")
   .settings(
     name := "okay-semantic-arrow",
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % "optional;test",
@@ -2202,7 +2202,7 @@ lazy val okaySemanticOssie = crossProject(JVMPlatform, JSPlatform, NativePlatfor
 lazy val okaySemanticSql = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-semantic-sql"))
-  .dependsOn(okaySemantic, okaySql, okayTest % "test->compile")
+  .dependsOn(okaySemantic, okaySemanticOssie, okaySql, okayTest % "test->compile")
   .settings(
     name := "okay-semantic-sql",
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % "optional;test",

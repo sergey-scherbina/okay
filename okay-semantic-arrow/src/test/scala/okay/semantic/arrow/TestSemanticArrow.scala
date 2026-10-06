@@ -29,3 +29,17 @@ class TestSemanticArrow extends okay.testkit.Munit.Diagnosed:
     note(s"Parquet groups ${format.splits("events.parquet").size}")
     assertEquals(Data.file(plan, "events.parquet", format)(using backend), plan.run(rows))
   }
+
+  test("expression median executes over Arrow columns and IPC through typed rows") {
+    import okay.semantic.ossie.{Bindings, Document, Execution, FieldKey}
+    val document = Document.readJson("""{"version":"0.2.0.dev0","name":"events","datasets":[{"name":"events","source":"ignored","fields":[{"name":"segment","datatype":"String","expression":{"dialects":[{"dialect":"ANSI_SQL","expression":"segment"}]}},{"name":"amount","datatype":"Decimal","expression":{"dialects":[{"dialect":"ANSI_SQL","expression":"amount"}]}}]}],"metrics":[{"name":"median","expression":{"dialects":[{"dialect":"ANSI_SQL","expression":"MEDIAN(amount)"}]}}]}""").toOption.get
+    val bindings = Bindings(model.origin,model.grain,Map("median" -> "cent"),
+      model.dimensions.map(d => FieldKey("events",d.id) -> d).toMap,
+      model.measures.map(m => FieldKey("events",m.id) -> m).toMap)
+    val expression = Execution.bind(document,"events",bindings).toOption.get.plan(Request(Vector("median"),Vector("segment"))).toOption.get
+    note(expression.explain)
+    val table = Rows.table(rows)
+    assertEquals(ArrowData.table(expression,table),expression.run(rows))
+    assertEquals(ArrowData.ipc(expression,summon[ArrowCodec].write(table)),expression.run(rows))
+    assert(ArrowData.ipc(expression,Array[Byte](1,2,3)).isLeft)
+  }

@@ -77,9 +77,9 @@ SQL storage bindings must still satisfy those adapters' own contracts.
 
 The execution subset supports SUM, COUNT, AVG, MIN, MAX, COUNT(DISTINCT field),
 named metric references, parentheses, unary signs and + - * / over metrics.
-Exact scale factors and terminating constant reciprocals compile to Scale.
-Constant-only aggregates, constant offsets and nonterminating constant division
-are refused: rounding a reciprocal before multiplying would change the answer.
+Numeric literals remain exact decimal values.
+Constants and offsets now compile to core Constant and arithmetic calculations.
+Division rounds once at execution with DECIMAL128, never an intermediate reciprocal.
 Unquoted references are case-insensitive; quoted references are exact; ambiguity
 is an error. ANSI_SQL and OSSIE_SQL_2026 can be selected explicitly. Supporting
 this subset does not claim complete OSSIE_SQL_2026 language conformance.
@@ -105,3 +105,89 @@ bindings are refused; export never returns a silently incomplete document.
 For already-imported models, Document.json/yaml preserve all relationships and
 metadata directly. Ontology rules, mappings and inference belong to a separate
 adapter; this module implements the Ossie core document contract.
+
+## Portable expression plans
+
+Use `Execution.bind` with the same `Document` and typed `Bindings` when a metric
+needs row expressions, holistic aggregates or windows. Its model has the same
+`plan(Request)` and `run(rows)` shape, and returns the existing semantic `Result`.
+`Bridge.bind` remains the decomposable core-plan path. It now supports literal
+constants, offsets, constant numerators and division such as revenue / 3, including
+constant-only metrics. Division happens at execution with DECIMAL128 precision;
+no reciprocal is rounded before multiplication. Zero denominators produce null.
+
+The expression plan supports:
+
+| Category | Default implementation |
+|---|---|
+| Arithmetic | Exact decimal +, -, *, DECIMAL128 /, %, unary signs |
+| Predicates | Comparisons, AND/OR/NOT, SQL three-valued null logic, IS NULL/IS NOT NULL, IN, BETWEEN, LIKE/ILIKE |
+| Conditional | Searched and simple CASE, IF/IFF, COALESCE, NULLIF, IFNULL/NVL, NVL2, ZEROIFNULL, NULLIFZERO |
+| Aggregates | SUM, COUNT, AVG, MIN/MAX, DISTINCT operands, FILTER, MEDIAN, PERCENTILE_CONT/DISC WITHIN GROUP, sample/population variance and standard deviation |
+| Scalars | ROUND, TRUNC/TRUNCATE, ABS, FLOOR, CEIL/CEILING, SIGN, MOD, POWER, SQRT, EXP, LN, LOG/LOG10, GREATEST/LEAST |
+| Strings | CONCAT and concatenation operator, LENGTH, LOWER/UPPER, TRIM/LTRIM/RTRIM, LEFT/RIGHT, SUBSTRING, REPLACE, SPLIT_PART, CONTAINS, STARTSWITH/ENDSWITH, CHARINDEX |
+| Windows | Aggregate OVER, ROW_NUMBER, RANK, DENSE_RANK, LAG/LEAD, FIRST_VALUE/LAST_VALUE, NTILE; PARTITION BY, ORDER BY, explicit ROWS frames |
+
+Aggregates accept scalar row expressions, for example SUM(price * quantity),
+SUM(CASE WHEN status = 'completed' THEN amount ELSE 0 END), and
+COUNT(DISTINCT COALESCE(segment, 'unknown')). Scalar functions also work on
+metric results, such as ROUND(revenue / 3, 2). Median and continuous percentiles
+interpolate exact decimal observations. Variance uses DECIMAL128 division;
+standard deviation and transcendental math use floating-point approximations.
+
+Windows operate on the requested result grain. A grouped total can use
+SUM(SUM(amount)) OVER (); a running total can use SUM(revenue) OVER (ORDER BY
+segment ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW). Window results are
+computed before having, final ordering and pagination. Without an explicit frame,
+a window with ORDER BY includes ordering peers through the current value (the
+SQL RANGE default); without ORDER BY it includes the complete partition. Nulls
+sort last by default; NULLS FIRST/LAST overrides this. Ranking peers share rank;
+ROW_NUMBER follows stable input order for ties. To calculate raw-row windows such
+as SUM(amount) OVER (), include the declared fact primary key in the request
+dimensions. This makes the row grain explicit and checks for duplicate/null keys.
+
+Other row fields cannot be combined with group metrics unless selected as grouping
+dimensions. Nested aggregates need a window stage; nested windows need another
+query stage. Scalar metric results are numeric or null, matching core Result.
+Logical field bindings read values already interpreted by the application; source
+field-expression strings remain metadata rather than being executed as SQL.
+
+## Relationships and other dialects
+
+Expression plans resolve qualified foreign fields through declared relationships.
+Supply right rows with `Table.of(dataset, rows, typedReaders)` and pass the resulting
+tables by dataset name to `plan.run`. Composite keys are matched as tuples. Missing
+matches produce null foreign values; duplicate right keys fail rather than
+multiplying fact measures. Required right fields must be present; an explicitly
+null field is different from a missing binding. Multiple paths require explicit
+relationship IDs through `model.plan(request, via = ...)`. Fanout requires an
+application allocation rule and cannot silently duplicate facts.
+
+`Functions` supplies `accepts(name, arity)` and `call(name, values)`. Extend the pure
+scalar catalogue with `Functions.orElse(custom, Functions.portable)`; the same
+plan uses the extension on every data source. `Language.normalize` converts a
+chosen vendor expression into portable syntax. Default execution accepts ANSI_SQL
+and OSSIE_SQL_2026. Explicit `Language.sqlFamily` accepts the common expression
+subset from BIGQUERY, SNOWFLAKE and DATABRICKS, including backtick identifiers.
+Vendor-specific functions or syntax need a registered function or normalizer;
+whole DAX/MDX or vendor SQL equivalence is not implied by a dialect label.
+Unsupported function names and malformed expressions produce planning diagnoses.
+
+## Data sources and budgets
+
+Expression plans expose `run`, `source`, `chunks`, `bulk`, `table` and `json`.
+A Bulk file reader feeds the same `bulk` method, so Parquet and other registered
+file formats use the same semantics. ArrowData.table/ipc accept expression plans
+and decode with the caller's Schema. ExpressionSql executes an identifier-only
+physical table/column projection with an explicitly typed row decoder, then runs
+the portable plan. This fallback supports median, CASE and windows regardless of
+the database's native function catalogue. It does not push these expressions down.
+The existing Render path still pushes decomposable core sufficient statistics.
+
+Holistic aggregates and windows materialize rows. `model.plan` has a default
+`maxRows` of 1,000,000; collection and transport paths return a diagnosed error
+on overflow. Bulk merges retain at most maxRows + 1 observations; no partition
+is silently dropped. Lookup tables have the same budget; Table.of accepts its
+own explicit limit. The parser rejects nesting beyond 128 descent levels and
+limits decimal rounding scale to 10,000. Streaming transports must complete;
+these are terminal analytics plans rather than continuously updating views.

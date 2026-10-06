@@ -98,7 +98,7 @@ class TestOssie extends okay.testkit.Munit.Diagnosed:
   }
   test("unsupported functions and fields can be stored, but selected execution refuses them") {
     val cases = Vector("CASE WHEN amount > 0 THEN amount END","SUM(customers.amount)","SUM(missing)","SUM(amount); DROP TABLE orders",
-      "revenue / 3","1 / revenue","revenue + 1","2","COUNT(DISTINCT *)","SUM(DISTINCT amount)","SUM(amount) revenue","(revenue")
+      "COUNT(DISTINCT *)","SUM(DISTINCT amount)","SUM(amount) revenue","(revenue")
     cases.foreach { text =>
       val j = replace(raw,"metrics",JArr(Read.array(raw,"metrics") :+ metric("unsupported",text)))
       val d = Document.fromJson(j).toOption.get

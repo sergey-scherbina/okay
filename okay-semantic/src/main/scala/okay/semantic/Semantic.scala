@@ -45,6 +45,7 @@ object Value:
 final case class Dimension[A](id: String, description: String, kind: Kind, read: A => Value, time: Option[TimeTransform] = None)
 final case class Measure[A](id: String, description: String, read: A => Option[BigDecimal])
 enum Calculation:
+  case Constant(value: BigDecimal)
   case Sum(measure: String)
   case Count(measure: Option[String] = None)
   case Average(measure: String)
@@ -274,6 +275,7 @@ final class Plan[A] private[semantic] (val model: Model[A], val request: Request
         for x <- values(l); y <- values(r) yield f(x, y)
       calculations.foreach { m =>
         val value = m.calculation match
+          case Calculation.Constant(n) => Some(n)
           case Calculation.Sum(n) => byName(n).sum
           case Calculation.Count(n) => Some(BigDecimal(n.fold(rows)(v => byName(v).count)))
           case Calculation.Average(n) => divide(byName(n).sum, Some(BigDecimal(byName(n).count)))
