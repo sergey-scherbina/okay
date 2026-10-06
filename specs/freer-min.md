@@ -493,3 +493,81 @@ time (the typestate road would make it static); the index pair's order.
 ### Behavior
 - [x] TestFreer 8 + TestMachine 13 = 21 green on the JVM, through the one loop
 - [x] `dollar` 7, not 5; a run over a handed-out head form is identity
+
+## Stage 4 — the prompt stack in the index: `NoPrompt` static (probe, 2026-10-06)
+
+`specs/probes/freer-min/typestate/`: a second kernel, 243 lines, 12
+scenarios green under `-Werror`, `grep asInstanceOf|@unchecked|NoPrompt|eq`
+over it: 0. It is NOT the module's kernel; it is the other end of a
+fork the index forces (below).
+
+### What it is
+The program's ONE index is the stack of delimiters in force, a tuple
+of `At[L, Freer[H, EmptyTuple, Y]]` entries: the prompt's label `L`
+(a literal type — `Prompt("p")` is `Prompt["p", H, Y]`; two prompts of
+one label are one delimiter, by type; the machine never looks at a
+prompt value), its row and its value, the two riding inside a program
+type because a match type refuses an uninhabited selector and `Pure`
+applied is `Nothing`.
+
+```
+Freer[+G[+_], S <: Tuple, +A]            -- rows UNARY, the index the stack
+Return | Inject | Bind | Delay | Reset | Shift0 | Resume     -- seven
+Reset [H, S, Y, L](p, body: Freer[H, At[L, …] *: S, Y])            extends Freer[H, S, Y]
+Shift0[H, S, X, Y, L, O](p, has: Has[S, At[L, …], O], f: (X => Freer[H, O, Y]) => Freer[H, O, Y])  extends Freer[H, S, X]
+Resume[H, X, O, Y](x, k)                                           extends Freer[H, O, Y]
+```
+
+`Has[S, P, O]` is a GADT (`Head`, `Tail`) — the witness that `P` is on
+`S` with `O` under it — summoned by givens at the capture and WALKED by
+the machine: `cut` matches the witness first (`Head`: this level's
+delimiter is the one; `Tail`: cross it), and the stack's type follows,
+so `Done`, the empty stack, is no case of the walk. `run` takes a
+program on `EmptyTuple` only: a program that claims a delimiter it has
+not installed cannot be run. A capture to a prompt with no delimiter
+in force finds no witness: a compile error (checked by
+`typeCheckErrors`). `Captured` is diagonal on the stack OUTSIDE its
+prompt (it carries the delimiter), so an escaped `k` is a program of
+the outside and runs later as one. A handed-out operation is
+re-injected on the empty stack — free, because a unary operation
+carries no index.
+
+### What it took to make inference work (each one measured by a failure)
+- The stack at a capture is LEXICAL: `reset` gives its body a given
+  `In[At[…] *: S]` and `shift0` reads `S` from it FIRST. An expected
+  type does not reach a method's receiver (`shift0(…).map(…)`), and a
+  given searched with `S` open instantiates it to `Tuple`. A program
+  written outside its reset declares `(using In[…])`. The top has
+  `given top: In[EmptyTuple]`.
+- The stack under the prompt, `Under[S, P]`, is a match type on the
+  concrete stack (labels are provably distinct; `p.type`s of two vals
+  are not — `val q = p` would alias them), and the witness is searched
+  LAST, when `S` and `O` are known.
+- The delimiter's row and value are tied to the prompt's by GADT on
+  `At`'s arguments, not by the prompt's singleton: dotty does not
+  identify `a.H` and `b.H` for two values of one singleton-bounded `P`,
+  and a dependent parent (`extends Stack[…, At[p.type, …] *: S, …]`)
+  compares as `Delim.this.p`, never as `d.p`.
+- Product patterns on enum cases give BOUNDS, typed patterns give
+  EQUALITIES but E092 when an argument is not determined by the
+  scrutinee: `Has` is matched by typed pattern, `Delim` by a product
+  pattern bound whole (`d @ Delim(…)`) and handed to a helper typed by
+  `d` alone.
+
+### The fork
+With the index the prompt stack, every node is diagonal: `Reset`,
+`Shift0`, `Resume` keep it, only `Reset`'s BODY sits one entry deeper.
+So the second index is redundant and goes, and with it answer-type
+modification and `Perform`: `PState`'s `Put` has no index to move. The
+module's kernel does the opposite: the index pair is the answer type
+(state), prompts are dynamic, `NoPrompt` is thrown. Both at once is a
+fifth parameter, `Freer[+G, Σ, S, R, A]`, the stack beside the pair —
+the same machinery as this probe plus the pair as before. Not built;
+it is the operator's call whether user-level index moves (`PState`,
+typestate effects) are worth one more parameter on every signature, or
+whether control's static safety is.
+
+What the typestate kernel is smaller by: `Perform` (one node), prompt
+identity (no `eq`, no singleton test, no label at run time), `NoPrompt`.
+What it is larger by: `Has`, `In`, `Under`, `At` — four small types —
+and the lexical discipline. `Widen` is the same in both.
