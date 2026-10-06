@@ -221,3 +221,91 @@ move `R` to `Any` and `E` to `Nothing` by subtyping. See Decisions.
   (freer-kont's `Row[F]`, closed under nesting, which `run` needs to
   strip all control at once). The machine decides; the first reset
   sugar will show which infers.
+
+## Stage 1 — the machine (DONE on the JVM, 2026-10-06)
+
+`Machine.scala`: cont-core.md's model, nothing else. `Frames` (a segment,
+contravariant in what it consumes), `Stack = Done | Run | Delim` (what
+closes a level into the run's result), `Piece = Hole | Over | Under` (a
+capture built outward from the hole), `Captured` (the piece and the
+delimiter's `ret`, an `X => Freer[Row[F], S, T, Y]` by class), `Resume`
+(a pending `k(x)`: the lazy form `Bind(Return(()), r)`, spliced by the
+machine, run alone by any other interpreter), `Resumption` (the rest of
+a run after an operation handed out). One loop, `go`, five rules; `cut`
+and `link` are tail loops with an accumulator; `step` answers a
+`Next`.
+
+`Control` is over the BASE row `F`, its bodies over `Row[F] = Ctl[F] + F`
+(the open question of stage 0, decided): closed under nesting, so
+`Machine.run[F, S, R, A](p: Freer[Row[F], S, R, A]): Freer[F, S, R, A]`
+takes every delimiter off at once and hands the rest out as head forms
+over `F`. Sugar: `reset`, `dollar`, `shift0`.
+
+### The typing that made it fit, and the casts (five)
+
+- **The answer index is ONE across the stack.** `Stack[F, B, S, R, S0, Z]`
+  closes a level `Freer[Row[F], S, R, B]` into the result
+  `Freer[F, S0, R, Z]`: `R` is the same in every node and in the result,
+  because an answer chains through a boundary as it chains through a
+  `Bind` (`Done` fixes it). So an operation handed out stands at the
+  run's answer BY THE TYPES, and the hand-out `Bind(Inject(op),
+  Resumption(k, m))` needs no claim — master's `Outer.diagonal` plus
+  `substituteCo` is this, proved instead of asserted.
+- **A `Return` under a delimiter proves the body kept its index.** At
+  `Return(a)` with the segment empty over `Delim(p, ret, out, rest)`,
+  the GADT gives `T = R` from the node, so `go(ret(a), out, rest)` types
+  with no cast. The same equation types `Resume`'s splice: the lazy form
+  is `Bind(Return(()), r)`, and a `Return` on the left of a bind makes
+  the bind's middle index the run's answer.
+- The casts, each in one function with its reason: (1) `control`, a
+  `Control` on the row is this machine's and its arguments the node's
+  (`F` is abstract, so only the class can be tested); (2) `effect`, the
+  union's other half (a match on a union does not narrow its
+  fall-through); (3) `resumed`, a `Resume` is the function the `Bind`
+  holds, by its own extends clause; (4) `answered`, an index-moving
+  operation handed out is re-indexed to its `T`: whoever answers it with
+  a value takes the move on itself, as `runState` takes `Put`'s, and `R`
+  is phantom in every stack node; (5) `cut`, THE PROMPT CAST: a prompt
+  is allocated once at one type, and `eq` is that allocation.
+  A type test `c: Control[F, S, R, A]` on the union is refused as
+  uncheckable (E092: the arguments cannot be determined from `F[S, R,
+  A]`), which is why (1) tests the class and casts.
+
+### Behavior (TestMachine, 8 green on the JVM)
+- [x] shift0's `k`, delimiter included, applied twice: 4
+- [x] multi-shot, three resumptions summed: 60
+- [x] a delimiter of another prompt between a capture and its own is
+      captured and put back: 64
+- [x] a capture with no delimiter of its prompt throws `NoPrompt`
+- [x] answer-type modification REALISED: a `PState.Put` in a shift0 body
+      moves the state `Int -> String` across the control operator, the
+      program typed `Freer[Row[PState], String, Int, Int]`, run by the
+      machine then by `runState`: `("s", 6)`
+- [x] an effect inside a delimiter is handed out, answered outside, and
+      the run goes on (k twice around an `Ask`): 12
+- [x] 100 000 captures and resumptions in one delimiter in constant
+      stack: each `k(())` is the lazy form, spliced, never nested
+- [x] a `k` that escaped its delimiter runs the piece alone, through
+      `Machine.run` and through the tree's own `resume`
+
+### What answer-type modification IS in this tree
+`Freer[G, S, R, A]` reads `(A => S) => R`, but a run ends in a VALUE,
+and `Return` is diagonal: a program with `S ≠ R` can never end by a
+`Return`. The indexes are realised by handlers — `runState` turns
+`Put`'s move into a value of the new type, the machine threads a
+shift0 body's move to the enclosing level — not by a delimiter
+answering a different type than its body. Danvy–Filinski's "reset
+returns a string" is the case where the answer is the value; here the
+answer is an index and the value stays `Y`. This is McBride's reading
+(freer-base.md), and it is what lets `PState` and `Control` compose.
+
+### Open
+- JS and Native: compile checked separately (below).
+- Speed: nothing measured. Master's lanes to compare against:
+  HandlerBenchmark (stepping), DelimDepthBenchmark (capture depth,
+  k called 1 and 8 times), Fib/statePara (closure fusion, which this
+  tree has not).
+- `reset`/`shift0` inference: every call in the tests names `F`
+  explicitly (`reset[Pure, Unit, Unit, Int]`); the body's row does not
+  solve `F` from `Row[F]` (the union lambda, Results 7). An expected
+  type does. The row-inference ergonomics are a stage of their own.

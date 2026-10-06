@@ -18,9 +18,9 @@ class TestFreer extends okay.testkit.Munit.Diagnosed:
     case Get[S]() extends PState[S, S, S]
     case Put[S, T](t: T) extends PState[T, S, Unit]
 
-  type Row = Diag[Ask] + Diag[Say]
+  type Fx = Diag[Ask] + Diag[Say]
 
-  val one: Freer[Row, Unit, Unit, Int] =
+  val one: Freer[Fx, Unit, Unit, Int] =
     for
       n <- inject(Ask.Number)
       _ <- inject(Say.Line(n.toString))
@@ -28,12 +28,12 @@ class TestFreer extends okay.testkit.Munit.Diagnosed:
 
   /** one operation answered: the node gave `T = R`, the pointwise bound `G$[T, T, X] <: Ask[X] | Say[X]` gives the
    * dispatch — no cast */
-  def step[X, B](op: Ask[X] | Say[X], k: X => Freer[Row, Unit, Unit, B], in: Int, out: StringBuilder)
-    : Freer[Row, Unit, Unit, B] = op match
+  def step[X, B](op: Ask[X] | Say[X], k: X => Freer[Fx, Unit, Unit, B], in: Int, out: StringBuilder)
+    : Freer[Fx, Unit, Unit, B] = op match
     case Ask.Number => k(in)
     case Say.Line(l) => out.append(l).append('\n'): Unit; k(())
 
-  @tailrec final def run[A](p: Freer[Row, Unit, Unit, A], in: Int, out: StringBuilder): A =
+  @tailrec final def run[A](p: Freer[Fx, Unit, Unit, A], in: Int, out: StringBuilder): A =
     p.resume match
       case Return(a) => a
       case Inject(op) => run(step(op, (x: A) => Return(x), in, out), in, out)
@@ -74,14 +74,14 @@ class TestFreer extends okay.testkit.Munit.Diagnosed:
     assertEquals(out.toString.trim, "41")
 
   test("(F + G) + F is accepted where F + G is expected; pure is a program of every row"):
-    val two: Freer[Row, Unit, Unit, Int] = one.flatMap(a => inject(Ask.Number).map(_ + a))
-    val three: Freer[Row, Unit, Unit, Int] = pure(3)
+    val two: Freer[Fx, Unit, Unit, Int] = one.flatMap(a => inject(Ask.Number).map(_ + a))
+    val three: Freer[Fx, Unit, Unit, Int] = pure(3)
     val out = StringBuilder()
     assertEquals(run(two, 41, out), 83)
     assertEquals(run(three, 0, out), 3)
 
   test("100 000 left-nested maps run in constant stack"):
-    val chain = (1 to 100000).foldLeft(pure[Int, Unit](0): Freer[Row, Unit, Unit, Int])((p, _) => p.map(_ + 1))
+    val chain = (1 to 100000).foldLeft(pure[Int, Unit](0): Freer[Fx, Unit, Unit, Int])((p, _) => p.map(_ + 1))
     assertEquals(run(chain, 0, StringBuilder()), 100000)
 
   test("type-changing state: the index moves Int -> String through Put"):
@@ -95,7 +95,7 @@ class TestFreer extends okay.testkit.Munit.Diagnosed:
     assertEquals(runState(prog, 1), ("42", 2))
 
   test("an index-moving signature and unary effects in one row"):
-    val mixed: Freer[Row + PState, String, Int, Unit] =
+    val mixed: Freer[Fx + PState, String, Int, Unit] =
       for
         n <- inject(Ask.Number)
         s <- perform(PState.Get[Int]())
@@ -119,8 +119,8 @@ class TestFreer extends okay.testkit.Munit.Diagnosed:
 
   test("Control sits in a row with the effects"):
     val p = Prompt[Unit, Int]("p")
-    val c: Freer[Ctl[Row] + Row, Unit, Unit, Int] =
-      perform(Control.Reset(p, (x: Int) => pure(x), one)).flatMap(y => inject(Ask.Number).map(_ + y))
+    val c: Freer[Row[Fx], Unit, Unit, Int] =
+      reset[Fx, Unit, Unit, Int](p)(one).flatMap(y => inject(Ask.Number).map(_ + y))
     assert(c.isInstanceOf[Bind[?, ?, ?, ?, ?, ?]])
 
   test("delay and defer: a million mutual tail calls in constant stack"):
