@@ -70,7 +70,13 @@ class HandlerBenchmark {
   @nowarn("msg=cannot be checked at runtime")
   @Benchmark
   def handleForward(): Int =
-    Effects[Free].handle[Ask, Produce](prog)(pure(_))([X] => a => Cont.Pure(a.a)).runWith
+    FreeEffects.handle[Ask, Produce](prog)(pure(_))([X] => a => FreeEffects.control.pure(a.a)).runWith
+
+  /** the same at the CPS carrier (`okay.cps`), the default before cont-default */
+  @nowarn("msg=cannot be checked at runtime")
+  @Benchmark
+  def handleForwardCps(): Int =
+    cps.given_Effects_Free.handle[Ask, Produce](prog)(pure(_))([X] => a => Cont.Pure(a.a)).runWith
 
   /**
    * `handleForward` builds its 10 000-node tree on every invocation,
@@ -85,7 +91,13 @@ class HandlerBenchmark {
   @nowarn("msg=cannot be checked at runtime")
   @Benchmark
   def handlePrebuilt(): Int =
-    Effects[Free].handle[Ask, Produce](built)(pure(_))([X] => a => Cont.Pure(a.a)).runWith
+    FreeEffects.handle[Ask, Produce](built)(pure(_))([X] => a => FreeEffects.control.pure(a.a)).runWith
+
+  /** the same at the CPS carrier (`okay.cps`), the default before cont-default */
+  @nowarn("msg=cannot be checked at runtime")
+  @Benchmark
+  def handlePrebuiltCps(): Int =
+    cps.given_Effects_Free.handle[Ask, Produce](built)(pure(_))([X] => a => Cont.Pure(a.a)).runWith
 
   /**
    * THE SHAPE `delay-node` IS ABOUT (specs/core-cleanup.md Decisions):
@@ -102,7 +114,13 @@ class HandlerBenchmark {
   @nowarn("msg=cannot be checked at runtime")
   @Benchmark
   def handleCapture(): Int =
-    Effects[Free].handle[Ask, Produce](built)(pure(_))([X] => a => Cont.shift(k => k(a.a))).runWith
+    FreeEffects.handle[Ask, Produce](built)(pure(_))([X] => a => FreeEffects.control.shift(k => k(a.a))).runWith
+
+  /** the same at the CPS carrier (`okay.cps`) */
+  @nowarn("msg=cannot be checked at runtime")
+  @Benchmark
+  def handleCaptureCps(): Int =
+    cps.given_Effects_Free.handle[Ask, Produce](built)(pure(_))([X] => a => Cont.shift(k => k(a.a))).runWith
 
   /** the other road to the same node: `!.tailcall` between two
    * mutually recursive functions, N deep — every hop WAS a

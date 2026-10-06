@@ -1531,5 +1531,18 @@ and `E.control.pure`), okay-java's `Eff.Control` — so each runs at whichever c
 Delimited frames they are (level 2's work, not this stage's): `relay`, `translate`, `HandleFrames` and the
 `Shift` effect.
 
+Measured, `HandlerBenchmark` (the core's `Effects[Free].handle`), each lane beside its CPS twin (`cps.given_Effects_Free`),
+the box at load 3–5:
+
+| lane | machine (default) | CPS (`okay.cps`) |
+|---|---|---|
+| handlePrebuilt | 131.9 ± 0.9 | 130.4 ± 0.4 |
+| handleForward | 153.6 ± 1.7 | 152.5 ± 1.0 |
+| handleCapture | 137.4 ± 0.5 | 133.9 ± 0.9 |
+
+Parity: the native loop asks the carrier only whether a clause's answer is a `pure` (then goes on with a tail
+call, no carrier touched) and, on a capture, runs it with `/` — a `Reset` over a `Bind` on the machine, a
+`Delimited` run on the CPS side — and the rest of the walk is the tree's.
+
 Checked: the lowering suite (`runWith` is `foldCont / identity`) at the default, the handler suites, the
 CPS-bound suites under the import, okay-java; 80 tests in the nearest set, no warning.
