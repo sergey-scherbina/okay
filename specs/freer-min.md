@@ -1003,3 +1003,43 @@ this stage — or `Σd` is taken lexically and written into the node, which the 
 So two stacks collapse to one for the basis.
 
 Kernel 285 lines, 25 tests on the JVM, JS and Native compile, no cast, no warning.
+
+## Stage 17: TWO STACKS — THE HIERARCHY (DONE, 2026-10-06)
+
+The operator's thought: Atkey's `S` and `R` become two stacks, one each. Right, and what makes it typeable for
+NODES (stage 16's objection was wrong) is a LEVEL CONSTANT in the entry: `At[H, D, S]` — the delimiter's row, the
+stacks OUTSIDE its delimiter `D` (where its continuation lives, so where a capture to it is a program), and the
+answer at this point. `D` is constant along a level by construction, as the row is, so a shift node knows it from
+its own head, and `k : X => T [D, I]` is typed by the node alone; the body, running outside, is `[D, O]` and may
+MOVE the levels outside — answer-type modification across delimiters, the CPS hierarchy.
+
+```
+Freer[+G[+_], I <: Tuple, O <: Tuple, +A]       -- (A => I) => O, a level each
+Return[Σ, A](a)                                          extends Freer[Pure, Σ, Σ, A]
+Inject[G, Σ, A](op)                                      extends Freer[G, Σ, Σ, A]
+Bind[G, I, T, O, A, B](m: Freer[G, T, O, A], k: A => Freer[G, I, T, B]) extends Freer[G, I, O, B]
+Reset[H, D, O, S, R](body: Freer[H, At[H, D, S] *: D, At[H, D, R] *: O, S]) extends Freer[H, D, O, R]
+Shift0[H, D, I, O, T, R, X](f: (X => Freer[H, D, I, T]) => Freer[H, D, O, R]) extends Freer[H, At[H, D, T] *: I, At[H, D, R] *: O, X]
+Resume[H, D, I, X, T](x, k)                              extends Freer[H, D, I, T]
+```
+
+`Return`, `Inject`, `Bind`, `Delay`, `Frames`, `Run`, `Piece` look at no head at all: the stacks compose as
+tuples. Only the three nodes that move a level, and `Delim`, match `At[h, d, s] *: σ`. The machine is the same
+loop; `cut`'s `Delim` match gives the node's `D` from the delimiter (`At[h, d, …]`), and `Captured(piece) : X =>
+Freer[h, d, i, t]` is exactly `f`'s parameter. Measured: `reset_2(reset_1(shift0_1(_ => shift0_2(_ => "a")) + 10)
+* 2)` answers `"a"` — the inner shift's body, outside the inner delimiter, shifts to the outer and moves ITS answer
+from Int to String; and the same with `k` resumed inside and `k2` twice outside answers 44. With the nodes AND with
+the sugar.
+
+The sugar, to write the hierarchy: the context is STRUCTURAL. `In[H, S, Oc]` is the context of a body: the
+delimiter's row and answer, `D` the stacks outside it, `Here = At[H, D, S] *: D` the stacks at this position (what a
+reset written here has outside), `outer: Oc` the context outside by its own type. A nested reset's `D` is the
+outer's `Here`, down to the top, so inside a body the levels outside are known types, not abstract members (stage
+16's `in.D` could not be moved: a move is written in the structure of the outside). The top is named: `top[A](…)`
+— a polymorphic given for the run's answer is instantiated to `Any` by the search before any expected type reaches
+it, and a type in a context function's parameter is fixed before its body is typed, so nothing but a name could
+say it (`value[Int](…)` in the tests). `Under[H, S] = In[H, S, ?]`, `in.Body[A]`; no lexical stack at all: the
+outer context is `outer`, with its type. `shift0`'s `k` leaves the outside as it is, `D` to `D` (a piece that
+moved it could not be resumed twice); the body may move it, `[D, O]`.
+
+Kernel 280 lines, 28 tests on the JVM, JS and Native compile, no cast, no warning, no prompt.

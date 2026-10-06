@@ -15,7 +15,7 @@ class TestFreer extends okay.testkit.Munit.Diagnosed:
   type Fx = Ask + Say
 
   /** a program with no capture is written for any stack: the index is exact, so one at the top is no body for a delimiter */
-  def one[H[+_], R, Σ <: Tuple]: Freer[Fx, Lvl[H, R, R] *: Σ, Int] =
+  def one[Σ <: Tuple]: Freer[Fx, Σ, Σ, Int] =
     for
       n <- inject(Ask.Number)
       _ <- inject(Say.Line(n.toString))
@@ -66,10 +66,10 @@ class TestFreer extends okay.testkit.Munit.Diagnosed:
       yield n
     def runAsk[G[+_], A](p: Top[Ask + G, A]): Top[G, A] = p.asInstanceOf[Top[G, A]]
     val typed: Top[Rest, Int] = runAsk(three)
-    assert(typed.isInstanceOf[Bind[?, ?, ?, ?, ?, ?, ?, ?]])
+    assert(typed.isInstanceOf[Bind[?, ?, ?, ?, ?, ?]])
 
   test("a delimiter is a node of the tree, in a row with the effects"):
-    val c: Top[Fx, Int] = reset[Fx, Int](one).flatMap(y => inject(Ask.Number).map(_ + y))
+    val c: Top[Fx, Int] = top[Int](reset[Fx, Int](in ?=> one[in.Here]).flatMap(y => inject(Ask.Number).map(_ + y)))
     assertEquals(run(c, 1, StringBuilder()), 3)
 
   test("delay and defer: a million mutual tail calls in constant stack, through the one loop"):

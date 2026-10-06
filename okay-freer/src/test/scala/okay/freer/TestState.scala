@@ -11,21 +11,21 @@ class TestState extends okay.testkit.Munit.Diagnosed:
   /** the operations at the run's delimiter, the head of the stack; `W` the run's value. The node `Shift`, not the
    * sugar: `put` moves the answer at the hole, which the sugar pins to the one the body is written at */
   final class State[H[+_], W]:
-    /** the level outside the run's delimiter: the run's own, answering `W` */
-    type Outer = Lvl[Pure, W, W] *: EmptyTuple
+    /** the stacks outside the run's delimiter: the run's own level, answering `W` */
+    type Outer = Run[W]
     /** read the state, its type `S` unchanged: `shift(k => s => k(s)(s))` */
-    def get[S]: Freer[H, Lvl[H, St[H, S, W], St[H, S, W]] *: Outer, S] =
-      Freer.Shift0((k: S => Freer[H, Outer, St[H, S, W]]) => pure((s: S) => k(s).flatMap(f => f(s))))
+    def get[S]: Freer[H, At[H, Outer, St[H, S, W]] *: Outer, At[H, Outer, St[H, S, W]] *: Outer, S] =
+      Freer.Shift0((k: S => Freer[H, Outer, Outer, St[H, S, W]]) => pure((s: S) => k(s).flatMap(f => f(s))))
     /** write a state of another type: the rest wants `S2`, this point still answers with `S`: `shift(k => _ => k(())(s2))` */
     def put[S]: PutFrom[S] = PutFrom[S]()
     final class PutFrom[S]:
-      def apply[S2](s2: S2): Freer[H, Lvl[H, St[H, S2, W], St[H, S, W]] *: Outer, Unit] =
-        Freer.Shift0((k: Unit => Freer[H, Outer, St[H, S2, W]]) => pure((_: S) => k(()).flatMap(f => f(s2))))
+      def apply[S2](s2: S2): Freer[H, At[H, Outer, St[H, S2, W]] *: Outer, At[H, Outer, St[H, S, W]] *: Outer, Unit] =
+        Freer.Shift0((k: Unit => Freer[H, Outer, Outer, St[H, S2, W]]) => pure((_: S) => k(()).flatMap(f => f(s2))))
 
   /** run from an initial state `S0`, at the top; the state ends at `S1`; the delimiter's answer is the function,
    * applied once outside */
-  def runState[H[+_], S0, S1, W](s0: S0)(body: State[H, W] => Freer[H, Lvl[H, St[H, S1, W], St[H, S0, W]] *: Lvl[Pure, W, W] *: EmptyTuple, W]): Top[H, W] =
-    Freer.Reset[H, Pure, EmptyTuple, St[H, S1, W], St[H, S0, W], W](body(State()).map(a => (_: S1) => pure(a))).flatMap(f => f(s0))
+  def runState[H[+_], S0, S1, W](s0: S0)(body: State[H, W] => Freer[H, At[H, Run[W], St[H, S1, W]] *: Run[W], At[H, Run[W], St[H, S0, W]] *: Run[W], W]): Top[H, W] =
+    Freer.Reset[H, Run[W], Run[W], St[H, S1, W], St[H, S0, W]](body(State()).map(a => (_: S1) => pure(a))).flatMap(f => f(s0))
 
   def value[A](p: Top[Pure, A]): A =
     val head: Top[Pure, A] = Machine.run(p)
