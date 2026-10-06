@@ -3763,9 +3763,7 @@ lazy val okayUiGtk = (project in file("okay-ui-gtk"))
   )
 lazy val gtkProjects: Seq[ProjectReference] = if (gtkAvailable) Seq(okayUiGtk) else Seq.empty
 
-lazy val root = (project in file("."))
-  .aggregate(gtkProjects: _*)
-  .aggregate(okay.jvm, okay.js, okay.native, okayJdk22, okayAsync.jvm, okayAsync.js, okayAsync.native, okayDirect.jvm, okayDirect.js, okayDirect.native, okayPlatform.jvm, okayPlatform.js, okayPlatform.native, okayPlatformJdk25, okayStream.jvm, okayStream.js, okayStream.native, okayWorkflow.jvm, okayWorkflow.js, okayWorkflow.native, okayData.jvm, okayData.js, okayData.native, okayOptics.jvm, okayOptics.js, okayOptics.native, okayStm.jvm, okayStm.js, okayStm.native, okayStaging, okayCats.jvm, okayCats.js, okayCats.native, okayZio, okayKyo, okayFs2, okayReactive, okayActor.jvm, okayActor.js, okayActor.native, okayKafka,
+lazy val platformMembers: Seq[ProjectReference] = gtkProjects ++ Seq[ProjectReference](okay.jvm, okay.js, okay.native, okayJdk22, okayAsync.jvm, okayAsync.js, okayAsync.native, okayDirect.jvm, okayDirect.js, okayDirect.native, okayPlatform.jvm, okayPlatform.js, okayPlatform.native, okayPlatformJdk25, okayStream.jvm, okayStream.js, okayStream.native, okayWorkflow.jvm, okayWorkflow.js, okayWorkflow.native, okayData.jvm, okayData.js, okayData.native, okayOptics.jvm, okayOptics.js, okayOptics.native, okayStm.jvm, okayStm.js, okayStm.native, okayStaging, okayCats.jvm, okayCats.js, okayCats.native, okayZio, okayKyo, okayFs2, okayReactive, okayActor.jvm, okayActor.js, okayActor.native, okayKafka,
     okayJava, okayAudit, okayClojure, okayFrege, okayScala2, okayScala2Codec, okayScala2Http, okayScala2Sql, okayScala2Agent, okayScala2Ui, okayScala2Ws, okayScala2Resilience, okayScala2Persist, okayScala2Stm, okayScala2Stores, okayScala2Llm, okayScala2Rag, okayScala2Mcp, okayScala2Optics, okayScala2Workflow, okayScala2Services, okayScala2Prelude, okayScala2Probe, okaySpark, okayFlink, okayJdbc, okayR2dbc, okayDelta,
     okayLex.jvm, okayLex.js, okayLex.native, okayCrdt.jvm, okayCrdt.js, okayCrdt.native, okayChain.jvm, okayChain.js, okayChain.native, okayScalus, okayScalusSpark, okayScalusFlink, okayX402.jvm, okayX402.js, okayX402Evm, okayX402Cdp, okayX402Signers, okayX402Mcp.jvm, okayX402Mcp.js,
     okayParse.jvm, okayParse.js, okayParse.native,
@@ -3813,6 +3811,27 @@ lazy val root = (project in file("."))
     // them into okay-docs.
     okayOps.jvm, okayOps.js, okaySpring, okayGuice, okayCdi, okayOpenapi,
     compare)
+
+def membersFor(platform: String): Seq[ProjectReference] = platformMembers.filter {
+  case LocalProject(id) => Affected.onPlatform(id, platform)
+  case ProjectRef(_, id) => Affected.onPlatform(id, platform)
+  case other => sys.error("unsupported platform member: " + other)
+}
+
+lazy val jsBuild = (project in file(".builds/js"))
+  .aggregate(membersFor("js"): _*)
+  .settings(name := "okay-js-build", publish / skip := true,
+    Compile / sources := Seq(), Test / sources := Seq())
+
+lazy val nativeBuild = (project in file(".builds/native"))
+  .aggregate(membersFor("native"): _*)
+  .settings(name := "okay-native-build", publish / skip := true,
+    Compile / sources := Seq(), Test / sources := Seq())
+
+Global / Affected.platformRoots := Seq("jsBuild", "nativeBuild")
+
+lazy val root = (project in file("."))
+  .aggregate(membersFor("jvm"): _*)
   .settings(
     name := "okay-root",
     publish / skip := true,

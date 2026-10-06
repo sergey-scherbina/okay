@@ -34,8 +34,12 @@ S=okay-stream/src/test/scala-jvm/TestChannelLaws.scala
 # gate.sh so the run is the repo's one sbt path; its RED here is the
 # deliberate bad order at the end, not a verdict on the tree
 GATE_LOG="$log" sh scripts/gate.sh \
-  "affected master test all staged --plan --files=$F; affected master test all staged --plan --files=$T; affected master test all staged --plan --files=build.sbt; affected master test all staged --plan --files=$C; affected master test all closed --plan --files=$F; affected master test all staged --plan --files=$D; affected master test all staged --plan --files=$S; affected master test all bogus --plan --files=build.sbt" \
+  "checkPlatformBuilds; affected master test all staged --plan --files=$F; affected master test all staged --plan --files=$T; affected master test all staged --plan --files=build.sbt; affected master test all staged --plan --files=$C; affected master test all closed --plan --files=$F; affected master test all staged --plan --files=$D; affected master test all staged --plan --files=$S; affected master test all bogus --plan --files=build.sbt" \
   >/dev/null 2>&1 || true
+grep -q 'platform-builds: jvm=[1-9][0-9]* js=[1-9][0-9]* native=[1-9][0-9]* total=' "$log" || {
+  echo "FAIL platform aggregate inventory (log: $log)"; exit 1;
+}
+echo "ok   resolved platform aggregates and complete CI union"
 plan=$(sed 's/\x1b\[[0-9;]*m//g' "$log" | grep -E '^\[(info|error)\] affected: ')
 fail=0
 check() { # <name> <grep -E pattern>

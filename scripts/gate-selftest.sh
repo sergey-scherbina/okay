@@ -43,7 +43,7 @@ bad() { say "  FAIL — $*"; fail=1; }
 say "1. a silent, idle build is STALLED, killed, and leaves evidence"
 out="$tmp/stall.out"
 GATE_SBT="$here/fake-sbt-stall.sh" GATE_STALL_SECS=6 GATE_TICK_SECS=2 GATE_STALL_CPU=5 \
-  GATE_LOG="$tmp/stall.log" run_gate test > "$out" 2>&1
+  GATE_LOG="$tmp/stall.log" run_gate "okayJVM/test" > "$out" 2>&1
 rc=$?
 [ "$rc" -eq 124 ] && ok "exit 124" || bad "exit was $rc, expected 124"
 grep -q "gate: STALLED" "$out" && ok "said STALLED" || bad "no STALLED line"
@@ -66,7 +66,7 @@ out2="$tmp/busy.out"
 # distinction the watchdog actually makes is stalled=0 against
 # working>0, and that is what this checks.
 GATE_SBT="$here/fake-sbt-busy.sh" GATE_STALL_SECS=6 GATE_TICK_SECS=2 GATE_STALL_CPU=0 \
-  GATE_LOG="$tmp/busy.log" run_gate test > "$out2" 2>&1
+  GATE_LOG="$tmp/busy.log" run_gate "okayJVM/test" > "$out2" 2>&1
 rc2=$?
 grep -q "gate: STALLED" "$out2" && bad "killed a working build — the CPU signal did not hold" \
   || ok "not stalled"
@@ -81,7 +81,7 @@ say "4. idle CHILDREN under a sbt that still burns a little CPU are STALLED"
 out4="$tmp/idlekids.out"
 GATE_SBT="$here/fake-sbt-idle-children.sh" GATE_STALL_SECS=6 GATE_TICK_SECS=2 \
   GATE_STALL_CPU=0 GATE_STALL_HOST_CPU=1000 FAKE_SPIN=100000000 \
-  GATE_LOG="$tmp/idlekids.log" run_gate test > "$out4" 2>&1
+  GATE_LOG="$tmp/idlekids.log" run_gate "okayJVM/test" > "$out4" 2>&1
 rc4=$?
 [ "$rc4" -eq 124 ] && ok "exit 124" || bad "exit was $rc4, expected 124 — the host's own CPU hid the hang"
 grep -q "gate: STALLED" "$out4" && ok "said STALLED" || bad "no STALLED line"
@@ -91,9 +91,9 @@ else ok "the tree was killed by pid"; fi
 
 say "5. the same shape with the host WORKING (a cold compile: sbt busy, no children busy) survives"
 out5="$tmp/busyhost.out"
-GATE_SBT="$here/fake-sbt-idle-children.sh" GATE_STALL_SECS=6 GATE_TICK_SECS=2 \
+FAKE_SPIN="${GATE_SELFTEST_SPIN:-3000000}" GATE_SBT="$here/fake-sbt-idle-children.sh" GATE_STALL_SECS=6 GATE_TICK_SECS=2 \
   GATE_STALL_CPU=0 GATE_STALL_HOST_CPU=0 \
-  GATE_LOG="$tmp/busyhost.log" run_gate test > "$out5" 2>&1
+  GATE_LOG="$tmp/busyhost.log" run_gate "okayJVM/test" > "$out5" 2>&1
 rc5=$?
 grep -q "gate: STALLED" "$out5" && bad "killed a compiling host" || ok "not stalled"
 [ "$rc5" -eq 0 ] && ok "reached a verdict (exit 0)" || bad "exit was $rc5, expected 0"
@@ -102,7 +102,7 @@ say "5b. a host burning well under a second per window is still WORKING (CPU cou
 out5b="$tmp/lighthost.out"
 GATE_SBT="$here/fake-sbt-light-host.sh" GATE_STALL_SECS=6 GATE_TICK_SECS=2 \
   GATE_STALL_CPU=0 GATE_STALL_HOST_CPU=0 \
-  GATE_LOG="$tmp/lighthost.log" run_gate test > "$out5b" 2>&1
+  GATE_LOG="$tmp/lighthost.log" run_gate "okayJVM/test" > "$out5b" 2>&1
 rc5b=$?
 grep -q "gate: STALLED" "$out5b" && bad "killed a lightly working host: $(grep STALLED "$out5b")" || ok "not stalled"
 [ "$rc5b" -eq 0 ] && ok "reached a verdict (exit 0)" || bad "exit was $rc5b, expected 0"
@@ -132,7 +132,7 @@ GATE_SBT="$here/fake-sbt-args.sh" GATE_LOG="$tmp/chain-affected.log" \
   run_gate "affected master staged; okayDeploy/testOnly X; affected master" > "$tmp/chain-affected.out" 2>&1
 rc6b=$?
 got=$(grep -o 'fake-sbt-arg: <[^>]*>' "$tmp/chain-affected.log" | tr '\n' '|')
-want='fake-sbt-arg: <affected master test jvm staged>|fake-sbt-arg: <affected master test rest staged>|fake-sbt-arg: <okayDeploy/testOnly X>|fake-sbt-arg: <affected master test jvm>|fake-sbt-arg: <affected master test rest>|'
+want='fake-sbt-arg: <affected master test jvm staged>|fake-sbt-arg: <affected master test js staged>|fake-sbt-arg: <affected master test native staged>|fake-sbt-arg: <okayDeploy/testOnly X>|fake-sbt-arg: <affected master test jvm>|fake-sbt-arg: <affected master test js>|fake-sbt-arg: <affected master test native>|'
 [ "$got" = "$want" ] && ok "both affected parts expanded, in order, around the plain one" || bad "sbt was handed: $got"
 [ "$rc6b" -eq 0 ] && ok "exit 0" || bad "exit was $rc6b, expected 0"
 
@@ -145,21 +145,65 @@ rc8=$?
 [ "$rc8" -eq 2 ] && ok "exit 2" || bad "exit was $rc8, expected 2"
 grep -q "Passed: Total" "$tmp/empty.log" 2>/dev/null && bad "sbt was started anyway" || ok "sbt was not started"
 
-say "8. \`affected <ref> staged\` is two phases with the order on both; four arguments pass through"
+say "8. \`affected <ref> staged\` is three platforms with the order on each; four arguments pass through"
 # ci-staged: the pre-merge gate's order is sbt's FOURTH argument, so the
 # JVM-first split has to carry it on each phase — a first cut matched
 # `*" staged"` alone and would have rewritten `affected master test all
 # staged` into `affected master test all test jvm staged`.
 GATE_SBT="$here/fake-sbt-args.sh" GATE_LOG="$tmp/staged.log" run_gate "affected master staged" > "$tmp/staged.out" 2>&1
 got=$(grep -o 'fake-sbt-arg: <[^>]*>' "$tmp/staged.log" | tr '\n' '|')
-want='fake-sbt-arg: <affected master test jvm staged>|fake-sbt-arg: <affected master test rest staged>|'
-[ "$got" = "$want" ] && ok "two phases, JVM first, order on both" || bad "sbt was handed: $got"
+want='fake-sbt-arg: <affected master test jvm staged>|fake-sbt-arg: <affected master test js staged>|fake-sbt-arg: <set Global / concurrentRestrictions := Seq(Tags.limitAll(1))>|fake-sbt-arg: <affected master test native staged>|'
+[ "$got" = "$want" ] && ok "three platforms, JVM first, Native tasks bounded" || bad "sbt was handed: $got"
 GATE_SBT="$here/fake-sbt-args.sh" GATE_LOG="$tmp/staged4.log" run_gate "affected master test all staged" > "$tmp/staged4.out" 2>&1
 got=$(grep -o 'fake-sbt-arg: <[^>]*>' "$tmp/staged4.log" | tr '\n' '|')
 [ "$got" = 'fake-sbt-arg: <affected master test all staged>|' ] && ok "four arguments pass through untouched" || bad "sbt was handed: $got"
 GATE_SBT="$here/fake-sbt-args.sh" GATE_LOG="$tmp/closed.log" run_gate "affected master" > "$tmp/closed.out" 2>&1
 got=$(grep -o 'fake-sbt-arg: <[^>]*>' "$tmp/closed.log" | tr '\n' '|')
-[ "$got" = 'fake-sbt-arg: <affected master test jvm>|fake-sbt-arg: <affected master test rest>|' ] && ok "the plain form is unchanged" || bad "sbt was handed: $got"
+[ "$got" = 'fake-sbt-arg: <affected master test jvm>|fake-sbt-arg: <affected master test js>|fake-sbt-arg: <set Global / concurrentRestrictions := Seq(Tags.limitAll(1))>|fake-sbt-arg: <affected master test native>|' ] && ok "the plain form is unchanged" || bad "sbt was handed: $got"
+
+say "8b. managed full builds use fresh platform heaps and stop at the first failure"
+GATE_SBT="$here/fake-sbt-args.sh" FAKE_SBT_REQUIRE_LOCK=1 GATE_LOG="$tmp/platform-all.log" run_gate "family all" > "$tmp/platform-all.out" 2>&1
+rc=$?
+[ "$rc" -eq 0 ] && ok "full split gate passes" || bad "split gate exit $rc"
+pids=$(grep 'fake-sbt-pid:' "$tmp/platform-all.log" | sort -u | wc -l | tr -d ' ')
+[ "$pids" -eq 3 ] && ok "three distinct sbt processes" || bad "process count $pids"
+got=$(grep -o 'fake-sbt-arg: <[^>]*>' "$tmp/platform-all.log" | tr '\n' '|')
+want='fake-sbt-arg: <family jvm>|fake-sbt-arg: <family js>|fake-sbt-arg: <set Global / concurrentRestrictions := Seq(Tags.limitAll(1))>|fake-sbt-arg: <family native>|'
+[ "$got" = "$want" ] && ok "platform order and Native limit" || bad "full gate arguments: $got"
+grep -q '3 test results' "$tmp/platform-all.out" && ok "all stage results retained" || bad "lost stage output"
+FAKE_SBT_FAIL_COMMAND='family js' GATE_SBT="$here/fake-sbt-args.sh" GATE_LOG="$tmp/platform-red.log" run_gate "family all" > "$tmp/platform-red.out" 2>&1
+rc=$?
+[ "$rc" -ne 0 ] && ok "failed JS stops the gate" || bad "JS failure went green"
+grep -q 'fake-sbt-arg: <family native>' "$tmp/platform-red.log" && bad "Native ran after failed JS" || ok "Native never started"
+grep -q 'fake-sbt-arg: <family jvm>' "$tmp/platform-red.log" && ok "earlier stage retained on failure" || bad "lost earlier log"
+FAKE_SBT_FAIL_COMMAND='family jvm' GATE_SBT="$here/fake-sbt-args.sh" GATE_LOG="$tmp/platform-jvm-red.log" run_gate test > "$tmp/platform-jvm-red.out" 2>&1
+rc=$?
+[ "$rc" -ne 0 ] && ! grep -q 'fake-sbt-arg: <family js>' "$tmp/platform-jvm-red.log" && ok "bare test stops after JVM failure" || bad "bare test did not fail fast"
+GATE_SBT="$here/fake-sbt-args.sh" GATE_LOG="$tmp/build-entry.log" sh "$here/build.sh" all Test/compile > "$tmp/build-entry.out" 2>&1
+rc=$?
+[ "$rc" -eq 0 ] && grep -q 'fake-sbt-arg: <family native Test/compile>' "$tmp/build-entry.log" && ok "build entry point carries compile task" || bad "build entry failed $rc"
+GATE_SBT="$here/fake-sbt-args.sh" GATE_LOG="$tmp/build-invalid.log" sh "$here/build.sh" all 'test; compile' > "$tmp/build-invalid.out" 2>&1
+rc=$?
+[ "$rc" -eq 2 ] && [ ! -f "$tmp/build-invalid.log" ] && ok "malformed task refused before sbt" || bad "invalid task ran"
+
+GATE_SBT="$here/fake-sbt-args.sh" GATE_LOG="$tmp/build-default.log" sh "$here/build.sh" > "$tmp/build-default.out" 2>&1
+rc=$?
+got=$(grep -o 'fake-sbt-arg: <[^>]*>' "$tmp/build-default.log" | tr '\n' '|')
+[ "$rc" -eq 0 ] && [ "$got" = 'fake-sbt-arg: <family jvm test>|' ] && ok "build defaults to JVM only" || bad "build default changed: $got"
+GATE_SBT="$here/fake-sbt-args.sh" GATE_LOG="$tmp/test-default.log" run_gate test > "$tmp/test-default.out" 2>&1
+rc=$?
+got=$(grep -o 'fake-sbt-arg: <[^>]*>' "$tmp/test-default.log" | tr '\n' '|')
+[ "$rc" -eq 0 ] && [ "$got" = 'fake-sbt-arg: <family jvm>|' ] && ok "managed bare test is JVM only" || bad "test default changed: $got"
+
+holders=$(grep 'fake-lock-holder:' "$tmp/platform-all.log" | sort -u | wc -l | tr -d ' ')
+[ "$holders" -eq 1 ] && [ ! -d "$OKAY_CI_LOCK_DIR" ] && ok "one lock held across platforms and released afterwards" || bad "platform lock lifetime changed"
+mkdir "$tmp/other-build"
+( cd "$tmp/other-build"
+  GATE_SBT="$here/fake-sbt-args.sh" GATE_LOG="$tmp/other-test.log" run_gate test > "$tmp/other-test.out" 2>&1
+)
+rc=$?
+got=$(grep -o 'fake-sbt-arg: <[^>]*>' "$tmp/other-test.log" | tr '\n' '|')
+[ "$rc" -eq 0 ] && [ "$got" = 'fake-sbt-arg: <test>|' ] && ok "other builds retain raw test" || bad "non-family build was rewritten: $got"
 
 say "9. the lost-process classifier, over real logs, in both directions"
 # native-accept-timeout: shape C (a Native binary that never connected

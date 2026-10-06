@@ -66,10 +66,10 @@ jobs:
           # a push that created the branch has no `before`; the family then
           if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
             echo "no base to diff against: the whole family"
-            sbt "family all"
+            sh scripts/build.sh all
           else
             echo "diff base: $BASE"
-            sbt "affected $BASE"
+            sh scripts/gate.sh "affected $BASE"
           fi
 
   family:
@@ -105,10 +105,9 @@ jobs:
           # process on Native is a known, false failure shape
           # (native-runner-error), and the nightly job was re-teaching
           # itself the same lesson gate.sh already knows how to answer —
-          # its watchdog and rerun-alone logic apply to "family <platform>"
-          # exactly as they do to "affected <ref>", since anything but
-          # the "affected" form passes through gate.sh untouched.
-          sh scripts/gate.sh "family ${{ matrix.platform }}"
+          # build.sh uses the same watchdog and classification, with a
+          # fresh platform process and bounded Native task concurrency.
+          sh scripts/build.sh "${{ matrix.platform }}"
           if [ "${{ matrix.platform }}" = "jvm" ]; then sbt okayJVM/Jmh/compile compare/Jmh/compile; fi
 
   # OKAY2 (okay2-ci, 2026-09-24): the Scala 2.13 core is its OWN sbt

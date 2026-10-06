@@ -248,6 +248,8 @@ if [ -n "$replay" ]; then
   echo "gate: reading $log (no sbt run)"
 else
   cmd="${1:-test}"
+  managed_test=""
+  [ -f project/Affected.scala ] && managed_test=1
   log="${GATE_LOG:-$(mktemp -t okay-gate)}"
 
   # THE BENCH WINDOW (specs/bench-window.md): this gate holds a token
@@ -261,28 +263,11 @@ else
   demoted=""
   [ -e "$BW_DIR/demoted/$$" ] && demoted=1
 
-  # JVM FIRST, AND THE OTHER PLATFORMS ONLY IF IT IS GREEN
-  # (gate-jvm-first, 2026-09-18). MEASURED: sampling one full gate's
-  # own descendants every 4 s, `node` is 684 of 944 samples — 72% of
-  # a matrix is Scala.js runners, and the Native binaries are most of
-  # the rest. The JVM arm is where a logic error shows; JS and Native
-  # mostly re-check that the same suites compile and run there.
-  #
-  # sbt runs the commands it is given IN SEQUENCE and stops at the
-  # first that fails, so a red JVM never pays for the other two. One
-  # sbt, one JVM start, one log — the phases are two commands inside
-  # it, not two invocations.
-  #
-  # ONLY for the `affected <ref>` form, which is what AGENTS.md tells
-  # every lane to run. Anything else (`test`, an explicit task, a
-  # `family` call) is passed through untouched: this is a faster road
-  # to the same verdict, not a new meaning for the argument.
-  # `affected <ref> staged` is the PRE-MERGE gate (ci-staged, 2026-09-25,
-  # specs/ci-staged.md): the lane's changed projects' tests first, their
-  # dependents' second, as two sbt commands. Same two phases, same
-  # JVM-first order — the order is the fourth sbt argument, so it rides
-  # on the end of both: changed-JVM, dependents-JVM, changed-rest,
-  # dependents-rest.
+  # Managed gates separate JVM, JS and Native. Each platform owns a
+  # fresh sbt heap; a failed stage never starts the next. Native tasks
+  # are serialized across modules. Explicit command chains retain one
+  # session because their `set` commands may define later task behavior.
+  # Staged affected gates keep own/dependent ordering in each platform.
   # ONE COMMAND IS A CHAIN OF ONE. Every element is read on its own
   # (gate-affected-short-form-in-chain, 2026-09-28): until then the
   # `affected` expansion below matched the WHOLE argument, so inside a
@@ -303,13 +288,21 @@ else
                       esac ;;
         esac
         if [ -n "$scope" ]; then
-          printf '%s\n' "affected $ref test jvm staged" "affected $ref test rest staged"
+          printf '%s\n' "affected $ref test jvm staged" "affected $ref test js staged" "affected $ref test native staged"
         else
           case "$ref" in
             *" "*) printf '%s\n' "$1" ;;   # a task or platform was given: the caller means it
-            *) printf '%s\n' "affected $ref test jvm" "affected $ref test rest" ;;
+            *) printf '%s\n' "affected $ref test jvm" "affected $ref test js" "affected $ref test native" ;;
           esac
         fi ;;
+      test)
+        if [ -n "$managed_test" ]; then
+          printf '%s\n' "family jvm"
+        else printf '%s\n' test; fi ;;
+      "family all") printf '%s\n' "family jvm" "family js" "family native" ;;
+      "family all "*)
+        task="${1#family all }"
+        printf '%s\n' "family jvm $task" "family js $task" "family native $task" ;;
       *) printf '%s\n' "$1" ;;
     esac
   }
@@ -322,6 +315,17 @@ else
   # at the first that fails. The parts go through a FILE and not a
   # here-document: an unquoted here-document expands backslashes, and
   # a pipe would run the `set --` in a subshell that forgets it.
+  # Only managed platform gates get fresh sessions. Arbitrary chains
+  # may carry `set` state and must retain a single session.
+  platform_split=""
+  case "$cmd" in
+    test|"family all"|"family all "*|"family jvm"|"family jvm "*|"family js"|"family js "*|"family native"|"family native "*) platform_split=1 ;;
+    "affected "*)
+      short="${cmd#affected }"
+      case "$short" in *" staged") short="${short% staged}" ;; esac
+      case "$short" in *" "*|*";"*) : ;; *) platform_split=1 ;; esac ;;
+  esac
+  case "$cmd" in *";"*) platform_split="" ;; test) [ -n "$managed_test" ] || platform_split="" ;; esac
   cmds="$log.cmds"
   : > "$cmds"
   rest="$cmd"
@@ -367,8 +371,32 @@ else
     esac
   fi
   echo "gate: sbt$(for c in "$@"; do printf ' "%s"' "$c"; done)  (log: $log)"
-  sbt_run "$log" "$@"
-  status=$?
+  if [ -n "$platform_split" ]; then
+    : > "$log"
+    status=0
+    stage=0
+    for c in "$@"; do
+      stage=$((stage + 1))
+      phase_log="$log.platform-$stage"
+      echo "gate: platform stage $stage: $c (fresh sbt process)" | tee -a "$log"
+      case "$c" in
+        "family native"|"family native "*|"affected "*" test native"|"affected "*" test native staged")
+          sbt_run "$phase_log" "set Global / concurrentRestrictions := Seq(Tags.limitAll(1))" "$c" ;;
+        *) sbt_run "$phase_log" "$c" ;;
+      esac
+      status=$?
+      cat "$phase_log" >> "$log"
+      # Preserve the established diagnostic paths beside the combined log.
+      for evidence in "$phase_log".stall.*; do
+        [ -f "$evidence" ] || continue
+        cp "$evidence" "$log${evidence#"$phase_log"}"
+      done
+      [ "$status" -eq 0 ] || break
+    done
+  else
+    sbt_run "$log" "$@"
+    status=$?
+  fi
   # A DEMOTED RUN SAYS SO IN ITS OWN LOG (gate-demote-timeouts, below),
   # so a `--read` of it later classifies the same way this run does
   [ -n "$demoted" ] && echo "gate: this run was demoted to the efficiency cores by the bench window (OKAY_BENCH_DEMOTE=on)" >> "$log"

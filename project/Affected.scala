@@ -1,6 +1,7 @@
 import sbt._
 import Keys._
 import scala.sys.process._
+import scala.annotation.tailrec
 
 /**
  * Two commands the gate runs with, so a push costs what it changed
@@ -34,8 +35,9 @@ import scala.sys.process._
  * Dependents are closed over the build's classpath dependencies: a
  * change in the core is a change in every module, a change in
  * okay-blob is a change in okay-blob and whatever depends on it. The
- * result is intersected with the root aggregate, which is what `sbt
- * test` at the root runs — a project the family deliberately keeps
+ * result is intersected with the combined platform aggregates. The root
+ * now defaults to JVM; platformRoots preserves JS/Native in the full
+ * gate — a project the family deliberately keeps
  * out of the gate stays out.
  *
  * A file the doc tests read — docs/, specs/, a README, the boards,
@@ -58,7 +60,10 @@ import scala.sys.process._
  */
 object Affected extends AutoPlugin {
   override def trigger = allRequirements
-  override def globalSettings = Seq(commands ++= Seq(affected, family))
+  val platformRoots = settingKey[Seq[String]]("Additional platform aggregate roots for the complete gate")
+  override def globalSettings = Seq(
+    platformRoots := Seq.empty,
+    commands ++= Seq(affected(platformRoots.value), family(platformRoots.value), checkPlatformBuilds(platformRoots.value)))
 
   private def under(f: File, d: File): Boolean =
     f.getAbsoluteFile.toPath.normalize.startsWith(d.getAbsoluteFile.toPath.normalize)
@@ -142,7 +147,7 @@ object Affected extends AutoPlugin {
       case e: Exception => Left(s"affected: git could not resolve '$base': ${e.getMessage}")
     }
 
-  private final class Graph(state: State) {
+  private final class Graph(state: State, extraRoots: Seq[String]) {
     val ex = Project.extract(state)
     val root: File = ex.get(ThisBuild / baseDirectory)
     val refs: Seq[ProjectRef] = ex.structure.allProjectRefs
@@ -192,14 +197,16 @@ object Affected extends AutoPlugin {
     def closeOverDependents(s: Set[ProjectRef]): Set[ProjectRef] = closeOver(dependents)(s)
     def closeOverTestDependents(s: Set[ProjectRef]): Set[ProjectRef] = closeOver(testDependents)(s)
 
-    /** what `sbt test` at the root runs: the aggregate, transitively */
+    /** Complete gate inventory across the default and explicit platform roots. */
     val gate: Set[ProjectRef] = {
       val rootRef = ProjectRef(ex.structure.root, ex.structure.rootProject(ex.structure.root))
-      def go(s: Set[ProjectRef]): Set[ProjectRef] = {
+      val seeds = Set(rootRef) ++ extraRoots.map(id => ProjectRef(rootRef.build, id))
+      require(seeds.forall(refs.contains), "unknown platform aggregate root")
+      @tailrec def go(s: Set[ProjectRef]): Set[ProjectRef] = {
         val next = s ++ s.flatMap(p => resolved(p).toSeq.flatMap(_.aggregate))
         if (next == s) s else go(next)
       }
-      go(Set(rootRef)) - rootRef
+      go(seeds) -- seeds
     }
 
     /** one `all` per (projects, label) STAGE, the stages queued in
@@ -231,12 +238,12 @@ object Affected extends AutoPlugin {
    * leaving it out of the first phase would mean a lane that touches
    * it learns nothing until the expensive phase runs.
    */
-  private def onPlatform(id: String, platform: String): Boolean = platform match {
+  def onPlatform(id: String, platform: String): Boolean = platform match {
     case "all" => true
-    case "jvm" => id.endsWith("JVM") || !(id.endsWith("JS") || id.endsWith("Native"))
+    case "jvm" => !(id.endsWith("JS") || id.endsWith("Native") || id == "okayUiGtk")
     case "js" => id.endsWith("JS")
-    case "native" => id.endsWith("Native")
-    case "rest" => id.endsWith("JS") || id.endsWith("Native")
+    case "native" => id.endsWith("Native") || id == "okayUiGtk"
+    case "rest" => id.endsWith("JS") || id.endsWith("Native") || id == "okayUiGtk"
     case _ => true
   }
 
@@ -255,7 +262,7 @@ object Affected extends AutoPlugin {
    * for `scripts/affected-selftest.sh`, which checks the shapes the spec
    * names in one sbt start instead of one worktree each.
    */
-  lazy val affected: Command = Command.args("affected", "<git-ref> [task] [jvm|js|native|rest|all] [staged|closed] [--plan] [--files=a,b,c]") { (state, args) =>
+  def affected(extraRoots: Seq[String]): Command = Command.args("affected", "<git-ref> [task] [jvm|js|native|rest|all] [staged|closed] [--plan] [--files=a,b,c]") { (state, args) =>
     val (flags, positional) = args.partition(_.startsWith("--"))
     val base = positional.headOption.getOrElse("origin/master")
     val task = positional.drop(1).headOption.getOrElse("test")
@@ -263,7 +270,7 @@ object Affected extends AutoPlugin {
     val scope = positional.drop(3).headOption.getOrElse("closed").toLowerCase
     val plan = flags.contains("--plan")
     val files = flags.collectFirst { case f if f.startsWith("--files=") => f.stripPrefix("--files=") }
-    val g = new Graph(state)
+    val g = new Graph(state, extraRoots)
     if (!Set("staged", "closed")(scope)) {
       state.log.error(s"affected: '$scope' is not an order (staged, closed)"); state.fail
     } else {
@@ -315,10 +322,30 @@ object Affected extends AutoPlugin {
     }
   }
 
-  lazy val family: Command = Command.args("family", "<jvm|js|native|all> [task]") { (state, args) =>
+  /** Validate actual resolved aggregate memberships, not textual sbt settings. */
+  def checkPlatformBuilds(extraRoots: Seq[String]): Command = Command.command("checkPlatformBuilds") { state =>
+    val ex = Project.extract(state)
+    val g = new Graph(state, extraRoots)
+    val root = ex.structure.root
+    val ids = Seq("jvm" -> ex.structure.rootProject(root), "js" -> "jsBuild", "native" -> "nativeBuild")
+    val groups = ids.map { case (platform, id) =>
+      val members = g.resolved(ProjectRef(root, id)).get.aggregate.toSet
+      require(members.nonEmpty && members.forall(p => onPlatform(p.project, platform)),
+        "incorrect " + platform + " aggregate membership")
+      platform -> members
+    }
+    val union = groups.flatMap(_._2).toSet
+    require(groups.map(_._2.size).sum == union.size, "platform aggregates overlap")
+    require(union == g.gate, "complete CI gate differs from platform aggregate union")
+    require(Set("okayJVM", "okayJS", "okayNative").subsetOf(union.map(_.project)), "missing core platform")
+    state.log.info("platform-builds: " + groups.map { case (p, ms) => p + "=" + ms.size }.mkString(" ") + " total=" + union.size)
+    state
+  }
+
+  def family(extraRoots: Seq[String]): Command = Command.args("family", "<jvm|js|native|all> [task]") { (state, args) =>
     val platform = args.headOption.getOrElse("all").toLowerCase
     val task = args.drop(1).headOption.getOrElse("test")
-    val g = new Graph(state)
+    val g = new Graph(state, extraRoots)
     if (!Set("all", "jvm", "js", "native", "rest")(platform))
       state.log.error(s"family: '$platform' is not a platform (jvm, js, native, rest, all)")
     val chosen = g.gate.filter(r => onPlatform(r.project, platform))
