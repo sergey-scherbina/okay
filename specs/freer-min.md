@@ -750,3 +750,73 @@ touches: a handler INSIDE a delimiter, crossed by a capture.
 be run" with "its capture is handed out"; a consumer at the top types its
 parameter at `EmptyTuple` to forbid it. 21 tests on the JVM, JS and Native
 compile, no cast in the kernel.
+
+## Stage 10 — THE MINIMAL BASIS: effects, handlers, continuations with answer-type modification (DONE, 2026-10-06)
+
+The operator named what is needed — effects, handlers, continuations
+with ATM — and left the rest to judgement. The judgement, after the
+detours of stages 4–9, and what each cost to learn:
+
+```
+enum Freer[+G[+_], S, R, +A]:                       -- (A => S) => R over the row G; seven nodes
+  Return [R, A](a)                                    extends Freer[Pure, R, R, A]
+  Inject [G, T, A](op: G[A])                          extends Freer[G, T, T, A]
+  Bind   [G, S, T, R, A, B](m, k)                     extends Freer[G, S, R, B]
+  Delay  [G, S, R, A](t)                              extends Freer[G, S, R, A]
+  Reset  [H, S, R, U](p: Prompt[H, S], body: Freer[H, S, R, S])                               extends Freer[H, U, U, R]
+  Shift  [H, Sp, T, R, X, V](p, f: ([U] => X => Freer[H, U, U, T]) => Freer[H, V, R, V])        extends Freer[H, T, R, X]
+  Resume [H, X, T, U](x, k: Captured[H, X, T, ?])                                              extends Freer[H, U, U, T]
+```
+
+- The rows are UNARY, built by `flatMap`; `Inject` is the one operation
+  node, diagonal. No `Perform`: no sequential typestate (stage 7's
+  finding, the operator's "I do not know whether I need it").
+- The answer pair is Danvy–Filinski's, typed as they typed it: a
+  delimiter's VALUE IS ITS FINAL ANSWER (`reset body` with `body : S [S,
+  R]` answers `R`, at any `U` outside); a capture's `k : X => T [U, U]`
+  for every `U` is PURE — their `τ/t → α/t`, here a polymorphic function
+  — and delivers the answer at the hole; the shift's body runs inside
+  the delimiter put back, at its own `V`, answering `R`. This is the
+  real thing: `reset(1 + shift(_ => "a"))` answers a String, and
+  `shift(k => k(1) >>= k >>= (n => "n=" + n))` answers `"n=3"`. Stage
+  3's pair had NO answer-type modification: it was McBride's state
+  reading, realised only by `Perform`; with `Perform` gone it was
+  phantom (found by the first ATM test written for it).
+- `Prompt[H, S]`: identity by allocation, the row `H`, and the answer
+  `S` the body is written at — the latter for INFERENCE ONLY (an
+  expected type does not reach a receiver, so a shift cannot learn the
+  answer at its hole from its context; a lexical `In[S]` was tried and
+  fails the same way, the given instantiating to `Any` before the body
+  is typed). The machine does not tie the delimiter to `S`: after a
+  shift the delimiter is put back at the shift body's `V`. A prompt
+  that pinned it (Gunter–Rémy–Riecke's) loses ATM; this one does not.
+  The row is what makes the prompt NECESSARY: `k` is the context's
+  frames, typed at the context's row, and nothing but the delimiter's
+  identity (`_: p.type`, a type test that IS `eq`) ties the shift's row
+  to it — without it the compiler refuses `Captured(piece)`.
+- A capture goes to the NEAREST delimiter, which must be its prompt's
+  (`NotNearest` otherwise). With answer types that move, a capture
+  ACROSS another delimiter needs the stack of answer types — the CPS
+  hierarchy, Materzok–Biernacki — which is stage 5's `Σ`. Not in the
+  basis. A capture reaching the bottom of a nested run (a handler's) is
+  handed out as a head form, re-closed by a fresh `Done` at the hole's
+  answer (`Cut.Gone`), so handlers live inside delimiters and a capture
+  crosses a HANDLER, multi-shot (TestHandlers: 3).
+- The stack carries the run's answer (`R0`) beside its initial one, so a
+  delimiter popping changes the program's answer without changing the
+  loop's result type; an operation handed out is re-injected at the
+  run's answer (it carries none).
+
+216 lines of kernel, `grep asInstanceOf|@unchecked`: 0. 21 tests on the
+JVM, JS and Native compile. The one claim outside the kernel is the
+handler's, in one function (`Distinct`'s job).
+
+What was learned the expensive way, kept here so it is not learned
+again: (1) with a data stack, the shift and its delimiter are two nodes,
+and the compiler needs the proof they match — identity, `Σ`, or a cast;
+(2) a nested run is not a fourth way, it removes the search, not the
+proof; (3) `Perform`-style ATM and DF-style ATM are two different things
+on the same pair, and only one can be the delimiter's typing; (4) a
+captured continuation must be answer-polymorphic or every bind after it
+is pinned to the hole's answer; (5) polymorphic function types have no
+variance.
