@@ -1,6 +1,0 @@
-feature/cont-to-freer 2026-10-06T17:23:33Z
-agent: claude-code
-heartbeat: 2026-10-06T17:23:33Z
-status: in-progress
-done-so-far: claimed
-next: move the CPS Cont, Delimited, ContReplay and ContMacro into okay-freer; Control, Func and DirectCtx shared there in package okay; the core keeps the names at its door
