@@ -1292,3 +1292,50 @@ answer; two delimiters alike in both are told apart by nothing but their nesting
 written in, which is where its operations' handlers are, as a closure's environment is.
 
 Seven nodes, 32 tests on the JVM, JS and Native compile, no cast, no warning, no prompt, no row.
+
+## Stage 27: `Free[R, A]` WITH ROWS, OVER `Cont` (DONE, 2026-10-06)
+
+The operator: "теперь, имея такую монаду Cont — как нам сделать Free[F[_],A] с рядами поверх нее?" The kernel's
+programs are typed by their context (stage 26); a `Free` is a program typed by a ROW, built with no context in
+sight. The answer: `Free[R, A]` is a FUNCTION of a context whose capabilities reach `R`, into `Cont` —
+
+```
+trait Free[R <: Row, +A]:
+  def run(using c: Ctx, has: Has[R, c.type]): Cont[c.Here, c.Here, A]
+```
+
+and a row is a nominal list, `Ask :+: Say :+: RNil`. Three probes chose the list (ProbeRow, deleted):
+
+- a UNION in a type lambda (`+ = [A] =>> F[A] | G[A]`) unifies by subtyping, loosely — `Member[Cnt, Ask + (Say
+  + Cnt)]` was found as `Cnt + Any`, and two instances were ambiguous;
+- a nominal pair `Join[+X, +Y]` makes `Member` exact, but a GADT walk over `Has` is not total for the compiler
+  (three exhaustivity warnings): a pair is not a list, its tail may be anything;
+- a nominal list `E :+: T` / `RNil` is two classes: every walk is total, no claim, no cast, and the join `R1 ++
+  R2` is a match type that reduces as the row is known.
+
+The parts (Free.scala, 122 lines): `Member[E, R]` a path to the effect, the compiler builds it, the first by
+priority; `Cap[E, C]` a capability — `Answers(Answered)` in place or `Reaching(Reaches)` by a capture — and its
+`lift` to a context one level inside, which is the kernel's own `Answered.outside` / `Reaches.out` applied by hand;
+`Has[R, C]` the row's capabilities, a list of the row's shape, `at(member)` total by the two shapes being one;
+`Shape[R]` with `split` IN EACH CASE, where the row is the case's own constructor and `(E :+: T) ++ R2` reduces
+(a match type in a sealed trait's method does not reduce on an abstract `R`); `Sub[R1, R2]` every effect of `R1`
+in `R2`, for `widen`. Then `pure: Free[RNil, A]`, `inject(op): Free[E :+: RNil, X]`, `flatMap` joining rows and
+splitting the capabilities by the first row's shape, `widen`, `handle(h)(p: Free[E :+: R, A]): Free[R, Ans]` —
+the body under the handler's delimiter, its context given `Cap` for `E` at `Reaches.here` (or `Answered.here` for
+an `Answering`) and the rest's capabilities lifted one level in — and `top(p: Free[RNil, A]): Top[A]` at `Root`.
+
+What the list gives: the row says what the program performs; a program's `for` joins the rows as it is built,
+keeping every occurrence (`Ask :+: Ask :+: RNil` for a loop), `widen` folds them into the row a person wrote; a
+handler takes the HEAD effect off, so the order of handlers is the order of the row, and `widen` reorders. A
+`Free` refused: an effect not in its row (`inject` into `Free[Ask :+: RNil, …]` of a `Say`), and a run with a
+handler missing (TestFree, `compileErrors`). Five tests: the row under two handlers, head first; `widen` with the
+handlers the other way round; the two refusals; `every` over `Free` under a reader and a writer (every world,
+every line, in order); 100 000 operations in constant stack.
+
+Dotty, this stage: `Has[R, C]` with `C` the context's TYPE does not reach a `Handling[E, Ans, c.type]` for its
+`lift` — `In[S, Oc]` is invariant in `Oc`, so `run` takes `Has[R, c.type]`, the context's singleton; a value
+extending the kernel's sealed `Target` from another file is refused — `Cap.lift` applies the kernel's own givens
+instead, which is the shorter answer anyway. Two recursions by the row (`Has.at`, `Has.lift`), named in the
+inventory: per effect of a row the program's TYPE names.
+
+Seven nodes in the kernel, 37 tests on the JVM, JS and Native compile, no cast, no warning.

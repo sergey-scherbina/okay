@@ -157,7 +157,7 @@ sealed trait PerformLow:
       val t = r.target(c)
       Cont.Op[c.Here, X, t.Dn, t.Ansn](t.reach, t.clause(op))
 /** the handler of `E` reached from a context `C`: where its delimiter is, and its clause */
-trait Reaches[E[+_], C <: In[?, ?]]:
+trait Reaches[E[+_], C <: Ctx]:
   def target(c: C): Target[E, c.Here]
 /** a handler's delimiter as reached from an index: the reach to it, and the clause, at the target's own outside */
 sealed trait Target[E[+_], N <: Tuple]:
