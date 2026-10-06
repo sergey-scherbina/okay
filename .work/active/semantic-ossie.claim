@@ -1,5 +1,5 @@
 feature/semantic-ossie 2026-10-06T12:19:59.647868+00:00
 agent: codex
-heartbeat: 2026-10-06T12:19:59.647868+00:00
+heartbeat: 2026-10-06T12:38:35.719243+00:00
 status: in-progress
-next: pin schema, spec then interoperable document and execution adapters
+next: platform gates and docs; 13 JVM tests green incl upstream Flights
