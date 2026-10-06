@@ -175,3 +175,49 @@ at `F + G`, a ZIO handler reading `R`/`E` off the row by `<:<` as ZIO's
 own `for` would — and gives SUBTRACTION (a handler's rest) only by
 position or evidence. ZIO itself never subtracts: `provide`/`catchAll`
 move `R` to `Any` and `E` to `Nothing` by subtyping. See Decisions.
+
+## Decisions (2026-10-06, the operator's)
+
+- **The diagonal node is `Inject`**, the index-moving one `Perform`.
+  Four nodes: `Return | Inject | Perform | Bind`.
+- **`G` stays three-place.** Not for continuations alone: for every
+  operation that moves the index — the prompt stack in the index (a
+  `Shift0` naming a prompt not on the stack becomes a compile error,
+  today `NoPrompt` at run time), resources and transactions (acquire
+  and release as index moves, a leak a type error), session-typed
+  dialogues (`Paused.Ask/Done` typed by step) — and `PState`, which
+  exists. ZIO's three places are NOT these: ZIO is graded (`R` by `&`,
+  `E` by `|`, a semilattice), the row's own law, so a ZIO is a row
+  member through `Inject`, raw, and never an index.
+- **`Delay` is not a node.** `delay(t)` is `Bind(Return(()), _ => t)`;
+  `defer(t)(f)` is `Bind(delay(t), f)`. Costs against master's node:
+  the same allocations per `delay` (one node and the thunk; `Return(())`
+  is the node), and for `defer` ONE rule in `resume` — a `Bind` whose
+  left side is `Bind(Return(a), f)` applies `f` instead of composing a
+  closure over it — which is the case master wrote for `Bind(Delay(t),
+  g)`. What master used `Delay` for beyond laziness: `Suspended`, a
+  thunk the machine steps into instead of forcing — the same by class
+  on the continuation of a `Bind(Return(()), k)`, as `Mapped` and
+  `Frames` already are functions known by class. Speed is measured
+  after, against master's lanes (the `performance` skill).
+- **The machine is the next stage, in this module, as a LIBRARY over
+  the tree**: cont-core.md's two type-aligned lists (`Frames`, a
+  segment; `Stack`, the segments at their delimiters) and the one loop
+  with five rules, nothing else of master's `Delimited` (`Kept`,
+  `nearest`, `Shots`, `strict`, `barrier`, `Outer`, `Step`). A captured
+  `k` is a `Stack`, which is an `A => Freer` by class. `resume` stays
+  for handlers over rows without `Control`; the machine never rotates,
+  it pushes frames.
+- **The module's name.** `okay-kernel` / `okay.kernel` is the
+  microkernel of plugins and ports (specs/kernel.md, build.sbt, docs/
+  README.md), so this lane is `okay-freer`, package `okay.freer`,
+  until the operator says which of the two moves.
+
+## Open, after stage 0
+
+- `Control`'s row parameter: the BODY's row as probed (`Control[+G]`,
+  `G` the row the body is written in, so a nested delimiter has a
+  deeper type), or the base row with the bodies over `Ctl[F] + F`
+  (freer-kont's `Row[F]`, closed under nesting, which `run` needs to
+  strip all control at once). The machine decides; the first reset
+  sugar will show which infers.

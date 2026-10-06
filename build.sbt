@@ -2924,6 +2924,22 @@ lazy val okayDiagnose = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   )
 
 /**
+ * okay-freer (specs/freer-min.md): the core cut to its minimum — a four-node
+ * indexed Freer (`Return | Inject | Perform | Bind`) with answer-type
+ * modification, rows built by `flatMap`, and the control signature
+ * (`Prompt`, `Control`). No dependency: a kernel that depended on anything
+ * would make every effect carry it. A hypothesis lane: nothing depends on it.
+ */
+lazy val okayFreer = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-freer"))
+  .dependsOn(okayTest % "test->compile")
+  .settings(
+    name := "okay-freer",
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+
+/**
  * okay-test (specs/okay-diagnose.md, "okay-test"): what only tests need,
  * package okay.testkit: stress rounds, CPU load, and the test-framework
  * adapters, each over an OPTIONAL dependency (the operator's rule,
@@ -3803,7 +3819,7 @@ lazy val platformMembers: Seq[ProjectReference] = gtkProjects ++ Seq[ProjectRefe
     okayDocs.jvm, okayDocs.js, okayDocs.native,
     okayConf.jvm, okayConf.js, okayConf.native,
     okayObs.jvm, okayObs.js, okayObs.native,
-    okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy, okayArrow.jvm, okayArrow.js, okayArrow.native, okayParquet.jvm, okayParquet.js, okayParquet.native, okayLake, okayCompress.jvm, okayCompress.js, okayCompress.native, okayDiagnose.jvm, okayDiagnose.js, okayDiagnose.native, okayTest.jvm, okayTest.js, okayTest.native, okayForeignWorkflow, okayR, okayForeignCluster,
+    okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy, okayArrow.jvm, okayArrow.js, okayArrow.native, okayParquet.jvm, okayParquet.js, okayParquet.native, okayLake, okayCompress.jvm, okayCompress.js, okayCompress.native, okayDiagnose.jvm, okayDiagnose.js, okayDiagnose.native, okayFreer.jvm, okayFreer.js, okayFreer.native, okayTest.jvm, okayTest.js, okayTest.native, okayForeignWorkflow, okayR, okayForeignCluster,
     okayTelegram.jvm, okayTelegram.js,
     okaySecurity.jvm, okaySecurity.js, okaySecurityArgon2, okayRust.jvm,
     okayFrame.jvm, okayFrame.js,
