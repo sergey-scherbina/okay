@@ -437,3 +437,59 @@ tail call).
   delimiter and per linked node.
 - The stage-1 probes under `specs/probes/freer-min/` describe the old
   kernel; `kernel/` holds this one.
+
+## Stage 3 — checked against itself (2026-10-06)
+
+The operator asked whether the eight-node design can be simpler still.
+Three of the doubts were checkable, and all three were checked
+(`specs/probes/freer-min/kernel/`, 14 scenarios green, `Bench.scala`).
+
+1. **`$` is derived; `reset` is the primitive.** `ret $_p body` is
+   `reset_p (body >>= x => shift0_p (_ => ret x))`: the body's value
+   leaves the delimiter by an abort and meets `ret` outside, so a `k`
+   captured inside carries `ret` with the delimiter (λ$'s rule, `v $
+   E[S0 k. e] → e[k := λx. v $ E[x]]`) and `f(k)` never meets `ret`
+   (`v $ w → v w`). The test that tells the two apart: `ret = _ + 1`,
+   body `shift0(k => k(1) >>= k).map(_ * 2)` answers 7 (`k(1) = 3`,
+   `k(3) = 7`), where `reset(body) >>= ret` would answer 5. So `Reset`
+   lost its `ret` field, `Delim` and `Under` lost theirs, `Captured` is
+   the piece and the prompt and nothing else. Smaller kernel, same
+   calculus. Cost: a `$` pays one capture of an empty piece and an
+   abort per completion; a plain `reset` pays nothing new.
+2. **One loop.** With `Reset`/`Shift0`/`Resume` as nodes the tree's own
+   `resume` was no longer complete (it left three nodes as head forms),
+   so it is gone: `Machine.run` is THE interpreter, and every consumer
+   in the tests runs head forms through it. Measured first (one JVM,
+   best of 7 after warm-up, NO JMH — a hypothesis for the `performance`
+   skill's lanes, not a result):
+
+   | shape | `resume` | machine |
+   |---|---|---|
+   | right-nested 1M (`delay` + `flatMap`) | 14.0 ms | 7.2 ms |
+   | left-nested 100 000 `map`s | 2.2 ms | 1.5 ms |
+   | 1M `Ask` handled OUTSIDE | 10.0 ms | 15.8 ms |
+
+   Frames beat closure rotation on plain programs; the hand-out
+   protocol (a `Resumption` per operation answered outside) costs ~1.6x
+   on an effect loop. Handing out the node itself (`sub(c)`, not a
+   rebuilt one) took 17.5 → 15.8. The rest of that gap is the one
+   allocation per hand-out, and it is the next thing to measure
+   properly, against master's HandlerBenchmark.
+3. **One bundle, not two.** `Found` and `Linked` were the same shape —
+   a value due at a segment over a stack at a level — so they are one
+   `Next`, and a capture's result is a `Cut`, a `Next` plus the captured
+   continuation. The machine also answers a head form it handed out
+   with that head form itself (`Machine.run(head) eq head`), so a
+   handler that runs the machine on every step allocates nothing extra
+   for it.
+
+What stays as it was, with its reason: `Inject` beside `Perform` (the
+equation `S = R` on the node is what lets a unary effect's handler
+recover the middle index; dropping it means every unary effect is
+declared three-place); `Widen` (the price of a covariant row with no
+cast: an identity per delimiter and per linked node); `NoPrompt` at run
+time (the typestate road would make it static); the index pair's order.
+
+### Behavior
+- [x] TestFreer 8 + TestMachine 13 = 21 green on the JVM, through the one loop
+- [x] `dollar` 7, not 5; a run over a handed-out head form is identity

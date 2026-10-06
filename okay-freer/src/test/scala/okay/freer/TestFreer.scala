@@ -34,7 +34,8 @@ class TestFreer extends okay.testkit.Munit.Diagnosed:
     case Say.Line(l) => out.append(l).append('\n'): Unit; k(())
 
   @tailrec final def run[A](p: Freer[Fx, Unit, Unit, A], in: Int, out: StringBuilder): A =
-    p.resume match
+    val head: Freer[Fx, Unit, Unit, A] = Machine.run(p)
+    head match
       case Return(a) => a
       case Inject(op) => run(step(op, (x: A) => Return(x), in, out), in, out)
       case Perform(op) => run(step(op, (x: A) => Return(x), in, out), in, out)
@@ -46,7 +47,8 @@ class TestFreer extends okay.testkit.Munit.Diagnosed:
 
   /** the type-changing state run: `Get` keeps the index, `Put` moves it; the GADT match types every step */
   @tailrec final def runState[S, R, A](p: Freer[PState, S, R, A], s: R): (S, A) =
-    p.resume match
+    val head: Freer[PState, S, R, A] = Machine.run(p)
+    head match
       case Return(a) => (s, a)
       // a bare operation: one step through the `Bind` case, its continuation the value
       case Inject(op) => runState(Bind(Inject(op), (x: A) => Return(x)), s)
@@ -62,7 +64,8 @@ class TestFreer extends okay.testkit.Munit.Diagnosed:
 
   /** a program of the empty row has only a value */
   def runPure[A](p: Freer[Pure, Unit, Unit, A]): A =
-    p.resume match
+    val head: Freer[Pure, Unit, Unit, A] = Machine.run(p)
+    head match
       case Return(a) => a
       case Inject(op) => op
       case Perform(op) => op
@@ -125,7 +128,7 @@ class TestFreer extends okay.testkit.Munit.Diagnosed:
     val c: Freer[Fx, Unit, Unit, Int] = reset(p)(one).flatMap(y => inject(Ask.Number).map(_ + y))
     assert(c.isInstanceOf[Bind[?, ?, ?, ?, ?, ?]])
 
-  test("delay and defer: a million mutual tail calls in constant stack"):
+  test("delay and defer: a million mutual tail calls in constant stack, through the one loop"):
     def even(n: Int): Freer[Pure, Unit, Unit, Boolean] = if n == 0 then pure(true) else delay(odd(n - 1))
     def odd(n: Int): Freer[Pure, Unit, Unit, Boolean] = if n == 0 then pure(false) else defer(even(n - 1))(b => pure(b))
     assertEquals(runPure(even(1000000)), true)

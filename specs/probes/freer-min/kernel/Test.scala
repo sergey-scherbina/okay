@@ -53,13 +53,14 @@ object Test:
       shift0[Int](p)(k => k(1).flatMap(a => k(2).flatMap(b => k(3).map(c => a + b + c)))).map(_ * 10)))) == 60)
     check("nested delimiter crossed: 64")(value(Machine.run(
       reset(p)(reset(q)(shift0[Int](p)(k => k(1).flatMap(k)).map(_ + 10)).map(_ * 2)))) == 64)
+    // λ$: k carries ret with the delimiter, f(k) never meets ret: k(1) = 3, k(3) = 7, answer 7 (not 5)
+    check("dollar: 7")(value(Machine.run(dollar(p)((x: Int) => pure(x + 1))(shift0[Int](p)(k => k(1).flatMap(k)).map(_ * 2)))) == 7)
     check("NoPrompt")(
       try { value(Machine.run(shift0[Int](p)(k => k(1)))); false } catch case e: NoPrompt => e.wanted == "p")
     // answer-type modification realised through PState across shift0, the general forms
     val ps = Prompt[PState, String, Int]("state")
     val atm: Freer[PState, String, Int, Int] =
-      Reset[PState, String, String, Int, Int, Int](ps, y => pure(y),
-        Shift0[PState, String, String, Int, Int, Int](ps, k => perform(PState.Put[Int, String]("s")).flatMap(_ => k(5))).map(_ + 1))
+      Reset(ps, Shift0[PState, String, String, Int, Int, Int](ps, k => perform(PState.Put[Int, String]("s")).flatMap(_ => k(5))).map(_ + 1))
     check("ATM: (s, 6)")(runState(Machine.run(atm), 1) == ("s", 6))
     // an effect inside a delimiter, handed out and answered outside; a for in place, nothing but X named
     val pa = Prompt[Diag[Ask], Unit, Int]("ask")
