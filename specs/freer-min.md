@@ -1200,3 +1200,27 @@ The operator: do it. Of the three named, two; the third stated for what it is.
   under another name.
 
 32 tests on the JVM, JS and Native compile, no cast, no warning.
+
+## Stage 24: GENERAL CLAUSES, FASTER WITHOUT CROSSING (DONE, 2026-10-06)
+
+The operator: how, without a capture through the delimiters? Four things, each measured on `handlePrebuilt`, the
+10 000 operations with general clauses, 1 % handled by the inner handler, 99 % forwarded (master 133.2 ± 2.5 µs):
+
+| step                                                                        | µs/op           | of master |
+|-----------------------------------------------------------------------------|-----------------|----------:|
+| stage 23                                                                    | 309.5 ± 3.0     | 2.3×      |
+| `Widen` gone (the bound `Hf <: G` on `Delim`'s type parameter carries what `enter` knew; the clause's body goes on outside by covariance), one `Step` per resume (`under` answers with `Return(x)` directly), `flatMap(k)` in `forward` | 292.5 ± 5 | 2.2× |
+| `Op`, the diagonal shift (`T = R`, `I = O`: an operation moves nothing), and THE TAIL RESUMPTION SEEN: a clause whose whole body is `k(x)` is answered under the delimiter as it stands — `under(x, piece, d)`, the same `Delim`, no `Resume` through the loop, nothing built | 261.5 ± 1.7 | 2.0× |
+
+- The tail resumption is seen by identity: `Captured.apply(x)` keeps the `Resume` it made, and `tail(body)` is
+  `body eq` that one — then `x` is read FROM THE RESUME, typed by the capture (no cast; a race could only make the
+  check fail, never pass wrongly). It types only on the diagonal node: on `Shift0`, `T` and `R` are two parameters
+  and `under(x, piece, d)` would need them equal; `Op` has them equal, and every `perform` is an `Op`. Master's
+  loop does the same dynamically ("forwarding keeps the states per resumption; Halt drops the inside").
+- What is left is the shape: a forwarded general clause is two captures — to the inner delimiter, whose body
+  performs outside and resumes `k1` after (a `Bind`, not a tail `k(x)`), and to the outer; the outer's resumption
+  is now in place, the inner's is a `Resume` through the loop with a new `Delim`. One capture for both is the
+  crossing (stage 23, not typeable here). The next smaller thing: `Op` without a closure, the operation and the
+  handler as fields (one allocation of about thirteen a forwarded operation).
+
+Seven nodes. 32 tests on the JVM, JS and Native compile, no cast, no warning.

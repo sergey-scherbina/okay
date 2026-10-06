@@ -3,14 +3,6 @@ package okay.cont
 import scala.annotation.tailrec
 import Cont.*
 
-/** the witness that the row `G` lies inside `F`: a polymorphic identity, made where the compiler knows it */
-trait Widen[G[+_], F[+_]]:
-  def apply[I <: Tuple, O <: Tuple, A](p: Cont[G, I, O, A]): Cont[F, I, O, A]
-object Widen:
-  /** where the compiler knows `H` lies in `G`: the identity, as that knowledge made a value */
-  def sub[H[+A] <: G[A], G[+_]]: Widen[H, G] = new Widen[H, G]:
-    def apply[I <: Tuple, O <: Tuple, A](p: Cont[H, I, O, A]): Cont[G, I, O, A] = p
-
 /** a captured piece: the segments from the hole up to the delimiter, it not included, composed as one segment — a
  * segment is one (`Frames`), and `Over` is one over the next */
 sealed trait Piece[G[+_], -A0, B, I <: Tuple, O <: Tuple]
@@ -33,8 +25,10 @@ enum Stack[F[+_], G[+_], B, I <: Tuple, O <: Tuple, I0 <: Tuple, O0 <: Tuple, Z]
   case Run[F[+_], G[+_], B, I <: Tuple, O <: Tuple, B2, I2 <: Tuple, I0 <: Tuple, O0 <: Tuple, Z](
       out: Frames[G, B, B2, I2, I], rest: Stack[F, G, B2, I2, O, I0, O0, Z])
     extends Stack[F, G, B, I, O, I0, O0, Z]
-  case Delim[F[+_], H[+_], Hf[+_], G[+_], D <: Tuple, O <: Tuple, S, R, B, I2 <: Tuple, I0 <: Tuple, O0 <: Tuple, Z](
-      up: Widen[Hf, G], out: Frames[G, R, B, I2, D], rest: Stack[F, G, B, I2, O, I0, O0, Z])
+  /** the row the delimiter leaves lies in the level's outside, `Hf <: G`: the bound carries what the compiler knew
+   * where the delimiter was entered, so a shift's body, at `Hf`, goes on at `G` by covariance — no witness, no call */
+  case Delim[F[+_], H[+_], G[+_], Hf[+A] <: G[A], D <: Tuple, O <: Tuple, S, R, B, I2 <: Tuple, I0 <: Tuple, O0 <: Tuple, Z](
+      out: Frames[G, R, B, I2, D], rest: Stack[F, G, B, I2, O, I0, O0, Z])
     extends Stack[F, H, S, At[H, Hf, D, S] *: D, At[H, Hf, D, R] *: O, I0, O0, Z]
 
 /** a captured continuation: the piece from the hole, `X` at the answer `T` with the stacks `I` outside, to its
@@ -42,7 +36,16 @@ enum Stack[F[+_], G[+_], B, I <: Tuple, O <: Tuple, I0 <: Tuple, O0 <: Tuple, Z]
  * delivers the answer at the hole, outside, at the row the delimiter leaves `Hf`, from `D` to `I` */
 final class Captured[H[+_], Hf[+_], D <: Tuple, I <: Tuple, X, T, S](val piece: Piece[H, X, S, At[H, Hf, D, S] *: D, At[H, Hf, D, T] *: I])
   extends (X => Cont[Hf, D, I, T]):
-  def apply(x: X): Cont[Hf, D, I, T] = Resume(x, this)
+  /** the last `k(x)` made: a clause that returns it as its whole body resumed once, last — answered in place */
+  private var last: Resume[Hf, D, I, X, T] | Null = null
+  def apply(x: X): Cont[Hf, D, I, T] =
+    val r: Resume[Hf, D, I, X, T] = Resume(x, this)
+    last = r
+    r
+  /** the body a clause returned, if it is the last `k(x)`: its `x`, typed by this capture */
+  def tail(body: Cont[?, ?, ?, ?]): Resume[Hf, D, I, X, T] | Null =
+    val r = last
+    if r != null && (body eq r) then r else null
 
 /** the machine's state with a value `A` due: the segment `k`, level `G`, over `m`. As a function it is the rest of
  * a run after something handed out: applied by whoever answers it, the run goes on */
@@ -83,7 +86,7 @@ object Machine:
           case Stack.Done() => Return(a)
           case Stack.Run(out, rest) => go(Return(a), out, rest)
           // the body returned: its answer is its final one, and the delimiter delivers it
-          case Stack.Delim(_, out, rest) => go(Return(a), out, rest)
+          case Stack.Delim(out, rest) => go(Return(a), out, rest)
       // a head form handed out (its rest is a `Resumption`), met at a run's bottom: as it is, a run over a run allocates nothing
       case Bind(c0, f) => f match
         case _: Resumption[?, ?, ?, ?, ?] => k match
@@ -94,20 +97,28 @@ object Machine:
         case _ => go(c0, Frames.Frame(f, k), m)
       case Delay(t) => go(t(), k, m)
       // the three that move a level answer with the machine's next state, each where its node's types are names
-      case r: Reset[?, hf, ?, ?, ?, ?] => val n = enter(r, Widen.sub[hf, G], k, m); go(n.c, n.k, n.m)
+      case r: Reset[h, hf, d, o, s, rr] => val n = enter[F, h, G, hf, d, o, s, rr, B, I, I0, O0, Z](r, k, m); go(n.c, n.k, n.m)
       case s: Shift0[h, hf, d, i, o, t, r, x] => val n = cut[F, G, x, t, B, I, r, o, I0, O0, Z, h, hf, d, i](s, s.f, k, m); go(n.c, n.k, n.m)
-      case r: Resume[hf, ?, ?, ?, ?] => val n = resume(r, Widen.sub[hf, G], k, m); go(n.c, n.k, n.m)
+      case s: Op[h, hf, d, ans, x] => val n = cutOp[F, G, x, B, I, ans, I0, O0, Z, h, hf, d](s, s.f, k, m); go(n.c, n.k, n.m)
+      case r: Resume[hf, d, i, x, t] => val n = resume[F, G, hf, d, i, x, t, B, I, I0, O0, Z](r, k, m); go(n.c, n.k, n.m)
 
   /** into the delimiter: its level pushed, the body at its start */
-  private def enter[F[+_], H[+_], Hf[+_], G[+_], D <: Tuple, O <: Tuple, S, R, B, I <: Tuple, I0 <: Tuple, O0 <: Tuple, Z](
-      r: Reset[H, Hf, D, O, S, R], up: Widen[Hf, G], k: Frames[G, R, B, I, D], m: Stack[F, G, B, I, O, I0, O0, Z]): Step[F, I0, O0, Z] =
-    step(r.body, Frames.End(), Stack.Delim(up, k, m))
+  private def enter[F[+_], H[+_], G[+_], Hf[+A] <: G[A], D <: Tuple, O <: Tuple, S, R, B, I <: Tuple, I0 <: Tuple, O0 <: Tuple, Z](
+      r: Reset[H, Hf, D, O, S, R], k: Frames[G, R, B, I, D], m: Stack[F, G, B, I, O, I0, O0, Z]): Step[F, I0, O0, Z] =
+    step(r.body, Frames.End(), Stack.Delim[F, H, G, Hf, D, O, S, R, B, I, I0, O0, Z](k, m))
 
   /** `k(x)`: the piece put back under a delimiter of its own, the value at the hole */
-  private def resume[F[+_], Hf[+_], G[+_], D <: Tuple, I <: Tuple, X, T, B, I2 <: Tuple, I0 <: Tuple, O0 <: Tuple, Z](
-      r: Resume[Hf, D, I, X, T], up: Widen[Hf, G], k: Frames[G, T, B, I2, D], m: Stack[F, G, B, I2, I, I0, O0, Z]): Step[F, I0, O0, Z] =
-    val n = link(r.k.piece, Stack.Delim(up, k, m))
-    step(Return(r.x), n.k, n.m)
+  private def resume[F[+_], G[+_], Hf[+A] <: G[A], D <: Tuple, I <: Tuple, X, T, B, I2 <: Tuple, I0 <: Tuple, O0 <: Tuple, Z](
+      r: Resume[Hf, D, I, X, T], k: Frames[G, T, B, I2, D], m: Stack[F, G, B, I2, I, I0, O0, Z]): Step[F, I0, O0, Z] =
+    under(r.x, r.k.piece, Stack.Delim(k, m))
+
+  /** the piece put back over `m`, the value `x` at the hole: the next state, one object */
+  @tailrec private def under[F[+_], G[+_], A0, A, I <: Tuple, O <: Tuple, I0 <: Tuple, O0 <: Tuple, Z](
+      x: A0, piece: Piece[G, A0, A, I, O], m: Stack[F, G, A, I, O, I0, O0, Z]): Step[F, I0, O0, Z] =
+    piece match
+      case Over(prev, out) => under(x, prev, Stack.Run(out, m))
+      case e @ Frames.End() => step(Return(x), e, m)
+      case f @ Frames.Frame(_, _) => step(Return(x), f, m)
 
   /** down the stack to the nearest delimiter — the index says its rows, and its `D` is the node's — and the
    * shift's body, given `k`, outside; the run's bottom instead means the delimiter is outside this run: the
@@ -118,15 +129,35 @@ object Machine:
       piece: Piece[G, X, A, I, At[H, Hf, D, T] *: Ik], m: Stack[F, G, A, I, At[H, Hf, D, R] *: O, I0, O0, Z]): Step[F, I0, O0, Z] =
     m match
       case Stack.Run(out, rest) => cut(c, f, Over(piece, out), rest)
-      case d @ Stack.Delim(_, _, _) => found(d)[X, T, Ik](piece, f)
+      case d @ Stack.Delim(_, _) => found(d)[X, T, Ik](piece, f)
       case Stack.Done() =>
         val n = link(piece, Stack.Done[F, A, I, At[H, Hf, D, T] *: Ik]())
         step(Bind(c, n), Frames.End(), Stack.Done())
 
-  private def found[F[+_], H[+_], Hf[+_], G0[+_], D <: Tuple, O <: Tuple, S, R, B0, I2 <: Tuple, I0 <: Tuple, O0 <: Tuple, Z](
-      d: Stack.Delim[F, H, Hf, G0, D, O, S, R, B0, I2, I0, O0, Z])
+  private def found[F[+_], H[+_], G0[+_], Hf[+A] <: G0[A], D <: Tuple, O <: Tuple, S, R, B0, I2 <: Tuple, I0 <: Tuple, O0 <: Tuple, Z](
+      d: Stack.Delim[F, H, G0, Hf, D, O, S, R, B0, I2, I0, O0, Z])
       [X, T, Ik <: Tuple](piece: Piece[H, X, S, At[H, Hf, D, S] *: D, At[H, Hf, D, T] *: Ik], f: (X => Cont[Hf, D, Ik, T]) => Cont[Hf, D, O, R]): Step[F, I0, O0, Z] =
-    step(d.up(f(Captured(piece))), d.out, d.rest)
+    step(f(Captured(piece)), d.out, d.rest)
+
+  /** `cut` for an operation: the same walk; at the delimiter the clause, and if it returned `k(x)` as its whole body,
+   * `x` under the delimiter as it stands — the same `Delim`, nothing built */
+  @tailrec private def cutOp[F[+_], G[+_], X, A, I <: Tuple, Ans, I0 <: Tuple, O0 <: Tuple, Z, H[+_], Hf[+_], D <: Tuple](
+      c: Cont[G, At[H, Hf, D, Ans] *: D, At[H, Hf, D, Ans] *: D, X], f: (X => Cont[Hf, D, D, Ans]) => Cont[Hf, D, D, Ans],
+      piece: Piece[G, X, A, I, At[H, Hf, D, Ans] *: D], m: Stack[F, G, A, I, At[H, Hf, D, Ans] *: D, I0, O0, Z]): Step[F, I0, O0, Z] =
+    m match
+      case Stack.Run(out, rest) => cutOp(c, f, Over(piece, out), rest)
+      case d @ Stack.Delim(_, _) => foundOp(d)[X](piece, f)
+      case Stack.Done() =>
+        val n = link(piece, Stack.Done[F, A, I, At[H, Hf, D, Ans] *: D]())
+        step(Bind(c, n), Frames.End(), Stack.Done())
+
+  private def foundOp[F[+_], H[+_], G0[+_], Hf[+A] <: G0[A], D <: Tuple, S, Ans, B0, I2 <: Tuple, I0 <: Tuple, O0 <: Tuple, Z](
+      d: Stack.Delim[F, H, G0, Hf, D, D, S, Ans, B0, I2, I0, O0, Z])
+      [X](piece: Piece[H, X, S, At[H, Hf, D, S] *: D, At[H, Hf, D, Ans] *: D], f: (X => Cont[Hf, D, D, Ans]) => Cont[Hf, D, D, Ans]): Step[F, I0, O0, Z] =
+    val captured = Captured(piece)
+    val body = f(captured)
+    val r = captured.tail(body)
+    if r != null then under(r.x, piece, d) else step(body, d.out, d.rest)
 
   /** the piece put back over `m`: a value due at the hole */
   @tailrec private[cont] def link[F[+_], G[+_], A0, A, I <: Tuple, O <: Tuple, I0 <: Tuple, O0 <: Tuple, Z](

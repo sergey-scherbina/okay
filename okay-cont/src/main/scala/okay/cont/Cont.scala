@@ -35,7 +35,7 @@ final class At[H[+_], Hf[+_], D <: Tuple, S]
  * capture goes to the NEAREST delimiter, the head of the index. Its `k` is PURE, a program outside the delimiter,
  * at `Hf`, from `D` to the stacks at the hole, `I`, delivering the answer at the hole, `T`. The body of a shift runs
  * OUTSIDE the delimiter, in its place (shift0), at `Hf`, from `D` to the stacks the context expects, `O`, and its
- * value is the delimiter's answer `R`. Six nodes, no cast, no prompt.
+ * value is the delimiter's answer `R`. Seven nodes, no cast, no prompt.
  */
 enum Cont[+G[+_], I <: Tuple, O <: Tuple, +A]:
   case Return[Σ <: Tuple, A](a: A) extends Cont[Pure, Σ, Σ, A]
@@ -53,6 +53,11 @@ enum Cont[+G[+_], I <: Tuple, O <: Tuple, +A]:
    * place, at `Hf`, from `D` to what the context expects, `O`, and its value is the delimiter's answer `R` */
   case Shift0[H[+_], Hf[+_], D <: Tuple, I <: Tuple, O <: Tuple, T, R, X](f: (X => Cont[Hf, D, I, T]) => Cont[Hf, D, O, R])
     extends Cont[H, At[H, Hf, D, T] *: I, At[H, Hf, D, R] *: O, X]
+  /** an OPERATION: a shift to its handler's delimiter that moves nothing — the diagonal `Shift0`, `T = R`, `I = O`
+   * — written out so the machine can see the one thing worth seeing: a clause that returns `k(x)` as its whole
+   * body is answered under the delimiter it is still under, nothing captured for long, nothing put back */
+  case Op[H[+_], Hf[+_], D <: Tuple, Ans, X](f: (X => Cont[Hf, D, D, Ans]) => Cont[Hf, D, D, Ans])
+    extends Cont[H, At[H, Hf, D, Ans] *: D, At[H, Hf, D, Ans] *: D, X]
   /** `k(x)` pending: the machine puts the captured piece back under a delimiter of its own */
   case Resume[Hf[+_], D <: Tuple, I <: Tuple, X, T](x: X, k: Captured[?, Hf, D, I, X, T, ?]) extends Cont[Hf, D, I, T]
 
@@ -166,13 +171,13 @@ sealed trait PerformLow:
   /** the context is the handler's: a shift to its delimiter, the clause the body */
   given direct[E[+_], H[+_], Ans, Oc <: Ctx, C <: Handling[E, H, ?, Ans, Oc]]: Perform[E, H, C] with
     def apply[X](op: E[X], c: C): Cont[H, c.Here, c.Here, X] =
-      Cont.Shift0[H, c.Out, c.D, c.D, c.D, Ans, Ans, X](k => c.handler(using c.outer)(op, k))
+      Cont.Op[H, c.Out, c.D, Ans, X](k => c.handler(using c.outer)(op, k))
   /** the context is another delimiter's, which leaves at least the row outside it: a shift to it, performed
    * outside, `k` resumed with the result */
   given forward[E[+_], H[+_], Hf[+_], S, H2[+A] <: Hf[A], Oc <: In[H2, ?, ?, ?], C <: In[H, Hf, S, Oc]]
       (using o: Perform[E, H2, Oc]): Perform[E, H, C] with
     def apply[X](op: E[X], c: C): Cont[H, c.Here, c.Here, X] =
-      Cont.Shift0[H, Hf, c.D, c.D, c.D, S, S, X](k => o(op, c.outer).flatMap(x => k(x)))
+      Cont.Op[H, Hf, c.D, S, X](k => o(op, c.outer).flatMap(k))
 /** STATE, answering in place: the state in a cell of the handler, one per `handle`, so `get` and `put` are answered
  * where they are performed, no capture. A resumption shares the cell: a body resumed twice sees ONE state, the
  * second resumption the first's last — not a replay. The replay is the answer type's (TestState, `PState`) */
