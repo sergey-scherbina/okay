@@ -1,5 +1,7 @@
 package okay.cont
 
+import okay.Control
+
 /** a level of a stack: the stacks OUTSIDE its delimiter `D` — where the delimiter's continuation lives, so where a
  * capture to it is a program — constant along the level; and its ANSWER at this point. The head of a stack is the
  * nearest level's; the top is empty */
@@ -48,6 +50,23 @@ enum Cont[I <: Tuple, O <: Tuple, +A]:
   def flatMap[I2 <: Tuple, B](f: A => Cont[I2, I, B]): Cont[I2, O, B] = Bind(this, f)
   def map[B](f: A => B): Cont[I, O, B] = Bind(this, a => Return(f(a)))
 
+/** THE MACHINE AS A CONTROL CARRIER: a program at ONE level, the top's, whose answer moves from `S` to `R` —
+ * Danvy–Filinski's `(A => S) => R`, the stacks of the level outside empty */
+type Carrier[A, S, R] = Cont[At[EmptyTuple, S] *: EmptyTuple, At[EmptyTuple, R] *: EmptyTuple, A]
+
+object Cont:
+  /** `shift` is `Shift0` at the top level, `/` the delimiter around a `Bind`, `flatMap` a `Bind`. The `k` a body
+   * is given is STRICT — a run of its own, on the host stack (as `Func`'s is; the machine's own `k` is a
+   * program, `okay.cont.shift0`) */
+  given control: Control[Carrier] with
+    def pure[A, R](a: A): Carrier[A, R, R] = Return(a)
+    def shift[A, S, R](f: (A => S) => R): Carrier[A, S, R] =
+      Shift0[EmptyTuple, EmptyTuple, EmptyTuple, S, R, A](k => Return(f(a => Machine.value(k(a)))))
+    extension [A, S, R](m: Carrier[A, S, R])
+      infix def /(k: A => S): R = Machine.value(Reset[EmptyTuple, EmptyTuple, S, R](Bind(m, (a: A) => Return(k(a)))))
+      def flatMap[B, S2](f: A => Carrier[B, S2, S]): Carrier[B, S2, R] = Bind(m, f)
+      override def map[B](f: A => B): Carrier[B, S, R] = Bind(m, (a: A) => Return(f(a)))
+
 /** HOW FAR an operation reaches, from the index `N` it is performed at: its handler's delimiter is the nearest
  * (`Here`: the target's stacks outside and answer are `N`'s head's), or it is outside the nearest, whose outside
  * `D` IS the next level's index, and the reach goes on from there (`Out`) — each step a level crossed */
@@ -85,6 +104,11 @@ sealed trait In[S, Oc <: Ctx] extends Ctx:
   type Here = At[D, S] *: D
   /** a program in the body this context is for, its stacks unchanged */
   type Body[A] = Cont[Here, Here, A]
+object In:
+  /** the context of a body written at the answer `S` inside the context `o`: what `reset` and `handle` give
+   * their body, and what a program folded at the top (`Prog.foldCont`) runs in */
+  def at[S](using o: Ctx): In[S, o.type] = new In[S, o.type]:
+    val outer: o.type = o
 /** the context of a fragment written for the body of a `reset[S]`: `def f(using in: Under[S]): in.Body[A]` */
 type Under[S] = In[S, ?]
 
@@ -98,9 +122,7 @@ def defer[I <: Tuple, T <: Tuple, O <: Tuple, A, B](t: => Cont[T, O, A])(f: A =>
 def reset[S]: ResetAt[S] = ResetAt[S]()
 final class ResetAt[S]:
   def apply[O <: Tuple, R](using o: Ctx)(body: In[S, o.type] ?=> Cont[At[o.Here, S] *: o.Here, At[o.Here, R] *: O, S]): Cont[o.Here, O, R] =
-    val in = new In[S, o.type]:
-      val outer: o.type = o
-    Cont.Reset[o.Here, O, S, R](body(using in))
+    Cont.Reset[o.Here, O, S, R](body(using In.at[S]))
 /** `shift0[X](k => …)` written in a delimiter's body: the hole `X` is the one thing nothing else says; the delimiter
  * is the context's, its answer the one the body is written at. The shift's body is written inside the delimiter
  * but runs outside it, in the context outside, and may move it. `k` leaves the outside as it is, `D` to `D` (a

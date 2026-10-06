@@ -45,9 +45,11 @@ object Eager {
 
   // the Free instance, named: in this scope A ! F conforms to
   // Eager[F, A ! F], so unqualified extension calls would recurse
-  private def FreeE: Effects[Free] = summon[Effects[Free]]
+  private def FreeE: Effects.Aux[Free, Cont] = summon[Effects.Aux[Free, Cont]]
 
-  given Effects[Eager] with
+  given given_Effects_Eager: Effects.Aux[Eager, Cont] = EagerEffects
+
+  object EagerEffects extends Effects[Eager]:
     type C = Cont
     def control: Control[Cont] = summon[Control[Cont]]
 

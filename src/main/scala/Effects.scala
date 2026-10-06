@@ -134,7 +134,11 @@ trait Effects[M[_[+_], _]]:
 
 /** the freer monad, the initial encoding: `Inject` is a suspended shift, given its meaning by `foldCont`.
  * Choose it when the program is a thing — to step, inspect or relay it — stack-safe on any bind shape */
-given Effects[Free] with
+given given_Effects_Free: Effects.Aux[Free, Cont] = FreeEffects
+
+/** the instance, an object: its type names the carrier (`Effects.Aux`), so a handler's type is known wherever
+ * the instance is reached by its type — `Effects[Free]`, `summon`, a `using` — and not only through the given */
+object FreeEffects extends Effects[Free]:
   type C = Cont
   def control: Control[Cont] = summon[Control[Cont]]
 
@@ -249,6 +253,11 @@ def reflect[M[_[+_], _] : Effects as M, F[+_], A](m: A ! F): M[F, A] =
 object Effects {
   export Free.*
 
+  /** an encoding WITH ITS CARRIER NAMED: what an instance's given declares (`given Effects.Aux[Free, Cont]`), so
+   * that `foldCont`'s handler type is concrete wherever the instance is reached by its type, not only by the
+   * given's own object */
+  type Aux[M[_[+_], _], C0[_, _, _]] = Effects[M] { type C = C0 }
+
   /** level 1, any encoding in direct style: `M[F, *]` as a monad, for `direct[[A] =>> M[F, A]]` over `Effects[M]` */
   def monad[M[_[+_], _], F[+_]](using E: Effects[M]): Monad[[A] =>> M[F, A]] = new Monad[[A] =>> M[F, A]]:
     def pure[A](a: A): M[F, A] = E.pure(a)
@@ -256,9 +265,12 @@ object Effects {
       def flatMap[B](f: A => M[F, B]): M[F, B] = E.flatMap(a)(f)
 
   /** the staging entry for effect programs: `Effects[Free]`, `Effects[Eager]`, or any `M` with an instance
-   * in scope; with `trait Effects` it forms one door, as a class and its companion do */
-  transparent inline def apply[M[_[+_], _]]: Effects[M] =
-    compiletime.summonInline[Effects[M]]
+   * in scope; with `trait Effects` it forms one door, as a class and its companion do. Summoned WITH ITS
+   * CARRIER: the pattern binds `c` to what the instance declares (`Effects.Aux`), so `Effects[Free].handle(…)(h)`
+   * takes the handler at `Cont` — `summonInline[Effects[M]]` answered at `Effects[M]`, the carrier unknown — and
+   * `summonFrom` still defers the search to where an inline program is expanded (`sprog[Free]`, TestEffects) */
+  transparent inline def apply[M[_[+_], _]] =
+    compiletime.summonFrom { case e: Effects.Aux[M, c] => e }
 
   extension [F[+_], A](self: A ! F) {
 

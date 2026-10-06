@@ -1470,3 +1470,34 @@ directory and dependencies.
 Checked: the core and the module on the JVM, JS and Native; the cont-stack suites (TestStackRoom, TestContStack,
 the small-stack replays, the four TestDelimited*, TestContMacro, TestColdRoom), TestInlineBudget, `okay-direct`
 whole; `okay-java` (a `Control` user), `okay-cont` and the JMH sources compile; then the pre-merge gate.
+
+## Stage 32: `Effects` NAMES ITS CARRIER — THE MACHINE FOLDS NATIVELY (DONE, 2026-10-06)
+
+The operator: `F !> S` abstracted, so that the outside stays the same, the inside changes, and the old is one
+compile-time choice. `Effects[M]` had `foldCont[S](h: F !> S): A /> S`, the handler and the fold at the core's
+`Cont` by name. Now the interface names its CARRIER: `type C[_, _, _]` with `def control: Control[C]`;
+`foldCont[S](h: Interpr[F, C, S]): C[A, S, S]`; `runWith`, `handle` and `convert` go through `control.shift`
+and `control./` (the core already had `Interpr[F, C, S]` and `interpr[C: Control, F: Answers, S]`, "the same,
+at any Control carrier"). An instance declares its carrier IN ITS TYPE, `Effects.Aux[M, C] = Effects[M] { type C
+= C }`, as an object with a given alias (`FreeEffects`, `EagerEffects`, `ProgEffects`): `Free` and `Eager` at
+`Cont`, so `F !> S` is `Interpr[F, Cont, S]` as before and every handler written at `Cont` is unchanged.
+
+Two things dotty taught. (1) An anonymous `given Effects[Free] with` has the type `Effects[Free]`, carrier
+unknown, wherever the instance is reached by its type — `summon`, a `using`, `Effects[Free]` — so the given's
+DECLARED type must carry it (`Aux`). (2) `Effects.apply` was `summonInline[Effects[M]]`, answered at
+`Effects[M]`; `summonFrom { case e: Effects.Aux[M, c] => e }` binds the carrier to what the instance declares,
+and still defers the search to where an inline program is expanded (`sprog[Free]`, TestEffects, StagedBenchmark).
+Inside an INLINE body the deferred summon is typed with the carrier abstract, so a clause written at `Cont` there
+(`Throws.runEither`, `runUnsafe`) takes the instance by its object, `FreeEffects.handle`.
+
+The machine's carrier (okay-cont): `Carrier[A, S, R]` is a program at ONE level, the top's, its answer moving
+from `S` to `R` — `Cont[At[EmptyTuple, S] *: EmptyTuple, At[EmptyTuple, R] *: EmptyTuple, A]` — and
+`Cont.control: Control[Carrier]` is `Shift0` at the top, `Reset` around a `Bind` for `/`, `Bind` for `flatMap`;
+the `k` a `control.shift` body is given is strict, a run of its own (as `Func`'s), the machine's own `k` being
+`okay.cont.shift0`'s. With it `Effects[Prog].foldCont` is nothing: the program run with the handler as its
+dispatch — `h(op)` IS a program at that level, `In.at[S]`'s `Here` — and `/` is the delimiter. So the
+interface's own `handle`, `convert` and `reify` run on the machine: a multi-shot handler through `control.shift`
+(every choice, in order), an abort through `control.shift` with the rest forwarded, 100 000 operations folded in
+constant stack, `runWith` equal to `foldCont / identity` (TestProg).
+
+Seven nodes, 43 tests in okay-cont, the core's suites, no cast, no warning.
