@@ -1,6 +1,6 @@
 feature/semantic-layer 2026-10-06T06:13:40.183456+00:00
 agent: codex
-heartbeat: 2026-10-06T06:13:40.183456+00:00
+heartbeat: 2026-10-06T06:23:30.022798+00:00
 status: in-progress
-done-so-far: surveyed semantic, Bulk, Tables, Source, Arrow and file seams
-next: spec advanced queries, safe lookup joins and shared data interpreters
+done-so-far: core DAG/filter/merge/lookup laws green; SQL baseline green; data/file/API adapters written
+next: focused data/SQL parity suites, platform gates, docs and landing
