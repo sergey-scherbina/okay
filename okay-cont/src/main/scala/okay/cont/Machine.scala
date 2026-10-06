@@ -112,6 +112,8 @@ object Machine:
       case s: Shift0[d, i, o, t, r, x] => val n = cut[x, t, B, I, r, o, I0, O0, Z, d, i](s, s.f, k, m); go(n.c, n.k, n.m)
       case s: Op[n, x, dn, ansn, e] => val n = cutN[x, B, I, I0, O0, Z, n, dn, ansn, B, I, n, e](s.at, s.op, s.clause, k, m, k, m); go(n.c, n.k, n.m)
       case r: Resume[?, ?, ?, ?] => val n = under(r.x, r.k.piece, Stack.Delim(k, m)); go(n.c, n.k, n.m)
+      // answered in place: the value, and on
+      case a: Answer[s, x, ?, ?] => go(Return[s, x](a.by(a.op, a.c)), k, m)
 
   /** a capture handed out at a run's bottom, `Bind(capture, rest)`: its end — the capture's node says the
    * stacks have a level to go to. A `Bind` of a resumption onto what is NOT a capture (`pure(x).flatMap(rest)`,

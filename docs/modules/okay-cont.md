@@ -3,7 +3,7 @@
 A monad of delimited continuations typed by two stacks of answer types,
 `Cont[I, O, A]` — Danvy–Filinski's `shift0`/`reset` with answer-type
 modification, handlers as delimiters, operations as one capture to their
-handler through the delimiters between — and a machine that runs it: seven
+handler through the delimiters between — and a machine that runs it: eight
 nodes, no cast, no prompt, no row (specs/freer-min.md, stages 1–30). It
 has no dependency and runs on the JVM, Scala.js and Scala Native; the
 core depends on it, beside okay-freer, and the two know nothing of each

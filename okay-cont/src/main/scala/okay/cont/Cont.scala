@@ -18,7 +18,7 @@ final class At[D <: Tuple, S]
  * answers `R` outside, from `D` to `O`, as the body moved the outside. A capture goes to the delimiter the node
  * names — the nearest for `Shift0`, `at` levels out for `Op`, the delimiters between crossed. Its `k` is PURE, a
  * program outside the delimiter, from `D` to the stacks at the hole, delivering the answer at the hole. The body
- * of a shift runs OUTSIDE the delimiter, in its place (shift0), and its value is the delimiter's answer. Seven
+ * of a shift runs OUTSIDE the delimiter, in its place (shift0), and its value is the delimiter's answer. Eight
  * nodes, no cast, no prompt, no row.
  */
 enum Cont[I <: Tuple, O <: Tuple, +A]:
@@ -43,6 +43,10 @@ enum Cont[I <: Tuple, O <: Tuple, +A]:
   case Op[N <: Tuple, X, Dn <: Tuple, Ansn, E[+_]](at: Reach[N, Dn, Ansn], op: E[X], clause: Clause[E, Dn, Ansn]) extends Cont[N, N, X]
   /** `k(x)` pending: the machine puts the captured piece back under a delimiter of its own */
   case Resume[D <: Tuple, I <: Tuple, X, T](x: X, k: Captured[D, I, X, T, ?]) extends Cont[D, I, T]
+  /** an operation ANSWERED IN PLACE when the machine gets to it — its value from `by`, the answering handler found
+   * through the context `c`'s types (`Answered`): one node, no closure, no delay, and the effect happens at the
+   * machine's step, not when the node is made (a `Delay` of a `Return` was three objects for this one) */
+  case Answer[Σ <: Tuple, X, E[+_], C <: Ctx](op: E[X], c: C, by: Answered[E, C]) extends Cont[Σ, Σ, X]
 
   /** the stacks composed end to end: `this` from `I` to `O`, `f`'s from `I2` to `I` */
   def flatMap[I2 <: Tuple, B](f: A => Cont[I2, I, B]): Cont[I2, O, B] = Bind(this, f)
@@ -175,7 +179,7 @@ trait Perform[E[+_], C <: In[?, ?]]:
 object Perform extends PerformLow:
   given answered[E[+_], C <: In[?, ?]](using c0: C, a: Answered[E, C]): Perform[E, C] with
     val c: C = c0
-    def apply[X](op: E[X]): Cont[c.Here, c.Here, X] = Cont.Delay(() => Cont.Return(a(op, c)))
+    def apply[X](op: E[X]): Cont[c.Here, c.Here, X] = Cont.Answer[c.Here, X, E, C](op, c, a)
 sealed trait PerformLow:
   given reaches[E[+_], C <: In[?, ?]](using c0: C, r: Reaches[E, C]): Perform[E, C] with
     val c: C = c0

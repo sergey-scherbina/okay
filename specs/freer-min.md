@@ -1587,3 +1587,20 @@ Measured, M = 1000 operations, each lane beside its classic twin (the box at loa
 Not here, by design: `Shift` as an effect in the row — on the machine `shift0`/`reset` are the monad's own and
 the delimiter is the context's; the dynamic prompts (`Key`, `At`, `Stacked`, `dynamic`) have no counterpart,
 on purpose (stage 12). The classic layer keeps them, under `okay.cps`.
+
+## Stage 36: THE ANSWER NODE (DONE, 2026-10-06)
+
+Stage 35 left `state` 17 % behind the classic handler: each operation answered in place was `Delay(() =>
+Return(a(op, c)))` — a closure, a `Delay` and a `Return`, three objects for "ask the handler when you get
+there". Now it is one: `Answer[Σ, X, E, C](op: E[X], c: C, by: Answered[E, C]) extends Cont[Σ, Σ, X]`, the
+eighth node, evaluated by the machine's loop (`go(Return(a.by(a.op, a.c)), k, m)`), made by `Perform.answered`
+and by a row's `Cap.Answers`. The effect still happens at the machine's step, not at the node's making — a
+program is a value.
+
+| lane | before | now | classic |
+|---|---|---|---|
+| stateAnswering | 21.9 | 20.3 ± 0.2 | stateEffect 18.5 ± 0.7 |
+| writerTell | 18.5 | 14.8 ± 0.2 | 27.7 ± 0.2 |
+| handlePrebuiltAnswering | 133.5 | 128.5 ± 0.8 | handlePrebuilt (CPS) 130.4 |
+
+Eight nodes, 48 tests in okay-cont, no cast, no warning.
