@@ -78,23 +78,23 @@ resource and platform contracts. Parquet needs no duplicate reader: its
 Bulk.Format supplies rows to the same aggregate. A semantic query is read-only.
 
 ## Behavior
-- [ ] Existing semantic-core scenarios and SQL parity remain green.
-- [ ] Derived dependencies, missing references, cycles and unit mistakes are checked.
-- [ ] Deep metric dependency chains do not recurse on the call stack.
-- [ ] Minimum, maximum and distinct match null/empty/group semantics on memory and SQL.
-- [ ] All comparisons, having, ordering/null placement and pagination are validated.
-- [ ] Partition merge equals one-pass execution for sums, averages, ratios and distinct.
-- [ ] Incompatible partials cannot merge; snapshots do not alias mutable accumulators.
-- [ ] Fixed time buckets handle boundaries, negative epochs and large timestamps.
-- [ ] Civil zone buckets cover month/quarter/year, leap days and DST transitions.
-- [ ] Lookup refuses fanout and duplicate keys, preserves unmatched facts and provenance.
-- [ ] Lookup SQL preflights cardinality and agrees with in-memory enriched facts.
-- [ ] Source handles empty/chunked/asynchronous inputs without retaining source rows.
-- [ ] Bulk and Tables use the mergeable aggregate; partitioned execution agrees locally.
-- [ ] CSV and typed JSON read real data with named parse/decode errors.
-- [ ] Arrow table/IPC and Parquet Format data yield the same metrics as typed rows.
-- [ ] JSON API preserves exact decimals and validates requests before invoking sources.
-- [ ] Core/data/Arrow adapters compile cross-platform; diagnosed focused tests pass.
+- [x] Existing semantic-core scenarios and SQL parity remain green.
+- [x] Derived dependencies, missing references, cycles and unit mistakes are checked.
+- [x] Deep metric dependency chains do not recurse on the call stack.
+- [x] Minimum, maximum and distinct match null/empty/group semantics on memory and SQL.
+- [x] All comparisons, having, ordering/null placement and pagination are validated.
+- [x] Partition merge equals one-pass execution for sums, averages, ratios and distinct.
+- [x] Incompatible partials cannot merge; snapshots do not alias mutable accumulators.
+- [x] Fixed time buckets handle boundaries, negative epochs and large timestamps.
+- [x] Civil zone buckets cover month/quarter/year, leap days and DST transitions.
+- [x] Lookup refuses fanout and duplicate keys, preserves unmatched facts and provenance.
+- [x] Lookup SQL preflights cardinality and agrees with in-memory enriched facts.
+- [x] Source handles empty/chunked/asynchronous inputs without retaining source rows.
+- [x] Bulk and Tables use the mergeable aggregate; partitioned execution agrees locally.
+- [x] CSV and typed JSON read real data with named parse/decode errors.
+- [x] Arrow table/IPC and Parquet Format data yield the same metrics as typed rows.
+- [x] JSON API preserves exact decimals and validates requests before invoking sources.
+- [x] Core/data/Arrow adapters compile cross-platform; diagnosed focused tests pass.
 
 ## Decisions and boundaries
 The word "all" means a complete useful analytical execution contract, not an
@@ -113,4 +113,28 @@ when business meaning changes. SQL database numeric precision and collation
 remain explicit binding limitations.
 
 ## Results
-Pending implementation and focused gates.
+Implemented in okay-semantic, okay-semantic-sql, okay-semantic-data and
+okay-semantic-arrow. Focused JVM gate: 41 feature tests plus 19 documentation/
+board checks, all green. JavaScript and Native: 27 feature tests each, plus
+SQL adapter compilation, all green with no compile warnings. Recscan reports
+zero recursive definitions in the four changed modules.
+
+TestSemanticLayer pins a 20,000-metric dependency chain, exact partial merges,
+null/filter laws, negative/overflow time boundaries, unique/ambiguous/cyclic
+routes and typed snowflake lookups. TestSemanticSql compares H2 with the memory
+interpreter, including fixed buckets and duplicate-key preflights.
+TestSemanticData and TestSemanticSources cover partitioned Bulk, Tables,
+stream failure/empty/chunked input, CSV/JSON errors, request validation before
+source reads, civil DST/leap-year buckets and Java serialization.
+TestSemanticArrow uses real IPC and multi-row-group Parquet bytes.
+
+Root build additions register only the new projects; scoped gates cover the
+four semantic modules and their dependent closure rather than starting the
+whole family on the shared machine. The serialized post-landing CI runner
+owns the whole-build check. Remote Spark/Flink clusters and external HTTP hosts
+are adapter consumers, not deployments claimed by these tests.
+
+The dependent-closure plan names exactly the twelve platform projects of these
+four modules and no other dependents. A final link check exposed an existing
+okay-audit README pointer to a removed backlog item; it now points at the
+backlog directory. No audit code changed.

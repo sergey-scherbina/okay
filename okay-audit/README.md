@@ -19,7 +19,7 @@ inventory DORA asks for (Regulation (EU) 2022/2554, Art. 8).
 - The self-report over this repository's own build:
   [`dogfood/report.txt`](dogfood/report.txt) — regenerate with `sbt audit`
   (`target/audit/report.{txt,json}`)
-- What is left: [`backlog.d/okay-audit/`](../backlog.d/okay-audit/okay-audit.md)
+- What is left: [`backlog.d/okay-audit/`](../backlog.d/okay-audit/)
   (CLI for Maven/Gradle, launcher-flags check, hermetic replay). The first
   real findings are resolved in [`specs/audit-ready.md`](../specs/audit-ready.md).
 
