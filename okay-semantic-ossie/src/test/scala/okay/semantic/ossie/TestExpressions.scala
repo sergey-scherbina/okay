@@ -170,6 +170,20 @@ class TestExpressions extends okay.testkit.Munit.Diagnosed:
     val m = Execution.bind(document(definitions*),"orders",b,metricNames = Vector("m999")).toOption.get
     assertEquals(m.plan(Request(Vector("m999"))).toOption.get.run(input).toOption.get.groups.head.values,Vector(Some(BigDecimal(1003))))
   }
+  test("invalid units, logical types, filters and numeric ranges carry diagnoses") {
+    val unitsDoc = document("revenue" -> "SUM(amount)","cost" -> "SUM(cost)","answer" -> "revenue + cost")
+    val mismatch = Execution.bind(unitsDoc,"orders",bindings.copy(units = Map("revenue" -> "EUR","cost" -> "USD","answer" -> "EUR"))).toOption.get
+    assert(mismatch.plan(Request(Vector("answer"))).left.toOption.get.exists(_.contains("units")))
+    val badType = bindings.copy(units = Map("answer" -> "EUR"),measures = bindings.measures.updated(FieldKey("orders","segment"),
+      okay.semantic.Measure[Sale]("segment","Wrong numeric reader",_ => Some(BigDecimal(1)))))
+    val typed = Execution.bind(document("answer" -> "SUM(segment)"),"orders",badType).toOption.get.plan(Request(Vector("answer"))).toOption.get
+    assert(typed.run(input).left.toOption.get.exists(_.contains("declared type")))
+    val condition = expressionModel("answer" -> "SUM(amount) FILTER (WHERE amount)").plan(Request(Vector("answer"))).toOption.get
+    assert(condition.run(input).left.toOption.get.exists(_.contains("Boolean")))
+    val huge = input.take(2).zipWithIndex.map((r,i) => r.copy(amount = Some(BigDecimal(if i == 0 then "1e1000" else "-1e1000"))))
+    val standardDeviation = expressionModel("answer" -> "STDDEV(amount)").plan(Request(Vector("answer"))).toOption.get
+    assert(standardDeviation.run(huge).left.toOption.get.exists(_.contains("finite floating-point range")))
+  }
   test("planning rejects malformed expressions, invalid stages, cycles and unsafe resource requests") {
     Vector("SELECT amount","SUM(amount); DROP TABLE x","SUM()","SUM(SUM(amount))","RANK()","unknown(amount)","COUNT(DISTINCT *)").foreach { e =>
       val b = Execution.bind(document("answer" -> e),"orders",bindings.copy(units = Map("answer" -> "EUR")))

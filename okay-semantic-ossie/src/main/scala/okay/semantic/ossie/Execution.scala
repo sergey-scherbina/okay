@@ -135,6 +135,7 @@ final class ExpressionModel[A] private[ossie] (val document: Document, val datas
     selected.foreach { id =>
       val b = programs(id)
       val ranks = scala.collection.mutable.ArrayBuffer.empty[Int]
+      val units = scala.collection.mutable.ArrayBuffer.empty[Option[String]]
       b.tree.nodes.zipWithIndex.foreach { (node,index) =>
         val rank = node match
           case Node.Literal(_) => -1
@@ -157,9 +158,22 @@ final class ExpressionModel[A] private[ossie] (val document: Document, val datas
                 case _ => () }
               case child => child.children.foreach(work.push(_))
         }
+        val unit = node match
+          case Node.Reference(_) => b.references(index) match
+            case Reference.Metric(n) => bindings.units.get(n)
+            case _ => None
+          case Node.Binary(op,l,r) if op == "+" || op == "-" =>
+            if units(l).nonEmpty && units(r).nonEmpty && units(l) != units(r) then errors += s"metric $id: incompatible additive units"
+            units(l).orElse(units(r))
+          case Node.Unary("-",c) => units(c)
+          case Node.Call(fn,args,_,_,_) if Set("ABS","ROUND","TRUNC","TRUNCATE","FLOOR","CEIL","CEILING","SUM","AVG","MIN","MAX","MEDIAN","LAG","LEAD","FIRST_VALUE","LAST_VALUE")(fn) =>
+            args.headOption.flatMap(units).orElse(if aggregates(fn) then bindings.units.get(id) else None)
+          case _ => None
+        units += unit
         ranks += rank
       }
       if ranks(b.tree.root) == 0 && !uniqueGrain then errors += s"metric $id: row-level metric requires an aggregate"
+      if units(b.tree.root).exists(u => bindings.units.get(id).exists(_ != u)) then errors += s"metric $id: result unit differs from its operands"
       levels.update(id,ranks(b.tree.root).max(1))
     }
     val fields = selected.flatMap(n => programs(n).references.values.collect { case Reference.Field(k) => k }) ++ dimensions.map(_._2)
@@ -199,6 +213,11 @@ final class ExpressionPlan[A] private[ossie] (val model: ExpressionModel[A], val
           val a = it.next()
           var record = model.bindings.dimensions.map((k,d) => k -> d.read(a)) ++
             model.bindings.measures.map((k,m) => k -> m.read(a).fold[Value](Value.Null)(Value.Number.apply))
+          record.foreach { (k,v) =>
+            if neededFields(k) then model.document.datasets.find(_.name == k.dataset).toVector.flatMap(_.fields).find(_.name == k.field).foreach { f =>
+              if !Joins.accepts(f.datatype,v) then errors += s"row $count: field $k violates declared type ${f.datatype}"
+            }
+          }
           model.bindings.dimensions.foreach { (k,d) =>
             if !record(k).fits(d.kind) then errors += s"row $count: field $k expects ${d.kind}"
           }

@@ -6,7 +6,18 @@ private[ossie] object Joins:
   def route(doc: Document, from: String, to: String, via: Vector[String]): Either[Vector[String],Vector[Relationship]] =
     Catalog.build(doc.datasets.map(d => Entity(d.name,d.name)),doc.relationships.map(r =>
       Relation(r.name,r.from,r.to,Cardinality.ManyToOne,r.name))).flatMap(_.route(from,to,via))
-      .map(rs => rs.flatMap(r => doc.relationships.find(_.name == r.id)))
+      .flatMap { rs =>
+        val endpoints = from +: rs.map(_.to)
+        if endpoints.distinct.size != endpoints.size then Left(Vector("lookup route repeats a dataset; explicit aliases are required"))
+        else Right(rs.flatMap(r => doc.relationships.find(_.name == r.id))) }
+  def accepts(datatype: Option[String], value: Value): Boolean = (datatype,value) match
+    case (_,Value.Null) => true
+    case (Some("Integer"),Value.Number(n)) => n.isWhole
+    case (Some("Decimal" | "Float"),Value.Number(_)) => true
+    case (Some("Boolean"),Value.Bool(_)) => true
+    case (Some("String" | "Date" | "Time" | "DateTime" | "DateTimeTz"),Value.Text(_)) => true
+    case (None | Some("Opaque"),_) => true
+    case _ => false
   def index(doc: Document, relations: Vector[Relationship], tables: Map[String,Table], budget: Int, required: Set[FieldKey])
       : Either[Vector[String],Map[String,Map[Vector[Value],Map[String,Value]]]] =
     val errors = Vector.newBuilder[String]
@@ -21,14 +32,7 @@ private[ossie] object Joins:
           required.filter(_.dataset == r.to).filterNot(k => row.contains(k.field)).foreach(k => errors += s"table ${r.to}, row $i: missing field ${k.field}")
           r.toColumns.filterNot(row.contains).foreach(k => errors += s"relation ${r.name}, row $i: missing key $k")
           fields.foreach(f => row.get(f.name).foreach { v =>
-            val valid = (f.datatype,v) match
-              case (_,Value.Null) => true
-              case (Some("Integer"),Value.Number(n)) => n.isWhole
-              case (Some("Decimal" | "Float"),Value.Number(_)) => true
-              case (Some("Boolean"),Value.Bool(_)) => true
-              case (Some("String" | "Date" | "Time" | "DateTime" | "DateTimeTz"),Value.Text(_)) => true
-              case (None | Some("Opaque"),_) => true
-              case _ => false
+            val valid = accepts(f.datatype,v)
             if !valid then errors += s"table ${r.to}, row $i: field ${f.name} violates declared type"
           })
           val key = r.toColumns.map(n => row.getOrElse(n,Value.Null))

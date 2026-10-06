@@ -121,7 +121,9 @@ private[ossie] object Evaluate:
           val squares = numbers.map(n => BigDecimal(n.bigDecimal.subtract(mean.bigDecimal).pow(2)))
           val variance = Scalar.divide(sum(squares),BigDecimal(denominator))
           if fn.startsWith("STDDEV") then variance match
-            case Number(n) => Right(Number(BigDecimal(math.sqrt(n.toDouble))))
+            case Number(n) =>
+              val root = math.sqrt(n.toDouble)
+              if root.isNaN || root.isInfinity then Left(s"$fn exceeds finite floating-point range") else Right(Number(BigDecimal(root)))
             case _ => Right(Null)
           else Right(variance)
     }
@@ -137,7 +139,7 @@ private[ossie] object Evaluate:
       while c == 0 && it.hasNext do
         val (sort,vs) = it.next(); val x = vs(a); val y = vs(b)
         if x == Null || y == Null then c = if x == y then 0 else if (x == Null) == sort.nullsFirst then -1 else 1
-        else { c = Value.compare(x,y).getOrElse(0); if sort.descending then c = -c }
+        else { c = Value.compare(x,y).getOrElse(checked(Left("window ordering operands are incomparable")) match { case _ => 0 }); if sort.descending then c = -c }
       c
     partitions.values.foreach { indices =>
       val sorted = if ordering.isEmpty then indices else indices.sortWith((a,b) => compare(a,b) < 0)
