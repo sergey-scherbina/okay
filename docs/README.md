@@ -367,7 +367,9 @@ API reference, gotchas.
 | [`okay-resilience`](modules/okay-resilience.md) | circuit breaker, bulkhead, keyed token-bucket limiter, hedged requests, a deadline that travels — handlers around one operation, state as values, clock injected |
 | [`okay-outbox`](modules/okay-outbox.md) | the log and a database that is ours: the transactional outbox and its relay, the inbox (the unique constraint as idempotency), the dead-letter topic and its replay |
 | [`okay-semantic`](modules/okay-semantic.md) | independent business definitions, validated metric plans and memory execution |
-| [`okay-semantic-sql`](modules/okay-semantic-sql.md) | parameterized single-table SQL execution of semantic plans |
+| [`okay-semantic-data`](modules/okay-semantic-data.md) | semantic execution over Source, Bulk, Tables, CSV/JSON and a JSON query API |
+| [`okay-semantic-arrow`](modules/okay-semantic-arrow.md) | typed Arrow/IPC analytics, with Parquet through the existing file seam |
+| [`okay-semantic-sql`](modules/okay-semantic-sql.md) | parameterized SQL plans with checked lookup joins |
 | [`okay-sql`](modules/okay-sql.md) | the relational seam: SqlValue/Col and the typed layer once, drivers underneath (JDBC, the pg wire, sqlite) |
 | [`okay-pg`](modules/okay-pg.md) | the Postgres v3 protocol spoken natively: SCRAM (phase objects), the extended protocol, no JVM driver in between |
 | [`okay-docs`](modules/okay-docs.md) | the document seam: get/put with CAS, declared consistency; TopicDocs own engine, and Mongo, DynamoDB (SigV4, no SDK) and Cassandra (LWT) on the JVM |

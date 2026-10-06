@@ -80,11 +80,14 @@ errors. Input rows are already at the declared grain.
   (e.g. recognitionMonth) and bind its column for cross-backend parity.
 - Catalog is a lightweight domain model, not formal ontology reasoning.
 
-## Out of scope / subsequent stages
+## Stage 1 boundaries (historical)
 Automatic joins and multi-model queries; derived metric DAGs; time-window DSL;
 Schema derivation; persistent fact graph with identity reconciliation, provenance
 and traversal; RDF/OWL/SHACL adapters and inference; permission-aware context
-assembly and agent tools. These are separate increments, not hidden stubs.
+assembly and agent tools. These were stage 1 boundaries. Derived metrics, temporal grouping, checked
+lookup relations, partial aggregation and non-SQL execution are now implemented
+by specs/semantic-layer.md. General allocation joins, ontology reasoning and
+graph storage remain separate features.
 
 ## Results
 Implemented in okay-semantic and okay-semantic-sql. Ten core/example tests
@@ -103,5 +106,6 @@ not prove an additional dependency edge. Both new modules and their actual
 platform dependency closure compiled; the post-merge CI runner owns the whole
 build. No benchmark or full suite was run by this lane.
 
-Subsequent work is recorded as semantic-joins, semantic-time-derived,
-knowledge-facts and semantic-context on the boards.
+The semantic-joins and semantic-time-derived continuation is implemented in
+specs/semantic-layer.md. Knowledge-facts and semantic-context remain separate
+board items for knowledge storage and agent context.
