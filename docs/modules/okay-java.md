@@ -142,6 +142,19 @@ untyped `Eff.perform` and the class-based handlers above remain, and the
 static guarantee holds for programs that reach their effects through
 capabilities only.
 
+## Why not direct style
+
+A Java programmer might ask for effects without `flatMap`, with plain loops
+and locals, using `throws` as the row and the JVM's continuations as the
+resumption. That was measured before deciding (specs/java-direct-effects.md).
+`throws` is a real checked row, exact while each handler leaves one
+unknown effect. The resumption is the price. Per tail-resumptive operation,
+okay's `Free` costs 14.3 ns. `jdk.internal.vm.Continuation` costs 104 ns,
+but it is one-shot (no `Flip`) and an unexported API every user would have
+to open. Virtual threads cost 1.51 µs at best. So the facade stays `Eff`
+and `Cap`, which cover every handler form, multi-shot resumption and a
+static row on public API.
+
 ## `Windowed`: what it fixes, and where it stops
 
 `Collectors.groupingBy` has no notion of a group being COMPLETE, so

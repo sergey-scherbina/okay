@@ -4030,6 +4030,10 @@ lazy val compare = (project in file("compare"))
     // the benchmark harness calls JDK 21 API unconditionally (Loom
     // samplers, Thread.threadId) and never runs below 21 (java-gatherers)
     jdkFloor(21),
+    // java-direct-probe: LoomEffects.java prices an operation on the JVM's
+    // own one-shot continuations, which live in a package java.base does not
+    // export; its lane passes the same flag to the fork (-jvmArgsAppend)
+    javacOptions ++= Seq("--add-exports", "java.base/jdk.internal.vm=ALL-UNNAMED"),
     name := "okay-compare",
     publish / skip := true,
     // §20's SHARED HALF lives in this project's `src/main`: the Wrocław

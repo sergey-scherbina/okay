@@ -1,0 +1,4 @@
+2026-10-06	bf469b01b	quiet	JavaDirectEffectsBenchmark.free us/op (1000 ops)	14.286	14.286	1.00	java-direct-probe: okay Free, tail-resumptive handler; 14.3 ns/op, the reference
+2026-10-06	bf469b01b	quiet	JavaDirectEffectsBenchmark.loom us/op (1000 ops)	104.159	14.286	7.29	java-direct-probe: jdk.internal.vm.Continuation yield/run per op, 104 ns/op
+2026-10-06	bf469b01b	quiet	JavaDirectEffectsBenchmark.vthreadBoth us/op (1000 ops)	1506.474	14.286	105.45	java-direct-probe: virtual-thread body + virtual-thread handler, SynchronousQueue handoff each way, 1.5 us/op
+2026-10-06	bf469b01b	quiet	JavaDirectEffectsBenchmark.vthread us/op (1000 ops)	7461.024	14.286	522.26	java-direct-probe: virtual-thread body, PLATFORM handler thread parking in the OS, 7.5 us/op
