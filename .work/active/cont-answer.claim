@@ -1,6 +1,0 @@
-feature/cont-answer 2026-10-06T20:16:18Z
-agent: claude-code
-heartbeat: 2026-10-06T20:16:18Z
-status: in-progress
-done-so-far: claimed
-next: an in-place answer node in the kernel (okay-cont) instead of Delay + closure in Perform.answered; measure stateAnswering against stateEffect
