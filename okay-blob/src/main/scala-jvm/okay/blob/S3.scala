@@ -57,7 +57,10 @@ final class S3(http: Http, endpoint: String, bucket: String, region: String,
    * on a rejected condition, including a transient 409. */
   def create(key: String, bytes: Array[Byte]): ConditionalObjects.Created ! Async =
     require(bytes.length <= ConditionalObjects.MaxBytes, "create-only object exceeds 8 MiB")
-    val condition = Seq("if-none-match" -> "*")
+    val checksum = java.util.Base64.getEncoder.encodeToString(
+      java.security.MessageDigest.getInstance("MD5").digest(bytes))
+    // Transport checksum mandated by Object Lock; not a security identity.
+    val condition = Seq("if-none-match" -> "*", "content-md5" -> checksum)
     val auth = SigV4.sign("PUT", keyPath(key), Nil,
       Seq("host" -> hostHeader) ++ condition, SigV4.sha256Hex(bytes), region, stamp(), creds)
     val request = Request(Method.Put,

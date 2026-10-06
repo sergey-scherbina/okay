@@ -27,7 +27,9 @@ class TestConditionalObjects extends okay.testkit.Munit.Diagnosed:
     assertEquals(releases, 5)
     for r <- requests do
       assert(r.headers.contains("if-none-match" -> "*"))
-      assert(r.headers.find(_._1 == "authorization").exists(_._2.contains("host;if-none-match;x-amz-content-sha256;x-amz-date")))
+      val md5 = java.util.Base64.getEncoder.encodeToString(java.security.MessageDigest.getInstance("MD5").digest(r.body.bytes))
+      assert(r.headers.contains("content-md5" -> md5))
+      assert(r.headers.find(_._1 == "authorization").exists(_._2.contains("content-md5;host;if-none-match;x-amz-content-sha256;x-amz-date")))
   }
 
   test("read bounds actual body, releases on failure and distinguishes absence") {
