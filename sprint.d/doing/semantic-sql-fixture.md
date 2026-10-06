@@ -1,1 +1,0 @@
-- [ ] semantic-sql-fixture — remove SQL parity fixture dependence on global JDBC driver discovery. CI 20261006T064054Z failed once with No suitable driver; isolated rerun passed. Use direct optional test driver, prove it works without registry discovery, run the SQL suite and land.

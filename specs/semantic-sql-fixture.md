@@ -16,9 +16,13 @@ The child has a bounded wait and its output is included on failure. No other
 suite's process registry is mutated.
 
 ## Behavior
-- [ ] Fixture runs a query when the child JVM's driver registry has no H2.
-- [ ] All existing SQL parity and cardinality tests pass.
-- [ ] New test/fixture compile without warnings.
+- [x] Fixture runs a query when the child JVM's driver registry has no H2.
+- [x] All existing SQL parity and cardinality tests pass.
+- [x] New test/fixture compile without warnings.
 
 ## Results
-Pending scoped SQL gate.
+Focused SQL gate passed all 10 tests, including the isolated no-registry
+regression. The module and test fixture compiled without warnings; cold
+meta-build compilation emitted an existing ReleaseWave.scala task-lint warning,
+which the gate excludes from module warning verdicts. No semantic runtime or
+production dependency changed.
