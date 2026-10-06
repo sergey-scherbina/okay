@@ -10,9 +10,9 @@ No production API or behavior changes. TestLoadStress adopts Munit.Diagnosed.
 
 ## Behavior
 
-- [ ] Capture the identities of the four newly created burners inside the body and assert that each is dead after the body returns.
-- [ ] Check the same lifecycle when the body throws, retaining the original exception.
-- [ ] Unrelated threads started during the body can remain alive without failing the owned-thread check; the fixture releases and joins them in finally.
+- [x] Capture the identities of the four newly created burners inside the body and assert that each is dead after the body returns.
+- [x] Check the same lifecycle when the body throws, retaining the original exception.
+- [x] Unrelated threads started during the body can remain alive without failing the owned-thread check; the fixture releases and joins them in finally.
 
 ## Decisions
 
@@ -24,4 +24,4 @@ Changing interruption behavior, nested burner naming, or the production Load imp
 
 ## Results
 
-Pending scoped reproduction and verification.
+The controlled old assertion failed with all four captured burners dead and all three unrelated threads alive (gate Uv9fzU3m4L). Replacing it with the owned-thread assertions passed both suites' tests, including both return and throw paths (gate URaMztbWsY). No compile warnings. The exact scoped project is okayTestJVM.
