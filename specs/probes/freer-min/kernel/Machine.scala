@@ -130,7 +130,7 @@ object Machine:
       k0: X => Freer[H, S, T, Y], up0: Widen[H, G0], sub0: Widen[G0, F], out0: Frames[G0, Y, B0, S20, S],
       rest0: Stack[F, G0, B0, S20, S0, Z]): Found[F, X, T, H, S, Y, S0, Z] =
     new Found[F, X, T, H, S, Y, S0, Z]:
-      type G[S1, R1, +A1] = G0[S1, R1, A1]
+      type G[S, R, +A] = G0[S, R, A]
       type B = B0
       type S2 = S20
       def k = k0
@@ -150,7 +150,7 @@ object Machine:
   private def linked[F[_, _, +_], G0[_, _, +_], A0, B0, S0, T0, S00, Z](
       k0: Frames[G0, A0, B0, S0, T0], m0: Stack[F, G0, B0, S0, S00, Z], sub0: Widen[G0, F]): Linked[F, A0, T0, S00, Z] =
     new Linked[F, A0, T0, S00, Z]:
-      type G[S1, R1, +A1] = G0[S1, R1, A1]
+      type G[S, R, +A] = G0[S, R, A]
       type B = B0
       type S = S0
       def k = k0

@@ -360,3 +360,80 @@ So the row is BUILT by `flatMap` and CHECKED by evidence; it is never
 pushed down into a `for`. That is the discipline for every door that
 takes a body: a handler's rest is inferred positionally (Results 8), a
 body's membership is proved by `<:<`.
+
+## Stage 2 — the self-sufficient machine: eight nodes, no cast (DONE on the JVM, 2026-10-06)
+
+The operator's direction: `Reset` and `Shift0` are NODES of the tree, as
+intended from the start; the question was whether that alone makes the
+machine self-sufficient and removes every cast. It does. The tree:
+
+```
+Return | Inject | Perform | Bind | Delay | Reset | Shift0 | Resume
+```
+
+`Delay` is a node again (its derivation saved no case and cost an
+allocation and an explanation). `Reset`, `Shift0`, `Resume` are the
+machine's three: a delimiter, a capture, a pending `k(x)`. `Control`,
+`Row[F]`, `Ctl`, the evidence on `reset`/`shift0` are gone; `Prompt` is
+`Prompt[G, S, Y]`, naming the row of the context it delimits.
+
+### The one typing fact that shaped it
+A continuation's row cannot be the enum's covariant `G`: in `Shift0`
+the `k` sits in contravariant position, and the compiler refuses it —
+rightly, since the frames between a capture and its delimiter may do
+more than the capture's own row says. So `k` is typed at the PROMPT's
+row `H`, a case parameter of its own, and the machine runs each
+delimited level at that level's row. Between levels there is exactly
+one fact to carry, `H` inside `G`, and it is a polymorphic identity
+`Widen[H, G]` written where a covariant match has just proved it (the
+typed pattern `case r: Reset[h, ?, ?, ?, ?, ?]` names `h`). It is
+composed down the levels (`andThen`), stored in the delimiter it
+belongs to, and used to lift a body's result or an operation handed
+out into the row outside. No node ever claims a type it was not given.
+
+### How each of stage 1's five casts went
+1, 2 (`control`, `effect`, the union): gone with `Row[F]` — a delimiter
+is matched as a node, by GADT.
+3 (`resumed`, the resumption): `Resume` is a node, matched by GADT; its
+`Captured` links itself (`under`), so its two existentials never leave
+the class.
+4 (`answered`, the answer index): the answer index is not a parameter of
+the stack at all. No node held a value of it; the program carries it.
+`Resumption(k, m, sub): A => Freer[F, S0, T, Z]` types as it is.
+5 (the prompt): the type test `_: p.type` IS `eq`, and the compiler
+refines the delimiter's `H`, `S`, `Y` to the prompt's (probe
+`freer-sing`). `grep asInstanceOf|@unchecked` over the kernel: 0.
+
+### What the levels look like
+`Stack[F, G, B, S, S0, Z]` closes a level over `G` into the run's
+result over `F`; `Done` is the top level, `G = F`; `Delim` joins the
+body's `H` above to `G` below with its `Widen[H, G]`, and keeps the
+`Widen[G, F]` of the level it returns to. `Piece` is the same shape
+cut loose, so linking it back anywhere (another run, another row `F`)
+recomputes the witnesses from the live stack's. `go` is one `@tailrec`
+loop, polymorphic in the level's row (dotty accepts the polymorphic
+tail call).
+
+### Behavior (TestMachine 11 + TestFreer 8 = 19 green on the JVM)
+- [x] the eight stage-1 scenarios unchanged in substance
+- [x] a program WIDER than its prompt's row: the delimiter's `k` stays at
+      the prompt's row, the rest of the program is over the wider one,
+      and the machine runs both (`Diag[Ask] + Pure`, answered 12)
+- [x] the machine runs plain programs: a million deferred calls, 100 000
+      left-nested maps — so `Freer.resume` is now a CHOICE (the tree's
+      rotation for interpreters of rows without control), not a need
+- [x] a body outside the prompt's row refused at compile time
+- [x] `reset`/`shift0[X]` name nothing but the prompt and the hole: all
+      indexes diagonal from the prompt; an index-moving delimiter or
+      capture is the node itself with its indexes written (the ATM test)
+
+### Open
+- [x] JS and Native compile (below).
+- Which loop is THE loop: `Machine.run` handles every node; `resume`
+  handles five and leaves the machine's three as head forms. One of
+  them should go, after a measurement.
+- Speed, unmeasured: frames per `Bind` (the machine) against closure
+  rotation (`resume`); `Widen.andThen` allocates a closure per
+  delimiter and per linked node.
+- The stage-1 probes under `specs/probes/freer-min/` describe the old
+  kernel; `kernel/` holds this one.

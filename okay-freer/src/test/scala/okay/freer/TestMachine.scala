@@ -3,7 +3,7 @@ package okay.freer
 import scala.annotation.tailrec
 import Freer.*
 
-/** specs/freer-min.md, the machine: five rules over `Control`, measured on programs */
+/** specs/freer-min.md, the machine: one rule per node, no cast anywhere, measured on programs */
 class TestMachine extends okay.testkit.Munit.Diagnosed:
   enum Ask[+A]:
     case Number extends Ask[Int]
@@ -11,7 +11,7 @@ class TestMachine extends okay.testkit.Munit.Diagnosed:
     case Get[S]() extends PState[S, S, S]
     case Put[S, T](t: T) extends PState[T, S, Unit]
 
-  type P = Row[Pure]
+  type P = Pure
 
   /** a program of the empty row has only a value */
   def value[A](p: Freer[Pure, Unit, Unit, A]): A = p.resume match
@@ -21,6 +21,7 @@ class TestMachine extends okay.testkit.Munit.Diagnosed:
     case Bind(h, _) => (h: @unchecked) match
       case Inject(op) => op
       case Perform(op) => op
+    case other => fail(s"not a value: $other")
 
   /** `Ask` answered with `in`, over the head forms the machine hands out */
   @tailrec final def runAsk[A](p: Freer[Diag[Ask], Unit, Unit, A], in: Int): A = p.resume match
@@ -32,6 +33,7 @@ class TestMachine extends okay.testkit.Munit.Diagnosed:
     case Bind(h, k) => (h: @unchecked) match
       case Inject(op) => op match
         case Ask.Number => runAsk(k(in), in)
+    case other => fail(s"not handled: $other")
 
   @tailrec final def runState[S, R, A](p: Freer[PState, S, R, A], s: R): (S, A) =
     p.resume match
@@ -45,6 +47,7 @@ class TestMachine extends okay.testkit.Munit.Diagnosed:
         case Perform(op) => op match
           case PState.Get() => runState(k(s), s)
           case PState.Put(t) => runState(k(()), t)
+      case other => fail(s"not handled: $other")
 
   val p = Prompt[Pure, Unit, Int]("p")
   val q = Prompt[Pure, Unit, Int]("q")
@@ -66,12 +69,11 @@ class TestMachine extends okay.testkit.Munit.Diagnosed:
     assertEquals(e.wanted, "p")
 
   test("answer-type modification realised: a Put in a shift0 body moves the state Int -> String"):
-    // an index-moving delimiter and capture: the general forms, their indexes named
+    // an index-moving delimiter and capture: the nodes themselves, their indexes named
     val p = Prompt[PState, String, Int]("state")
-    val prog: Freer[Row[PState], String, Int, Int] =
-      perform(Control.Reset[PState, String, String, Int, Int, Int](p, y => pure(y),
-        perform(Control.Shift0[PState, String, String, Int, Int, Int](p,
-          k => perform(PState.Put[Int, String]("s")).flatMap(_ => k(5)))).map(_ + 1)))
+    val prog: Freer[PState, String, Int, Int] =
+      Reset[PState, String, String, Int, Int, Int](p, y => pure(y),
+        Shift0[PState, String, String, Int, Int, Int](p, k => perform(PState.Put[Int, String]("s")).flatMap(_ => k(5))).map(_ + 1))
     assertEquals(runState(Machine.run(prog), 1), ("s", 6))
 
   test("an effect inside a delimiter is handed out, answered outside, and the run goes on"):
@@ -90,19 +92,27 @@ class TestMachine extends okay.testkit.Munit.Diagnosed:
       val p = Prompt[Pure, Unit, Int]("p")
       reset(p)(inject(Other.Op).map(_ + 1))""")
     note(errors)
-    assert(errors.contains("Cannot prove"), errors)
+    assert(errors.contains("Required"), errors)
+
+  test("a program wider than its prompt's row: the delimiter's k stays at the prompt's row, the rest is wider"):
+    val wide: Freer[Diag[Ask] + Pure, Unit, Unit, Int] =
+      reset(p)(shift0[Int](p)(k => k(1)).map(_ + 1)).flatMap(x => inject(Ask.Number).map(_ + x))
+    assertEquals(runAsk(Machine.run(wide), 10), 12)
 
   test("100 000 captures and resumptions in one delimiter run in constant stack"):
     def loop(n: Int): Freer[P, Unit, Unit, Int] =
       if n == 0 then pure(0) else shift0[Int](p)(k => k(1)).flatMap(x => loop(n - 1).map(_ + x))
     assertEquals(value(Machine.run(reset(p)(loop(100000)))), 100000)
 
-  test("a continuation that escaped its delimiter runs the piece alone, with or without the machine"):
+  test("a continuation that escaped its delimiter is a program: run later, its delimiter comes with it"):
     var saved: Int => Freer[P, Unit, Unit, Int] = null
     val prog = reset(p)(shift0[Int](p)(k => { saved = k; pure(0) }).map(_ + 1))
     assertEquals(value(Machine.run(prog)), 0)
     assertEquals(value(Machine.run(saved(41))), 42)
-    // forced by the tree's own `resume`, with no machine around: the piece runs alone
-    saved(41).resume match
-      case Return(a) => assertEquals(a, 42)
-      case other => fail(s"not a value: $other")
+
+  test("the machine runs plain programs too: a million deferred calls, 100 000 left-nested maps"):
+    def even(n: Int): Freer[Pure, Unit, Unit, Boolean] = if n == 0 then pure(true) else delay(odd(n - 1))
+    def odd(n: Int): Freer[Pure, Unit, Unit, Boolean] = if n == 0 then pure(false) else defer(even(n - 1))(b => pure(b))
+    assertEquals(value(Machine.run(odd(1000001))), true)
+    val chain = (1 to 100000).foldLeft(pure[Int, Unit](0): Freer[Pure, Unit, Unit, Int])((p, _) => p.map(_ + 1))
+    assertEquals(value(Machine.run(chain)), 100000)

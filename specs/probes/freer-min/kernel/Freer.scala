@@ -1,3 +1,5 @@
+//> using scala 3.9.0
+//> using options -Werror -Wunused:all -feature -deprecation
 package okay.freer
 
 import scala.annotation.tailrec

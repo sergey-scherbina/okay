@@ -42,6 +42,7 @@ class TestFreer extends okay.testkit.Munit.Diagnosed:
       // that gives `T = R`; a `Perform` of a diagonal row would leave `T` unknown, and nothing builds one
       case Bind(h, k) => (h: @unchecked) match
         case Inject(op) => run(step(op, k, in, out), in, out)
+      case other => fail(s"not handled: $other")
 
   /** the type-changing state run: `Get` keeps the index, `Put` moves it; the GADT match types every step */
   @tailrec final def runState[S, R, A](p: Freer[PState, S, R, A], s: R): (S, A) =
@@ -57,6 +58,7 @@ class TestFreer extends okay.testkit.Munit.Diagnosed:
         case Perform(op) => op match
           case PState.Get() => runState(k(s), s)
           case PState.Put(t) => runState(k(()), t)
+      case other => fail(s"not handled: $other")
 
   /** a program of the empty row has only a value */
   def runPure[A](p: Freer[Pure, Unit, Unit, A]): A =
@@ -67,6 +69,7 @@ class TestFreer extends okay.testkit.Munit.Diagnosed:
       case Bind(h, _) => (h: @unchecked) match
         case Inject(op) => op
         case Perform(op) => op
+      case other => fail(s"not a value: $other")
 
   test("a for over two signatures builds the union row, and runs"):
     val out = StringBuilder()
@@ -117,9 +120,9 @@ class TestFreer extends okay.testkit.Munit.Diagnosed:
     val typed: Freer[Rest, Unit, Unit, Int] = rest
     assert(typed.isInstanceOf[Bind[?, ?, ?, ?, ?, ?]])
 
-  test("Control sits in a row with the effects"):
+  test("a delimiter is a node of the tree, in a row with the effects"):
     val p = Prompt[Fx, Unit, Int]("p")
-    val c: Freer[Row[Fx], Unit, Unit, Int] = reset(p)(one).flatMap(y => inject(Ask.Number).map(_ + y))
+    val c: Freer[Fx, Unit, Unit, Int] = reset(p)(one).flatMap(y => inject(Ask.Number).map(_ + y))
     assert(c.isInstanceOf[Bind[?, ?, ?, ?, ?, ?]])
 
   test("delay and defer: a million mutual tail calls in constant stack"):
