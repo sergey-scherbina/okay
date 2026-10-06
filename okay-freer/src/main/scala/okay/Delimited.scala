@@ -1,8 +1,7 @@
 package okay
 
-import okay.freer.Freer
 
-import okay.freer.Freer.{Return, Inject, Bind, Delay}
+import okay.Freer.{Return, Inject, Bind, Delay}
 import scala.annotation.tailrec
 
 /**

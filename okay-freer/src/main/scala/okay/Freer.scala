@@ -1,6 +1,5 @@
-package okay.freer
+package okay
 
-import okay.ParaMonad
 import scala.annotation.tailrec
 
 /**

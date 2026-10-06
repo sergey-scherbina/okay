@@ -1,6 +1,5 @@
 package okay
 
-import okay.freer.Freer
 
 import okay.Row.{at, plus}
 import scala.annotation.tailrec

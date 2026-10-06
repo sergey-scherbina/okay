@@ -1,18 +1,10 @@
 package okay
 
-import okay.freer.Freer
-
 /**
- * THE EFFECT TREE AT THE CORE'S DOOR. The monad is `okay.freer.Freer` (module okay-freer), named here for every
- * file of the core and every program written with `import okay.*`: an alias and the companion by a stable path,
- * so `Freer.Return(a)` builds, `case Freer.Bind(a, f)` matches and `Freer.Return[G, R, A]` is a type, as before
- * (a wildcard for its higher-kinded parameter, `Freer[?, ?, ?, ?]`, is written at its home). `Free`, the effect
- * tree at `Unary`, is the core's own: the library's doors are in `Diagonal`'s companion (Indexed.scala), in the
- * implicit scope of every `A ! F`.
+ * THE EFFECT TREE: `Free[F, A]`, the freer monad (`Freer`, module okay-freer, package `okay` as everything of the
+ * two monads below the core) at the unary signature `F`, every index `Unit`, and the four names at that arity.
+ * The library's doors are in `Diagonal`'s companion (Indexed.scala), in the implicit scope of every `A ! F`.
  */
-type Freer[G[_, _, +_], S, R, +A] = okay.freer.Freer[G, S, R, A]
-val Freer: okay.freer.Freer.type = okay.freer.Freer
-
 /** the effect program: the base at `Unary[F]`, every index `Unit`. `object Free` keeps the four names
  * (`Return`, `Inject`, `Bind`, `Delay`) at the arities the match sites and the `direct` macro use */
 type Free[F[+_], +A] = Freer[Unary[F], Unit, Unit, A]

@@ -210,7 +210,7 @@ move `R` to `Any` and `E` to `Nothing` by subtyping. See Decisions.
   it pushes frames.
 - **The module's name.** `okay-kernel` / `okay.kernel` is the
   microkernel of plugins and ports (specs/kernel.md, build.sbt, docs/
-  README.md), so this lane is `okay-freer`, package `okay.freer`,
+  README.md), so this lane is `okay-freer`, package `okay`,
   until the operator says which of the two moves.
 
 ## Open, after stage 0
@@ -1373,7 +1373,7 @@ Seven nodes, 37 tests on the JVM, JS and Native compile, no cast, no warning.
 
 ## Stage 29: THE FREER MONAD AS A MODULE BELOW THE CORE — `okay-freer` (DONE, 2026-10-06)
 
-The operator: the freer monad out of the core, into package `okay.freer` and a module `okay-freer`; an `Effects`
+The operator: the freer monad out of the core, into package `okay` and a module `okay-freer`; an `Effects`
 instance for the machine's `Cont`; the encoding chosen at compile time, by the given — "и сделать аккуратно и
 красиво", in this branch. The core was one knot: `Free.scala` named `Effects`, `Handler`, `HandleFrames`,
 `Distinct`, `DirectCtx`; `Monad.scala` named nothing of the core (its mentions of `Free`, `Choose`, `Row` were
@@ -1449,7 +1449,7 @@ machine is to replace the old in the core, with the `Effects` interface abstract
 same, the inside changes, and the old is one compile-time choice (the next stage). This stage is the move.
 
 What moved, package `okay` unchanged (the names are the core's vocabulary under `import okay.*`, 200 files; the
-tree alone is `okay.freer`): `Cont.scala` (the CPS reading of the tree, `shift` the macro, the modes, `direct`,
+tree alone is `okay`): `Cont.scala` (the CPS reading of the tree, `shift` the macro, the modes, `direct`,
 `Monadic`), `Delimited.scala` (the machine), `ContReplay.scala`, `macros/ContMacro.scala`, the stack-switch runtime
 (`StackSwitch` per platform, `StackRoom` with its JDK 22 variant, `StackPool`), and `DirectCtx` (`Cont.direct`
 needs it; the direct DSL and both monads share it). What stayed, in `Control.scala`: `Control`, its summoner,
@@ -1546,3 +1546,13 @@ call, no carrier touched) and, on a capture, runs it with `/` — a `Reset` over
 
 Checked: the lowering suite (`runWith` is `foldCont / identity`) at the default, the handler suites, the
 CPS-bound suites under the import, okay-java; 80 tests in the nearest set, no warning.
+
+## Stage 34: ONE PACKAGE FOR okay-freer (DONE, 2026-10-06)
+
+The operator: "в okay-freer или всё перенеси в пакет okay.freer или верни Freer в пакет okay в том же модуле".
+The second: `Freer` is `okay.Freer` again, in okay-freer — the module is the layer below the core, and its
+package is the core's, as the CPS `Cont`, `Delimited`, the type classes and okay-cont's `Carrier` instance
+already said. Gone with it: the core's alias at the door (`type Freer`/`val Freer`), the `import okay.freer.Freer`
+in seven core files and two of the module's, the home-naming in okay-direct's macros (`okay.Freer` again), the
+five `okay.freer.Freer[?, ?, ?, ?]` (`Freer[?, ?, ?, ?]` as it was), TestInlineBudget's class path. Nothing else
+moved: the layering of stages 29–33 stands, only the name is one.

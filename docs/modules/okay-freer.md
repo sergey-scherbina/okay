@@ -11,7 +11,7 @@ and 31).
 
 | | |
 |---|---|
-| `okay.freer.Freer[G, S, R, A]` | the indexed tree (Kiselyov–Ishii, with Atkey's indexes): `Return`, `Inject`, `Bind`, `Delay`; `resume` rotates it to a head form in constant stack; `Suspended`, `Mapped`, `defer`, `delay`; its `ParaMonad` |
+| `okay.Freer[G, S, R, A]` | the indexed tree (Kiselyov–Ishii, with Atkey's indexes): `Return`, `Inject`, `Bind`, `Delay`; `resume` rotates it to a head form in constant stack; `Suspended`, `Mapped`, `defer`, `delay`; its `ParaMonad` |
 | `okay.Cont[A, S, R]` | `(A => S) => R` as data: the tree at the shift signature, `shift` (a macro that reads its body), `/` runs it; the modes, `safe`, `direct`, `Monadic` |
 | `okay.Delimited` | the machine: the stack of continuations typed per reset installation, nested runs, the strict `k` by re-execution or a fresh stack (`StackSwitch`, `StackRoom`, `StackPool`, the JDK 22 variant in this module's multi-release jar) |
 | `okay.DirectCtx` | the evidence a `direct` block installs; shared by the direct DSL and both monads |
@@ -35,5 +35,5 @@ assertEquals(prog[Free].runWith, 3)
 ```
 
 A macro or a tool that names the tree by its path names it at its home,
-`okay.freer.Freer`, as `okay-direct`'s do; `okay.Free` and `okay.Unary`
+`okay.Freer`, as `okay-direct`'s do; `okay.Free` and `okay.Unary`
 are the core's.

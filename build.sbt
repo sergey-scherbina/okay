@@ -402,7 +402,7 @@ Seq(
  */
 /**
  * okay-freer: THE FREER MONAD on its own — `Freer`, the indexed tree; `Free`, the effect tree at `Unary`; and
- * the type classes they instantiate (Monad.scala). Package `okay.freer` for the tree, `okay` for the classes;
+ * the type classes they instantiate (Monad.scala). Package `okay` for the tree, `okay` for the classes;
  * the core is the library over it and names the tree at its door (src/main/scala/Free.scala). No dependency.
  */
 lazy val okayFreer = crossProject(JVMPlatform, JSPlatform, NativePlatform)

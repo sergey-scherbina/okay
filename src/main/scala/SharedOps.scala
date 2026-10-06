@@ -1,6 +1,5 @@
 package okay
 
-import okay.freer.Freer
 
 /**
  * The shared nodes of the fieldless operations (specs/effect-op-cost.md):

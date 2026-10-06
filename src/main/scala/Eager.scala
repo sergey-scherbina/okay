@@ -37,7 +37,7 @@ object Eager {
    * the match arm, so only the arm actually taken builds anything;
    * the casts stay textually in this one function, same as before. */
   private inline def fold[F[+_], A, B](m: Eager[F, A])(inline value: A => B, inline tree: (A ! F) => B): B = m match
-    case t: okay.freer.Freer[?, ?, ?, ?] => tree(t.asInstanceOf[A ! F])
+    case t: okay.Freer[?, ?, ?, ?] => tree(t.asInstanceOf[A ! F])
     case a => value(a.asInstanceOf[A])
 
   /** normalize into the tree world */

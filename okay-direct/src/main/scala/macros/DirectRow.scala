@@ -17,7 +17,7 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
 
   /** the tree's class: `Freer` since freer-base-step-extractor (2026-09-29),
    * `A ! Row` being `Freer[Unary[Row], Unit, Unit, A]` */
-  lazy val freeClass = Symbol.requiredClass("okay.freer.Freer")
+  lazy val freeClass = Symbol.requiredClass("okay.Freer")
   private lazy val liftedClass = TypeRepr.of[okay.Diagonal[Option]].typeSymbol
   private lazy val liftAlias = TypeRepr.of[okay.Unary[Option]].typeSymbol
 
@@ -158,12 +158,12 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
    * staged program reaches the reader as `Freer.Inject.apply[G, S, R,
    * A](op)` as often as `Free.Inject.apply[F, A](op)`. Both spell one
    * node; the element is the LAST type argument in either */
-  lazy val injectApplies: Set[Symbol] = Set(injectApply, Symbol.requiredModule("okay.freer.Freer.Inject").methodMember("apply").head)
-  lazy val pureApplies: Set[Symbol] = Set(pureApply, Symbol.requiredModule("okay.freer.Freer.Return").methodMember("apply").head)
-  lazy val bindApplies: Set[Symbol] = Set(bindApply, Symbol.requiredModule("okay.freer.Freer.Bind").methodMember("apply").head)
+  lazy val injectApplies: Set[Symbol] = Set(injectApply, Symbol.requiredModule("okay.Freer.Inject").methodMember("apply").head)
+  lazy val pureApplies: Set[Symbol] = Set(pureApply, Symbol.requiredModule("okay.Freer.Return").methodMember("apply").head)
+  lazy val bindApplies: Set[Symbol] = Set(bindApply, Symbol.requiredModule("okay.Freer.Bind").methodMember("apply").head)
   /** `map`'s continuation (one-bind-hot-steps): `new Freer.Mapped(f)` runs
    * as `a => Free.Return(f(a))`, and the stager reads it as that */
-  lazy val mappedClass: Symbol = Symbol.requiredClass("okay.freer.Freer.Mapped")
+  lazy val mappedClass: Symbol = Symbol.requiredClass("okay.Freer.Mapped")
 
   /**
    * THE INLINER'S PROXIES, SUBSTITUTED. An inline method's by-value
