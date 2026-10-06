@@ -9,10 +9,10 @@ class TestMachine extends okay.testkit.Munit.Diagnosed:
     case Number extends Ask[Int]
 
   /** a program at the top: its answer is its value, Danvy–Filinski's `⟨e⟩ : τ` */
-  type Top[G[+_], A] = Freer[G, A, A, A]
+  type Top[G[+_], A] = Freer[G, EmptyTuple, A, A, A]
 
-  def value[U, A](p: Freer[Pure, U, U, A]): A =
-    val head: Freer[Pure, U, U, A] = Machine.run(p)
+  def value[U, A](p: Freer[Pure, EmptyTuple, U, U, A]): A =
+    val head: Freer[Pure, EmptyTuple, U, U, A] = Machine.run(p)
     head match
       case Return(a) => a
       case other => fail(s"not a value: $other")
@@ -32,12 +32,12 @@ class TestMachine extends okay.testkit.Munit.Diagnosed:
     assertEquals(value(reset[Pure, Int](shift[Int](k => k(1).flatMap(a => k(2).flatMap(b => k(3).map(c => a + b + c)))).map(_ * 10))), 60)
 
   test("ANSWER-TYPE MODIFICATION, Danvy–Filinski's own: reset(1 + shift(k => \"a\")) answers a String"):
-    val prog: Freer[Pure, String, String, String] = reset[Pure, Int](shift[Int](_ => pure("a")).map(_ + 1))
+    val prog: Freer[Pure, EmptyTuple, String, String, String] = reset[Pure, Int](shift[Int](_ => pure("a")).map(_ + 1))
     assertEquals(value(prog), "a")
 
   test("answer-type modification with the continuation used: the answer is a String built from the Int context"):
     // k : Int => Int [Int, Int] — the context `_ + 1` with the delimiter; the body answers a String
-    val prog: Freer[Pure, String, String, String] = reset[Pure, Int](shift[Int](k => k(1).flatMap(a => k(a)).map(n => "n=" + n)).map(_ + 1))
+    val prog: Freer[Pure, EmptyTuple, String, String, String] = reset[Pure, Int](shift[Int](k => k(1).flatMap(a => k(a)).map(n => "n=" + n)).map(_ + 1))
     assertEquals(value(prog), "n=3")
 
   test("abort: a shift that drops its continuation answers the delimiter at once"):
@@ -46,16 +46,11 @@ class TestMachine extends okay.testkit.Munit.Diagnosed:
   test("nested delimiters: a shift's delimiter is the reset it is written in, the inner given"):
     assertEquals(value(reset[Pure, Int](reset[Pure, Int](shift[Int](k => k(1)).map(_ + 10)).map(_ * 2))), 22)
 
-  test("a capture to a prompt under another's delimiter: only by handing the outer prompt in; NotNearest"):
-    val prog = reset[Pure, Int]: p ?=>
-      reset[Pure, Int](shift[Int](using p)(k => k(1)).map(_ + 10)).map(_ * 2)
-    intercept[NotNearest](value(prog))
-
-  test("a capture with no delimiter of its prompt on the run is handed out as a head form, for a machine outside"):
-    // the node itself: the sugar refuses a capture with no delimiter in scope
-    val head = Machine.run(Shift[Pure, Int, Int, Int, Int, Int](Prompt(), k => k(1)))
+  test("a capture with no delimiter on the run is handed out as a head form, for a machine outside"):
+    // the node itself, at a stack claiming a delimiter: the sugar refuses a capture with no delimiter in scope
+    val head = Machine.run(Shift[Pure, Int, Int, Int, Int](k => k(1)))
     head match
-      case Bind(Shift(_, _), _) => ()
+      case Bind(Shift(_), _) => ()
       case other => fail(s"not a capture handed out: $other")
 
   test("an effect inside a delimiter is handed out, answered outside, and the run goes on"):
@@ -66,11 +61,11 @@ class TestMachine extends okay.testkit.Munit.Diagnosed:
       yield x + 1)
     assertEquals(runAsk(prog, 10), 12)
 
-  test("a body with an effect outside the prompt's row is refused at compile time"):
+  test("a delimiter's row is its body's: a program at Top[Pure, Int] cannot hold a delimiter over Other"):
     val errors = compileErrors("""
       enum Other[+A]:
         case Op extends Other[Int]
-      reset[Pure, Int](inject(Other.Op).map(_ + 1))""")
+      val prog: Freer[Pure, EmptyTuple, Int, Int, Int] = reset[Pure, Int](inject(Other.Op).map(_ + 1))""")
     note(errors)
     assert(errors.nonEmpty, errors)
 
@@ -79,8 +74,8 @@ class TestMachine extends okay.testkit.Munit.Diagnosed:
     assertEquals(runAsk(wide, 10), 12)
 
   test("100 000 captures and resumptions in one delimiter run in constant stack"):
-    // a fragment with a shift says which delimiter's body it is for: its context
-    def loop(n: Int)(using Prompt[Pure, Int]): Top[Pure, Int] =
+    // a fragment with a shift says which delimiter it is under: its context, and its index
+    def loop(n: Int)(using In[Lvl[Pure], Int]): Freer[Pure, Lvl[Pure], Int, Int, Int] =
       if n == 0 then pure(0) else shift[Int](k => k(1)).flatMap(x => loop(n - 1).map(_ + x))
     assertEquals(value(reset[Pure, Int](loop(100000))), 100000)
 
@@ -97,5 +92,5 @@ class TestMachine extends okay.testkit.Munit.Diagnosed:
     def even(n: Int): Top[Pure, Boolean] = if n == 0 then pure(true) else delay(odd(n - 1))
     def odd(n: Int): Top[Pure, Boolean] = if n == 0 then pure(false) else defer(even(n - 1))(b => pure(b))
     assertEquals(value(odd(1000001)), true)
-    val chain = (1 to 100000).foldLeft(pure[Int, Int](0): Top[Pure, Int])((p, _) => p.map(_ + 1))
+    val chain = (1 to 100000).foldLeft(pure[Int, EmptyTuple, Int](0): Top[Pure, Int])((p, _) => p.map(_ + 1))
     assertEquals(value(chain), 100000)

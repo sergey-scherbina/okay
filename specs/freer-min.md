@@ -866,3 +866,40 @@ with a shift declares its delimiter: `def loop(n: Int)(using Prompt[Pure, Int])`
 user constructor in the sugar; the row `H` and the answer `S` are written on the reset, Danvy–Filinski's annotation
 of the delimiter — a type in a context function's parameter is fixed before its body is typed, so `reset[H, S]` is
 a two-stage call like `shift[X]`. `PState`: `State[H, W](using Prompt[H, ?])`, `reset[H, St[H, S1, W]](body(State()) …)`.
+
+## Stage 13: the delimiter's row IN THE INDEX — no prompt (DONE, 2026-10-06)
+
+The operator's call: the stack of rows in the index. Built first as the operator pictured it,
+`Freer[+G, Σ <: Tuple, S, R, A]`, `Σ` empty at the top, `Reset` pushing `Lvl[H]`, `Shift` typed at `Lvl[H] *: Σ`
+with `k : X => T [U, U]` under `Σ` (the delimiter is in `k`, so `k` is a program of the stack OUTSIDE it). The
+kernel compiled with no prompt and no identity: the Delim's index `Lvl[H] *: Σ` meets the shift's by GADT, and
+`h = H` is an equality, not a bound, because the index is invariant. The tests then measured the one thing the
+tail of the stack does: it pins `k`. A shift's body runs INSIDE the delimiter put back, at `Lvl[H] *: Σ`, and
+`k(1)` in it is at `Σ` — `k(1).flatMap(k(_))`, the first test, does not type, by the tail alone, which nothing in
+the basis ever reads (a capture reaches the nearest delimiter and no further). The full stack belongs to
+shift0/`$`, whose body runs OUTSIDE the delimiter at the same `Σ` as `k` (stage 7), and to captures across
+delimiters, which are not in the basis.
+
+So the index is the HEAD alone: `Freer[+G, D, S, R, A]`, `D = Lvl[H]` the delimiter in force, `EmptyTuple` at the
+top, and `k` is polymorphic in it as it is in the answer — `[U, E] => X => Freer[H, E, U, U, T]` — because it
+brings its delimiter along: a captured `k` is a program under any delimiter. `Resume[H, X, T, D, U]` at any `D`.
+
+```
+Freer[+G[+_], D, S, R, +A]
+Return | Inject | Bind | Delay | Reset | Shift | Resume
+Reset [H, D, S, R, U](body: Freer[H, Lvl[H], S, R, S])                                           extends Freer[H, D, U, U, R]
+Shift [H, T, R, X, V](f: ([U, E] => X => Freer[H, E, U, U, T]) => Freer[H, Lvl[H], V, R, V])  extends Freer[H, Lvl[H], T, R, X]
+Resume[H, X, T, D, U](x: X, k: Captured[H, X, T, ?])                                         extends Freer[H, D, U, U, T]
+```
+
+Gone: `Prompt`, its identity, `_: p.type`, `NotNearest`, the prompt's `S`. `Cut.Gone` builds the handed-out
+program inside `cut`, where the `Done` match knows the run's types, so the `=:=` field is gone too. What stays for
+inference only: `In[D, S]`, the delimiter and answer a body is written at, a given from `reset`, read by `shift`;
+the machine never sees it. The handler test: a capture through a handler inside a delimiter is at the delimiter's
+row, which the index says (`Lvl[D]`), and the handler asks `D[A] <: G[A]` — the capture passes with NO claim; the
+one `@unchecked` left is `Distinct`'s, on the operation. 228 lines of kernel (77 + 151), 25 tests on the JVM, JS
+and Native compile, `grep asInstanceOf|@unchecked|eq|Prompt|NotNearest` over the kernel: 0.
+
+A program with no capture is written for any `D` (`def one[D]: Freer[Fx, D, …]`): the index is exact, so a `val`
+at the top is no body for a delimiter. A fragment with a shift declares its delimiter twice, as its context and as
+its index: `def loop(n: Int)(using In[Lvl[Pure], Int]): Freer[Pure, Lvl[Pure], Int, Int, Int]`.
