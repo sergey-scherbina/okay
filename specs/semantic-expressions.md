@@ -25,7 +25,9 @@ without SQL, agents or external engines.
   explicitly bound identifier-only projections through a typed decoder. No source
   expression or source declaration is sent to a database. Existing data Api gains
   expression-model overloads for local and Source-backed endpoints, using the
-  same JSON request/response protocol.
+  same JSON request/response protocol. Expression plans and default scalar
+  functions are Serializable for distributed Bulk backends; host readers and
+  custom functions must capture serializable application state.
 
 ## Behavior
 - [ ] Constants, offsets and both orders of arithmetic execute, including /3,
