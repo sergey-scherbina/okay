@@ -1,0 +1,6 @@
+feature/cont-effects 2026-10-06T19:59:03Z
+agent: claude-code
+heartbeat: 2026-10-06T19:59:03Z
+status: in-progress
+done-so-far: claimed
+next: the machine effect library in okay-cont: State, Reader, Writer, Throws, Choose, Emit, dialogues as handlers over contexts and Free[R, A]; tests; JMH against the classic handlers
