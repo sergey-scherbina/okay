@@ -37,10 +37,13 @@ with an explicit fact dataset, source/version, grain and units per metric.
 No serialized Scala extractors or inferred currency/timezone. Compile selected
 metric dependency closures: SUM/COUNT/AVG/MIN/MAX, COUNT(DISTINCT field), arithmetic
 + - * /, parentheses, exact numeric scale factors and references to named metrics.
-Constant-only metrics and additive offsets are refused because the core has no
-constant-aggregate calculation; no synthetic data rows are invented.
-Division by a constant compiles to Scale only when its reciprocal terminates
-exactly; otherwise execution is refused rather than rounding before the divide.
+Core Constant now represents constant-only metrics and additive offsets directly;
+no synthetic data rows are invented. Division happens at execution: terminating
+quotients stay exact, recurring decimals use DECIMAL128, zero produces null.
+These extensions and the richer row/group/window ExpressionModel contract are
+specified in specs/semantic-expressions.md. Execution.bind uses the same typed
+bindings for CASE/scalar row expressions, holistic aggregates and checked lookup
+routes; Bridge.bind remains the sufficient-statistics core-plan path.
 Use an iterative tokenizer/shunting-yard worklist, no stack recursion. Preserve
 unsupported dialect expressions; executing them returns named capability errors.
 ANSI_SQL and OSSIE_SQL_2026 are selectable explicitly; do not choose the first
@@ -91,3 +94,10 @@ numeric metric declarations. Nonterminating constant division was intentionally
 refused: converting it to an approximate Scale changed the analytical result.
 Optional YAML syntax and source attribution are packaged behind the facade;
 LICENSE/NOTICE/PROVENANCE ship in META-INF/ossie.
+
+## Subsequent expression execution
+The initial Results above record the original landing's decisions. The intentional
+constant-division refusal was superseded by semantic-expressions (2026-10-06),
+which adds core Constant and shared DecimalMath plus portable expression plans,
+transport adapters and explicit function/language extension facades. Its current
+contracts and verification live in specs/semantic-expressions.md.
