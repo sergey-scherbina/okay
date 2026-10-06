@@ -27,7 +27,7 @@ final class S3(http: Http, endpoint: String, bucket: String, region: String,
                clock: () => java.time.Instant = () => java.time.Instant.now,
                /** the size a put holds before it goes multipart — S3's
                 * floor for every part but the last is 5 MiB */
-               partSize: Int = S3.PartSize) extends Blob {
+               partSize: Int = S3.PartSize) extends Blob with ConditionalObjects {
   require(partSize >= S3.MinPart, s"S3 refuses a part under ${S3.MinPart} bytes (all but the last)")
 
   private type F = Writer % Chunk[Byte] + Async
@@ -52,6 +52,46 @@ final class S3(http: Http, endpoint: String, bucket: String, region: String,
       auth, if payload.isEmpty then Body.Empty else Body.Bytes(ArraySeq.unsafeWrapArray(payload)))
 
   private def keyPath(key: String) = s"/$bucket/$key"
+
+  /** A single bounded PUT, exclusively created by the server. No fallback
+   * on a rejected condition, including a transient 409. */
+  def create(key: String, bytes: Array[Byte]): ConditionalObjects.Created ! Async =
+    require(bytes.length <= ConditionalObjects.MaxBytes, "create-only object exceeds 8 MiB")
+    val checksum = java.util.Base64.getEncoder.encodeToString(
+      java.security.MessageDigest.getInstance("MD5").digest(bytes))
+    // Transport checksum mandated by Object Lock; not a security identity.
+    val condition = Seq("if-none-match" -> "*", "content-md5" -> checksum)
+    val auth = SigV4.sign("PUT", keyPath(key), Nil,
+      Seq("host" -> hostHeader) ++ condition, SigV4.sha256Hex(bytes), region, stamp(), creds)
+    val request = Request(Method.Put,
+      s"$endpoint${SigV4.uriEncode(keyPath(key), keepSlash = true)}",
+      auth ++ condition, Body.Bytes(ArraySeq.unsafeWrapArray(bytes)))
+    http.send(request).flatMap { r =>
+      r.release.map { _ =>
+        if r.ok then ConditionalObjects.Created.Added
+        else if r.status == 412 then ConditionalObjects.Created.Exists
+        else throw IllegalStateException(s"create '$key': HTTP ${r.status}")
+      }
+    }
+
+  /** Bounded reads for commit markers and immutable chunks. An HTTP error
+   * is not absence. The limit is checked on the actual stream, not HEAD. */
+  def read(key: String, maxBytes: Int): Option[Array[Byte]] ! Async =
+    require(maxBytes >= 0 && maxBytes <= ConditionalObjects.MaxBytes, "invalid object read limit")
+    http.send(signed(Method.Get, keyPath(key))).flatMap { r =>
+      if r.status == 404 then r.release.map(_ => None)
+      else if !r.ok then r.release.map(_ => throw IllegalStateException(s"read '$key': HTTP ${r.status}"))
+      else
+        val out = java.io.ByteArrayOutputStream()
+        val sink: okay.Fold[Chunk[Byte], Unit] = okay.Fold(()) { (_, c) =>
+          if c.length > maxBytes - out.size then throw IllegalStateException(s"read '$key': object exceeds limit")
+          out.write(c.toArray)
+        }
+        val consume = Writer.fold[Chunk[Byte], Unit, Unit, Async](r.body)(using summon)(using summon, sink)
+        attempt(consume).flatMap(result => r.release.map { _ =>
+          result.fold(throw _, _ => Some(out.toByteArray))
+        })
+    }
 
   def put(key: String, bytes: Source[Chunk[Byte]]): Etag ! Async =
     // the buffer and the cell are allocated when the program RUNS, so the
