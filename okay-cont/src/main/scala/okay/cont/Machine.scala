@@ -1,4 +1,4 @@
-package okay.freer
+package okay.cont
 
 import scala.annotation.tailrec
 import Cont.*
@@ -73,7 +73,7 @@ object Machine:
    * the machine outside. At any level: a handler's clause may run a program of its own */
   def run[F[+_], I <: Tuple, O <: Tuple, A](p: Cont[F, I, O, A]): Cont[F, I, O, A] = go(p, Frames.End(), Stack.Done())
 
-  @tailrec private[freer] def go[F[+_], G[+_], A, B, I <: Tuple, T <: Tuple, O <: Tuple, I0 <: Tuple, O0 <: Tuple, Z](
+  @tailrec private[cont] def go[F[+_], G[+_], A, B, I <: Tuple, T <: Tuple, O <: Tuple, I0 <: Tuple, O0 <: Tuple, Z](
       c: Cont[G, T, O, A], k: Frames[G, A, B, I, T], m: Stack[F, G, B, I, O, I0, O0, Z]): Cont[F, I0, O0, Z] =
     c match
       case Return(a) => k match
@@ -128,7 +128,7 @@ object Machine:
     step(d.up(f(Captured(piece))), d.out, d.rest)
 
   /** the piece put back over `m`: a value due at the hole */
-  @tailrec private[freer] def link[F[+_], G[+_], A0, A, I <: Tuple, O <: Tuple, I0 <: Tuple, O0 <: Tuple, Z](
+  @tailrec private[cont] def link[F[+_], G[+_], A0, A, I <: Tuple, O <: Tuple, I0 <: Tuple, O0 <: Tuple, Z](
       piece: Piece[G, A0, A, I, O], m: Stack[F, G, A, I, O, I0, O0, Z]): Resumption[F, A0, I0, O0, Z] =
     piece match
       case Piece.Hole(k0) => resumption(k0, m)

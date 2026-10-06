@@ -2930,12 +2930,12 @@ lazy val okayDiagnose = crossProject(JVMPlatform, JSPlatform, NativePlatform)
  * (`Prompt`, `Control`). No dependency: a kernel that depended on anything
  * would make every effect carry it. A hypothesis lane: nothing depends on it.
  */
-lazy val okayFreer = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+lazy val okayCont = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
-  .in(file("okay-freer"))
+  .in(file("okay-cont"))
   .dependsOn(okayTest % "test->compile")
   .settings(
-    name := "okay-freer",
+    name := "okay-cont",
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
   )
   .jvmConfigure(_.enablePlugins(JmhPlugin))
@@ -3823,7 +3823,7 @@ lazy val platformMembers: Seq[ProjectReference] = gtkProjects ++ Seq[ProjectRefe
     okayDocs.jvm, okayDocs.js, okayDocs.native,
     okayConf.jvm, okayConf.js, okayConf.native,
     okayObs.jvm, okayObs.js, okayObs.native,
-    okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy, okayArrow.jvm, okayArrow.js, okayArrow.native, okayParquet.jvm, okayParquet.js, okayParquet.native, okayLake, okayCompress.jvm, okayCompress.js, okayCompress.native, okayDiagnose.jvm, okayDiagnose.js, okayDiagnose.native, okayFreer.jvm, okayFreer.js, okayFreer.native, okayTest.jvm, okayTest.js, okayTest.native, okayForeignWorkflow, okayR, okayForeignCluster,
+    okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy, okayArrow.jvm, okayArrow.js, okayArrow.native, okayParquet.jvm, okayParquet.js, okayParquet.native, okayLake, okayCompress.jvm, okayCompress.js, okayCompress.native, okayDiagnose.jvm, okayDiagnose.js, okayDiagnose.native, okayCont.jvm, okayCont.js, okayCont.native, okayTest.jvm, okayTest.js, okayTest.native, okayForeignWorkflow, okayR, okayForeignCluster,
     okayTelegram.jvm, okayTelegram.js,
     okaySecurity.jvm, okaySecurity.js, okaySecurityArgon2, okayRust.jvm,
     okayFrame.jvm, okayFrame.js,

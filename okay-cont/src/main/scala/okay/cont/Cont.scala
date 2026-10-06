@@ -1,4 +1,4 @@
-package okay.freer
+package okay.cont
 
 /** the empty row: no operation at all; `Return`'s row, and so a program of every row */
 type Pure = [A] =>> Nothing
@@ -119,9 +119,19 @@ final class Shift0At[X]:
 trait Handler[E[+_], G[+_], A, Ans]:
   def ret(a: A): Ans
   def apply[X, Oc <: Ctx](using o: Oc)(op: E[X], k: X => Cont[G, o.Here, o.Here, Ans]): Cont[G, o.Here, o.Here, Ans]
+/** a TAIL-RESUMPTIVE handler: each clause `k(value(op))`, the value of the operation alone — so the operation is
+ * ANSWERED IN PLACE, where it is performed, when the machine gets there: no capture, the delimiter untouched, and
+ * none of the delimiters between touched either (Koka's, Effekt's optimisation, here by the handler's declaration,
+ * chosen at compile time by the context's type) */
+trait Answering[E[+_], G[+_], A, Ans] extends Handler[E, G, A, Ans]:
+  def value[X](op: E[X]): X
+  final def apply[X, Oc <: Ctx](using o: Oc)(op: E[X], k: X => Cont[G, o.Here, o.Here, Ans]): Cont[G, o.Here, o.Here, Ans] = k(value(op))
 /** the context of a handler's body: it handles `E`, at the row `H = E + G` */
 sealed trait Handling[E[+_], H[+_], G[+_], Ans, Oc <: Ctx] extends In[H, G, Ans, Oc]:
   def handler: Handler[E, Out, ?, Ans]
+/** the context of an answering handler's body: its type says so, and `perform` answers in place */
+sealed trait Answers[E[+_], H[+_], G[+_], Ans, Oc <: Ctx] extends Handling[E, H, G, Ans, Oc]:
+  def answering: Answering[E, Out, ?, Ans]
 /** `handle(h)(body)`: the delimiter of the handler `h`, its body at `E + G`, the effect `E` discharged outside */
 def handle[E[+_], G[+_], A, Ans](h: Handler[E, G, A, Ans])(using o: Ctx)
           (body: Handling[E, E + G, G, Ans, o.type] ?=> Cont[E + G, At[E + G, G, o.Here, Ans] *: o.Here, At[E + G, G, o.Here, Ans] *: o.Here, A])
@@ -130,23 +140,44 @@ def handle[E[+_], G[+_], A, Ans](h: Handler[E, G, A, Ans])(using o: Ctx)
     val outer: o.type = o
     def handler: Handler[E, G, ?, Ans] = h
   Cont.Reset[E + G, G, o.Here, o.Here, Ans, Ans](body(using in).map(h.ret))
+/** `handle(h)(body)` for an answering handler: the body's context says it answers */
+def handle[E[+_], G[+_], A, Ans](h: Answering[E, G, A, Ans])(using o: Ctx)
+          (body: Answers[E, E + G, G, Ans, o.type] ?=> Cont[E + G, At[E + G, G, o.Here, Ans] *: o.Here, At[E + G, G, o.Here, Ans] *: o.Here, A])
+  : Cont[G, o.Here, o.Here, Ans] =
+  val in = new Answers[E, E + G, G, Ans, o.type]:
+    val outer: o.type = o
+    def handler: Handler[E, G, ?, Ans] = h
+    def answering: Answering[E, G, ?, Ans] = h
+  Cont.Reset[E + G, G, o.Here, o.Here, Ans, Ans](body(using in).map(h.ret))
 
 /** `perform(op)`: a capture to the handler of `E` in the context — the nearest delimiter if it is the handler, or
  * through each delimiter between, which forwards: a shift to it whose body performs outside and resumes `k`
  * after. The handler is found in the context's structure, at compile time; none, no program */
 def perform[E[+_], X, H[+_]](op: E[X])(using c: In[H, ?, ?, ?], p: Perform[E, H, c.type]): c.Body[X] = p(op, c)
-/** how `E` is performed in a context `C` of row `H` */
+/** how `E` is performed in a context `C` of row `H`: answered in place where the handler answers (found through
+ * the context's types, `Answered`), a capture where not — chosen at compile time, by the given's priority */
 trait Perform[E[+_], H[+_], C <: In[H, ?, ?, ?]]:
   def apply[X](op: E[X], c: C): Cont[H, c.Here, c.Here, X]
 object Perform extends PerformLow:
+  /** the handler answers: the value when the machine gets there, in its order; no capture, through any delimiter */
+  given answered[E[+_], H[+_], C <: In[H, ?, ?, ?]](using a: Answered[E, C]): Perform[E, H, C] with
+    def apply[X](op: E[X], c: C): Cont[H, c.Here, c.Here, X] = Cont.Delay(() => Cont.Return(a(op, c)))
+sealed trait PerformLow:
   /** the context is the handler's: a shift to its delimiter, the clause the body */
   given direct[E[+_], H[+_], Ans, Oc <: Ctx, C <: Handling[E, H, ?, Ans, Oc]]: Perform[E, H, C] with
     def apply[X](op: E[X], c: C): Cont[H, c.Here, c.Here, X] =
       Cont.Shift0[H, c.Out, c.D, c.D, c.D, Ans, Ans, X](k => c.handler(using c.outer)(op, k))
-sealed trait PerformLow:
   /** the context is another delimiter's, which leaves at least the row outside it: a shift to it, performed
    * outside, `k` resumed with the result */
   given forward[E[+_], H[+_], Hf[+_], S, H2[+A] <: Hf[A], Oc <: In[H2, ?, ?, ?], C <: In[H, Hf, S, Oc]]
       (using o: Perform[E, H2, Oc]): Perform[E, H, C] with
     def apply[X](op: E[X], c: C): Cont[H, c.Here, c.Here, X] =
       Cont.Shift0[H, Hf, c.D, c.D, c.D, S, S, X](k => o(op, c.outer).flatMap(x => k(x)))
+/** the value of `E` answered in place in the context `C`: its handler answers, or a context outside does */
+trait Answered[E[+_], C <: Ctx]:
+  def apply[X](op: E[X], c: C): X
+object Answered:
+  given here[E[+_], C <: Answers[E, ?, ?, ?, ?]]: Answered[E, C] with
+    def apply[X](op: E[X], c: C): X = c.answering.value(op)
+  given outside[E[+_], Oc <: Ctx, C <: In[?, ?, ?, Oc]](using o: Answered[E, Oc]): Answered[E, C] with
+    def apply[X](op: E[X], c: C): X = o(op, c.outer)

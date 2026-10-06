@@ -1,4 +1,4 @@
-package okay.freer
+package okay.cont
 
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
@@ -28,23 +28,32 @@ enum Tick[+A]:
 @Warmup(iterations = 3, time = 1, timeUnit = TimeUnit.SECONDS)
 @Measurement(iterations = 5, time = 1, timeUnit = TimeUnit.SECONDS)
 @Fork(2)
-class FreerBenchmark {
+class ContBenchmark {
 
   final val N = 10000
   final val M = 1000
 
-  /** an operation's own value: the inner handler, of `Ask`, leaving `Tick` */
+  /** an operation's own value: the inner handler, of `Ask`, leaving `Tick` — the general clause, a capture an op */
   val askH: Handler[Ask, Tick + Pure, Int, Int] = new Handler[Ask, Tick + Pure, Int, Int]:
     def ret(a: Int): Int = a
     def apply[X, Oc <: Ctx](using o: Oc)(op: Ask[X], k: X => Cont[Tick + Pure, o.Here, o.Here, Int]): Cont[Tick + Pure, o.Here, o.Here, Int] =
       op match
         case Ask.Value(a) => k(a)
-  /** the outer handler, of `Tick`, leaving nothing */
+  /** the outer handler, of `Tick`, leaving nothing — the general clause */
   val tickH: Handler[Tick, Pure, Int, Int] = new Handler[Tick, Pure, Int, Int]:
     def ret(a: Int): Int = a
     def apply[X, Oc <: Ctx](using o: Oc)(op: Tick[X], k: X => Cont[Pure, o.Here, o.Here, Int]): Cont[Pure, o.Here, o.Here, Int] =
       op match
         case Tick.Value(a) => k(a)
+  /** the same two, declared TAIL-RESUMPTIVE: answered in place, no capture */
+  val askA: Answering[Ask, Tick + Pure, Int, Int] = new Answering[Ask, Tick + Pure, Int, Int]:
+    def ret(a: Int): Int = a
+    def value[X](op: Ask[X]): X = op match
+      case Ask.Value(a) => a
+  val tickA: Answering[Tick, Pure, Int, Int] = new Answering[Tick, Pure, Int, Int]:
+    def ret(a: Int): Int = a
+    def value[X](op: Tick[X]): X = op match
+      case Tick.Value(a) => a
 
   /** the program of the two handlers' body: 10k ops, every 100th handled by the inner (Ask), the rest forwarded (Tick) */
   def body[Oc <: Ctx](using c: In[Ask + (Tick + Pure), Tick + Pure, Int, Oc], pa: Perform[Ask, Ask + (Tick + Pure), c.type],
@@ -58,6 +67,8 @@ class FreerBenchmark {
     p
 
   def prog: Top[Pure, Int] = handle[Tick, Pure, Int, Int](tickH)(handle[Ask, Tick + Pure, Int, Int](askH)(body))
+  /** the same program under the answering handlers */
+  def progA: Top[Pure, Int] = handle[Tick, Pure, Int, Int](tickA)(handle[Ask, Tick + Pure, Int, Int](askA)(body))
 
   def value[A](p: Top[Pure, A]): A =
     val head: Top[Pure, A] = Machine.run(p)
@@ -78,6 +89,15 @@ class FreerBenchmark {
 
   @Benchmark
   def handlePrebuilt(): Int = value(built)
+
+  private var builtA: Top[Pure, Int] = scala.compiletime.uninitialized
+
+  @Setup(Level.Trial)
+  def buildOnceA(): Unit = builtA = progA
+
+  /** the same 10 000 operations, the handlers answering in place: no capture, no forwarding capture */
+  @Benchmark
+  def handlePrebuiltAnswering(): Int = value(builtA)
 
   def isEven(n: Int): Top[Pure, Boolean] = if n == 0 then pure(true) else delay(isOdd(n - 1))
   def isOdd(n: Int): Top[Pure, Boolean] = if n == 0 then pure(false) else delay(isEven(n - 1))

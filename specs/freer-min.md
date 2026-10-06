@@ -1149,3 +1149,29 @@ What the numbers say:
   where one. Kept, with the number on it.
 
 Kernel 308 lines, six nodes, 30 tests on the JVM, JS and Native compile.
+
+## Stage 22: `okay-cont`; TAIL-RESUMPTIVE HANDLERS ANSWER IN PLACE (DONE, 2026-10-06)
+
+- The operator: the module is `okay-cont`, the package `okay.cont`. Renamed (`okayCont` in build.sbt, `TestCont`,
+  `ContBenchmark`). The JMH generator's cache survives a rename and fails with `NoClassDefFoundError` on the old
+  name: `rm -rf okay-cont/.jvm/target`, as AGENTS.md says.
+- THE HANDLER OPTIMISATION, Koka's and Effekt's: a clause that resumes once, last, with a value of the operation
+  alone needs no continuation — `Answering[E, G, A, Ans]` declares `value(op): X`, its `apply` is `k(value(op))`.
+  `handle` of an `Answering` gives its body the context `Answers[E, …]`, and `perform` in such a context — or in any
+  context INSIDE it, through any delimiters between — is `Delay(() => Return(value(op)))`: no capture, no
+  delimiter touched, no forwarding capture; the value when the machine gets there, in its order. Chosen AT COMPILE
+  TIME: `Perform.answered` (the object, high priority) needs `Answered[E, C]`, found through the context's types
+  (`here` on an `Answers` context, `outside` through the outer); where it is not found the low-priority `direct`
+  and `forward` stand, unchanged. First tried at run time — a `Delay` and an `Option` check on every `perform` —
+  and measured on the general path: 394.9 ± 9.9 µs against 343.0, 15 % for a path that does not use it; withdrawn.
+- Measured, the 10 000 operations, 1 % handled by the inner handler, 99 % forwarded to the outer, prebuilt:
+
+  | handlers                       | master (`handlePrebuilt`) | okay-cont            | ratio |
+  |--------------------------------|---------------------------|----------------------|------:|
+  | general clauses, `k(a)`        | 133.2 ± 2.5 µs            | 338.1 ± 4.5 µs       | 2.5×  |
+  | `Answering`, `value(op) = a`   | 133.2 ± 2.5 µs            | 136.4 ± 1.7 µs       | 1.02× |
+
+  Parity with master's handler loop, for the handlers that are tail-resumptive — which the benchmark's, and most,
+  are. The general clause keeps its capture, and its price.
+
+30 tests on the JVM, JS and Native compile, no cast, no warning.

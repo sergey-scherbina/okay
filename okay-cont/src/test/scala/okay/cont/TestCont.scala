@@ -1,11 +1,11 @@
-package okay.freer
+package okay.cont
 
 import Cont.*
 
 /** specs/freer-min.md: HANDLERS AS DELIMITERS — an operation is a capture to the handler's delimiter, the clause
  * runs outside; the effect is discharged from the row outside; a handler not the nearest is reached through the
  * delimiters between, each forwarding, found in the context at compile time */
-class TestFreer extends okay.testkit.Munit.Diagnosed:
+class TestCont extends okay.testkit.Munit.Diagnosed:
   enum Ask[+A]:
     case Number extends Ask[Int]
   enum Say[+A]:
