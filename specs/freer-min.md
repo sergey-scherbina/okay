@@ -962,3 +962,44 @@ one pair beside the stack.
   Int]): Body[Pure, Int, Int]`.
 
 Kernel 268 lines (94 + 174), 25 tests on the JVM, JS and Native compile, no cast, no warning.
+
+## Stage 16: THE INDEX ONE STACK — the pair in the head (DONE, 2026-10-06)
+
+The operator's call: everything in the stack. `Freer[+G, Σ <: NonEmptyTuple, +A]`, an entry `Lvl[H, S, R]` a level's
+row and answer pair, the run a level too (`Top[G, A] = Freer[G, Lvl[Pure, A, A] *: EmptyTuple, A]`), `Bind` composing
+the head's pairs as states: `m` from `T` to `R`, `k` from `S` to `T`, the whole from `S` to `R`.
+
+```
+Return[H, R, Σ, A](a)                                          extends Freer[Pure, Lvl[H, R, R] *: Σ, A]
+Inject[G, H, T, Σ, A](op)                                      extends Freer[G, Lvl[H, T, T] *: Σ, A]
+Bind[G, H, Σ, S, T, R, A, B](m: Freer[G, Lvl[H, T, R] *: Σ, A], k: A => Freer[G, Lvl[H, S, T] *: Σ, B]) extends Freer[G, Lvl[H, S, R] *: Σ, B]
+Reset[H, H2, Σ, S, R, U](body: Freer[H, Lvl[H, S, R] *: Lvl[H2, U, U] *: Σ, S])                          extends Freer[H, Lvl[H2, U, U] *: Σ, R]
+Shift0[H, H2, Σ, T, R, X, U](f: (X => Freer[H, Lvl[H2, U, U] *: Σ, T]) => Freer[H, Lvl[H2, U, U] *: Σ, R])
+                                                               extends Freer[H, Lvl[H, T, R] *: Lvl[H2, U, U] *: Σ, X]
+Resume[H, X, T, H2, Σ, U](x, k)                                extends Freer[H, Lvl[H2, U, U] *: Σ, T]
+```
+
+What it bought: three parameters; `k` a plain function (`Continue` and `k.Out` gone: the answer of the level outside
+is the second entry); `Return` and `Inject` diagonal by their head, as they must be (a node claiming a move it does
+not make would be believed by `reset`). What it cost, each by a failure:
+- Every node and every machine type matches the head, `Lvl[h, s, r] *: σ`; a typed pattern must NAME every argument
+  (`Reset[h, h2, σ, s, rr, u]`), a `?` leaves the GADT without the equality, and an unused name is bound by an
+  ascription.
+- A program with no capture is polymorphic in three things, `def one[H, R, Σ]`, not one.
+- THE LEVEL OUTSIDE IS IN THE INDEX OF EVERY NODE OF A BODY, and it is not lexical: the reset's `H2`, `U`, `Σ`
+  come from the reset's context. So the context given carries them as ABSTRACT MEMBERS (`in.H2`, `in.U`, `in.Σi`,
+  `in.Out`), the body is written at them, nothing is inferred inside, and `reset` makes them its own parameters
+  when it builds the given — the trick of `k.Out`, for the whole level. A fragment's index is the context's:
+  `def loop(n: Int)(using in: Under[Pure, Int]): in.Body[Pure, Int, Int]`.
+- Hence an escaped `k` is a program at `in.Out`, and is run where `in` is; it cannot be exported as `Top[Pure, Int]`
+  from inside the body (stage 15's `k`, polymorphic in the answer outside, could).
+- `PState` names the level outside concretely (`Outer = Lvl[Pure, W, W] *: EmptyTuple`) and uses the raw nodes.
+
+Two stacks (`Σin`, `Σout`, the CPS hierarchy, answer-type modification across delimiters), the operator's next
+thought, measured on paper: `k : X => T [Σd, Σ1]` moves the levels outside as the piece's frames do — `Σ1`, at the
+hole, the node knows; `Σd`, at the delimiter, it does not, it is the context's. Either `k` is required diagonal
+outside, and the machine can prove it only if `Frames` and `Bind` are diagonal outside by construction — which IS
+this stage — or `Σd` is taken lexically and written into the node, which the machine cannot check: a prompt again.
+So two stacks collapse to one for the basis.
+
+Kernel 285 lines, 25 tests on the JVM, JS and Native compile, no cast, no warning.
