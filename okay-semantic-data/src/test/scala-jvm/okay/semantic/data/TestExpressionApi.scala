@@ -22,6 +22,7 @@ class TestExpressionApi extends okay.testkit.Munit.Diagnosed:
     assertEquals(source.query(Wire.request(request)).runWith,expected)
     assertEquals(fetched,1)
     val invalid = Request(Vector("missing"))
-    source.query(Wire.request(invalid)).runWith: Unit
+    val rejected = source.query(Wire.request(invalid)).runWith
+    assert(rejected != expected)
     assertEquals(fetched,1)
   }
