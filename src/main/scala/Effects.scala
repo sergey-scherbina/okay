@@ -56,8 +56,16 @@ infix type %[F[_, _], S] = F[S, *]
 infix type |=>[A, B] = PartialFunction[A, B]
 
 /** Final tagless interface of extensible effects: `M[F, A]` computes `A` performing the signature `F`. Its
- * meaning is its image in the continuation paramonad (`foldCont`), on which `run` and `handle` are founded */
+ * meaning is its image in a continuation paramonad (`foldCont`), on which `run` and `handle` are founded — the
+ * encoding's own CARRIER `C`, a `Control`: `Cont` for the tree encodings, so that a handler `F !> S` is what it
+ * always was; a machine of its own may bring its own (specs/freer-min.md, stage 32). Code written over any
+ * `M: Effects` speaks to the carrier through `control` — `control.shift`, `control./` — and never names `Cont` */
 trait Effects[M[_[+_], _]]:
+  /** the continuation carrier `foldCont` folds into: `(A => S) => R` as the encoding has it */
+  type C[_, _, _]
+  /** the carrier's `shift` and `/` */
+  def control: Control[C]
+
   def pure[F[+_], A](a: A): M[F, A]
   def perform[F[+_], A](e: F[A]): M[F, A]
   /** a bind whose left side is deferred, forced only when the encoding's interpreter reaches it, so that
@@ -69,14 +77,15 @@ trait Effects[M[_[+_], _]]:
   extension [F[+_], A](m: M[F, A])
     def flatMap[B](f: A => M[F, B]): M[F, B]
     inline def map[B](f: A => B): M[F, B] = m.flatMap(a => pure(f(a)))
-    /** `foldMap` into `Cont`: the program's fold, each operation answered by
+    /** `foldMap` into the carrier: the program's fold, each operation answered by
      * `h` as a continuation (`Static.foldMap` is the same fold into any
      * `Selective`). The result is still waiting for its LAST continuation:
      * `/ identity` when `S` is the answer (`runWith`), `/ ret` to finish
-     * into `S` (`handle`). TestFoldCont and docs/contract.md show three `S`. */
-    def foldCont[S](h: F !> S): A /> S
+     * into `S` (`handle`). TestFoldCont and docs/contract.md show three `S`.
+     * At `C = Cont` the handler is `F !> S` and the fold `A /> S` */
+    def foldCont[S](h: Interpr[F, C, S]): C[A, S, S]
     /** run all the effects by a comonadic Answers (the foldCont definition; encodings may override with an equivalent fast path) */
-    def runWith(using Answers[F]): A = m.foldCont(handler[F, A]) / identity
+    def runWith(using Answers[F]): A = control./(m.foldCont(interpr[C, F, A](using control, summon[Answers[F]])))(identity)
     /**
      * The program folded into any `Monad` `G`, each operation translated by `nt`: `G`'s own `tailRecM`, as
      * cats' `Free.foldMap` is, so the fold is exactly as stack-safe as the carrier's loop
@@ -94,8 +103,8 @@ trait Effects[M[_[+_], _]]:
    * effects G; for mass tail-resumption prefer !.relay (measured) */
   def handle[F[+_], G[+_]](using TypeableK[F])[A, B](m: M[F + G, A])
                           (ret: A => M[G, B])
-                          (h: F !> M[G, B]): M[G, B] =
-    m.foldCont[M[G, B]]([X] => e => split[F, G](e)(e => h(e))(e => Cont.shift(k => perform(e).flatMap(k)))) / ret
+                          (h: Interpr[F, C, M[G, B]]): M[G, B] =
+    control./(m.foldCont[M[G, B]]([X] => e => split[F, G](e)(e => h(e))(e => control.shift(k => perform(e).flatMap(k)))))(ret)
 
   // LEVEL 1 (specs/shift-effect.md): continuations and ready handlers in any encoding, through the tree by
   // default; `Effects[Free]` overrides them with the top-level functions themselves
@@ -126,6 +135,9 @@ trait Effects[M[_[+_], _]]:
 /** the freer monad, the initial encoding: `Inject` is a suspended shift, given its meaning by `foldCont`.
  * Choose it when the program is a thing — to step, inspect or relay it — stack-safe on any bind shape */
 given Effects[Free] with
+  type C = Cont
+  def control: Control[Cont] = summon[Control[Cont]]
+
   override inline def pure[F[+_], A](a: A): Free[F, A] = Free.Return(a)
   override inline def perform[F[+_], A](e: F[A]): Free[F, A] = Free.Inject(e)
   override inline def defer[F[+_], A, B](thunk: () => Free[F, A])(f: A => Free[F, B]): Free[F, B] =
@@ -212,10 +224,10 @@ given Effects[Free] with
  * by `pure` and `perform` and `foldCont` is the fold, so there is one structure-preserving way across.
  * `reify` and `reflect` are this at the two ends.
  */
-inline def convert[M[_[+_], _] : Effects,
+inline def convert[M[_[+_], _] : Effects as M,
   N[_[+_], _] : Effects as N, F[+_], A](m: M[F, A]): N[F, A] =
-  m.foldCont[N[F, A]]([X] => e => Cont.shift(k =>
-    N.perform(e).flatMap(k))) / (a => N.pure(a))
+  M.control./(m.foldCont[N[F, A]]([X] => e => M.control.shift(k =>
+    N.perform(e).flatMap(k))))(a => N.pure(a))
 
 /** `M.tailRecM(a)(f)`: `TailRecM[F]`'s loop, the carrier's own (specs/eager-carrier-depth.md) */
 extension [F[_]](M: Monad[F])

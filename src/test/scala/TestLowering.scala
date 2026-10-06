@@ -83,9 +83,9 @@ class TestLowering extends munit.FunSuite {
     val v = run
     (v, said.toList, gets)
 
-  /** the definition: lower into Cont, run against identity */
-  private def byDefinition[M[_[+_], _] : Effects](m: M[Op, Int]): Int =
-    m.foldCont(handler[Op, Int]) / identity
+  /** the definition: lower into the encoding's carrier, run against identity */
+  private def byDefinition[M[_[+_], _] : Effects as E](m: M[Op, Int]): Int =
+    E.control./(m.foldCont(interpr[E.C, Op, Int](using E.control, summon[Answers[Op]])))(identity)
 
   private def agree[M[_[+_], _] : Effects](enc: String, s: Shape): Unit =
     val m = s[M]

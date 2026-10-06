@@ -48,6 +48,9 @@ object Eager {
   private def FreeE: Effects[Free] = summon[Effects[Free]]
 
   given Effects[Eager] with
+    type C = Cont
+    def control: Control[Cont] = summon[Control[Cont]]
+
     override inline def pure[F[+_], A](a: A): Eager[F, A] = a
     override inline def perform[F[+_], A](e: F[A]): Eager[F, A] = Free.Inject(e)
     // a deferred call must not be forced to find out whether it would

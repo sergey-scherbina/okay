@@ -1,6 +1,6 @@
 package okay.cont
 
-import okay.{Answers, Effects, Pure, !>, />}
+import okay.{Answers, Control, Effects, Pure, !>, />}
 
 /**
  * THE MACHINE AS AN `Effects` ENCODING (specs/freer-min.md, stage 30): `Prog[F, A]` is a program of `A` over the
@@ -24,6 +24,11 @@ trait Dispatch[F[+_]]:
 
 object Prog:
   given Effects[Prog] with
+    /** the core's continuations, for now: the fold below runs the machine under one delimiter and answers
+     * into them; a carrier of the machine's own is the next stage */
+    type C = okay.Cont
+    def control: Control[okay.Cont] = summon[Control[okay.Cont]]
+
     override def pure[F[+_], A](a: A): Prog[F, A] = new Prog[F, A]:
       def run(using d: Dispatch[F]): Cont[d.c.Here, d.c.Here, A] = Cont.Return(a)
     override def perform[F[+_], A](e: F[A]): Prog[F, A] = new Prog[F, A]:
