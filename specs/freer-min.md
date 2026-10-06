@@ -1261,3 +1261,34 @@ annotation. Rows may leave the monad: `Cont[I, O, A]`, the index the handlers in
 the start — two stacks.
 
 Seven nodes, 33 tests on the JVM, JS and Native compile, no cast, no warning.
+
+## Stage 26: ROWS OUT OF THE MONAD — `Cont[I, O, A]` (DONE, 2026-10-06)
+
+The operator's "yes". With operations typed by the context (stage 25: `perform` needs a `Handling[E, …]` reachable
+through the context's types, and `Op` is at `Pure`), the row said nothing any more. Gone: the row parameter of
+`Cont`, `Pure`, `+`, the rows `H`, `Hf` of a level's entry (`At[D, S]`: the stacks outside the delimiter and the
+answer), the row parameters of `Frames`, `Stack`, `Piece`, `Captured`, the row bound of `Delim` (nothing to widen
+any more), `Handler[E, G, A, Ans]`'s `G`, `In[H, Hf, S, Oc]`'s rows, `Reach`'s rows, `Top[G, A]`'s `G`, the
+`Row`/`Out` members. The kernel compiled on the first try, 399 lines from 458; the numbers are the same within
+noise (`handlePrebuilt` 186.6 ± 6, answering 139.0 ± 1.6, state 22.2 ± 0.5).
+
+```
+Cont[I <: Tuple, O <: Tuple, +A]                 -- (A => I) => O: two stacks of answer types, a level each
+At[D <: Tuple, S]                                -- a level: the stacks outside its delimiter, its answer
+Return | Bind | Delay | Reset | Shift0 | Op | Resume
+Reset [D, O, S, R](body: Cont[At[D, S] *: D, At[D, R] *: O, S])                       extends Cont[D, O, R]
+Shift0[D, I, O, T, R, X](f: (X => Cont[D, I, T]) => Cont[D, O, R])                    extends Cont[At[D, T] *: I, At[D, R] *: O, X]
+Op    [N, X, Dn, Ansn](at: Reach[N, Dn, Ansn], f: (X => Cont[Dn, Dn, Ansn]) => Cont[Dn, Dn, Ansn]) extends Cont[N, N, X]
+Resume[D, I, X, T](x: X, k: Captured[D, I, X, T, ?])                                  extends Cont[D, I, T]
+Top[A] = Cont[EmptyTuple, EmptyTuple, A]
+```
+
+What a program may do is now what its context reaches: a fragment declares its effects as the `Perform[E, c.type]`
+it needs — `def loop(n: Int, acc: Int)(using c: In[Int, Root.type], p: Perform[Ask, c.type]): c.Body[Int]` —
+evidence, not a union; the handlers in force ARE the effect row, ordered, and the index is their stacks. A reader's
+body performing `Say` is refused for having no handler of `Say` in its context (TestCont), which is what the row
+test said and one test more precisely. The index is the delimiters in force, each by its stacks outside and its
+answer; two delimiters alike in both are told apart by nothing but their nesting — and by the context a program is
+written in, which is where its operations' handlers are, as a closure's environment is.
+
+Seven nodes, 32 tests on the JVM, JS and Native compile, no cast, no warning, no prompt, no row.

@@ -9,19 +9,19 @@ class TestHandlers extends okay.testkit.Munit.Diagnosed:
     case Flip extends Choose[Boolean]
 
   /** every way: `Flip` is both, the answers of both resumptions, in order */
-  def every[G[+_], A]: Handler[Choose, G, A, List[A]] = new Handler[Choose, G, A, List[A]]:
+  def every[A]: Handler[Choose, A, List[A]] = new Handler[Choose, A, List[A]]:
     def ret(a: A): List[A] = List(a)
-    def apply[X, Oc <: Ctx](using o: Oc)(op: Choose[X], k: X => Cont[G, o.Here, o.Here, List[A]]): Cont[G, o.Here, o.Here, List[A]] = op match
+    def apply[X, Oc <: Ctx](using o: Oc)(op: Choose[X], k: X => Cont[o.Here, o.Here, List[A]]): Cont[o.Here, o.Here, List[A]] = op match
       case Choose.Flip => k(true).flatMap(xs => k(false).map(ys => xs ++ ys))
 
-  def value[A](p: Top[Pure, A]): A =
-    val head: Top[Pure, A] = Machine.run(p)
+  def value[A](p: Top[A]): A =
+    val head: Top[A] = Machine.run(p)
     head match
       case Return(a) => a
       case other => fail(s"not a value: $other")
 
   test("a multi-shot handler: two flips, four worlds, the handler in force in each"):
-    val prog: Top[Pure, List[(Boolean, Boolean)]] = handle(every[Pure, (Boolean, Boolean)]):
+    val prog: Top[List[(Boolean, Boolean)]] = handle(every[(Boolean, Boolean)]):
       for
         a <- perform(Choose.Flip)
         b <- perform(Choose.Flip)
@@ -31,8 +31,8 @@ class TestHandlers extends okay.testkit.Munit.Diagnosed:
   test("a handler inside a delimiter, crossed by a capture: the shift's body, outside the handler, shifts on to the delimiter and resumes twice"):
     // inside `every`: capture out THROUGH the handler to the reset — forwarding by hand, `Perform.forward`'s law:
     // a shift to the handler whose body shifts to the reset and resumes `k1` after — then flip; the reset resumed twice
-    val prog: Top[Pure, Int] = reset[Pure, Int]:
-      handle(every[Pure, Int]):
+    val prog: Top[Int] = reset[Int]:
+      handle(every[Int]):
         for
           x <- shift0[Int](k1 => shift0[Int](k2 => k2(1).flatMap(a => k2(2).map(b => a + b))).flatMap(k1))
           a <- perform(Choose.Flip)
@@ -42,7 +42,7 @@ class TestHandlers extends okay.testkit.Munit.Diagnosed:
     assertEquals(value(prog), 66)
 
   test("state answering in place: get and put from the handler's cell, no capture; the last state with the value"):
-    val prog: Top[Pure, (Int, String)] = state[Int, Pure, String](1):
+    val prog: Top[(Int, String)] = state[Int, String](1):
       for
         a <- perform(State.Get[Int]())
         _ <- perform(State.Put(a + 41))
@@ -51,8 +51,8 @@ class TestHandlers extends okay.testkit.Munit.Diagnosed:
     assertEquals(value(prog), (42, "42"))
 
   test("state answering in place under a multi-shot handler: ONE cell, the second resumption sees the first's last state"):
-    val prog: Top[Pure, (Int, List[Int])] = state[Int, Pure, List[Int]](0):
-      handle(every[[X] =>> State[Int, X] | Pure[X], Int]):
+    val prog: Top[(Int, List[Int])] = state[Int, List[Int]](0):
+      handle(every[Int]):
         for
           _ <- perform(Choose.Flip)
           n <- perform(State.Get[Int]())

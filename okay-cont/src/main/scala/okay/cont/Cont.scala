@@ -1,84 +1,62 @@
 package okay.cont
 
-/** the empty row: no operation at all; `Return`'s row, and so a program of every row */
-type Pure = [A] =>> Nothing
-/** the row join: a union, pointwise */
-infix type +[G[+_], H[+_]] = [A] =>> G[A] | H[A]
-
-/** a level of a stack: the ROW of its delimiter's body `H`, exact; the row OUTSIDE its delimiter `Hf` — what the
- * delimiter leaves, so what a shift's body, running outside, may do: a handler's body is at `E + G` and its
- * outside at `G`, the effect discharged; the stacks OUTSIDE its delimiter `D` — where the delimiter's continuation
- * lives, so where a capture to it is a program — constant along the level, as the rows are; and its ANSWER at this
- * point. The head of a stack is the nearest level's */
-final class At[H[+_], Hf[+_], D <: Tuple, S]
+/** a level of a stack: the stacks OUTSIDE its delimiter `D` — where the delimiter's continuation lives, so where a
+ * capture to it is a program — constant along the level; and its ANSWER at this point. The head of a stack is the
+ * nearest level's; the top is empty */
+final class At[D <: Tuple, S]
 
 /**
- * THE HIERARCHY, HANDLERS AS DELIMITERS (specs/freer-min.md, stages 19–21): the monad of delimited continuations —
- * shift0 and reset as nodes of one tree, and nothing else, since an operation is a capture to its handler's
- * delimiter — typed by TWO STACKS of answer types, a level each: Danvy–Filinski's `(A => S) => R` with `S` and `R`
- * grown into the stacks `I` and `O`. `Cont[G, I, O, A]` is a program of value `A` over the row `G` which, with a
- * continuation answering `I`, answers `O`. Not a freer monad any more: there is no functor it is free over. `Bind` composes them end to end, as states, at every
- * level at once; `Return` keeps them; `Reset` and `Shift0` move the head's.
+ * THE MONAD OF DELIMITED CONTINUATIONS, TWO STACKS (specs/freer-min.md, stage 26): `shift0` and `reset` as nodes of
+ * one tree, typed by two stacks of answer types, a level each — Danvy–Filinski's `(A => S) => R` with `S` and `R`
+ * grown into the stacks `I` and `O`: `Cont[I, O, A]` is a program of value `A` which, with a continuation
+ * answering `I`, answers `O`. `Bind` composes them end to end, as states, at every level at once; `Return` keeps
+ * them; `Reset`, `Shift0` and `Op` move the head's. No row: what a program may do is what its CONTEXT reaches — a
+ * handler is a delimiter, an operation a capture to it (`Op`), and `perform` needs the handler in the context's
+ * types; the index is the delimiters in force, each by its stacks outside and its answer.
  *
- *  - `G` is what the program may do: a unary row, a union of signatures, built by `flatMap`, never declared. EVERY
- *    operation is a capture to the delimiter that handles it — a handler is a delimiter, an operation a shift to
- *    it, the handler's clause the shift's body, outside; there is no other node for an operation, since one would
- *    go past the handler;
- *  - `I`, `O`: the top is empty. The head is the nearest delimiter's rows — EXACT (invariant), so the row of the
- *    delimiter a capture reaches, and the row its body may use outside, are the index, and nothing is named or
- *    compared — its `D` and answer; the levels below are the context outside, which a shift's body, running there,
- *    may move: answer-type modification across delimiters, the CPS hierarchy;
- *  - `A` is the value.
- *
- * A delimiter's VALUE IS ITS FINAL ANSWER: `reset body` where `body : S` from `At[H, Hf, D, S] *: D` to
- * `At[H, Hf, D, R] *: O` answers `R` outside, at the row `Hf`, from `D` to `O`, as the body moved the outside. A
- * capture goes to the NEAREST delimiter, the head of the index. Its `k` is PURE, a program outside the delimiter,
- * at `Hf`, from `D` to the stacks at the hole, `I`, delivering the answer at the hole, `T`. The body of a shift runs
- * OUTSIDE the delimiter, in its place (shift0), at `Hf`, from `D` to the stacks the context expects, `O`, and its
- * value is the delimiter's answer `R`. Seven nodes, no cast, no prompt.
+ * A delimiter's VALUE IS ITS FINAL ANSWER: `reset body` where `body : S` from `At[D, S] *: D` to `At[D, R] *: O`
+ * answers `R` outside, from `D` to `O`, as the body moved the outside. A capture goes to the delimiter the node
+ * names — the nearest for `Shift0`, `at` levels out for `Op`, the delimiters between crossed. Its `k` is PURE, a
+ * program outside the delimiter, from `D` to the stacks at the hole, delivering the answer at the hole. The body
+ * of a shift runs OUTSIDE the delimiter, in its place (shift0), and its value is the delimiter's answer. Seven
+ * nodes, no cast, no prompt, no row.
  */
-enum Cont[+G[+_], I <: Tuple, O <: Tuple, +A]:
-  case Return[Σ <: Tuple, A](a: A) extends Cont[Pure, Σ, Σ, A]
-  /** the rows joined in the node: `m`'s and `k`'s, each its own */
-  case Bind[F[+_], G[+_], I <: Tuple, T <: Tuple, O <: Tuple, A, B](m: Cont[F, T, O, A], k: A => Cont[G, I, T, B]) extends Cont[F + G, I, O, B]
-  /** a program built when the machine gets to it. Derivable — `Bind(Return(()), _ => t)` — and kept: the one node
-   * is one step of the machine where the bind is three, 2.8× on a chain of tail calls (stage 21) */
-  case Delay[G[+_], I <: Tuple, O <: Tuple, A](t: () => Cont[G, I, O, A]) extends Cont[G, I, O, A]
+enum Cont[I <: Tuple, O <: Tuple, +A]:
+  case Return[Σ <: Tuple, A](a: A) extends Cont[Σ, Σ, A]
+  case Bind[I <: Tuple, T <: Tuple, O <: Tuple, A, B](m: Cont[T, O, A], k: A => Cont[I, T, B]) extends Cont[I, O, B]
+  /** a program built when the machine gets to it: one step where a bind on a unit is three (2.8× on tail calls) */
+  case Delay[I <: Tuple, O <: Tuple, A](t: () => Cont[I, O, A]) extends Cont[I, O, A]
   /** `reset body`: the body's value is its initial answer `S`, at its own level; the delimiter answers `R` outside,
-   * at the row it leaves, `Hf`, from `D` to `O`, as the body moved the outside */
-  case Reset[H[+_], Hf[+_], D <: Tuple, O <: Tuple, S, R](body: Cont[H, At[H, Hf, D, S] *: D, At[H, Hf, D, R] *: O, S])
-    extends Cont[Hf, D, O, R]
-  /** `shift0 (k => e)`: `k` is the context up to the nearest delimiter, it included, pure, a program outside it at
-   * `Hf`, from `D` to the stacks at the hole `I`, delivering the answer at the hole `T`; `e` runs in the delimiter's
-   * place, at `Hf`, from `D` to what the context expects, `O`, and its value is the delimiter's answer `R` */
-  case Shift0[H[+_], Hf[+_], D <: Tuple, I <: Tuple, O <: Tuple, T, R, X](f: (X => Cont[Hf, D, I, T]) => Cont[Hf, D, O, R])
-    extends Cont[H, At[H, Hf, D, T] *: I, At[H, Hf, D, R] *: O, X]
-  /** an OPERATION: a shift to its handler's delimiter, which is `at` levels out — the delimiters between are CROSSED,
-   * one capture, one resumption; it moves nothing (the diagonal `Shift0`, `T = R`, `I = O`), which is what lets
-   * the machine prove the delimiter it reaches is the one the node names: a level's OUT index is one along the
-   * level, and the delimiter's record is tied to it. A clause that returns `k(x)` as its whole body is answered
-   * where the operation was, the stack as it stands, nothing built. Its row is `Pure`: the index places it, the
-   * row of its level is the index's head, and so it is a program of any run it is handed out of */
-  case Op[N <: Tuple, X, Hfn[+_], Dn <: Tuple, Ansn](at: Reach[N, Hfn, Dn, Ansn], f: (X => Cont[Hfn, Dn, Dn, Ansn]) => Cont[Hfn, Dn, Dn, Ansn])
-    extends Cont[Pure, N, N, X]
+   * from `D` to `O`, as the body moved the outside */
+  case Reset[D <: Tuple, O <: Tuple, S, R](body: Cont[At[D, S] *: D, At[D, R] *: O, S]) extends Cont[D, O, R]
+  /** `shift0 (k => e)`: `k` is the context up to the nearest delimiter, it included, pure, a program outside it from
+   * `D` to the stacks at the hole `I`, delivering the answer at the hole `T`; `e` runs in the delimiter's place, from
+   * `D` to what the context expects, `O`, and its value is the delimiter's answer `R` */
+  case Shift0[D <: Tuple, I <: Tuple, O <: Tuple, T, R, X](f: (X => Cont[D, I, T]) => Cont[D, O, R])
+    extends Cont[At[D, T] *: I, At[D, R] *: O, X]
+  /** an OPERATION: a shift to its handler's delimiter, `at` levels out — the delimiters between are CROSSED, one
+   * capture, one resumption; it moves nothing (the diagonal shift), which is what lets the machine prove each
+   * delimiter it reaches is the one the node names: a level's OUT index is one along the level, and the
+   * delimiter's record is tied to it. A clause that returns `k(x)` as its whole body is answered where the
+   * operation was, the stack as it stands, nothing built */
+  case Op[N <: Tuple, X, Dn <: Tuple, Ansn](at: Reach[N, Dn, Ansn], f: (X => Cont[Dn, Dn, Ansn]) => Cont[Dn, Dn, Ansn]) extends Cont[N, N, X]
   /** `k(x)` pending: the machine puts the captured piece back under a delimiter of its own */
-  case Resume[Hf[+_], D <: Tuple, I <: Tuple, X, T](x: X, k: Captured[?, Hf, D, I, X, T, ?]) extends Cont[Hf, D, I, T]
+  case Resume[D <: Tuple, I <: Tuple, X, T](x: X, k: Captured[D, I, X, T, ?]) extends Cont[D, I, T]
 
   /** the stacks composed end to end: `this` from `I` to `O`, `f`'s from `I2` to `I` */
-  def flatMap[G2[+_], I2 <: Tuple, B](f: A => Cont[G2, I2, I, B]): Cont[G + G2, I2, O, B] = Bind(this, f)
-  def map[B](f: A => B): Cont[G, I, O, B] = Bind(this, a => Return(f(a)))
+  def flatMap[I2 <: Tuple, B](f: A => Cont[I2, I, B]): Cont[I2, O, B] = Bind(this, f)
+  def map[B](f: A => B): Cont[I, O, B] = Bind(this, a => Return(f(a)))
 
 /** HOW FAR an operation reaches, from the index `N` it is performed at: its handler's delimiter is the nearest
- * (`Here`: the target's row left, stacks outside and answer are the head's), or it is outside the nearest, whose
- * outside `D` IS the next level's index, and the reach goes on from there (`Out`) — each step a level crossed */
-enum Reach[N <: Tuple, Hfn[+_], Dn <: Tuple, Ansn]:
-  case Here[H[+_], Hf[+_], D <: Tuple, Ans]() extends Reach[At[H, Hf, D, Ans] *: D, Hf, D, Ans]
-  case Out[H[+_], Hf[+_], Ans, N2 <: Tuple, Hfn[+_], Dn <: Tuple, Ansn](next: Reach[N2, Hfn, Dn, Ansn])
-    extends Reach[At[H, Hf, N2, Ans] *: N2, Hfn, Dn, Ansn]
+ * (`Here`: the target's stacks outside and answer are `N`'s head's), or it is outside the nearest, whose outside
+ * `D` IS the next level's index, and the reach goes on from there (`Out`) — each step a level crossed */
+enum Reach[N <: Tuple, Dn <: Tuple, Ansn]:
+  case Here[D <: Tuple, Ans]() extends Reach[At[D, Ans] *: D, D, Ans]
+  case Out[Ans, N2 <: Tuple, Dn <: Tuple, Ansn](next: Reach[N2, Dn, Ansn]) extends Reach[At[N2, Ans] *: N2, Dn, Ansn]
 
 /** a program at the top: no delimiter in force, nothing outside, the stacks empty; its answer is its value,
  * Danvy–Filinski's `⟨e⟩ : τ` */
-type Top[G[+_], A] = Cont[G, EmptyTuple, EmptyTuple, A]
+type Top[A] = Cont[EmptyTuple, EmptyTuple, A]
 
 /** the context a program is WRITTEN in, by the stacks at its position, `Here`: what a reset written here has
  * outside. STRUCTURAL, down to the top, where there is nothing: so a body knows the levels outside it and may move
@@ -91,131 +69,127 @@ sealed trait Ctx:
 object Root extends Ctx:
   type Here = EmptyTuple
 given Root.type = Root
-/** the context of the BODY of a delimiter: its row `H`, the row it leaves outside `Hf`, the answer `S` the body is
- * written at, and the context outside by its own type, `Oc` — a shift's body is written in it; the stacks outside
- * are the outer context's `Here`. `reset` and `handle` give their body one, `shift0` and `perform` read it */
-sealed trait In[H[+_], Hf[+_], S, Oc <: Ctx] extends Ctx:
-  type Row[+A] = H[A]
-  type Out[+A] = Hf[A]
+/** the context of the BODY of a delimiter: the answer `S` the body is written at, and the context outside by its
+ * own type, `Oc` — a shift's body is written in it; the stacks outside are the outer context's `Here`. `reset` and
+ * `handle` give their body one, `shift0` and `perform` read it */
+sealed trait In[S, Oc <: Ctx] extends Ctx:
   /** the answer the body is written at */
   type Sa = S
   val outer: Oc
   type D = outer.Here
-  type Here = At[H, Hf, D, S] *: D
+  type Here = At[D, S] *: D
   /** a program in the body this context is for, its stacks unchanged */
-  type Body[A] = Cont[H, Here, Here, A]
-/** the context of a fragment written for the body of a `reset[H, S]`: `def f(using in: Under[H, S]): in.Body[A]` */
-type Under[H[+_], S] = In[H, H, S, ?]
+  type Body[A] = Cont[Here, Here, A]
+/** the context of a fragment written for the body of a `reset[S]`: `def f(using in: Under[S]): in.Body[A]` */
+type Under[S] = In[S, ?]
 
-def pure[A, Σ <: Tuple](a: A): Cont[Pure, Σ, Σ, A] = Cont.Return(a)
-def delay[G[+_], I <: Tuple, O <: Tuple, A](t: => Cont[G, I, O, A]): Cont[G, I, O, A] = Cont.Delay(() => t)
-def defer[G[+_], I <: Tuple, T <: Tuple, O <: Tuple, A, B](t: => Cont[G, T, O, A])(f: A => Cont[G, I, T, B]): Cont[G, I, O, B] =
+def pure[A, Σ <: Tuple](a: A): Cont[Σ, Σ, A] = Cont.Return(a)
+def delay[I <: Tuple, O <: Tuple, A](t: => Cont[I, O, A]): Cont[I, O, A] = Cont.Delay(() => t)
+def defer[I <: Tuple, T <: Tuple, O <: Tuple, A, B](t: => Cont[T, O, A])(f: A => Cont[I, T, B]): Cont[I, O, B] =
   Cont.Bind(Cont.Delay(() => t), f)
-/** `reset[H, S](body)`: the body is written at the row `H` and the answer `S`, Danvy–Filinski's annotation of the
- * delimiter (a type in a context function's parameter is fixed before its body is typed, so both are named), in the
- * context where the reset is written, with the delimiter on top; it leaves the row as it is */
-def reset[H[+_], S]: ResetAt[H, S] = ResetAt[H, S]()
-final class ResetAt[H[+_], S]:
-  def apply[O <: Tuple, R](using o: Ctx)
-           (body: In[H, H, S, o.type] ?=> Cont[H, At[H, H, o.Here, S] *: o.Here, At[H, H, o.Here, R] *: O, S]): Cont[H, o.Here, O, R] =
-    val in = new In[H, H, S, o.type]:
+/** `reset[S](body)`: the body is written at the answer `S`, Danvy–Filinski's annotation of the delimiter (a type in
+ * a context function's parameter is fixed before its body is typed, so it is named), in the context where the
+ * reset is written, with the delimiter on top */
+def reset[S]: ResetAt[S] = ResetAt[S]()
+final class ResetAt[S]:
+  def apply[O <: Tuple, R](using o: Ctx)(body: In[S, o.type] ?=> Cont[At[o.Here, S] *: o.Here, At[o.Here, R] *: O, S]): Cont[o.Here, O, R] =
+    val in = new In[S, o.type]:
       val outer: o.type = o
-    Cont.Reset[H, H, o.Here, O, S, R](body(using in))
+    Cont.Reset[o.Here, O, S, R](body(using in))
 /** `shift0[X](k => …)` written in a delimiter's body: the hole `X` is the one thing nothing else says; the delimiter
  * is the context's, its answer the one the body is written at. The shift's body is written inside the delimiter
- * but runs outside it, at the row the delimiter leaves, in the context outside, and may move it. `k` leaves the
- * outside as it is, `D` to `D` (a piece that moved it could not be resumed twice); the node is general */
+ * but runs outside it, in the context outside, and may move it. `k` leaves the outside as it is, `D` to `D` (a
+ * piece that moved it could not be resumed twice); the node is general */
 def shift0[X]: Shift0At[X] = Shift0At[X]()
 final class Shift0At[X]:
-  def apply[H[+_], Hf[+_], S, Oc <: Ctx, O <: Tuple, R](using in: In[H, Hf, S, Oc])
-           (f: Oc ?=> (X => Cont[Hf, in.D, in.D, S]) => Cont[Hf, in.D, O, R]): Cont[H, At[H, Hf, in.D, S] *: in.D, At[H, Hf, in.D, R] *: O, X] =
-    Cont.Shift0[H, Hf, in.D, in.D, O, S, R, X](f(using in.outer))
+  def apply[S, Oc <: Ctx, O <: Tuple, R](using in: In[S, Oc])
+           (f: Oc ?=> (X => Cont[in.D, in.D, S]) => Cont[in.D, O, R]): Cont[At[in.D, S] *: in.D, At[in.D, R] *: O, X] =
+    Cont.Shift0[in.D, in.D, O, S, R, X](f(using in.outer))
 
-/** A HANDLER IS A DELIMITER: of the effect `E`, leaving the row `G`; the body's value `A`, the answer `Ans`. A deep
- * handler: `k` brings the delimiter along, so the handler stays in force through a resumption. The clauses run
- * outside the delimiter, in the context outside, `o`, at any stacks there */
-trait Handler[E[+_], G[+_], A, Ans]:
+/** A HANDLER IS A DELIMITER: of the effect `E`; the body's value `A`, the answer `Ans`. Deep: `k` brings the
+ * delimiter along, so the handler stays in force through a resumption. The clauses run outside the delimiter, in
+ * the context outside, `o`, at any stacks there */
+trait Handler[E[+_], A, Ans]:
   def ret(a: A): Ans
-  def apply[X, Oc <: Ctx](using o: Oc)(op: E[X], k: X => Cont[G, o.Here, o.Here, Ans]): Cont[G, o.Here, o.Here, Ans]
+  def apply[X, Oc <: Ctx](using o: Oc)(op: E[X], k: X => Cont[o.Here, o.Here, Ans]): Cont[o.Here, o.Here, Ans]
 /** a TAIL-RESUMPTIVE handler: each clause `k(value(op))`, the value of the operation alone — so the operation is
- * ANSWERED IN PLACE, where it is performed, when the machine gets there: no capture, the delimiter untouched, and
- * none of the delimiters between touched either (Koka's, Effekt's optimisation, here by the handler's declaration,
- * chosen at compile time by the context's type) */
-trait Answering[E[+_], G[+_], A, Ans] extends Handler[E, G, A, Ans]:
+ * ANSWERED IN PLACE, where it is performed, when the machine gets there: no capture, no delimiter touched (Koka's,
+ * Effekt's optimisation, here by the handler's declaration, chosen at compile time by the context's type) */
+trait Answering[E[+_], A, Ans] extends Handler[E, A, Ans]:
   def value[X](op: E[X]): X
-  final def apply[X, Oc <: Ctx](using o: Oc)(op: E[X], k: X => Cont[G, o.Here, o.Here, Ans]): Cont[G, o.Here, o.Here, Ans] = k(value(op))
-/** the context of a handler's body: it handles `E`, at the row `H = E + G` */
-sealed trait Handling[E[+_], H[+_], G[+_], Ans, Oc <: Ctx] extends In[H, G, Ans, Oc]:
-  def handler: Handler[E, Out, ?, Ans]
+  final def apply[X, Oc <: Ctx](using o: Oc)(op: E[X], k: X => Cont[o.Here, o.Here, Ans]): Cont[o.Here, o.Here, Ans] = k(value(op))
+/** the context of a handler's body: it handles `E` */
+sealed trait Handling[E[+_], Ans, Oc <: Ctx] extends In[Ans, Oc]:
+  def handler: Handler[E, ?, Ans]
 /** the context of an answering handler's body: its type says so, and `perform` answers in place */
-sealed trait Answers[E[+_], H[+_], G[+_], Ans, Oc <: Ctx] extends Handling[E, H, G, Ans, Oc]:
-  def answering: Answering[E, Out, ?, Ans]
-/** `handle(h)(body)`: the delimiter of the handler `h`, its body at `E + G`, the effect `E` discharged outside */
-def handle[E[+_], G[+_], A, Ans](h: Handler[E, G, A, Ans])(using o: Ctx)
-          (body: Handling[E, E + G, G, Ans, o.type] ?=> Cont[E + G, At[E + G, G, o.Here, Ans] *: o.Here, At[E + G, G, o.Here, Ans] *: o.Here, A])
-  : Cont[G, o.Here, o.Here, Ans] =
-  val in = new Handling[E, E + G, G, Ans, o.type]:
+sealed trait Answers[E[+_], Ans, Oc <: Ctx] extends Handling[E, Ans, Oc]:
+  def answering: Answering[E, ?, Ans]
+/** `handle(h)(body)`: the delimiter of the handler `h`; what the body may perform is what its context reaches */
+def handle[E[+_], A, Ans](h: Handler[E, A, Ans])(using o: Ctx)
+          (body: Handling[E, Ans, o.type] ?=> Cont[At[o.Here, Ans] *: o.Here, At[o.Here, Ans] *: o.Here, A]): Cont[o.Here, o.Here, Ans] =
+  val in = new Handling[E, Ans, o.type]:
     val outer: o.type = o
-    def handler: Handler[E, G, ?, Ans] = h
-  Cont.Reset[E + G, G, o.Here, o.Here, Ans, Ans](body(using in).map(h.ret))
+    def handler: Handler[E, ?, Ans] = h
+  Cont.Reset[o.Here, o.Here, Ans, Ans](body(using in).map(h.ret))
 /** `handle(h)(body)` for an answering handler: the body's context says it answers */
-def handle[E[+_], G[+_], A, Ans](h: Answering[E, G, A, Ans])(using o: Ctx)
-          (body: Answers[E, E + G, G, Ans, o.type] ?=> Cont[E + G, At[E + G, G, o.Here, Ans] *: o.Here, At[E + G, G, o.Here, Ans] *: o.Here, A])
-  : Cont[G, o.Here, o.Here, Ans] =
-  val in = new Answers[E, E + G, G, Ans, o.type]:
+def handle[E[+_], A, Ans](h: Answering[E, A, Ans])(using o: Ctx)
+          (body: Answers[E, Ans, o.type] ?=> Cont[At[o.Here, Ans] *: o.Here, At[o.Here, Ans] *: o.Here, A]): Cont[o.Here, o.Here, Ans] =
+  val in = new Answers[E, Ans, o.type]:
     val outer: o.type = o
-    def handler: Handler[E, G, ?, Ans] = h
-    def answering: Answering[E, G, ?, Ans] = h
-  Cont.Reset[E + G, G, o.Here, o.Here, Ans, Ans](body(using in).map(h.ret))
+    def handler: Handler[E, ?, Ans] = h
+    def answering: Answering[E, ?, Ans] = h
+  Cont.Reset[o.Here, o.Here, Ans, Ans](body(using in).map(h.ret))
 
-/** `perform(op)`: a capture to the handler of `E` in the context — the nearest delimiter if it is the handler, or
- * through each delimiter between, which forwards: a shift to it whose body performs outside and resumes `k`
- * after. The handler is found in the context's structure, at compile time; none, no program */
-def perform[E[+_], X, H[+_]](op: E[X])(using c: In[H, ?, ?, ?], p: Perform[E, H, c.type]): c.Body[X] = p(op, c)
-/** how `E` is performed in a context `C` of row `H`: answered in place where the handler answers (found through
- * the context's types, `Answered`), one capture to the handler's delimiter where not, through the delimiters
- * between (`Reaches`) — chosen at compile time, by the given's priority */
-trait Perform[E[+_], H[+_], C <: In[H, ?, ?, ?]]:
-  def apply[X](op: E[X], c: C): Cont[H, c.Here, c.Here, X]
+/** `perform(op)`: to the handler of `E` in the context — answered in place if it answers, one capture to its
+ * delimiter if not, through the delimiters between. The handler is found in the context's types, at compile time;
+ * none, no program */
+def perform[E[+_], X](op: E[X])(using c: In[?, ?], p: Perform[E, c.type]): c.Body[X] = p(op, c)
+/** how `E` is performed in a context `C`: `answered` (in place) where its handler answers, else `reaches` (one
+ * capture) — chosen at compile time, by the given's priority */
+trait Perform[E[+_], C <: In[?, ?]]:
+  def apply[X](op: E[X], c: C): Cont[c.Here, c.Here, X]
 object Perform extends PerformLow:
-  /** the handler answers: the value when the machine gets there, in its order; no capture, through any delimiter */
-  given answered[E[+_], H[+_], C <: In[H, ?, ?, ?]](using a: Answered[E, C]): Perform[E, H, C] with
-    def apply[X](op: E[X], c: C): Cont[H, c.Here, c.Here, X] = Cont.Delay(() => Cont.Return(a(op, c)))
+  given answered[E[+_], C <: In[?, ?]](using a: Answered[E, C]): Perform[E, C] with
+    def apply[X](op: E[X], c: C): Cont[c.Here, c.Here, X] = Cont.Delay(() => Cont.Return(a(op, c)))
 sealed trait PerformLow:
-  /** the handler is some levels out: one capture to its delimiter, through the delimiters between, its clause the body */
-  given reaches[E[+_], H[+_], C <: In[H, ?, ?, ?]](using r: Reaches[E, C]): Perform[E, H, C] with
-    def apply[X](op: E[X], c: C): Cont[H, c.Here, c.Here, X] =
+  given reaches[E[+_], C <: In[?, ?]](using r: Reaches[E, C]): Perform[E, C] with
+    def apply[X](op: E[X], c: C): Cont[c.Here, c.Here, X] =
       val t = r.target(c)
-      Cont.Op[c.Here, X, t.Hfn, t.Dn, t.Ansn](t.reach, t.clause(op))
+      Cont.Op[c.Here, X, t.Dn, t.Ansn](t.reach, t.clause(op))
 /** the handler of `E` reached from a context `C`: where its delimiter is, and its clause */
-trait Reaches[E[+_], C <: In[?, ?, ?, ?]]:
+trait Reaches[E[+_], C <: In[?, ?]]:
   def target(c: C): Target[E, c.Here]
 /** a handler's delimiter as reached from an index: the reach to it, and the clause, at the target's own outside */
 sealed trait Target[E[+_], N <: Tuple]:
-  type Hfn[+_]
   type Dn <: Tuple
   type Ansn
-  def reach: Reach[N, Hfn, Dn, Ansn]
-  def clause[X](op: E[X]): (X => Cont[Hfn, Dn, Dn, Ansn]) => Cont[Hfn, Dn, Dn, Ansn]
+  def reach: Reach[N, Dn, Ansn]
+  def clause[X](op: E[X]): (X => Cont[Dn, Dn, Ansn]) => Cont[Dn, Dn, Ansn]
 object Reaches:
   /** the context is the handler's: its delimiter is the nearest */
-  given here[E[+_], Ans, C <: Handling[E, ?, ?, Ans, ?]]: Reaches[E, C] with
+  given here[E[+_], Ans, C <: Handling[E, Ans, ?]]: Reaches[E, C] with
     def target(c: C): Target[E, c.Here] = new Target[E, c.Here]:
-      type Hfn[+A] = c.Out[A]
       type Dn = c.D
       type Ansn = Ans
-      def reach: Reach[c.Here, c.Out, c.D, Ans] = Reach.Here[c.Row, c.Out, c.D, Ans]()
-      def clause[X](op: E[X]): (X => Cont[c.Out, c.D, c.D, Ans]) => Cont[c.Out, c.D, c.D, Ans] = k => c.handler(using c.outer)(op, k)
+      def reach: Reach[c.Here, c.D, Ans] = Reach.Here[c.D, Ans]()
+      def clause[X](op: E[X]): (X => Cont[c.D, c.D, Ans]) => Cont[c.D, c.D, Ans] = k => c.handler(using c.outer)(op, k)
   /** the context is another delimiter's: one level out, the outer context's reach after it */
-  given out[E[+_], Oc <: In[?, ?, ?, ?], C <: In[?, ?, ?, Oc]](using o: Reaches[E, Oc]): Reaches[E, C] with
+  given out[E[+_], Oc <: In[?, ?], C <: In[?, Oc]](using o: Reaches[E, Oc]): Reaches[E, C] with
     def target(c: C): Target[E, c.Here] =
       val t = o.target(c.outer)
       new Target[E, c.Here]:
-        type Hfn[+A] = t.Hfn[A]
         type Dn = t.Dn
         type Ansn = t.Ansn
-        def reach: Reach[c.Here, t.Hfn, t.Dn, t.Ansn] = Reach.Out[c.Row, c.Out, c.Sa, c.D, t.Hfn, t.Dn, t.Ansn](t.reach)
-        def clause[X](op: E[X]): (X => Cont[t.Hfn, t.Dn, t.Dn, t.Ansn]) => Cont[t.Hfn, t.Dn, t.Dn, t.Ansn] = t.clause(op)
+        def reach: Reach[c.Here, t.Dn, t.Ansn] = Reach.Out[c.Sa, c.D, t.Dn, t.Ansn](t.reach)
+        def clause[X](op: E[X]): (X => Cont[t.Dn, t.Dn, t.Ansn]) => Cont[t.Dn, t.Dn, t.Ansn] = t.clause(op)
+/** the value of `E` answered in place in the context `C`: its handler answers, or a context outside does */
+trait Answered[E[+_], C <: Ctx]:
+  def apply[X](op: E[X], c: C): X
+object Answered:
+  given here[E[+_], C <: Answers[E, ?, ?]]: Answered[E, C] with
+    def apply[X](op: E[X], c: C): X = c.answering.value(op)
+  given outside[E[+_], Oc <: Ctx, C <: In[?, Oc]](using o: Answered[E, Oc]): Answered[E, C] with
+    def apply[X](op: E[X], c: C): X = o(op, c.outer)
 
 /** STATE, answering in place: the state in a cell of the handler, one per `handle`, so `get` and `put` are answered
  * where they are performed, no capture. A resumption shares the cell: a body resumed twice sees ONE state, the
@@ -223,23 +197,13 @@ object Reaches:
 enum State[S, +A]:
   case Get[S]() extends State[S, S]
   case Put[S](s: S) extends State[S, Unit]
-final class StateCell[S, G[+_], A](var state: S) extends Answering[[X] =>> State[S, X], G, A, (S, A)]:
+final class StateCell[S, A](var state: S) extends Answering[[X] =>> State[S, X], A, (S, A)]:
   def ret(a: A): (S, A) = (state, a)
   def value[X](op: State[S, X]): X = op match
     case State.Get() => state
     case State.Put(s) => state = s
 /** `state(s0)(body)`: the body with `get`/`put` answered from a cell starting at `s0`; the last state and the value */
-def state[S, G[+_], A](s0: S)(using o: Ctx)
-         (body: Answers[[X] =>> State[S, X], [X] =>> State[S, X] | G[X], G, (S, A), o.type] ?=>
-                Cont[[X] =>> State[S, X] | G[X], At[[X] =>> State[S, X] | G[X], G, o.Here, (S, A)] *: o.Here, At[[X] =>> State[S, X] | G[X], G, o.Here, (S, A)] *: o.Here, A])
-  : Cont[G, o.Here, o.Here, (S, A)] =
-  handle[[X] =>> State[S, X], G, A, (S, A)](StateCell[S, G, A](s0))(body)
-
-/** the value of `E` answered in place in the context `C`: its handler answers, or a context outside does */
-trait Answered[E[+_], C <: Ctx]:
-  def apply[X](op: E[X], c: C): X
-object Answered:
-  given here[E[+_], C <: Answers[E, ?, ?, ?, ?]]: Answered[E, C] with
-    def apply[X](op: E[X], c: C): X = c.answering.value(op)
-  given outside[E[+_], Oc <: Ctx, C <: In[?, ?, ?, Oc]](using o: Answered[E, Oc]): Answered[E, C] with
-    def apply[X](op: E[X], c: C): X = o(op, c.outer)
+def state[S, A](s0: S)(using o: Ctx)
+         (body: Answers[[X] =>> State[S, X], (S, A), o.type] ?=> Cont[At[o.Here, (S, A)] *: o.Here, At[o.Here, (S, A)] *: o.Here, A])
+  : Cont[o.Here, o.Here, (S, A)] =
+  handle[[X] =>> State[S, X], A, (S, A)](StateCell[S, A](s0))(body)

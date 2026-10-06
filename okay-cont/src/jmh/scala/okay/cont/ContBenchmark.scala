@@ -35,30 +35,29 @@ class ContBenchmark {
   final val M = 1000
 
   /** an operation's own value: the inner handler, of `Ask`, leaving `Tick` — the general clause, a capture an op */
-  val askH: Handler[Ask, Tick + Pure, Int, Int] = new Handler[Ask, Tick + Pure, Int, Int]:
+  val askH: Handler[Ask, Int, Int] = new Handler[Ask, Int, Int]:
     def ret(a: Int): Int = a
-    def apply[X, Oc <: Ctx](using o: Oc)(op: Ask[X], k: X => Cont[Tick + Pure, o.Here, o.Here, Int]): Cont[Tick + Pure, o.Here, o.Here, Int] =
+    def apply[X, Oc <: Ctx](using o: Oc)(op: Ask[X], k: X => Cont[o.Here, o.Here, Int]): Cont[o.Here, o.Here, Int] =
       op match
         case Ask.Value(a) => k(a)
   /** the outer handler, of `Tick`, leaving nothing — the general clause */
-  val tickH: Handler[Tick, Pure, Int, Int] = new Handler[Tick, Pure, Int, Int]:
+  val tickH: Handler[Tick, Int, Int] = new Handler[Tick, Int, Int]:
     def ret(a: Int): Int = a
-    def apply[X, Oc <: Ctx](using o: Oc)(op: Tick[X], k: X => Cont[Pure, o.Here, o.Here, Int]): Cont[Pure, o.Here, o.Here, Int] =
+    def apply[X, Oc <: Ctx](using o: Oc)(op: Tick[X], k: X => Cont[o.Here, o.Here, Int]): Cont[o.Here, o.Here, Int] =
       op match
         case Tick.Value(a) => k(a)
   /** the same two, declared TAIL-RESUMPTIVE: answered in place, no capture */
-  val askA: Answering[Ask, Tick + Pure, Int, Int] = new Answering[Ask, Tick + Pure, Int, Int]:
+  val askA: Answering[Ask, Int, Int] = new Answering[Ask, Int, Int]:
     def ret(a: Int): Int = a
     def value[X](op: Ask[X]): X = op match
       case Ask.Value(a) => a
-  val tickA: Answering[Tick, Pure, Int, Int] = new Answering[Tick, Pure, Int, Int]:
+  val tickA: Answering[Tick, Int, Int] = new Answering[Tick, Int, Int]:
     def ret(a: Int): Int = a
     def value[X](op: Tick[X]): X = op match
       case Tick.Value(a) => a
 
   /** the program of the two handlers' body: 10k ops, every 100th handled by the inner (Ask), the rest forwarded (Tick) */
-  def body[Oc <: Ctx](using c: In[Ask + (Tick + Pure), Tick + Pure, Int, Oc], pa: Perform[Ask, Ask + (Tick + Pure), c.type],
-           pt: Perform[Tick, Ask + (Tick + Pure), c.type]): c.Body[Int] =
+  def body[Oc <: Ctx](using c: In[Int, Oc], pa: Perform[Ask, c.type], pt: Perform[Tick, c.type]): c.Body[Int] =
     var p: c.Body[Int] = perform(Ask.Value(0))
     var i = 1
     while i <= N do
@@ -67,12 +66,12 @@ class ContBenchmark {
       i += 1
     p
 
-  def prog: Top[Pure, Int] = handle[Tick, Pure, Int, Int](tickH)(handle[Ask, Tick + Pure, Int, Int](askH)(body))
+  def prog: Top[Int] = handle[Tick, Int, Int](tickH)(handle[Ask, Int, Int](askH)(body))
   /** the same program under the answering handlers */
-  def progA: Top[Pure, Int] = handle[Tick, Pure, Int, Int](tickA)(handle[Ask, Tick + Pure, Int, Int](askA)(body))
+  def progA: Top[Int] = handle[Tick, Int, Int](tickA)(handle[Ask, Int, Int](askA)(body))
 
-  def value[A](p: Top[Pure, A]): A =
-    val head: Top[Pure, A] = Machine.run(p)
+  def value[A](p: Top[A]): A =
+    val head: Top[A] = Machine.run(p)
     head match
       case Return(a) => a
       case other => throw new IllegalStateException(s"not a value: $other")
@@ -83,7 +82,7 @@ class ContBenchmark {
   @Benchmark
   def handleForward(): Int = value(prog)
 
-  private var built: Top[Pure, Int] = scala.compiletime.uninitialized
+  private var built: Top[Int] = scala.compiletime.uninitialized
 
   @Setup(Level.Trial)
   def buildOnce(): Unit = built = prog
@@ -91,7 +90,7 @@ class ContBenchmark {
   @Benchmark
   def handlePrebuilt(): Int = value(built)
 
-  private var builtA: Top[Pure, Int] = scala.compiletime.uninitialized
+  private var builtA: Top[Int] = scala.compiletime.uninitialized
 
   @Setup(Level.Trial)
   def buildOnceA(): Unit = builtA = progA
@@ -100,24 +99,24 @@ class ContBenchmark {
   @Benchmark
   def handlePrebuiltAnswering(): Int = value(builtA)
 
-  def isEven(n: Int): Top[Pure, Boolean] = if n == 0 then pure(true) else delay(isOdd(n - 1))
-  def isOdd(n: Int): Top[Pure, Boolean] = if n == 0 then pure(false) else delay(isEven(n - 1))
+  def isEven(n: Int): Top[Boolean] = if n == 0 then pure(true) else delay(isOdd(n - 1))
+  def isOdd(n: Int): Top[Boolean] = if n == 0 then pure(false) else delay(isEven(n - 1))
 
   @Benchmark
   def tailcallChain(): Boolean = value(isEven(N))
 
   // the state-passing answer, as TestState: `get`/`put` two shifts at the run's delimiter
-  type St[H[+_], S, W] = S => Top[H, W]
-  final class State[H[+_], W]:
+  type St[S, W] = S => Top[W]
+  final class State[W]:
     type Outer = EmptyTuple
-    def get[S]: Cont[H, At[H, H, Outer, St[H, S, W]] *: Outer, At[H, H, Outer, St[H, S, W]] *: Outer, S] =
-      Cont.Shift0((k: S => Cont[H, Outer, Outer, St[H, S, W]]) => pure((s: S) => k(s).flatMap(f => f(s))))
+    def get[S]: Cont[At[Outer, St[S, W]] *: Outer, At[Outer, St[S, W]] *: Outer, S] =
+      Cont.Shift0((k: S => Cont[Outer, Outer, St[S, W]]) => pure((s: S) => k(s).flatMap(f => f(s))))
     def put[S]: PutFrom[S] = PutFrom[S]()
     final class PutFrom[S]:
-      def apply[S2](s2: S2): Cont[H, At[H, H, Outer, St[H, S2, W]] *: Outer, At[H, H, Outer, St[H, S, W]] *: Outer, Unit] =
-        Cont.Shift0((k: Unit => Cont[H, Outer, Outer, St[H, S2, W]]) => pure((_: S) => k(()).flatMap(f => f(s2))))
-  def runState[H[+_], S0, S1, W](s0: S0)(body: State[H, W] => Cont[H, At[H, H, EmptyTuple, St[H, S1, W]] *: EmptyTuple, At[H, H, EmptyTuple, St[H, S0, W]] *: EmptyTuple, W]): Top[H, W] =
-    Cont.Reset[H, H, EmptyTuple, EmptyTuple, St[H, S1, W], St[H, S0, W]](body(State()).map(a => (_: S1) => pure(a))).flatMap(f => f(s0))
+      def apply[S2](s2: S2): Cont[At[Outer, St[S2, W]] *: Outer, At[Outer, St[S, W]] *: Outer, Unit] =
+        Cont.Shift0((k: Unit => Cont[Outer, Outer, St[S2, W]]) => pure((_: S) => k(()).flatMap(f => f(s2))))
+  def runState[S0, S1, W](s0: S0)(body: State[W] => Cont[At[EmptyTuple, St[S1, W]] *: EmptyTuple, At[EmptyTuple, St[S0, W]] *: EmptyTuple, W]): Top[W] =
+    Cont.Reset[EmptyTuple, EmptyTuple, St[S1, W], St[S0, W]](body(State()).map(a => (_: S1) => pure(a))).flatMap(f => f(s0))
 
   /** M times get then set, as master's `stateEffect`; one `get` at the end for the value */
   @Benchmark
@@ -130,14 +129,14 @@ class ContBenchmark {
   /** M times get then put, answered from the cell (master: `stateEffect`, the handler) */
   @Benchmark
   def stateAnswering(): Long =
-    def body(using c: In[[X] =>> SE[Long, X] | Pure[X], Pure, (Long, Long), ?], p: Perform[[X] =>> SE[Long, X], [X] =>> SE[Long, X] | Pure[X], c.type]): c.Body[Long] =
+    def body(using c: In[(Long, Long), ?], p: Perform[[X] =>> SE[Long, X], c.type]): c.Body[Long] =
       var m: c.Body[Unit] = perform(SE.Put(0L))
       var i = 0
       while i < M do
         m = m.flatMap(_ => perform(SE.Get[Long]()).flatMap(s => perform(SE.Put(s + 1))))
         i += 1
       m.flatMap(_ => perform(SE.Get[Long]()))
-    value(state[Long, Pure, Long](0L)(body))._1
+    value(state[Long, Long](0L)(body))._1
 
   @Param(Array("1", "16", "256"))
   var depth: Int = 0
@@ -147,8 +146,8 @@ class ContBenchmark {
 
   @Benchmark
   def delimCaptureDepth(): Int =
-    value(reset[Pure, Int] { in ?=>
-      def callK(k: Unit => Cont[Pure, in.D, in.D, Int], n: Int, acc: Int): Cont[Pure, in.D, in.D, Int] =
+    value(reset[Int] { in ?=>
+      def callK(k: Unit => Cont[in.D, in.D, Int], n: Int, acc: Int): Cont[in.D, in.D, Int] =
         if n == 0 then pure(acc) else k(()).flatMap(r => callK(k, n - 1, acc + r))
       var p: in.Body[Int] = shift0[Unit](k => callK(k, shots, 0)).map(_ => 1)
       var i = 0
