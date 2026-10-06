@@ -649,3 +649,57 @@ body is WRITTEN inside the delimiters but RUNS outside its prompt's, so
 the sugar must give it the stack under the prompt (`In[Under[Σ, …]]
 ?=>`), not the stack it is written in — with the stack it was written
 in, a `dollar` inside the body typed at the wrong level.
+
+## Stage 7 — no prompts; ternary effects only (DONE, 2026-10-06)
+
+The operator's decisions: prompts out of the kernel, answer-type
+modification kept; and effects in ZIO's shape, three-place, considered.
+Both done; the module's kernel is `specs/probes/freer-min/seven/`,
+197 lines, SEVEN nodes:
+
+```
+Return | Perform | Bind | Delay | Reset | Shift0 | Resume
+Freer[+G[_, _, +_], Σ <: Tuple, S, R, +A]
+Reset [H, Σ, S, R, Y](body: Freer[H, Entry[H, S, Y] *: Σ, S, R, Y])            extends Freer[H, Σ, S, R, Y]
+Shift0[H, O, S, T, R, X, Y](f: (X => Freer[H, O, S, T, Y]) => Freer[H, O, S, R, Y]) extends Freer[H, Entry[H, S, Y] *: O, T, R, X]
+```
+
+`Entry[H, S, Y] = At[Freer[H, EmptyTuple, S, S, Y]]`: an entry of the
+delimiter stack is the delimiter's row, answer index and value, and the
+NEAREST delimiter is the HEAD of the stack — a capture is typed by it,
+with no name. `Prompt`, labels, `Has` and its givens, `Under`,
+`Piece.Under`, `cut`'s `tail`/`crossed` and their inventoried mutual
+recursion: gone. `cut` walks `Run` nodes to the first `Delim`, a tail
+loop; `Done` is no case of it (the stack's type says there is a
+delimiter). `grep asInstanceOf|@unchecked|NoPrompt|eq|Prompt|Has` over
+the kernel: 0. 20 tests on the JVM, JS and Native compile.
+
+What a prompt was doing in the SUGAR and what replaced it: naming the
+delimiter's types at `reset` (a body's type cannot say what delimits
+it) — `Delimiter[H, S, Y]`, a value with no identity, `@unused` in the
+kernel's sugar, only there so `reset(d)(…)` and `shift0[X](d)(…)`
+infer. Two delimiters of one kind are told apart by position alone.
+
+A capture across an inner delimiter is DERIVED (stage 6's law, now a
+test): `shift0(d)(k1 => shift0(d)(k2 => f(x => dollar(d)(k2)(k1(x)))))`
+answers 64 as the walk did.
+
+### Ternary effects
+`Inject` is gone: every operation is `Perform`, three-place. A unary
+effect is declared in ZIO's shape with its operations on the diagonal,
+polymorphic in the index:
+
+```scala
+enum Ask[S, R, +A]:
+  case Number[T]() extends Ask[T, T, Int]
+```
+
+The dispatch of a union of such rows recovers the middle index and the
+value by the GADT match on the operation (Results 3, now the test's
+`step`): no cast, no `Inject`. The costs, stated: two phantom parameters
+per declaration and one per constructor, written at each use
+(`Ask.Number[Unit]()` — the index does not flow into a receiver); and a
+foreign unary type (`IO`, `ZIO[R, E, *]`) cannot be declared so and
+needs a lifting signature of its own, one case class, one allocation
+per foreign operation. `Inject` would be the one node that pays both
+at once; it is a one-node addition if the costs prove too high.

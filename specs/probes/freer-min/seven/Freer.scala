@@ -1,4 +1,6 @@
-package okay.freer
+//> using scala 3.9.0
+//> using options -Werror -Wunused:all -feature -deprecation
+package okay.k7
 
 import scala.annotation.unused
 
