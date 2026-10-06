@@ -10,11 +10,11 @@ read(key, maxBytes): Option[Array[Byte]], both in Async. S3 implements it.
 Objects are bounded to 8 MiB per create; callers chunk larger payloads.
 
 ## Behavior
-- [ ] Create signs and sends If-None-Match:*; successful PUT returns Created.
-- [ ] Only HTTP 412 returns Exists; 409 and all other failures throw, never overwrite.
-- [ ] GET returns None only on 404; other errors throw.
-- [ ] GET enforces the byte limit while reading and releases responses on failure.
-- [ ] Invalid limits and oversized writes fail before network IO.
+- [x] Create signs and sends If-None-Match:*; successful PUT returns Created.
+- [x] Only HTTP 412 returns Exists; 409 and all other failures throw, never overwrite.
+- [x] GET returns None only on 404; other errors throw.
+- [x] GET enforces the byte limit while reading and releases responses on failure.
+- [x] Invalid limits and oversized writes fail before network IO.
 
 ## Decisions
 - Additive capability separate from Blob: no fake check-then-write default.
@@ -26,4 +26,6 @@ Objects are bounded to 8 MiB per create; callers chunk larger payloads.
 WORM, bucket configuration, delete protection, financial publication semantics.
 
 ## Results
-Pending scoped verification.
+TestConditionalObjects: 2 tests passed. Affected Test/compile passed,
+no compile warnings; recursion inventory holds. Integration with real MinIO
+is verified by the financial cloud consumer, not claimed by this unit fixture.
