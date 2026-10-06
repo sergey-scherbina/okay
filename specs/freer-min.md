@@ -145,3 +145,33 @@ three-place would do. Measured on the model:
 So the four-node form, `Return | Op (diagonal) | Perform (index-moving)
 | Bind`, is what keeps unary effects unary AND keeps the signature
 open to index-moving operations. See "The arity of G" in Decisions.
+
+## Results, continued: a handler's rest, and what the row's `+` can and cannot infer (2026-10-06)
+
+Probes `RestCo.scala` (covariant kernel), `Inv.scala` (the same kernel
+with `G` invariant; its union `flatMap` then needs one cast, the claim
+foreign-effects-in-tree's probe C made), `RestPos.scala` (both):
+
+7. A handler typed `p: Freer[Diag[Ask] + G, …]` against a three-member
+   row `(Diag[Ask] + Diag[Say]) + Cnt`: `G` is NOT inferred without an
+   expected type, on EITHER variance (`G <: [_, _, _] =>> Any`); with an
+   expected type (`val rest2: Freer[Diag[Say] + Cnt, …] = runAsk(three)`)
+   both compile. The unary baseline `FreeU[Ask + G, A]` against
+   `(Ask + Say) + Cnt` fails the same way: this is the union lambda, not
+   the arity — a beta-reduced union gives nothing to solve `G` from
+   (Indexed.scala:62's own comment).
+8. POSITIONALLY — the handled member left, the rest one application
+   on the right, `three: Freer[Diag[Ask] + Rest, …]` — `G` infers
+   EXACTLY on both variances with no expected type: invariant prints
+   the reduced lambda, covariant prints `Diag[Say] + Cnt` as written.
+   So the kernel keeps master's inference, which was positional all
+   along (`handle`'s `=:=` evidence, `Remove`), and foreign-effects-in-
+   tree's "covariance widens to `Object & Enum`" was the lower-bound
+   `flatMap` road, not this one.
+
+What follows for the operator's second question (ZIO in the tree): a
+row joined by union gives SUBTYPING — `pure` into any row, `(F + G) + F`
+at `F + G`, a ZIO handler reading `R`/`E` off the row by `<:<` as ZIO's
+own `for` would — and gives SUBTRACTION (a handler's rest) only by
+position or evidence. ZIO itself never subtracts: `provide`/`catchAll`
+move `R` to `Any` and `E` to `Nothing` by subtyping. See Decisions.
