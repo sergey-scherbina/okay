@@ -903,3 +903,47 @@ and Native compile, `grep asInstanceOf|@unchecked|eq|Prompt|NotNearest` over the
 A program with no capture is written for any `D` (`def one[D]: Freer[Fx, D, …]`): the index is exact, so a `val`
 at the top is no body for a delimiter. A fragment with a shift declares its delimiter twice, as its context and as
 its index: `def loop(n: Int)(using In[Lvl[Pure], Int]): Freer[Pure, Lvl[Pure], Int, Int, Int]`.
+
+## Stage 14: THE STACK OF ROWS (DONE, 2026-10-06)
+
+The operator's call: the stack of rows is what is needed. Built, with what it forces, each by a failure:
+
+```
+Freer[+G[+_], Σ <: Tuple, S, R, +A]             -- Σ the delimiters in force, each by its row, the nearest first
+Return | Inject | Bind | Delay | Reset | Shift0 | Resume
+Reset [H, Σ, S, R, U](body: Freer[H, Lvl[H] *: Σ, S, R, S])                                     extends Freer[H, Σ, U, U, R]
+Shift0[H, Σ, T, R, X](f: (k: Continue[H, Σ, X, T]) => Freer[H, Σ, k.Out, k.Out, R])          extends Freer[H, Lvl[H] *: Σ, T, R, X]
+Resume[H, X, T, Σ, U](x: X, k: Captured[H, X, T, ?, Σ])                                       extends Freer[H, Σ, U, U, T]
+trait Continue[H, Σ, X, T] { type Out; def apply[U](x: X): Freer[H, Σ, U, U, T] }
+```
+
+- `k` is the piece WITH its delimiter, so it is a program under `Σ`, the stack outside — and the index is exact,
+  so it is a program there only. A shift body that used `k` inside the delimiter put back (Danvy–Filinski's shift)
+  would run `k`'s frames one level deeper than their type: `k(1).flatMap(k(_))` did not type, by the tail alone.
+  So the body runs OUTSIDE the delimiter, under `Σ`, in its place: shift0. Everything the basis asked for is the
+  same — `k` twice, multi-shot, answer-type modification at the nearest delimiter (`reset(1 + shift0(_ => "a"))`
+  is `"a"`), abort, `PState` (its `k` is used outside, in the function answer), the escaped `k`, 100 000 captures,
+  a handler inside a delimiter crossed by a capture. Lost: a second shift to the SAME delimiter from a body after
+  it used `k`; such a body is written with `reset` around the part that needs it.
+- The body runs at the answer of the context it replaces, which the node does not know (the reset is at any `U`):
+  the answer is the abstract member `k.Out`, the body is diagonal at it, so polymorphic by construction — no
+  polymorphic lambda (3.9.0 elaborates none). `Cut.Found` is built in `found`, where the delimiter's `U` is a
+  named type, and carries the next program; `Cut.Gone` likewise, where `Done` names the run's types.
+- Answer-type modification is the nearest level's: the outer levels are diagonal through a shift0 body (`k.Out`,
+  `k.Out`). The CPS hierarchy — a pair per level, two stacks `Σin`, `Σout` whose heads today's `S`, `R` are — would
+  type a `k` that moves outer levels, but its outer movement is the piece's, which the node cannot name; not in
+  the basis.
+- `In[Σ, Ss]`: the stack in force and, beside it, the answers the bodies are written at; `reset` gives its body
+  `In[Lvl[H] *: Σ, S *: Ss]`, `shift0` reads the head and gives its own body `In[Σ, Ss]` (the body is written inside
+  the delimiter and runs outside it). Inference only; the machine never sees it.
+- A program with no capture is written for any stack (`def one[Σ <: Tuple]`); a fragment with a shift declares its
+  delimiter as its context and its index.
+
+Gone from the kernel: `Prompt`, identity, `_: p.type`, `NotNearest`, the prompt's `S`, the `=:=` field. 25 tests on
+the JVM, JS and Native compile, `grep asInstanceOf|@unchecked|eq|Prompt|NotNearest` over the kernel: 0.
+
+On the operator's question whether `E <: Tuple` alone would do, without `S`, `R`: answer-type modification is a
+pair by nature, `(A => S) => R`, and `Bind` cancels the middle. The pair of the nearest level could sit in the head
+entry, `Lvl[H, S, R]`, at the cost of `Bind` taking the head apart and a second rule at the empty stack; the
+information is the same. Two tuples, in and out, with `S`, `R` their heads, are the full hierarchy. The basis is the
+one pair beside the stack.

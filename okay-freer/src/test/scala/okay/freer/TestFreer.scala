@@ -17,7 +17,7 @@ class TestFreer extends okay.testkit.Munit.Diagnosed:
   type Top[G[+_], A] = Freer[G, EmptyTuple, A, A, A]
 
   /** a program with no capture is written for any stack: the index is exact, so one at the top is no body for a delimiter */
-  def one[D]: Freer[Fx, D, Int, Int, Int] =
+  def one[Σ <: Tuple]: Freer[Fx, Σ, Int, Int, Int] =
     for
       n <- inject(Ask.Number)
       _ <- inject(Say.Line(n.toString))

@@ -12,17 +12,17 @@ class TestState extends okay.testkit.Munit.Diagnosed:
    * sugar: `put` moves the answer at the hole, which the sugar pins to the one the body is written at */
   final class State[H[+_], W]:
     /** read the state, its type `S` unchanged: `shift(k => s => k(s)(s))` */
-    def get[S]: Freer[H, Lvl[H], St[H, S, W], St[H, S, W], S] =
-      Freer.Shift((k: [U, E] => S => Freer[H, E, U, U, St[H, S, W]]) => pure((s: S) => k(s).flatMap(f => f(s))))
+    def get[S]: Freer[H, Lvl[H] *: EmptyTuple, St[H, S, W], St[H, S, W], S] =
+      Freer.Shift0((k: Continue[H, EmptyTuple, S, St[H, S, W]]) => pure((s: S) => k(s).flatMap(f => f(s))))
     /** write a state of another type: the rest wants `S2`, this point still answers with `S`: `shift(k => _ => k(())(s2))` */
     def put[S]: PutFrom[S] = PutFrom[S]()
     final class PutFrom[S]:
-      def apply[S2](s2: S2): Freer[H, Lvl[H], St[H, S2, W], St[H, S, W], Unit] =
-        Freer.Shift((k: [U, E] => Unit => Freer[H, E, U, U, St[H, S2, W]]) => pure((_: S) => k(()).flatMap(f => f(s2))))
+      def apply[S2](s2: S2): Freer[H, Lvl[H] *: EmptyTuple, St[H, S2, W], St[H, S, W], Unit] =
+        Freer.Shift0((k: Continue[H, EmptyTuple, Unit, St[H, S2, W]]) => pure((_: S) => k(()).flatMap(f => f(s2))))
 
   /** run from an initial state `S0`, at the top; the state ends at `S1`; the delimiter's answer is the function,
    * applied once outside */
-  def runState[H[+_], S0, S1, W](s0: S0)(body: State[H, W] => Freer[H, Lvl[H], St[H, S1, W], St[H, S0, W], W]): Freer[H, EmptyTuple, W, W, W] =
+  def runState[H[+_], S0, S1, W](s0: S0)(body: State[H, W] => Freer[H, Lvl[H] *: EmptyTuple, St[H, S1, W], St[H, S0, W], W]): Freer[H, EmptyTuple, W, W, W] =
     reset[H, St[H, S1, W]](body(State()).map(a => (_: S1) => pure(a))).flatMap(f => f(s0))
 
   def value[U, A](p: Freer[Pure, EmptyTuple, U, U, A]): A =
