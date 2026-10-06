@@ -42,7 +42,7 @@ class TestDelimitedNested extends munit.FunSuite:
 
   /** the inner machine's answer is a Reader program; Reader's own handler runs it */
   private def run[A, S, R](c: Freer[H, S, R, A], env: Int)(k: A => S): R =
-    !.run(Reader.run[Int, R, okay.Pure](env)(Delimited.under[D, E](Steps).run(c, k)))
+    !.run(Reader.run[Int, R, okay.Pure](env)(Delimited.under[D, E, Unary[E]](Steps).run(c, k)))
 
   test("ATM under Reader: Int → String and Boolean → Int in one reset, asking the environment in a body and in k") {
     val c: Freer[H, Boolean, String, Boolean] =

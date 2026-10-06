@@ -139,8 +139,22 @@ object Delimited:
     /** the mark of the value boundary stepping into `t` installs (a barrier), or null for none */
     def barrier(t: () => Any): Mark | Null = null
 
+  /**
+   * HOW AN OPERATION LEAVES: as a node of the program a run answers, at the tree signature `O` the effects
+   * outside are written at, every index `Unit` — the core's `Unary[F]`, which this machine never names: the
+   * caller says how an `F[X]` is an `O[Unit, Unit, X]` (the identity, on the diagonal)
+   */
+  trait Leaving[F[+_], O[_, _, +_]]:
+    def apply[X](op: F[X]): O[Unit, Unit, X]
+
   /** nothing outside */
   type None[+X] = Nothing
+  /** nothing leaves: the signature of a run alone */
+  type Nowhere[S, R, +X] = Nothing
+  object Leaving:
+    /** nothing leaves a run alone */
+    val none: Leaving[None, Nowhere] = new Leaving[None, Nowhere]:
+      def apply[X](op: Nothing): Nothing = op
 
   /** a run where every operation is the effect's own */
   private final class Alone[G[_, _, +_]] extends Outer[G, None]:
@@ -148,7 +162,7 @@ object Delimited:
     def diagonal[T, R, A](op: G[T, R, A]): T =:= R = throw IllegalStateException("nothing leaves a run alone")
 
   /** a machine for one effect, alone */
-  def apply[G[_, _, +_]](steps: Step[G, G]): Machine[G] = Machine(Run(steps, Alone[G]()))
+  def apply[G[_, _, +_]](steps: Step[G, G]): Machine[G] = Machine(Run(steps, Alone[G](), Leaving.none))
 
   /**
    * an operation of a program over effect `G` under the effects `F`: one of `G`'s, at any indexes (`Own`), or one
@@ -163,7 +177,8 @@ object Delimited:
 
   /** a machine for effect `G` under the effects `F` (nested machines): it answers `G`'s operations and leaves
    * `F`'s in the program it answers, for the machine outside */
-  def under[G[_, _, +_], F[+_]](steps: Step[G, Row[G, F]]): Run[Row[G, F], F] = Run(Own(steps), Fwd[G, F]())
+  def under[G[_, _, +_], F[+_], O[_, _, +_]](steps: Step[G, Row[G, F]])(using l: Leaving[F, O]): Run[Row[G, F], F, O] =
+    Run(Own(steps), Fwd[G, F](), l)
 
   /** `Own`'s operations to the effect's steps */
   private final class Own[G[_, _, +_], F[+_]](steps: Step[G, Row[G, F]]) extends Step[Row[G, F], Row[G, F]]:
@@ -184,10 +199,10 @@ object Delimited:
       case Sum.Fwd(_) => summon[T =:= R]
       case _ => throw IllegalStateException("an own operation is not sent out")
 
-  /** a machine for a `Free` row `H` whose effects outside are `F`: it answers every operation of `H` but those
-   * `outer` sends out, which leave in the program it answers */
-  def over[H[+_], F[+_]](steps: Step[Unary[H], Unary[H]], outer: Outer[Unary[H], F]): Run[Unary[H], F] =
-    Run(steps, outer)
+  /** a machine for an effect `G` whose effects outside are `F`: it answers every operation of `G` but those
+   * `outer` sends out, which leave in the program it answers, at the signature `O` (`Unary[F]` for a `Free` row) */
+  def over[G[_, _, +_], F[+_], O[_, _, +_]](steps: Step[G, G], outer: Outer[G, F])(using l: Leaving[F, O]): Run[G, F, O] =
+    Run(steps, outer, l)
 
   // ---- what the primitives speak of ----
 
@@ -268,7 +283,7 @@ object Delimited:
     def instead(c: Freer[G, R, R, R]): Next[G, Z]
 
   /** a run for one effect alone: its answer, not a program */
-  final class Machine[G[_, _, +_]] private[Delimited] (val loop: Run[G, None]):
+  final class Machine[G[_, _, +_]] private[Delimited] (val loop: Run[G, None, Nowhere]):
     /** run `c` with `k` as the last frame of its continuation; the result is its answer */
     def run[A, S, R](c: Freer[G, S, R, A], k: A => S): R = loop.runAlone(c, k)
     /** run `c` to its value */
@@ -284,7 +299,7 @@ object Delimited:
    * forcing it, re-enters this loop with no host frame per nesting. A nested run of the same row (`outer.enter`)
    * is stepped into, under a value boundary, not forced: its depth is this run's stack, not the host's.
    */
-  final class Run[G[_, _, +_], F[+_]](steps: Step[G, G], outer: Outer[G, F]) extends Delimited[G]:
+  final class Run[G[_, _, +_], F[+_], O[_, _, +_]](steps: Step[G, G], outer: Outer[G, F], leaving: Leaving[F, O]) extends Delimited[G]:
     // @publicInBinary: `within` is inline and sets it from every caller — no unstable `inline$room` accessor (E192)
     @scala.annotation.publicInBinary private[Delimited] var room: Int = StackSwitch.firstRoom
     /** levels this stack may still be granted, read or not: past them a fresh stack (`StackSwitch.levelsPerStack`).
@@ -298,11 +313,11 @@ object Delimited:
     def guarding(): Unit = guarded = true
 
     /** run `c` with `k` as the last frame of its continuation: the program, over `F`, that answers its answer */
-    def run[A, S, R](c: Freer[G, S, R, A], k: A => S): Free[F, R] =
+    def run[A, S, R](c: Freer[G, S, R, A], k: A => S): Freer[O, Unit, Unit, R] =
       go(c, frame((a: A) => Return[G, S, S](k(a)), end[S, S]), Stack.Answered[G, S, R]())
 
     /** run `c` to its value: the program, over `F`, that answers it */
-    def value[A, X](c: Freer[G, X, X, A]): Free[F, A] = go(c, end[A, X], Stack.Done[G, A, X]())
+    def value[A, X](c: Freer[G, X, X, A]): Freer[O, Unit, Unit, A] = go(c, end[A, X], Stack.Done[G, A, X]())
 
     /** a strict `k` cannot wait for an effect outside: one met inside it is refused, by name */
     def force[A, T](k: Kont[G, A, T], x: A): T = k.forced(x)
@@ -413,7 +428,7 @@ object Delimited:
           case again :: rest => turn(() => again(v), rest)
 
     /** a run's answer, which a strict `k` cannot wait for an effect outside to give */
-    private def answerOf[T](p: Free[F, T]): T = p match
+    private def answerOf[T](p: Freer[O, Unit, Unit, T]): T = p match
       case Return(t) => t
       case _ => throw IllegalStateException("a strict k performed an operation of an outer effect; give its body the lazy k")
 
@@ -443,7 +458,7 @@ object Delimited:
       room = left
       try body finally room = saved
 
-    @tailrec private def go[A, B, S, T, R, Z](c: Freer[G, T, R, A], k: Frames[G, A, B, S, T], m: Stack[G, B, S, R, Z]): Free[F, Z] =
+    @tailrec private def go[A, B, S, T, R, Z](c: Freer[G, T, R, A], k: Frames[G, A, B, S, T], m: Stack[G, B, S, R, Z]): Freer[O, Unit, Unit, Z] =
       c match
         case Return(a) => k match
           case Frames.Frame(f, k2) => go(if guarded then guard(f(a)) else f(a), k2, m)
@@ -476,7 +491,7 @@ object Delimited:
 
     /**
      * THE LOOP OF A MACHINE ALONE (strict-k-cost): nothing leaves it, so it answers `Z` itself. Through the one loop,
-     * whose answer is `Free[F, Z]` for the operations that leave, a strict `k` — a nested run per call — built a
+     * whose answer is `Freer[O, Unit, Unit, Z]` for the operations that leave, a strict `k` — a nested run per call — built a
      * `Return` to take apart again: statePara 1.12x and +32 KB against cont-atm, one `Return` a call (history.d
      * strict-k-cost). These are `go`'s arms less the two a machine alone cannot reach: an operation sent out, a
      * deferred run stepped into.
@@ -511,11 +526,11 @@ object Delimited:
       catch case t: Throwable => Delay(Thrown(t))
 
     /** an operation out, as a node of the answered program; its answer enters this loop again, in a `Delay` */
-    private def forward[X, B, S, T, Z](o: F[X], k: Frames[G, X, B, S, T], m: Stack[G, B, S, T, Z]): Free[F, Z] =
-      Bind(Inject[Unary[F], Unit, Unit, X](o), (x: X) => Delay(() => again(Return[G, T, X](x), k, m)))
+    private def forward[X, B, S, T, Z](o: F[X], k: Frames[G, X, B, S, T], m: Stack[G, B, S, T, Z]): Freer[O, Unit, Unit, Z] =
+      Bind(Inject[O, Unit, Unit, X](leaving(o)), (x: X) => Delay(() => again(Return[G, T, X](x), k, m)))
 
     /** the loop entered again from the outside: a call, so `go` stays a loop */
-    private def again[A, B, S, T, R, Z](c: Freer[G, T, R, A], k: Frames[G, A, B, S, T], m: Stack[G, B, S, R, Z]): Free[F, Z] =
+    private def again[A, B, S, T, R, Z](c: Freer[G, T, R, A], k: Frames[G, A, B, S, T], m: Stack[G, B, S, R, Z]): Freer[O, Unit, Unit, Z] =
       go(c, k, m)
 
     // ---- the primitives ----

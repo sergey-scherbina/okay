@@ -99,6 +99,11 @@ sealed trait Diagonal[F[+_]]:
  */
 object Diagonal {
   import Freer.Return
+
+  /** a `Free` row's operations leave a machine (Delimited.scala, okay-freer) as themselves: on the diagonal,
+   * `Unary[F][Unit, Unit, X]` IS `F[X]` */
+  given leaving[F[+_]]: Delimited.Leaving[F, Unary[F]] with
+    def apply[X](op: F[X]): Unary[F][Unit, Unit, X] = op
   /**
    * ONE handler taken off (handler-single-pass, specs/handler-single-pass.md): a STEPPED handler is registered
    * on the program's stack of handlers, walked once by whoever forces it; any other handler runs its own `run`

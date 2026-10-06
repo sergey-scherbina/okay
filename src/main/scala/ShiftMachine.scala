@@ -51,7 +51,7 @@ object ShiftMachine {
   private[okay] final class Nested[R, F[+_]](val program: R ! Shift % ? + F, val nested: Boolean) extends Pending[R, F]:
     def apply(): R ! F =
       val s = Steps[F](nested)
-      Delimited.over[Shift % ? + F, F](s, s).value(program)
+      Delimited.over[Unary[Shift % ? + F], F, Unary[F]](s, s).value(program)
 
   /**
    * what each operation does, for a row `Shift % ? + F`, and which leave the machine. A prompt in force is two

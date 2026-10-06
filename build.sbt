@@ -172,7 +172,14 @@ def versioned(id: String, dir: String, n: Int, hostId: String): Project =
   Project(id, file(dir))
     .settings(
       Compile / unmanagedSourceDirectories := Seq(baseDirectory.value),
-      Compile / unmanagedClasspath ++= (LocalProject(hostId) / Compile / fullClasspath).value,
+      // the host's classes DIRECTORY and its dependencies, not its `fullClasspath`: a host that exports its jar
+      // (okay-freer) would put its own `packageBin` there, whose mappings compile this variant — a cycle the task
+      // engine waits on forever (freer-cont-move: a gate stalled at 0 CPU on exactly that)
+      Compile / unmanagedClasspath ++= {
+        val _ = (LocalProject(hostId) / Compile / compile).value
+        (LocalProject(hostId) / Compile / dependencyClasspath).value :+
+          Attributed.blank((LocalProject(hostId) / Compile / classDirectory).value)
+      },
       jdkFloor(n),
       publish / skip := true,
     )
@@ -404,6 +411,28 @@ lazy val okayFreer = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .settings(
     name := "okay-freer",
   )
+  // the JDK 22+ variant of okay.StackRoom (specs/cont-stack.md Layer 3) is this module's now, with the
+  // machine; `exportJars` so that every dependent — the core's tests, the JMH lanes — sees the MULTI-RELEASE
+  // JAR, never the classes directory (a class loaded from a directory is never versioned)
+  .jvmConfigure(_.dependsOn(okayJdk22 % "test->compile"))
+  .jvmSettings(
+    multiRelease("okayJdk22", 22),
+    exportJars := true,
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm-native",
+  )
+  .jsSettings(
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-js",
+  )
+  .nativeSettings(
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-native",
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm-native",
+  )
 
 lazy val okay = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
@@ -415,9 +444,8 @@ lazy val okay = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   // the JDK 22+ variant of okay.StackRoom (specs/cont-stack.md Layer 3),
   // built by `versioned` below; `test->compile` so the jar the tests
   // run against carries it
-  .jvmConfigure(_.enablePlugins(JmhPlugin).dependsOn(okayJdk22 % "test->compile"))
+  .jvmConfigure(_.enablePlugins(JmhPlugin))
   .jvmSettings(
-    multiRelease("okayJdk22", 22),
     // the forked suite runs with native access, so on JDK 22+ the
     // StackRoom variant READS the stack (TestStackRoom, TestContStack's
     // zero-switch test); the count road is what verifyJdk17 runs. The
@@ -440,26 +468,12 @@ lazy val okay = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     Test / unmanagedSourceDirectories +=
       baseDirectory.value.getParentFile / "src" / "test" / "scala-cross",
     Jmh / sourceDirectory := baseDirectory.value.getParentFile / "src" / "jmh",
-    // THE CONT-STACK ROAD OF A BENCHMARK (cont-stack-jmh-native-access,
-    // specs/cont-stack.md). The JMH forks run from the Jmh PACKAGE — the
-    // `-jmh.jar` sbt puts first on the run's classpath, okay's main
-    // classes inside it — and a jar is versioned only when it says so, so
-    // until this the ROOT StackRoom was the class in play on every JDK:
-    // every lane counted, whatever its flags. The package now carries the
-    // `jdk22/` reader as `multiRelease`'s test jar does. And the Jmh host
-    // inherits `Test / javaOptions` (so do its forks), which ENABLE native
-    // access for the tests; for JMH that flag is dropped, so a lane keeps
-    // the meaning of its history — the COUNT road — and the EXACT road is
-    // the same lane with `-jvmArgsAppend --enable-native-access=ALL-UNNAMED`.
-    // (Also inherited, and kept so the history stays comparable:
-    // `-Dokay.cont.room=64` and `-Xmx1g` — the lanes run at the tests'
-    // room of 64; the room's own comment above says what that costs.)
-    Jmh / packageBin / mappings ++= {
-      val dir = (LocalProject("okayJdk22") / Compile / classDirectory).value
-      val _ = (LocalProject("okayJdk22") / Compile / compile).value
-      (dir ** "*.class").get().map(f => f -> s"META-INF/versions/22/${IO.relativize(dir, f).get}")
-    },
-    Jmh / packageBin / packageOptions += Package.ManifestAttributes("Multi-Release" -> "true"),
+    // THE CONT-STACK ROAD OF A BENCHMARK (cont-stack-jmh-native-access, specs/cont-stack.md): the multi-release
+    // JAR with the `jdk22/` StackRoom is okay-freer's, exported, so a JMH fork has it on its classpath; the host
+    // inherits `Test / javaOptions` (so do its forks), which ENABLE native access for the tests; for JMH that flag
+    // is dropped, so a lane keeps the meaning of its history — the COUNT road — and the EXACT road is the same
+    // lane with `-jvmArgsAppend --enable-native-access=ALL-UNNAMED`. (Also inherited, and kept so the history
+    // stays comparable: `-Dokay.cont.room=64` and `-Xmx1g`.)
     Jmh / javaOptions := (Test / javaOptions).value.filterNot(_.startsWith("--enable-native-access")),
     // The core suite runs in its OWN JVM, and that is not a
     // workaround for heavy tests — they are not heavy. Measured: the
@@ -513,7 +527,7 @@ lazy val okay = crossProject(JVMPlatform, JSPlatform, NativePlatform)
  */
 /** okay.StackRoom reading the stack pointer through FFM, for JDK 22+
  * (`versioned`; specs/cont-stack.md Layer 3, Decision 12) */
-lazy val okayJdk22 = versioned("okayJdk22", "jdk22", 22, "okayJVM")
+lazy val okayJdk22 = versioned("okayJdk22", "jdk22", 22, "okayFreerJVM")
 
 lazy val okayAsync = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)

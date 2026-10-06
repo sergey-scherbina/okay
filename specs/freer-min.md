@@ -1441,3 +1441,32 @@ in `out`, a method of its own: inside the loop, the nested match cost 18 % on `h
 171.4, a loop past the inlining budget, as the core found at `resume`); off it, 172.4 ± 3.0.
 
 Seven nodes, 42 tests on the JVM, JS and Native compile, no cast, no warning.
+
+## Stage 31: THE CPS `Cont` AND ITS MACHINE BELOW THE CORE (DONE, 2026-10-06)
+
+The operator: the old code into `okay-freer`, but for what stays common — `Control`. The idea behind it: the new
+machine is to replace the old in the core, with the `Effects` interface abstracted so that the outside stays the
+same, the inside changes, and the old is one compile-time choice (the next stage). This stage is the move.
+
+What moved, package `okay` unchanged (the names are the core's vocabulary under `import okay.*`, 200 files; the
+tree alone is `okay.freer`): `Cont.scala` (the CPS reading of the tree, `shift` the macro, the modes, `direct`,
+`Monadic`), `Delimited.scala` (the machine), `ContReplay.scala`, `macros/ContMacro.scala`, the stack-switch runtime
+(`StackSwitch` per platform, `StackRoom` with its JDK 22 variant, `StackPool`), and `DirectCtx` (`Cont.direct`
+needs it; the direct DSL and both monads share it). What stayed, in `Control.scala`: `Control`, its summoner,
+`Func` and both instances — the core says how `Cont` is a `Control`, beside the closures', and `okay-cont`'s
+machine will say the same of its own.
+
+Two knots cut. (1) `Delimited.Run` answered `Free[F, Z]` and built `Inject[Unary[F], Unit, Unit, X]` for an
+operation leaving: the machine named the core's effect tree, which cannot move (its doors are the core's,
+stage 29's second cut). Now `Run[G, F, O]` is generic in the tree signature `O` operations leave at, told by
+`Delimited.Leaving[F, O]` — the core's `given leaving[F]: Leaving[F, Unary[F]]` is the identity on the diagonal,
+in `Diagonal`'s companion, found where `Unary[F]` is; `over` is generic in `G` too. (2) The JDK 22 `StackRoom`
+variant: `versioned` compiled it against its host's `fullClasspath`, and a host that exports its jar
+(`exportJars`, so that the core's tests and the JMH lanes see the MULTI-RELEASE jar rather than a classes
+directory) puts its own `packageBin` there, whose mappings compile the variant — a cycle the task engine waits on
+forever; measured as a gate stalled at 0 CPU for 480 s. The variant now compiles against the host's class
+directory and dependencies.
+
+Checked: the core and the module on the JVM, JS and Native; the cont-stack suites (TestStackRoom, TestContStack,
+the small-stack replays, the four TestDelimited*, TestContMacro, TestColdRoom), TestInlineBudget, `okay-direct`
+whole; `okay-java` (a `Control` user), `okay-cont` and the JMH sources compile; then the pre-merge gate.
