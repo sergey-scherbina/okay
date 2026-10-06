@@ -8,6 +8,8 @@ not HEAD followed by unconditional PUT. Existing Blob operations are unchanged.
 ConditionalObjects exposes create(key, bytes): Created | Exists and
 read(key, maxBytes): Option[Array[Byte]], both in Async. S3 implements it.
 Objects are bounded to 8 MiB per create; callers chunk larger payloads.
+Create also sends a signed Content-MD5 transport checksum, required by S3
+for Object Lock retention uploads. SHA-256 remains the content identity.
 
 ## Behavior
 - [x] Create signs and sends If-None-Match:*; successful PUT returns Created.
@@ -15,6 +17,7 @@ Objects are bounded to 8 MiB per create; callers chunk larger payloads.
 - [x] GET returns None only on 404; other errors throw.
 - [x] GET enforces the byte limit while reading and releases responses on failure.
 - [x] Invalid limits and oversized writes fail before network IO.
+- [ ] Bounded PUT includes a correct signed Content-MD5 checksum.
 
 ## Decisions
 - Additive capability separate from Blob: no fake check-then-write default.
