@@ -1,6 +1,6 @@
 feature/freer-min 2026-10-06T03:38:40Z
 agent: claude-code
-heartbeat: 2026-10-06T06:59:27Z
+heartbeat: 2026-10-06T07:33:09Z
 status: in-progress
-done-so-far: stage 8: unary effects + Inject restored (8 nodes), no prompts, stack index Σ; 20 green JVM, JS+Native compile
-next: operator's call on dropping Σ (means prompt identity back, stage-3 shape); JMH vs master
+done-so-far: stage 9: run at any stack, capture handed out at a run's bottom, Within evidence, handler inside a delimiter multi-shot; 21 green JVM, JS+Native
+next: JMH vs master; Distinct for handlers
