@@ -1,6 +1,6 @@
 feature/freer-min 2026-10-06T03:38:40Z
 agent: claude-code
-heartbeat: 2026-10-06T06:36:39Z
+heartbeat: 2026-10-06T06:40:52Z
 status: in-progress
-done-so-far: stage 5: Freer[+G, Σ, S, R, A] — static prompts beside ATM, zero casts, 22 green JVM, JS+Native compile
-next: JMH vs master; the hand-out allocation; row ergonomics for user handlers
+done-so-far: stage 6: prompts shown derivable (nearest shift0 + dollar reproduces the crossing capture); shift0 body stack fixed; 22 green
+next: operator's call: drop Prompt/Has/Under from the kernel; then JMH vs master
