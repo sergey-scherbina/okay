@@ -4,6 +4,9 @@ import okay.*
 import okay.given
 import okay.semantic.Request
 
+final case class ExpressionJob[A](plan: ExpressionPlan[A], rows: Vector[A]):
+  def execute: Either[Vector[String],okay.semantic.Result] = plan.run(rows)
+
 class TestExpressionSources extends okay.testkit.Munit.Diagnosed:
   import Samples.*
   val doc = Document.fromJson(replace(raw,"metrics",arr(metric("median","MEDIAN(amount)")))).toOption.get
@@ -26,17 +29,17 @@ class TestExpressionSources extends okay.testkit.Munit.Diagnosed:
   test("portable expression plans serialize for distributed Bulk workers") {
     val bytes = new java.io.ByteArrayOutputStream()
     val output = new java.io.ObjectOutputStream(bytes)
-    try output.writeObject(plan) finally output.close()
+    try output.writeObject(ExpressionJob(plan,rows)) finally output.close()
     val loader = getClass.getClassLoader
     val input = new java.io.ObjectInputStream(new java.io.ByteArrayInputStream(bytes.toByteArray)):
       override def resolveClass(description: java.io.ObjectStreamClass): Class[?] =
         Class.forName(description.getName,false,loader)
     val restored = try input.readObject() finally input.close()
     restored match
-      case p: ExpressionPlan[?] =>
+      case job: ExpressionJob[?] =>
         note(s"serialized ${bytes.size()} bytes")
-        assertEquals(p.explain,plan.explain)
-        assertEquals(p.request,plan.request)
-        assertEquals(p.run(Vector.empty),plan.run(Vector.empty))
-      case _ => fail("restored object is not an ExpressionPlan")
+        assertEquals(job.plan.explain,plan.explain)
+        assertEquals(job.plan.request,plan.request)
+        assertEquals(job.execute,plan.run(rows))
+      case _ => fail("restored object is not a typed expression job")
   }
