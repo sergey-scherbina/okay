@@ -144,6 +144,24 @@ class ContBenchmark {
       m.map(_ => M)
     value(writer[Int, Int](body))._1.length
 
+  /** M operations of a ROW program, `Free[Ask +: Tick +: Pure, Int]`, under two answering handlers: the row's
+   * capabilities (`Has`) built once per run, the operation's capability found by its path (`rowAnswering`,
+   * beside `handlePrebuiltAnswering`, the same program written against contexts) */
+  val rowProg: Free[Ask +: Tick +: Pure, Int] =
+    def loop(i: Int, acc: Int): Free[Ask +: Tick +: Pure, Int] =
+      if i >= M then Free.pure(acc).widen
+      else Free.inject(Ask.Value(1)).flatMap(a => Free.inject(Tick.Value(1)).flatMap(t => loop(i + 1, acc + a + t))).widen
+    loop(0, 0)
+  @Benchmark
+  def rowAnswering(): Int =
+    value(Free.top(Free.handle(tickA)(Free.handle(askA)(rowProg))))
+
+  /** the same row program under the GENERAL handlers: every operation a capture to its handler's delimiter, the
+   * capability found by its path (beside `handlePrebuilt`, the context form) */
+  @Benchmark
+  def rowGeneral(): Int =
+    value(Free.top(Free.handle(tickH)(Free.handle(askH)(rowProg))))
+
   @Param(Array("1", "16", "256"))
   var depth: Int = 0
 

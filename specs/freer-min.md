@@ -1707,3 +1707,21 @@ answered operation wherever it stands.
 The machine's state is now ahead of the classic handler's. Left in the sprint item: a row program's
 `Cap.perform` still builds its `Target` per operation — caching it needs the capability to carry its context as a
 value and `Has.lift` to take the inner context as one (`In[?, c.type]`, so that two paths of one type meet).
+
+## Stage 43: WHAT A ROW PROGRAM COSTS (MEASURED, 2026-10-07)
+
+Before caching a row's `Target` per context (the rest of `cont-state-cost`), the first measurement of a row
+program at all: `Free[Ask +: Tick +: Pure, Int]`, 2000 operations, two handlers, the inner one `Ask`'s —
+`rowAnswering` 47.8 ± 0.9 µs under the answering handlers, `rowGeneral` 64.5 ± 2 under the general ones.
+Per operation: 24 and 32 ns, against the context form's 6.7 (`handlePrebuiltAnswering`, 66.8 µs for 10 000)
+and 16.5 (`handlePrebuilt`, 165 for 10 000). The answering path builds no `Target`, and it is 17 ns an
+operation behind: the row's cost is STRUCTURE, not the reach — `flatMap` joins the rows (`R ++ R2`, stage 27),
+so `run` splits the capabilities by the first row's shape at every bind (`Shape.split`: an `HCons` list taken
+apart and rebuilt), and a `Free` object is made a bind. The `Target` per operation is a fraction of the
+general path's extra 8 ns.
+
+What this says: a row program should run at ONE row, as the classic's `A ! F` does — `flatMap` at the same
+row, one `Has` a run and no split, `inject` polymorphic in the row (by the expected type, or an explicit
+argument as the classic's `effect[F, A]` is), and a `for` over mixed effects naming the program's row, which
+the classic requires too. A design change to stage 27's `Free`, so the operator's decision; the lanes stay to
+measure it by.
