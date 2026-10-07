@@ -43,10 +43,11 @@ enum Cont[I <: Tuple, O <: Tuple, +A]:
   case Op[N <: Tuple, X, Dn <: Tuple, Ansn, E[+_]](at: Reach[N, Dn, Ansn], op: E[X], clause: Clause[E, Dn, Ansn]) extends Cont[N, N, X]
   /** `k(x)` pending: the machine puts the captured piece back under a delimiter of its own */
   case Resume[D <: Tuple, I <: Tuple, X, T](x: X, k: Captured[D, I, X, T, ?]) extends Cont[D, I, T]
-  /** an operation ANSWERED IN PLACE when the machine gets to it — its value from `by`, the answering handler found
-   * through the context `c`'s types (`Answered`): one node, no closure, no delay, and the effect happens at the
-   * machine's step, not when the node is made (a `Delay` of a `Return` was three objects for this one) */
-  case Answer[Σ <: Tuple, X, E[+_], C <: Ctx](op: E[X], c: C, by: Answered[E, C]) extends Cont[Σ, Σ, X]
+  /** an operation ANSWERED IN PLACE when the machine gets to it — its value from the answering handler `by`, found
+   * once through the context's types (`Answered.at`, in `Perform`): one node, no closure, no delay, and the effect
+   * happens at the machine's step, not when the node is made (a `Delay` of a `Return` was three objects for this
+   * one; a chain of `outside`s per operation was a call per level between) */
+  case Answer[Σ <: Tuple, X, E[+_]](op: E[X], by: Answering[E, ?, ?]) extends Cont[Σ, Σ, X]
 
   /** the stacks composed end to end: `this` from `I` to `O`, `f`'s from `I2` to `I` */
   def flatMap[I2 <: Tuple, B](f: A => Cont[I2, I, B]): Cont[I2, O, B] = Bind(this, f)
@@ -179,7 +180,9 @@ trait Perform[E[+_], C <: In[?, ?]]:
 object Perform extends PerformLow:
   given answered[E[+_], C <: In[?, ?]](using c0: C, a: Answered[E, C]): Perform[E, C] with
     val c: C = c0
-    def apply[X](op: E[X]): Cont[c.Here, c.Here, X] = Cont.Answer[c.Here, X, E, C](op, c, a)
+    /** the answering handler, found once: every operation of this capability goes to it */
+    val by: Answering[E, ?, ?] = a.at(c)
+    def apply[X](op: E[X]): Cont[c.Here, c.Here, X] = Cont.Answer[c.Here, X, E](op, by)
 sealed trait PerformLow:
   given reaches[E[+_], C <: In[?, ?]](using c0: C, r: Reaches[E, C]): Perform[E, C] with
     val c: C = c0
@@ -213,9 +216,10 @@ object Reaches:
         val clause: Clause[E, t.Dn, t.Ansn] = t.clause
 /** the value of `E` answered in place in the context `C`: its handler answers, or a context outside does */
 trait Answered[E[+_], C <: Ctx]:
-  def apply[X](op: E[X], c: C): X
+  /** the answering handler as reached from the context `c`: its own, or one outside */
+  def at(c: C): Answering[E, ?, ?]
 object Answered:
   given here[E[+_], C <: Answers[E, ?, ?]]: Answered[E, C] with
-    def apply[X](op: E[X], c: C): X = c.answering.value(op)
+    def at(c: C): Answering[E, ?, ?] = c.answering
   given outside[E[+_], Oc <: Ctx, C <: In[?, Oc]](using o: Answered[E, Oc]): Answered[E, C] with
-    def apply[X](op: E[X], c: C): X = o(op, c.outer)
+    def at(c: C): Answering[E, ?, ?] = o.at(c.outer)

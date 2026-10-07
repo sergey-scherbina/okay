@@ -44,7 +44,7 @@ enum Cap[E[+_], C <: Ctx]:
   case Answers[E[+_], C <: Ctx](a: Answered[E, C]) extends Cap[E, C]
   case Reaching[E[+_], C <: In[?, ?]](r: Reaches[E, C]) extends Cap[E, C]
   def perform[X](op: E[X], c: C): Cont[c.Here, c.Here, X] = this match
-    case Answers(a) => Cont.Answer[c.Here, X, E, C](op, c, a)
+    case Answers(a) => Cont.Answer[c.Here, X, E](op, a.at(c))
     case Reaching(r) =>
       val t = r.target(c)
       Cont.Op[c.Here, X, t.Dn, t.Ansn, E](t.reach, op, t.clause)

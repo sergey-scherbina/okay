@@ -1682,3 +1682,28 @@ is the trait's own, at a context — an extension of that name would never be se
 Int +: Say +: Pure)` is written, handled in any order (stage 39), reordered by the compiler where another order
 is expected (stage 40), and run (TestFree). What is left for the move is the package of the classic and the
 artifact's name, the operator's decision.
+
+## Stage 42: THE ANSWER FEEDS THE NEXT FRAME (DONE, 2026-10-07)
+
+The sprint's `cont-state-cost`: `state` 10 % behind the classic (stage 36). Two things, measured one at a time
+against the day's own baseline (the box after a reboot: `writerTell` 14.76, `stateAnswering` 20.7 on master).
+
+(1) `Answer` carries the answering handler itself: `Answered.at(c): Answering[E, ?, ?]` resolved ONCE in
+`Perform.answered` (the given holds the context), where before every operation walked the `outside` chain, a
+virtual call per level between. (2) Tried first: `Bind(Answer, f)` answered in the `Bind` arm, no frame pushed
+— `handlePrebuiltAnswering` 128 → 106, but `writerTell` 14.8 → 16.0: a type test on EVERY `Bind` for a case that
+is only the left of one. Taken instead: the `Answer` arm itself feeds the next frame — `k match { case
+Frame(f, rest) => go(f(by.value(op)), rest, m) }` — no `Return` made, no second pass of the loop, for every
+answered operation wherever it stands.
+
+| lane | before | now | classic |
+|---|---|---|---|
+| stateAnswering | 20.7 | 17.6 ± 0.2 | stateEffect 18.2 ± 0.3 |
+| writerTell | 14.8 | 12.5 ± 0.3 | 27.7 |
+| handlePrebuiltAnswering | 128.5 | 66.8 ± 1.1 | handlePrebuilt (CPS) 130.4 |
+| handlePrebuilt, general | 171 | 165 ± 2 | 130.4 |
+| handleForward | 200 | 194 ± 1 | 152.5 |
+
+The machine's state is now ahead of the classic handler's. Left in the sprint item: a row program's
+`Cap.perform` still builds its `Target` per operation — caching it needs the capability to carry its context as a
+value and `Has.lift` to take the inner context as one (`In[?, c.type]`, so that two paths of one type meet).
