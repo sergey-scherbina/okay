@@ -27,7 +27,7 @@ instantiations are exactly the two Okay uses.
 
 ## Instance one: the continuation monad with answer-type modification
 
-Chapter 2's `Cont[A, S, R]` means `(A => S) => R`. Read through
+Chapter 2's `Cps[A, S, R]` means `(A => S) => R`. Read through
 Atkey's lens: the "state" being moved is the **answer type** — the
 type of what the surrounding `reset` will produce. `shift` may hand
 back an answer of a different type than its continuation returns, and
@@ -47,7 +47,7 @@ final class DiagonalMonad[M[_, _, _], R](val P: ParaMonad[M])
 given [M[_, _, _] : ParaMonad as P, R]: Monad[[A] =>> M[A, R, R]] = ...
 ```
 
-which is how `A /> R = Cont[A, R, R]` gets its `Monad` and how the
+which is how `A />> R = Cps[A, R, R]` gets its `Monad` and how the
 whole effect machinery of chapter 5 — built on `/>`-valued handlers —
 rides on ordinary monadic code while the general three-parameter form
 stays available underneath.
@@ -62,10 +62,10 @@ DIFFERENT type than its own continuation returns, and here that
 difference is "one more expected argument":
 
 ```scala
-def lit(s: String): Cont[Unit, String, String] = Cont.shift(k => s + k(()))
-def hole[T]: Cont[T, String, T => String] = Cont.shift(k => (t: T) => k(t))
+def lit(s: String): Cps[Unit, String, String] = Cps.shift(k => s + k(()))
+def hole[T]: Cps[T, String, T => String] = Cps.shift(k => (t: T) => k(t))
 
-val fmt: Cont[Unit, String, Int => String] = hole[Int].flatMap(n => lit(s"Score: $n"))
+val fmt: Cps[Unit, String, Int => String] = hole[Int].flatMap(n => lit(s"Score: $n"))
 val asFunction: Int => String = fmt / (_ => "")
 // asFunction(7) == "Score: 7"
 ```

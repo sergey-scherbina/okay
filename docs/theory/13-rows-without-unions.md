@@ -135,7 +135,7 @@ handler: resume once, not at all (abort), or several times
 (nondeterminism). The probe exercises all three from Scala 2.13
 (`TestOwnEffectFromScala2`). Kammar, Lindley and Oury
 \[[2013](#ref-kammar-2013)\] catalogue what that power buys.
-Continuations themselves are exposed as `Cont[A, S, R]`, chapter 3's
+Continuations themselves are exposed as `Cps[A, S, R]`, chapter 3's
 parameterised monad, answer-type modification included.
 
 ## What the Scala 2 reader forced, and what it did not

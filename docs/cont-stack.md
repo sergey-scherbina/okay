@@ -15,7 +15,7 @@ bounds are. The design and its measurements are in
 
 **Since 2026-10-01 Cont runs on the frame machine** (cont-on-frames,
 [specs/freer-kont.md](../specs/freer-kont.md)): a run is a frame of its
-own whose `ret` is your `k`, and every leaf an operation (`Cont.Op`) the
+own whose `ret` is your `k`, and every leaf an operation (`Cps.Op`) the
 nearest run's frame answers — each `reset` delimits its own shifts
 (cont-run-prompt, 2026-10-03) — on the same machine `Shift` runs on,
 with its stack on the heap. The three
@@ -39,8 +39,8 @@ no bookkeeping, no switch, on any platform. A million of them run on a
 128 KB stack:
 
 ```scala
-val deep = (1 to 1_000_000).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => Cont.shift[Int, Int, Int](k => k(x + 1))))
-Cont.reset(deep) // 1000000 — no frame per level: the body is the value it passes
+val deep = (1 to 1_000_000).foldLeft(Cps.Pure[Int, Int](0): Int />> Int)((m, _) => m.flatMap(x => Cps.shift[Int, Int, Int](k => k(x + 1))))
+Cps.reset(deep) // 1000000 — no frame per level: the body is the value it passes
 ```
 
 **A body that uses the answer** — `k(x + 1) + 1`, `k(1) + k(10)`,
@@ -60,8 +60,8 @@ small thread, and on Scala.js, where there is no fresh stack to switch
 to.
 
 ```scala
-val used = (1 to 1_000_000).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => Cont.shift[Int, Int, Int](k => k(x + 1) + 1)))
-Cont.reset(used) // 2000000 — no frame per level either: the pending `+ 1`s live on the runner's own stack
+val used = (1 to 1_000_000).foldLeft(Cps.Pure[Int, Int](0): Int />> Int)((m, _) => m.flatMap(x => Cps.shift[Int, Int, Int](k => k(x + 1) + 1)))
+Cps.reset(used) // 2000000 — no frame per level either: the pending `+ 1`s live on the runner's own stack
 ```
 
 **Read since 2026-10-02 (cont-stack-layer1-c):** a call under a
@@ -126,8 +126,8 @@ call `k` in the body yourself (`k(helper(x))` rather than
 need `-Yretain-trees` in every caller's build; it was not done.
 
 ```scala
-val opaque = (1 to 20_000).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => Cont.shift[Int, Int, Int](k => try k(x + 1) catch { case _: ArithmeticException => 0 })))
-Cont.reset(opaque) // 20000 — `k` under `try`: each level a frame; past the room the rest runs on a fresh stack
+val opaque = (1 to 20_000).foldLeft(Cps.Pure[Int, Int](0): Int />> Int)((m, _) => m.flatMap(x => Cps.shift[Int, Int, Int](k => try k(x + 1) catch { case _: ArithmeticException => 0 })))
+Cps.reset(opaque) // 20000 — `k` under `try`: each level a frame; past the room the rest runs on a fresh stack
 ```
 
 ## How much room, per platform
@@ -159,7 +159,7 @@ nested such bodies run on a 128 KB JVM thread and on Scala.js, where the
 strict `k` fails with "Maximum call stack size exceeded":
 
 ```scala
-    val c = Cont.shift[Int, Ans, Ans](k => { val p = k(1); log += "body"; p.flatMap(v => k(v)) })
+    val c = Cps.shift[Int, Ans, Ans](k => { val p = k(1); log += "body"; p.flatMap(v => k(v)) })
 ```
 
 **The contract it changes:** host side effects written after `k(a)` in
@@ -184,8 +184,8 @@ computed. Every level is re-run at most once, so a million nested
 bodies run in linear time:
 
 ```scala
-    else Cont.shiftLeaf[Int, Int, Int](k => { prefix(0) += 1; k(1) + 1 }).flatMap(x => nest(n - 1, prefix).map(_ + x))
-    assertEquals(replaying(64)(Cont.reset(nest(deep, prefix))), 2 * deep)
+    else Cps.shiftLeaf[Int, Int, Int](k => { prefix(0) += 1; k(1) + 1 }).flatMap(x => nest(n - 1, prefix).map(_ + x))
+    assertEquals(replaying(64)(Cps.reset(nest(deep, prefix))), 2 * deep)
 ```
 
 **The contract:** where a suspension crosses a strict body, the part of
@@ -216,8 +216,8 @@ run time can trampoline it without running it again.
 So a scope chooses, by an import:
 
 ```scala
-  import okay.freer.Cont.safe.given
-    else Cont.shift[Int, Int, Int](k => { log(0) += 1; val r = k(1); log(1) += 1; r + 1 }).flatMap(x => nest(n - 1, log).map(_ + x))
+  import okay.freer.Cps.safe.given
+    else Cps.shift[Int, Int, Int](k => { log(0) += 1; val r = k(1); log(1) += 1; r + 1 }).flatMap(x => nest(n - 1, log).map(_ + x))
 ```
 
 In a `safe` scope, every `shift` body that uses `k` is CPS-transformed
@@ -230,7 +230,7 @@ function it cannot see into, for one) is a COMPILE ERROR that says how to
 write it. A body that answers a program keeps a lazy `k` and compiles.
 
 ```scala
-  import okay.freer.Cont.noReplay.given
+  import okay.freer.Cps.noReplay.given
 ```
 
 In a `noReplay` scope an opaque body compiles as before but is NEVER
@@ -242,10 +242,10 @@ stack on Scala.js.
 At run time, for the strict leaves no scope transformed:
 
 ```scala
-    Cont.setMode(m)
+    Cps.setMode(m)
 ```
 
-`Cont.Mode.Auto` is the default, the optimized one: re-execution on
+`Cps.Mode.Auto` is the default, the optimized one: re-execution on
 Scala.js, a fresh stack on the JVM and Native. `Replay` re-executes
 everywhere. `Safe` never re-executes. Set it at start with
 `-Dokay.cont.mode=auto|replay|safe`, or in code. Under `Safe`, Scala.js
@@ -255,7 +255,7 @@ compile-time one.
 ## The knobs
 
 - `-Dokay.cont.mode=auto|replay|safe` — what a strict leaf does when its
-  `k` runs out of room (above); `Cont.setMode` in code. `auto` is the
+  `k` runs out of room (above); `Cps.setMode` in code. `auto` is the
   default; `-Dokay.cont.replay=true`, stage 4's spelling, is `replay`.
 
 - `-Dokay.cont.room=N` — the levels the caller's stack is asked to hold
@@ -284,7 +284,7 @@ compile-time one.
   Lower `-Dokay.cont.room` for such a program.
 - **Scala.js**: none for a strict body since re-execution (above), within
   its contract. A run started from user code of another run (a fresh
-  `Cont.reset` inside a lambda) is bounded by that caller's depth, as on
+  `Cps.reset` inside a lambda) is bounded by that caller's depth, as on
   every platform.
 
 ## What it costs when it does not switch
@@ -309,7 +309,7 @@ that fits its stack pays one stack reading, 0.3 µs.
 ## Literature
 
 - Danvy & Filinski, "Abstracting Control" (LFP 1990): `shift`/`reset`
-  and the answer-type discipline `Cont[A, S, R]` keeps.
+  and the answer-type discipline `Cps[A, S, R]` keeps.
 - Rompf, Maier & Odersky, "Implementing First-Class Polymorphic
   Delimited Continuations by a Type-Directed Selective CPS-Transform"
   (ICFP 2009): the compile-time road the macro takes — the tail body,

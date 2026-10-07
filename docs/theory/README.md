@@ -4,7 +4,7 @@
 with the notation and the reading order.)*
 
 Okay is a small library built out of large ideas, and its code cites
-them in passing — `Cont.scala` opens by naming Danvy and Filinski,
+them in passing — `Cps.scala` opens by naming Danvy and Filinski,
 `Logic.scala` names LogicT, the staging comment names
 Carette–Kiselyov–Shan. This book is the connected account: which
 theories the library stands on, who established them, where to read
@@ -51,7 +51,7 @@ infix type %[F[_, _], S] = F[S, *]
 type Pure[+A] = Nothing
 // F + G is a union of signatures; a row is built with % and +
 // Effects.scala:59 — a Cont-valued handler
-infix type !>[F[_], S] = Interpr[F, Cont, S]
+infix type !>[F[_], S] = Interpr[F, Cps, S]
 ```
 
 So `A ! State % Int + Throws % String` reads: *a program computing

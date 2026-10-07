@@ -32,23 +32,23 @@ sentence.
 ## What this is in Okay: `Cont`
 
 ```scala
-// Cont.scala, object Cont — capture the current continuation
-// (Danvy–Filinski, with answer-type modification): Cont.shift
+// Cps.scala, object Cont — capture the current continuation
+// (Danvy–Filinski, with answer-type modification): Cps.shift
 inline def shift[A, S, R](inline f: (A => S) => R)(using inline scope: Shifts): Rep[A, S, R] =
   ${ okay.freer.macros.ContMacro.shift('f, 'scope) }
-// delimit: run with the identity continuation: Cont.reset
+// delimit: run with the identity continuation: Cps.reset
 inline def reset[A, R](c: Rep[A, A, R]): R = run(c)(identity)
 ```
 
-`Cont[A, S, R]` *means* `(A => S) => R` — chapter 3 explains the three
-parameters — and `A /> R` (`Cont.scala:34`) is its diagonal
-`Cont[A, R, R]`, the ordinary continuation monad. The interesting
+`Cps[A, S, R]` *means* `(A => S) => R` — chapter 3 explains the three
+parameters — and `A />> R` (`Cps.scala:34`) is its diagonal
+`Cps[A, R, R]`, the ordinary continuation monad. The interesting
 engineering is that `Cont` is **defunctionalized**: rather than being
 the function type it means, it is a data type with one interpreter,
 `/`. And since 2026-09-15 that data type is not its own: `Cont` is
 the freer tree of chapter 4 at the signature "a function of the
 continuation" — `opaque type Rep[A, S, R] = Freer[Shift, S, R, A]`
-(`Cont.scala`), a `shift` being a leaf `Inject(f)` and a bind a
+(`Cps.scala`), a `shift` being a leaf `Inject(f)` and a bind a
 `Bind`, with `S` and `R` on the nodes since 2026-09-29 so the runner
 is typed by the GADT. Chapter 11 tells that story in full: the two
 attempts to put the answer types on the nodes that the compiler
@@ -58,16 +58,16 @@ refused, and the third that it accepted. Three consequences, all load-bearing:
 stack on long `flatMap` chains — the classic problem Rúnar Bjarnason
 treated for Scala with trampolines \[[Bjarnason 2012](#ref-bjarnason-2012)\]. Okay's answer is
 the same normalization move chapter 1 showed for `Free`, because it
-*is* `Free`'s: `Bind` is a node, and the runner (`Cont.step`,
-`Cont.scala:299`) rebalances left-nested binds in a tail-recursive
+*is* `Free`'s: `Bind` is a node, and the runner (`Cps.step`,
+`Cps.scala:299`) rebalances left-nested binds in a tail-recursive
 loop, the same rotation `Free.resume` performs. A tail call between
 two mutually recursive functions is a `Delay` node, forced by that
-loop and continued as is (`Cont.delay`, `Cont.scala:173`).
+loop and continued as is (`Cps.delay`, `Cps.scala:173`).
 
 **Absorption, exactly once.** Pure defunctionalization pays a node per
 bind. A fresh leaf therefore *absorbs* its first `flatMap` into
 itself — `Inject(Leaf.Absorbed(s, f))`, the function `k => s(a =>
-run(f(a))(k))` (`Cont.scala:201–236`) — and a leaf that has absorbed
+run(f(a))(k))` (`Cps.scala:201–236`) — and a leaf that has absorbed
 once takes the next bind as a node. This used to be a depth budget of
 128; the sweep that replaced it (`fuse-depth`, 2026-09-15) found the
 first step to be the whole of the 12–25% win and every deeper step a
@@ -131,29 +131,29 @@ general case, and it is general *because* of Filinski. Chapter 5 walks
 the three shapes; the point here is that they are not three features
 but one theorem, specialized twice.
 
-## `shift` in a direct block: `Cont.direct`
+## `shift` in a direct block: `Cps.direct`
 
 `Shift.shift` captures under a handler, in a row. The bare paramonad
 has the same word, and since cont-in-direct (2026-09-17) it can be
 written in a direct block too:
 
 ```scala
-import okay.freer.Cont.direct.*
+import okay.freer.Cps.direct.*
 
-type Str = [X] =>> Cont[X, String, String]        // the diagonal at String
+type Str = [X] =>> Cps[X, String, String]        // the diagonal at String
 
-val c: String /> String = direct[Str]:
+val c: String />> String = direct[Str]:
   val x: String = !shift[String](k => k("one") + " " + k("two"))
   "<" + x + ">"
 
-Cont.reset(c)    // "<one> <two>" — the rest of the block ran once per k
+Cps.reset(c)    // "<one> <two>" — the rest of the block ran once per k
 ```
 
 Two things are worth naming.
 
 **One type argument.** `shift[A]` names the captured value's type and
 nothing else; the answer type comes from the block, through an
-`AnswerOf[F]` witness that also re-associates `Cont[A, R, R]` to `F[A]`
+`AnswerOf[F]` witness that also re-associates `Cps[A, R, R]` to `F[A]`
 by *typing* it, so the convenience costs no cast. This is the same
 trick as `Shift.shift[A]`, whose answer type comes from its `Prompted`
 evidence.
@@ -209,7 +209,7 @@ once.
 
 **Answer-type modification** \[[Danvy & Filinski 1990](#ref-danvy-1990)\].
 The block produces an `Int` and the delimiter answers a `String`.
-`Cont[A, S, R]` carries that in its type; a plain monad cannot say it.
+`Cps[A, S, R]` carries that in its type; a plain monad cannot say it.
 
 **Functional unparsing** \[[Danvy 1998](#ref-danvy-1998)\]. A format is
 a value, built from directives, and the TYPE of `sprintf` is computed
@@ -227,11 +227,11 @@ MOVES the answer type — `str` turns "the delimiter answers `T`" into
 it can be a `for`-comprehension with nothing annotated inside it:
 
 ```scala
-def lit[T](s: String): Cont[String, T, T] = Cont.shift(k => k(s))
-def str[T]: Cont[String, T, String => T] = Cont.shift(k => (x: String) => k(x))
-def int[T]: Cont[String, T, Int => T] = Cont.shift(k => (n: Int) => k(n.toString))
+def lit[T](s: String): Cps[String, T, T] = Cps.shift(k => k(s))
+def str[T]: Cps[String, T, String => T] = Cps.shift(k => (x: String) => k(x))
+def int[T]: Cps[String, T, Int => T] = Cps.shift(k => (n: Int) => k(n.toString))
 
-val greeting: String => Int => String = Cont.reset[String, Out]:
+val greeting: String => Int => String = Cps.reset[String, Out]:
   for
     x <- lit("Hello, ")
     y <- str
@@ -242,7 +242,7 @@ val greeting: String => Int => String = Cont.reset[String, Out]:
 
 The expected type on `reset` carries the whole chain. And this is the
 sharpest statement of the boundary above: those directives are exactly
-what `Cont.direct` cannot express, because `S ≠ R` at every step —
+what `Cps.direct` cannot express, because `S ≠ R` at every step —
 a test asserts that `AnswerOf` has no instance for them.
 
 ## References

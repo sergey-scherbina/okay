@@ -25,13 +25,13 @@ The construction is two lines, and answer-type modification (chapter
 3) is what types it precisely:
 
 ```scala
-// Cont.scala (Monadic), 401–409
-inline def reflect[B]: Cont[A, F[B], F[B]] = Cont.shift(k => m.flatMap(k))
-inline def reify[F[_], A, B](p: Cont[A, F[A], F[B]])(using M: Monad[F]): F[B] =
+// Cps.scala (Monadic), 401–409
+inline def reflect[B]: Cps[A, F[B], F[B]] = Cps.shift(k => m.flatMap(k))
+inline def reify[F[_], A, B](p: Cps[A, F[A], F[B]])(using M: Monad[F]): F[B] =
   p / (a => M.pure(a))
 ```
 
-`Cont[A, F[B], F[B]]` reads "*A now, F[B] eventually*": the reflected
+`Cps[A, F[B], F[B]]` reads "*A now, F[B] eventually*": the reflected
 value's answer type carries the debt the block owes its monad, and
 `reify` settles it with `pure`. Danvy and Filinski's typing
 discipline \[[Danvy & Filinski 1990](#ref-danvy-1990)\], made

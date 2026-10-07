@@ -14,8 +14,8 @@ docs/arrows.md	Mealy.runAll(both, "a1b")
 docs/arrows.md	Mealy.runAll(counting &&& counting, "ab")   // Vector((1, 1), (2, 2))
 docs/arrows.md	Mealy.runAll(labelled, "abc")     // Vector("#1", "#2", "#3")
 docs/arrows.md	PState.zoom(item)(parse)   // item: Lens[Box[String], Box[Int], String, Int]
-docs/arrows.md	def idGiven[X, R, A](x: X): Zooming[X, R][A, A] = Cont.shift(k => a => k(x)(a))
-docs/arrows.md	def id[X, R, A]: Zooming[X, R][A, A] = Cont.shift(k => a => k(???)(a))
+docs/arrows.md	def idGiven[X, R, A](x: X): Zooming[X, R][A, A] = Cps.shift(k => a => k(x)(a))
+docs/arrows.md	def id[X, R, A]: Zooming[X, R][A, A] = Cps.shift(k => a => k(???)(a))
 docs/arrows.md	eachLine.foldMap((l: Line) => Vector(describe(l)))(order)
 docs/arrows.md	eachLine.traverseOf(check)(order)
 docs/benchmarks.md	apply(List.empty[A])((s, a: A) => keep(a :: s))(...)
@@ -209,7 +209,7 @@ docs/continuations/15-resumable-exceptions.md	assertEquals(parsed, 3)      // ro
 docs/continuations/15-resumable-exceptions.md	case (Malformed(line, _), _) =>
 docs/continuations/15-resumable-exceptions.md	if line > 2 then Resume(-1) else Invoke("skip", ())
 docs/continuations/16-continuations-and-monads.md	State.run[Int, Int](1)(p)   // (11, 12) — the same answer
-docs/continuations/16-continuations-and-monads.md	def sGet[S, R]: Cont[S, S => R, S => R]           = Cont.shift(k => s => k(s)(s))
+docs/continuations/16-continuations-and-monads.md	def sGet[S, R]: Cps[S, S => R, S => R]           = Cps.shift(k => s => k(s)(s))
 docs/continuations/16-continuations-and-monads.md	sRun(7) { sGet.flatMap(s => sSet(s)) }              // (7, ())
 docs/continuations/16-continuations-and-monads.md	sRun(7) { sSet(9).flatMap(_ => sGet) }              // (9, 9)
 docs/continuations/17-in-the-effect-system.md	!.run(Shift.delimited[(Int, Int), P](State.handle[Int](0)(inside)))
@@ -948,9 +948,9 @@ docs/theory/01-monads.md	inline def map[B](f: A => B): Free[F, B] = flatMap(a =>
 docs/theory/01-monads.md	inline def pure[F[+_], A](a: A): A ! F
 docs/theory/01-monads.md	m >>= pure       ==  m
 docs/theory/01-monads.md	pure(a) >>= f    ==  f(a)
-docs/theory/02-continuations.md	Cont.reset(c)    // "<one> <two>" — the rest of the block ran once per k
-docs/theory/02-continuations.md	type Str = [X] =>> Cont[X, String, String]        // the diagonal at String
-docs/theory/02-continuations.md	val greeting: String => Int => String = Cont.reset[String, Out]:
+docs/theory/02-continuations.md	Cps.reset(c)    // "<one> <two>" — the rest of the block ran once per k
+docs/theory/02-continuations.md	type Str = [X] =>> Cps[X, String, String]        // the diagonal at String
+docs/theory/02-continuations.md	val greeting: String => Int => String = Cps.reset[String, Out]:
 docs/theory/03-parameterised.md	extends Monad[[A] =>> M[A, R, R]]
 docs/theory/03-parameterised.md	given [M[_, _, _] : ParaMonad as P, R]: Monad[[A] =>> M[A, R, R]] = ...
 docs/theory/05-effects-handlers.md	@tailrec private def step[A, S, R](c: Rep[A, S, R])(k: A => S): R = c match
@@ -965,8 +965,8 @@ docs/theory/05-effects-handlers.md	case Inject(a: F[A])                 // Free.
 docs/theory/05-effects-handlers.md	case Inject(s)           => s.at[S, R](k)                      // hand over
 docs/theory/05-effects-handlers.md	case OrElse[A](a: A ! Tx, b: A ! Tx)  extends Tx[A]      // Stm.scala
 docs/theory/05-effects-handlers.md	case Pure(a)             => pinned[S, R](k(a))
-docs/theory/05-effects-handlers.md	case Shift (f: (A => S) => R, depth) // Cont.scala
-docs/theory/05-effects-handlers.md	split[F, G](e)(e => h(e))(e => Cont.shift(k => perform(e).flatMap(k)))
+docs/theory/05-effects-handlers.md	case Shift (f: (A => S) => R, depth) // Cps.scala
+docs/theory/05-effects-handlers.md	split[F, G](e)(e => h(e))(e => Cps.shift(k => perform(e).flatMap(k)))
 docs/theory/06-tagless-staging.md	transparent inline def Control[M[_, _, _]]: Control[M] = summonInline[Control[M]]
 docs/theory/07-logic-streams.md	!.loop[Int, Int, Take % String](0) { n =>
 docs/theory/07-logic-streams.md	Take.await[String].map {
@@ -982,7 +982,7 @@ docs/theory/08-direct-style.md	final class DirectCtx[F[_]] private[Direct] ()
 docs/theory/08-direct-style.md	given directColor[R[+_], A](using Direct.DirectCtx[[X] =>> Free[R, X]]): Conversion[Free[R, A], A]
 docs/theory/08-direct-style.md	given opColor[F[_], G[_], A](using DirectCtx[F], Effect[G]): Conversion[G[A], A]
 docs/theory/08-direct-style.md	given selfColor[F[_], A](using DirectCtx[F]): Conversion[F[A], A]
-docs/theory/08-direct-style.md	inline def reflect[B]: Cont[A, F[B], F[B]] = Cont.shift(k => m.flatMap(k))
+docs/theory/08-direct-style.md	inline def reflect[B]: Cps[A, F[B], F[B]] = Cps.shift(k => m.flatMap(k))
 docs/theory/08-direct-style.md	trait Effect[G[_]]
 docs/theory/10-optics.md	.flatMap(_.up).flatMap(_.first)                     // back out, into the first
 docs/theory/10-optics.md	.map(_.modify(d => d.copy(pct = d.pct * 2)).root)

@@ -98,9 +98,9 @@ implementation, and rebuild it out of nothing but `shift`.
 The state monad, in full:
 
 ```scala
-def sGet[S, R]: Cont[S, S => R, S => R]           = Cont.shift(k => s => k(s)(s))
-def sSet[S, R](s2: S): Cont[Unit, S => R, S => R] = Cont.shift(k => _ => k(())(s2))
-def sRun[S, A](s: S)(m: Cont[A, S => (S, A), S => (S, A)]): (S, A) =
+def sGet[S, R]: Cps[S, S => R, S => R]           = Cps.shift(k => s => k(s)(s))
+def sSet[S, R](s2: S): Cps[Unit, S => R, S => R] = Cps.shift(k => _ => k(())(s2))
+def sRun[S, A](s: S)(m: Cps[A, S => (S, A), S => (S, A)]): (S, A) =
   (m / (a => (fin: S) => (fin, a)))(s)
 ```
 
@@ -175,7 +175,7 @@ an argument for writing it that way:
   measured 2026-09-17). Worth knowing before you reach for the
   four-line version in a hot loop; not worth much anywhere else.
 - The **type** is `Int ! State % Int`. It names one effect. The
-  derived version's type is `Cont[Int, Int => (Int, Int), Int => (Int, Int)]`,
+  derived version's type is `Cps[Int, Int => (Int, Int), Int => (Int, Int)]`,
   which says "a continuation whose answer type is a function" — true,
   and not what the programmer wants to read in an error message.
 - Effects **compose by row**. Two `Cont` monads with different answer

@@ -110,7 +110,7 @@ system's carrier, and nothing had to be built for it.
 
 ## Type-changing optics *are* parameterised state
 
-Chapter 3 read `Cont[A, S, R]` "through Atkey's lens" as a figure of
+Chapter 3 read `Cps[A, S, R]` "through Atkey's lens" as a figure of
 speech. It is not one.
 
 A four-parameter optic `Lens[S1, S2, A1, A2]` is a *type-changing*
@@ -122,7 +122,7 @@ repository (chapter 3). Put them together and the zoom writes itself:
 
 ```scala
 // State.scala — the body, now the Strong instance's `lens`
-Cont.shift(k => (s1: S1) => (p / (x => (a2: A2) => k(x)(set(s1, a2))))(get(s1)))
+Cps.shift(k => (s1: S1) => (p / (x => (a2: A2) => k(x)(set(s1, a2))))(get(s1)))
 ```
 
 One `shift`: read the part out of the whole to start the inner
@@ -135,7 +135,7 @@ and the parameterised state are two readings of the same arrow, and
 this line is where they meet.
 
 **And the meeting is an instance, which says how far it goes.** Read
-`P[A, B] = Cont[X, B => R, A => R]` — a program computing `X` that
+`P[A, B] = Cps[X, B => R, A => R]` — a program computing `X` that
 takes the state from `A` to `B` — and that shift above is exactly
 `Strong.lens` at this profunctor. `PState.zoom` is therefore
 `l[Zooming[X, R]](m)`: no body of its own, and every `Strong` optic

@@ -31,7 +31,7 @@ identical in both; only the node between them differs:
 
 ```scala
 case Inject(a: F[A])                 // Free.scala
-case Shift (f: (A => S) => R, depth) // Cont.scala
+case Shift (f: (A => S) => R, depth) // Cps.scala
 ```
 
 `Pure` and `Bind` are the free monad's *skeleton* — returning and
@@ -54,7 +54,7 @@ continuation is its argument. Three things follow, and all three are
 visible in the library.
 
 **It fixes the arity of the types.** `Free[F, A]` needs one index;
-`Cont[A, S, R]` needs three. Answer-type modification (chapter 3) is
+`Cps[A, S, R]` needs three. Answer-type modification (chapter 3) is
 the price of seeing the continuation, and only the type that sees it
 pays.
 
@@ -221,14 +221,14 @@ know which.
 
 `k(_).foldCont(h)` lowers *the rest of the program* and binds it after.
 So the Free spine is rebuilt as a `Cont` spine, one node at a time, with
-the handler's own `Cont` spliced in at each. `Pure` maps to `Cont.Pure`.
+the handler's own `Cont` spliced in at each. `Pure` maps to `Cps.Pure`.
 Nothing is executed yet: the result is still a description, just one
 whose sequencing now lives in the carrier that can talk about
 continuations.
 
 ### What running it does
 
-`Cont`'s runner (`Cont.step`, `Cont.scala:299`) is chapter 4's
+`Cont`'s runner (`Cps.step`, `Cps.scala:299`) is chapter 4's
 rotation with the handover interleaved — and since `Cont` *is* the
 freer tree (chapter 11), it walks the same nodes the program was made
 of:
@@ -269,7 +269,7 @@ The other half of `handle` shows what an *unhandled* operation looks
 like once lowered — this is the definition, in the `Effects` trait:
 
 ```scala
-split[F, G](e)(e => h(e))(e => Cont.shift(k => perform(e).flatMap(k)))
+split[F, G](e)(e => h(e))(e => Cps.shift(k => perform(e).flatMap(k)))
 ```
 
 Read aloud: not mine, so perform it again in the residual row and
@@ -285,8 +285,8 @@ by a cheaper road, and it is worth reading because it is where the
 one-tree story pays in practice. A forwarded operation is simply
 re-emitted on the tree — `Inject(e).flatMap(x => loop(k(x)))`, the way
 `relay` has always done — and `Cont` is entered only for an operation
-the handler *claims*. Then `Cont.onAnswer` asks whether the handler
-answered with a plain value (`Cont.Pure`, which every comonadic
+the handler *claims*. Then `Cps.onAnswer` asks whether the handler
+answered with a plain value (`Cps.Pure`, which every comonadic
 handler builds, and which is `Free.Return`); if so the loop continues on
 the answer with a tail call and nothing is allocated; only a handler
 that really captures its continuation gets the rest of the program

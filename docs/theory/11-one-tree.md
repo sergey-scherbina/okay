@@ -28,7 +28,7 @@ and whose `Bind` keeps the continuation as a plain function,
 because the continuation is *data beside* the operation rather than
 mapped *into* it.
 
-`Cont[A, S, R]` *means* `(A => S) => R` — Danvy and Filinski's
+`Cps[A, S, R]` *means* `(A => S) => R` — Danvy and Filinski's
 delimited control with answer-type modification \[[Danvy & Filinski
 1990](#ref-danvy-filinski-1990)\], parameterised in Atkey's sense
 (chapter 3). Defunctionalized, it was `Pure(a) | Shift(f) | Bind(m, k)`
@@ -41,7 +41,7 @@ signature `F` of a freer tree the type constructor "a function of the
 continuation":
 
 ```scala
-// Cont.scala — the representation: the freer tree at Cont's own signature
+// Cps.scala — the representation: the freer tree at Cont's own signature
 opaque type Rep[A, S, R] = Freer[Sig, S, R, A]
 ```
 
@@ -49,7 +49,7 @@ opaque type Rep[A, S, R] = Freer[Sig, S, R, A]
 R`, the shift body itself as the leaf, run by a runner of Cont's own.
 Since cont-on-frames Cont runs on the same frame machine as `Shift` —
 chapter 2's `shift0`/`$` calculus — and since cont-run-prompt
-(2026-10-03) it is `Sig = Cont.Op`: a leaf is Cont's own operation,
+(2026-10-03) it is `Sig = Cps.Op`: a leaf is Cont's own operation,
 `Op[S, R, A]`, typed as the leaf it is. Since cont-atm (2026-10-03) it
 runs on `Delimited`, the machine every effect shares, as an effect with
 answer-type modification typed on the machine's ANSWER boundaries — no
@@ -58,9 +58,9 @@ leaf is a function of the continuation either way.)
 
 and `Cont` **is** `Freer[Sig, S, R, A]`, the same enum `Free[F, A]`
 is (`Freer[Unary[F], Unit, Unit, A]`). There is nothing to convert
-between them, because there is nothing between them. `Cont.Pure` is
-`Free.Return` (`Cont.scala:151`); `Cont.shift(f)` is `Free.Inject`
-of the leaf (`Cont.scala:155`); `flatMap` is `Free.Bind`, with one
+between them, because there is nothing between them. `Cps.Pure` is
+`Free.Return` (`Cps.scala:151`); `Cps.shift(f)` is `Free.Inject`
+of the leaf (`Cps.scala:155`); `flatMap` is `Free.Bind`, with one
 refinement below. Read the other way, `Free` is `Cont` whose shift
 body is chosen by the *handler* rather than by the program — which is
 exactly what chapter 5's lowering, `foldCont`, does: it replaces each
@@ -77,7 +77,7 @@ serve both.
 
 ## Where the answer types live, and what it took to put them there
 
-The obvious objection: `Cont[A, S, R]` has three type parameters and
+The obvious objection: `Cps[A, S, R]` has three type parameters and
 `Free[F, A]` has one that is not `F`. Where are `S` and `R`?
 
 **On the nodes, since 2026-09-29** (freer-base-step-extractor). The
@@ -165,7 +165,7 @@ So the budget became a bit, and the bit became a class. A fresh leaf
 absorbs the first `flatMap` into itself — `Inject(Leaf.Absorbed(s,
 f))`, the function `k => s(a => run(f(a))(k))` — and a leaf that has
 absorbed once takes the next bind as a `Bind` node like any other
-(`Cont.scala:201–236`). `map` has its own case, `Mapped`, because
+(`Cps.scala:201–236`). `map` has its own case, `Mapped`, because
 spelling it as `Absorbed` over `a => Pure(f(a))` allocated a `Pure`
 per element at run time (+24 B/op, 8–19% on every Fib lane — the
 generator maps once per element). `Once` is an enum rather than two
@@ -198,7 +198,7 @@ it normalizes any tree to one of three head forms, `Return(a)`,
 Every interpreter in the library is a three-case match over what
 `resume` leaves — `Free.fold`, `runFree`, `relay`, `handle`, the
 stream walkers, `Async`'s loop — where there used to be five copies of
-the rotation itself. `Cont.step` (`Cont.scala:299`) keeps the one
+the rotation itself. `Cps.step` (`Cps.scala:299`) keeps the one
 copy that composes through `bind`, so a rotated continuation can be
 absorbed by the leaf it lands on; delegating it to `resume` was
 measured and lost 6% on `statePara`.
@@ -272,7 +272,7 @@ Better, concretely:
   programs, delimited control, the streams, the codecs and the direct
   block's deep recursion (chapter 8). Five copies of the rotation
   became two, and the second is there for a measured reason.
-- **Fewer bytes, not more.** `Cont.Pure` *is* `Free.Return`; a handler's
+- **Fewer bytes, not more.** `Cps.Pure` *is* `Free.Return`; a handler's
   answer is a node the tree already has; a captured continuation is
   one `Delay`. The numbers above are the numbers.
 - **The typestate road stays open.** Stage 2 of the same spec — a

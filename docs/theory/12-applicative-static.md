@@ -302,7 +302,7 @@ exactly the over-approximation `leaves` reports.
 
 Chapter 6 measured staging: a program written against an abstract
 carrier unfolds at compile time, and at the `Func` carrier
-(Cont.scala:401) it becomes plain nested closures with no tree at all.
+(Cps.scala:401) it becomes plain nested closures with no tree at all.
 That chapter also recorded the limit honestly — *only static program
 structure unfolds; a runtime-`n` loop does not*.
 

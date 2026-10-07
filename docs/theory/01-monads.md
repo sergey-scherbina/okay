@@ -103,7 +103,7 @@ The parade of Moggi's examples is Okay's module list. State
 (`State.scala`), exceptions (`Throws.scala` — "typed aborts"),
 nondeterminism (`Choice.scala`, chapter 7), output (`Writer.scala`),
 input (`Reader.scala`), and the continuation monad itself
-(`Cont.scala`, chapter 2). Each is one *signature* — a small GADT or
+(`Cps.scala`, chapter 2). Each is one *signature* — a small GADT or
 identity alias naming its operations — rather than a monad of its own,
 because in Okay there is exactly one monad (`Free`/`!`) and the
 signatures plug into it. Why that factoring is the right one is the

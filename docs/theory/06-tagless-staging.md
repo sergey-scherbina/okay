@@ -19,7 +19,7 @@ point Okay leans on: when the carrier is statically known, the
 abstraction can be made to cost nothing.
 
 Okay's `Control` trait (chapter 2) is exactly this shape, and
-`Cont.scala` names the maneuver:
+`Cps.scala` names the maneuver:
 
 ```scala
 /** summons the instance at its precise type, so its inline operations resolve statically (Carette-Kiselyov-Shan staging) */
