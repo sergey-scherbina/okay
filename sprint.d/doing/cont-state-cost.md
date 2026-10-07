@@ -9,7 +9,7 @@
       8 ns; the 17 ns both pay is STRUCTURE: `flatMap` joins rows (`R ++
       R2`) and `run` splits the capabilities by the row's shape at every
       node (`Shape.split`, an `HCons` list rebuilt), one `Free` object a
-      bind. THE DECISION, the operator's: a FIXED-ROW `Free` — `flatMap`
+      bind. THE DECISION, the operator's (taken up by effects-rows): a FIXED-ROW `Free` — `flatMap`
       at one row, one `Has` a run, `inject` polymorphic in the row by the
       expected type or an explicit argument as the classic's `effect[F, A]`
       is, `for` over mixed effects needing the program's row declared, as
