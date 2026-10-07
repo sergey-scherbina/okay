@@ -1,9 +1,11 @@
 package okay.cluster.foreign
 
 import java.util.concurrent.atomic.AtomicInteger
-import okay.{Aggregator, Chunks}
+import okay.Chunks
+import okay.freer.Aggregator
 import okay.cluster.{Flow, Flows, Scope}
 import okay.given
+import okay.freer.given
 
 /**
  * A stateful stage gives back what holds a partition's state on EVERY path

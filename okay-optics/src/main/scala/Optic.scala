@@ -1,5 +1,7 @@
 package okay
 
+
+import okay.freer.*
 import scala.deriving.Mirror
 import scala.compiletime.constValue
 import scala.reflect.ClassTag

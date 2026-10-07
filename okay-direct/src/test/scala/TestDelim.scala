@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import Shift.{abort, push, reset, shift}
 
 /**
@@ -31,7 +34,7 @@ class TestDelim extends munit.FunSuite {
   test("dropping the continuation is an early exit") {
     var reached = false
     val r = !.run(reset[Int, okay.Pure] { p =>
-      shift[Int, Int, okay.Pure](p)(_ => okay.pure(42))
+      shift[Int, Int, okay.Pure](p)(_ => okay.freer.pure(42))
         .map { x => reached = true; x + 1 }
     })
     assertEquals(r, 42)
@@ -64,7 +67,7 @@ class TestDelim extends munit.FunSuite {
       push[Int, okay.Pure](outer) {
         push[Int, okay.Pure](inner) {
           // jumps over `inner` straight to `outer`
-          shift[Int, Int, okay.Pure](outer)(_ => okay.pure(99))
+          shift[Int, Int, okay.Pure](outer)(_ => okay.freer.pure(99))
         }.map { x => innerFinished = true; x + 1 }
       }.map(_ + 1000)
 
@@ -84,7 +87,7 @@ class TestDelim extends munit.FunSuite {
       push[String, okay.Pure](str) {
         push[Int, okay.Pure](num) {
           shift[Int, Int, okay.Pure](num)(k => k(21).map(_ * 2))
-        }.flatMap(n => shift[String, String, okay.Pure](str)(_ => okay.pure(s"n=$n")))
+        }.flatMap(n => shift[String, String, okay.Pure](str)(_ => okay.freer.pure(s"n=$n")))
       }
 
     assertEquals(!.run(Shift.run[String, okay.Pure](prog)), "n=42")
@@ -95,7 +98,7 @@ class TestDelim extends munit.FunSuite {
     val r = !.run(reset[Int, okay.Pure] { p =>
       shift[Int, Int, okay.Pure](p) { k =>
         k(1).flatMap(a =>
-          if a < 5 then k(a + 1).map(_ + 100) else okay.pure(a))
+          if a < 5 then k(a + 1).map(_ + 100) else okay.freer.pure(a))
       }.map(_ * 2)
     })
     // k(1) = 2; 2 < 5 so k(3) = 6, +100 = 106
@@ -106,10 +109,10 @@ class TestDelim extends munit.FunSuite {
     type F = Writer % String
     val told = Shift.run[Int, F] {
       push[Int, F](Shift.prompt[Int]) {
-        okay.effect[Shift % ? + F, Unit](Writer("before")).flatMap(_ =>
-          okay.pure(1))
+        okay.freer.effect[Shift % ? + F, Unit](Writer("before")).flatMap(_ =>
+          okay.freer.pure(1))
       }.flatMap(x =>
-        okay.effect[Shift % ? + F, Unit](Writer("after")).map(_ => x + 1))
+        okay.freer.effect[Shift % ? + F, Unit](Writer("after")).map(_ => x + 1))
     }
     val (ws, a) = !.run(Writer.run[String, Int, okay.Pure](told))
     assertEquals(a, 2)
@@ -121,8 +124,8 @@ class TestDelim extends munit.FunSuite {
     val prog = Shift.run[Int, F] {
       Shift.prompt[Int] match
         case p => push[Int, F](p) {
-          shift[Int, Int, F](p)(_ => okay.pure(5)).flatMap(x =>
-            okay.effect[Shift % ? + F, Unit](Writer("never")).map(_ => x))
+          shift[Int, Int, F](p)(_ => okay.freer.pure(5)).flatMap(x =>
+            okay.freer.effect[Shift % ? + F, Unit](Writer("never")).map(_ => x))
         }
     }
     val (ws, a) = !.run(Writer.run[String, Int, okay.Pure](prog))
@@ -135,7 +138,7 @@ class TestDelim extends munit.FunSuite {
     // the same prompt from inside f finds it
     val nested = !.run(reset[Int, okay.Pure] { p =>
       Shift.shift[Int, Int, okay.Pure](p)(_ =>
-        Shift.shift[Int, Int, okay.Pure](p)(_ => okay.pure(1)))
+        Shift.shift[Int, Int, okay.Pure](p)(_ => okay.freer.pure(1)))
     })
     assertEquals(nested, 1)
 
@@ -144,7 +147,7 @@ class TestDelim extends munit.FunSuite {
     intercept[NoPrompt] {
       !.run(reset[Int, okay.Pure] { p =>
         Shift.shift0[Int, Int, okay.Pure](p)(_ =>
-          Shift.shift0[Int, Int, okay.Pure](p)(_ => okay.pure(1)))
+          Shift.shift0[Int, Int, okay.Pure](p)(_ => okay.freer.pure(1)))
       })
     }
   }
@@ -154,7 +157,7 @@ class TestDelim extends munit.FunSuite {
     // shift0's k re-installs the delimiter, so that shift finds one
     val ok = !.run(reset[Int, okay.Pure] { p =>
       Shift.shift0[Int, Int, okay.Pure](p)(k => k(1))
-        .flatMap(x => Shift.shift0[Int, Int, okay.Pure](p)(_ => okay.pure(x + 40)))
+        .flatMap(x => Shift.shift0[Int, Int, okay.Pure](p)(_ => okay.freer.pure(x + 40)))
     })
     assertEquals(ok, 41)
   }
@@ -176,8 +179,8 @@ class TestDelim extends munit.FunSuite {
     // and it composes with ordinary control flow
     assertEquals(
       collect[Int] { p =>
-        (1 to 4).foldLeft(okay.pure[Shift % ? + okay.Pure, Unit](())) { (acc, i) =>
-          acc.flatMap(_ => if i % 2 == 0 then emit(p)(i) else okay.pure(()))
+        (1 to 4).foldLeft(okay.freer.pure[Shift % ? + okay.Pure, Unit](())) { (acc, i) =>
+          acc.flatMap(_ => if i % 2 == 0 then emit(p)(i) else okay.freer.pure(()))
         }
       },
       List(2, 4))
@@ -231,7 +234,7 @@ class TestDelim extends munit.FunSuite {
       direct:
         val x = !Shift.shift[Int, Int, W](p): k =>
           "deciding".tell                       // a mark directly under the lambda
-          if n % 2 == 0 then k(n) else okay.pure(-1)
+          if n % 2 == 0 then k(n) else okay.freer.pure(-1)
         s"got $x".tell
         x
     assertEquals(!.run(Writer.run[String, Int, okay.Pure](guard(4))),
@@ -243,7 +246,7 @@ class TestDelim extends munit.FunSuite {
   test("a mark inside a marked call's ARGUMENT compiles — the deferral steps aside") {
     import okay.Direct.*
     import scala.language.implicitConversions
-    def h(n: Int): Int ! okay.Pure = okay.pure(n + 1)
+    def h(n: Int): Int ! okay.Pure = okay.freer.pure(n + 1)
     val prog: Int ! okay.Pure = direct { !h(!h(5)) }
     assertEquals(!.run(prog), 7)
   }
@@ -265,9 +268,9 @@ class TestDelim extends munit.FunSuite {
   }
 
   test("Prompted: the evidence cannot be forged, so a capture cannot miss its delimiter") {
-    val e = compileErrors("new okay.Shift.Prompted[Int](okay.Shift.prompt[Int])")
+    val e = compileErrors("new okay.freer.Shift.Prompted[Int](okay.freer.Shift.prompt[Int])")
     assert(e.nonEmpty, "the evidence was constructible outside the package")
-    val e2 = compileErrors("okay.Shift.shift[Int, Int, okay.Pure](k => k(1))")
+    val e2 = compileErrors("okay.freer.Shift.shift[Int, Int, okay.Pure](k => k(1))")
     assert(e2.nonEmpty, "a capture compiled with no delimiter in scope")
   }
 

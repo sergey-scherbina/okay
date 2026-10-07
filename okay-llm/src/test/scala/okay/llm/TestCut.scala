@@ -1,7 +1,10 @@
 package okay.llm
 
 import okay.*
+import okay.freer.*
+
 import okay.given
+import okay.freer.given
 import Cut.*
 
 /** specs/llm-agentic.md, llm-streaming-cut — one test per box

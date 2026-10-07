@@ -1,6 +1,8 @@
 package okay.foreign
 
-import okay.given
+
+
+import okay.freer.given
 import okay.foreign.golden.FacadeDemo
 
 /** foreign-module-trait against a LIVE python3 (specs/foreign-highlevel.md stage 5) */

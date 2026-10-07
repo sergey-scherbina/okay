@@ -1,7 +1,7 @@
 package okay.foreign
 
-import okay.{!, Reader, State}
-import okay.given
+import okay.freer.{!, Reader, State}
+import okay.freer.given
 import okay.durable.Durable
 
 object TestPyCallbacks:

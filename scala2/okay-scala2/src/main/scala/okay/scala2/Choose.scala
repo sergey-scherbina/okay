@@ -31,7 +31,7 @@ sealed trait Choose
 object Choose {
 
   /** one of `as`: every one is an answer (okay's `choose`) */
-  def choose[A](as: A*): Eff[Choose, A] = Eff.of(coerce(okay.choose(as*)))
+  def choose[A](as: A*): Eff[Choose, A] = Eff.of(coerce(okay.freer.choose(as*)))
 
   /** no answer at all */
   def fail[A]: Eff[Choose, A] = choose[A]()
@@ -42,7 +42,7 @@ object Choose {
   /** every answer, in order (okay's `runChoice`), the rest of the row
    * forwarded */
   def runChoice[A, R](e: Eff[Choose & R, A]): Eff[R, Seq[A]] =
-    Eff.of(coerce(okay.runChoice[A, Top](coerce(e.program))))
+    Eff.of(coerce(okay.freer.runChoice[A, Top](coerce(e.program))))
 }
 
 /**
@@ -57,40 +57,40 @@ object Choose {
 object Logic {
 
   private[scala2] given residual: TypeableK[Top] = new TypeableK[Top] {
-    private val choose = summon[TypeableK[okay.Choose]]
+    private val choose = summon[TypeableK[okay.freer.Choose]]
     def test(x: Any): Boolean = !choose.test(x)
   }
 
   /** the first `n` answers; the search stops there, so it may be infinite */
   def observe[A, R](n: Int)(e: Eff[Choose & R, A]): Eff[R, Seq[A]] =
-    Eff.of(coerce(okay.Logic.observe[A, Top](n)(coerce(e.program))))
+    Eff.of(coerce(okay.freer.Logic.observe[A, Top](n)(coerce(e.program))))
 
   /** the first answer and the rest of the search as a program, or None */
   def msplit[A, R](m: Eff[Choose & R, A]): Eff[R, Option[(A, Eff[Choose & R, A])]] =
-    Eff.of(coerce(okay.Logic.msplit[A, Top](coerce(m.program))
+    Eff.of(coerce(okay.freer.Logic.msplit[A, Top](coerce(m.program))
       .map(_.map { case (a, rest) => (a, Eff.of[Choose & R, A](coerce(rest))) })))
 
   /** commit to the first answer, dropping the rest of the search */
   def cut[R <: Choose, A](e: Eff[R, A]): Eff[R, A] =
-    Eff.of(coerce(okay.Logic.cut[A, Top](coerce(e.program))))
+    Eff.of(coerce(okay.freer.Logic.cut[A, Top](coerce(e.program))))
 
   /** the soft cut: `th` for every answer of `cond`, and `el` only if
    * `cond` has none */
   def ifte[R <: Choose, A, B](cond: Eff[R, A])(th: A => Eff[R, B])(el: => Eff[R, B]): Eff[R, B] =
-    Eff.of(coerce(okay.Logic.ifte[A, B, Top](coerce(cond.program))(a => coerce(th(a).program))(coerce(el.program))))
+    Eff.of(coerce(okay.freer.Logic.ifte[A, B, Top](coerce(cond.program))(a => coerce(th(a).program))(coerce(el.program))))
 
   /** negation as failure: one answer exactly when `m` has none */
   def gnot[R <: Choose, A](m: Eff[R, A]): Eff[R, Unit] =
-    Eff.of(coerce(okay.Logic.gnot[A, Top](coerce(m.program))))
+    Eff.of(coerce(okay.freer.Logic.gnot[A, Top](coerce(m.program))))
 
   /** the FAIR or: answers of `a` and `b` take turns */
   def interleave[R <: Choose, A](a: Eff[R, A], b: => Eff[R, A]): Eff[R, A] =
-    Eff.of(coerce(okay.Logic.interleave[A, Top](coerce(a.program), coerce(b.program))))
+    Eff.of(coerce(okay.freer.Logic.interleave[A, Top](coerce(a.program), coerce(b.program))))
 
   /** the FAIR bind: every answer of `m` gets a turn before one branch of
    * `f` can monopolise the search */
   def fairBind[R <: Choose, A, B](m: Eff[R, A])(f: A => Eff[R, B]): Eff[R, B] =
-    Eff.of(coerce(okay.Logic.fairBind[A, B, Top](coerce(m.program))(a => coerce(f(a).program))))
+    Eff.of(coerce(okay.freer.Logic.fairBind[A, B, Top](coerce(m.program))(a => coerce(f(a).program))))
 }
 
 /**

@@ -440,7 +440,7 @@ monad of Kiselyov & Ishii (*Freer Monads, More Extensible Effects*,
 Haskell 2015, doi:10.1145/2804302.2804319). Scala 2 cannot spell a
 union type. The library's combinators are also `inline`, and the
 Scala 2 TASTy reader refuses to call those: *Unsupported Scala 3
-inline method flatMap; found in class okay.Free*. So a 2.13 build
+inline method flatMap; found in class okay.freer.Free*. So a 2.13 build
 cannot use okay's own API directly. It gets a small, fixed-row
 surface instead, the way `okay-java` gives Java one. The measurements
 and the stages still to come (State/Reader/Writer carriers, streams)

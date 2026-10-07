@@ -72,7 +72,7 @@ both ways, moving only the brackets. That does not compile, and the
 error is the most useful sentence in the chapter:
 
 ```
-No given instance of type okay.Shift.Prompted[Int] was found
+No given instance of type okay.freer.Shift.Prompted[Int] was found
 ```
 
 A prompt is typed by **what the delimiter answers**. With the handler

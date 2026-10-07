@@ -40,7 +40,7 @@ class TestReadmes extends munit.FunSuite {
     assert(hits.nonEmpty)
 
     // the readme's claim that the index is a monoid
-    val M = summon[okay.Monoid[Postings]]
+    val M = summon[okay.freer.Monoid[Postings]]
     val (l, r) = segs.splitAt(segs.length / 2)
     assertEquals(Keyword.search(M.combine(Keyword.index(l), Keyword.index(r)),
       "network requests", 3).map(_.segment.source), hits.map(_.segment.source))

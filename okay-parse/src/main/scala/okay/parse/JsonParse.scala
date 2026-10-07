@@ -1,6 +1,7 @@
 package okay.parse
 
-import okay.{Stage, pure}
+import okay.Stage
+import okay.freer.pure
 import okay.lex.Token
 import okay.lex.Json.K
 
@@ -39,7 +40,7 @@ object JsonParse {
     case _ => Vector(Instr.Emit(t))
 
   private def step(t: T): Stage[T, Instr[K], Unit] =
-    okay.!.each(instrs(t))(i => tell(i))
+    okay.freer.!.each(instrs(t))(i => tell(i))
 
   // ------------------------------------------------------------------
   // the combinator surface: little total parsers over Take, compiling

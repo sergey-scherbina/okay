@@ -1,7 +1,9 @@
 package okay.llm
 
-import okay.{!, %, +, Async, Writer, effect, pure}
+import okay.{%, +, Async}
+import okay.freer.{!, Writer, effect, pure}
 import okay.given
+import okay.freer.given
 import okay.codec.Json
 
 /** The thin client over a mock transport: tokens stream, lazily. */
@@ -68,7 +70,7 @@ class TestLlm extends munit.FunSuite {
 
   /** drain the token stream (Writer % String + Async, no real waits here) */
   def collect(s: Unit ! Writer % String + Async): List[String] =
-    import okay.!.*
+    import okay.freer.!.*
     def go(rest: Unit ! Writer % String + Async, acc: List[String]): List[String] =
       (rest.resume: @unchecked) match
         case Return(_) => acc.reverse

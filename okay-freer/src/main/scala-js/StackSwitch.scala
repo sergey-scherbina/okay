@@ -1,4 +1,6 @@
-package okay
+package okay.freer
+
+import okay.*
 
 /** Scala.js: no thread to switch to; deep opaque bodies are bounded by the engine's stack. */
 private[okay] object StackSwitch:

@@ -1,7 +1,10 @@
 package okay.actor
+import okay.freer.*
 
 import okay.*
+
 import okay.given
+import okay.freer.given
 
 /**
  * The laws of specs/actor.md, stage 0 — written as laws because the

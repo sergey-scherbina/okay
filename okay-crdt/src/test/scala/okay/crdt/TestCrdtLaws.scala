@@ -1,7 +1,6 @@
 package okay.crdt
 
 import okay.{Hlc, Uid}
-
 /**
  * EVERY INSTANCE RUNS THE THREE LAWS. That is the deliverable of
  * stage 2 — the types are easy and the laws are the content, so a new

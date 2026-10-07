@@ -1,5 +1,6 @@
 package okay
 
+
 /**
  * The six laws of specs/coordination-free.md stage 1. They are the
  * deliverable — a sortable id whose sortability is not tested is a

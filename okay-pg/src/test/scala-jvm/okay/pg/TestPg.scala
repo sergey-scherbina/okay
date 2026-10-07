@@ -1,7 +1,9 @@
 package okay.pg
 
-import okay.{!, +, %, Async, Chunk, effect, Resource, Source, Stream, Throws, Writer}
+import okay.{+, %, Async, Source}
+import okay.freer.{!, Chunk, effect, Resource, Stream, Throws, Writer}
 import okay.given
+import okay.freer.given
 import okay.crypto.given
 import okay.codec.Schema
 import okay.sql.{Granted, Isolation, Sql, SqlType, SqlValue, Typed}
@@ -22,7 +24,7 @@ class TestPg extends munit.FunSuite {
   val host = sys.env.getOrElse("OKAY_PG_HOST", "127.0.0.1")
   val port = sys.env.get("OKAY_PG_PORT").flatMap(_.toIntOption).getOrElse(5432)
 
-  def connect(): PgSql = okay.!.run(okay.Async.run[PgSql, okay.Pure](PgSql.connect(host, port, "okay", "okay", "okay")))
+  def connect(): PgSql = okay.freer.!.run(okay.Async.run[PgSql, okay.Pure](PgSql.connect(host, port, "okay", "okay", "okay")))
 
   lazy val available: Boolean =
     try { connect().close(); true }
@@ -70,7 +72,7 @@ class TestPg extends munit.FunSuite {
       val one = collectChunks(db.query("select 1")).flatten
       assertEquals(one, List(Vector(SqlValue.I32(1))))
     }
-    intercept[PgError](okay.!.run(okay.Async.run[PgSql, okay.Pure](PgSql.connect(host, port, "okay", "wrong-password", "okay"))))
+    intercept[PgError](okay.freer.!.run(okay.Async.run[PgSql, okay.Pure](PgSql.connect(host, port, "okay", "wrong-password", "okay"))))
   }
 
   test("the typed layer runs over the wire: rows by label, verify with catalog nullability") {
@@ -124,7 +126,7 @@ class TestPg extends munit.FunSuite {
     assume(available, s"no Postgres at $host:$port — the live suite skips")
     withDb { db =>
       val g = !.run(Async.run[Granted, okay.Pure](Resource.run[Granted, Async](
-        Typed.transact[Granted, Async](db, Isolation.RepeatableRead)(g => okay.pure(g)))))
+        Typed.transact[Granted, Async](db, Isolation.RepeatableRead)(g => okay.freer.pure(g)))))
       assertEquals(g.granted, Isolation.RepeatableRead)
       assert(!g.downgraded)
 
@@ -136,7 +138,7 @@ class TestPg extends munit.FunSuite {
       }
       val out = !.run(Async.run[Either[String, Long], Nothing](
         Resource.run[Either[String, Long], Async](
-          okay.runEither[Long, Resource + Async, String](prog))))
+          okay.freer.runEither[Long, Resource + Async, String](prog))))
       assertEquals(out, Left("no"))
       val n = collectChunks(db.query("select count(*) from customer where id = 30")).flatten
       assertEquals(n.head.head, SqlValue.I64(0), "the insert survived the abort")
@@ -251,9 +253,9 @@ class TestPg extends munit.FunSuite {
           !.widen[Long, Async, Resource](db.update("insert into customer(id, user_name, balance, active) values (40, 'ro', 1, true)"))
         })))
       assertEquals(db.sqlState(e), Some("25006"), e.getMessage)
-      val g = run(Resource.run[Granted, Async](Typed.transact[Granted, Async](db, readOnly = true)(g => okay.pure(g))))
+      val g = run(Resource.run[Granted, Async](Typed.transact[Granted, Async](db, readOnly = true)(g => okay.freer.pure(g))))
       assert(g.readOnly)
-      val plain = run(Resource.run[Granted, Async](Typed.transact[Granted, Async](db)(g => okay.pure(g))))
+      val plain = run(Resource.run[Granted, Async](Typed.transact[Granted, Async](db)(g => okay.freer.pure(g))))
       assert(!plain.readOnly)
       assertEquals(run(db.update("insert into customer(id, user_name, balance, active) values (40, 'rw', 1, true)")), 1L)
       assertEquals(run(db.update("delete from customer where id = 40")), 1L)
@@ -264,7 +266,7 @@ class TestPg extends munit.FunSuite {
     assume(available, s"no Postgres at $host:$port — the live suite skips")
     withDb { db =>
       val prog = Typed.transact[Granted, Async](db) { _ =>
-        Typed.transact[Granted, Async](db)(g2 => okay.pure(g2))
+        Typed.transact[Granted, Async](db)(g2 => okay.freer.pure(g2))
       }
       val e = intercept[IllegalStateException](
         !.run(Async.run[Granted, okay.Pure](Resource.run[Granted, Async](prog))))

@@ -1656,7 +1656,7 @@ unhandled-effect row is also pinned in `TestScala2Guide` with
 
 | message | cause | fix |
 |---|---|---|
-| `Unsupported Scala 3 inline method flatMap; found in class okay.Free` | code calls the Scala 3 API (`okay.*`) directly | use the types in `okay.scala2` |
+| `Unsupported Scala 3 inline method flatMap; found in class okay.freer.Free` | code calls the Scala 3 API (`okay.*`) directly | use the types in `okay.scala2` |
 | `error while loading Json, class file '.../okay/codec/Json.tasty' is broken (class scala.MatchError/49)` | code names `okay.codec.Json` (or `JsonSchema.of`) from Scala 2 | `okay.scala2.Json` / `okay.scala2.JsonSchema` |
 | `Unsupported Scala 3 union in bounds of type T; found in method wrapRefArray in class scala.LowPriorityImplicits` | the 3.9 stdlib comes BEFORE the 2.13 one on the compile classpath | the exclusion and the appended jar from section 1 |
 | `could not find package scala.annotation.internal` | the 3.9 stdlib is missing at compile time | append it (section 1) |

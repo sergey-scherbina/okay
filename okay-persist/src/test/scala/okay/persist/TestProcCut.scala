@@ -1,7 +1,8 @@
 package okay.persist
 
 import munit.FunSuite
-import okay.{!, Proc, Pure, Wf}
+import okay.{Proc, Pure, Wf}
+import okay.freer.{!}
 import okay.Proc.given
 import okay.codec.Schema
 import scala.language.implicitConversions
@@ -72,7 +73,7 @@ class TestProcCut extends FunSuite {
       n += 1
       calls(q) = calls.getOrElse(q, 0) + 1
       if n == cutAt then throw new Boom
-      okay.pure(answers(q))
+      okay.freer.pure(answers(q))
     })
 
   test("the uninterrupted run is the control") {

@@ -1,7 +1,8 @@
 package okay.java
 
-import okay.{!, Async, Fold, async}
-import okay.given
+import okay.{Async, async}
+import okay.freer.{!, Fold}
+import okay.freer.given
 import java.util.function.{
   BiFunction, BinaryOperator, Consumer, Function as JFunction,
   Predicate, Supplier, UnaryOperator}

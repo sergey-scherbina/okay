@@ -1,7 +1,9 @@
 package okay.agent
 
-import okay.{!, %, +, Async, Answers, Writer, effect, pure}
+import okay.{%, +, Async, Answers}
+import okay.freer.{!, Writer, effect, pure}
 import okay.given
+import okay.freer.given
 import okay.codec.{Json, Schema}
 import okay.llm.{OpenAi, Transport}
 import scala.collection.mutable
@@ -138,7 +140,7 @@ class TestProvider extends munit.FunSuite {
     val model = Provider.openAi(
       canned(Seq.fill(4)(answer("ok")), sent), "k", "m")
     val (_, ctx) = Handlers.context(Compact.window(120)(Compact.chars))
-    val prog = (1 to 3).foldLeft(okay.pure[Agent, String]("")) { (acc, i) =>
+    val prog = (1 to 3).foldLeft(okay.freer.pure[Agent, String]("")) { (acc, i) =>
       acc.flatMap(_ => Agent.converse(s"turn $i " + "z" * 200))
     }
     run(prog)(model, Handlers.tools(Map.empty), ctx): Unit
@@ -149,7 +151,7 @@ class TestProvider extends munit.FunSuite {
 
   /** drain a token stream (no real waiting in these tests) */
   def collect(s: Unit ! Writer % String + Async): List[String] =
-    import okay.!.*
+    import okay.freer.!.*
     def go(rest: Unit ! Writer % String + Async, acc: List[String]): List[String] =
       (rest.resume: @unchecked) match
         case Return(_) => acc.reverse

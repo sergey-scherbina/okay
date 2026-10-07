@@ -1,6 +1,8 @@
 package okay.http
 
 import okay.*
+import okay.freer.*
+
 import scala.concurrent.Await
 import scala.concurrent.duration.*
 

@@ -1,6 +1,6 @@
 package okay.scala2
 
-import okay.{!, TRef}
+import okay.freer.{!, TRef}
 import okay.given
 import Rows.coerce
 

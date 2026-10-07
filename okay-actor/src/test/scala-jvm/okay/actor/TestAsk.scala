@@ -1,7 +1,10 @@
 package okay.actor
+import okay.freer.*
 
 import okay.*
+
 import okay.given
+import okay.freer.given
 
 /** LAW 7: an ask answers or times out — never both, never neither. */
 class TestAsk extends munit.FunSuite {

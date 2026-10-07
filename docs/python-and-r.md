@@ -161,13 +161,13 @@ keep `Py`, which is an alias.
 
 A callback's continuation is a Python frame waiting in `okay.call`, so it
 can be resumed once. Some code can do more. A program can be written as
-DATA, a value built from `okay.done` and `okay.perform(...).then(f)`,
+DATA, a value built from `okay.done` and `okay.freer.perform(...).then(f)`,
 where the rest of the program is an ordinary function:
 
 ```python
 def pairs():
-    return okay.perform("choose", [1, 2]).then(lambda x:
-           okay.perform("choose", [10, 20]).then(lambda y:
+    return okay.freer.perform("choose", [1, 2]).then(lambda x:
+           okay.freer.perform("choose", [10, 20]).then(lambda y:
            okay.done(x + y)))
 ```
 

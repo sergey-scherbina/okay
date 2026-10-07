@@ -1,7 +1,7 @@
 package okay.codec
 
-import okay.{Cont, />}
-
+import okay.freer.{/>}
+import okay.freer.Cont
 /**
  * The STRICT JSON reader: characters straight into a `Schema`, no
  * tokens, no CST, no `Json` tree — the second door beside the

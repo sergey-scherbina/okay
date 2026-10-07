@@ -1,6 +1,7 @@
 package okay.ui
 
 import okay.*
+
 import okay.codec.{Json, JsonOptic}
 import okay.codec.JsonOptic.given
 

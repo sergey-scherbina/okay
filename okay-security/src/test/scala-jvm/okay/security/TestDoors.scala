@@ -1,7 +1,9 @@
 package okay.security
 
-import okay.{!, Async, provide, pure}
+import okay.Async
+import okay.freer.{!, provide, pure}
 import okay.given
+import okay.freer.given
 import okay.http.{Http, Request, Response}
 
 /** each door delegates to its explicit form — one assertion per

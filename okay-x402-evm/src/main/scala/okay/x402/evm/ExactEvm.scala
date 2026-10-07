@@ -2,6 +2,7 @@ package okay.x402.evm
 
 import java.nio.charset.StandardCharsets.UTF_8
 import okay.*
+import okay.freer.*
 import okay.codec.Json
 import okay.codec.Json.*
 import okay.x402.*

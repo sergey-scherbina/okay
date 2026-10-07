@@ -1,7 +1,9 @@
 package okay.jdbc
 
-import okay.{!, +, %, Async, Chunk, Source, Stream, Writer}
+import okay.{+, %, Async, Source}
+import okay.freer.{!, Chunk, Stream, Writer}
 import okay.given
+import okay.freer.given
 import okay.codec.Schema
 import okay.sql.{Sql, Typed}
 import java.nio.file.Files

@@ -1,7 +1,9 @@
 package okay.ui
 
 import okay.*
-import okay.Shift
+import okay.freer.*
+
+import okay.freer.Shift
 
 /**
  * Shift in Dialog, as an OPTION (specs/ui-toolkit.md, "Dialog
@@ -29,13 +31,13 @@ object Scope {
 
   /** install a cancellable scope: the body answers `A`, and `cancel`
    * against this scope's prompt exits it with the given value */
-  def push[A](body: okay.Prompt[A] => A ! Row): A ! Row =
+  def push[A](body: okay.freer.Prompt[A] => A ! Row): A ! Row =
     val p = Shift.prompt[A]
     Shift.push(p)(body(p))
 
   /** exit the named scope immediately with `value` — no Option
    * threading on the steps in between, however deep */
-  def cancel[A, R](p: okay.Prompt[R])(value: R): A ! Row =
+  def cancel[A, R](p: okay.freer.Prompt[R])(value: R): A ! Row =
     Shift.abort[R, A, Dialog](p)(value)
 
   /** erase the Shift row: after this it is an ordinary Dialog
@@ -43,7 +45,7 @@ object Scope {
   def run[A](prog: A ! Row): A ! Dialog = Shift.run(prog)
 
   /** the common one-scope shape: push + run */
-  def scoped[A](body: okay.Prompt[A] => A ! Row): A ! Dialog =
+  def scoped[A](body: okay.freer.Prompt[A] => A ! Row): A ! Dialog =
     run(push(body))
 
   // ── the capability door (specs/context-functions.md, ctx-prompts)

@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import scala.language.implicitConversions
 
 /**
@@ -37,12 +40,12 @@ class TestBookDisciplines extends munit.FunSuite {
     def oneMachineHelper[F[+_]](p: Int ! Shift % ? + F)(using Shift.Machine[F]): Int ! F =
       Shift.run(p)
     // at a clean row the helper runs its own machine
-    assertEquals(!.run(oneMachineHelper[P](okay.pure(1))), 1)
+    assertEquals(!.run(oneMachineHelper[P](okay.freer.pure(1))), 1)
     // at a row that already holds a machine the CALLER's row says so, and the helper nests
-    assertEquals(!.run(Shift.run[Int, P](oneMachineHelper[Shift % ? + P](okay.pure(1)))), 1)
+    assertEquals(!.run(Shift.run[Int, P](oneMachineHelper[Shift % ? + P](okay.freer.pure(1)))), 1)
     // undeclared, an abstract row is refused rather than guessed
     val e = compileErrors(
-      "def h[F[+_]](p: Int ! okay.Shift % ? + F): Int ! F = okay.Shift.run(p)")
+      "def h[F[+_]](p: Int ! okay.freer.Shift % ? + F): Int ! F = okay.freer.Shift.run(p)")
     assert(e.contains("using Shift.Machine[F]"), s"the abstract row was guessed: $e")
   }
 

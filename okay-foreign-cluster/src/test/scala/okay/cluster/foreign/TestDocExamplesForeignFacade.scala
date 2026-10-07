@@ -3,8 +3,10 @@ package okay.cluster.foreign
 // docs/foreign-facade.md's examples, verbatim (TestDocSnippets pins every
 // Scala line of the page here); the JVM examples run in the default gate,
 // the Python ones are the same lines TestPyFacade runs Live
+import okay.freer.given
 
 import okay.given
+
 import okay.codec.Schema
 import okay.cluster.{Flow, Flows}
 

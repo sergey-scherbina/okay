@@ -14,14 +14,14 @@ class TestCombine extends munit.FunSuite with okay.testkit.Munit.Diagnosed {
   import _root_.cats.syntax.all.*
 
   final case class Peak(n: Int)
-  given okay.Semigroup[Peak] with
+  given okay.freer.Semigroup[Peak] with
     def combine(x: Peak, y: Peak): Peak = Peak(x.n max y.n)
 
-  test("okay.Validated under cats' traverse, with only a cats Semigroup") {
+  test("okay.freer.Validated under cats' traverse, with only a cats Semigroup") {
     val out = List(1, 2, 3).traverse(i =>
-      if i == 2 then okay.Validated.valid[NonEmptyList[String], Int](i)
-      else okay.Validated.invalid[NonEmptyList[String], Int](NonEmptyList.one(s"$i")))
-    assertEquals(out, okay.Validated.invalid(NonEmptyList.of("1", "3")))
+      if i == 2 then okay.freer.Validated.valid[NonEmptyList[String], Int](i)
+      else okay.freer.Validated.invalid[NonEmptyList[String], Int](NonEmptyList.one(s"$i")))
+    assertEquals(out, okay.freer.Validated.invalid(NonEmptyList.of("1", "3")))
   }
 
   test("cats' Validated under okay's Selective, with only an okay Semigroup") {
@@ -32,26 +32,26 @@ class TestCombine extends munit.FunSuite with okay.testkit.Munit.Diagnosed {
   }
 
   test("a type both sides combine (String): okay's first, no ambiguity") {
-    import okay.given
-    val out = List(1, 2).traverse(i => okay.Validated.invalid[String, Int](s"<$i>"))
-    assertEquals(out, okay.Validated.invalid("<1><2>"))
+    import okay.freer.given
+    val out = List(1, 2).traverse(i => okay.freer.Validated.invalid[String, Int](s"<$i>"))
+    assertEquals(out, okay.freer.Validated.invalid("<1><2>"))
   }
 }
 
 class TestFromCatsKernel extends munit.FunSuite with okay.testkit.Munit.Diagnosed {
   import FromCatsKernel.given
 
-  test("okay.Validated accumulates with only a cats Semigroup (NonEmptyList)") {
+  test("okay.freer.Validated accumulates with only a cats Semigroup (NonEmptyList)") {
     val check = (i: Int) =>
-      if i % 2 == 1 then okay.Validated.invalid[NonEmptyList[String], Int](NonEmptyList.one(s"odd $i"))
-      else okay.Validated.valid[NonEmptyList[String], Int](i)
+      if i % 2 == 1 then okay.freer.Validated.invalid[NonEmptyList[String], Int](NonEmptyList.one(s"odd $i"))
+      else okay.freer.Validated.valid[NonEmptyList[String], Int](i)
     val out = okay.traverse(Seq(1, 2, 3))(check)
     note(s"traverse answered $out")
-    assertEquals(out, okay.Validated.invalid(NonEmptyList.of("odd 1", "odd 3")))
+    assertEquals(out, okay.freer.Validated.invalid(NonEmptyList.of("odd 1", "odd 3")))
   }
 
   test("cats' Group arrives as okay's, inverse kept, for a type okay has none for") {
-    val G = summon[okay.Group[(Int, Int)]]
+    val G = summon[okay.freer.Group[(Int, Int)]]
     assertEquals(G.combine((5, 2), G.inverse((5, 2))), G.empty)
   }
 }
@@ -62,7 +62,7 @@ class TestToCatsKernel extends munit.ScalaCheckSuite with okay.testkit.Munit.Dia
 
   /** a combiner only okay defines: the maximum, with a floor */
   final case class Peak(n: Int)
-  given okay.Monoid[Peak] with
+  given okay.freer.Monoid[Peak] with
     def empty: Peak = Peak(Int.MinValue)
     def combine(x: Peak, y: Peak): Peak = Peak(x.n max y.n)
 

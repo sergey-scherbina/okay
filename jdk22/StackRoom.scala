@@ -1,10 +1,10 @@
-package okay
+package okay.freer
 
 import java.lang.foreign.{Arena, FunctionDescriptor, Linker, MemorySegment, ValueLayout}
 import java.lang.invoke.MethodHandle
 
 /**
- * The JDK 22+ variant of `okay.StackRoom` (specs/cont-stack.md Layer
+ * The JDK 22+ variant of `okay.freer.StackRoom` (specs/cont-stack.md Layer
  * 3, Decision 12): the stack pointer and this thread's stack bounds,
  * read through the Foreign Function & Memory API. Compiled as project
  * `okayJdk22` (`-java-output-version 22`, so nothing past 22 is used)

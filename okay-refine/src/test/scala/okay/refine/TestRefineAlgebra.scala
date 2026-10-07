@@ -1,7 +1,9 @@
 package okay.refine
 
-import okay.{!, %, Optic, Writer, pure, runEither, runChoice, through}
+import okay.{%, Optic, through}
+import okay.freer.{!, Writer, pure, runEither, runChoice}
 import okay.given
+import okay.freer.given
 import okay.codec.Json
 import okay.testkit.Munit.Diagnosed
 

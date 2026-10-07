@@ -1,7 +1,9 @@
 package okay.ops
 
 import okay.*
+
 import okay.given
+import okay.freer.given
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicBoolean
 

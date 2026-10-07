@@ -1,7 +1,8 @@
 package okay.cluster
 
-import okay.Aggregator
+import okay.freer.Aggregator
 import okay.given
+import okay.freer.given
 
 /**
  * WHERE THE EXCHANGE STARTS TO PAY (specs/dataflow.md, stage 2).

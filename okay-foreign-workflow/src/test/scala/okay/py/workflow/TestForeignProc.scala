@@ -1,6 +1,7 @@
 package okay.foreign.workflow
 
-import okay.{%, !, +, Shift, Proc, Pure, Wf}
+import okay.{%, +, Proc, Pure, Wf}
+import okay.freer.{!, Shift}
 import okay.Direct.*
 import okay.Optic.arrows.*
 import okay.codec.Schema
@@ -36,7 +37,7 @@ object ShopProc:
  * both spellings, on the same journal as the do-notation workflow */
 class TestForeignProc extends munit.FunSuite:
   import ShopProc.*
-  import okay.given
+  import okay.freer.given
   override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
   override def munitIgnore: Boolean = TestPy.python.isEmpty
 

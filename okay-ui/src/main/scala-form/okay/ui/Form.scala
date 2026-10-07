@@ -1,7 +1,11 @@
 package okay.ui
 
-import okay.{!, Pure, Cont, />}
+import okay.Pure
+
+import okay.freer.{/>}
+import okay.freer.{!, Cont}
 import okay.given
+import okay.freer.given
 import okay.codec.{Codecs, Json, Schema}
 import scala.annotation.tailrec
 

@@ -6,13 +6,13 @@ object PyConformance:
     import okay
 
     def pairs():
-        return okay.perform("choose", [1, 2]).then(lambda x:
-               okay.perform("choose", [10, 20]).then(lambda y:
+        return okay.freer.perform("choose", [1, 2]).then(lambda x:
+               okay.freer.perform("choose", [10, 20]).then(lambda y:
                okay.done(x + y)))
 
     def total(sku, qty):
-        return okay.perform("price_of", sku).then(lambda price:
-               okay.perform("discount", price * qty))
+        return okay.freer.perform("price_of", sku).then(lambda price:
+               okay.freer.perform("discount", price * qty))
 
     def boom():
         raise RuntimeError("python says no")

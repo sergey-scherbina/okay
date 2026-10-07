@@ -5,8 +5,10 @@ import _root_.cats.effect.IO
 import _root_.cats.effect.unsafe.implicits.global
 import _root_.cats.laws.discipline.ApplicativeTests
 import _root_.cats.syntax.all.*
-import okay.{!, Async, Choose, Static, Validated, async, choose, runChoice}
+import okay.{Async, async}
+import okay.freer.{!, Choose, Static, Validated, choose, runChoice}
 import okay.given
+import okay.freer.given
 import okay.==>
 import org.scalacheck.{Arbitrary, Gen}
 import java.util.concurrent.{CountDownLatch, TimeUnit}
@@ -23,7 +25,7 @@ class TestCatsClasses extends munit.ScalaCheckSuite with okay.testkit.Munit.Diag
   private def checkAll(name: String, rules: org.typelevel.discipline.Laws#RuleSet): Unit =
     for (id, prop) <- rules.all.properties do property(s"$name: $id")(prop)
 
-  // ---- okay.Validated under cats
+  // ---- okay.freer.Validated under cats
 
   type V[A] = Validated[String, A]
 
@@ -33,9 +35,9 @@ class TestCatsClasses extends munit.ScalaCheckSuite with okay.testkit.Munit.Diag
     Gen.alphaStr.map(e => Validated.invalid[String, A](e)),
   ))
 
-  checkAll("cats.Applicative[okay.Validated]", ApplicativeTests[V].applicative[Int, Int, String])
+  checkAll("cats.Applicative[okay.freer.Validated]", ApplicativeTests[V].applicative[Int, Int, String])
 
-  test("cats' traverse over okay.Validated reports EVERY error") {
+  test("cats' traverse over okay.freer.Validated reports EVERY error") {
     val check = (i: Int) =>
       if i % 2 == 1 then Validated.invalid[Vector[String], Int](Vector(s"odd $i"))
       else Validated.valid[Vector[String], Int](i)
@@ -45,13 +47,13 @@ class TestCatsClasses extends munit.ScalaCheckSuite with okay.testkit.Munit.Diag
     assertEquals(List(2, 4).traverse(check), Validated.valid(List(2, 4)))
   }
 
-  test("cats' mapN over okay.Validated combines both failures") {
+  test("cats' mapN over okay.freer.Validated combines both failures") {
     val a = Validated.invalid[String, Int]("a")
     val b = Validated.invalid[String, Int]("b")
     assertEquals((a, b).mapN(_ + _), Validated.invalid("ab"))
   }
 
-  // ---- okay.Static under cats
+  // ---- okay.freer.Static under cats
 
   enum Op[+A]:
     case Get(key: String) extends Op[Int]
@@ -143,15 +145,15 @@ class TestCatsClasses extends munit.ScalaCheckSuite with okay.testkit.Munit.Diag
     enum Ask[+A]:
       case Num(k: String) extends Ask[Int]
     val p: Int ! Ask = for
-      a <- okay.effect(Ask.Num("a"))
-      b <- okay.effect(Ask.Num("bb"))
+      a <- okay.freer.effect(Ask.Num("a"))
+      b <- okay.freer.effect(Ask.Num("bb"))
     yield a * 10 + b
     val toIO: Ask ==> IO = [X] => (e: Ask[X]) => e match
       case Ask.Num(k) => IO(k.length)
     assertEquals(p.foldMap(toIO).unsafeRunSync(), 12)
   }
 
-  test("conversions: okay.Validated <-> cats' Validated, both roads") {
+  test("conversions: okay.freer.Validated <-> cats' Validated, both roads") {
     val ok = Validated.valid[String, Int](1)
     val bad = Validated.invalid[String, Int]("e")
     assertEquals(CatsInterop.fromCatsValidated(CatsInterop.toCatsValidated(ok)), ok)

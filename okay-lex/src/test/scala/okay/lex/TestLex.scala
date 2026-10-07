@@ -1,7 +1,8 @@
 package okay.lex
 
-import okay.{!, %, Chunks, Writer, through, pure}
-import okay.toLazyList
+import okay.{%, Chunks, through}
+import okay.freer.{!, Writer, pure}
+import okay.freer.toLazyList
 import Json.K
 
 /** The total streaming scanner: lossless, exact spans, incremental. */
@@ -101,7 +102,7 @@ class TestLex extends munit.FunSuite {
         all.count(_.channel == Channel.Syntax), input)
       // and the same through an Aggregator, which is where the
       // aggregation algebra meets lexing
-      assertEquals(Scan.aggregate(Json.scan)(input)(okay.Aggregator.count[Token[K]]),
+      assertEquals(Scan.aggregate(Json.scan)(input)(okay.freer.Aggregator.count[Token[K]]),
         all.length.toLong, input)
   }
 

@@ -1,6 +1,8 @@
 package okay.codec
+import okay.freer.*
 
 import okay.*
+
 import okay.given
 
 /**

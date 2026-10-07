@@ -1,6 +1,7 @@
 package okay.java
 
-import okay.{Aggregator, Bulk, Chunks, Csv}
+import okay.{Bulk, Chunks, Csv}
+import okay.freer.Aggregator
 import java.nio.charset.StandardCharsets.UTF_8
 import java.nio.file.{Files, Path}
 import java.util.{ArrayList, List as JList}

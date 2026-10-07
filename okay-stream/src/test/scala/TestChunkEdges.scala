@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 /**
  * The edges of chunked merging and of `Flush` — the sizes and shapes
  * where an off-by-one in the buffer, a missed final flush or a lost
@@ -56,7 +59,7 @@ class TestChunkEdges extends munit.FunSuite {
     val bad: Source[Int] =
       Source.of(List(1, 2)).flatMap(_ =>
         !.widen[Unit, Async, Writer % Int](
-          okay.effect[Async, Unit](Async.Run(() => throw boom))))
+          okay.freer.effect[Async, Unit](Async.Run(() => throw boom))))
     val out = scala.util.Try(drain(bad.merge(ints(100 to 130), chunked = true)))
     // either it surfaces the failure or it delivers the good side —
     // what it must NOT do is hang or lose the good side silently
@@ -70,8 +73,8 @@ class TestChunkEdges extends munit.FunSuite {
   // ── Flush at the edges ──────────────────────────────────────────
 
   private type R = Flush + (Writer % Int + Async)
-  private def tell(i: Int): Unit ! R = okay.effect[R, Unit](Writer(i))
-  private def empty: Flushing[Int] = okay.pure[R, Unit](())
+  private def tell(i: Int): Unit ! R = okay.freer.effect[R, Unit](Writer(i))
+  private def empty: Flushing[Int] = okay.freer.pure[R, Unit](())
 
   test("Flush.now with nothing buffered emits nothing and is not an error") {
     val p: Flushing[Int] = Flush.now[Writer % Int + Async]
@@ -96,9 +99,9 @@ class TestChunkEdges extends munit.FunSuite {
   test("Flush.now inside a full chunk splits it exactly there") {
     // 20 elements with a boundary after the 3rd: the boundary chunk is
     // short, the rest still chunks normally, order is preserved
-    val p: Flushing[Int] = (1 to 20).foldLeft(okay.pure[R, Unit](())): (m, i) =>
+    val p: Flushing[Int] = (1 to 20).foldLeft(okay.freer.pure[R, Unit](())): (m, i) =>
       m.flatMap(_ => tell(i))
-        .flatMap(_ => if i == 3 then Flush.now[Writer % Int + Async] else okay.pure(()))
+        .flatMap(_ => if i == 3 then Flush.now[Writer % Int + Async] else okay.freer.pure(()))
     assertEquals(p.mergeFlushing(empty).toLazyList.toList, (1 to 20).toList)
   }
 
@@ -117,7 +120,7 @@ class TestChunkEdges extends munit.FunSuite {
   test("runForeach: runs f for every element, in order, as one program") {
     val seen = collection.mutable.ArrayBuffer.empty[Int]
     val p: Unit ! Async = Source.of(List(1, 2, 3)).runForeach(i =>
-      !.widen[Unit, Async, Async](okay.effect[Async, Unit](Async.Run(() => seen += i))))
+      !.widen[Unit, Async, Async](okay.freer.effect[Async, Unit](Async.Run(() => seen += i))))
     p.runWith
     assertEquals(seen.toList, List(1, 2, 3))
   }
@@ -125,7 +128,7 @@ class TestChunkEdges extends munit.FunSuite {
   test("runForeach on an empty source runs f zero times") {
     var calls = 0
     Source.of(List.empty[Int]).runForeach(_ =>
-      okay.effect[Async, Unit](Async.Run(() => calls += 1))).runWith
+      okay.freer.effect[Async, Unit](Async.Run(() => calls += 1))).runWith
     assertEquals(calls, 0)
   }
 

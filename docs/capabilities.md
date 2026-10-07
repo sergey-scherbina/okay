@@ -223,7 +223,7 @@ given ctxMonad[E]: Monad[[X] =>> E ?=> X]   // Provide.scala
 and one import unlocks the combinators over readers:
 
 ```scala
-import okay.given   // instances need the given import — `import okay.*` is not enough
+import okay.freer.given   // instances need the given import — `import okay.freer.*` is not enough
 
 val xs: Seq[Env ?=> Int] = Seq(wire[Env].uid, wire[Env].uid + 1)
 val all: Env ?=> Seq[Int] = sequence(xs)     // F is INFERRED
@@ -306,8 +306,8 @@ the failures are load-bearing.
   eta-expansion there) — which is why the flat form is generated to
   22 and the unbounded form is `providing`/`and`, whose type
   lambdas reduce where match types stall (E16).
-- **Instances ride the given import**: `import okay.*` brings the
-  functions, `import okay.given` brings `ctxMonad` (and friends).
+- **Instances ride the given import**: `import okay.freer.*` brings the
+  functions, `import okay.freer.given` brings `ctxMonad` (and friends).
   Forgetting the second is a "no given instance" error at a
   `sequence` call, not silence.
 - **The ctx-monad is for width, not depth** (E22). Every bind the

@@ -1,7 +1,9 @@
 package okay.r2dbc
 
-import okay.{!, +, %, Async, Chunk, Source, Stream, Writer}
+import okay.{+, %, Async, Source}
+import okay.freer.{!, Chunk, Stream, Writer}
 import okay.given
+import okay.freer.given
 import okay.sql.{Isolation, SqlType, SqlValue, Typed}
 import okay.sql.given
 import io.r2dbc.spi.Connection

@@ -1,5 +1,7 @@
 package okay
 
+
+import okay.freer.*
 // the per-file import the direct colouring needs, for the reason
 // `direct-given-import-needed` records and every other TestDirect*
 // file in this directory carries
@@ -101,10 +103,10 @@ class TestDirectOpticsArrows extends munit.FunSuite {
       import okay.*, okay.given
       final case class P(n: Int)
       val n = okay.Lens[P](_.n)
-      type V[A] = okay.Validated[Vector[String], A]
-      given okay.Semigroup[Vector[String]] with
+      type V[A] = okay.freer.Validated[Vector[String], A]
+      given okay.freer.Semigroup[Vector[String]] with
         def combine(x: Vector[String], y: Vector[String]): Vector[String] = x ++ y
-      def one: V[Int] = okay.Validated.Valid(1)
+      def one: V[Int] = okay.freer.Validated.Valid(1)
       val out: V[P] = okay.direct[V]:
         n.modify(i => i + one.reflect)(P(0))
       out

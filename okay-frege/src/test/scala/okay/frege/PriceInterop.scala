@@ -1,6 +1,7 @@
 package okay.frege
 
-import okay.{!, %, Writer, pure, through}
+import okay.{%, through}
+import okay.freer.{!, Writer, pure}
 import okay.frege.{Programs as P}
 
 /**

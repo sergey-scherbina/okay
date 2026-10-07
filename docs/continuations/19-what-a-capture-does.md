@@ -103,7 +103,7 @@ line survives nothing.
 Two shapes that would be wrong are not available:
 
 ```scala
-okay.bracket[Int, Int, okay.Shift % ? + okay.Pure](1)(_ => ())(r => okay.pure(r))
+okay.freer.bracket[Int, Int, okay.freer.Shift % ? + okay.Pure](1)(_ => ())(r => okay.freer.pure(r))
 // error, mentioning: Handler
 ```
 
@@ -112,7 +112,7 @@ exactly what a capture breaks. It needs a `Answers` for the row, and
 `Shift` has none.
 
 ```scala
-try { !okay.Shift.exit(1); 0 } finally { closed = true }
+try { !okay.freer.Shift.exit(1); 0 } finally { closed = true }
 // error, mentioning: finalizer
 ```
 

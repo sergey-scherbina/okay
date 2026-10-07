@@ -1,5 +1,7 @@
 package okay
 
+
+import okay.freer.*
 import scala.util.Random
 import Chunks.elements
 

@@ -1,7 +1,10 @@
 package okay.mcp
+import okay.freer.given
 
 
 import okay.given
+
+
 import okay.agent.{ToolCall, Turn}
 import okay.codec.Json
 

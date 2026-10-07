@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 /**
  * THE MECHANISM `merge` RUNS ON (specs/ready-merge.md, the second
  * stage; specs/own-or-standard.md's shape for a choice between two of
@@ -82,11 +85,11 @@ object Merge:
     // drive, a fiber's handler or, abandoned, the collector releases it
     def elements[A](l: Source[A], r: Source[A], capacity: Int)
                    (using Scheduler, CanBlock, Timer, Wait, Pause): Source[A] =
-      okay.pure[Writer % A + Async, Unit](()).flatMap: _ =>
+      okay.freer.pure[Writer % A + Async, Unit](()).flatMap: _ =>
         val ch = Channel.merge[A, S, Async, S, Async](l, r, capacity)
         val scope = Async.CancelScope(closing(ch))
-        okay.effect[Writer % A + Async, Unit](Async.Run(Async.Enter(scope)))
-          .flatMap(_ => ch.drainedThen(okay.effect[Writer % A + Async, Unit](Async.Run(Async.Exit(scope)))))
+        okay.freer.effect[Writer % A + Async, Unit](Async.Run(Async.Enter(scope)))
+          .flatMap(_ => ch.drainedThen(okay.freer.effect[Writer % A + Async, Unit](Async.Run(Async.Exit(scope)))))
     def chunks[A](l: Source[A], r: Source[A], slots: Int, size: Int, within: Option[Long])
                  (using Scheduler, CanBlock, Timer, Wait, Pause): Source[Chunk[A]] =
       val ch = Channel.mergeChunked[A, S, Async, S, Async](l, r, slots, size, within)

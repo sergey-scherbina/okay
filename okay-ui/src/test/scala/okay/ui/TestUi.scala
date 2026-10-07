@@ -1,7 +1,10 @@
 package okay.ui
+import okay.freer.*
 
 import okay.*
+
 import okay.given
+import okay.freer.given
 
 /**
  * The whole loop with no screen: a test HOST keeps frames as values

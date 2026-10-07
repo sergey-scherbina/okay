@@ -1,6 +1,8 @@
 package okay
 
 
+
+import okay.freer.*
 /**
  * THE PARALLEL APPLICATIVE (stage 1 of specs/applicative-static.md).
  *
@@ -92,7 +94,7 @@ object Par:
    * calls `fmap` once per element.
    */
   given parApplicative(using Scheduler): Applicative[Rep] with
-    def pure[A](a: A): Rep[A] = !.pure(a)
+    def pure[A](a: A): Rep[A] = Free.pure(a)
     override def fmap[A, B](a: Rep[A], f: A => B): Rep[B] = a.map(f)
     extension [A, B](f: Rep[A => B])
       def app(a: Rep[A]): Rep[B] = Async.par(f, a).map((g, x) => g(x))

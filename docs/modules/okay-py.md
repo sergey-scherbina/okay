@@ -302,7 +302,7 @@ GHC refuses an undeclared effect by name. See
 
 `Py.program[Out]("mod:f").calling(cbs)(args)` starts a Python function
 that returns a program built from `okay.done` and
-`okay.perform(name, ...).then(f)`. The worker keeps each continuation by
+`okay.freer.perform(name, ...).then(f)`. The worker keeps each continuation by
 id, so a `Choice` handler can continue the same one twice. `run.forget`
 releases them. `HaskellWorker.build(dir)` compiles a Haskell `Main.hs`
 against the shipped `Okay` module, and `PySubprocess.speaking(Seq(bin))`

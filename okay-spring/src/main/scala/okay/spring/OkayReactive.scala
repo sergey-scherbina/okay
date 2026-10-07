@@ -1,7 +1,10 @@
 package okay.spring
 
 import okay.*
+import okay.freer.*
+
 import okay.given
+import okay.freer.given
 import org.reactivestreams.Publisher
 import org.springframework.core.{ReactiveAdapterRegistry, ReactiveTypeDescriptor}
 import reactor.core.publisher.Mono
@@ -25,7 +28,7 @@ object OkayReactive:
     async(Mono.from(pub).block())
 
   /** the type Spring sees: `Free`, the class every program is an instance of */
-  val programClass: Class[?] = classOf[okay.Freer[?, ?, ?, ?]]
+  val programClass: Class[?] = classOf[okay.freer.Freer[?, ?, ?, ?]]
 
   /** teach a registry to adapt programs — the shared instance is what WebFlux consults */
   def registerAdapter(registry: ReactiveAdapterRegistry = ReactiveAdapterRegistry.getSharedInstance): Unit =

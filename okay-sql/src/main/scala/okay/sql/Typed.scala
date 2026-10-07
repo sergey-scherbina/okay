@@ -1,6 +1,7 @@
 package okay.sql
 
-import okay.{!, +, %, Async, Chunk, effect, pure, Resource, Scheduler, Source, Timer, Writer}
+import okay.{+, %, Async, Scheduler, Source, Timer}
+import okay.freer.{!, Chunk, effect, pure, Resource, Writer}
 import okay.codec.Schema
 import scala.collection.immutable.ArraySeq
 
@@ -355,7 +356,7 @@ object Typed:
           def go(p: Source[Chunk[Vector[SqlValue]]], row: Long): Source[W] =
             !.widen[Either[Unit, (Chunk[Vector[SqlValue]], Source[Chunk[Vector[SqlValue]]])], Async, Writer % W](
               Writer.uncons[Chunk[Vector[SqlValue]], Unit, Async](p)).flatMap {
-              case Left(_) => okay.pure(())
+              case Left(_) => okay.freer.pure(())
               case Right((c, rest)) =>
                 var r = row
                 val decoded: W = c.map { frame =>

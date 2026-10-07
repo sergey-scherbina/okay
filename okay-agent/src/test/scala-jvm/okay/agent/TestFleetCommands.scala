@@ -1,7 +1,10 @@
 package okay.agent
+import okay.freer.*
 
 import okay.*
+
 import okay.given
+import okay.freer.given
 import okay.codec.Json
 import okay.persist.{Ack, MemoryStore}
 import Fleet.{Command, Control, Event}

@@ -2,7 +2,7 @@ package okay.intent
 
 import org.scalacheck.Gen
 import org.scalacheck.Prop.forAll
-import okay.Monoid
+import okay.freer.Monoid
 
 /** specs/intent-classify.md — the evaluation half */
 class TestEval extends munit.ScalaCheckSuite {

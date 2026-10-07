@@ -1,8 +1,9 @@
 package okay.cluster.foreign
 
-import okay.{!, +, pure}
-import okay.given
-import okay.Row.plus
+import okay.{+}
+import okay.freer.{!, pure}
+import okay.freer.given
+import okay.freer.Row.plus
 import okay.codec.Schema
 import okay.frege.Prog.TProg
 import okay.foreign.{Jvm, Foreign, Shape}
@@ -30,7 +31,7 @@ object CljModule:
       okay.clojure.Clj.fn(module.ns, fn) match
         case Left(why) => pure[F + Op, Either[Batcher.Failed, Out]](Left(Batcher.Failed("LookupError", why)))
         case Right(f) =>
-          given okay.Member[F] = JvmPrograms.callbacksOnly[F]
+          given okay.freer.Member[F] = JvmPrograms.callbacksOnly[F]
           okay.clojure.Program.run[F, AnyRef](f.invoke(JvmPrograms.arg(a)), s"clojure ${module.ns}/$fn",
             JvmPrograms.calls(cbs)).map(JvmPrograms.answer[Out]).plus[Op]
     def run[A](module: CljModule)(prog: A ! Op): A = prog.runWith(using JvmPrograms.none)
@@ -55,7 +56,7 @@ object FregeModule:
       module.get(fn) match
         case None => pure[F + Op, Either[Batcher.Failed, Out]](Left(Batcher.Failed("LookupError", s"no program named '$fn' in the Frege module ${module.name}")))
         case Some(make) =>
-          given okay.Member[F] = JvmPrograms.callbacksOnly[F]
+          given okay.freer.Member[F] = JvmPrograms.callbacksOnly[F]
           okay.frege.Frege.run[F, AnyRef](make(JvmPrograms.arg(a)), s"frege ${module.name}.$fn",
             JvmPrograms.calls(cbs)).map(JvmPrograms.answer[Out]).plus[Op]
     def run[A](module: FregeModule)(prog: A ! Op): A = prog.runWith(using JvmPrograms.none)
@@ -73,7 +74,7 @@ private[foreign] object JvmPrograms:
   /** a row whose own operations a facade program does not perform: through
    * the facade a program performs its CALLBACKS, as a wire language's does,
    * so an operation of the row is refused by name, never cast */
-  def callbacksOnly[F[+_]]: okay.Member[F] = _ => false
+  def callbacksOnly[F[+_]]: okay.freer.Member[F] = _ => false
 
   /** the handler of a row with no operations: what is left once the
    * caller has handled its callbacks' effects */

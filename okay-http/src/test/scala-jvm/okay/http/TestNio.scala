@@ -3,7 +3,10 @@ package okay.http
 import java.nio.channels.ServerSocketChannel
 
 import okay.*
+import okay.freer.*
+
 import okay.given
+import okay.freer.given
 
 /**
  * Raw NIO: two ends, chunks between them, and nothing parked. (MCP

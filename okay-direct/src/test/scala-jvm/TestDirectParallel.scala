@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import Direct.*
 import java.util.concurrent.{CountDownLatch, TimeUnit}
 import java.util.concurrent.atomic.AtomicInteger

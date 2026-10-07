@@ -1,6 +1,6 @@
 package okay.refine
 
-import okay.{!, Logic, pure, runChoice}
+import okay.freer.{!, Logic, pure, runChoice}
 import okay.codec.{Json, Schema}
 import okay.testkit.Munit.Diagnosed
 import java.nio.charset.StandardCharsets.UTF_8

@@ -1,7 +1,7 @@
 package okay.cache
 
-import okay.{!, Async}
-
+import okay.Async
+import okay.freer.{!}
 /**
  * Regime 2, the write path (specs/cache.md): truth lives in a
  * foreign system and writes flow through us, so INSIDE the same code

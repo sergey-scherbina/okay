@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 class TestAmbient extends munit.FunSuite:
 
   test("Ambient.clock answers the wall clock; Ambient.random draws differ"):

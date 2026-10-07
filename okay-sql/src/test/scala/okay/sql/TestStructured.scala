@@ -1,8 +1,10 @@
 package okay.sql
 
 import okay.*
+import okay.freer.*
+
 import okay.codec.Schema
-import okay.Row.plus
+import okay.freer.Row.plus
 import okay.Chunks.elements
 import okay.Tables.{collect, select}
 import okay.sql.Structured.{matching, joinOn}

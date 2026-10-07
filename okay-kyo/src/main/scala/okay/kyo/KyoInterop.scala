@@ -1,7 +1,9 @@
 package okay.kyo
 
-import okay.{!, Async, Pure, async}
+import okay.{Async, Pure, async}
+import okay.freer.{!}
 import okay.given
+import okay.freer.given
 import _root_.kyo.{<, Abort, AllowUnsafe, Duration, Flat, KyoApp}
 
 /**
@@ -16,7 +18,7 @@ import _root_.kyo.{<, Abort, AllowUnsafe, Duration, Flat, KyoApp}
 object KyoInterop {
 
   /** a pure kyo computation as a pure okay program */
-  def fromKyo[A: Flat](k: => A < Any): A ! Pure = okay.pure(k.eval)
+  def fromKyo[A: Flat](k: => A < Any): A ! Pure = okay.freer.pure(k.eval)
 
   /** run a kyo async computation inside one okay Async operation */
   def fromKyoAsync[A: Flat](k: => A < (Abort[Nothing] & _root_.kyo.Async)): A ! Async =
@@ -41,8 +43,10 @@ object KyoInterop {
   // ContextEffect (reader-family): outbound walks, inbound asks once
   // and runs theirs with the constant environment — semantically exact.
 
-  import okay.{%, Reader, Writer, Throws, Choose, effect}
-  import okay.!.*
+  import okay.{%}
+
+  import okay.freer.{Reader, Writer, Throws, Choose, effect}
+  import okay.freer.!.*
   import _root_.kyo.{Tag, Frame, Env, Emit, Choice, Abort}
   import _root_.kyo.kernel.ArrowEffect
 
@@ -60,7 +64,7 @@ object KyoInterop {
 
   /** Env → Reader: one ask, then their computation runs with it */
   def fromKyoEnv[R, A: Flat](v: A < Env[R])(using Tag[R], Frame): A ! Reader % R =
-    effect[Reader % R, R](Reader.Ask()).flatMap(r => okay.pure(Env.run(r)(v).eval))
+    effect[Reader % R, R](Reader.Ask()).flatMap(r => okay.freer.pure(Env.run(r)(v).eval))
 
   /** Writer → Emit, tell for tell */
   def toKyoEmit[W, A](p: A ! Writer % W)(using Tag[Emit[W]], Frame): A < Emit[W] =
@@ -77,7 +81,7 @@ object KyoInterop {
     ArrowEffect.handleFirst(Tag[Emit[W]], v)(
       handle = [C] => (w, cont) =>
         effect[Writer % W, Unit](Writer(w)).flatMap(_ => fromKyoEmit(cont(()))),
-      done = a => (okay.pure(a): A ! Writer % W)
+      done = a => (okay.freer.pure(a): A ! Writer % W)
     ).eval
 
   /** Throws → Abort (the continuation after a raise is dead) */
@@ -91,7 +95,7 @@ object KyoInterop {
   /** Abort → Throws */
   def fromKyoAbort[E, A: Flat](v: A < Abort[E])(using _root_.kyo.SafeClassTag[E], Tag[E], Frame): A ! Throws % E =
     import _root_.kyo.Result
-    Abort.run[E](v).eval.foldFailureOrThrow(e => okay.raise(e))(a => okay.pure(a))
+    Abort.run[E](v).eval.foldFailureOrThrow(e => okay.freer.raise(e))(a => okay.freer.pure(a))
 
   /** Choose → Choice — the same arrow, Seq ~> Id, on both sides */
   def toKyoChoice[A](p: A ! Choose)(using Frame): A < Choice =
@@ -106,6 +110,6 @@ object KyoInterop {
     ArrowEffect.handleFirst(Tag[Choice], v)(
       handle = [C] => (as, cont) =>
         effect[Choose, C](Choose(as)).flatMap(c => fromKyoChoice(cont(c))),
-      done = a => (okay.pure(a): A ! Choose)
+      done = a => (okay.freer.pure(a): A ! Choose)
     ).eval
 }

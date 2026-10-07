@@ -1,9 +1,12 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 import okay.Direct.*
-import okay.Row.at
+import okay.freer.Row.at
 
 /**
  * specs/direct-staged.md, the number: the SAME block text three ways

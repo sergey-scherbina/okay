@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 /**
  * specs/zipper.md — the cursor's laws over a rose tree, the plate
  * built from a traversal against the hand plate, and the seam to the

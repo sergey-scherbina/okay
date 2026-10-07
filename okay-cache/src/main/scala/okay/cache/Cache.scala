@@ -1,6 +1,7 @@
 package okay.cache
 
-import okay.{!, Async, async}
+import okay.{Async, async}
+import okay.freer.{!}
 import scala.collection.mutable
 
 /**
@@ -143,10 +144,10 @@ object Cache:
                 Right((f, true))
         }
       }.flatMap {
-        case Left(v) => okay.pure(v)
+        case Left(v) => okay.freer.pure(v)
         case Right((flight, owns)) =>
           val loaded: Unit ! Async =
-            if !owns then okay.pure(())
+            if !owns then okay.freer.pure(())
             else async {
               // the loader runs under its own drive, so a failure
               // ANYWHERE in it (a thrown step, a failed Await)

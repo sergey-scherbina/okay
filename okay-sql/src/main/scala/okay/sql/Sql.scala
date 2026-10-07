@@ -1,7 +1,7 @@
 package okay.sql
 
-import okay.{!, Async, Chunk, Source}
-
+import okay.{Async, Source}
+import okay.freer.{!, Chunk}
 /**
  * The relational driver seam (specs/sql.md): a driver is a way to
  * move statements, values and row frames — nothing more. Everything

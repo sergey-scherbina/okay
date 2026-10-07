@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import scala.collection.immutable.ArraySeq
 
 /**
@@ -16,15 +19,15 @@ class TestFoldUntilStreams extends munit.FunSuite:
   /** 1, perform, 2, perform, 3, perform, ... — an Async op after every tell */
   private def counted(n: Int, performed: () => Unit): Source[Int] =
     def go(i: Int): Source[Int] =
-      if i > n then okay.pure(())
-      else okay.effect[R, Unit](Writer(i))
-        .flatMap(_ => okay.effect[R, Unit](Async.Run(() => performed())))
+      if i > n then okay.freer.pure(())
+      else okay.freer.effect[R, Unit](Writer(i))
+        .flatMap(_ => okay.freer.effect[R, Unit](Async.Run(() => performed())))
         .flatMap(_ => go(i + 1))
-    okay.pure[R, Unit](()).flatMap(_ => go(1))
+    okay.freer.pure[R, Unit](()).flatMap(_ => go(1))
 
   private def chunked(xs: List[Int], size: Int): Chunks[Int] =
     def go(rest: List[Int]): Chunks[Int] =
-      if rest.isEmpty then okay.pure(())
+      if rest.isEmpty then okay.freer.pure(())
       else Writer.tell(ArraySeq.from(rest.take(size))).flatMap(_ => go(rest.drop(size)))
     go(xs)
 
@@ -99,12 +102,12 @@ class TestFoldUntilStreams extends munit.FunSuite:
    * continuation as it hands the element over, so the count after a
    * tell is the count of elements a consumer has taken */
   private def lines(xs: List[String], told: () => Unit): Unit ! Writer % String =
-    xs.foldRight(okay.pure[Writer % String, Unit](()))((l, rest) => Writer.tell(l).flatMap(_ => { told(); rest }))
+    xs.foldRight(okay.freer.pure[Writer % String, Unit](()))((l, rest) => Writer.tell(l).flatMap(_ => { told(); rest }))
 
   /** a header parser: tell each `k: v` as (k, v), answer the count at the first blank line */
   private val header: Stage[String, (String, String), Either[Int, Int]] =
     Stage.transduceUntil[String, (String, String), Int, Either[Int, Int]](0)((n, line) =>
-      if line.isEmpty then okay.pure(Right(Right(n)))
+      if line.isEmpty then okay.freer.pure(Right(Right(n)))
       else
         val Array(k, v) = line.split(": ", 2)
         Stage.tell[String, (String, String)]((k.trim, v.trim)).map(_ => Left(n + 1)),
@@ -131,8 +134,8 @@ class TestFoldUntilStreams extends munit.FunSuite:
   }
 
   test("transduceUntil composes under through on both sides") {
-    val upper: Stage[String, String, Unit] = Stage.transduce(())((_, l) => Stage.tell[String, String](l.toUpperCase), okay.pure)
-    val keys: Stage[(String, String), String, Unit] = Stage.transduce(())((_, kv) => Stage.tell[(String, String), String](kv._1), okay.pure)
+    val upper: Stage[String, String, Unit] = Stage.transduce(())((_, l) => Stage.tell[String, String](l.toUpperCase), okay.freer.pure)
+    val keys: Stage[(String, String), String, Unit] = Stage.transduce(())((_, kv) => Stage.tell[(String, String), String](kv._1), okay.freer.pure)
     val doc = List("host: a", "port: 1", "", "body")
     val (out, answer) = !.run(Writer.run(through(through(through(lines(doc, () => ()))(upper))(header))(keys)))
     assertEquals(out, Seq("HOST", "PORT"))
@@ -142,8 +145,8 @@ class TestFoldUntilStreams extends munit.FunSuite:
   test("transduce is transduceUntil with a step that never answers Right") {
     val step = (sum: Int, i: Int) => Stage.tell[Int, Int](sum + i).map(_ => sum + i)
     def told: Unit ! Writer % Int =
-      (1 to 5).foldRight(okay.pure[Writer % Int, Unit](()))((i, r) => Writer.tell(i).flatMap(_ => r))
-    val a = !.run(Writer.run(through(told)(Stage.transduce(0)(step, okay.pure))))
+      (1 to 5).foldRight(okay.freer.pure[Writer % Int, Unit](()))((i, r) => Writer.tell(i).flatMap(_ => r))
+    val a = !.run(Writer.run(through(told)(Stage.transduce(0)(step, okay.freer.pure))))
     val b = !.run(Writer.run(through(told)(
       Stage.transduceUntil[Int, Int, Int, Int](0)((s, i) => step(s, i).map(Left(_)), identity))))
     assertEquals(a, b)
@@ -153,7 +156,7 @@ class TestFoldUntilStreams extends munit.FunSuite:
   test("pipe(producer)(Take.foldUntil) is Writer.foldUntil by the coroutine road, and stops the producer") {
     var told = 0
     def nums(n: Int): Unit ! Writer % Int =
-      (1 to n).foldRight(okay.pure[Writer % Int, Unit](()))((i, r) => Writer.tell(i).flatMap(_ => { told += 1; r }))
+      (1 to n).foldRight(okay.freer.pure[Writer % Int, Unit](()))((i, r) => Writer.tell(i).flatMap(_ => { told += 1; r }))
     def check[S, X](fo: FoldUntil[Int, S, X], name: String): Unit =
       told = 0
       val viaPipe = pipe(nums(50))(Take.foldUntil[Int, S, X](using fo))

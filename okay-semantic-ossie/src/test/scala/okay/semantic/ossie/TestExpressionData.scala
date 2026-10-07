@@ -1,6 +1,8 @@
 package okay.semantic.ossie
+import okay.freer.*
 
 import okay.*
+
 import okay.codec.{Schema, Json}
 import okay.semantic.{Dimension, Kind, Measure, Origin, Request, Value}
 

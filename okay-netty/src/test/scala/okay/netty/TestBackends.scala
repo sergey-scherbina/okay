@@ -1,7 +1,10 @@
 package okay.netty
+import okay.freer.*
 
 import okay.*
+
 import okay.given
+import okay.freer.given
 import okay.codec.Schema
 import okay.http.{Acceptance, Frame, Http, Request, Server as OkayServer, Sockets, Transports, Ws}
 import okay.jetty.Jetty

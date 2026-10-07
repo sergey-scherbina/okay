@@ -1,6 +1,7 @@
 package okay.codec
 
-import okay.{Cont, />}
+import okay.freer.{/>}
+import okay.freer.Cont
 import okay.lex.Json as JsonLex
 import okay.lex.Json.K
 import okay.parse.{Cst, JsonParse, Parse}

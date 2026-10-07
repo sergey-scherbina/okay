@@ -1,7 +1,9 @@
 package okay.demo
 
-import okay.{!, Async}
+import okay.Async
+import okay.freer.{!}
 import okay.given
+import okay.freer.given
 import okay.blob.Fs
 import java.nio.file.Files
 

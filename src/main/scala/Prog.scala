@@ -28,7 +28,7 @@ trait Dispatch[F[+_]]:
   def apply[X](op: F[X]): cont.Cont[c.Here, c.Here, X]
 
 object Prog:
-  given given_Effects_Prog: Effects.Aux[Prog, Carrier] = ProgEffects
+  given given_Effects_Prog: ProgEffects.type = ProgEffects
 
   object ProgEffects extends Effects[Prog]:
     type C = Carrier
@@ -57,7 +57,7 @@ object Prog:
       /** every operation answered in place, at the top */
       override def runWith(using H: Answers[F]): A = Machine.value(m.run(using Dispatch.answering(H)))
 
-    override def run[A](m: Prog[Pure, A]): A = Machine.value(m.run(using Dispatch.none))
+    def run[A](m: Prog[Pure, A]): A = Machine.value(m.run(using Dispatch.none))
 
 object Dispatch:
   /** at the top, every operation answered by `H` where the machine gets to it */

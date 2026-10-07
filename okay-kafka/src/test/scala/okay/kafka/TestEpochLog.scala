@@ -1,6 +1,8 @@
 package okay.kafka
+import okay.freer.given
 
 import okay.given
+
 import okay.cluster.{Cluster, Feed, Feeds, Flow, Flows, Job, Jobs, WindowJob, Wire}
 import okay.codec.{Codecs, Schema}
 import java.util.concurrent.{CountDownLatch, TimeUnit}

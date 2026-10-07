@@ -1,6 +1,7 @@
 package okay.sql
 
-import okay.{!, +, %, Async, Chunk, effect, Source, Writer}
+import okay.{+, %, Async, Source}
+import okay.freer.{!, Chunk, effect, Writer}
 import okay.codec.Schema
 
 /** the platform-free half: name mapping, parameter binding, the
@@ -66,14 +67,14 @@ class TestSqlPure extends munit.FunSuite {
   /** a driver made of one described frame: the decode side of the
    * binding is platform-free, so it is proven here on all three */
   final class OneFrame(cols: Vector[Col], rows: Vector[Vector[SqlValue]]) extends Sql:
-    def describe(sql: String): Vector[Col] ! Async = okay.pure(cols)
+    def describe(sql: String): Vector[Col] ! Async = okay.freer.pure(cols)
     def query(sql: String, params: Vector[SqlValue]): Source[Chunk[Vector[SqlValue]]] =
       effect[Writer % Chunk[Vector[SqlValue]] + Async, Unit](Writer(scala.collection.immutable.ArraySeq.from(rows)))
-    def update(sql: String, params: Vector[SqlValue]): Long ! Async = okay.pure(0L)
-    def batch(sql: String, rows: Chunk[Vector[SqlValue]]): Long ! Async = okay.pure(0L)
-    def begin(isolation: Isolation, readOnly: Boolean): Granted ! Async = okay.pure(Granted(isolation, isolation))
-    def commit(): Unit ! Async = okay.pure(())
-    def rollback(): Unit ! Async = okay.pure(())
+    def update(sql: String, params: Vector[SqlValue]): Long ! Async = okay.freer.pure(0L)
+    def batch(sql: String, rows: Chunk[Vector[SqlValue]]): Long ! Async = okay.freer.pure(0L)
+    def begin(isolation: Isolation, readOnly: Boolean): Granted ! Async = okay.freer.pure(Granted(isolation, isolation))
+    def commit(): Unit ! Async = okay.freer.pure(())
+    def rollback(): Unit ! Async = okay.freer.pure(())
     def cancel(): Unit = ()
 
   val addrT = SqlType.Row(Vector(SqlType.Text, SqlType.I32, SqlType.Bool))
@@ -88,7 +89,7 @@ class TestSqlPure extends munit.FunSuite {
   /** OneFrame never performs an Async operation, so its programs run
    * on JS too: the told chunks are the answer, anything else is a test bug */
   def pureOf[A, F[+_]](p: A ! F): A =
-    import okay.!.*
+    import okay.freer.!.*
     (p.resume: @unchecked) match
       case Return(a) => a
       case other => fail(s"an effect where none was expected: $other")
@@ -97,7 +98,7 @@ class TestSqlPure extends munit.FunSuite {
    * constructor, so the match refines the chunk — no cast, no
    * Answers, which is what lets this run on all three platforms */
   def decoded[A: Schema](db: Sql): Vector[Either[Bad, A]] =
-    import okay.!.*
+    import okay.freer.!.*
     def go(rest: Source[Chunk[Either[Bad, A]]], acc: Vector[Either[Bad, A]]): Vector[Either[Bad, A]] =
       (rest.resume: @unchecked) match
         case Return(_) => acc

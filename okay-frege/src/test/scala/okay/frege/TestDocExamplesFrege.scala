@@ -1,6 +1,7 @@
 package okay.frege
 
-import okay.{!, %, +, Choose, Chunks, Reader, State, Writer, effect, pure, runChoice, through}
+import okay.{%, +, Chunks, through}
+import okay.freer.{!, Choose, Reader, State, Writer, effect, pure, runChoice}
 import okay.frege.{Programs as P}
 import frege.run8.Thunk
 import java.util.concurrent.atomic.AtomicInteger

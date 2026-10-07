@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import scala.util.Random
 
 /**
@@ -67,7 +70,7 @@ class TestSourceJoinWithin extends munit.FunSuite with okay.testkit.Munit.Diagno
     val produced = java.util.concurrent.atomic.AtomicInteger(0)
     @volatile var feeder: Thread | Null = null
     val endless: Source[(String, Row)] =
-      okay.effect[Writer % (String, Row) + Async, Unit](Async.Run(() => feeder = Thread.currentThread()))
+      okay.freer.effect[Writer % (String, Row) + Async, Unit](Async.Run(() => feeder = Thread.currentThread()))
         .flatMap(_ => Source.of(LazyList.from(0).map(i => { produced.incrementAndGet(); ("k", (i.toLong, s"r$i")) })))
     val j = Source.joinWithin(Source.of(List(("k", (5L, "l5")))), endless, 2L, 0L, capacity = 4)(_._1, _._1)
     val out = Schedulers.loom.fork(() => j.runCollect).joinEither().map(_.map { case (k, (a, b)) => (k, a._2, b._2) })

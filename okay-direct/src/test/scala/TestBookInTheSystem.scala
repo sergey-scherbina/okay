@@ -1,7 +1,10 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import okay.Direct.*
-import okay.Row.at
+import okay.freer.Row.at
 import scala.language.implicitConversions
 
 /**

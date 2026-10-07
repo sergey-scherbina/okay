@@ -1,7 +1,10 @@
 package okay.jetty
 
 import okay.*
+import okay.freer.*
+
 import okay.given
+import okay.freer.given
 import okay.http.{Body, Frame, Http, Method, Request, Response, Socket, Sockets}
 
 import org.eclipse.jetty.client.{HttpClient as JettyClient, InputStreamResponseListener, Request as JRequest}

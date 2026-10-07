@@ -1,6 +1,8 @@
 package okay.agent
 
 import okay.*
+import okay.freer.*
+
 
 /**
  * The stepper (specs/llm-agentic.md, "The stepper"): run an agent

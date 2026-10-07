@@ -1,7 +1,8 @@
 package okay.zio
 
-import okay.{!, Free, TypeableK, effect, typeableK}
-import okay.!.*
+import okay.{TypeableK, typeableK}
+import okay.freer.{!, Free, effect}
+import okay.freer.!.*
 import _root_.zio.{ZEnvironment, ZIO}
 
 /**

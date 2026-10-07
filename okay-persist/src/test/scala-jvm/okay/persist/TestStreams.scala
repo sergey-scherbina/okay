@@ -1,7 +1,9 @@
 package okay.persist
 
-import okay.{!, +, %, Async, Chunk, Source, Stream, Writer}
+import okay.{+, %, Async, Source}
+import okay.freer.{!, Chunk, Stream, Writer}
 import okay.given
+import okay.freer.given
 
 /**
  * The streaming conveniences (specs/persist.md, Interface): chunked

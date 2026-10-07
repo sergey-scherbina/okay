@@ -1,6 +1,7 @@
 package okay.admin
 
-import okay.{!, Async, pure}
+import okay.Async
+import okay.freer.{!, pure}
 import okay.http.{Method, Request, Response}
 import okay.security.{Secure, SessionIssuer, Verified}
 

@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 
@@ -24,7 +27,7 @@ class StmBenchmark {
   private def chain(s: Stm[Async], tx: TRef[Long] => Long ! Tx): Long =
     val r = TRef(0L)
     def go(i: Long, acc: Long): Long ! Async =
-      if i >= N then okay.pure(acc)
+      if i >= N then okay.freer.pure(acc)
       else s.atomically(tx(r)).flatMap(x => go(i + 1, acc + x))
     go(0L, 0L).runWith
 
@@ -35,7 +38,7 @@ class StmBenchmark {
   @Benchmark
   def control(): Long =
     def go(i: Long, acc: Long): Long ! Async =
-      if i >= N then okay.pure(acc)
+      if i >= N then okay.freer.pure(acc)
       else async(i).flatMap(x => go(i + 1, acc + x))
     go(0L, 0L).runWith
 

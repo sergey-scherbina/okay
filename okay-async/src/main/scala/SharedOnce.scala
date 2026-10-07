@@ -1,6 +1,8 @@
 package okay
 
-import okay.Row.plus
+
+import okay.freer.*
+import okay.freer.Row.plus
 import scala.collection.mutable
 
 /**

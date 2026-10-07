@@ -1,6 +1,7 @@
 package okay.java
 
-import okay.{Free, Push, Stage}
+import okay.{Push, Stage}
+import okay.freer.Free
 import java.util.stream.Gatherer
 import scala.collection.mutable.ArrayBuffer
 
@@ -111,7 +112,7 @@ object Gather {
       def flush(): Stage[I, O, Unit] =
         val batch = out.toVector
         out.clear()
-        okay.!.each(batch)(o => Stage.tell[I, O](o))
+        okay.freer.!.each(batch)(o => Stage.tell[I, O](o))
 
       def finish(): Stage[I, O, Unit] =
         live()

@@ -1,6 +1,8 @@
 package okay.http
 
 import okay.*
+import okay.freer.*
+
 
 /**
  * WHY A FACT AND NOT A CAPABILITY, on the case that motivates it

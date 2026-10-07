@@ -1,6 +1,8 @@
 package okay
 
-import okay.Free.{Bind, Inject, Return}
+
+import okay.freer.*
+import okay.freer.Free.{Bind, Inject, Return}
 import scala.annotation.tailrec
 import scala.reflect.ClassTag
 

@@ -1,7 +1,9 @@
 package okay.frege
 
-import okay.{!, %, +, Async, Chunks, Reader, Writer, effect, pure, through}
+import okay.{%, +, Async, Chunks, through}
+import okay.freer.{!, Reader, Writer, effect, pure}
 import okay.given
+import okay.freer.given
 import okay.frege.{Programs as P}
 import java.util.concurrent.atomic.AtomicInteger
 

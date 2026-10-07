@@ -1,6 +1,8 @@
 package okay.resilience
 
 import okay.*
+import okay.freer.*
+
 import java.net.{InetAddress, UnknownHostException}
 
 /** the JVM's own sources: the process environment and the resolver */

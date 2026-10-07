@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import okay.Direct.*
 import scala.language.implicitConversions
 
@@ -37,7 +40,7 @@ class TestBookWorkflows extends munit.FunSuite {
     val start = !.run(Wf.resumable[String, String, String, P](booking))
     val (st, journal) = !.run(Wf.drive(start): q =>
       asked = asked :+ q
-      okay.pure(if q.startsWith("which") then "Kyiv" else "3"))
+      okay.freer.pure(if q.startsWith("which") then "Kyiv" else "3"))
 
     assertEquals(done(st), "Kyiv/3/1700000000000/bk-1")
     assertEquals(asked, List("which city?", "how many nights in Kyiv?"),
@@ -51,7 +54,7 @@ class TestBookWorkflows extends munit.FunSuite {
     // run one: the "first process"
     val (st1, journal) = !.run(Wf.drive(
       !.run(Wf.resumable[String, String, String, P](booking))): q =>
-        okay.pure(if q.startsWith("which") then "Kyiv" else "3"))
+        okay.freer.pure(if q.startsWith("which") then "Kyiv" else "3"))
     val first = done(st1)
 
     // run two: only the journal survived. `Wf.replay` TAKES NO
@@ -66,7 +69,7 @@ class TestBookWorkflows extends munit.FunSuite {
   test("the clock does not move across a restart, however often the program reruns") {
     val (_, journal) = !.run(Wf.drive(
       !.run(Wf.resumable[String, String, String, P](booking))): q =>
-        okay.pure(if q.startsWith("which") then "Kyiv" else "3"))
+        okay.freer.pure(if q.startsWith("which") then "Kyiv" else "3"))
 
     // replay it three times: a wall clock would give three answers
     val answers = (1 to 3).map: _ =>

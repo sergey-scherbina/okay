@@ -1,6 +1,7 @@
 package okay.semantic.sql
 
-import okay.{!, Async, Chunk, Writer}
+import okay.Async
+import okay.freer.{!, Chunk, Writer}
 import okay.sql.{Sql, SqlValue}
 import okay.semantic.Result
 import okay.semantic.ossie.{ExpressionPlan, Table}
@@ -18,7 +19,7 @@ object ExpressionSql:
       Right(s"SELECT ${input.columns.map(quoted).mkString(", ")} FROM ${names.map(quoted).mkString(".")}")
   def execute[A](plan: ExpressionPlan[A], input: Input[A], tables: Map[String,Table] = Map.empty)(using sql: Sql)
       : Either[Vector[String],Result] ! Async = query(input) match
-    case Left(es) => okay.pure(Left(es))
+    case Left(es) => okay.freer.pure(Left(es))
     case Right(query) =>
       Writer.loopWith[Chunk[Vector[SqlValue]],Vector[Vector[SqlValue]],Unit,Either[Vector[String],Result],Async](sql.query(query))(Vector.empty)(
         (acc,chunk) => (acc ++ chunk.iterator.take((plan.maxRows + 1 - acc.size).max(0))).take(plan.maxRows + 1)) { (rows,_) =>

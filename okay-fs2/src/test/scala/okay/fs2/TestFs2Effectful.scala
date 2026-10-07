@@ -1,7 +1,9 @@
 package okay.fs2
 
-import okay.{!, %, +, Async, Source, Stage, Writer}
+import okay.{%, +, Async, Source, Stage}
+import okay.freer.{!, Writer}
 import okay.given
+import okay.freer.given
 import okay.cats.CatsEffect
 import okay.cats.CatsEffect.Program
 import _root_.cats.effect.IO
@@ -18,9 +20,9 @@ class TestFs2Effectful extends munit.FunSuite with okay.testkit.Munit.Diagnosed 
   /** an okay source: async steps between its tells */
   def counted(n: Int): Source[Int] =
     def go(i: Int): Source[Int] =
-      if i > n then okay.pure(())
+      if i > n then okay.freer.pure(())
       else !.widen[Int, Async, Writer % Int](okay.async(i))
-        .flatMap(x => okay.effect[Writer % Int + Async, Unit](Writer.Say(x)))
+        .flatMap(x => okay.freer.effect[Writer % Int + Async, Unit](Writer.Say(x)))
         .flatMap(_ => go(i + 1))
     go(1)
 
@@ -33,7 +35,7 @@ class TestFs2Effectful extends munit.FunSuite with okay.testkit.Munit.Diagnosed 
   test("an interrupted fs2 stream cancels the Await its source was parked on") {
     val unregistered = AtomicInteger(0)
     val parked: Source[Int] =
-      okay.effect[Writer % Int + Async, Unit](Writer.Say(1))
+      okay.freer.effect[Writer % Int + Async, Unit](Writer.Say(1))
         .flatMap(_ => !.widen[Unit, Async, Writer % Int](Async.await[Unit](_ => () => { unregistered.incrementAndGet(); () })))
     val out = Fs2Streams.toFs2[IO, Int](parked).interruptAfter(50.millis).compile.toList.unsafeRunSync()
     note(s"answered $out")
@@ -61,10 +63,10 @@ class TestFs2Effectful extends munit.FunSuite with okay.testkit.Munit.Diagnosed 
   /** a stage that keeps a running sum and stops after `n` inputs */
   def runningSum(n: Int): Stage[Int, Int, Unit] =
     def go(seen: Int, sum: Int): Stage[Int, Int, Unit] =
-      if seen == n then okay.pure(())
+      if seen == n then okay.freer.pure(())
       else Stage.await[Int, Int].flatMap {
         case Some(i) => Stage.tell[Int, Int](sum + i).flatMap(_ => go(seen + 1, sum + i))
-        case None => okay.pure(())
+        case None => okay.freer.pure(())
       }
     go(0, 0)
 

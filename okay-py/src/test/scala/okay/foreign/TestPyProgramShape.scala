@@ -1,6 +1,7 @@
 package okay.foreign
 
-import okay.{Choose, effect, runChoice, given}
+
+import okay.freer.{Choose, effect, runChoice, given}
 import Value.*
 
 /**

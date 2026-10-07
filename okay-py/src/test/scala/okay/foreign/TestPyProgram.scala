@@ -1,6 +1,7 @@
 package okay.foreign
 
-import okay.{Choose, Reader, effect, runChoice, given}
+
+import okay.freer.{Choose, Reader, effect, runChoice, given}
 import okay.durable.Durable
 
 object TestPyProgram:
@@ -8,12 +9,12 @@ object TestPyProgram:
     import okay
 
     def pairs():
-        return okay.perform("choose", [1, 2]).then(lambda x:
-               okay.perform("choose", [10, 20]).then(lambda y:
+        return okay.freer.perform("choose", [1, 2]).then(lambda x:
+               okay.freer.perform("choose", [10, 20]).then(lambda y:
                okay.done(x + y)))
 
     def priced(sku, qty):
-        return okay.perform("price_of", sku).then(lambda p: okay.done(p * qty))
+        return okay.freer.perform("price_of", sku).then(lambda p: okay.done(p * qty))
 
     def not_a_program():
         return 42

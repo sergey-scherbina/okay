@@ -124,7 +124,7 @@ docs/capabilities.md	def wired(endpoint: String): Http ?=> Engine
 docs/capabilities.md	effect[Reader % E, E](Reader.Ask()).map(e => cf(using e))
 docs/capabilities.md	f.curried <*> wire[Db] <*> wire[Log] <*> wire[Clock]  :  Db ?=> Log ?=> Clock ?=> String
 docs/capabilities.md	given ctxMonad[E]: Monad[[X] =>> E ?=> X]   // Provide.scala
-docs/capabilities.md	import okay.given   // instances need the given import — `import okay.*` is not enough
+docs/capabilities.md	import okay.freer.given   // instances need the given import — `import okay.freer.*` is not enough
 docs/capabilities.md	provide(41)(viaCtx)   // same answers as Reader.run(41)(viaReader)
 docs/capabilities.md	val all: Env ?=> Seq[Int] = sequence(xs)     // F is INFERRED
 docs/capabilities.md	val getQ: Db ?=> String = wire[Db].q
@@ -170,7 +170,7 @@ docs/continuations/07-stop-in-the-middle.md	def prog(using Shift.Asking[Q, A, R,
 docs/continuations/07-stop-in-the-middle.md	p = !.run(Shift.answer(p, Nil)(()))._1     // hand back an answer, get the next stop
 docs/continuations/07-stop-in-the-middle.md	val (next, _) = !.run(Shift.answer(p, Nil)(answer))
 docs/continuations/07-stop-in-the-middle.md	val p = !.run(Shift.resumable[Q, A, R, F](prog))
-docs/continuations/07-stop-in-the-middle.md	val result = !.run(Shift.drive(p)(q => okay.pure(answerFor(q))))
+docs/continuations/07-stop-in-the-middle.md	val result = !.run(Shift.drive(p)(q => okay.freer.pure(answerFor(q))))
 docs/continuations/07-stop-in-the-middle.md	val x = !Shift.pause(question)
 docs/continuations/08-on-the-way-back.md	!Shift.onReturn(a => transform(a))       // 2. register, from the middle
 docs/continuations/08-on-the-way-back.md	...                                      // 3. untouched code
@@ -192,7 +192,7 @@ docs/continuations/10-prompts.md	val e = intercept[NoPrompt](...)
 docs/continuations/10-prompts.md	val n = !Shift.scope[Int, Pure]:      // an Int boundary inside a String one
 docs/continuations/11-four-captures.md	Shift.push(p)(
 docs/continuations/11-four-captures.md	Shift.push(p)(capture(c, p)(k => k("a")).map(s => s"[$s]"))
-docs/continuations/11-four-captures.md	capture(c, p)(_ => capture("shift", p)(_ => okay.pure("inner-caught"))))
+docs/continuations/11-four-captures.md	capture(c, p)(_ => capture("shift", p)(_ => okay.freer.pure("inner-caught"))))
 docs/continuations/11-four-captures.md	capture(c, p)(k => k("a").flatMap(x => k("b").map(y => x + y)))
 docs/continuations/12-one-machine.md	Shift.collect[Int, F]:          // ...and also collect
 docs/continuations/12-one-machine.md	Shift.resumable[Q, A, R, F]:        // I want to pause...
@@ -223,7 +223,7 @@ docs/continuations/18-what-belongs-in-a-library.md	stamped("hi").runWith        
 docs/continuations/19-what-a-capture-does.md	!Shift.exit(r * 2)          // log: acquire, release
 docs/continuations/19-what-a-capture-does.md	Shift.delimited[Int, P]:
 docs/continuations/19-what-a-capture-does.md	cleaned = true      // never runs
-docs/continuations/19-what-a-capture-does.md	okay.bracket[Int, Int, okay.Shift % ? + okay.Pure](1)(_ => ())(r => okay.pure(r))
+docs/continuations/19-what-a-capture-does.md	okay.freer.bracket[Int, Int, okay.freer.Shift % ? + okay.Pure](1)(_ => ())(r => okay.freer.pure(r))
 docs/continuations/20-the-costs-measured.md	s"$what @ $where"
 docs/continuations/21-the-disciplines.md	Shift.delimited[Int, Pure](…)      // At("Booking.scala:31")
 docs/continuations/21-the-disciplines.md	def delimited[R, F[+_]](body: …)(using At): R ! F
@@ -418,7 +418,7 @@ docs/durable-workflows.md	worker.tick(System.currentTimeMillis())   // everythin
 docs/existentials.md	case Bind(Effect(e), k) => <|>[Take % I, Writer % M](e) match
 docs/existentials.md	case Left(Take.Await())  => effect(Take.Await()).flatMap(oi => pull(k(oi))(cont))   // no cast
 docs/existentials.md	case Nothing => W
-docs/existentials.md	case Right(w)            => cont(Some(okay.out(w)), k(Erased.resumeWith(w)))        // cast
+docs/existentials.md	case Right(w)            => cont(Some(okay.freer.out(w)), k(Erased.resumeWith(w)))        // cast
 docs/existentials.md	case _ => A
 docs/existentials.md	case _ => W & A
 docs/existentials.md	def answer[W, A](w: Writer[W, A]): A = told[W, A].flip(out(w))
@@ -456,7 +456,6 @@ docs/modules/okay-actor.md	case Resume                            // keep the st
 docs/modules/okay-actor.md	case Stop                              // close the mailbox; the failure ends the stream
 docs/modules/okay-actor.md	counter.stop()
 docs/modules/okay-actor.md	counter.tell(1)
-docs/modules/okay-actor.md	import okay.*, okay.given, okay.actor.*
 docs/modules/okay-actor.md	parent.stop()    // stops child first, and waits for it to DRAIN
 docs/modules/okay-actor.md	val child = parent.spawnChild(0)(behaviour).runWith
 docs/modules/okay-actor.md	val counter = Actor.spawn(0) { (n: Int, m: Int) => async(n + m) }.runWith
@@ -778,7 +777,6 @@ docs/modules/okay-rag.md	val idx = Symbols.project(files)      // per-file langu
 docs/modules/okay-rag.md	val kotlin = Language("kotlin", Set("kt", "kts"),
 docs/modules/okay-rag.md	val segs = Split.structural(src, Code.source(src).tree, budget = 400)(_.length)
 docs/modules/okay-rag.md	val src = Source("Greeter.scala", scala.io.Source.fromFile(f).mkString)
-docs/modules/okay-reactive.md	import okay.*, okay.given, okay.reactive.Reactive
 docs/modules/okay-reactive.md	val broken: Flow.Publisher[Long] = Reactive.failed(RuntimeException("nope"))
 docs/modules/okay-reactive.md	val p: Flow.Publisher[Long] = Reactive.publisher(Source.range(0, 1000))
 docs/modules/okay-reactive.md	val s: Source[Long]         = Reactive.source(p, capacity = 256)

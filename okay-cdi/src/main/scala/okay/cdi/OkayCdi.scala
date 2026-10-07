@@ -1,6 +1,8 @@
 package okay.cdi
 
 import okay.*
+import okay.freer.*
+
 import jakarta.inject.Singleton
 import jakarta.enterprise.event.Observes
 import jakarta.enterprise.inject.Instance

@@ -1,7 +1,8 @@
 package okay.agent
 
-import okay.{!, +, Choose, Logic, effect, guard, runChoice}
-import okay.given
+import okay.{+, guard}
+import okay.freer.{!, Choose, Logic, effect, runChoice}
+import okay.freer.given
 
 /**
  * Search over what the model says (specs/llm-agentic.md). Sampling

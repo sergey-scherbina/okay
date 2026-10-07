@@ -1,7 +1,9 @@
 package okay.semantic.sql
 
 import okay.*
+
 import okay.given
+import okay.freer.given
 import okay.semantic.*
 import okay.sql.SqlValue
 import okay.jdbc.JdbcSql

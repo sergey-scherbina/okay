@@ -1,7 +1,10 @@
 package okay
 
+
+import okay.freer.*
 import okay.given
-import okay.Row.plus
+import okay.freer.given
+import okay.freer.Row.plus
 import scala.collection.immutable.ArraySeq
 
 /**
@@ -94,7 +97,7 @@ class TestSourceProducer extends munit.FunSuite:
     // which the compiler can flag (-Wvalue-discard, on in this build),
     // where the Produce form is an ordinary well-typed answer nothing
     // can flag. The element type in the SIGNATURE is what buys that
-    val discarded = compileErrors("val s: okay.Source[Int] = okay.pure(1)")
+    val discarded = compileErrors("val s: okay.Source[Int] = okay.freer.pure(1)")
     assert(!discarded.toLowerCase.contains("error"), discarded)
     // and what it compiles TO tells nothing, exactly as at Produce
     assertEquals(run(Writer.run(pure[Writer % Int + Async, Unit](())))._1.size, 0)

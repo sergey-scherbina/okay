@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import okay.Direct.*
 import scala.language.implicitConversions
 
@@ -37,7 +40,7 @@ class TestDelimSafety extends munit.FunSuite {
   }
 
   test("an abstract row is refused, naming the evidence") {
-    val e = compileErrors("def h[F[+_]](p: Int ! okay.Shift % ? + F): Int ! F = okay.Shift.run(p)")
+    val e = compileErrors("def h[F[+_]](p: Int ! okay.freer.Shift % ? + F): Int ! F = okay.freer.Shift.run(p)")
     assert(e.contains("using Shift.Machine[F]"), s"the abstract row was guessed: $e")
   }
 
@@ -49,7 +52,7 @@ class TestDelimSafety extends munit.FunSuite {
           !Shift.emit(1)
           !Shift.emit(!Shift.pause("more?"))
     val start = !.run(Shift.resumable[String, Int, List[Int], P](half))
-    assertEquals(!.run(Shift.drive(start)(_ => okay.pure(2))), List(1, 2))
+    assertEquals(!.run(Shift.drive(start)(_ => okay.freer.pure(2))), List(1, 2))
   }
 
 }

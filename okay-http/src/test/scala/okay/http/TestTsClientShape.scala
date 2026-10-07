@@ -1,6 +1,8 @@
 package okay.http
 
 import okay.*
+import okay.freer.*
+
 import okay.codec.Schema
 
 /** typescript-types T5, the generated text (default gate, no Node) */

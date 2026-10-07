@@ -1,6 +1,8 @@
 package okay.cluster
 
 import okay.*
+import okay.freer.*
+
 import okay.codec.{Codecs, Json, Schema}
 
 /**

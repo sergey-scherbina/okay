@@ -1,7 +1,8 @@
 package okay.persist
 
 import munit.FunSuite
-import okay.{%, !, +, Shift, Pure}
+import okay.{%, +, Pure}
+import okay.freer.{!, Shift}
 import okay.Direct.*
 import scala.annotation.unused
 import scala.language.implicitConversions
@@ -49,7 +50,7 @@ class TestBookCheckpoints extends FunSuite {
       steps += 1
       (!Shift.pause(n)) + (!counted(n - 1))
 
-  def oracle(q: Int, @unused a: Dialogue.Attempt): Int ! Pure = okay.pure(q * 2)
+  def oracle(q: Int, @unused a: Dialogue.Attempt): Int ! Pure = okay.freer.pure(q * 2)
 
   test("a snapshot cuts READING, and leaves RUNNING exactly where it was") {
     val store = MemoryStore()

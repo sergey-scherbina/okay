@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import okay.Direct.*
 import scala.language.implicitConversions
 
@@ -96,7 +99,7 @@ class TestBookStopInTheMiddle extends munit.FunSuite {
     val start = !.run(Shift.resumable[String, String, String, Pure](booking))
     def answering(as: List[String]): String => String ! Pure =
       var left = as
-      _ => { val a = left.head; left = left.tail; okay.pure(a) }
+      _ => { val a = left.head; left = left.tail; okay.freer.pure(a) }
 
     assertEquals(!.run(Shift.drive(start)(answering(List("Kyiv", "3")))), "Kyiv/3")
     // the SAME start, answered again: it was not consumed
@@ -106,6 +109,6 @@ class TestBookStopInTheMiddle extends munit.FunSuite {
   test("a program that never pauses is Done before anybody drives it") {
     val p = !.run(Shift.resumable[String, String, Int, Pure](direct(41 + 1)))
     assert(p.isInstanceOf[Shift.Paused.Done[?, ?, ?, ?]], s"expected Done, got $p")
-    assertEquals(!.run(Shift.drive(p)(_ => okay.pure("unused"))), 42)
+    assertEquals(!.run(Shift.drive(p)(_ => okay.freer.pure("unused"))), 42)
   }
 }

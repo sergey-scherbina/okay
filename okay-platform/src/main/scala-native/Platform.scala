@@ -1,5 +1,7 @@
 package okay
 
+
+import okay.freer.*
 /**
  * Native parks OS threads: that is the platform's ability, so
  * CanBlock is wait/notify and a fiber is one honest thread (no Loom

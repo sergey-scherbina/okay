@@ -1,6 +1,8 @@
 package okay.http
 
 import okay.*
+import okay.freer.*
+
 
 /**
  * ARITY 1 COLLAPSES AT THE HANDLER, and nowhere else

@@ -1,5 +1,7 @@
 package okay
 
+
+import okay.freer.*
 import scala.quoted.*
 import scala.language.implicitConversions
 
@@ -25,7 +27,7 @@ object Direct:
   /** Compatibility aliases for the small core-level direct support
    * surface. The DSL itself, including all macros, lives in this
    * optional module. */
-  type DirectCtx[F[_]] = okay.DirectCtx[F]
+  type DirectCtx[F[_]] = okay.freer.DirectCtx[F]
 
   /** Marker used by the optional DSL for auto-colouring operations.
    * It refines the core's lightweight capability so core `Effect`
@@ -265,18 +267,18 @@ object Direct:
    */
   inline def reset[R, F[+_]](inline body: Shift.Prompted.Aux[R, Shift % R, F] ?=> DirectCtx[[X] =>> X ! Shift % R + F] ?=> (R | R ! Shift % R + F))
                             (using Shift.Key[R], Distinct[Shift % R + F], Shift.Machine[F]): R ! F =
-    okay.reset[R, F]((p: Shift.Prompted.Aux[R, Shift % R, F]) ?=> block[R, Shift % R, F](body(using p)))
+    okay.freer.reset[R, F]((p: Shift.Prompted.Aux[R, Shift % R, F]) ?=> block[R, Shift % R, F](body(using p)))
 
   /** `shift` inside a block (the block's evidence names the delimiter), its lambda's body in either style */
   inline def shift[A](using in: Shift.Prompted[?])
                      (inline f: (A => in.Res ! in.K + in.F) => DirectCtx[[X] =>> X ! in.K + in.F] ?=> (in.Res | in.Res ! in.K + in.F))
                      (using At): A ! in.K + in.F =
-    okay.shift[A](using in)(k => block[in.Res, in.K, in.F](f(k)))
+    okay.freer.shift[A](using in)(k => block[in.Res, in.K, in.F](f(k)))
 
   /** `shift` to the delimiter of answer type `R` (the key names it), its lambda's body in either style */
   inline def shift[R, A, F[+_]](inline f: (A => R ! Shift % R + F) => DirectCtx[[X] =>> X ! Shift % R + F] ?=> (R | R ! Shift % R + F))
                                (using Shift.Key[R], At): A ! Shift % R + F =
-    okay.shift[R, A, F](k => block[R, Shift % R, F](f(k)))
+    okay.freer.shift[R, A, F](k => block[R, Shift % R, F](f(k)))
 
   /** a body in either style, as a program of `K + F` answering `R` (the macro behind the two above) */
   inline def block[R, K[+_], F[+_]](inline body: DirectCtx[[X] =>> X ! K + F] ?=> Any)

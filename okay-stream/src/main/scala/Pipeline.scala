@@ -1,5 +1,7 @@
 package okay
 
+
+import okay.freer.*
 /**
  * The pipeline as a value (specs/staged-pipelines.md): a typed
  * operator tree — program-as-value applied to stream pipelines, the

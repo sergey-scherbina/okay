@@ -1,7 +1,10 @@
 package okay.demo.e2e
 
 import okay.*
+
+import okay.freer.*
 import okay.given
+import okay.freer.given
 import okay.jetty.Jetty
 import okay.script.Site
 import com.microsoft.playwright.{Browser, Playwright}

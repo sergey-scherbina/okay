@@ -1,6 +1,8 @@
 package okay
 package macros
 
+
+import okay.freer.*
 import scala.quoted.*
 
 /**
@@ -61,9 +63,9 @@ private[okay] trait DirectVals[F[_]] extends DirectMarks[F] with DirectRow[F] wi
     val hSym = Symbol.newVal(Symbol.spliceOwner, s"${vd.name}$$handle", handleT,
       Flags.EmptyFlags, Symbol.noSymbol)
     val hVal = ValDef(hSym, Some(tpe2(elem) { [T] => (tT: Type[T]) ?=> '{ new Once.Handle[T]() }.asTerm }))
-    val forceApply = Symbol.requiredModule("okay.Once.Force").methodMember("apply").head
-    val storeApply = Symbol.requiredModule("okay.Once.Store").methodMember("apply").head
-    val atSym = Symbol.requiredModule("okay.Once").methodMember("at").head
+    val forceApply = Symbol.requiredModule("okay.freer.Once.Force").methodMember("apply").head
+    val storeApply = Symbol.requiredModule("okay.freer.Once.Store").methodMember("apply").head
+    val atSym = Symbol.requiredModule("okay.freer.Once").methodMember("at").head
     def forceOp(h: Term): Term =
       injectTerm(Apply(TypeApply(Ref(forceApply), List(Inferred(elem))), List(h)),
         TypeRepr.of[Option].appliedTo(elem), row)

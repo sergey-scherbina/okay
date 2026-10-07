@@ -909,14 +909,14 @@ across twenty call sites is a claim nobody can audit. So each family
 has ONE named function, in the file that owns the equation it asserts,
 and nothing else in the library casts for that reason:
 
-- **`okay.out` / `okay.answer`** (Writer) — `opaque type Writer[W, +A]
+- **`okay.freer.out` / `okay.answer`** (Writer) — `opaque type Writer[W, +A]
   = W`, and `Writer(w): Writer[W, W]` is the only injector, so an
   operation IS its element and its answer type equals it. `out` needs
   no cast at all (inside the file the opaque type is transparent);
   `answer` asserts the phantom equation once. Making `Writer` a GADT
   would let the compiler check it and cost an allocation per `tell` —
   which is the whole of why it is 286ns against cats' 1127.
-- **`okay.produced`** (Produce) — the same equation for the identity
+- **`okay.freer.produced`** (Produce) — the same equation for the identity
   signature the streams are built on.
 - **`Chunks.bound`** — the element under a `Bind`, which is the BIND's
   intermediate and genuinely existential. `case Inject(c)` needs
@@ -1191,7 +1191,7 @@ once tested, and this list exists to not repeat that.
 
 - **`.at`/`.plus` need an explicit import, even inside package
   `okay` itself.** `Row`'s extensions are NOT in scope by
-  default — `import okay.Row.at` (or `{at, plus}`) is needed in
+  default — `import okay.freer.Row.at` (or `{at, plus}`) is needed in
   every file that widens a row this way, main sources included. The
   single most common trap of the day (hit five separate times) —
   the error it produces names an unrelated macro

@@ -1,7 +1,9 @@
 package okay.llm
 
-import okay.{!, %, +, Async, Pure, Writer, effect, pure}
+import okay.{%, +, Async, Pure}
+import okay.freer.{!, Writer, effect, pure}
 import okay.given
+import okay.freer.given
 import okay.llm.Models.*
 
 /** a transport that records what it was asked and answers by the path —

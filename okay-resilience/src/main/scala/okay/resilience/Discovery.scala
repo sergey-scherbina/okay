@@ -1,6 +1,8 @@
 package okay.resilience
 
 import okay.*
+import okay.freer.*
+
 import okay.codec.Schema
 import okay.http.{Http, Request, Response}
 

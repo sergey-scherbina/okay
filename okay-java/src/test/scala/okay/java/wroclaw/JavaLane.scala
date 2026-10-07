@@ -3,7 +3,8 @@ package okay.java.wroclaw
 import okay.wroclaw.{Depart, Feed, Job, Native, Ride}
 
 import okay.java.{Collect, Streams, Windowed}
-import okay.{Aggregator, Chunks, Pane}
+import okay.{Chunks, Pane}
+import okay.freer.Aggregator
 import java.util.function.Function as JFunction
 import java.util.stream.{Collectors, Stream as JStream}
 import java.util.{List as JList, Map as JMap}

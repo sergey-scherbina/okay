@@ -1,6 +1,7 @@
 package okay.cache
 
-import okay.{!, Async, async}
+import okay.{Async, async}
+import okay.freer.{!}
 import okay.persist.{Record, Topic}
 import scala.collection.immutable.ArraySeq
 import scala.collection.mutable

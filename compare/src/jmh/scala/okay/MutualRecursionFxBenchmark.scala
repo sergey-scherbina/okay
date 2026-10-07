@@ -1,8 +1,11 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
-import okay.Row.at
+import okay.freer.Row.at
 
 /**
  * stack-safe-mutual-recursion, with effects (2026-09-26): the SAME

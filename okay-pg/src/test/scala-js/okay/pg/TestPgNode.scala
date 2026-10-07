@@ -1,7 +1,8 @@
 package okay.pg
 
 
-import okay.{!, Async, Chunk, Source}
+import okay.{Async, Source}
+import okay.freer.{!, Chunk}
 import okay.given
 import okay.crypto.given
 import okay.sql.SqlValue

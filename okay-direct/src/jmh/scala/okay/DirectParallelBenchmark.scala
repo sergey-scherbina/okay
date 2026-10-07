@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import org.openjdk.jmh.annotations.*
 import okay.Direct.*
 import java.util.concurrent.TimeUnit

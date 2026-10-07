@@ -1,7 +1,10 @@
 package okay.intent
+import okay.freer.given
 
 import okay.given
-import okay.{Async, Answers, Writer}
+
+import okay.{Async, Answers}
+import okay.freer.Writer
 import okay.codec.Schema
 import okay.llm.{OpenAi, Structured, Transports}
 

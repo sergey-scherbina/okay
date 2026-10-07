@@ -308,7 +308,7 @@ function returning it is an okay program a TypeScript caller simply
 `await`s, and its type is again `Stubs.typescript`'s:
 
 ```scala
-val program = okay.pure[Async, Totals](Totals("tea", 12.0, None))
+val program = okay.freer.pure[Async, Totals](Totals("tea", 12.0, None))
 ```
 
 #### A module of functions, with its declaration

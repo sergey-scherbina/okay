@@ -1,6 +1,9 @@
 package okay.cluster
 
+
+import okay.freer.given
 import okay.given
+
 import okay.codec.Schema
 import okay.docs.{Cond, Docs, PutResult, TopicDocs}
 import okay.persist.{MemoryStore, Policy}

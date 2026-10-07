@@ -1,7 +1,10 @@
 package okay.spring
 
 import okay.*
+import okay.freer.*
+
 import okay.given
+import okay.freer.given
 import org.springframework.context.support.GenericApplicationContext
 import org.springframework.core.ReactiveAdapterRegistry
 import org.springframework.boot.autoconfigure.AutoConfigurations
@@ -50,7 +53,7 @@ class TestOkaySpring extends munit.FunSuite {
     assertEquals(Mono.from(adapter.toPublisher[Int](prog)).block(), 42)
     assertEquals(OkayReactive.fromPublisher(Mono.just("y")).runWith, "y")
     adapter.fromPublisher(Mono.just("x")) match
-      case p: okay.Freer[?, ?, ?, ?] => assertEquals(p.getClass.getSimpleName.isEmpty, false)
+      case p: okay.freer.Freer[?, ?, ?, ?] => assertEquals(p.getClass.getSimpleName.isEmpty, false)
       case other => fail(s"not a program: $other")
   }
 

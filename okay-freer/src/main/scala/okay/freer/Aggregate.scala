@@ -1,0 +1,524 @@
+package okay.freer
+
+import okay.*
+
+import scala.compiletime.summonFrom
+import scala.annotation.tailrec
+
+/**
+ * A named, typed, reusable unit of aggregation (specs/aggregators.md):
+ * a start, a step, a MERGE of partial results, and a final
+ * presentation. The merge is what a plain Fold lacks — it makes an
+ * Aggregator chunk-parallel and distribution-ready: (init, add,
+ * merge) is exactly the (zero, seqOp, combOp) triple Spark and Flink
+ * aggregation APIs accept. zip composes two aggregators into one that
+ * computes both in a SINGLE pass over the data — mean is sum zip
+ * count, presented.
+ */
+trait Aggregator[-In, Acc, +Out] extends Serializable:
+  def init: Acc
+
+  /** the sequential step (seqOp) */
+  def add(acc: Acc, in: In): Acc
+
+  /** combine two partial results (combOp) — associative */
+  def merge(a: Acc, b: Acc): Acc
+
+  /** the final projection */
+  def present(acc: Acc): Out
+
+  /**
+   * The push-consumer view (for Stream.fold and friends).
+   *
+   * NOT final: this is the seam through which the accumulator's
+   * specialization travels. Built here it is a generic `Fold`, whose
+   * `add(s: S, a: A): S` erases to `(Object, Object)Object`, so an
+   * aggregator that knows its accumulator is a `long` overrides this
+   * and hands over a `Fold.OfLong` instead. Measured before that
+   * override existed: `Aggregator.count` folding 10k Longs took
+   * 37.8us where `Fold.count` took 6.9 — 5.5x, for the same
+   * arithmetic, purely because the specialization stopped here.
+   */
+  def fold[In2 <: In]: Fold[In2, Acc] = Fold(init)(add(_, _))
+
+  /** run over anything iterable */
+  final def run(xs: IterableOnce[In]): Out =
+    present(xs.iterator.foldLeft(init)(add))
+
+  /** both statistics, one pass */
+  final def zip[In2 <: In, Acc2, Out2](that: Aggregator[In2, Acc2, Out2])
+  : Aggregator[In2, (Acc, Acc2), (Out, Out2)] =
+    val self = this
+    new Aggregator[In2, (Acc, Acc2), (Out, Out2)]:
+      def init = (self.init, that.init)
+      def add(acc: (Acc, Acc2), in: In2) = (self.add(acc._1, in), that.add(acc._2, in))
+      def merge(a: (Acc, Acc2), b: (Acc, Acc2)) = (self.merge(a._1, b._1), that.merge(a._2, b._2))
+      def present(acc: (Acc, Acc2)) = (self.present(acc._1), that.present(acc._2))
+
+  /** transform the answer */
+  final def map[Out2](f: Out => Out2): Aggregator[In, Acc, Out2] =
+    val self = this
+    new Aggregator[In, Acc, Out2]:
+      def init = self.init
+      def add(acc: Acc, in: In) = self.add(acc, in)
+      def merge(a: Acc, b: Acc) = self.merge(a, b)
+      def present(acc: Acc) = f(self.present(acc))
+
+  /** transform the input */
+  final def contramap[In2](f: In2 => In): Aggregator[In2, Acc, Out] =
+    val self = this
+    new Aggregator[In2, Acc, Out]:
+      def init = self.init
+      def add(acc: Acc, in: In2) = self.add(acc, f(in))
+      def merge(a: Acc, b: Acc) = self.merge(a, b)
+      def present(acc: Acc) = self.present(acc)
+
+/**
+ * An aggregation whose `merge` is associative but NOT commutative
+ * (specs/dataflow.md, Claim 2): `merge(a, b)` reads "the slice
+ * summarised by a, and THEN the slice summarised by b", so a merge
+ * tree over it must respect the input's order.
+ *
+ * WHY THE DISTINCTION IS A TYPE. `Aggregator`'s merge is commutative
+ * by contract — specs/cluster.md already leans on it ("order-free by
+ * the P1 contract"), and a distributed finish that combines partial
+ * results in the order they ARRIVE leans on it much harder. A keyed
+ * state machine's slice summary is usually not commutative: the
+ * bus-bunching statistic of docs/benchmarks.md §20 summarises a slice
+ * as (first, last, bunches, gap) and combining two of them asks
+ * whether the gap ACROSS the boundary is short, which is a different
+ * question in the other order.
+ *
+ * That is worth a type rather than a comment, because it is the
+ * difference between a keyed state machine that parallelises with no
+ * shuffle at all and one that silently answers differently on more
+ * than one worker. A `Sequential` is a perfectly ordinary Aggregator
+ * everywhere the order is already respected — a single fold, or a
+ * merge by partition index — and it is exactly what a distributed
+ * finish must refuse to reorder.
+ */
+trait Sequential[-In, Acc, +Out] extends Aggregator[In, Acc, Out]
+
+object Aggregator {
+
+  // ------------------------------------------ unboxed accumulators
+  //
+  // The same three-part story as `Fold`: erasure is fixed at the
+  // DECLARATION, so `add(acc: Acc, in: In): Acc` is
+  // `(Object, Object)Object` in the generic parent and stays that way
+  // in every subtype; a differently-named method declared where the
+  // type is already primitive is the only thing that erases unboxed.
+  // These exist so the specialization reaches the callers that cannot
+  // inline anything — Spark, a java Collector, the cluster — which is
+  // where an Aggregator is actually spent.
+
+  /** an aggregator whose accumulator is a `long` */
+  trait OfLong[-In, +Out] extends Aggregator[In, Long, Out] with Fold.OfLong[In]:
+    self =>
+    def mergeLong(a: Long, b: Long): Long
+    final def merge(a: Long, b: Long): Long = mergeLong(a, b)
+    /** it IS its own fold — no delegating wrapper, so one virtual call
+     * per element instead of two, and nothing allocated to hand it over */
+    final override def fold[In2 <: In]: Fold.OfLong[In2] = this
+
+    /**
+     * `zip`, with the specialization kept: the accumulator is a
+     * `Longs2` rather than a `(Long, Long)`, so one object is
+     * allocated per `add` where the generic form allocates three.
+     * Both sides step through `addLong`, unboxed.
+     *
+     * MEASURED in bytes rather than in seconds, and that choice is
+     * the point: allocation is exact and independent of what else the
+     * machine is doing, where this box's wall clock moves 30% and
+     * cannot resolve the effect at all. `compare/src/jmh`'s
+     * `AggregatorZipBenchmark`, `-prof gc`, 10 000 elements per op:
+     *
+     *   - `count zip sumLong`      905 136 B/op — **90.5 B/element**
+     *   - `count zipLong sumLong`  508 264 B/op — **50.8 B/element**
+     *   - `Aggregator.summary`     668 112 B/op — 66.8 B/element, for
+     *     FOUR statistics rather than two
+     *
+     * — error ±0.4 B/op, which is what "exact" looks like. Time moved
+     * the same way (138 us against 52) but with ±40% bars, so read the
+     * direction and not the ratio.
+     *
+     * Sixteen of every one of those bytes is the harness's own: a
+     * generic `add(acc: Acc, in: In)` boxes a primitive input, which
+     * is what `fold` and `Fold.OfLong` exist to avoid and what a fold
+     * through them does not pay. It is the same in all three lanes, so
+     * the comparison stands; the accumulator itself is 32 B here
+     * against about 74.
+     *
+     * REACHING IT NEEDS THE UNBOXED SPELLINGS. `sum[N]`'s declared
+     * return type is `Aggregator[N, N, N]`, which hides the `OfLong`
+     * underneath, so this composes `Aggregator.count` with
+     * `Aggregator.sumLong` — and that spelling is the whole usability
+     * cost of the specialization.
+     */
+    final def zipLong[In2 <: In, Out2](that: OfLong[In2, Out2])
+    : Aggregator[In2, Longs2, (Out, Out2)] =
+      new Aggregator[In2, Longs2, (Out, Out2)]:
+        def init: Longs2 = Longs2(self.initLong, that.initLong)
+        def add(acc: Longs2, in: In2): Longs2 =
+          Longs2(self.addLong(acc.a, in), that.addLong(acc.b, in))
+        def merge(x: Longs2, y: Longs2): Longs2 =
+          Longs2(self.mergeLong(x.a, y.a), that.mergeLong(x.b, y.b))
+        def present(acc: Longs2): (Out, Out2) = (self.present(acc.a), that.present(acc.b))
+
+  /**
+   * TWO LONG-ACCUMULATED STATISTICS IN ONE PASS, without a tuple.
+   *
+   * `zip` composes any two aggregators, and its accumulator is
+   * `(Acc, Acc2)` — which for two `OfLong`s is three allocations per
+   * `add`: the tuple, and a box for each `long`, because a `Tuple2`'s
+   * fields are `Object` once the types are abstract. That is fine for
+   * a fold over a list and expensive in a window, where `add` runs
+   * once per element PER PANE.
+   *
+   * This is one allocation of two `long` fields, and the two sides are
+   * stepped through `addLong`, so nothing is boxed on the way either.
+   * The accumulator type is different from `zip`'s on purpose — a new
+   * name rather than an overload, so no inferred type anywhere changes
+   * under a caller who did not ask (`Longs2` is public and matchable).
+   *
+   * For THREE statistics of one measure — count, sum, min, max — reach
+   * for `Aggregator.summary`, which is flatter still.
+   */
+  final case class Longs2(a: Long, b: Long)
+
+  /** an aggregator whose accumulator is a `double` */
+  trait OfDouble[-In, +Out] extends Aggregator[In, Double, Out] with Fold.OfDouble[In]:
+    def mergeDouble(a: Double, b: Double): Double
+    final def merge(a: Double, b: Double): Double = mergeDouble(a, b)
+    /** it IS its own fold — no delegating wrapper, so one virtual call
+     * per element instead of two, and nothing allocated to hand it over */
+    final override def fold[In2 <: In]: Fold.OfDouble[In2] = this
+
+  /** an aggregator whose accumulator is an `int` */
+  trait OfInt[-In, +Out] extends Aggregator[In, Int, Out] with Fold.OfInt[In]:
+    def mergeInt(a: Int, b: Int): Int
+    final def merge(a: Int, b: Int): Int = mergeInt(a, b)
+    /** it IS its own fold — no delegating wrapper, so one virtual call
+     * per element instead of two, and nothing allocated to hand it over */
+    final override def fold[In2 <: In]: Fold.OfInt[In2] = this
+
+  /**
+   * Make one from the four pieces.
+   *
+   * `z` is taken BY VALUE, so `init` answers the same object every
+   * time it is asked. That is right for an immutable accumulator and
+   * wrong for a mutable one wherever `init` is called more than once
+   * — a chunk-parallel or distributed fold asks per partition
+   * (specs/dataflow.md), and every fibre would then share one buffer.
+   * Write those as an explicit `Aggregator` whose `init` allocates.
+   */
+  def apply[In, Acc, Out](z: Acc)(step: (Acc, In) => Acc)(comb: (Acc, Acc) => Acc)
+                         (out: Acc => Out): Aggregator[In, Acc, Out] =
+    new Aggregator[In, Acc, Out]:
+      def init = z
+      def add(acc: Acc, in: In) = step(acc, in)
+      def merge(a: Acc, b: Acc) = comb(a, b)
+      def present(acc: Acc) = out(acc)
+
+  /** every Monoid aggregates on its diagonal */
+  def fromMonoid[A](using M: Monoid[A]): Aggregator[A, A, A] =
+    apply(M.empty)(M.combine)(M.combine)(identity)
+
+  /** how many elements — the counter never leaves a register */
+  def count[A]: OfLong[A, Long] = new:
+    def initLong: Long = 0L
+    def addLong(n: Long, a: A): Long = n + 1L
+    def mergeLong(a: Long, b: Long): Long = a + b
+    def present(acc: Long): Long = acc
+
+  /** the unboxed sums */
+  val sumLong: OfLong[Long, Long] = new:
+    def initLong: Long = 0L
+    def addLong(s: Long, a: Long): Long = s + a
+    def mergeLong(a: Long, b: Long): Long = a + b
+    def present(acc: Long): Long = acc
+
+  val sumInt: OfInt[Int, Int] = new:
+    def initInt: Int = 0
+    def addInt(s: Int, a: Int): Int = s + a
+    def mergeInt(a: Int, b: Int): Int = a + b
+    def present(acc: Int): Int = acc
+
+  val sumDouble: OfDouble[Double, Double] = new:
+    def initDouble: Double = 0.0
+    def addDouble(s: Double, a: Double): Double = s + a
+    def mergeDouble(a: Double, b: Double): Double = a + b
+    def present(acc: Double): Double = acc
+
+  /**
+   * The specialization `sum[N]` answers with, visible in its own
+   * return type (aggregator-sum-hides-its-specialization): the
+   * declared `Aggregator[N, N, N]` used to hide the `OfLong`/`OfInt`/
+   * `OfDouble` underneath, so `.zipLong` was unreachable from the
+   * idiomatic spelling and needed `Aggregator.sumLong` by name
+   * instead. A match type reduces `SumOf[Long]` to `OfLong[Long,
+   * Long]` structurally — the same substitution `sum` already made
+   * for `Aggregator[X, X, X]` transports it to `SumOf[N]` with no new
+   * cast in the three specialized branches, for the same reason `zip`
+   * and its own `.zipLong` twin have (no-casts-without-necessity: the
+   * one branch that does need one is isolated and explained where it
+   * is, below).
+   */
+  type SumOf[N] = N match
+    case Long => OfLong[Long, Long]
+    case Int => OfInt[Int, Int]
+    case Double => OfDouble[Double, Double]
+    case _ => Aggregator[N, N, N]
+
+  /**
+   * The sum, unboxed where the type is known — the same selection
+   * `Fold.sum` makes, for the same reason. `Numeric` cannot specialize
+   * anything (`plus(x: T, y: T): T` erases like every other generic
+   * method); it can only SAY which type this is, and the `=:=` that
+   * says it also transports the aggregator, with no cast.
+   */
+  inline def sum[N](using N: Numeric[N]): SumOf[N] =
+    summonFrom {
+      case ev: (N =:= Long) =>
+        ev.flip.substituteCo[[X] =>> SumOf[X]](sumLong)
+      case ev: (N =:= Int) =>
+        ev.flip.substituteCo[[X] =>> SumOf[X]](sumInt)
+      case ev: (N =:= Double) =>
+        ev.flip.substituteCo[[X] =>> SumOf[X]](sumDouble)
+      // the one branch `SumOf` cannot reduce for: N here is proven
+      // to be none of Long/Int/Double (the three summonFrom arms
+      // above all failed to find their evidence), which IS exactly
+      // SumOf's own wildcard case — but a match type reduces only
+      // when it can show a concrete scrutinee is DISJOINT from every
+      // earlier case, and an abstract N carries no such proof the
+      // type checker can use, so SumOf[N] stays stuck here. The cast
+      // is sound by the same summonFrom exhaustion that picked this
+      // branch, not by assumption.
+      case _ => apply(N.zero)(N.plus)(N.plus)(identity).asInstanceOf[SumOf[N]]
+    }
+
+  /**
+   * The running mean's accumulator: two primitive fields in ONE
+   * object, where `sum zip count` carried a `(N, Long)`.
+   *
+   * A `Tuple2` is three allocations per element — the tuple, and a box
+   * for each field, since a tuple's fields are `Object`. This is one,
+   * with the fields laid out as a `double` and a `long`, and in a
+   * local fold the JIT can often remove even that. Measured: the
+   * tuple form took 87.0us per 10k against 18.9 for a hand loop
+   * carrying two locals.
+   *
+   * It sums in `Double` rather than in `N`. For `mean[Double]` that is
+   * exactly what the old form did; for an integral `N` it trades exact
+   * summation past 2^53 for immunity to the overflow the old
+   * `sum[Int]` accumulator had.
+   */
+  final case class Mean(sum: Double, count: Long)
+
+  /** the arithmetic mean, one pass, one flat accumulator */
+  def mean[N](using N: Numeric[N]): Aggregator[N, Mean, Double] =
+    new Aggregator[N, Mean, Double]:
+      def init: Mean = Mean(0.0, 0L)
+      def add(acc: Mean, in: N): Mean = Mean(acc.sum + N.toDouble(in), acc.count + 1L)
+      def merge(a: Mean, b: Mean): Mean = Mean(a.sum + b.sum, a.count + b.count)
+      def present(acc: Mean): Double =
+        if acc.count == 0 then Double.NaN else acc.sum / acc.count
+
+  /**
+   * Population variance in one pass: Welford's step, merged by
+   * Chan/Golub/LeVeque — the merge form is what makes it
+   * chunk-parallel and distribution-safe.
+   */
+  /**
+   * Welford's three running values, flat: a `long` and two `double`s
+   * in one object, where a `(Long, Double, Double)` was four
+   * allocations per element — the tuple and a box for each field.
+   * Same arithmetic, same merge, same answers.
+   */
+  final case class Variance(count: Long, mean: Double, m2: Double)
+
+  def variance[N](using N: Numeric[N]): Aggregator[N, Variance, Double] =
+    new Aggregator[N, Variance, Double]:
+      def init: Variance = Variance(0L, 0.0, 0.0)
+
+      def add(acc: Variance, x: N): Variance =
+        val xd = N.toDouble(x)
+        val n1 = acc.count + 1
+        val d = xd - acc.mean
+        val mean1 = acc.mean + d / n1
+        Variance(n1, mean1, acc.m2 + d * (xd - mean1))
+
+      def merge(a: Variance, b: Variance): Variance =
+        if a.count == 0 then b
+        else if b.count == 0 then a
+        else
+          val n = a.count + b.count
+          val d = b.mean - a.mean
+          Variance(n, a.mean + d * b.count / n,
+            a.m2 + b.m2 + d * d * a.count * b.count / n)
+
+      def present(acc: Variance): Double =
+        if acc.count == 0 then Double.NaN else acc.m2 / acc.count
+
+  /** the standard deviation (population) */
+  def stddev[N: Numeric]: Aggregator[N, Variance, Double] =
+    variance[N].map(math.sqrt)
+
+  /**
+   * COUNT, SUM, MIN AND MAX OF ONE MEASURE, in ONE flat accumulator —
+   * the third member of the family `Mean` and `Variance` already
+   * belong to, and filed for the same reason they were.
+   *
+   * `count zip sum zip max` says the same thing and allocates SIX
+   * objects per element to say it: two tuples, a box for each of the
+   * two long accumulators, a `Some`, and a box for the value inside
+   * it. Every one of them is written on every `add`, and an
+   * aggregator in a window is added to once per element per pane.
+   * This is one allocation of four `long` fields, and in a local fold
+   * the JIT can often remove even that.
+   *
+   * MEASURED (docs/benchmarks.md §20, the Wrocław event-time job at
+   * 2 414 119 events, minimum of three JVMs): the same job with
+   * `count zip sum zip max` inside `okay.Windows` runs 694 ms and with
+   * this 583 — **16%**, for an aggregator that answers the same
+   * question. The gap to a hand-written mutable cell (520 ms) is what
+   * a value accumulator costs after the tuples are gone, and that part
+   * is the contract, not a defect: `merge` may be called on an
+   * accumulator someone else still holds.
+   *
+   * `min` and `max` are `Long.MaxValue` and `Long.MinValue` on an
+   * empty summary — the sentinels, not an `Option`, because the point
+   * of the type is to have no reference fields at all. `count == 0`
+   * is the test for "nothing was seen", and `merge` is correct with
+   * the sentinels either way.
+   */
+  final case class Summary(count: Long, sum: Long, min: Long, max: Long):
+    /** the arithmetic mean, or NaN when nothing was summarised */
+    def mean: Double = if count == 0L then Double.NaN else sum.toDouble / count.toDouble
+
+  object Summary:
+    val empty: Summary = Summary(0L, 0L, Long.MaxValue, Long.MinValue)
+
+  /**
+   * The four statistics of a long-valued measure, one pass, one flat
+   * accumulator. `measure` is where the element becomes a number, so
+   * the aggregator needs no `contramap` wrapper around it either —
+   * one virtual call per element instead of the chain a zip builds.
+   */
+  def summary[A](measure: A => Long): Aggregator[A, Summary, Summary] =
+    new Aggregator[A, Summary, Summary]:
+      def init: Summary = Summary.empty
+      def add(acc: Summary, in: A): Summary =
+        val x = measure(in)
+        Summary(acc.count + 1L, acc.sum + x,
+          if x < acc.min then x else acc.min,
+          if x > acc.max then x else acc.max)
+      def merge(a: Summary, b: Summary): Summary =
+        Summary(a.count + b.count, a.sum + b.sum,
+          if a.min < b.min then a.min else b.min,
+          if a.max > b.max then a.max else b.max)
+      def present(acc: Summary): Summary = acc
+
+  /** the least element, if any */
+  def min[A](using O: Ordering[A]): Aggregator[A, Option[A], Option[A]] =
+    apply(Option.empty[A])((s, a: A) => Some(s.fold(a)(O.min(_, a))))(
+      (a, b) => (a, b) match
+        case (Some(x), Some(y)) => Some(O.min(x, y))
+        case _ => a.orElse(b))(identity)
+
+  /** the greatest element, if any */
+  def max[A](using O: Ordering[A]): Aggregator[A, Option[A], Option[A]] =
+    min[A](using O.reverse)
+
+  /** the first element, if any (merge keeps the left side's) */
+  def first[A]: Aggregator[A, Option[A], Option[A]] =
+    apply(Option.empty[A])((s, a: A) => s.orElse(Some(a)))((a, b) => a.orElse(b))(identity)
+
+  /** the last element, if any (merge keeps the right side's) */
+  def last[A]: Aggregator[A, Option[A], Option[A]] =
+    apply(Option.empty[A])((_, a: A) => Some(a))((a, b) => b.orElse(a))(identity)
+
+  /**
+   * The k greatest elements, descending.
+   *
+   * The accumulator is kept sorted descending and capped at k, so the
+   * element to beat is the LAST one held, and an element that does
+   * not beat it is refused with one comparison and no allocation at
+   * all. Without that guard every element consed onto the list and
+   * re-sorted it — measured over 10 000 elements at k = 8: 5 271 728
+   * bytes to select eight of them, 527 per element, where the guard
+   * costs 26 736 (docs/benchmarks.md §9h). `MemoryStore.search` folds
+   * a whole corpus through this on every query, which is what made
+   * the difference worth having.
+   *
+   * `drop(k - 1)` walks at most k conses and allocates nothing; it is
+   * empty exactly while fewer than k are held.
+   *
+   * Ties: an element EQUAL to the k-th is refused, so among equals the
+   * first seen survives. The old code displaced it (`sorted` is
+   * stable and the newcomer was consed at the head). The multiset of
+   * SCORES is the same either way; which equal-scoring record you get
+   * is not, and "the first one seen" is the answer that does not
+   * depend on the corpus's order changing under you.
+   *
+   * An element that DOES make the cut used to pay `sorted` on all of
+   * `a :: s`: a copy out to an `Array`, a sort, and a copy back —
+   * TWICE the list allocated (the sorted k+1, then `take(k)` rebuilds
+   * again, since a `List` cannot share a prefix once its tail is cut
+   * short) for no reason but that `s` was already sorted. `insert`
+   * walks `s` once, keeps every node up to the insertion point that
+   * ends up unused anyway (a `List` cannot share past a point its
+   * tail changes), and stops at exactly `k` — one array-free pass
+   * instead of a sort and two list rebuilds (docs/benchmarks.md §9h).
+   */
+  def topK[A](k: Int)(using O: Ordering[A]): Aggregator[A, List[A], List[A]] =
+    // a loop (specs/stack-safety.md): the kept prefix is carried
+    // reversed and put back in front once the insertion point is found,
+    // so an insertion k deep costs k steps and no stack
+    @tailrec def insert(a: A, xs: List[A], remaining: Int, keptRev: List[A] = Nil): List[A] =
+      if remaining <= 0 then keptRev.reverse
+      else xs match
+        case Nil => keptRev reverse_::: (a :: Nil)
+        case h :: t =>
+          if O.gt(h, a) then insert(a, t, remaining - 1, h :: keptRev)
+          else keptRev reverse_::: (a :: xs.take(remaining - 1))
+    def keep(xs: List[A]) = xs.sorted(using O.reverse).take(k)
+    apply(List.empty[A]) { (s, a: A) =>
+      val kth = s.drop(k - 1)
+      if kth.isEmpty || O.gt(a, kth.head) then insert(a, s, k) else s
+    }((a, b) => keep(a ++ b))(identity)
+
+  /** the distinct elements, exactly (bounded data; sketches for the rest) */
+  def distinct[A]: Aggregator[A, Set[A], Long] =
+    apply(Set.empty[A])(_ + (_: A))(_ ++ _)(_.size.toLong)
+
+  /** one aggregator per key, in one pass */
+  def groupBy[K, In, Acc, Out](key: In => K)(agg: Aggregator[In, Acc, Out])
+  : Aggregator[In, Map[K, Acc], Map[K, Out]] =
+    apply(Map.empty[K, Acc]) { (m, in: In) =>
+      val k = key(in)
+      m.updated(k, agg.add(m.getOrElse(k, agg.init), in))
+    } { (a, b) =>
+      b.foldLeft(a)((m, kv) => m.updated(kv._1, m.get(kv._1).fold(kv._2)(agg.merge(_, kv._2))))
+    }(_.view.mapValues(agg.present).toMap)
+}
+
+/**
+ * The sliding window, on a Group: each emitted value is the combine
+ * of the last (up to) n elements — aging data is SUBTRACTED by the
+ * inverse, never recomputed. A Monoid-only element type (a running
+ * max, a String) is rejected at compile time: there is no un-seeing
+ * without an inverse.
+ */
+def sliding[S[_], F[+_], A](s: S[A])(n: Int)
+                           (using G: Group[A], St: Stream[S, F], H: Answers[F]): LazyList[A] =
+  def go(q: Vector[A], acc: A, rest: LazyList[A]): LazyList[A] = rest match
+    case a #:: t =>
+      val grown = G.combine(acc, a)
+      if q.length >= n then
+        val aged = G.combine(grown, G.inverse(q.head))
+        aged #:: go(q.tail :+ a, aged, t)
+      else grown #:: go(q :+ a, grown, t)
+    case _ => LazyList.empty
+
+  go(Vector.empty, G.empty, s.toLazyList)

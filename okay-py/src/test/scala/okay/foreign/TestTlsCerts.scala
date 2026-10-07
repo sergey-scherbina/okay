@@ -34,7 +34,7 @@ object TestTlsCerts:
  */
 abstract class TlsConformance extends WireConformance:
   import okay.codec.{WireAuth, WireSecurity}
-  import okay.given
+  import okay.freer.given
   import scala.concurrent.duration.*
 
   /** the binary serving TCP with `env` */
@@ -95,8 +95,8 @@ abstract class TlsConformance extends WireConformance:
       val both = ForeignWorker.connect("127.0.0.1", port)
       try
         given okay.Answers[ForeignEval] = both.handler
-        val priceOf = Foreign.callback[String, Double]("price_of")(_ => okay.Free.pure(4.0))
-        val discount = Foreign.callback[Double, Double]("discount")(a => okay.Free.pure(a / 2))
+        val priceOf = Foreign.callback[String, Double]("price_of")(_ => okay.freer.Free.pure(4.0))
+        val discount = Foreign.callback[Double, Double]("discount")(a => okay.freer.Free.pure(a / 2))
         assertEquals(Foreign.fn[Double](address("quote")).calling(Foreign.callbacks(priceOf, discount))("tea", 3L).runWith, Right(6.0))
       finally both.close()
     finally p.destroy()

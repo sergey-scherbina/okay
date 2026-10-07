@@ -1,7 +1,10 @@
 package okay.llm
 
 import okay.*
+import okay.freer.*
+
 import okay.given
+import okay.freer.given
 
 /** the capability door on Cut: guard/watched/violation with the
  * prompt ambient — behavior identical to the explicit forms */

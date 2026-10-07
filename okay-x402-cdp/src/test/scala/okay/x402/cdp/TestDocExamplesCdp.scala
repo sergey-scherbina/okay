@@ -1,6 +1,8 @@
 package okay.x402.cdp
 
 import okay.*
+import okay.freer.*
+
 import okay.chain.Network
 import okay.conf.Secret
 import okay.http.{Http, Request, Response}

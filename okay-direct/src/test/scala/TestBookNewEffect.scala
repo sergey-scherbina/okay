@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import okay.Direct.*
 import java.util.concurrent.atomic.AtomicInteger
 import scala.language.implicitConversions
@@ -43,7 +46,7 @@ class TestBookNewEffect extends munit.FunSuite {
     /** the ONLY thing a caller writes. No cast: `b.Res` is the
      * member, so the prompt and the fallback already agree. */
     def spend[F[+_]](n: Int)(using b: Budget[?], at: At): Unit ! Shift % ? + F =
-      if b.left.addAndGet(-n) >= 0 then okay.pure(())
+      if b.left.addAndGet(-n) >= 0 then okay.freer.pure(())
       else Shift.abort[b.Res, Unit, F](b.prompt)(b.orElse())
 
     /** what is left, as an ordinary question — no capture involved */

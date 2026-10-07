@@ -1,6 +1,7 @@
 package okay.spark
 
-import okay.{Aggregator, Chunks}
+import okay.Chunks
+import okay.freer.Aggregator
 import SparkInterop.*
 import org.apache.spark.sql.{Encoders, SparkSession}
 

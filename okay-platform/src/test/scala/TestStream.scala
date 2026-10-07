@@ -1,6 +1,8 @@
 package okay
 
-import !.*
+
+import okay.freer.*
+import okay.freer.given
 
 /** The stream combinators, uniformly over the carriers — a Producer,
  * a writer program (via toLazyList), a LazyList — all lazy. */
@@ -58,7 +60,7 @@ class TestStream extends munit.FunSuite {
     assertEquals(seen.toList, List(1, 2))
     assertEquals(Stream.fold[[W] =>> Unit ! Writer % W, okay.Pure, Int, Int](feed)(using Fold.sum[Int]), 6)
     assertEquals(Stream.fold[[W] =>> Unit ! Writer % W, okay.Pure, Int, Long](feed)(using Fold.count[Int]), 3L)
-    assertEquals(Stream.fold(okay.pure[Produce, Int](0): Producer[Int])(using Fold.count[Int]), 0L)
+    assertEquals(Stream.fold(okay.freer.pure[Produce, Int](0): Producer[Int])(using Fold.count[Int]), 0L)
   }
 
   test("search stops early, even on an infinite stream") {

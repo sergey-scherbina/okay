@@ -1,6 +1,7 @@
 package okay.jdbc
 
-import okay.{!, +, %, Async, async, Chunk, ChunkBuf, effect, Source, Writer}
+import okay.{+, %, Async, async, ChunkBuf, Source}
+import okay.freer.{!, Chunk, effect, Writer}
 import okay.sql.{Col, Granted, Isolation, Sql, SqlType, SqlValue, Temporal}
 import java.sql.{Connection, PreparedStatement, ResultSet, ResultSetMetaData, Types}
 
@@ -60,7 +61,7 @@ final class JdbcSql(conn: Connection, fetchSize: Int = 64) extends Sql:
       effect[F, Chunk[Vector[SqlValue]]](Async.Run(() => readChunk(rs, cols, codes))).flatMap { c =>
         if c.length < fetchSize then
           effect[F, Unit](Async.Run { () => rs.close(); ps.close() }).flatMap { _ =>
-            if c.isEmpty then okay.pure(())
+            if c.isEmpty then okay.freer.pure(())
             else effect[F, Unit](Writer(c))
           }
         else effect[F, Unit](Writer(c)).flatMap(_ => go(rs, ps, cols, codes))

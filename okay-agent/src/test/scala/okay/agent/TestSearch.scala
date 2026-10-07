@@ -1,7 +1,8 @@
 package okay.agent
 
-import okay.{!, +, Choose, Answers, effect, guard, pure, runChoice}
-import okay.given
+import okay.{+, Answers, guard}
+import okay.freer.{!, Choose, effect, pure, runChoice}
+import okay.freer.given
 
 /**
  * Search over completions, and the thing that makes it correct: the

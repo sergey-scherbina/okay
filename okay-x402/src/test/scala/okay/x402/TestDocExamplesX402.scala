@@ -1,6 +1,8 @@
 package okay.x402
 
 import okay.*
+import okay.freer.*
+
 import okay.chain.Network
 import okay.codec.Json.*
 import okay.http.{Http, Request, Response}

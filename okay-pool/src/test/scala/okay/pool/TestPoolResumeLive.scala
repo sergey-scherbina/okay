@@ -1,7 +1,9 @@
 package okay.pool
 
 import okay.*
+
 import okay.given
+import okay.freer.given
 import okay.cluster.Folded
 import okay.codec.{Codecs, Json}
 import okay.resilience.Discovery

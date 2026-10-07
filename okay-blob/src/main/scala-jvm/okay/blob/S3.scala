@@ -1,7 +1,8 @@
 package okay.blob
 
-import okay.{!, +, %, Async, Chunk, Source, Writer, pure}
-import okay.Row.plus
+import okay.{+, %, Async, Source}
+import okay.freer.{!, Chunk, Writer, pure}
+import okay.freer.Row.plus
 import okay.http.{Body, Http, Method, Request, Response}
 import scala.collection.immutable.ArraySeq
 
@@ -83,7 +84,7 @@ final class S3(http: Http, endpoint: String, bucket: String, region: String,
       else if !r.ok then r.release.map(_ => throw IllegalStateException(s"read '$key': HTTP ${r.status}"))
       else
         val out = java.io.ByteArrayOutputStream()
-        val sink: okay.Fold[Chunk[Byte], Unit] = okay.Fold(()) { (_, c) =>
+        val sink: okay.freer.Fold[Chunk[Byte], Unit] = okay.freer.Fold(()) { (_, c) =>
           if c.length > maxBytes - out.size then throw IllegalStateException(s"read '$key': object exceeds limit")
           out.write(c.toArray)
         }
@@ -98,11 +99,11 @@ final class S3(http: Http, endpoint: String, bucket: String, region: String,
     // program is a value that can run twice
     okay.async((java.io.ByteArrayOutputStream(), Opened())).flatMap { (buf, opened) =>
       attempt(filling(key, bytes, buf, None, opened)).flatMap {
-        case Right(etag) => okay.pure[Async, Etag](etag)
+        case Right(etag) => okay.freer.pure[Async, Etag](etag)
         // a put that FAILS aborts the upload it opened: an incomplete
         // upload is never an object, and now it holds no parts either
         case Left(why) =>
-          val gone = opened.upload.fold(okay.pure[Async, Unit](()))(u => attempt(abandon(key, u.id)).map(_ => ()))
+          val gone = opened.upload.fold(okay.freer.pure[Async, Unit](()))(u => attempt(abandon(key, u.id)).map(_ => ()))
           gone.map(_ => throw why)
       }
     }
@@ -138,13 +139,13 @@ final class S3(http: Http, endpoint: String, bucket: String, region: String,
         up match
           case None => single(key, buf.toByteArray)
           case Some(u) =>
-            val last = if buf.size > 0 then u.part(buf.toByteArray) else okay.pure[Async, Unit](())
+            val last = if buf.size > 0 then u.part(buf.toByteArray) else okay.freer.pure[Async, Unit](())
             last.flatMap(_ => u.complete())
       case Right((chunk, rest)) =>
         buf.write(chunk.toArray)
         if buf.size < partSize then filling(key, rest, buf, up, opened)
         else
-          val started = up.fold(initiate(key).map { u => opened.upload = Some(u); u })(u => okay.pure[Async, Upload](u))
+          val started = up.fold(initiate(key).map { u => opened.upload = Some(u); u })(u => okay.freer.pure[Async, Upload](u))
           started.flatMap { u =>
             val part = buf.toByteArray
             buf.reset()
@@ -226,12 +227,12 @@ final class S3(http: Http, endpoint: String, bucket: String, region: String,
       s"$endpoint${SigV4.uriEncode(keyPath(key), keepSlash = true)}", auth ++ headers))
     // a row is a union: Async + Writer % Chunk[Byte] IS Writer % Chunk[Byte]
     // + Async, so the ascriptions are the compiler's equality, not casts
-    (okay.!.widen[Response, Async, Writer % Chunk[Byte]](send): Response ! F).flatMap { r =>
+    (okay.freer.!.widen[Response, Async, Writer % Chunk[Byte]](send): Response ! F).flatMap { r =>
       if r.status == 404 then
-        okay.!.widen[Either[String, Unit], Async, Writer % Chunk[Byte]](
+        okay.freer.!.widen[Either[String, Unit], Async, Writer % Chunk[Byte]](
           r.release.map(_ => Left(s"no such key '$key'"))): Either[String, Unit] ! F
       else if !r.ok && r.status != 206 then
-        okay.!.widen[Either[String, Unit], Async, Writer % Chunk[Byte]](
+        okay.freer.!.widen[Either[String, Unit], Async, Writer % Chunk[Byte]](
           r.release.map(_ => Left(s"get '$key': HTTP ${r.status}"))): Either[String, Unit] ! F
       else emit(r.body)
     }
@@ -269,7 +270,7 @@ final class S3(http: Http, endpoint: String, bucket: String, region: String,
         token.map("continuation-token" -> _)
       val send = http.send(signed(Method.Get, s"/$bucket", query.sortBy(_._1)))
         .flatMap(r => Http.text(r).map(t => (r.status, t)))
-      (okay.!.widen[(Int, String), Async, Writer % Chunk[Meta]](send): (Int, String) ! FM).flatMap { (status, xml) =>
+      (okay.freer.!.widen[(Int, String), Async, Writer % Chunk[Meta]](send): (Int, String) ! FM).flatMap { (status, xml) =>
           if status != 200 then throw IllegalStateException(s"list '$prefix': HTTP $status")
           val metas = contents(xml)
           val next =

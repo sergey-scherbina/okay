@@ -1,5 +1,7 @@
 package okay
 
+
+import okay.freer.*
 /**
  * Server-sent events framing: lines in, each event's joined `data:`
  * fields out; a partial trailing event flushes.

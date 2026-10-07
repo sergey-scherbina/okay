@@ -1,6 +1,10 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import okay.given
+import okay.freer.given
 import okay.Optic.{Const, First, Star}
 import scala.compiletime.testing.typeCheckErrors
 

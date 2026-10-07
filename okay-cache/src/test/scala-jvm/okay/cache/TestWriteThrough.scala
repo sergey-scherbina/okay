@@ -1,7 +1,9 @@
 package okay.cache
 
-import okay.{!, Async, Source}
+import okay.{Async, Source}
+import okay.freer.{!}
 import okay.given
+import okay.freer.given
 import okay.jdbc.JdbcSql
 import okay.sql.{Sql, SqlValue, Typed}
 import okay.codec.Schema

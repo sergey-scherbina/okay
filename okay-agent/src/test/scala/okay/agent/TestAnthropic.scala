@@ -1,7 +1,9 @@
 package okay.agent
 
-import okay.{!, %, +, Async, Answers, Writer, effect}
+import okay.{%, +, Async, Answers}
+import okay.freer.{!, Writer, effect}
 import okay.given
+import okay.freer.given
 import okay.codec.{Json, Schema}
 import okay.llm.Transport
 import scala.collection.mutable

@@ -1,6 +1,8 @@
 package okay.http
 
 import okay.*
+import okay.freer.*
+
 
 import java.net.InetSocketAddress
 import java.nio.ByteBuffer

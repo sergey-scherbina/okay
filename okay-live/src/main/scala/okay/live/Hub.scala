@@ -1,7 +1,7 @@
 package okay.live
 
-import okay.{Channel, TList}
-
+import okay.Channel
+import okay.freer.TList
 /**
  * Broadcast (specs/live.md): every `subscribe()` mints a fresh
  * channel and remembers it; `publish` offers a value to every

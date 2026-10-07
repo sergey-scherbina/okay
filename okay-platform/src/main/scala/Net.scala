@@ -1,5 +1,7 @@
 package okay
 
+
+import okay.freer.*
 /**
  * The cross-platform byte-stream seam (specs/net.md): three wire
  * protocols in this stack speak raw TCP, and every platform gets

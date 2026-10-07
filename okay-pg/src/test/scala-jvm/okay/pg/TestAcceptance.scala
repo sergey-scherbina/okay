@@ -1,7 +1,9 @@
 package okay.pg
 
-import okay.{!, +, %, Async, Chunk, Source, Stream, Writer}
+import okay.{+, %, Async, Source}
+import okay.freer.{!, Chunk, Stream, Writer}
 import okay.given
+import okay.freer.given
 import okay.crypto.given
 import okay.codec.Schema
 import okay.jdbc.JdbcSql
@@ -32,7 +34,7 @@ class TestAcceptance extends munit.FunSuite {
   val port = sys.env.get("OKAY_PG_PORT").flatMap(_.toIntOption).getOrElse(5432)
 
   lazy val available: Boolean =
-    try { okay.!.run(okay.Async.run[PgSql, okay.Pure](PgSql.connect(host, port, "okay", "okay", "okay"))).close(); true }
+    try { okay.freer.!.run(okay.Async.run[PgSql, okay.Pure](PgSql.connect(host, port, "okay", "okay", "okay"))).close(); true }
     catch { case _: Throwable => false }
 
   def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.Pure](prog))
@@ -86,7 +88,7 @@ class TestAcceptance extends munit.FunSuite {
 
   test("the same typed program, two drivers, one answer") {
     assume(available, s"no Postgres at $host:$port — the acceptance skips")
-    val pg = okay.!.run(okay.Async.run[PgSql, okay.Pure](PgSql.connect(host, port, "okay", "okay", "okay")))
+    val pg = okay.freer.!.run(okay.Async.run[PgSql, okay.Pure](PgSql.connect(host, port, "okay", "okay", "okay")))
     val h2conn = DriverManager.getConnection("jdbc:h2:mem:acc;DB_CLOSE_DELAY=-1", "sa", "")
     try
       val h2 = JdbcSql(h2conn)

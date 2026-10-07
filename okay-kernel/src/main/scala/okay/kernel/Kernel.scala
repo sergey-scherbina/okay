@@ -1,6 +1,6 @@
 package okay.kernel
 
-import okay.{!, Resource, pure}
+import okay.freer.{!, Resource, pure}
 import scala.collection.mutable
 
 /** everything that can stop a plugin set from running, as a value with

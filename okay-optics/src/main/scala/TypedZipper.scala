@@ -1,5 +1,6 @@
 package okay
 
+
 import scala.deriving.Mirror
 import scala.reflect.ClassTag
 

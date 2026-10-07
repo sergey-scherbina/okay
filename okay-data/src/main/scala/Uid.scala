@@ -1,5 +1,6 @@
 package okay
 
+
 /**
  * A SORTABLE 128-BIT IDENTITY (specs/coordination-free.md): issued
  * locally, ordered by time, spelled either as a ULID or as a UUID.

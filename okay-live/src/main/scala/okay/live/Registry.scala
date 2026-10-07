@@ -1,7 +1,7 @@
 package okay.live
 
-import okay.{Channel, TDict}
-
+import okay.Channel
+import okay.freer.TDict
 /**
  * A channel per key (specs/live.md): `apply(key)` creates one
  * lazily on first use and reuses it after — the same key always

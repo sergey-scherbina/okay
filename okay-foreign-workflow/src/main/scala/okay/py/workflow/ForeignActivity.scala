@@ -1,6 +1,7 @@
 package okay.foreign.workflow
 
-import okay.{%, !, +, At, Shift, Wf, effect}
+import okay.{%, +, Wf}
+import okay.freer.{!, At, Shift, effect}
 import okay.codec.Schema
 import okay.foreign.{Condition, ForeignEval, PyNode, Value, Shape, ToPy, Wire}
 
@@ -66,8 +67,8 @@ object ForeignActivity:
     // must not be left waiting — and the function's own answer is the
     // activity's. DIRECT: a start that died is the retry loop's to redo.
     def settle(run: Long)(node: Either[Condition, PyNode]): Either[Condition, Value] ! ForeignEval = node match
-      case Left(cond) => okay.pure[ForeignEval, Either[Condition, Value]](Left(cond))
-      case Right(PyNode.Done(v)) => okay.pure[ForeignEval, Either[Condition, Value]](Right(v))
+      case Left(cond) => okay.freer.pure[ForeignEval, Either[Condition, Value]](Left(cond))
+      case Right(PyNode.Done(v)) => okay.freer.pure[ForeignEval, Either[Condition, Value]](Right(v))
       case Right(PyNode.Perform(cb, _, k, _)) =>
         effect[ForeignEval, Either[Condition, PyNode]](ForeignEval.Continue(run, k, Left(Condition("NoCallback",
           s"the activity '${c.address}' called okay_call('$cb'), and an activity offers no callbacks")))).flatMap(settle(run))
@@ -77,7 +78,7 @@ object ForeignActivity:
         .flatMap(settle(run)).flatMap {
           case Left(cond) if transport(cond.kind) =>
             if left > 1 then attempt(left - 1) else throw Unreachable(c.address, cond)
-          case answer => okay.pure[ForeignEval, Either[Condition, Value]](answer)
+          case answer => okay.freer.pure[ForeignEval, Either[Condition, Value]](answer)
         }
     attempt(math.max(1, attempts)).map(answer => Wire.written(answer.map(Wire.enc)))
 

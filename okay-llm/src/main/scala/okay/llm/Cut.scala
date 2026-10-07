@@ -1,6 +1,8 @@
 package okay.llm
 
 import okay.*
+import okay.freer.*
+
 
 /**
  * Streaming validation that cuts generation (specs/llm-agentic.md,

@@ -1,7 +1,8 @@
 package okay.ts
 
 import scala.scalajs.js
-import okay.{!, Async, pure}
+import okay.Async
+import okay.freer.{!, pure}
 import okay.codec.{Json, Schema, Stubs}
 
 /**

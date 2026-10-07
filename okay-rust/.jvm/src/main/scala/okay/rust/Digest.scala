@@ -1,7 +1,7 @@
 package okay.rust
 
-import okay.{!, Answers}
-
+import okay.Answers
+import okay.freer.{!}
 /**
  * Hashing as an okay EFFECT (specs/polyglot-go.md, stage 2): a program asks
  * for SHA-256, and the handler decides what computes it — the JDK's
@@ -15,7 +15,7 @@ object Digest:
 
   /** the SHA-256 of `bytes` */
   def sha256(bytes: Array[Byte]): Either[String, Array[Byte]] ! Digest =
-    okay.effect[Digest, Either[String, Array[Byte]]](Sha256(bytes))
+    okay.freer.effect[Digest, Either[String, Array[Byte]]](Sha256(bytes))
 
   /** the operations answered by `f` */
   def using(f: Sha256 => Either[String, Array[Byte]]): Answers[Digest] = new:

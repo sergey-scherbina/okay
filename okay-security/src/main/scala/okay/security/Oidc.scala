@@ -1,7 +1,8 @@
 package okay.security
 
-import okay.{!, +, %, Async, Throws, pure, raise, runEither}
-import okay.Row.at
+import okay.{+, %, Async}
+import okay.freer.{!, Throws, pure, raise, runEither}
+import okay.freer.Row.at
 import okay.codec.Json
 import okay.http.{Http, Request}
 

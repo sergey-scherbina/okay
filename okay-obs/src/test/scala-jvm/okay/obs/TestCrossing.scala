@@ -1,7 +1,9 @@
 package okay.obs
 
-import okay.{!, Async, Pure, Resource}
+import okay.{Async, Pure}
+import okay.freer.{!, Resource}
 import okay.given
+import okay.freer.given
 import okay.codec.{Cbor, Schema}
 import okay.http.{Http, Request, Response, Server, Transports}
 import okay.jdbc.JdbcSql
@@ -45,7 +47,7 @@ class TestCrossing extends munit.FunSuite {
           val n = tracer.root("GET /q", h("traceparent"), h("tracestate")) {
             tracer.span("sql update", Attr("db.system", "h2")) {
               val db: Sql = JdbcSql(conn)
-              okay.!.run(Async.run[Long, okay.Pure](Typed.update[Row](db, "update t set n = ?")(Row(7))))
+              okay.freer.!.run(Async.run[Long, okay.Pure](Typed.update[Row](db, "update t set n = ?")(Row(7))))
             }
           }
           Response(200, Nil, Http.one(n.toString.getBytes("UTF-8")))

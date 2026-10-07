@@ -1,7 +1,10 @@
 package okay.jetty
+import okay.freer.*
 
 import okay.*
+
 import okay.given
+import okay.freer.given
 import okay.codec.Schema
 import okay.http.{McpHttp, Request, Response, Transports}
 import okay.mcp.{Client, Duplex, Mcp, Server as McpServer}

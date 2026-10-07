@@ -1,7 +1,16 @@
 package okay.rust
 
-import okay.{Answers, given}
+import okay.Answers
 
+
+
+
+
+
+
+
+
+import okay.freer.given
 /** one Argon2id case and its bytes, as BouncyCastle (the JVM) computes them */
 final case class Golden(password: String, salt: String, m: Int, t: Int, p: Int, n: Int, hex: String)
 

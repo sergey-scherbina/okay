@@ -1,8 +1,10 @@
 package okay.wroclaw
 
-import okay.{Aggregator, Chunks, Pane, Sequential}
+import okay.{Chunks, Pane}
+import okay.freer.{Aggregator, Sequential}
 import okay.cluster.{Finish, Flow, Flows, Sink}
 import okay.given
+import okay.freer.given
 import scala.collection.immutable.ArraySeq
 
 /**

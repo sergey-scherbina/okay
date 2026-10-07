@@ -17,16 +17,16 @@ package okay.deploy
 class TestMonoidScope extends munit.FunSuite:
 
   test("a Fact over Vector needs no import: its Monoid is in the companion") {
-    assertEquals(compileErrors("object V extends okay.Fact[Vector[Int]]"), "")
+    assertEquals(compileErrors("object V extends okay.freer.Fact[Vector[Int]]"), "")
   }
 
   test("a Fact over String needs `import okay.given`, and `import okay.*` is not enough") {
-    val starOnly = compileErrors("import okay.*; object N extends okay.Fact[String]")
-    assert(starOnly.contains("No given instance of type okay.Monoid[String]"), starOnly)
-    assertEquals(compileErrors("import okay.given; object N2 extends okay.Fact[String]"), "")
+    val starOnly = compileErrors("import okay.*; object N extends okay.freer.Fact[String]")
+    assert(starOnly.contains("No given instance of type okay.freer.Monoid[String]"), starOnly)
+    assertEquals(compileErrors("import okay.freer.given; object N2 extends okay.freer.Fact[String]"), "")
   }
 
   test("nothing at all: the message names the given to import") {
-    val bare = compileErrors("object N3 extends okay.Fact[String]")
-    assert(bare.contains("okay.Monoid[String]"), bare)
+    val bare = compileErrors("object N3 extends okay.freer.Fact[String]")
+    assert(bare.contains("okay.freer.Monoid[String]"), bare)
   }

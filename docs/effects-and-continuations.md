@@ -120,7 +120,7 @@ The answer type's key is made at compile time. A `reset` or `shift` over an abst
 
 ## The named patterns
 
-The captures most programs want have names (`import okay.Shift.{collect, emit, exit}`). `exit(v)` leaves
+The captures most programs want have names (`import okay.freer.Shift.{collect, emit, exit}`). `exit(v)` leaves
 the nearest `reset` block with `v`:
 
 ```scala
@@ -169,12 +169,13 @@ val j = quiet.handle(State(5)).run   // (5, 32)
 
 ## Through the typeclass
 
-Code that should not commit to one encoding is written over `Effects[M]`. It has the same words: `pure`,
-`perform`, `shift`, `shift0`, `reset`, `handle(m, h)` and `run(m)`. `Free`, the tree, is the default.
-`Eager` applies pure binds as it builds. One program answers the same in both:
+Code that should not commit to one encoding of the tree is written over `Classic[M]`, the classic's own
+typeclass (`okay.freer`): the core's `Effects[M]` with the same words as the top level — `pure`, `perform`,
+`shift`, `shift0`, `reset`, `handle(m, h)` and `run(m)`. `Free`, the tree, is the default. `Eager` applies
+pure binds as it builds. One program answers the same in both:
 
 ```scala
-def program[M[_[+_], _]](using E: Effects[M]): M[State % Int, Int] =
+def program[M[_[+_], _]](using E: Classic[M]): M[State % Int, Int] =
   E.reset[Int, State % Int](
     E.shift[Int, Int, State % Int](k => k(1).flatMap(a => k(10).map(b => a + b))).flatMap(x =>
       E.perform[Shift % Int + State % Int, Int](State.Get[Int, Int]()).map(s => x * 2 + s)))

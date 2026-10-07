@@ -1,6 +1,8 @@
 package okay.cluster
 
-import okay.{Aggregator, Chunks, given}
+import okay.{Chunks, given}
+
+import okay.freer.{Aggregator, given}
 import okay.codec.Schema
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicInteger

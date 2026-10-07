@@ -1,7 +1,8 @@
 package okay.blob
 
-import okay.{!, +, %, Async, Chunk, Source, Writer, async, effect, pure}
-import okay.Row.plus
+import okay.{+, %, Async, Source, async}
+import okay.freer.{!, Chunk, Writer, effect, pure}
+import okay.freer.Row.plus
 import java.nio.file.{Files, Path, StandardCopyOption}
 import scala.collection.immutable.ArraySeq
 
@@ -45,7 +46,7 @@ final class Fs(root: Path, chunkSize: Int = 64 * 1024) extends Blob {
           Files.createDirectories(path.getParent)
           Files.newOutputStream(tmp)
         }.flatMap { out =>
-          val sink: okay.Fold[Chunk[Byte], Unit] = okay.Fold(())((_, c) => out.write(c.toArray))
+          val sink: okay.freer.Fold[Chunk[Byte], Unit] = okay.freer.Fold(())((_, c) => out.write(c.toArray))
           Writer.fold[Chunk[Byte], Unit, Unit, Async](bytes)(using summon)(using summon, sink).flatMap { _ =>
             async {
               out.close()

@@ -401,97 +401,51 @@ Seq(
  * the JVM; the cross suite (src/test/scala-cross) also runs on JS.
  */
 /**
- * okay-freer: THE FREER MONAD on its own — `Freer`, the indexed tree; `Free`, the effect tree at `Unary`; and
- * the type classes they instantiate (Monad.scala). Package `okay` for the tree, `okay` for the classes;
- * the core is the library over it and names the tree at its door (src/main/scala/Free.scala). No dependency.
+ * okay-freer: THE CLASSIC — `Freer`, the indexed tree; `Free`, the effect tree at `Unary`; the handler library
+ * and the effects over it, package `okay.freer`. One `Effects` instance of the core's interface
+ * (okay.freer.Effects.scala), so it depends on the core and on nothing else: it knows nothing of okay-cont,
+ * and okay-cont nothing of it (classic-to-freer).
  */
 lazy val okayFreer = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-freer"))
+  .dependsOn(okay)
   .settings(
     name := "okay-freer",
   )
   // the JDK 22+ variant of okay.StackRoom (specs/cont-stack.md Layer 3) is this module's now, with the
   // machine; `exportJars` so that every dependent — the core's tests, the JMH lanes — sees the MULTI-RELEASE
   // JAR, never the classes directory (a class loaded from a directory is never versioned)
-  .jvmConfigure(_.dependsOn(okayJdk22 % "test->compile"))
+  .jvmConfigure(_.enablePlugins(JmhPlugin).dependsOn(okayJdk22 % "test->compile"))
   .jvmSettings(
     multiRelease("okayJdk22", 22),
     exportJars := true,
-    Compile / unmanagedSourceDirectories +=
-      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
-    Compile / unmanagedSourceDirectories +=
-      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm-native",
-  )
-  .jsSettings(
-    Compile / unmanagedSourceDirectories +=
-      baseDirectory.value.getParentFile / "src" / "main" / "scala-js",
-  )
-  .nativeSettings(
-    Compile / unmanagedSourceDirectories +=
-      baseDirectory.value.getParentFile / "src" / "main" / "scala-native",
-    Compile / unmanagedSourceDirectories +=
-      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm-native",
-  )
-
-lazy val okay = crossProject(JVMPlatform, JSPlatform, NativePlatform)
-  .crossType(CrossType.Pure)
-  .in(file("."))
-  .dependsOn(okayFreer, okayCont)
-  .settings(
-    name := "okay",
-  )
-  // the JDK 22+ variant of okay.StackRoom (specs/cont-stack.md Layer 3),
-  // built by `versioned` below; `test->compile` so the jar the tests
-  // run against carries it
-  .jvmConfigure(_.enablePlugins(JmhPlugin))
-  .jvmSettings(
-    // the forked suite runs with native access, so on JDK 22+ the
-    // StackRoom variant READS the stack (TestStackRoom, TestContStack's
-    // zero-switch test); the count road is what verifyJdk17 runs. The
-    // flag exists since JDK 17 (JEP 412), so the 17 fork takes it too.
+    // the classic's suite and lanes (classic-to-freer): forked with native access and a small first room, as
+    // the core's were — see the core's own comment on `-Dokay.cont.room`
     Test / javaOptions += "--enable-native-access=ALL-UNNAMED",
-    // a small first room, so the suite exercises exhaustion — the grant
-    // on a stack that has room, the switch on one that has not (a
-    // 128 KB thread) — without 850 levels of nesting before the first
-    // look. The JMH lanes INHERIT it (see `Jmh / javaOptions` below):
-    // measured 2026-09-26, statePara's exact road is 1.53x the count
-    // road at this room and 0.99x at the derived default of 873 — pass
-    // `-jvmArgsAppend -Dokay.cont.room=873` to price what a user runs
     Test / javaOptions += "-Dokay.cont.room=64",
     Compile / unmanagedSourceDirectories +=
       baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
     Compile / unmanagedSourceDirectories +=
       baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm-native",
     Test / unmanagedSourceDirectories +=
-      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
-    Test / unmanagedSourceDirectories +=
       baseDirectory.value.getParentFile / "src" / "test" / "scala-cross",
     Jmh / sourceDirectory := baseDirectory.value.getParentFile / "src" / "jmh",
     // THE CONT-STACK ROAD OF A BENCHMARK (cont-stack-jmh-native-access, specs/cont-stack.md): the multi-release
-    // JAR with the `jdk22/` StackRoom is okay-freer's, exported, so a JMH fork has it on its classpath; the host
+    // JAR with the `jdk22/` StackRoom is this module's, exported, so a JMH fork has it on its classpath; the host
     // inherits `Test / javaOptions` (so do its forks), which ENABLE native access for the tests; for JMH that flag
     // is dropped, so a lane keeps the meaning of its history — the COUNT road — and the EXACT road is the same
     // lane with `-jvmArgsAppend --enable-native-access=ALL-UNNAMED`. (Also inherited, and kept so the history
     // stays comparable: `-Dokay.cont.room=64` and `-Xmx1g`.)
     Jmh / javaOptions := (Test / javaOptions).value.filterNot(_.startsWith("--enable-native-access")),
-    // The core suite runs in its OWN JVM, and that is not a
-    // workaround for heavy tests — they are not heavy. Measured: the
-    // 1M-operation stack-safety tests pass in 256MB in 0.2s.
-    //
-    // What they cannot do is share. Unforked, they run inside sbt's
-    // own JVM, which its launcher caps at -Xmx4g and which by then
-    // also holds zinc's analysis for two dozen modules, the compiler,
-    // every module's test classloader, and the dependency classes of
-    // Spark, Kafka, ZIO, kyo, fs2 and cats. Then a test that wants a
-    // few hundred megabytes at once meets a heap that has no
-    // contiguous few hundred megabytes left, and the failure looks
-    // like the test's fault: OutOfMemoryError on `1M produced values`,
-    // and 30-second timeouts elsewhere from the GC thrashing.
-    //
-    // With a fork, 1GB — four times what the suite needs — is enough
-    // and the whole build passes. Run it alone and it passed all
-    // along, which is exactly why this was easy to dismiss.
+    // The suite runs in its OWN JVM, and that is not a workaround for heavy tests — they are not heavy. Measured:
+    // the 1M-operation stack-safety tests pass in 256MB in 0.2s. What they cannot do is share: unforked, they run
+    // inside sbt's own JVM, which its launcher caps at -Xmx4g and which by then also holds zinc's analysis for two
+    // dozen modules, the compiler, every module's test classloader, and the dependency classes of Spark, Kafka,
+    // ZIO, kyo, fs2 and cats. Then a test that wants a few hundred megabytes at once meets a heap that has no
+    // contiguous few hundred megabytes left, and the failure looks like the test's fault: OutOfMemoryError on
+    // `1M produced values`, and 30-second timeouts elsewhere from the GC thrashing. With a fork, 1GB — four times
+    // what the suite needs — is enough and the whole build passes.
     Test / fork := true,
     Test / javaOptions += "-Xmx1g",
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
@@ -511,13 +465,33 @@ lazy val okay = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       baseDirectory.value.getParentFile / "src" / "main" / "scala-native",
     Compile / unmanagedSourceDirectories +=
       baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm-native",
-    // the cross suite (Await-based programs) plus a native-only dir
-    // for what only makes sense here (native-scheduler-pool: the
-    // pool Scheduler, CanBlock-based — the cross suite deliberately
-    // never uses CanBlock)
+    // the cross suite plus a native-only dir for what only makes sense here (native-scheduler-pool: the pool
+    // Scheduler, CanBlock-based — the cross suite deliberately never uses CanBlock)
     Test / unmanagedSourceDirectories :=
       Seq(baseDirectory.value.getParentFile / "src" / "test" / "scala-cross",
         baseDirectory.value.getParentFile / "src" / "test" / "scala-native"),
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+
+lazy val okay = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("."))
+  .dependsOn(okayCont)
+  .settings(
+    name := "okay",
+  )
+  .jvmSettings(
+    // the core's own suite is small (Prog's Effects instance); forked all the same, as every suite here is — see
+    // okay-freer's comment on why a suite must not share sbt's JVM
+    Test / fork := true,
+    Test / javaOptions += "-Xmx1g",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+    libraryDependencies += "org.scalameta" %% "munit-scalacheck" % "1.1.0" % Test,
+  )
+  .jsSettings(
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+  .nativeSettings(
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
   )
 
@@ -532,7 +506,7 @@ lazy val okayJdk22 = versioned("okayJdk22", "jdk22", 22, "okayFreerJVM")
 lazy val okayAsync = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-async"))
-  .dependsOn(okay)
+  .dependsOn(okayFreer)
   .settings(
     name := "okay-async",
   )
@@ -816,7 +790,7 @@ lazy val okayData = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 lazy val okayOptics = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-optics"))
-  .dependsOn(okay % "compile->compile;test->test", okayDirect % "test->compile", okayPlatform % "test->compile")
+  .dependsOn(okayFreer % "compile->compile;test->test", okayDirect % "test->compile", okayPlatform % "test->compile")
   .settings(
     name := "okay-optics",
   )
@@ -2299,12 +2273,12 @@ _root_.okay.deploy.sbt.OkayModules.settings(
     "okay-http is a wire; an agent, an LLM client and RAG are not (http-mcp-agent-edge)"),
   _root_.okay.deploy.sbt.OkayModules.forbid("okayOps(JVM|JS)", "okayDocs(JVM|JS|Native)",
     "okay-ops renders what it is handed; okay-docs brings two database drivers (ops-docs-edge)"),
-  _root_.okay.deploy.sbt.OkayModules.forbid("okayFreer(JVM|JS|Native)", ".*",
-    "the freer monad is dependency-free (specs/modules-infra.md)"),
   _root_.okay.deploy.sbt.OkayModules.forbid("okayCont(JVM|JS|Native)", ".*",
-    "the continuation machine is dependency-free: it and the freer monad know nothing of each other (specs/modules-infra.md)"),
-  _root_.okay.deploy.sbt.OkayModules.forbid("okay(JVM|JS|Native)", "(?!okay(Freer|Cont)(JVM|JS|Native)$).*",
-    "the core depends on the two monads only, no library (specs/modules-infra.md)"),
+    "the continuation machine is dependency-free (specs/modules-infra.md)"),
+  _root_.okay.deploy.sbt.OkayModules.forbid("okay(JVM|JS|Native)", "(?!okayCont(JVM|JS|Native)$).*",
+    "the core depends on the machine only, no library (specs/modules-infra.md)"),
+  _root_.okay.deploy.sbt.OkayModules.forbid("okayFreer(JVM|JS|Native)", "(?!okay(Cont)?(JVM|JS|Native)$).*",
+    "the classic depends on the core only: it knows nothing of the machine but through the core (specs/modules-infra.md)"),
   _root_.okay.deploy.sbt.OkayModules.forbid("okayKernel(JVM|JS|Native)", "(?!okay(Freer|Cont)?(JVM|JS|Native)$).*",
     "the kernel depends on the core only: every plugin carries what it does"),
 )
@@ -2318,7 +2292,7 @@ _root_.okay.deploy.sbt.OkayModules.settings(
 lazy val okayKernel = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-kernel"))
-  .dependsOn(okay)
+  .dependsOn(okayFreer)
   .settings(
     name := "okay-kernel",
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
@@ -4127,7 +4101,7 @@ lazy val okaySpring = (project in file("okay-spring"))
  * scope's closer as a bound instance, and an injector's instance as
  * a module. JVM; Guice 7 (jakarta.inject). */
 lazy val okayGuice = (project in file("okay-guice"))
-  .dependsOn(okay.jvm)
+  .dependsOn(okayFreer.jvm)
   .settings(
     name := "okay-guice",
     libraryDependencies ++= Seq(
@@ -4142,7 +4116,7 @@ lazy val okayGuice = (project in file("okay-guice"))
  * destroyed with the container; a container's instance as a module.
  * The API only at compile time; Weld SE is the test container. */
 lazy val okayCdi = (project in file("okay-cdi"))
-  .dependsOn(okay.jvm)
+  .dependsOn(okayFreer.jvm)
   .settings(
     name := "okay-cdi",
     libraryDependencies ++= Seq(

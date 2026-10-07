@@ -1,6 +1,8 @@
 package okay.cluster.foreign
+import okay.freer.given
 
 import okay.given
+
 import okay.cluster.{Cluster, Flow, Job, Jobs, Wire}
 import okay.codec.Schema
 import okay.r.{R, TestR}
@@ -29,7 +31,7 @@ final class ScaleJobI[M](val name: String, mod: M)(using Models[M]) extends Job[
   def answer: Schema[Long] = summon[Schema[Long]]
   def flow(p: Scale, parts: Int): Flow[OutI] =
     Flow.slices(RJobs.rows(p.n), parts).mapModel[OutI](Model.in(mod, "fit", FactorI(3)), "scale")
-  def sink(p: Scale): Wire[OutI, Long] = Wire.fold(okay.Aggregator.sum[Long].contramap[OutI](_.v.toLong))
+  def sink(p: Scale): Wire[OutI, Long] = Wire.fold(okay.freer.Aggregator.sum[Long].contramap[OutI](_.v.toLong))
 
 final class RunningJobI[M](val name: String, mod: M)(using Stateful[M]) extends Job[Scale, (Long, Long)]:
   type A = RunI
@@ -38,8 +40,8 @@ final class RunningJobI[M](val name: String, mod: M)(using Stateful[M]) extends 
   def flow(p: Scale, parts: Int): Flow[RunI] =
     Flow.slices(RJobs.rows(p.n), parts).statefulIn[RunI](mod, "open", "step", "finish")
   def sink(p: Scale): Wire[RunI, (Long, Long)] =
-    Wire.fold(okay.Aggregator.sum[Long].contramap[RunI](r => if r.key >= 0 then r.run.toLong else 0L))
-      .and(Wire.fold(okay.Aggregator.sum[Long].contramap[RunI](r => if r.key < 0 then r.run.toLong else 0L)))
+    Wire.fold(okay.freer.Aggregator.sum[Long].contramap[RunI](r => if r.key >= 0 then r.run.toLong else 0L))
+      .and(Wire.fold(okay.freer.Aggregator.sum[Long].contramap[RunI](r => if r.key < 0 then r.run.toLong else 0L)))
 
 object RStatefulJobs:
   private val rscript = TestR.rscript.getOrElse("Rscript")

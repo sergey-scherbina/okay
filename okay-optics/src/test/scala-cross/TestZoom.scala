@@ -1,6 +1,9 @@
 package okay
 
+
+import okay.freer.*
 import okay.given
+import okay.freer.given
 
 /**
  * specs/optics.md stage 3: a program over a PART of the state runs
@@ -66,7 +69,7 @@ class TestZoom extends munit.FunSuite {
 
   test("zoom of a program that does nothing to the state is the identity on it") {
     val app = App(Counter(3, "x"), "ada")
-    val pure: Int ! State % Int = okay.pure(9)
+    val pure: Int ! State % Int = okay.freer.pure(9)
     val (after, v) = !.run(State.handle(app)(State.zoom[App, Int, Int, Nothing](appN)(pure)))
     assertEquals(v, 9)
     assertEquals(after, app)
@@ -107,10 +110,10 @@ class TestZoom extends munit.FunSuite {
         okay.Lens(_.item, (b, i) => Box(i, b.tag))
       // the inner program leaves an Int; asking for the whole back as
       // Box[String] is the typestate error the lens exists to catch
-      def parse[R]: okay.Cont[Int, Int => R, String => R] =
-        okay.PState.get[String, R].flatMap(s => okay.PState.set[String, Int, R](s.length).map(_ => s.length))
-      okay.PState.run[Box[String], Box[String], Int](Box("hello", "t"))(
-        okay.PState.zoom[Box[String], Box[Int], String, Int, Int, (Box[String], Int)](item)(parse))
+      def parse[R]: okay.freer.Cont[Int, Int => R, String => R] =
+        okay.freer.PState.get[String, R].flatMap(s => okay.freer.PState.set[String, Int, R](s.length).map(_ => s.length))
+      okay.freer.PState.run[Box[String], Box[String], Int](Box("hello", "t"))(
+        okay.freer.PState.zoom[Box[String], Box[Int], String, Int, Int, (Box[String], Int)](item)(parse))
     """)
     assert(e.nonEmpty, "the misused typestate compiled")
   }

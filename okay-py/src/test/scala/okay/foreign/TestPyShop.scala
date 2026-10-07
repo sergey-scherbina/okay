@@ -1,6 +1,7 @@
 package okay.foreign
 
-import okay.{Reader, given}
+
+import okay.freer.{Reader, given}
 import okay.codec.Schema
 
 object TestPyShop:

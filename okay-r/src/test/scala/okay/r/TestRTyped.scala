@@ -1,6 +1,7 @@
 package okay.r
+import okay.freer.given
 
-import okay.given
+
 import TestRCodec.*
 
 /** foreign-typed-calls against a LIVE R (specs/foreign-highlevel.md stage 2) */

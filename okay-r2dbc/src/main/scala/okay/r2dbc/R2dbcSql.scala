@@ -1,6 +1,7 @@
 package okay.r2dbc
 
-import okay.{!, +, %, Async, async, Chunk, ChunkBuf, effect, Source, Writer}
+import okay.{+, %, Async, async, ChunkBuf, Source}
+import okay.freer.{!, Chunk, effect, Writer}
 import okay.sql.{Col, Granted, Isolation, Sql, SqlType, SqlValue}
 import io.r2dbc.spi.{Connection, ColumnMetadata, IsolationLevel, Result, Row, RowMetadata, Statement, TransactionDefinition}
 import java.nio.ByteBuffer
@@ -46,7 +47,7 @@ final class R2dbcSql(conn: Connection, fetchSize: Int = 64) extends Sql:
         case (items, done) =>
           val c = ChunkBuf.of(items)
           if done then
-            if c.isEmpty then okay.pure(())
+            if c.isEmpty then okay.freer.pure(())
             else effect[F, Unit](Writer(c))
           else effect[F, Unit](Writer(c)).flatMap(_ => go(rows))
       }

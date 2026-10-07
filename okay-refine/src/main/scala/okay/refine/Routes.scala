@@ -2,8 +2,8 @@ package okay.refine
 
 import scala.collection.mutable
 import scala.reflect.TypeTest
-import okay.{!, Aggregator, Async, Channel, Scheduler, Source, effect, pure, runForeach}
-
+import okay.{Async, Channel, Scheduler, Source, runForeach}
+import okay.freer.{!, Aggregator, effect, pure}
 /**
  * A ROUTING TABLE AS A VALUE, run anywhere (specs/refine.md,
  * refine-bulk). Where `Router` binds each rule to a channel as it is

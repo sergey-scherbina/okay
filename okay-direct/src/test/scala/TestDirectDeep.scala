@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import okay.Direct.*   // no `Direct.given`: the colouring of a program is Free's own (directColor)
 import scala.language.implicitConversions
 

@@ -1,6 +1,8 @@
 package okay.spark
 
 import okay.*
+
+import okay.freer.*
 import okay.Tables.read
 import okay.Direct.{direct, unary_!}
 import org.apache.spark.sql.SparkSession

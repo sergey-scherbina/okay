@@ -1,6 +1,9 @@
 package okay
 
-import okay.Row.*
+
+import okay.freer.*
+import okay.freer.given
+import okay.freer.Row.*
 import okay.Direct.*
 import scala.language.implicitConversions
 

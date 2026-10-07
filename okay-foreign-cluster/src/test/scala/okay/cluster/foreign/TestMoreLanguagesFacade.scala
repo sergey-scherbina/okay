@@ -205,6 +205,7 @@ abstract class MoreLanguagesFacade[M](using Calls[M], Frames[M], Programs[M], Sp
   }
   test("a cluster stage: a partitioned Flow mapped through fecho, every row back") {
     import okay.given
+    import okay.freer.given
     val recs = Vector.tabulate(1000)(i => FacadeConformance.Rec(i, i * 0.5, s"r$i"))
     val out = okay.cluster.Flows.collect(okay.cluster.Flow.slices(recs, 3).mapIn[FacadeConformance.Rec](module, "fecho", batch = 128)).runWith
     assertEquals(out.toVector.sortBy(_.key), recs)

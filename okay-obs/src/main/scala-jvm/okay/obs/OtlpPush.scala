@@ -1,6 +1,7 @@
 package okay.obs
 
-import okay.{!, Async}
+import okay.Async
+import okay.freer.{!}
 import okay.codec.Json
 import okay.http.{Body, Http, Request}
 import okay.persist.Topic
@@ -31,7 +32,7 @@ object OtlpPush {
           case Topic.Read.TooEarly(b) => (Vector.empty, b)
       case Topic.Read.Records(rs) =>
         (decode(rs), rs.lastOption.map(_.offset + 1).getOrElse(from))
-    if spans.isEmpty then okay.pure(Right(next))
+    if spans.isEmpty then okay.freer.pure(Right(next))
     else
       http.send(Request.post(s"$endpoint/v1/traces",
         Body.Text(Json.print(Otlp.body(service, spans))),

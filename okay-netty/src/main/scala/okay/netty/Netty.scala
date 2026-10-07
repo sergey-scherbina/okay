@@ -1,7 +1,10 @@
 package okay.netty
 
 import okay.*
+import okay.freer.*
+
 import okay.given
+import okay.freer.given
 import okay.http.{Body, Frame, Http, Method, Request, Response, Socket, Sockets}
 
 import io.netty.bootstrap.{Bootstrap, ServerBootstrap}

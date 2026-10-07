@@ -1,6 +1,9 @@
 package okay
 
+
+import okay.freer.*
 import okay.given
+import okay.freer.given
 
 /**
  * What a consumer sees when a PRODUCER fails.

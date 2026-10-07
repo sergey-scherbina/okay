@@ -141,7 +141,7 @@ class TestLaws extends munit.ScalaCheckSuite {
       val segs = words.zipWithIndex.map((w, i) =>
         Segment("s", okay.lex.Span(i, 0, 0, w.length), w, Seq("x")))
       val whole = Keyword.index(segs)
-      val M = summon[okay.Monoid[Postings]]
+      val M = summon[okay.freer.Monoid[Postings]]
       (0 to segs.length).forall { at =>
         val (l, r) = segs.splitAt(at)
         val merged = M.combine(Keyword.index(l), Keyword.index(r))

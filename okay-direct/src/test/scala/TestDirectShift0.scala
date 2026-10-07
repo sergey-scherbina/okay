@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import okay.Direct.*
 import scala.language.implicitConversions
 
@@ -18,7 +21,7 @@ class TestDirectShift0 extends munit.FunSuite {
 
   test("shift0 under a dollar: ret rides with k, once per resumption") {
     val r = !.run(Shift.run[String, Pure](
-      Shift.dollar[Int, String, Pure](i => okay.pure(s"n=$i")):
+      Shift.dollar[Int, String, Pure](i => okay.freer.pure(s"n=$i")):
         direct:
           val x = !Shift.shift0[Int](k => k(1).flatMap(a => k(2).map(b => s"$a|$b")))
           x * 10

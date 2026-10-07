@@ -1,5 +1,7 @@
 package okay
 
+
+import okay.freer.*
 import java.io.{BufferedInputStream, BufferedOutputStream}
 import java.net.Socket
 

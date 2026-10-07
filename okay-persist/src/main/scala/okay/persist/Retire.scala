@@ -1,6 +1,7 @@
 package okay.persist
 
-import okay.{%, !, +, At, Shift, Replayable, Wf, pure}
+import okay.{%, +, Wf}
+import okay.freer.{!, At, Shift, Replayable, pure}
 import okay.codec.Schema
 
 /**

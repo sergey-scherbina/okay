@@ -196,8 +196,10 @@ ${describe(Vector(summon[Schema[Msg]], summon[Schema[Ui]], summon[Schema[Event]]
    * applying it. A client that reproduces every `tree` and every
    * `out` speaks the protocol. */
   def conformance: Vector[String] =
-    import okay.{!, Writer, through}
+    import okay.through
+    import okay.freer.{!, Writer}
     import okay.given
+    import okay.freer.given
     def view(n: Int): Ui = Ui.Box(Vector(
       Ui.Text(s"count: $n", Style(tone = Tone.Emphasis)),
       Ui.Form(Vector(Ui.Input("", "name", "Name"), Ui.Check(n % 2 == 0, "even", "Even")), "Save", "f"),

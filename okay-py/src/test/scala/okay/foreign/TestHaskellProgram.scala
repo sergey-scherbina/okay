@@ -1,6 +1,7 @@
 package okay.foreign
 
-import okay.{Choose, Reader, effect, runChoice, given}
+
+import okay.freer.{Choose, Reader, effect, runChoice, given}
 import okay.durable.Durable
 
 object TestHaskellProgram:

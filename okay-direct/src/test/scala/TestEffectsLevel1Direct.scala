@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import okay.Direct.*
 
 /** level 1 through the typeclass in direct style: one program over `Effects[M]`, run in Free and in Eager */
@@ -7,7 +10,7 @@ class TestEffectsLevel1Direct extends munit.FunSuite:
 
   type Row = Shift % Int + State % Int
 
-  def program[M[_[+_], _]](using E: Effects[M]): M[State % Int, Int] =
+  def program[M[_[+_], _]](using E: Classic[M]): M[State % Int, Int] =
     given Monad[[A] =>> M[Row, A]] = Effects.monad[M, Row]
     E.reset[Int, State % Int](direct[[A] =>> M[Row, A]] {
       val x = E.shift[Int, Int, State % Int](k => direct[[A] =>> M[Row, A]] { k(1).? + k(10).? }).?

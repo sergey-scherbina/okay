@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 /**
  * The chunked buffered producer: the same elements in the same order
  * as `buffer`, only carried in arrays.

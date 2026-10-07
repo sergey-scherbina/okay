@@ -1,7 +1,8 @@
 package okay.blob
 
-import okay.{!, +, %, Async, Chunk, Source, Writer, effect, pure}
-import okay.Row.plus
+import okay.{+, %, Async, Source}
+import okay.freer.{!, Chunk, Writer, effect, pure}
+import okay.freer.Row.plus
 import java.nio.file.{Files, Path}
 import scala.collection.immutable.ArraySeq
 

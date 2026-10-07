@@ -18,8 +18,10 @@ import scala.quoted.*
     import q.reflect.*
 
     val any = TypeRepr.of[Any]
-    val tagSym = Symbol.requiredClass("okay.Tag")
-    val instSym = Symbol.requiredClass("okay.Instances")
+    // the two keyed signatures are the classic's (okay.freer, classic-to-freer): looked up by name, so the
+    // check runs on a classpath without them too — then every member is tested by its erasure alone
+    val tagSym = Symbol.classSymbol("okay.freer.Tag")
+    val instSym = Symbol.classSymbol("okay.freer.Instances")
     // TypeableK and its marker are higher-kinded, so they are reached
     // by symbol: `TypeRepr.of[TypeableK]` wants the argument applied
     val testRef = Symbol.requiredClass("okay.TypeableK").typeRef

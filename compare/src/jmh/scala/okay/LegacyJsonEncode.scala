@@ -1,6 +1,11 @@
 package okay
+import okay.freer.{Cont, />}
 
-import okay.{Cont, />}
+
+import okay.freer.*
+import okay.freer.given
+import okay.freer.{/>}
+import okay.freer.Cont
 import okay.codec.{Base64, Codecs, Json, Schema}
 
 /**

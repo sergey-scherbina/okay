@@ -1,7 +1,11 @@
 package okay.foreign
 
-import okay.{!, %, +, Take, Writer, effect, pure, given}
-import okay.Row.plus
+
+
+
+import okay.{%, +, Take}
+import okay.freer.{!, Writer, effect, pure, given}
+import okay.freer.Row.plus
 
 object TestPySource:
   val m = Py.module("sources", """

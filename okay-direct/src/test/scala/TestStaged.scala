@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import okay.Direct.*
 
 /**
@@ -105,7 +108,7 @@ class TestStaged extends munit.FunSuite:
 
   // ---- v2: compound programs are walked into binds
 
-  import okay.Row.at
+  import okay.freer.Row.at
 
   def freeCompound(xs: List[Int], k: Int): Int ! Row = direct[[A] =>> A ! Row] {
     val s1 = State.modify[Int](_ + k).?                                  // an inline combinator

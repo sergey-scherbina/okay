@@ -1,4 +1,5 @@
 import okay.*
+import okay.freer.*
 import okay.Proc.given
 import scala.language.implicitConversions
 

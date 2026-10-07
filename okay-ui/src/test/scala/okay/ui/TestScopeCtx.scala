@@ -1,6 +1,7 @@
 package okay.ui
+import okay.freer.*
 
-import okay.*
+
 
 /**
  * The capability door on Scope (ctx-prompts): exit reaches the
@@ -43,13 +44,15 @@ class TestScopeCtx extends munit.FunSuite {
   test("an exit with a forged prompt does not compile — and a real scope still does") {
     val forged = compileErrors("""
       import okay.*
+      import okay.freer.*
       import okay.ui.*
-      given okay.Prompt[String] = okay.Shift.prompt[String]
+      given okay.freer.Prompt[String] = okay.freer.Shift.prompt[String]
       val p: String ! Scope.Row = Scope.exit[String, String]("nowhere")
     """)
     assert(forged.nonEmpty, "a forged prompt still compiles")
     assertEquals(compileErrors("""
       import okay.*
+      import okay.freer.*
       import okay.ui.*
       val p: String ! Dialog = Scope.bounded[String](Scope.exit[String, String]("ok"))
     """), "")
@@ -59,7 +62,7 @@ class TestScopeCtx extends munit.FunSuite {
     // the bound name is the EVIDENCE now (delim-doors-are-prompted):
     // a `Prompt` is one line to make and proves nothing, so binding
     // one here would have proved nothing either
-    val prog: String ! Dialog = Scope.bounded[String]: (outer: okay.Shift.Prompted[String]) ?=>
+    val prog: String ! Dialog = Scope.bounded[String]: (outer: okay.freer.Shift.Prompted[String]) ?=>
       Scope.mark[String]:
         Scope.exit[String, String]("straight-out")(using outer)
       .map(inner => s"NEVER:$inner")

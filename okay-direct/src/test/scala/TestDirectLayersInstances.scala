@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import okay.Direct.*
 import Lexical.State.{get, put}
 import Layered.{reify, reflect}
@@ -90,19 +93,19 @@ class TestDirectLayersInstances extends munit.FunSuite:
 
   test("a layer in scope but a block row WITHOUT Shift: refused, naming Shift") {
     val e = compileErrors("""
-      okay.Layered.reify[List, Int, okay.Pure] {
-        val inner: Int ! okay.Writer % String = okay.Direct.direct {
+      okay.freer.Layered.reify[List, Int, okay.Pure] {
+        val inner: Int ! okay.freer.Writer % String = okay.Direct.direct {
           val x = List(1, 2, 3).?
           x
         }
-        okay.Shift.shift0[List[Int], Int, okay.Pure](???)(k => ???)
+        okay.freer.Shift.shift0[List[Int], Int, okay.Pure](???)(k => ???)
       }""")
     assert(e.contains("has no Shift % ?"), s"compiled, or refused for another reason: $e")
   }
 
   test("no layer in scope: the mark on a List is refused as it always was") {
     val e = compileErrors("""
-      val p: Int ! okay.Shift % ? + okay.Pure = okay.Direct.direct {
+      val p: Int ! okay.freer.Shift % ? + okay.Pure = okay.Direct.direct {
         val x = List(1, 2, 3).?
         x
       }""")

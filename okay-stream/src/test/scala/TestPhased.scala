@@ -1,5 +1,7 @@
 import okay.*
+import okay.freer.*
 import okay.given
+import okay.freer.given
 
 /**
  * Typestate on the stream (specs/stage-pipeline.md, stage-phased):

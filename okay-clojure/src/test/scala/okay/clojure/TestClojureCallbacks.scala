@@ -1,6 +1,7 @@
 package okay.clojure
 
-import okay.{!, %, Reader}
+import okay.{%}
+import okay.freer.{!, Reader}
 import okay.foreign.{Foreign, Jvm, Shape}
 
 /**

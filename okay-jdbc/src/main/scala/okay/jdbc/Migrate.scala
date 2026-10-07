@@ -1,7 +1,9 @@
 package okay.jdbc
 
-import okay.{!, Async, Chunk}
+import okay.Async
+import okay.freer.{!, Chunk}
 import okay.given
+import okay.freer.given
 import okay.sql.{Isolation, Sql, SqlValue}
 
 /**
@@ -43,9 +45,9 @@ object Migrate {
     // refusals that need no database: duplicates and disorder
     val versions = scripts.map(_.version)
     if versions.distinct.length != versions.length then
-      okay.pure(Left(s"duplicate script versions: ${versions.diff(versions.distinct).distinct.mkString(", ")}"))
+      okay.freer.pure(Left(s"duplicate script versions: ${versions.diff(versions.distinct).distinct.mkString(", ")}"))
     else if versions != versions.sorted then
-      okay.pure(Left("scripts are not in version order"))
+      okay.freer.pure(Left("scripts are not in version order"))
     else
       ensure(db, table).flatMap(_ => applied(db, table)).flatMap { rows =>
         val byVersion = scripts.map(s => s.version -> s).toMap
@@ -57,7 +59,7 @@ object Migrate {
             s"script v${a.version} '${a.name}' CHANGED after it was applied (checksum mismatch)"
         }
         drift match
-          case Some(why) => okay.pure(Left(why))
+          case Some(why) => okay.freer.pure(Left(why))
           case None =>
             val done = rows.map(_.version).toSet
             val pending = scripts.filter(s => !done.contains(s.version))
@@ -67,11 +69,11 @@ object Migrate {
   private def run(db: Sql, table: String, pending: List[Script],
                   record: Applied => Unit, acc: Vector[Applied])
   : Either[String, Vector[Applied]] ! Async = pending match
-    case Nil => okay.pure(Right(acc))
+    case Nil => okay.freer.pure(Right(acc))
     case s :: rest =>
       val a = Applied(s.version, s.name, checksum(s.sql), System.currentTimeMillis)
       one(db, table, s, a).flatMap {
-        case Left(why) => okay.pure(Left(why))
+        case Left(why) => okay.freer.pure(Left(why))
         case Right(()) =>
           record(a)
           run(db, table, rest, record, acc :+ a)
@@ -84,15 +86,15 @@ object Migrate {
     db.begin(Isolation.ReadCommitted).flatMap { _ =>
       okay.async {
         try
-          okay.!.run(Async.run[Long, okay.Pure](db.update(s.sql))): Unit
-          okay.!.run(Async.run[Long, okay.Pure](db.update(
+          okay.freer.!.run(Async.run[Long, okay.Pure](db.update(s.sql))): Unit
+          okay.freer.!.run(Async.run[Long, okay.Pure](db.update(
             s"insert into $table (version, name, checksum, applied_at) values (?, ?, ?, ?)",
             Vector(SqlValue.I32(a.version), SqlValue.Text(a.name),
               SqlValue.Text(a.checksum), SqlValue.I64(a.at))))): Unit
-          okay.!.run(Async.run[Unit, okay.Pure](db.commit()))
+          okay.freer.!.run(Async.run[Unit, okay.Pure](db.commit()))
           Right(())
         catch case e: Exception =>
-          okay.!.run(Async.run[Unit, okay.Pure](db.rollback()))
+          okay.freer.!.run(Async.run[Unit, okay.Pure](db.rollback()))
           Left(s"script v${s.version} '${s.name}' failed: ${e.getMessage}")
       }
     }

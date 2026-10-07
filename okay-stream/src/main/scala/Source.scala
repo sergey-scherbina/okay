@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 /**
  * An asynchronous SOURCE: a program that tells its elements as it
  * goes, performing Async between them. The shape every streaming seam
@@ -102,15 +105,15 @@ object Source {
   def unfold[S, A](s: S)(f: S => Option[(A, S)]): Source[A] =
     def go(s: S): Source[A] = f(s) match
       case Some((a, s2)) =>
-        okay.effect[Writer % A + Async, Unit](Writer(a)).flatMap(_ => go(s2))
-      case None => okay.pure(())
-    okay.pure[Writer % A + Async, Unit](()).flatMap(_ => go(s))
+        okay.freer.effect[Writer % A + Async, Unit](Writer(a)).flatMap(_ => go(s2))
+      case None => okay.freer.pure(())
+    okay.freer.pure[Writer % A + Async, Unit](()).flatMap(_ => go(s))
 
   def range(from: Long, until: Long): Source[Long] =
     def go(i: Long): Source[Long] =
-      if i >= until then okay.pure(())
-      else okay.effect[Writer % Long + Async, Unit](Writer(i)).flatMap(_ => go(i + 1))
-    okay.pure[Writer % Long + Async, Unit](()).flatMap(_ => go(from))
+      if i >= until then okay.freer.pure(())
+      else okay.freer.effect[Writer % Long + Async, Unit](Writer(i)).flatMap(_ => go(i + 1))
+    okay.freer.pure[Writer % Long + Async, Unit](()).flatMap(_ => go(from))
 
   /**
    * A producer in a row, as a source — the Writer road for a seam
@@ -133,19 +136,19 @@ object Source {
     import !.*
     type R = Writer % W + G
     // the walk as a frame of the machine (handle-frames-loops): each production told
-    def frame(x: B ! Produce + G): okay.Shift.U[R, B] =
-      okay.HandleFrames.statefulOver[Produce, Unit, B, B, R, Produce + G](okay.producing[G], (_, b) => okay.pure(b))(
-        (_, w, resume) => okay.effect[R, Unit](Writer(produced[W](w))).flatMap(_ => resume((), w)))((), x)
+    def frame(x: B ! Produce + G): okay.freer.Shift.U[R, B] =
+      okay.freer.HandleFrames.statefulOver[Produce, Unit, B, B, R, Produce + G](okay.freer.producing[G], (_, b) => okay.freer.pure(b))(
+        (_, w, resume) => okay.freer.effect[R, Unit](Writer(produced[W](w))).flatMap(_ => resume((), w)))((), x)
     def go(d: Int)(p: B ! Produce + G): B ! R = (p.resumeRun: @unchecked) match
-      case Free.Return(b) => okay.pure(b)
+      case Free.Return(b) => okay.freer.pure(b)
       case Inject(e) => split[G, Produce](e)
         (g => Inject(g): B ! R)
-        (w => okay.effect[R, Unit](Writer(produced[W](w))).map(_ => produced[B](w)))
+        (w => okay.freer.effect[R, Unit](Writer(produced[W](w))).map(_ => produced[B](w)))
       case Bind(Inject(e), k) => split[G, Produce](e)
         (g => Inject(g).flatMap(x => go(d)(k(x))): B ! R)
-        (w => okay.effect[R, Unit](Writer(produced[W](w))).flatMap(_ => go(d)(k(w))))
+        (w => okay.freer.effect[R, Unit](Writer(produced[W](w))).flatMap(_ => go(d)(k(w))))
       case y => go(d)(HandleFrames.shallow(y, d))
-    okay.HandleFrames.run[B, R](d => go(d)(p), frame(p))
+    okay.freer.HandleFrames.run[B, R](d => go(d)(p), frame(p))
 
   /** a producer whose elements ARE its answer type — `Producer[A]` in
    * a row — as a `Source`: the answer, phantom by construction, is
@@ -200,11 +203,11 @@ object Source {
     import !.*
     type R = Produce + G
     // the walk as a frame of the machine (handle-frames-loops): each tell produced, the end answered
-    def frame(x: Unit ! Writer % A + G): okay.Shift.U[R, A] =
-      okay.HandleFrames.statefulOver[Writer % A, Unit, Unit, A, R, Writer % A + G](summon[TypeableK[Writer % A]], (_, _) => okay.pure(end))(
-        (_, op, resume) => okay.effect[R, A](Writer.told[A](op)).flatMap(_ => resume((), ())))((), x)
+    def frame(x: Unit ! Writer % A + G): okay.freer.Shift.U[R, A] =
+      okay.freer.HandleFrames.statefulOver[Writer % A, Unit, Unit, A, R, Writer % A + G](summon[TypeableK[Writer % A]], (_, _) => okay.freer.pure(end))(
+        (_, op, resume) => okay.freer.effect[R, A](Writer.told[A](op)).flatMap(_ => resume((), ())))((), x)
     def go(d: Int)(s: Unit ! Writer % A + G): A ! R = (s.resumeRun: @unchecked) match
-      case Free.Return(_) => okay.pure(end)
+      case Free.Return(_) => okay.freer.pure(end)
       // Say is Writer's ONLY constructor, so a value that reaches the
       // second arm IS one — `Writer.widen`'s own argument, and its
       // @unchecked: the erased W cannot be verified, only its shape
@@ -215,18 +218,18 @@ object Source {
         // the producer still ENDS in `end`: a bare terminal Inject
         // would answer its own element instead
         (w => (w: @unchecked) match
-          case Writer.Say(v) => okay.effect[R, A](v).flatMap(_ => okay.pure(end)))
+          case Writer.Say(v) => okay.freer.effect[R, A](v).flatMap(_ => okay.freer.pure(end)))
         // a terminal operation's answer is the program's own, Unit here
         (g => (Inject(g): Unit ! R).map(_ => end))
       case Bind(Inject(e), k) => split[Writer % A, G](e)
         (w => (w: @unchecked) match
-          case Writer.Say(v) => okay.effect[R, A](v).flatMap(_ => go(d)(k(()))))
+          case Writer.Say(v) => okay.freer.effect[R, A](v).flatMap(_ => go(d)(k(()))))
         // the operation's answer type is the tree's own existential and
         // cannot be named: no ascription, the expected type of the
         // branch types the re-injection — `Writer.widen`'s own shape
         (g => Inject(g).flatMap(x => go(d)(k(x))))
       case y => go(d)(HandleFrames.shallow(y, d))
-    okay.HandleFrames.run[A, R](d => go(d)(s), frame(s))
+    okay.freer.HandleFrames.run[A, R](d => go(d)(s), frame(s))
 
   /**
    * Merge by READINESS on ONE thread of control (specs/ready-merge.md):
@@ -260,11 +263,11 @@ object Source {
    * node of `s`, so wrap a CHUNK source, not an element source.
    */
   private[okay] def releasing[A](release: () => Unit)(s: Source[A]): Source[A] =
-    okay.pure[Writer % A + Async, Unit](()).flatMap: _ =>
+    okay.freer.pure[Writer % A + Async, Unit](()).flatMap: _ =>
       val scope = Async.CancelScope(release)
-      okay.effect[Writer % A + Async, Unit](Async.Run(Async.Enter(scope)))
+      okay.freer.effect[Writer % A + Async, Unit](Async.Run(Async.Enter(scope)))
         .flatMap(_ => s)
-        .flatMap(_ => okay.effect[Writer % A + Async, Unit](Async.Run(Async.Exit(scope))))
+        .flatMap(_ => okay.freer.effect[Writer % A + Async, Unit](Async.Run(Async.Exit(scope))))
 
 
   /**
@@ -316,10 +319,10 @@ object Source {
     // one receive as a program on THIS row, the way `Channel.drained`
     // spells its await — `receive` answers `! Async` alone
     def receive[X](c: Channel[X]): Option[X] ! R =
-      okay.effect[R, Option[X]](Async.Await[Option[X]] { k => c.receiveAsync(k); () => c.cancelReceive(k) })
+      okay.freer.effect[R, Option[X]](Async.Await[Option[X]] { k => c.receiveAsync(k); () => c.cancelReceive(k) })
     // the sides' fibers start HERE, at the first pull (a Source is a
     // value, and running it twice zips twice)
-    okay.pure[R, Unit](()).flatMap: _ =>
+    okay.freer.pure[R, Unit](()).flatMap: _ =>
       val cl = Channel.buffer[A, Source, Async](capacity)(s)
       val cr = Channel.buffer[B, Source, Async](capacity)(t)
       // entered in front, EXITED where the zip ends (one Exit a run, in
@@ -336,15 +339,15 @@ object Source {
       val scope = Async.CancelScope(Merge.closing(cl, cr))
       def end(other: Channel[?]): Unit ! R =
         other.close()
-        okay.effect[R, Unit](Async.Run(Async.Exit(scope)))
+        okay.freer.effect[R, Unit](Async.Run(Async.Exit(scope)))
       def go: Unit ! R =
         receive(cl).flatMap:
           case None => end(cr)
           case Some(a) =>
             receive(cr).flatMap:
               case None => end(cl)
-              case Some(b) => okay.effect[R, Unit](Writer((a, b))).flatMap(_ => go)
-      okay.effect[R, Unit](Async.Run(Async.Enter(scope))).flatMap(_ => go)
+              case Some(b) => okay.freer.effect[R, Unit](Writer((a, b))).flatMap(_ => go)
+      okay.freer.effect[R, Unit](Async.Run(Async.Enter(scope))).flatMap(_ => go)
 
   /** `zip`, the pair folded by `f` as it is told — one `Writer.map`
    * walk over the zipped program, not a second join */
@@ -394,7 +397,7 @@ object Source {
     type Ev = WindowJoin.Event[K, A, B]
     def ended[X](s: Source[X]): Source[Option[X]] =
       Writer.map[X, Option[X], Unit, Async](s)(x => Some(x))
-        .flatMap(_ => okay.effect[Writer % Option[X] + Async, Unit](Writer(None)))
+        .flatMap(_ => okay.freer.effect[Writer % Option[X] + Async, Unit](Writer(None)))
     through(ended(l).either(ended(r), capacity))(
       !.widen[Unit, Take % Ev + Writer % (K, (A, B)), Async](WindowJoin.stage[K, A, B](within, lateness)(atL, atR)))
 
@@ -465,7 +468,7 @@ extension [A](s: Source[A])
     // before, since every element re-enters through flatMap.
     import !.*
     def loop(x: Source[A]): Unit ! Async = (x.resume: @unchecked) match
-      case Free.Return(_) => okay.pure(())
+      case Free.Return(_) => okay.freer.pure(())
       case Inject(e) => split[Async, Writer % A](e)
         (g => Inject(g).map(_ => ()): Unit ! Async)
         { case Writer.Say(a) => f(a) }

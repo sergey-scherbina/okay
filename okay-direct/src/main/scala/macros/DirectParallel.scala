@@ -1,6 +1,8 @@
 package okay
 package macros
 
+
+import okay.freer.*
 import scala.quoted.*
 import scala.annotation.tailrec
 

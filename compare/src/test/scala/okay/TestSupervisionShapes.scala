@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import scala.language.implicitConversions
 
 /**
@@ -93,7 +96,7 @@ class TestSupervisionShapes extends munit.FunSuite {
           val _ =
             if i == 3 then n.fork[Int](failOnce(registered))
             else n.fork(neverUnlessCancelled(cancelled, registered))
-        okay.pure[Async, Int](0))))
+        okay.freer.pure[Async, Int](0))))
     assert(out.isFailure, s"the scope did not fail: $out")
     assertEquals(arrived(cancelled, 9), 9, "the scope did not cancel all nine siblings")
   }
@@ -109,7 +112,7 @@ class TestSupervisionShapes extends munit.FunSuite {
         val _ = n.fork[Int](async(throw boom))
         Thread.sleep(200)
         val _ = n.fork(neverUnlessCancelled(cancelled, registered))
-        okay.pure[Async, Int](0))))
+        okay.freer.pure[Async, Int](0))))
     assert(out.isFailure, s"the scope did not fail: $out")
     // CANCELLED, OR NEVER STARTED — both mean "not left running for good"
     // (scheduler-default-flip, 2026-09-28). On Loom a cancelled child is

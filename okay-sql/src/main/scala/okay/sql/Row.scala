@@ -1,6 +1,6 @@
 package okay.sql
 
-import okay.{HMap, Same}
+import okay.freer.{HMap, Same}
 import okay.codec.Schema
 
 /**

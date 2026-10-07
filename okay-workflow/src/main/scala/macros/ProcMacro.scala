@@ -1,6 +1,7 @@
 package okay
 package macros
 
+
 import scala.quoted.*
 import scala.annotation.tailrec
 
@@ -60,13 +61,13 @@ import scala.annotation.tailrec
     import q.reflect.*
 
     // ── the marks: THE SAME syntax `Direct`'s compiler reads
-    // (macros.MarkSyntax), so a spelling added there is a mark here. The
+    // (okay.macros.MarkSyntax), so a spelling added there is a mark here. The
     // one difference is the colouring conversion: the typer inserts
     // `procColor(...).apply(q)` where a question stands in an answer's
     // place, and the macro rewrites that call exactly as it rewrites a mark.
     val outer: q.type = q
     val procColors: Set[Symbol] = TypeRepr.of[Proc.type].typeSymbol.methodMember("procColor").toSet
-    val syntax = new macros.MarkSyntax:
+    val syntax = new okay.macros.MarkSyntax:
       val q: outer.type = outer
       def colorSyms = procColors
     import syntax.{asMark, hasMark}

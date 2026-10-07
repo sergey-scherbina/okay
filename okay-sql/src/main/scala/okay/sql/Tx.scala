@@ -1,6 +1,7 @@
 package okay.sql
 
-import okay.{!, Async, Chunk, Freer, Indexed, TypeableI, Unary, +~, splitI}
+import okay.Async
+import okay.freer.{!, Chunk, Freer, Indexed, TypeableI, Unary, +~, splitI}
 import scala.annotation.tailrec
 
 /**
@@ -125,7 +126,7 @@ object Tx:
   /** in the tree's order: `R` the connection's state now, `T` after
    * the program, `c: Conn[R]` the value of that state */
   @tailrec private def loop[T, R, A](c: Conn[R])(p: Freer[Row, T, R, A]): A ! Async = (p.resume: @unchecked) match
-    case Freer.Return(a) => okay.pure(a)
+    case Freer.Return(a) => okay.freer.pure(a)
     case Freer.Inject(o) => loop(c)(Freer.Inject[Row, T, R, A](o).flatMap(v => Freer.Return(v)))
     // the bind's middle index `t` and value `x` named, for the equality an `Async` operation needs
     case b: Freer.Bind[Row, T, t, R, x, A] => (b.a: @unchecked) match
@@ -144,5 +145,5 @@ object Tx:
         } { a =>
           // an `Async` operation: on the diagonal by its door (`Indexed.onDiagonal`), the connection unmoved
           val k = Indexed.onDiagonal(a).substituteCo[[i] =>> x => Freer[Row, T, i, A]](b.f)
-          okay.Free.inject(Indexed.atDiagonal(a)).flatMap(y => again(c)(k(y)))
+          okay.freer.Free.inject(Indexed.atDiagonal(a)).flatMap(y => again(c)(k(y)))
         }

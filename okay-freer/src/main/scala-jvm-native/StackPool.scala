@@ -1,4 +1,6 @@
-package okay
+package okay.freer
+
+import okay.*
 
 import java.util.concurrent.ConcurrentLinkedDeque
 import java.util.concurrent.locks.LockSupport

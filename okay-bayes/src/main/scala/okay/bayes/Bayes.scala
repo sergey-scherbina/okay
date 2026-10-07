@@ -2,8 +2,8 @@ package okay.bayes
 
 import scala.annotation.tailrec
 import scala.util.Random
-import okay.{!, Effect, Free, effect}
-
+import okay.Effect
+import okay.freer.{!, Free, effect}
 /**
  * A BAYESIAN MODEL IS A PROGRAM (specs/okay-bayes.md): it draws named
  * random quantities and weighs its run by what it observed. Inference is
@@ -61,7 +61,7 @@ object Bayes:
   def sampleN[A](name: String, d: Distribution[A], n: Int): Vector[A] ! Model =
     // recursion deferred into the program's flatMap: one step per element, trampolined by the handler loop
     def from(i: Int, acc: Vector[A]): Vector[A] ! Model =
-      if i == n then okay.pure[Model, Vector[A]](acc) else sample(s"$name[$i]", d).flatMap(x => from(i + 1, acc :+ x))
+      if i == n then okay.freer.pure[Model, Vector[A]](acc) else sample(s"$name[$i]", d).flatMap(x => from(i + 1, acc :+ x))
     from(0, Vector.empty)
 
   /** weigh the run by e^logWeight */
@@ -83,7 +83,7 @@ object Bayes:
     factor(bulk.aggregate(rows)(Bayes.sumOf(logLik)))
 
   /** Σ f(row), as an Aggregator */
-  private[bayes] def sumOf[R](f: R => Double): okay.Aggregator[R, Double, Double] = new okay.Aggregator[R, Double, Double]:
+  private[bayes] def sumOf[R](f: R => Double): okay.freer.Aggregator[R, Double, Double] = new okay.freer.Aggregator[R, Double, Double]:
     def init: Double = 0.0
     def add(acc: Double, r: R): Double = acc + f(r)
     def merge(a: Double, b: Double): Double = a + b
@@ -94,7 +94,7 @@ object Bayes:
     val v = xs.toVector
     // recursion deferred into the program's flatMap: one step per element, trampolined by the handler loop
     def from(i: Int): Unit ! Model =
-      if i == v.length then okay.pure[Model, Unit](()) else observe(d(v(i)), value(v(i))).flatMap(_ => from(i + 1))
+      if i == v.length then okay.freer.pure[Model, Unit](()) else observe(d(v(i)), value(v(i))).flatMap(_ => from(i + 1))
     from(0)
 
   /** a site's value and its distribution, held at ONE type — so a value is

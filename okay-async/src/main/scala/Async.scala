@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import scala.annotation.implicitNotFound
 import scala.annotation.tailrec
 
@@ -279,9 +282,9 @@ object Async {
     CancelScope.arm(this, once, onCollected)
     private[okay] def released(): Unit = once.run(release)
     /** the operation that opens the scope */
-    def enter[F[+_]]: Unit ! Async + F = okay.effect(Run(Enter(this)))
+    def enter[F[+_]]: Unit ! Async + F = okay.freer.effect(Run(Enter(this)))
     /** the operation that closes it */
-    def exit[F[+_]]: Unit ! Async + F = okay.effect(Run(Exit(this)))
+    def exit[F[+_]]: Unit ! Async + F = okay.freer.effect(Run(Exit(this)))
 
   object CancelScope:
     /** the collector's action, closing over the helper's parameters

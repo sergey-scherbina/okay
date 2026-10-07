@@ -35,4 +35,4 @@ object NavCase {
 }
 
 /** a `Nav.Run`'s program, held where a 2.13 caller never reads its type */
-final class NavProgram private[scala2] (private[scala2] val program: okay.![Event, okay.Async]) extends AnyVal
+final class NavProgram private[scala2] (private[scala2] val program: okay.freer.![Event, okay.Async]) extends AnyVal

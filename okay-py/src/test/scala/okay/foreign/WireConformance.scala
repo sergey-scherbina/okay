@@ -1,7 +1,11 @@
 package okay.foreign
 
-import okay.{!, %, +, Choose, Reader, Take, Writer, effect, pure, runChoice, given}
-import okay.Row.plus
+
+
+
+import okay.{%, +, Take}
+import okay.freer.{!, Choose, Reader, Writer, effect, pure, runChoice, given}
+import okay.freer.Row.plus
 
 /**
  * ONE test body over every link (polyglot-one-wire): whatever the far side

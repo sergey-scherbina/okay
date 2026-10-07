@@ -4,7 +4,7 @@ import _root_.cats.effect.Resource
 import _root_.cats.effect.kernel.{Async, Concurrent, Outcome, Temporal}
 import _root_.cats.effect.unsafe.implicits.global
 import _root_.cats.syntax.all.*
-import okay.!
+import okay.freer.!
 import CatsEffect.Program
 import java.util.concurrent.atomic.AtomicInteger
 import scala.concurrent.duration.*
@@ -74,7 +74,7 @@ class TestCatsEffectProgram extends munit.FunSuite with okay.testkit.Munit.Diagn
   }
 
   test("a plain okay program lifts in and runs; a deep one stays on the stack") {
-    val p: Int ! okay.Async = (1 to 100000).foldLeft(okay.pure[okay.Async, Int](0))((acc, _) => acc.flatMap(s => okay.async(s + 1)))
+    val p: Int ! okay.Async = (1 to 100000).foldLeft(okay.freer.pure[okay.Async, Int](0))((acc, _) => acc.flatMap(s => okay.async(s + 1)))
     assertEquals(run(CatsEffect.lift(p)), 100000)
   }
 }

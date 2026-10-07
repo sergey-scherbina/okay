@@ -1,7 +1,10 @@
 package okay.agent
+import okay.freer.*
 
 import okay.*
+
 import okay.given
+import okay.freer.given
 import okay.codec.Json
 import Stepper.*
 
@@ -115,9 +118,9 @@ class TestStepper extends munit.FunSuite {
     // for free. It does not: replaying a stepping session would ask
     // the MODEL again, and `Replayable` refuses the row that says so.
     val e = compileErrors("""
-      okay.Shift.replay[ToolCall, String, String, Stepper.Rest](
-        summon[okay.Shift.Asking[ToolCall, String, String, okay.Shift % ? + Stepper.Rest]] ?=>
-          okay.pure(""))(Nil)""")
+      okay.freer.Shift.replay[ToolCall, String, String, Stepper.Rest](
+        summon[okay.freer.Shift.Asking[ToolCall, String, String, okay.freer.Shift % ? + Stepper.Rest]] ?=>
+          okay.freer.pure(""))(Nil)""")
     assert(e.nonEmpty, "a stepping run typechecked as replayable")
   }
 }

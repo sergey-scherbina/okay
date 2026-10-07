@@ -1,7 +1,9 @@
 package okay.jdbc
 
-import okay.{!, Async, Chunk, Resource, Source}
+import okay.{Async, Source}
+import okay.freer.{!, Chunk, Resource}
 import okay.given
+import okay.freer.given
 import okay.codec.Schema
 import okay.sql.{Granted, Isolation, Sql, SqlType, SqlValue, Typed}
 import okay.sql.given
@@ -105,7 +107,7 @@ class TestPgJdbc extends munit.FunSuite {
         })
       })))
       assertEquals(dbb.sqlState(e), Some("40001"), e.getMessage)
-      assertEquals(run(Resource.run[Granted, Async](Typed.transact[Granted, Async](dbb)(g => okay.pure(g)))).granted, Isolation.ReadCommitted)
+      assertEquals(run(Resource.run[Granted, Async](Typed.transact[Granted, Async](dbb)(g => okay.freer.pure(g)))).granted, Isolation.ReadCommitted)
     finally { a.close(); b.close() }
   }
 

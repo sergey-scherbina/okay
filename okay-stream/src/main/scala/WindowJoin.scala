@@ -1,5 +1,7 @@
 package okay
 
+
+import okay.freer.*
 import scala.collection.mutable
 
 /**
@@ -148,7 +150,6 @@ object WindowJoin {
   /** one arrival of the merged sides: a row, or a side's end */
   type Event[K, A, B] = Either[Option[(K, A)], Option[(K, B)]]
 
-  import !.*
 
   /**
    * The join as a pipeline stage over the two sides' MERGED events —

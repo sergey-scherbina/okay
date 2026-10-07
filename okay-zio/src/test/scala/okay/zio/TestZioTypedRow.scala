@@ -1,8 +1,10 @@
 package okay.zio
 
-import okay.{!, %, +, Async, Reader, Throws, raise, runEither}
-import okay.Row.at
+import okay.{%, +, Async}
+import okay.freer.{!, Reader, Throws, raise, runEither}
+import okay.freer.Row.at
 import okay.given
+import okay.freer.given
 import ZioInterop.*
 import _root_.zio.{Exit, Runtime, Unsafe, ZEnvironment, ZIO}
 import java.util.concurrent.{CountDownLatch, TimeUnit}

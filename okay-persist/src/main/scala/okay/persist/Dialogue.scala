@@ -1,7 +1,8 @@
 package okay.persist
 
-import okay.{%, !, +, At, Shift, Replayable, Row, Wf, pure}
-import okay.Row.up
+import okay.{%, +, Wf}
+import okay.freer.{!, At, Shift, Replayable, Row, pure}
+import okay.freer.Row.up
 import okay.codec.Schema
 
 /**

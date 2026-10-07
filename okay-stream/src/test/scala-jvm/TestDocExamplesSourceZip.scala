@@ -1,5 +1,7 @@
 package okay
 
+
+import okay.freer.given
 /** docs/guide.md §6's `Source.zip` example, line for line
  * (TestDocSnippets pins each line of the page to a line here) */
 class TestDocExamplesSourceZip extends munit.FunSuite {

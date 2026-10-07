@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import Condition.*
 import Condition.Decision.*
 
@@ -14,7 +17,7 @@ class TestCondition extends munit.FunSuite {
     // it directly — no signal, no policy round-trip
     val prog: String ! Op + Pure =
       frame[String, Int, Pure]("skip") { restart ?=>
-        okay.pure[Op + Pure, Int](1).flatMap { _ =>
+        okay.freer.pure[Op + Pure, Int](1).flatMap { _ =>
           restart.invoke[String](42)   // abandon the rest of the frame
         }.map(_ => "never reached")
       }(v => s"skipped with $v")

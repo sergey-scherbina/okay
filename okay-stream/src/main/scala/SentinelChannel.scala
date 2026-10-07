@@ -1,5 +1,7 @@
 package okay
 
+
+import okay.freer.*
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
 

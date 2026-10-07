@@ -1,6 +1,8 @@
 package okay.ui
 
 import okay.*
+import okay.freer.*
+
 
 /**
  * The imperative half of a UI, as an effect: show, await, validate,
@@ -26,7 +28,7 @@ object Dialog {
   /** show the tree; the answer is what the user did next */
   inline def show(ui: Ui): Event ! Dialog = effect(Show(ui))
 
-  import okay.!.{Bind, Inject, Return}
+  import okay.freer.!.{Bind, Inject, Return}
 
   /**
    * A scenario, stepped to its next question: either it is done, or

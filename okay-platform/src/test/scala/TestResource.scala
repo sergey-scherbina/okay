@@ -1,6 +1,8 @@
 package okay
 
-import !.*
+
+import okay.freer.*
+import okay.freer.given
 // AsyncFailing.anyRow no longer lives in Failing's own companion after
 // the async split, so it needs an explicit import (was automatic at HEAD).
 import okay.AsyncFailing.anyRow

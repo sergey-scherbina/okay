@@ -2,6 +2,7 @@ package okay.wroclaw
 
 import okay.cluster.{Cluster, Flows, Resp, Served}
 import okay.given
+import okay.freer.given
 import java.util.concurrent.atomic.AtomicLong
 
 /**

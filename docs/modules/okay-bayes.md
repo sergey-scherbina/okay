@@ -188,7 +188,7 @@ Kalman filter's:
 ```scala
 def track(ys: Vector[Double]): Double ! Model =
 def step(t: Int, x: Double): Double ! Model =
-if t == ys.length then okay.pure[Model, Double](x)
+if t == ys.length then okay.freer.pure[Model, Double](x)
 else sample(s"x$t", Normal(x, q)).flatMap(x1 => observe(Normal(x1, r), ys(t)).flatMap(_ => step(t + 1, x1)))
 step(0, 0.0)
 val ps = smc(track(ys), particles = 4000)
@@ -297,7 +297,7 @@ observation, and `filter.stage` is a `Stage` — observations in, a posterior
 per observation out — so tracking runs inside any okay pipeline:
 
 ```scala
-val posteriors = okay.!.run(Writer.run(through(observations)(f.stage)))._1.toVector
+val posteriors = okay.freer.!.run(Writer.run(through(observations)(f.stage)))._1.toVector
 ```
 
 Data too large for one place is a `Bulk` (Chunks in one JVM, Spark,

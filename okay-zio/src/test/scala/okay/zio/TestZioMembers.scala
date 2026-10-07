@@ -1,9 +1,12 @@
 package okay.zio
 
 import _root_.zio.{Runtime, Task, Unsafe, ZEnvironment, ZIO}
-import okay.{!, +, perform, via}
-import okay.Row.bind
+import okay.{+, via}
+import okay.freer.perform
+import okay.freer.{!}
+import okay.freer.Row.bind
 import okay.given
+import okay.freer.given
 
 /**
  * ZIO as an effect of the tree (specs/foreign-effects-in-tree.md, stages 1 and 2): one member per step, and the

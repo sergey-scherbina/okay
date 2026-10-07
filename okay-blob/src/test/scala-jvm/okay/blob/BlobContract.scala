@@ -1,8 +1,10 @@
 package okay.blob
 
-import okay.{!, +, %, Async, Chunk, Fold, Source, Writer}
-import okay.Row.plus
+import okay.{+, %, Async, Source}
+import okay.freer.{!, Chunk, Fold, Writer}
+import okay.freer.Row.plus
 import okay.given
+import okay.freer.given
 import scala.collection.immutable.ArraySeq
 
 /**
@@ -19,7 +21,7 @@ abstract class BlobContract(engine: String) extends munit.FunSuite {
   /** a Source of `total` deterministic bytes in `piece`-sized chunks */
   def bytes(total: Int, piece: Int = 8 * 1024): Source[Chunk[Byte]] =
     def go(off: Int): Source[Chunk[Byte]] =
-      if off >= total then okay.pure(())
+      if off >= total then okay.freer.pure(())
       else
         val n = math.min(piece, total - off)
         val a = Array.tabulate[Byte](n)(i => ((off + i) % 251).toByte)

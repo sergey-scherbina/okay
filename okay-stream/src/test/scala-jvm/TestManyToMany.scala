@@ -1,5 +1,6 @@
 package okay
 
+
 /**
  * P producers, C consumers, ONE channel, and the stream must END for
  * every consumer (adversarial-lanes, 2026-09-06).

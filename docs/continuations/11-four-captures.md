@@ -54,7 +54,7 @@ same prompt**:
 
 ```scala
 Shift.push(p)(
-  capture(c, p)(_ => capture("shift", p)(_ => okay.pure("inner-caught"))))
+  capture(c, p)(_ => capture("shift", p)(_ => okay.freer.pure("inner-caught"))))
 ```
 
 | | result |
@@ -132,7 +132,7 @@ return clause is for:
 
 ```scala
 Shift.shift0[String, Int, Pure](p)(k => k(1).flatMap(a => k(2).map(b => s"$a|$b"))).map(_ * 10)
-assertEquals(run(Shift.dollar[Int, String, Pure](p)(i => okay.pure(s"n=$i"))(body)), "n=10|n=20")
+assertEquals(run(Shift.dollar[Int, String, Pure](p)(i => okay.freer.pure(s"n=$i"))(body)), "n=10|n=20")
 ```
 
 The correspondence runs as code in TestHandlersAsDollar. A deep State

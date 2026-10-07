@@ -1,7 +1,10 @@
 package okay.security
+import okay.freer.*
 
 import okay.*
+
 import okay.given
+import okay.freer.given
 import okay.codec.{Json, Schema}
 import okay.http.{Body, Http, McpHttp, Method, Request, Response, Server, Transports}
 import okay.mcp.{Client as McpClient, Mcp, Server as McpServer}

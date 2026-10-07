@@ -1,6 +1,7 @@
 package okay.r
 
-import okay.{Cont, />}
+import okay.freer.{/>}
+import okay.freer.Cont
 import okay.codec.Codecs
 import okay.codec.Schema
 import RValue.*

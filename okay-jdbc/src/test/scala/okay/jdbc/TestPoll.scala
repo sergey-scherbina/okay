@@ -1,7 +1,9 @@
 package okay.jdbc
 
-import okay.{!, Async}
+import okay.Async
+import okay.freer.{!}
 import okay.given
+import okay.freer.given
 import okay.codec.Schema
 import okay.persist.{MemoryStore, Offsets, Store}
 import okay.sql.Sql

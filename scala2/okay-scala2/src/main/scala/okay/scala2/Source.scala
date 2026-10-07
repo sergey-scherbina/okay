@@ -1,8 +1,10 @@
 package okay.scala2
 
-import okay.{!, %, +, Take}
-import okay.Row.plus
+import okay.{%, +, Take}
+import okay.freer.{!}
+import okay.freer.Row.plus
 import okay.given
+import okay.freer.given
 import Rows.coerce
 
 /**
@@ -22,14 +24,14 @@ final class Source[A] private (private val body: SourceBody[A]) {
 
   private[scala2] def core: okay.Source[A] = body.s
 
-  def map[B](f: A => B): Source[B] = Source.of(okay.Writer.map[A, B, Unit, okay.Async](core)(f))
+  def map[B](f: A => B): Source[B] = Source.of(okay.freer.Writer.map[A, B, Unit, okay.Async](core)(f))
 
   def filter(p: A => Boolean): Source[A] =
-    Source.of(okay.Writer.expand[A, A, Unit, okay.Async](core)(a => if (p(a)) Vector(a) else Vector.empty))
+    Source.of(okay.freer.Writer.expand[A, A, Unit, okay.Async](core)(a => if (p(a)) Vector(a) else Vector.empty))
 
   /** each element becomes any number of elements, in order */
   def mapConcat[B](f: A => Iterable[B]): Source[B] =
-    Source.of(okay.Writer.expand[A, B, Unit, okay.Async](core)(a => f(a).toIndexedSeq))
+    Source.of(okay.freer.Writer.expand[A, B, Unit, okay.Async](core)(a => f(a).toIndexedSeq))
 
   def take(n: Int): Source[A] = Source.through(core)(Source.taking[A](n))
 
@@ -55,7 +57,7 @@ final class Source[A] private (private val body: SourceBody[A]) {
     Eff.of(coerce(okay.runForeach(core)(a => coerce[Rows.Top, okay.Async, Unit](f(a).program))))
 
   def runFold[S](z: S)(f: (S, A) => S): Eff[Async, S] =
-    Eff.of(coerce(okay.Writer.loopWith[A, S, Unit, S, okay.Async](core)(z)(f)((s, _) => s)))
+    Eff.of(coerce(okay.freer.Writer.loopWith[A, S, Unit, S, okay.Async](core)(z)(f)((s, _) => s)))
 
   /** the program this source is */
   def toEff: Eff[Writer[A] & Async, Unit] = Eff.of(coerce(core))
@@ -72,7 +74,7 @@ object Source {
 
   def fromIterable[A](as: Iterable[A]): Source[A] = of(okay.Source.of(as.toList))
 
-  def empty[A]: Source[A] = of(okay.pure(()))
+  def empty[A]: Source[A] = of(okay.freer.pure(()))
 
   /** the half-open range */
   def range(from: Long, until: Long): Source[Long] = of(okay.Source.range(from, until))
@@ -86,14 +88,14 @@ object Source {
   // ---- stages: the stage's row carries Async too, so `through` can
   // forward the source's own Async operations past it
 
-  private type St[I, O] = Take % I + (okay.Writer % O + okay.Async)
+  private type St[I, O] = Take % I + (okay.freer.Writer % O + okay.Async)
 
   private def through[I, O](s: okay.Source[I])(st: Unit ! St[I, O]): Source[O] =
     of(okay.through[I, O, okay.Async, Unit, Unit](s)(st))
 
   private def await[I, O]: Option[I] ! St[I, O] = okay.Stage.await[I, O].plus[okay.Async]
   private def tell[I, O](o: O): Unit ! St[I, O] = okay.Stage.tell[I, O](o).plus[okay.Async]
-  private def done[I, O]: Unit ! St[I, O] = okay.pure(())
+  private def done[I, O]: Unit ! St[I, O] = okay.freer.pure(())
 
   private def passAll[A]: Unit ! St[A, A] =
     await[A, A].flatMap {

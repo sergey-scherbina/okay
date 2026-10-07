@@ -1,6 +1,7 @@
 package okay.docs
 
-import okay.{!, +, %, Async, async, Chunk, ChunkBuf, effect, Source, Writer}
+import okay.{+, %, Async, async, ChunkBuf, Source}
+import okay.freer.{!, Chunk, effect, Writer}
 import okay.codec.Schema
 import okay.persist.{Ack, Topic, Typed}
 import scala.collection.mutable

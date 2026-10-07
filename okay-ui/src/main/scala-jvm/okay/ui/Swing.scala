@@ -1,6 +1,8 @@
 package okay.ui
 
 import okay.*
+import okay.freer.*
+
 import okay.given
 import java.awt.{Color, Component, Container, Font}
 import javax.swing.*

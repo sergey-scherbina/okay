@@ -1,5 +1,7 @@
 package okay
 
+
+import okay.freer.*
 import scala.collection.immutable.ArraySeq
 import scala.compiletime.summonFrom
 import scala.reflect.ClassTag

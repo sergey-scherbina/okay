@@ -1,5 +1,7 @@
 package okay
 
+
+import okay.freer.given
 /** docs/merge-and-wait.md's examples, line for line (TestDocSnippets
  * pins each line of the page to a line here or in a library source) */
 class TestDocExamplesMergeWait extends munit.FunSuite {

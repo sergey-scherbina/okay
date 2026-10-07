@@ -1,6 +1,10 @@
 package okay.agent
+import okay.{+, Answers}
 
-import okay.{!, +, Answers, given}
+
+
+import okay.freer.*
+import okay.freer.{!, given}
 import okay.codec.Json
 import okay.lex.{Bpe, Scan}
 import okay.llm.{Anthropic, OpenAi, Transport}
@@ -161,13 +165,13 @@ object Provider {
     // nowhere to put the suspension
     // a row is a union, so (Model + F) + Async IS Model + (Async + F):
     // the ascription is the compiler's own equality, not a cast
-    val widened: A ! (Model + (okay.Async + F)) = okay.!.widen[A, Model + F, okay.Async](prog)
-    okay.!.translate[A, Model, okay.Async + F](widened) {
+    val widened: A ! (Model + (okay.Async + F)) = okay.freer.!.widen[A, Model + F, okay.Async](prog)
+    okay.freer.!.translate[A, Model, okay.Async + F](widened) {
       [X] => (e: Model[X]) => e match
         // covariant row: X >: the case's answer, and `!` is invariant —
         // so the answer is lifted to X (a map, not a cast)
-        case Model.Complete(ctx, tools) => okay.!.widen[Reply, okay.Async, F](complete(ctx, tools)).map[X](r => r)
-        case Model.Count(text) => okay.pure[okay.Async + F, X](count(text))
+        case Model.Complete(ctx, tools) => okay.freer.!.widen[Reply, okay.Async, F](complete(ctx, tools)).map[X](r => r)
+        case Model.Count(text) => okay.freer.pure[okay.Async + F, X](count(text))
     }
 
   /** the OpenAI-compatible provider as a relay — the cross-platform door */

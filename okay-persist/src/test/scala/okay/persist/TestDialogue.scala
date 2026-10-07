@@ -1,7 +1,8 @@
 package okay.persist
 
 import munit.FunSuite
-import okay.{%, !, +, Shift, Pure}
+import okay.{%, +, Pure}
+import okay.freer.{!, Shift}
 import okay.Direct.*
 import okay.codec.Schema
 import scala.annotation.unused
@@ -65,7 +66,7 @@ class TestDialogue extends FunSuite {
     var asked = List.empty[String]
     def oracle(q: String, @unused a: Dialogue.Attempt): String ! Pure =
       asked = asked :+ q
-      okay.pure(if q.startsWith("Which") then "Lviv"
+      okay.freer.pure(if q.startsWith("Which") then "Lviv"
                 else if q.startsWith("How") then "2" else "yes")
 
     assertEquals(!.run(dialogue(t).run(oracle)), "Booked Lviv for 2 nights")
@@ -138,7 +139,7 @@ class TestDialogue extends FunSuite {
   val N = 40
 
   test("the warm path does not replay: run is O(n), a loop of answer is O(n squared)") {
-    def oracle(q: Int, @unused a: Dialogue.Attempt): Int ! Pure = okay.pure(q * 2)
+    def oracle(q: Int, @unused a: Dialogue.Attempt): Int ! Pure = okay.freer.pure(q * 2)
 
     val warm = Counting(MemoryStore().topic("warm"))
     val dw = Dialogue[Int, Int, Int, Pure](warm, "w", "sum/1")(sumUp(N))
@@ -167,7 +168,7 @@ class TestDialogue extends FunSuite {
   }
 
   test("a chapter makes a cold start read a tail, not a history") {
-    def oracle(q: Int, @unused a: Dialogue.Attempt): Int ! Pure = okay.pure(q * 2)
+    def oracle(q: Int, @unused a: Dialogue.Attempt): Int ! Pure = okay.freer.pure(q * 2)
     val store = MemoryStore()
 
     val plainT = Counting(store.topic("plain"))
@@ -199,7 +200,7 @@ class TestDialogue extends FunSuite {
   }
 
   test("the log is the truth: a chapter that is missing costs time, not correctness") {
-    def oracle(q: Int, @unused a: Dialogue.Attempt): Int ! Pure = okay.pure(q * 2)
+    def oracle(q: Int, @unused a: Dialogue.Attempt): Int ! Pure = okay.freer.pure(q * 2)
     val store = MemoryStore()
     val t = store.topic("bothways")
     val snaps = Snapshots(store, "__snaps2")

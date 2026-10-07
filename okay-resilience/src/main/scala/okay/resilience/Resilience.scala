@@ -1,8 +1,9 @@
 package okay.resilience
 
-import okay.{Async, !, +, TypeableK}
-import okay.!.Inject
-import okay.Free.{Bind, Return}
+import okay.{Async, +, TypeableK}
+import okay.freer.{!}
+import okay.freer.!.Inject
+import okay.freer.Free.{Bind, Return}
 
 /**
  * Five handlers around one operation (specs/resilience.md): a
@@ -101,7 +102,7 @@ object Attempt:
     okay.<|>[Async, F][X](e) match
       case Left(a) => stepIn(a, k)
       case Right(f) =>
-        okay.effect[F + Async, X](f).flatMap(x => continueIn(k, x))
+        okay.freer.effect[F + Async, X](f).flatMap(x => continueIn(k, x))
 
   private def continueIn[X, A, F[+_]](k: X => A ! F + Async, x: X)
                                      (using TypeableK[Async]): Either[Throwable, A] ! F + Async =
@@ -113,13 +114,13 @@ object Attempt:
   private def stepIn[X, A, F[+_]](e: Async[X], k: X => A ! F + Async)
                                  (using TypeableK[Async]): Either[Throwable, A] ! F + Async = e match
     case Async.Run(f) =>
-      okay.effect[F + Async, Either[Throwable, X]](
+      okay.freer.effect[F + Async, Either[Throwable, X]](
         Async.Run(() => try Right(f()) catch case t: Throwable => Left(t))).flatMap {
         case Right(x) => continueIn(k, x)
         case Left(t) => Return(Left(t))
       }
     case Async.Await(reg, _) =>
-      okay.effect[F + Async, Either[Throwable, X]](
+      okay.freer.effect[F + Async, Either[Throwable, X]](
         Async.Await(cb => reg(r => cb(Right(r))))).flatMap {
         case Right(x) => continueIn(k, x)
         case Left(t) => Return(Left(t))
@@ -128,13 +129,13 @@ object Attempt:
   // `k` is the continuation the GADT match typed at X
   private def step[X, A](e: Async[X], k: X => A ! Async): Either[Throwable, A] ! Async = e match
     case Async.Run(f) =>
-      okay.effect[Async, Either[Throwable, X]](Async.Run(() => try Right(f()) catch case t: Throwable => Left(t)))
+      okay.freer.effect[Async, Either[Throwable, X]](Async.Run(() => try Right(f()) catch case t: Throwable => Left(t)))
         .flatMap {
           case Right(x) => continue(k, x)
           case Left(t) => Return(Left(t))
         }
     case Async.Await(reg, _) =>
-      okay.effect[Async, Either[Throwable, X]](Async.Await(cb => reg(r => cb(Right(r)))))
+      okay.freer.effect[Async, Either[Throwable, X]](Async.Await(cb => reg(r => cb(Right(r)))))
         .flatMap {
           case Right(x) => continue(k, x)
           case Left(t) => Return(Left(t))

@@ -1,4 +1,5 @@
 import okay.*
+import okay.freer.*
 import okay.Direct.*
 import okay.Proc.given
 import scala.language.implicitConversions
@@ -39,7 +40,7 @@ class TestProcColour extends munit.FunSuite:
     val (st, _) = !.run(Wf.drive(
       !.run(Wf.resumable[String, String, R, P](Wf.Proc.program(p)(x)))): q =>
         asked = asked :+ q
-        okay.pure(oracle(q)))
+        okay.freer.pure(oracle(q)))
     (done(st), asked)
 
   /** THE BLOCK, with no `!` anywhere */

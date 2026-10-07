@@ -1,8 +1,7 @@
 package okay.foreign
 
 import java.nio.file.{Files, Path}
-import okay.{Choose, Reader, effect, runChoice, given}
-
+import okay.freer.{Choose, Reader, effect, runChoice, given}
 object TestGoProgram:
   val priceOf = Foreign.callback[String, Double]("price_of")(sku => Reader.ask[Map[String, Double]].map(_(sku)))
   val discount = Foreign.callback[Double, Double]("discount")(amount => Reader.ask[Map[String, Double]].map(m => amount * m("rate")))
@@ -195,7 +194,7 @@ class TestGoProgram extends munit.FunSuite {
 
   test("typed operations, generated from the Scala callbacks, each a callback under the caller's Reader") {
     val ops = Go.ops("shop", Foreign.callbacks(priceOf, discount))
-    assert(ops.contains("func PriceOf(a0 string) okay.Op[float64] {"), ops)
+    assert(ops.contains("func PriceOf(a0 string) okay.freer.Op[float64] {"), ops)
     val run = Foreign.program[Double]("total").calling(Foreign.callbacks(priceOf, discount))("tea", 3L)
     assertEquals(Reader.run(Map("tea" -> 4.0, "rate" -> 0.5))(run.program).runWith, Right(6.0))
   }

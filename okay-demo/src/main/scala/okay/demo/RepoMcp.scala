@@ -1,6 +1,8 @@
 package okay.demo
+import okay.freer.given
 
 import okay.given
+
 import okay.agent.Turn
 import okay.mcp.{Mcp, Server, Stdio}
 

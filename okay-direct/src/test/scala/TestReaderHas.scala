@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import okay.Direct.*
 import scala.language.implicitConversions
 
@@ -65,7 +68,7 @@ class TestReaderHas extends munit.FunSuite {
   }
 
   test("a type the environment does not hold does not compile") {
-    val e = compileErrors("okay.Reader.read[(Int, Long), String]")
+    val e = compileErrors("okay.freer.Reader.read[(Int, Long), String]")
     assert(e.nonEmpty, "reading a String out of (Int, Long) compiled")
   }
 

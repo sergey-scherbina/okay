@@ -1,7 +1,9 @@
 package okay.acme
 
 import okay.*
+
 import okay.given
+import okay.freer.given
 import okay.codec.Json
 import okay.conf.{Schemes, Secret, Secrets}
 import okay.http.{Body, Http, Method, Request, Response}

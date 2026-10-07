@@ -1,6 +1,8 @@
 package okay.ui
+import okay.freer.*
 
 import okay.*
+
 import okay.given
 
 /** the seam's claim, directly: one application, two hosts */

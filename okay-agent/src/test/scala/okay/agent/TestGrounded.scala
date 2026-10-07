@@ -1,7 +1,9 @@
 package okay.agent
 
-import okay.{!, +, Async, Answers}
+import okay.{+, Async, Answers}
+import okay.freer.{!}
 import okay.given
+import okay.freer.given
 import okay.rag.*
 import scala.collection.mutable
 
@@ -76,7 +78,7 @@ class TestGrounded extends munit.FunSuite {
     val (_, ctx) = Grounded.context(Compact.all, keyword,
       budget = budget, share = 0.5, k = 4)(Compact.chars)
 
-    val prog = (1 to 4).foldLeft(okay.pure[Agent, String]("")) { (acc, i) =>
+    val prog = (1 to 4).foldLeft(okay.freer.pure[Agent, String]("")) { (acc, i) =>
       acc.flatMap(_ => Agent.converse(s"question $i about Greeter " + "y" * 100))
     }
     run(prog)(model, Handlers.tools(Map.empty), ctx): Unit
@@ -99,7 +101,7 @@ class TestGrounded extends munit.FunSuite {
     val model = Handlers.scripted(Seq(
       Reply("let me look", Seq(call)), Reply("found it", Nil)))
     val tools = Handlers.tools(Map("search" -> { _ =>
-      okay.!.run(keyword.retrieve("network", 1)).headOption
+      okay.freer.!.run(keyword.retrieve("network", 1)).headOption
         .fold("nothing")(_.segment.text)
     }))
     val (state, ctx) = Handlers.context(Compact.all)

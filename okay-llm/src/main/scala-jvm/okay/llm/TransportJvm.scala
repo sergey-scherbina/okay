@@ -1,7 +1,7 @@
 package okay.llm
 
-import okay.{!, %, +, Async, Writer, effect, pure}
-
+import okay.{%, +, Async}
+import okay.freer.{!, Writer, effect, pure}
 /**
  * The JVM transport: java.net.http, streaming the response line by
  * line, with the virtual thread parking on the wire. The seam itself

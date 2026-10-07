@@ -1,8 +1,10 @@
 package okay.cluster
 
-import okay.{Aggregator, Pane}
+import okay.Pane
+import okay.freer.Aggregator
 import okay.codec.Schema
 import okay.given
+import okay.freer.given
 import scala.collection.mutable
 
 /**

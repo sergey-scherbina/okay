@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import org.openjdk.jmh.annotations.*
 import java.util.concurrent.TimeUnit
 import okay.lex.{Scan, Json as JsonLex}

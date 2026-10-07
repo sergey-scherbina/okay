@@ -1,8 +1,17 @@
 package okay.rust
 
-import java.nio.file.{Files, Path}
-import okay.{!, Answers, given}
 
+
+
+
+
+
+
+
+import okay.freer.*
+import java.nio.file.{Files, Path}
+import okay.Answers
+import okay.freer.{!, given}
 /** polyglot-go stage 2 against a LIVE Go toolchain: a Go plugin as WebAssembly, under Chicory */
 class TestDigestGoWasm extends munit.FunSuite {
   import TestPasswordHash.hex

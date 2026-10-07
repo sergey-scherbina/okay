@@ -1,6 +1,7 @@
 package okay.rag
 
-import okay.{!, Async, Chunk}
+import okay.Async
+import okay.freer.{!, Chunk}
 import okay.lex.Span
 import okay.sql.{Sql, SqlValue}
 
@@ -83,7 +84,7 @@ final class PgVector(db: Sql, table: String, dim: Int,
     val rows = spans.map(sp => Vector[SqlValue](
       SqlValue.Text(source), SqlValue.I32(sp.offset), SqlValue.I32(sp.line),
       SqlValue.I32(sp.column), SqlValue.I32(sp.length)))
-    if rows.isEmpty then okay.pure(())
+    if rows.isEmpty then okay.freer.pure(())
     else db.batch(sql, okay.ChunkBuf.of(rows)).map(_ => ())
 
   def size: Int ! Async =

@@ -1,5 +1,6 @@
 package okay
 
+
 /**
  * The wording is pinned (specs/error-messages.md): each assertion
  * requires an ACTIONABLE substring, so a rewrite that loses the
@@ -33,7 +34,7 @@ class TestErrorMessages extends munit.FunSuite {
   // Their @implicitNotFound texts serve downstream scopes.
 
   test("missing CanTry names the lazy-monad trap and the one-line strict recipe") {
-    val e = compileErrors("summon[okay.CanTry[[X] =>> okay.Cont[X, Int, Int]]] ")
+    val e = compileErrors("summon[okay.freer.CanTry[[X] =>> okay.freer.Cont[X, Int, Int]]] ")
     assert(e.contains("CanTry.strict"), e)
     assert(e.contains("LAZY"), e)
   }

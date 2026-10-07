@@ -1,6 +1,6 @@
 package okay.kernel
 
-import okay.Resource
+import okay.freer.Resource
 import scala.collection.mutable
 
 /** the plan and the start, against the behaviour list of specs/kernel.md */

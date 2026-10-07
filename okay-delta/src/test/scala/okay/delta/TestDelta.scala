@@ -1,7 +1,9 @@
 package okay.delta
 
-import okay.{!, +, %, Async, Chunk, ChunkBuf, Source, Stream, Writer}
+import okay.{+, %, Async, ChunkBuf, Source}
+import okay.freer.{!, Chunk, Stream, Writer}
 import okay.given
+import okay.freer.given
 import okay.sql.{SqlType, SqlValue, Typed}
 import okay.sql.given
 import okay.jdbc.JdbcSql

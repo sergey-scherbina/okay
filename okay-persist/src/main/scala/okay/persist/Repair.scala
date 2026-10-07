@@ -1,8 +1,7 @@
 package okay.persist
 
-import okay.{!, Condition, Pure, pure}
-
-
+import okay.{Condition, Pure}
+import okay.freer.{!, pure}
 /**
  * Typed.Bad meets Condition (specs/condition.md's first consumer
  * outside the core): a decode road where damage does not merely
@@ -34,7 +33,7 @@ object Repair {
    * goes; answers (offset, value) pairs in record order */
   def decode[A](typed: Typed[A], records: Vector[Record])
                (using scala.reflect.ClassTag[A]): Vector[(Long, A)] ! Condition.Op =
-    okay.!.foldM(records)(Vector.empty[(Long, A)]) { (done, r) =>
+    okay.freer.!.foldM(records)(Vector.empty[(Long, A)]) { (done, r) =>
       typed.decode(r) match
         case Typed.Decoded.Ok(off, _, _, a) => pure(done :+ (off, a))
         case Typed.Decoded.Bad(off, err) =>

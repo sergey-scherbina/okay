@@ -1,7 +1,9 @@
 package okay.foreign
 
-import okay.given
 
+
+
+import okay.freer.given
 /** foreign-managed-env against a LIVE uv (specs/foreign-highlevel.md stage 8) */
 class TestPyEnv extends munit.FunSuite {
 

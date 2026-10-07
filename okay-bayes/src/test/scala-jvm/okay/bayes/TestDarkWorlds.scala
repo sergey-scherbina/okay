@@ -1,7 +1,8 @@
 package okay.bayes
 
 import scala.io.Source
-import okay.{!, Bulk, Chunks}
+import okay.{Bulk, Chunks}
+import okay.freer.{!}
 import okay.testkit.Munit.Diagnosed
 import Bayes.*
 import Distribution.*
@@ -34,7 +35,7 @@ object DarkWorlds:
       Source.fromResource(path).getLines().drop(1).map(_.split(',')).map(r => Galaxy(r(1).toDouble, r(2).toDouble, r(3).toDouble, r(4).toDouble))))
 
   /** how many galaxies a sky holds */
-  def count[D[_]](gs: D[Galaxy])(using bulk: Bulk[D]): Long = bulk.aggregate(gs)(okay.Aggregator.count)
+  def count[D[_]](gs: D[Galaxy])(using bulk: Bulk[D]): Long = bulk.aggregate(gs)(okay.freer.Aggregator.count)
 
   /** the true halo position of sky n (the simulation's) */
   def truth(n: Int): (Double, Double) =
@@ -62,7 +63,7 @@ object DarkWorlds:
    * and each galaxy adds its term to every one of them
    */
   def logLikAt[D[_]](gs: D[Galaxy], points: Vector[(Double, Double, Double)])(using bulk: Bulk[D]): Array[Double] =
-    bulk.aggregate(gs)(new okay.Aggregator[Galaxy, Array[Double], Array[Double]]:
+    bulk.aggregate(gs)(new okay.freer.Aggregator[Galaxy, Array[Double], Array[Double]]:
       def init: Array[Double] = new Array[Double](points.length)
       def add(acc: Array[Double], g: Galaxy): Array[Double] =
         var k = 0

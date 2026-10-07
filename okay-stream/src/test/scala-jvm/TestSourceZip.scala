@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -100,7 +103,7 @@ class TestSourceZip extends munit.FunSuite with okay.testkit.Munit.Diagnosed {
     val produced = AtomicInteger(0)
     @volatile var feeder: Thread | Null = null
     val endless: Source[Int] =
-      okay.effect[R, Unit](Async.Run(() => feeder = Thread.currentThread()))
+      okay.freer.effect[R, Unit](Async.Run(() => feeder = Thread.currentThread()))
         .flatMap(_ => Source.of(LazyList.from(0).map(i => { produced.incrementAndGet(); i })))
     val out = pairs(Source.zip(Source.of(List(7)), endless, capacity = 4))
     assertEquals(out, Vector((7, 0)))
@@ -121,10 +124,10 @@ class TestSourceZip extends munit.FunSuite with okay.testkit.Munit.Diagnosed {
   test("a side that fails fails the zip, after every pair told before the failure") {
     object Boom extends RuntimeException("boom")
     val failing: Source[Int] =
-      Source.of(List(1, 2)).flatMap(_ => okay.effect[R, Unit](Async.Run[Unit](() => throw Boom)))
+      Source.of(List(1, 2)).flatMap(_ => okay.freer.effect[R, Unit](Async.Run[Unit](() => throw Boom)))
     val seen = scala.collection.mutable.ArrayBuffer.empty[(Int, Int)]
     val z = Source.zip(Source.of(LazyList.from(10)), failing, capacity = 64)
-    val thrown = intercept[RuntimeException](z.runForeach(p => okay.pure[Async, Unit] { seen += p; () }).runWith)
+    val thrown = intercept[RuntimeException](z.runForeach(p => okay.freer.pure[Async, Unit] { seen += p; () }).runWith)
     assert(thrown eq Boom, s"wrong failure: $thrown")
     assertEquals(seen.toVector, Vector((10, 1), (11, 2)))
   }

@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import okay.Direct.*
 import scala.language.implicitConversions
 
@@ -97,7 +100,7 @@ class TestDelimExamples extends munit.FunSuite {
 
   def ask(q: String)(using Shift.Prompted[Page]): String ! R = direct:
     !Shift.shift[String]: k =>
-      okay.pure(Page.Ask(q, (answer: String) => !.run(Shift.run(k(answer)))))
+      okay.freer.pure(Page.Ask(q, (answer: String) => !.run(Shift.run(k(answer)))))
 
   def booking(using Shift.Prompted[Page]): Page ! R = direct:
     val city = !ask("Which city?")
@@ -197,7 +200,7 @@ class TestDelimExamples extends munit.FunSuite {
     // the order of the directives is the order of the arguments, and
     // the types say so: swap them and it does not compile
     assert(compileErrors("""
-      val g: String => Int => String = okay.Cont.reset[String, String => Int => String](
+      val g: String => Int => String = okay.freer.Cont.reset[String, String => Int => String](
         for { x <- Fmt.int; y <- Fmt.str } yield x + y)
     """).nonEmpty, "the directives were accepted in the wrong order")
   }
@@ -209,13 +212,13 @@ class TestDelimExamples extends munit.FunSuite {
     // type, so there is no `AnswerOf` for it — and that is the
     // boundary, stated by the compiler rather than by this comment.
     val moving = compileErrors(
-      "summon[okay.Cont.direct.AnswerOf[[X] =>> okay.Cont[X, String, String => String]]]")
+      "summon[okay.freer.Cont.direct.AnswerOf[[X] =>> okay.freer.Cont[X, String, String => String]]]")
     assert(moving.nonEmpty, "a moving answer type was accepted as a direct block's monad")
 
     // the diagonal, the shape a direct block does have, resolves —
     // and TestContDirect runs a block written that way
     val fixed = compileErrors(
-      "summon[okay.Cont.direct.AnswerOf[[X] =>> okay.Cont[X, String, String]]]")
+      "summon[okay.freer.Cont.direct.AnswerOf[[X] =>> okay.freer.Cont[X, String, String]]]")
     assertEquals(fixed, "", "the diagonal lost its witness")
   }
 }

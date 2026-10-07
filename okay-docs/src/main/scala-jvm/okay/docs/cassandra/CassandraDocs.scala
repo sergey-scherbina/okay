@@ -1,6 +1,7 @@
 package okay.docs.cassandra
 
-import okay.{!, +, %, Async, async, Chunk, ChunkBuf, effect, Source, Writer}
+import okay.{+, %, Async, async, ChunkBuf, Source}
+import okay.freer.{!, Chunk, effect, Writer}
 import okay.codec.{Codecs, Schema}
 import okay.docs.{Cond, Consistency, Docs, PutResult}
 import com.datastax.oss.driver.api.core.{ConsistencyLevel, CqlSession}

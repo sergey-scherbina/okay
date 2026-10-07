@@ -1,7 +1,10 @@
 package okay.actor
+import okay.freer.*
 
 import okay.*
+
 import okay.given
+import okay.freer.given
 
 /**
  * The laws of supervision — stage 1, and the part of this module that

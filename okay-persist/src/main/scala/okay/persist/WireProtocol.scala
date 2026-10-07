@@ -1,6 +1,7 @@
 package okay.persist
 
-import okay.{!, Async, Net, NetConn}
+import okay.{Async, Net, NetConn}
+import okay.freer.{!}
 import okay.codec.Schema
 
 /**

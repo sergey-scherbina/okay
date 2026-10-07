@@ -1,7 +1,10 @@
 package okay.ui
+import okay.freer.*
 
 import okay.*
+
 import okay.given
+import okay.freer.given
 
 /**
  * `Wire.serveClosing` (specs/wire-server-close.md): the server's own

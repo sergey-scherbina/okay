@@ -1,4 +1,5 @@
 import okay.*
+import okay.freer.*
 import okay.Direct.*
 import scala.language.implicitConversions
 
@@ -34,7 +35,7 @@ class TestProcForms extends munit.FunSuite:
     val (st, _) = !.run(Wf.drive(
       !.run(Wf.resumable[String, String, R, P](Wf.Proc.program(p)(x)))): q =>
         asked = asked :+ q
-        okay.pure(oracle(q)))
+        okay.freer.pure(oracle(q)))
     (done(st), asked)
 
   // ── the same block, written four ways ────────────────────────────

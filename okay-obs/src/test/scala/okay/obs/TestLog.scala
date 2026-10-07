@@ -1,7 +1,10 @@
 package okay.obs
+import okay.freer.*
 
 import okay.*
+
 import okay.given
+import okay.freer.given
 import okay.codec.{Cbor, Json}
 import okay.persist.{MemoryStore, Topic}
 
@@ -40,7 +43,7 @@ class TestLog extends munit.FunSuite:
     val (h, lines) = collecting(clock = clock)
     given Answers[Says] = h
     val boom = intercept[RuntimeException](
-      run(info("before the fall").flatMap(_ => okay.pure[Says, Unit](throw RuntimeException("fell")))))
+      run(info("before the fall").flatMap(_ => okay.freer.pure[Says, Unit](throw RuntimeException("fell")))))
     assertEquals(boom.getMessage, "fell")
     assertEquals(lines().map(_.message), Vector("before the fall"))
   }

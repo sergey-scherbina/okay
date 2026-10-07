@@ -1,6 +1,8 @@
 package okay.ui
 
 import okay.*
+import okay.freer.*
+
 
 /**
  * The terminal as a Host, and it is thin because everything that can
@@ -114,7 +116,7 @@ object Terminal {
               keyState = st
               // one byte can complete no key (mid-sequence) or two (a
               // lone ESC and the byte after it), so this folds
-              val emit = okay.!.each(keys) { key =>
+              val emit = okay.freer.!.each(keys) { key =>
                 {
                   // the view keys are the HOST's: they move no focus
                   // and say nothing to the application

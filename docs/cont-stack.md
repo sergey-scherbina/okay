@@ -216,7 +216,7 @@ run time can trampoline it without running it again.
 So a scope chooses, by an import:
 
 ```scala
-  import okay.Cont.safe.given
+  import okay.freer.Cont.safe.given
     else Cont.shift[Int, Int, Int](k => { log(0) += 1; val r = k(1); log(1) += 1; r + 1 }).flatMap(x => nest(n - 1, log).map(_ + x))
 ```
 
@@ -230,7 +230,7 @@ function it cannot see into, for one) is a COMPILE ERROR that says how to
 write it. A body that answers a program keeps a lazy `k` and compiles.
 
 ```scala
-  import okay.Cont.noReplay.given
+  import okay.freer.Cont.noReplay.given
 ```
 
 In a `noReplay` scope an opaque body compiles as before but is NEVER

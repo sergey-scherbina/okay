@@ -1,6 +1,8 @@
 package okay.http
 
 import okay.*
+import okay.freer.*
+
 import scala.deriving.Mirror
 import scala.compiletime.constValueTuple
 import java.nio.charset.StandardCharsets.UTF_8

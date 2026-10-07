@@ -1,7 +1,7 @@
 package okay.blob
 
-import okay.{!, Async}
-
+import okay.Async
+import okay.freer.{!}
 /** Atomic create-only capability. No check-then-write emulation is valid.
  * Larger values must be represented by bounded immutable chunks. */
 trait ConditionalObjects:

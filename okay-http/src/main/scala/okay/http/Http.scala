@@ -1,6 +1,8 @@
 package okay.http
 
 import okay.*
+import okay.freer.*
+
 import okay.codec.Schema
 import java.nio.charset.StandardCharsets.UTF_8
 

@@ -1,5 +1,7 @@
 package okay
 
+
+import okay.freer.*
 /**
  * THE REAL THINGS, in the runtime module (specs/audit-ready.md): the
  * system clock and the platform's random source, as the handlers of

@@ -1,6 +1,8 @@
 package okay.spring
 
 import okay.*
+import okay.freer.*
+
 import org.springframework.beans.factory.{BeanFactory, DisposableBean}
 import org.springframework.context.support.GenericApplicationContext
 import java.util.function.Supplier

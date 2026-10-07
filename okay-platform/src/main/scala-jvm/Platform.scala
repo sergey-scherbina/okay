@@ -1,5 +1,7 @@
 package okay
 
+
+import okay.freer.*
 import java.util.concurrent.{CompletableFuture, CompletionException, ExecutionException, ExecutorService, ForkJoinPool}
 
 /**

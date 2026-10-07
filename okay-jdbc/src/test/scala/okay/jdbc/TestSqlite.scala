@@ -1,7 +1,9 @@
 package okay.jdbc
 
-import okay.{!, +, %, Async, Chunk, effect, Resource, Source, Stream, Throws, Writer}
+import okay.{+, %, Async, Source}
+import okay.freer.{!, Chunk, effect, Resource, Stream, Throws, Writer}
 import okay.given
+import okay.freer.given
 import okay.codec.Schema
 import okay.persist.{MemoryStore, Typed as PTyped}
 import okay.sql.{Granted, Isolation, Sql, SqlValue, Typed}
@@ -89,7 +91,7 @@ class TestSqlite extends munit.FunSuite {
       val db = JdbcSql(conn)
       // granted isolation is read back, not assumed
       val g = !.run(Async.run[Granted, okay.Pure](Resource.run[Granted, Async](
-        Typed.transact[Granted, Async](db, Isolation.Serializable)(g => okay.pure(g)))))
+        Typed.transact[Granted, Async](db, Isolation.Serializable)(g => okay.freer.pure(g)))))
       assertEquals(g.granted, Isolation.Serializable)
 
       // a handled abort crossing the scope rolls back
@@ -101,7 +103,7 @@ class TestSqlite extends munit.FunSuite {
       }
       val out = !.run(Async.run[Either[String, Long], Nothing](
         Resource.run[Either[String, Long], Async](
-          okay.runEither[Long, Resource + Async, String](prog))))
+          okay.freer.runEither[Long, Resource + Async, String](prog))))
       assertEquals(out, Left("no"))
       assert(conn.getAutoCommit)
       val n = collectChunks(db.query("select count(*) c from customer where id = 50")).flatten

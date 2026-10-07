@@ -1,6 +1,8 @@
 package okay
 
-import !.*
+
+import okay.freer.*
+import okay.freer.given
 
 /** Loom-style asynchrony: virtual threads, parked blocking, par/race. */
 class TestAsync extends munit.FunSuite {

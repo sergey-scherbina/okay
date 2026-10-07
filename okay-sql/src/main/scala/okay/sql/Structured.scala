@@ -1,7 +1,9 @@
 package okay.sql
 
 import okay.*
-import okay.Row.{In, at, plus}
+import okay.freer.*
+
+import okay.freer.Row.{In, at, plus}
 import okay.codec.Schema
 import okay.Tables.{Table, select, join, where}
 

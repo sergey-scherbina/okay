@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 /**
  * THE BOOK'S CHAPTER 16b, COMPILED
  * (docs/continuations/16b-two-monads-at-once.md).
@@ -102,7 +105,7 @@ class TestBookTwoMonads extends munit.FunSuite:
 
 /** III: Filinski 1994 — one prompt, so one monad per block: the transformer stays */
 class TestBookTwoMonadsFilinski extends munit.FunSuite:
-  import okay.Cont.Monadic.*
+  import okay.freer.Cont.Monadic.*
 
   test("reflection into OptionT[List]: direct style, but still the transformer and its lift") {
     val viaFilinski: OptionT[List, Int] =

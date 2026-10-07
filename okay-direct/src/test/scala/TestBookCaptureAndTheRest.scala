@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import okay.Direct.*
 import scala.language.implicitConversions
 
@@ -58,7 +61,7 @@ class TestBookCaptureAndTheRest extends munit.FunSuite {
         i += 1
       acc
     val out = !.run(Shift.drive[Int, Int, Int, P](
-      !.run(Shift.resumable[Int, Int, Int, P](counting)))(q => okay.pure(q * 10)))
+      !.run(Shift.resumable[Int, Int, Int, P](counting)))(q => okay.freer.pure(q * 10)))
     assertEquals(out, 30, "0*10 + 1*10 + 2*10")
   }
 }

@@ -1,6 +1,7 @@
 package okay.foreign
 
-import okay.{!, %, +, Row as OkRow, Take, Writer, effect, pure}
+import okay.{%, +, Take}
+import okay.freer.{!, Row as OkRow, Writer, effect, pure}
 import okay.codec.Schema
 
 /**
@@ -81,9 +82,9 @@ object PyStream:
     def perform(op: ForeignEval[Any]): Unit ! F = effect[F, Any](ev(op)).map(_ => ())
     def releaseAll(held: Held): Unit ! F =
       val ops = held.streams.map(ForeignEval.Cancel(_)) ++ held.refs.map(ForeignEval.Release(_))
-      okay.!.each(ops)(op => perform(op))
+      okay.freer.!.each(ops)(op => perform(op))
     // one step on the state engine, both faces (handler-one-step): what is held is its state, released at the end
-    okay.HandleFrames.stateRun[Holding, Held, A, A, F](summon[okay.TypeableK[Holding]], (held, a) => releaseAll(held).map(_ => a))(
+    okay.freer.HandleFrames.stateRun[Holding, Held, A, A, F](summon[okay.TypeableK[Holding]], (held, a) => releaseAll(held).map(_ => a))(
       (held, op) => (held(op.asInstanceOf[Holding[?]]), ()))(Held(Nil, Nil), p)
 
   /**
@@ -102,7 +103,7 @@ object PyStream:
     type R = SourceRow[O]
     require(credit >= 1, "a stream's credit is at least one chunk")
     def tellAll(os: Vector[O]): Unit ! R =
-      okay.!.each(os)(o => effect[R, Unit](Writer(o)))
+      okay.freer.!.each(os)(o => effect[R, Unit](Writer(o)))
     def loop(s: Long): Unit ! R =
       effect[R, Either[Condition, Option[Value]]](ForeignEval.Pull(s)).flatMap {
         case Left(c) => effect[R, Unit](Holding.LetStream(s)).flatMap(_ => throw Failed(c))
@@ -142,7 +143,7 @@ object PyStream:
     def release(r: Handle): Unit ! R =
       effect[R, Unit](Holding.Let(r)).flatMap(_ => effect[R, Unit](ForeignEval.Release(r)))
     def tellAll(os: Vector[O]): Unit ! R =
-      okay.!.each(os)(o => effect[R, Unit](Writer(o)))
+      okay.freer.!.each(os)(o => effect[R, Unit](Writer(o)))
     def loop(r: Handle): Unit ! R =
       effect[R, Either[Condition, Value]](next(r)).flatMap {
         case Left(c) if ended(c) => release(r)
@@ -173,7 +174,7 @@ object PyStream:
     def tellAll(answer: Either[Condition, Value]): Unit ! R =
       answer.flatMap(shape.decode[Vector[O]](_)) match
         case Left(c) => throw Failed(c)
-        case Right(os) => okay.!.each(os)(o => effect[R, Unit](Writer(o)))
+        case Right(os) => okay.freer.!.each(os)(o => effect[R, Unit](Writer(o)))
 
     def end: Unit ! R = finish match
       case None => pure(())

@@ -1,6 +1,8 @@
 package okay.ui
 
 import okay.*
+
+import okay.freer.*
 import scala.scalajs.js
 
 /**

@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import okay.Direct.*
 import scala.language.implicitConversions
 
@@ -38,13 +41,13 @@ class TestDelimDiagnostics extends munit.FunSuite {
 
   test("each door labels its prompt with what made it and where") {
     val label = !.run(Shift.delimited[String, P]: (p: Shift.Prompted[String]) ?=>
-      okay.pure(p.prompt.label))
+      okay.freer.pure(p.prompt.label))
     assert(label.startsWith("delimited @ TestDelimDiagnostics.scala:"), label)
 
     val nested = !.run(Shift.delimited[String, P]:
       direct:
         !Shift.scope[String, P]: (in: Shift.Prompted[String]) ?=>
-          okay.pure(in.prompt.label))
+          okay.freer.pure(in.prompt.label))
     assert(nested.startsWith("scope @ TestDelimDiagnostics.scala:"), nested)
   }
 

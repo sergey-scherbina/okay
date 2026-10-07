@@ -1,5 +1,6 @@
 package okay
 
+
 /**
  * The channel half of `TestErrorMessages`: it moved here with the
  * channels (core-modules stage 1). It names `okay.Channel` inside a
@@ -16,6 +17,6 @@ class TestChannelErrorMessages extends munit.FunSuite {
     // cannot see lints (they are reported after typer), so the
     // negative half is not testable here; the positive half is.
     assertEquals(compileErrors("val c = okay.Channel[Int](); def f(): Unit = c.offer(1): Unit"), "")
-    assertEquals(compileErrors("val c = okay.Channel[Int](); val p: Unit ! okay.Async = c.send(1).map(_ => ())"), "")
+    assertEquals(compileErrors("val c = okay.Channel[Int](); val p: okay.freer.![Unit, okay.Async] = c.send(1).map(_ => ())"), "")
   }
 }

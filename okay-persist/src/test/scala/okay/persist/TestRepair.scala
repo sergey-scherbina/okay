@@ -1,7 +1,8 @@
 package okay.persist
 
 import munit.FunSuite
-import okay.{!, Condition}
+import okay.Condition
+import okay.freer.{!}
 import okay.Condition.Decision.*
 import okay.codec.Schema
 

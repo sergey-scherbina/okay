@@ -2,6 +2,7 @@ package okay.wroclaw
 
 import okay.cluster.Flows
 import okay.given
+import okay.freer.given
 
 /**
  * WHAT THE WROCŁAW JOB ALLOCATES, EXACTLY
@@ -43,7 +44,7 @@ class MeasureWroclawBytes extends munit.FunSuite:
     val n = fixture.feed.events.length
     println(f"%n  ${n}%,d events, $Parts partitions, ${whole.merged}%,d accumulators at the merge%n")
     for (name, f) <- Vector(
-      ("the source alone (count)", () => Flows.fold(rides, okay.Aggregator.count[Ride]).runWith),
+      ("the source alone (count)", () => Flows.fold(rides, okay.freer.Aggregator.count[Ride]).runWith),
       ("route windows alone (tumbling)", () => Flows.fan(rides, fixture.routeSink).runWith),
       ("stop windows alone (sliding, 3 panes)", () => Flows.fan(rides, fixture.stopSink).runWith),
       ("THE FAN: route + stop + bunching", () => Flows.fan(rides, fixture.wholeJob).runWith),

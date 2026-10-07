@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import Direct.*
 
 /** the 2026-09-02 audit's macro candidates: a local def after a

@@ -5,6 +5,7 @@ import okay.agent.{Agent, Compact, Context, Durable, Handlers, Reply, ToolCall, 
 import okay.agent.{Model as ModelEffect, Tool as ToolEffect}
 import okay.codec.Schema
 import okay.given
+import okay.freer.given
 
 /**
  * The agent layer for Scala 2.13 (specs/scala2-facade.md, stage 9).

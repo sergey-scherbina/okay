@@ -1,7 +1,7 @@
 package okay.cache
 
-import okay.{!, Async}
-
+import okay.Async
+import okay.freer.{!}
 /**
  * The cross-platform half of the contract (specs/cache.md,
  * Behavior): budgets, invalidation, LRU eviction, negative caching,

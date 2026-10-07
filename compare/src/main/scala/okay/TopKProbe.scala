@@ -1,5 +1,7 @@
 package okay
 
+
+import okay.freer.*
 /**
  * What the top-k selection ALLOCATES, exactly.
  *

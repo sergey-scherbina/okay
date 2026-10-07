@@ -5,7 +5,10 @@ library's streams meet Akka/Pekko, RxJava, Reactor, fs2 and ZIO on the
 SPI they all speak.
 
 ```scala
-import okay.*, okay.given, okay.reactive.Reactive
+import okay.*
+import okay.freer.*
+import okay.freer.given
+import okay.reactive.Reactive
 given Scheduler = Schedulers.loom
 
 val p: Flow.Publisher[Long] = Reactive.publisher(Source.range(0, 1000))

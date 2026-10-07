@@ -1,6 +1,8 @@
 package okay.cluster.foreign
+import okay.freer.given
 
 import okay.given
+
 import okay.cluster.{Cluster, Flow, Flows, Job, Jobs, Wire}
 import okay.codec.Schema
 
@@ -30,7 +32,7 @@ final class ScaleJob[M](val name: String, mod: M)(using Models[M]) extends Job[S
   def answer: Schema[Long] = summon[Schema[Long]]
   def flow(p: Scale, parts: Int): Flow[Out] =
     Flow.slices(Rows.of(p.n), parts).mapModel[Out](Model.in(mod, "fit", Factor(3)), "scale")
-  def sink(p: Scale): Wire[Out, Long] = Wire.fold(okay.Aggregator.sum[Long].contramap[Out](_.v))
+  def sink(p: Scale): Wire[Out, Long] = Wire.fold(okay.freer.Aggregator.sum[Long].contramap[Out](_.v))
 
 final class RunningJob[M](val name: String, mod: M)(using Stateful[M]) extends Job[Scale, (Long, Long)]:
   type A = Run
@@ -40,8 +42,8 @@ final class RunningJob[M](val name: String, mod: M)(using Stateful[M]) extends J
     Flow.slices(Rows.of(p.n), parts).statefulIn[Run](mod, "open", "step", "finish")
   /** the sum of every running value, and the sum of the partitions' finals */
   def sink(p: Scale): Wire[Run, (Long, Long)] =
-    Wire.fold(okay.Aggregator.sum[Long].contramap[Run](r => if r.key >= 0 then r.run else 0L))
-      .and(Wire.fold(okay.Aggregator.sum[Long].contramap[Run](r => if r.key < 0 then r.run else 0L)))
+    Wire.fold(okay.freer.Aggregator.sum[Long].contramap[Run](r => if r.key >= 0 then r.run else 0L))
+      .and(Wire.fold(okay.freer.Aggregator.sum[Long].contramap[Run](r => if r.key < 0 then r.run else 0L)))
 
 object StatefulJobs:
   val scale = ScaleJob("test.held.jvm", JvmStateful.mod)

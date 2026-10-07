@@ -1,7 +1,8 @@
 package okay.bayes
 
 import scala.annotation.tailrec
-import okay.{!, Effect, Free, effect}
+import okay.Effect
+import okay.freer.{!, Free, effect}
 import Real.{exp, log, lgamma, log1p, softplus, sigmoid, square, sum}
 
 /** a density over X whose log is differentiable — in its parameters, and in x when x is a `Real` */
@@ -74,7 +75,7 @@ object Smooth:
   def paramN(name: String, prior: Prior, n: Int): Vector[Real] ! Grad =
     // recursion deferred into the program's flatMap, as Bayes.sampleN
     def from(i: Int, acc: Vector[Real]): Vector[Real] ! Grad =
-      if i == n then okay.pure[Grad, Vector[Real]](acc) else param(s"$name[$i]", prior).flatMap(x => from(i + 1, acc :+ x))
+      if i == n then okay.freer.pure[Grad, Vector[Real]](acc) else param(s"$name[$i]", prior).flatMap(x => from(i + 1, acc :+ x))
     from(0, Vector.empty)
   def observe[X](d: Density[X], x: X): Unit ! Grad = score(d.logPdf(x))
   /** every element in one score, each under the density `d` gives it */
@@ -96,8 +97,8 @@ object Smooth:
     score(Real.const(lp - at.indices.map(i => g(i) * at(i)).sum) + sum(params.indices.map(i => g(i) * params(i))))
 
   /** Σ over rows of (log density, its gradient at `at`) — commutative, so any platform may split and merge it */
-  private def gradientSum[R](at: Vector[Double], f: (Vector[Real], R) => Real): okay.Aggregator[R, (Double, Vector[Double]), (Double, Vector[Double])] =
-    new okay.Aggregator[R, (Double, Vector[Double]), (Double, Vector[Double])]:
+  private def gradientSum[R](at: Vector[Double], f: (Vector[Real], R) => Real): okay.freer.Aggregator[R, (Double, Vector[Double]), (Double, Vector[Double])] =
+    new okay.freer.Aggregator[R, (Double, Vector[Double]), (Double, Vector[Double])]:
       def init: (Double, Vector[Double]) = (0.0, Vector.fill(at.length)(0.0))
       def add(acc: (Double, Vector[Double]), r: R): (Double, Vector[Double]) =
         val tape = new Tape(16)   // one row's density: a few dozen nodes, grown by doubling if more

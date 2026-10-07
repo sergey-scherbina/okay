@@ -1,6 +1,7 @@
 package okay.ui
 
 import okay.*
+
 import okay.codec.{Json, Schema}
 import okay.persist.MemoryStore
 

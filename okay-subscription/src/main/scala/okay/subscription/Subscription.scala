@@ -1,6 +1,6 @@
 package okay.subscription
 
-import okay.TDict
+import okay.freer.TDict
 import okay.agent.ToolSpec
 import okay.codec.Json.*
 

@@ -1,6 +1,7 @@
 package okay.jdbc
 
-import okay.{!, +, %, Async, async, Chunk, effect, Source, Writer}
+import okay.{+, %, Async, async, Source}
+import okay.freer.{!, Chunk, effect, Writer}
 import java.sql.{Connection, DriverManager, PreparedStatement, ResultSet}
 
 /**
@@ -14,8 +15,8 @@ object JdbcInterop {
 
   /** a connection under the Resource region */
   def connection(url: String, user: String = "", password: String = "")
-  : Connection ! okay.Resource =
-    okay.Resource.acquire(DriverManager.getConnection(url, user, password))(_.close())
+  : Connection ! okay.freer.Resource =
+    okay.freer.Resource.acquire(DriverManager.getConnection(url, user, password))(_.close())
 
   /**
    * A query as a chunked async stream: the statement opens at the
@@ -40,7 +41,7 @@ object JdbcInterop {
       effect[F, Chunk[A]](Async.Run(() => readChunk(rs))).flatMap { c =>
         if c.length < fetchSize then
           effect[F, Unit](Async.Run { () => rs.close(); st.close() }).flatMap { _ =>
-            if c.isEmpty then okay.pure(())
+            if c.isEmpty then okay.freer.pure(())
             else effect[F, Unit](Writer(c))
           }
         else effect[F, Unit](Writer(c)).flatMap(_ => go(rs, st))

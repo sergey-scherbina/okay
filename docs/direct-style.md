@@ -89,7 +89,7 @@ calls `k` once per element (multi-shot). `reify` settles the debt
 with `pure`.
 
 ```scala
-import okay.Cont.Monadic.*
+import okay.freer.Cont.Monadic.*
 
 def add(mx: Option[Int], my: Option[Int]): Option[Int] =
   reify:

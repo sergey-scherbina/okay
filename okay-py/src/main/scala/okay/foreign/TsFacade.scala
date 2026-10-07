@@ -117,7 +117,7 @@ object TsFacade:
       val needsToPy = made.exists(_.needsToPy)
       val b = StringBuilder()
       b ++= s"package $pkg\n\n"
-      if made.nonEmpty then b ++= "import okay.!\n"
+      if made.nonEmpty then b ++= "import okay.freer.!\n"
       if needsSchema then b ++= "import okay.codec.Schema\n"
       val py = (if made.nonEmpty then Vector("Condition", "ForeignEval", "Ts") else Vector.empty) ++ Option.when(needsToPy)("ToPy")
       if py.nonEmpty then b ++= s"import okay.foreign.{${py.sorted.mkString(", ")}}\n"

@@ -1,7 +1,7 @@
 package okay.persist
 
-import okay.{!, +, %, Async, Chunk, ChunkBuf, Chunks, Source, Timer, Writer, effect}
-
+import okay.{+, %, Async, ChunkBuf, Chunks, Source, Timer}
+import okay.freer.{!, Chunk, Writer, effect}
 /**
  * Streaming reads over a topic (specs/persist.md, Interface): a
  * `Source[Chunk[Record]]` — each chunk is one told value, each read
@@ -39,7 +39,7 @@ object Streams:
       effect[F, Topic.Read](Async.Run(() => t.read(partition, at, chunk))).flatMap {
         case Topic.Read.TooEarly(b) => tooEarly(at, b, onTooEarly)(go)
         case Topic.Read.Records(rs) =>
-          if rs.isEmpty then okay.pure(())
+          if rs.isEmpty then okay.freer.pure(())
           else effect[F, Unit](Writer(ChunkBuf.of(rs))).flatMap(_ => go(rs.last.offset + 1))
       }
     go(from)
@@ -94,7 +94,7 @@ object Streams:
         case Topic.Read.TooEarly(b) => tooEarly(at, b, onTooEarly)(go)
         case Topic.Read.Records(rs) =>
           if rs.isEmpty then
-            okay.!.widen[Unit, Async, Writer % Chunk[Record]](Async.sleep(pollMillis)).flatMap(_ => go(at))
+            okay.freer.!.widen[Unit, Async, Writer % Chunk[Record]](Async.sleep(pollMillis)).flatMap(_ => go(at))
           else effect[F, Unit](Writer(ChunkBuf.of(rs))).flatMap(_ => go(rs.last.offset + 1))
       }
     go(from)

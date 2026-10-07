@@ -1,6 +1,7 @@
 package okay.ops
 
-import okay.{!, Async, pure}
+import okay.Async
+import okay.freer.{!, pure}
 import okay.codec.Schema
 import okay.http.{Http, Request, Response, Route, Router}
 import okay.persist.{Offsets, Store, Topic}

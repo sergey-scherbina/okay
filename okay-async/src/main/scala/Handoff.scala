@@ -1,5 +1,6 @@
 package okay
 
+
 /**
  * The one-shot handoff a blocking receive waits on — and the callback
  * that fills it, in ONE object.

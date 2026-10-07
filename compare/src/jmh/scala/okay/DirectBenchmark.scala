@@ -4,7 +4,10 @@ import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 
 import okay.*
+
+import okay.freer.*
 import okay.given
+import okay.freer.given
 import okay.Direct.{direct, reflect}
 
 /**
@@ -33,13 +36,13 @@ class DirectBenchmark {
   @Benchmark
   def okayFlatMap(): Int =
     val chain = (1 to N).foldLeft(pure[Pure, Int](0))((m, _) => m.flatMap(step))
-    okay.!.run(chain)
+    okay.freer.!.run(chain)
 
   /** the macro rewrites the block into Monadic's Cont binds — the
    * delta over okayFlatMap is the whole price of direct style */
   @Benchmark
   def okayDirect(): Int =
-    okay.!.run(direct[[A] =>> A ! Nothing] {
+    okay.freer.!.run(direct[[A] =>> A ! Nothing] {
       var x = 0
       var i = 0
       while i < N do
@@ -56,7 +59,7 @@ class DirectBenchmark {
   @Benchmark
   def okayDirectEager(): Int =
     import okay.Direct.eagerCalls.given
-    okay.!.run(direct[[A] =>> A ! Nothing] {
+    okay.freer.!.run(direct[[A] =>> A ! Nothing] {
       var x = 0
       var i = 0
       while i < N do
@@ -75,7 +78,7 @@ class DirectBenchmark {
         val x = step(acc).reflect
         loop(n - 1, x).reflect
     }
-    okay.!.run(loop(N, 0))
+    okay.freer.!.run(loop(N, 0))
 
   // ── kyo ───────────────────────────────────────────────────────
 

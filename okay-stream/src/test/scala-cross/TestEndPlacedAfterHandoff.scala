@@ -1,5 +1,6 @@
 package okay
 
+
 /**
  * An end mark placed AFTER a handoff wakes the receiver that registered
  * in between (sentinel-single-consumer-lost-end, 2026-09-29).

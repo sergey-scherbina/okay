@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import java.util.concurrent.atomic.AtomicInteger
 import scala.language.implicitConversions
 
@@ -38,7 +41,7 @@ class TestSupervised extends munit.FunSuite {
             val _ =
               if i == 3 then n.fork[Int](async(throw boom))
               else n.fork(async { Thread.sleep(3000); finished.incrementAndGet() })
-          okay.pure[Async, Int](0))))
+          okay.freer.pure[Async, Int](0))))
     assert(out.isFailure, s"the scope did not fail: $out")
     assertEquals(out.failed.get.getMessage, "boom")
     assert(took < 1500, s"took ${took}ms — the siblings were waited for, not cancelled")
@@ -51,7 +54,7 @@ class TestSupervised extends munit.FunSuite {
     val out = !.run(Async.run[String, Pure](
       Async.supervised: n ?=>
         (1 to 5).foreach(_ => { val _ = n.fork(async { Thread.sleep(50); done.incrementAndGet() }) })
-        okay.pure[Async, String]("body")))
+        okay.freer.pure[Async, String]("body")))
     assertEquals(out, "body")
     assertEquals(done.get(), 5, "the scope finished while children were still running")
   }

@@ -59,6 +59,7 @@ class TestEncoder extends munit.FunSuite {
     withEncoder { enc =>
       given okay.Answers[okay.rag.Embed] = enc.handler
       import okay.given
+      import okay.freer.given
       val via = okay.rag.embed(Seq("окей")).runWith
       assertEquals(via.head, enc.embed("окей"))
     }

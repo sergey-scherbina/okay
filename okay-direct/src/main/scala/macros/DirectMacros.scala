@@ -1,6 +1,8 @@
 package okay
 package macros
 
+
+import okay.freer.*
 import scala.quoted.*
 import scala.language.implicitConversions
 import scala.annotation.tailrec
@@ -96,7 +98,7 @@ import okay.Direct.*
       ++ directSym.methodMember("?") ++ directSym.methodMember("unary_!")).toSet
     val colorSyms = (directSym.methodMember("selfColor") ++
       directSym.methodMember("opColor") ++
-      Symbol.requiredModule("okay.Diagonal").methodMember("directColor")).toSet
+      Symbol.requiredModule("okay.freer.Diagonal").methodMember("directColor")).toSet
 
     def calleeRoot(t: Term): Symbol = t match
       case Apply(f, _) => calleeRoot(f)
@@ -370,8 +372,8 @@ import okay.Direct.*
  * flattened — a plain `for` passes through with one extra bind.
  */
 @scala.annotation.publicInBinary private[okay] object DirectResetMacros:
-  import okay.{!, +}
-
+  import okay.{+}
+  import okay.freer.{!}
   def blockImpl[R: Type, K[+_] : Type, F[+_] : Type](block: Expr[DirectCtx[[X] =>> X ! K + F] ?=> Any],
                                                      d: Expr[Deferral], b: Expr[Binds])
                                                     (using Quotes): Expr[R ! K + F] =

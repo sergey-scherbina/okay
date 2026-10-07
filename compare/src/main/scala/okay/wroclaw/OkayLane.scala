@@ -1,7 +1,10 @@
 package okay.wroclaw
 
-import okay.{Feed as _, *}
+import okay.*
+
+import okay.freer.{Feed as _, *}
 import okay.given
+import okay.freer.given
 import scala.collection.mutable
 import scala.annotation.tailrec
 

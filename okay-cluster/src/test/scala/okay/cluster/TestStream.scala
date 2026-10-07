@@ -1,6 +1,9 @@
 package okay.cluster
 
+
+import okay.freer.given
 import okay.given
+
 
 /**
  * THE ENGINE AS A STREAM (specs/dataflow.md, stage 6a).

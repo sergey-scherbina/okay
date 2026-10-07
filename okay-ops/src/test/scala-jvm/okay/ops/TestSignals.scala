@@ -1,6 +1,8 @@
 package okay.ops
+import okay.freer.*
 
 import okay.*
+
 import okay.given
 import okay.http.{Http, Request, Response}
 import java.util.concurrent.CountDownLatch

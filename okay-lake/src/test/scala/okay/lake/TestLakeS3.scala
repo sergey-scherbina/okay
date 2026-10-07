@@ -1,7 +1,9 @@
 package okay.lake
 
-import okay.{!, Async}
+import okay.Async
+import okay.freer.{!}
 import okay.given
+import okay.freer.given
 import okay.blob.{S3, SigV4}
 import okay.http.{Method, Request, Transports}
 

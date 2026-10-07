@@ -1,6 +1,8 @@
 package okay.ui
+import okay.freer.*
 
 import okay.*
+
 import okay.given
 import scala.annotation.tailrec
 
@@ -208,7 +210,7 @@ object Telegram {
     val lock = new Object
 
     def run(acts: Vector[Act]): Unit ! Async =
-      okay.!.each(acts) { a =>
+      okay.freer.!.each(acts) { a =>
         perform(a).map { id =>
           a match
             case Act.Send(_) => id.foreach(i => lock.synchronized { session = Session.sent(session, i) })
@@ -225,7 +227,7 @@ object Telegram {
     val hear: Update => Unit ! Async = u =>
       async { lock.synchronized { val (s, evs, acts) = Session.hear(session, u); session = s; (evs, acts) } }
         .flatMap { (evs, acts) =>
-          okay.!.each(evs)(e => feed.send(e).map(_ => ()))
+          okay.freer.!.each(evs)(e => feed.send(e).map(_ => ()))
             .flatMap(_ => run(acts))
         }
     (h, hear)

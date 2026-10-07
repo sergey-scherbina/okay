@@ -1,7 +1,8 @@
 package okay.deploy
 
-import okay.{Fact, Answers, Module, Monoid, Static, moduleAs}
-import okay.given
+import okay.Answers
+import okay.freer.{Fact, Module, Monoid, Static, moduleAs}
+import okay.freer.given
 import scala.quoted.*
 import scala.annotation.tailrec
 
@@ -45,7 +46,7 @@ object Needs:
   object Declared extends Fact[Vector[Need]](
     // not the free monoid on Vector: two modules on one volume declare
     // one volume, not two
-    using okay.Monoid.of(Vector.empty[Need])((a, b) => (a ++ b).distinct))
+    using okay.freer.Monoid.of(Vector.empty[Need])((a, b) => (a ++ b).distinct))
 
   extension [F[_]](m: Module[F])
     /** what this module needs from the place, said where it opens the thing */

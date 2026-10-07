@@ -1,6 +1,8 @@
 package okay.cluster.foreign
+import okay.freer.given
 
 import okay.given
+
 import okay.cluster.{Cluster, Flow, Flows, Job, Jobs, Wire}
 import okay.codec.Schema
 import okay.r.{R, TestR}

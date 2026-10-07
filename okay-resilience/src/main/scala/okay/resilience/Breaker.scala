@@ -1,6 +1,8 @@
 package okay.resilience
 
 import okay.*
+import okay.freer.*
+
 import okay.codec.Schema
 
 object Breaker:
@@ -57,7 +59,7 @@ final class Breaker(val name: String, failures: Int, openMillis: Long,
   def protectIn[A, F[+_]](prog: => A ! F + Async)
                          (failing: Either[Throwable, A] => Boolean = (r: Either[Throwable, A]) => r.isLeft)
                          (using okay.TypeableK[Async]): A ! F + Async =
-    okay.effect[F + Async, Option[Option[Long]]](Async.Run(() => admit())).flatMap {
+    okay.freer.effect[F + Async, Option[Option[Long]]](Async.Run(() => admit())).flatMap {
       case Some(wait) => throw Refused.BreakerOpen(name, wait)
       case None =>
         Attempt.in[A, F](prog).map { r =>

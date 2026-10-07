@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 /** The stream combinators that are about a SOURCE — merge, chunked
  * merge and its flush — which left `TestStream` in the core with the
  * `Source` machinery (core-modules stage 1). What stayed there is the
@@ -114,11 +117,11 @@ class TestStreamSource extends munit.FunSuite {
     // three elements (fewer than a chunk), an explicit boundary, then
     // a source that never ends: only the Flush can get them out
     def marked: Flushing[Int] =
-      okay.effect[R, Unit](Writer(1))
-        .flatMap(_ => okay.effect[R, Unit](Writer(2)))
-        .flatMap(_ => okay.effect[R, Unit](Writer(3)))
+      okay.freer.effect[R, Unit](Writer(1))
+        .flatMap(_ => okay.freer.effect[R, Unit](Writer(2)))
+        .flatMap(_ => okay.freer.effect[R, Unit](Writer(3)))
         .flatMap(_ => Flush.now[Writer % Int + Async])
-        .flatMap(_ => okay.effect[R, Unit](Async.Run(() => Thread.sleep(60000))))
+        .flatMap(_ => okay.freer.effect[R, Unit](Async.Run(() => Thread.sleep(60000))))
 
     // no flushAfter: the boundary is the ONLY thing that can emit
     val f = java.util.concurrent.CompletableFuture.supplyAsync(() =>
@@ -132,10 +135,10 @@ class TestStreamSource extends munit.FunSuite {
     // 20 elements, a boundary after the 18th: the first 16 leave as a
     // full chunk, the boundary sends 2, the rest flush at the end
     def many: Flushing[Int] =
-      (1 to 20).foldLeft(okay.pure[R, Unit](())): (m, i) =>
-        m.flatMap(_ => okay.effect[R, Unit](Writer(i)))
-          .flatMap(_ => if i == 18 then Flush.now[Writer % Int + Async] else okay.pure(()))
-    val out = many.mergeFlushing(okay.pure[Flush + (Writer % Int + Async), Unit](()))
+      (1 to 20).foldLeft(okay.freer.pure[R, Unit](())): (m, i) =>
+        m.flatMap(_ => okay.freer.effect[R, Unit](Writer(i)))
+          .flatMap(_ => if i == 18 then Flush.now[Writer % Int + Async] else okay.freer.pure(()))
+    val out = many.mergeFlushing(okay.freer.pure[Flush + (Writer % Int + Async), Unit](()))
       .toLazyList.toList
     assertEquals(out, (1 to 20).toList)
   }
@@ -173,11 +176,11 @@ class TestStreamSource extends munit.FunSuite {
   test("eitherFlushing: mergeFlushing's boundaries, elements tagged by side") {
     type R = Flush + (Writer % Int + Async)
     def marked(base: Int): Flushing[Int] =
-      okay.effect[R, Unit](Writer(base + 1))
-        .flatMap(_ => okay.effect[R, Unit](Writer(base + 2)))
-        .flatMap(_ => okay.effect[R, Unit](Writer(base + 3)))
+      okay.freer.effect[R, Unit](Writer(base + 1))
+        .flatMap(_ => okay.freer.effect[R, Unit](Writer(base + 2)))
+        .flatMap(_ => okay.freer.effect[R, Unit](Writer(base + 3)))
         .flatMap(_ => Flush.now[Writer % Int + Async])
-        .flatMap(_ => okay.effect[R, Unit](Async.Run(() => Thread.sleep(60000))))
+        .flatMap(_ => okay.freer.effect[R, Unit](Async.Run(() => Thread.sleep(60000))))
 
     val f = java.util.concurrent.CompletableFuture.supplyAsync(() =>
       marked(0).eitherFlushing(marked(100)).toLazyList.take(6).toList)

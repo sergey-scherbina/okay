@@ -1,7 +1,7 @@
 package okay.agent
 
-import okay.{Aggregator, Group}
-import okay.given
+import okay.freer.{Aggregator, Group}
+import okay.freer.given
 import okay.codec.{Json, Schema}
 import scala.annotation.tailrec
 

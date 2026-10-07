@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import org.openjdk.jmh.annotations.*
 import java.util.concurrent.TimeUnit
 import scala.collection.immutable.ArraySeq
@@ -100,19 +103,19 @@ class ProducerWriterCarrierBenchmark {
   // the `Probe` loops below walk it the way `Chunks.fold` used to
   private def producerChunks: Producer[Chunk[Long]] =
     def go(i: Int): Producer[Chunk[Long]] =
-      if i >= chunks.length then okay.pure(Chunks.emptyChunk[Long])
+      if i >= chunks.length then okay.freer.pure(Chunks.emptyChunk[Long])
       else produce(chunks(i)).flatMap(_ => go(i + 1))
     go(0)
 
   private def writerChunks: Unit ! Writer % Chunk[Long] =
     def go(i: Int): Unit ! Writer % Chunk[Long] =
-      if i >= chunks.length then okay.pure(())
+      if i >= chunks.length then okay.freer.pure(())
       else Writer.tell(chunks(i)).flatMap(_ => go(i + 1))
     go(0)
 
   private def writerChunksAsync: Source[Chunk[Long]] =
     def go(i: Int): Source[Chunk[Long]] =
-      if i >= chunks.length then okay.pure(())
+      if i >= chunks.length then okay.freer.pure(())
       else Writer.tell(chunks(i)).plus[Async].flatMap(_ => go(i + 1))
     go(0)
 
@@ -149,7 +152,7 @@ class ProducerWriterCarrierBenchmark {
   // `CanBlock`, no `TypeableK`. Every earlier writer row in this file
   // walks the G-effectful `writerStreamIn`; these two are the honest
   // pair for `chunksFoldProducer` / `chunksFoldLeftProducerDirect`.
-  private val feedStream = okay.feedStream[Unit]
+  private val feedStream = okay.freer.feedStream[Unit]
 
   @Benchmark
   def chunksFoldFeedPure(): Long =
@@ -289,12 +292,12 @@ class ProducerWriterCarrierBenchmark {
 
   private def producerLongs: Long ! Produce + Async =
     def go(i: Long): Long ! Produce + Async =
-      if i >= n then okay.pure(0L) else produce(i).plus[Async].flatMap(_ => go(i + 1))
+      if i >= n then okay.freer.pure(0L) else produce(i).plus[Async].flatMap(_ => go(i + 1))
     go(0L)
 
   private def writerLongs: Unit ! Writer % Long + Async =
     def go(i: Long): Unit ! Writer % Long + Async =
-      if i >= n then okay.pure(()) else Writer.tell(i).plus[Async].flatMap(_ => go(i + 1))
+      if i >= n then okay.freer.pure(()) else Writer.tell(i).plus[Async].flatMap(_ => go(i + 1))
     go(0L)
 
   @Benchmark
@@ -356,13 +359,13 @@ class ProducerWriterCarrierBenchmark {
 
   private def byteProducer: Chunk[Byte] ! Produce + Async =
     def go(i: Int): Chunk[Byte] ! Produce + Async =
-      if i >= byteChunks.length then okay.pure(Chunks.emptyChunk[Byte])
+      if i >= byteChunks.length then okay.freer.pure(Chunks.emptyChunk[Byte])
       else produce(byteChunks(i)).plus[Async].flatMap(_ => go(i + 1))
     go(0)
 
   private def byteSource: Unit ! Writer % Chunk[Byte] + Async =
     def go(i: Int): Unit ! Writer % Chunk[Byte] + Async =
-      if i >= byteChunks.length then okay.pure(())
+      if i >= byteChunks.length then okay.freer.pure(())
       else Writer.tell(byteChunks(i)).plus[Async].flatMap(_ => go(i + 1))
     go(0)
 
@@ -397,7 +400,7 @@ class ProducerWriterCarrierBenchmark {
 
   private def byteSourceAsync: Unit ! Writer % Chunk[Byte] + Async =
     def go(i: Int): Unit ! Writer % Chunk[Byte] + Async =
-      if i >= byteChunks.length then okay.pure(())
+      if i >= byteChunks.length then okay.freer.pure(())
       else async(()).plus[Writer % Chunk[Byte]].flatMap(_ =>
         Writer.tell(byteChunks(i)).plus[Async].flatMap(_ => go(i + 1)))
     go(0)
@@ -410,11 +413,11 @@ class ProducerWriterCarrierBenchmark {
     def again(acc: Vector[W])(x: A ! Writer % W + G): (Vector[W], A) ! G = loop(acc)(x)
     @tailrec def loop(acc: Vector[W])(x: A ! Writer % W + G): (Vector[W], A) ! G =
       (x.resume: @unchecked) match
-        case Free.Return(v) => okay.pure((acc, v))
+        case Free.Return(v) => okay.freer.pure((acc, v))
         case Inject(e) => split[G, Writer % W](e)
           (g => Inject(g).map(v => (acc, v)): (Vector[W], A) ! G)
           { w0 => (w0: @unchecked) match
-              case Writer.Say(w) => okay.pure((acc :+ w, ())) }
+              case Writer.Say(w) => okay.freer.pure((acc :+ w, ())) }
         case Bind(Inject(e), k) => split[G, Writer % W](e)
           (g => Inject(g).flatMap(v => again(acc)(k(v))))
           { w0 => (w0: @unchecked) match
@@ -432,10 +435,10 @@ class ProducerWriterCarrierBenchmark {
     def again(acc: Vector[A])(x: Source[A]): Vector[A] ! Async = loop(acc)(x)
     @tailrec def loop(acc: Vector[A])(x: Source[A]): Vector[A] ! Async =
       (x.resume: @unchecked) match
-        case Free.Return(_) => okay.pure(acc)
+        case Free.Return(_) => okay.freer.pure(acc)
         case Inject(e) => split[Async, Writer % A](e)
           (g => Inject(g).map(_ => acc): Vector[A] ! Async)
-          { case Writer.Say(a) => okay.pure(acc :+ a) }
+          { case Writer.Say(a) => okay.freer.pure(acc :+ a) }
         case Bind(Inject(e), k) => split[Async, Writer % A](e)
           (g => Inject(g).flatMap(v => again(acc)(k(v))))
           { w0 => (w0: @unchecked) match
@@ -477,7 +480,7 @@ class ProducerWriterCarrierBenchmark {
  * methods — `Chunks.fold`'s own shape, one compiled unit each; see the
  * `*OwnMethod` rows in the class above for what they answer */
 object Probe {
-  private val feedStream = okay.feedStream[Unit]
+  private val feedStream = okay.freer.feedStream[Unit]
   private val producerStream = summon[Stream[Producer, Pure]]
 
   def foldProducer(p: Producer[Chunk[Long]], l: Fold.OfLong[Long]): Long =
@@ -510,7 +513,7 @@ object Probe {
   def foldFeedAbstract[A](p: Unit ! Writer % Chunk[A])(using fo: Fold[A, Long]): Long = fo match
     case l: Fold.OfLong[A @unchecked] =>
       var s = l.initLong
-      val it = okay.feedStream[Unit].iterator(p)
+      val it = okay.freer.feedStream[Unit].iterator(p)
       while it.hasNext do
         val c = it.next()
         var i = 0
@@ -544,7 +547,7 @@ object Probe {
 
   def foldFeedSummon(p: Unit ! Writer % Chunk[Long], l: Fold.OfLong[Long]): Long =
     var s = l.initLong
-    val it = okay.feedStream[Unit].iterator(p)
+    val it = okay.freer.feedStream[Unit].iterator(p)
     while it.hasNext do
       val c = it.next()
       var i = 0

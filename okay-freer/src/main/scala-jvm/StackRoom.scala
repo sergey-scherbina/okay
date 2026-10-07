@@ -1,4 +1,6 @@
-package okay
+package okay.freer
+
+import okay.*
 
 /**
  * What the JVM can say about the stack it is running on — NOTHING, on

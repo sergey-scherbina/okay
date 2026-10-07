@@ -83,11 +83,11 @@ class MeasurePaneStore extends munit.FunSuite:
    * a road's wall clock, and the one above is the number that flatters
    * the change.
    */
-  val summary: okay.Aggregator[Long, okay.Aggregator.Summary, okay.Aggregator.Summary] =
-    okay.Aggregator.summary[Long](identity)
+  val summary: okay.freer.Aggregator[Long, okay.freer.Aggregator.Summary, okay.freer.Aggregator.Summary] =
+    okay.freer.Aggregator.summary[Long](identity)
 
   def tupledReal(n: Int, k: Int): Long =
-    val m = mutable.HashMap.empty[(Long, Int), okay.Aggregator.Summary]
+    val m = mutable.HashMap.empty[(Long, Int), okay.freer.Aggregator.Summary]
     var i = 0
     while i < n do
       val id = ((i / k).toLong, i % k)
@@ -98,7 +98,7 @@ class MeasurePaneStore extends munit.FunSuite:
     m.size.toLong
 
   def longMappedReal(n: Int, k: Int): Long =
-    val m = mutable.LongMap.empty[okay.Aggregator.Summary]
+    val m = mutable.LongMap.empty[okay.freer.Aggregator.Summary]
     var i = 0
     while i < n do
       val id = packed((i / k).toLong, i % k)

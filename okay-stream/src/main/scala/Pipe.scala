@@ -1,7 +1,10 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import scala.annotation.tailrec
-import okay.!.*
+import okay.freer.!.*
 
 /**
  * The consumer side of a pipeline: await the next element of type V.
@@ -202,7 +205,7 @@ object Stage {
       endBody: S2 => Vector[O]): Stage[I, O, Either[S1, S2]] =
 
     def tellAll(os: Vector[O]): Stage[I, O, Unit] =
-      okay.!.each(os)(o => tell[I, O](o))
+      okay.freer.!.each(os)(o => tell[I, O](o))
 
     // the switch, run through PState: the Atkey instance executed
     type R = (Either[S1, S2], Vector[O])
@@ -255,7 +258,7 @@ object Stage {
       endThird: S3 => Vector[O]): Stage[I, O, Either[S1, Either[S2, S3]]] =
 
     def tellAll(os: Vector[O]): Stage[I, O, Unit] =
-      okay.!.each(os)(o => tell[I, O](o))
+      okay.freer.!.each(os)(o => tell[I, O](o))
 
     // each seam's switch runs through PState — the same executed
     // Atkey step as `phased`, at both type changes

@@ -35,7 +35,7 @@ sentence.
 // Cont.scala, object Cont — capture the current continuation
 // (Danvy–Filinski, with answer-type modification): Cont.shift
 inline def shift[A, S, R](inline f: (A => S) => R)(using inline scope: Shifts): Rep[A, S, R] =
-  ${ okay.macros.ContMacro.shift('f, 'scope) }
+  ${ okay.freer.macros.ContMacro.shift('f, 'scope) }
 // delimit: run with the identity continuation: Cont.reset
 inline def reset[A, R](c: Rep[A, A, R]): R = run(c)(identity)
 ```
@@ -138,7 +138,7 @@ has the same word, and since cont-in-direct (2026-09-17) it can be
 written in a direct block too:
 
 ```scala
-import okay.Cont.direct.*
+import okay.freer.Cont.direct.*
 
 type Str = [X] =>> Cont[X, String, String]        // the diagonal at String
 

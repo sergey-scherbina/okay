@@ -183,7 +183,7 @@ val p = !.run(Shift.resumable[Q, A, R, F](prog))
 // step it by hand...
 val (next, _) = !.run(Shift.answer(p, Nil)(answer))
 // ...or run it to the end with an oracle
-val result = !.run(Shift.drive(p)(q => okay.pure(answerFor(q))))
+val result = !.run(Shift.drive(p)(q => okay.freer.pure(answerFor(q))))
 ```
 
 ---

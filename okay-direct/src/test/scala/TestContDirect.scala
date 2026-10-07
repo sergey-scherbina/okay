@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import okay.Direct.*
 import scala.language.implicitConversions
 
@@ -15,7 +18,7 @@ class TestContDirect extends munit.FunSuite {
   type Str = [X] =>> Cont[X, String, String]
 
   test("shift in a direct block: the continuation is the rest of the block") {
-    import okay.Cont.direct.*
+    import okay.freer.Cont.direct.*
     val c: String /> String = direct[Str]:
       val x: String = !shift[String](k => k("one") + " " + k("two"))
       "<" + x + ">"
@@ -25,7 +28,7 @@ class TestContDirect extends munit.FunSuite {
 
   test("an import is a statement a direct block may contain") {
     val c: String /> String = direct[Str]:
-      import okay.Cont.direct.*         // binds nothing, runs nothing
+      import okay.freer.Cont.direct.*         // binds nothing, runs nothing
       val x: String = !shift[String](k => k("a") + k("b"))
       x + "!"
     assertEquals(Cont.reset(c), "a!b!")
@@ -39,7 +42,7 @@ class TestContDirect extends munit.FunSuite {
   }
 
   test("the answer type is the block's, so it need not be written") {
-    import okay.Cont.direct.*
+    import okay.freer.Cont.direct.*
     val c: Int /> Int = direct[[X] =>> Cont[X, Int, Int]]:
       val n: Int = !shift[Int](k => k(1) + k(2) + k(3))
       n * 10
@@ -49,7 +52,7 @@ class TestContDirect extends munit.FunSuite {
   test("an import in a direct block over a program row") {
     // the same macro rule, where blocks actually live: a row of effects
     val p: Int ! State % Int + okay.Pure = direct:
-      import okay.State.modify
+      import okay.freer.State.modify
       val a = !modify[Int](_ + 1)
       val b = !modify[Int](_ * 2)
       a + b
@@ -57,7 +60,7 @@ class TestContDirect extends munit.FunSuite {
   }
 
   test("outside a direct block the one-argument shift does not compile") {
-    val e = compileErrors("okay.Cont.direct.shift[Int](k => k(1))")
+    val e = compileErrors("okay.freer.Cont.direct.shift[Int](k => k(1))")
     assert(e.nonEmpty, "the direct-only capture compiled with no block around it")
     assert(e.contains("DirectCtx"), s"refused for the wrong reason: $e")
   }
@@ -65,7 +68,7 @@ class TestContDirect extends munit.FunSuite {
   test("the package-level shift still takes its three type arguments") {
     // the reason `direct.shift` is an import and not an overload:
     // this call shape — no type arguments — must keep resolving here
-    val c: Int /> Int = okay.Cont.shift[Int, Int, Int](k => k(1) + k(2))
+    val c: Int /> Int = okay.freer.Cont.shift[Int, Int, Int](k => k(1) + k(2))
     assertEquals(Cont.reset(c), 3)
   }
 }

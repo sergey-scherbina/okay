@@ -1,5 +1,7 @@
 package okay
 
+
+import okay.freer.*
 import java.util.concurrent.CountDownLatch
 
 /** `Fiber.isDone` (fiber-is-done): false while the fiber runs, true once

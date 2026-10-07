@@ -1,7 +1,18 @@
 package okay.r
 
-import okay.{!, %, +, Writer, given}
-import okay.Row.plus
+import okay.{%, +}
+
+
+
+
+
+
+
+import okay.freer.*
+
+
+import okay.freer.{!, Writer, given}
+import okay.freer.Row.plus
 
 object TestRStream:
   val m = R.module("streamr", """
@@ -27,7 +38,7 @@ class TestRStream extends munit.FunSuite {
   override def afterAll(): Unit = if TestR.rscript.nonEmpty then r.close()
 
   private def numbers(n: Int): Unit ! Writer % Double + REval =
-    (1 to n).foldLeft(okay.pure[Writer % Double, Unit](()))((p, x) => p.flatMap(_ => Writer.tell(x.toDouble))).plus[REval]
+    (1 to n).foldLeft(okay.freer.pure[Writer % Double, Unit](()))((p, x) => p.flatMap(_ => Writer.tell(x.toDouble))).plus[REval]
 
   private def run[O](p: Unit ! Writer % O + REval): List[O] = Writer.run(p).runWith._1.toList
 

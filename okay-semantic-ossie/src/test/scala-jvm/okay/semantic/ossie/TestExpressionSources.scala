@@ -1,7 +1,10 @@
 package okay.semantic.ossie
 
 import okay.*
+import okay.freer.*
+
 import okay.given
+import okay.freer.given
 import okay.semantic.Request
 
 final case class ExpressionJob[A](plan: ExpressionPlan[A], rows: Vector[A]):

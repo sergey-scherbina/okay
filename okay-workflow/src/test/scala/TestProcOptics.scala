@@ -1,4 +1,5 @@
 import okay.*
+import okay.freer.*
 import okay.Proc.given
 import scala.language.implicitConversions
 
@@ -40,7 +41,7 @@ class TestProcOptics extends munit.FunSuite:
     val (st, _) = !.run(Wf.drive(
       !.run(Wf.resumable[String, String, R, P](Wf.Proc.program(p)(x)))): q =>
         asked = asked :+ q
-        okay.pure(oracle(q)))
+        okay.freer.pure(oracle(q)))
     (done(st), asked)
 
   // ── the state a booking carries ──────────────────────────────────
@@ -70,7 +71,7 @@ class TestProcOptics extends munit.FunSuite:
       guest.andThen(city)(confirmCity)
     val (_, j) = !.run(Wf.drive(
       !.run(Wf.resumable[String, String, Booking, P](
-        Wf.Proc.program(step)(Booking(Guest("ada", "Kyiv"), 3)))))(_ => okay.pure("Lviv")))
+        Wf.Proc.program(step)(Booking(Guest("ada", "Kyiv"), 3)))))(_ => okay.freer.pure("Lviv")))
     assertEquals(j, List(Right("Lviv")))
     // and the term folds that journal back to the same whole
     assertEquals(Wf.Proc.walk(step)(Booking(Guest("ada", "Kyiv"), 3), j),

@@ -1,7 +1,9 @@
 package okay.security
 
-import okay.{!, Async, pure}
+import okay.Async
+import okay.freer.{!, pure}
 import okay.given
+import okay.freer.given
 import okay.codec.Json
 import okay.http.{Method, Request, Response}
 

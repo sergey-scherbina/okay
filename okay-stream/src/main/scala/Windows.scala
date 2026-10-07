@@ -1,5 +1,7 @@
 package okay
 
+
+import okay.freer.*
 import scala.collection.mutable
 
 /**

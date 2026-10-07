@@ -1,6 +1,8 @@
 package okay
 
-import !.*
+
+import okay.freer.*
+import okay.freer.given
 
 /** Coroutine pipelines: tell meets await, one element at a time. */
 class TestPipe extends munit.FunSuite {

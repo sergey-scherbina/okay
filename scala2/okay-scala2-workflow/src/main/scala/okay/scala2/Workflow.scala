@@ -1,7 +1,9 @@
 package okay.scala2
 
-import okay.{%, !, +, At, Shift, Wf}
+import okay.{%, +, Wf}
+import okay.freer.{!, At, Shift}
 import okay.given
+import okay.freer.given
 import Rows.coerce
 
 /*
@@ -59,7 +61,7 @@ final class Workflow[Q, A] private () {
   def cancelled: Eff[Workflow[Q, A], Option[String]] = op(WfOp.Cancelled[Q, A]())
 
   private def op[X](o: WfOp[Q, A, X]): Eff[Workflow[Q, A], X] =
-    Eff.of(coerce(okay.effect[[Y] =>> WfOp[Q, A, Y], X](o)))
+    Eff.of(coerce(okay.freer.effect[[Y] =>> WfOp[Q, A, Y], X](o)))
 }
 
 object Workflow {
@@ -84,20 +86,20 @@ object Workflows {
    * the run: the author's next question comes back as `Asking(q)` */
   def advance[Q, A, R](wf: Eff[Workflow[Q, A], R], journal: List[Either[Wf.SysA, A]],
                        runtime: Wf.Runtime = Wf.Runtime.live): (Wf.Step[Q, R], List[Either[Wf.SysA, A]]) =
-    okay.!.run(Wf.replay[Q, A, R, okay.Pure](body(wf))(journal)
+    okay.freer.!.run(Wf.replay[Q, A, R, okay.Pure](body(wf))(journal)
       .flatMap(p => Wf.advance[Q, A, R, okay.Pure](p)(using runtime, summon)))
 
   /** replay `journal`, then run on, `oracle` answering the author's
    * questions, until the run finishes or waits for time or a signal */
   def drive[Q, A, R](wf: Eff[Workflow[Q, A], R], journal: List[Either[Wf.SysA, A]],
                      runtime: Wf.Runtime = Wf.Runtime.live)(oracle: Q => A): (Wf.Step[Q, R], List[Either[Wf.SysA, A]]) =
-    okay.!.run(Wf.replay[Q, A, R, okay.Pure](body(wf))(journal)
-      .flatMap(p => Wf.drive[Q, A, R, okay.Pure](p)(q => okay.pure(oracle(q)))(using runtime, summon)))
+    okay.freer.!.run(Wf.replay[Q, A, R, okay.Pure](body(wf))(journal)
+      .flatMap(p => Wf.drive[Q, A, R, okay.Pure](p)(q => okay.freer.pure(oracle(q)))(using runtime, summon)))
 
   /** the answer, if `journal` takes the run to its end; nothing is asked
    * and no clock is read */
   def replay[Q, A, R](wf: Eff[Workflow[Q, A], R], journal: List[Either[Wf.SysA, A]]): Option[R] =
-    okay.!.run(Wf.replay[Q, A, R, okay.Pure](body(wf))(journal)).finished
+    okay.freer.!.run(Wf.replay[Q, A, R, okay.Pure](body(wf))(journal)).finished
 
   /** the program as okay's engine runs it: each operation becomes the
    * door it stands for */
@@ -105,7 +107,7 @@ object Workflows {
     val w = summon[Wf.Asks[Q, A, R, okay.Pure]]
     given At = At("okay.scala2.Workflow")
     type F[X] = WfOp[Q, A, X]
-    okay.!.translate[R, F, Shift % ? + okay.Pure](coerce(wf.program))(
+    okay.freer.!.translate[R, F, Shift % ? + okay.Pure](coerce(wf.program))(
       [X] => (o: F[X]) => (o match {
         case WfOp.Pause(q) => w.pause(q)
         case WfOp.Now() => w.now

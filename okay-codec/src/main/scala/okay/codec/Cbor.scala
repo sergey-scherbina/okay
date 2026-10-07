@@ -1,8 +1,8 @@
 package okay.codec
 
 import scala.collection.mutable.ArrayBuffer
-import okay.{Cont, />}
-
+import okay.freer.{/>}
+import okay.freer.Cont
 /**
  * CBOR (RFC 8949) as the second algebra over the SAME Schema: what
  * JSON renders as text, CBOR renders as typed binary items — one

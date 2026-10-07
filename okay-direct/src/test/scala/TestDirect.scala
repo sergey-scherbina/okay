@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import okay.Direct.*
 
 /** The flat block over Monadic: specs/direct-macro.md */
@@ -61,7 +64,7 @@ class TestDirect extends munit.FunSuite {
     type W = [A] =>> A ! Writer % String
     val prog: Int ! Writer % String = direct[W] {
       try
-        val _ = !okay.effect[Writer % String, Unit](Writer("before"))
+        val _ = !okay.freer.effect[Writer % String, Unit](Writer("before"))
         if true then throw new IllegalStateException("mid-stream") else 0
       catch case _: IllegalStateException => 7
     }
@@ -71,7 +74,7 @@ class TestDirect extends munit.FunSuite {
     // an exception the cases do not match RETHROWS
     val rethrow: Int ! Writer % String = direct[W] {
       try
-        val _ = !okay.effect[Writer % String, Unit](Writer("x"))
+        val _ = !okay.freer.effect[Writer % String, Unit](Writer("x"))
         throw new RuntimeException("unmatched")
       catch case _: IllegalStateException => 0
     }
@@ -90,14 +93,14 @@ class TestDirect extends munit.FunSuite {
   test("the ! mark: one glyph, prefix, on the rows where ? is ambiguous") {
     // a Free-row program collapses under its own type's symbol
     val prog: Int ! Writer % String = direct[[A] =>> A ! Writer % String] {
-      val _ = !okay.effect[Writer % String, Unit](Writer("hi"))
+      val _ = !okay.freer.effect[Writer % String, Unit](Writer("hi"))
       21 + 21
     }
     val ((logged, n)) = Writer.run[String, Int, Pure](prog).runWith
     assertEquals(n, 42)
     assertEquals(logged.toList, List("hi"))
     // outside a block the mark stays a loud failure, like its kin
-    intercept[IllegalStateException](!okay.pure[Pure, Int](1))
+    intercept[IllegalStateException](!okay.freer.pure[Pure, Int](1))
   }
 
 

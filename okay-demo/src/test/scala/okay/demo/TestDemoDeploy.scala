@@ -1,5 +1,7 @@
 package okay.demo
 
+
+import okay.freer.*
 import okay.deploy.{Deployment, Targets}
 
 /** the committed okay-demo/deploy IS the rendered DemoDeploy.system —
@@ -52,7 +54,7 @@ class TestDemoDeploy extends munit.FunSuite:
   }
 
   test("the store module declares the volume for the shipped path, and nothing for memory") {
-    import okay.{Module, given}
+    import okay.given
     val shipped = DemoDeploy.system.service("chat").getOrElse(fail("no chat service"))
     assertEquals(shipped.volumes.map(_.path), Vector("/app/data"))
     val mem = Module.value[ChatDemo.ChatConf](ChatDemo.ChatConf(":memory:")) and ChatDemo.wiring

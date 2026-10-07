@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import java.util.concurrent.{CountDownLatch, TimeUnit}
 
 /**
@@ -65,7 +68,7 @@ class TestPar extends munit.FunSuite {
     // through this instance — the latter would run f on a fiber
     val A = summon[Applicative[Par]]
     val here = Thread.currentThread().getName
-    val prog = A.fmap(Par(!.pure(1)), (_: Int) => Thread.currentThread().getName)
+    val prog = A.fmap(Par(Free.pure(1)), (_: Int) => Thread.currentThread().getName)
     assertEquals(prog.seq.runWith, here)
   }
 

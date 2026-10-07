@@ -1,6 +1,8 @@
 package okay.actor
 
 import okay.*
+import okay.freer.*
+
 
 /**
  * An actor: a mailbox, a loop that reads it one message at a time,
@@ -137,7 +139,7 @@ final class ActorRef[M] private[actor] (private[actor] val mailbox: Channel[M],
   def ask[R](f: Reply[R] => M, within: Long)(using Timer): Option[R] ! Async =
     val box = Reply[R]()
     mailbox.send(f(box)).flatMap: accepted =>
-      if !accepted then okay.pure(None)
+      if !accepted then okay.freer.pure(None)
       else box.await(within)
 
   /** stop, DRAINING: with the strong contract every message already

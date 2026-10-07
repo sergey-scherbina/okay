@@ -1,6 +1,9 @@
 package okay.clojure
 
-import okay.{Async, Member, Scheduler, Schedulers, given}
+
+
+import okay.freer.*
+import okay.{Async, Scheduler, Schedulers, given}
 
 /**
  * interop-lift-cancellation for Clojure: `(ok/lift f)` is the blocking

@@ -1,7 +1,8 @@
 package okay.fs2
 
-import okay.{!, %, +, Async, Source, Stage, Take, Writer}
-import okay.!.*
+import okay.{%, +, Async, Source, Stage, Take}
+import okay.freer.{!, Writer}
+import okay.freer.!.*
 import _root_.cats.effect.IO
 import _root_.cats.effect.std.Queue
 import _root_.cats.effect.unsafe.IORuntime
@@ -47,12 +48,12 @@ object Fs2Streams:
   def fromFs2[A](s: Stream[IO, A], capacity: Int = 64)(using IORuntime): Source[A] =
     def go(q: Queue[IO, Option[Chunk[A]]]): Source[A] =
       !.widen[Option[Chunk[A]], Async, Writer % A](awaitIO(q.take)).flatMap {
-        case None => okay.pure(())
+        case None => okay.freer.pure(())
         case Some(ch) => tellAll(ch.toList).flatMap(_ => go(q))
       }
     def tellAll(xs: List[A]): Unit ! Writer % A + Async = xs match
-      case Nil => okay.pure(())
-      case x :: rest => okay.effect[Writer % A + Async, Unit](Writer.Say(x)).flatMap(_ => tellAll(rest))
+      case Nil => okay.freer.pure(())
+      case x :: rest => okay.freer.effect[Writer % A + Async, Unit](Writer.Say(x)).flatMap(_ => tellAll(rest))
     for
       q <- !.widen[Queue[IO, Option[Chunk[A]]], Async, Writer % A](awaitIO(Queue.bounded[IO, Option[Chunk[A]]](capacity)))
       fib <- !.widen[_root_.cats.effect.FiberIO[Unit], Async, Writer % A](awaitIO(

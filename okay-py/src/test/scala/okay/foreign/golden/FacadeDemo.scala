@@ -1,6 +1,6 @@
 package okay.foreign.golden
 
-import okay.!
+import okay.freer.!
 import okay.codec.Schema
 import okay.foreign.{Condition, Py, PyEval, ToPy}
 

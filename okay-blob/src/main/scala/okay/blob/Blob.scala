@@ -1,7 +1,8 @@
 package okay.blob
 
-import okay.{!, +, %, Async, Chunk, Source, Writer, async}
-import okay.Row.plus
+import okay.{+, %, Async, Source, async}
+import okay.freer.{!, Chunk, Writer}
+import okay.freer.Row.plus
 import scala.collection.immutable.ArraySeq
 
 /**
@@ -59,7 +60,7 @@ trait Blob:
   def getBytes(key: String, range: Option[(Long, Long)] = None)
   : Either[String, Array[Byte]] ! Async =
     async(java.io.ByteArrayOutputStream()).flatMap { out =>
-      val sink: okay.Fold[Chunk[Byte], Unit] = okay.Fold(())((_, c) => out.write(c.toArray))
+      val sink: okay.freer.Fold[Chunk[Byte], Unit] = okay.freer.Fold(())((_, c) => out.write(c.toArray))
       Writer.fold[Chunk[Byte], Unit, Either[String, Unit], Async](get(key, range))(using summon)(using summon, sink)
         .map((_, outcome) => outcome.map(_ => out.toByteArray))
     }

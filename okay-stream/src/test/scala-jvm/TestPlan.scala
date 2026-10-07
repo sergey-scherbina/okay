@@ -1,10 +1,13 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import okay.Tables.{Plan, read}
 import okay.Chunks.elements
 import java.nio.file.Files
 import scala.jdk.CollectionConverters.*
-import okay.Row.plus
+import okay.freer.Row.plus
 
 /** The plan rewrites (specs/bulk.md, bulk-plan): what they change, what they leave alone. */
 class TestPlan extends munit.FunSuite {

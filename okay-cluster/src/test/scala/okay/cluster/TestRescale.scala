@@ -1,8 +1,9 @@
 package okay.cluster
 
-import okay.Aggregator
+import okay.freer.Aggregator
 import okay.codec.Schema
 import okay.given
+import okay.freer.given
 
 /**
  * RESCALE AT AN EPOCH BOUNDARY (specs/dataflow.md, stage 13).

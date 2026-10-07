@@ -1,7 +1,9 @@
 package okay.blob
 
-import okay.{!, Async, pure}
+import okay.Async
+import okay.freer.{!, pure}
 import okay.given
+import okay.freer.given
 import okay.http.{Http, Request, Response}
 
 class TestConditionalObjects extends okay.testkit.Munit.Diagnosed:

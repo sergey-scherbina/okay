@@ -1,8 +1,8 @@
 package okay.refine
 
 import scala.reflect.TypeTest
-import okay.{!, Async, Channel, Scheduler, Source, effect, pure, runForeach}
-
+import okay.{Async, Channel, Scheduler, Source, runForeach}
+import okay.freer.{!, effect, pure}
 /**
  * ROUTING: one stream of documents in, one stream per kind of document
  * out (specs/refine.md, refine-route). A `Router` is a VALUE — a

@@ -1,7 +1,10 @@
 package okay.acme
 
 import okay.*
+import okay.freer.*
+
 import okay.given
+import okay.freer.given
 import okay.conf.{Secret, Secrets}
 import okay.http.{Http, Response}
 import okay.jetty.Jetty

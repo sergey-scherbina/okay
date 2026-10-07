@@ -1,11 +1,14 @@
 package okay.spark
 
 import okay.*
+
+import okay.freer.*
 import okay.given // Group[N] for every Numeric, and the local Bulk[Chunks]
+import okay.freer.given
 import okay.Tables.{Table, read, of}
 import okay.Chunks.elements
 import okay.Sort.sortBy
-import okay.Row.plus
+import okay.freer.Row.plus
 import okay.Direct.{direct, unary_!}
 import org.apache.spark.sql.SparkSession
 import java.io.File
@@ -210,9 +213,9 @@ class TestWroclawAlgebra extends munit.FunSuite:
     r
 
   test("the plan, printed before anything runs") {
-    val traced = okay.!.tracing(Gtfs.departures(file).plus[okay.Pure])([X] => (e: Tables[X]) => e.productPrefix)
+    val traced = okay.freer.!.tracing(Gtfs.departures(file).plus[okay.Pure])([X] => (e: Tables[X]) => e.productPrefix)
     val handled = State.handle(Tables.Heap.empty[Chunks])(Tables.via(localBulk)(traced))
-    val (plan, _) = okay.!.run(okay.Writer.run(handled))
+    val (plan, _) = okay.freer.!.run(okay.freer.Writer.run(handled))
     println(s"  plan: ${plan.mkString(" ")}")
     assertEquals(plan.count(_ == "Join"), 3)
   }
@@ -300,8 +303,8 @@ class TestWroclawAlgebra extends munit.FunSuite:
   }
 
   test("no inverse, no window — the compile error is the point") {
-    val err = compileErrors("okay.sliding(LazyList(Busiest(1.0), Busiest(2.0)))(2)")
-    assert(err.contains("Group[Busiest]") || err.contains("okay.Group"), err)
+    val err = compileErrors("okay.freer.sliding(LazyList(Busiest(1.0), Busiest(2.0)))(2)")
+    assert(err.contains("Group[Busiest]") || err.contains("okay.freer.Group"), err)
     println(s"  refused, as it should be: ${err.linesIterator.find(_.contains("Group")).getOrElse(err)}")
   }
 

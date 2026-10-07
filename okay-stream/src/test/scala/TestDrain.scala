@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 /**
  * channel-drain: the batched receive takes what is already buffered
  * under ONE transaction. The elements and their order must be the

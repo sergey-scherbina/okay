@@ -1,6 +1,7 @@
 package okay.frege
 
-import okay.{!, %, +, Chunk, ChunkBuf, Chunks, Foreign, Free, Member, Pure, Stage, Take, Writer, pure}
+import okay.{%, +, ChunkBuf, Chunks, Foreign, Pure, Stage, Take}
+import okay.freer.{!, Chunk, Free, Member, Writer, pure}
 import okay.frege.Prog.TProg
 import frege.prelude.PreludeBase.{TList, TMaybe}
 import frege.prelude.PreludeBase.TST
@@ -85,7 +86,7 @@ object Frege {
 
   /**
    * Whether a value from Frege is an operation of the row F: the core's
-   * `okay.Member` (interop-shared) under the name this module's users
+   * `okay.freer.Member` (interop-shared) under the name this module's users
    * already bind. A single signature's is FOUND; a union is BUILT with
    * `|` — `Frege.Row.of[Reader % Long] | Frege.Row.of[State % Long]` —
    * because dotty does not infer F and G from a union type lambda.

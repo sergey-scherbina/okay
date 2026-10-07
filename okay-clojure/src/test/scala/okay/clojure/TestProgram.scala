@@ -1,7 +1,9 @@
 package okay.clojure
 
-import okay.{!, %, +, Async, Choose, Chunks, Reader, Stage, State, Throws, Writer, effect, pure, runChoice, runEither, through}
+import okay.{%, +, Async, Chunks, Stage, through}
+import okay.freer.{!, Choose, Reader, State, Throws, Writer, effect, pure, runChoice, runEither}
 import okay.given
+import okay.freer.given
 import java.util.concurrent.atomic.AtomicInteger
 
 /**

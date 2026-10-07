@@ -1,8 +1,10 @@
 package okay.cluster
 
-import okay.{Aggregator, Chunks}
+import okay.Chunks
+import okay.freer.Aggregator
 import okay.codec.{Codecs, Schema}
 import okay.given
+import okay.freer.given
 import okay.persist.{Ack, MemoryStore, Policy, Streams, Topic}
 import java.util.concurrent.atomic.AtomicLong
 

@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 /** core's TestWriterToldBeforeThrow, for a writer WITH effects — the
  * view `Channel.buffer`'s feed walks — and end to end through buffer */
 class TestSourceToldBeforeThrow extends munit.FunSuite {

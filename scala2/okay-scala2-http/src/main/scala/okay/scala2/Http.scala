@@ -1,7 +1,8 @@
 package okay.scala2
 
-import okay.{!, %, Chunk}
-import okay.Row.plus
+import okay.{%}
+import okay.freer.{!, Chunk}
+import okay.freer.Row.plus
 import okay.codec.Schema
 import okay.given
 import okay.http.{Method, Request, Urls}
@@ -70,7 +71,7 @@ object Response {
    * events, a log, a model's tokens */
   def lines(src: Source[String], contentType: String = "text/plain; charset=utf-8", status: Int = 200): Response = {
     val chunks = src.map(l => (l + "\n").getBytes(UTF_8)).core
-    val stream = okay.Writer.map[Array[Byte], Chunk[Byte], Unit, okay.Async](chunks)(b =>
+    val stream = okay.freer.Writer.map[Array[Byte], Chunk[Byte], Unit, okay.Async](chunks)(b =>
       scala.collection.immutable.ArraySeq.unsafeWrapArray(b))
     new Response(status, Seq("content-type" -> contentType), new ResponseBody(Array.emptyByteArray, Some(stream)))
   }
@@ -142,10 +143,10 @@ object Server {
    * `Resource`, so the stop is the same finaliser the Scala 3 API uses.
    */
   def use[A](port: Int)(handler: Request => Eff[Async, Response])(body: Int => Eff[Async, A]): Eff[Async, A] =
-    Async.lift(okay.Resource.run[A, okay.Async](
+    Async.lift(okay.freer.Resource.run[A, okay.Async](
       okay.http.Server.serve(port)(r => Async.core(handler(r)).map(_.core))
         .plus[okay.Async]
-        .flatMap(s => Async.core(body(okay.http.Server.port(s))).plus[okay.Resource])))
+        .flatMap(s => Async.core(body(okay.http.Server.port(s))).plus[okay.freer.Resource])))
 
   /**
    * Start serving and return at once, for a service whose server lives
@@ -189,7 +190,7 @@ final class Client private (http: okay.http.Http) {
 
   /** the body as lines, STREAMED: each line arrives as it is read */
   def lines(r: Request): Source[String] =
-    Source.of(http.send(r).plus[okay.Writer % String].flatMap(resp => okay.http.Http.lines(resp)))
+    Source.of(http.send(r).plus[okay.freer.Writer % String].flatMap(resp => okay.http.Http.lines(resp)))
 }
 
 object Client {

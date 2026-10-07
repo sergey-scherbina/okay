@@ -1,7 +1,9 @@
 package okay.jdbc
 
-import okay.{!, Async}
+import okay.Async
+import okay.freer.{!}
 import okay.given
+import okay.freer.given
 import okay.persist.{Ack, MemoryStore, Typed}
 import okay.sql.{Sql, SqlValue}
 import java.sql.DriverManager

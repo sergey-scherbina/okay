@@ -1,6 +1,7 @@
 package okay.pg
 
-import okay.{!, +, %, Async, Chunk, ChunkBuf, effect, Net, NetConn, pure, Source, Writer}
+import okay.{+, %, Async, ChunkBuf, Net, NetConn, Source}
+import okay.freer.{!, Chunk, effect, pure, Writer}
 import okay.sql.{Col, Granted, Isolation, Sql, SqlType, SqlValue, Temporal}
 import okay.crypto.Crypto
 import java.nio.charset.StandardCharsets.UTF_8

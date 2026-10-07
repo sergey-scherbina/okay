@@ -1,7 +1,10 @@
 package okay.guice
 
 import okay.*
+import okay.freer.*
+
 import okay.given
+import okay.freer.given
 import com.google.inject.{Guice, Key}
 import com.google.inject.name.Names
 

@@ -1,7 +1,9 @@
 package okay.rag
 
-import okay.{!, +, Answers}
+import okay.{+, Answers}
+import okay.freer.{!}
 import okay.given
+import okay.freer.given
 
 /** The retrieval layer: store, keyword, fusion, ingestion, and the
  * re-index that costs the edit. */
@@ -37,7 +39,7 @@ class TestRetrieve extends munit.FunSuite {
     val p = run(Ingest.run[okay.Pure](store, files)(_.length))
     assertEquals(p.sources, 3)
     assertEquals(p.embedded, p.segments)
-    assertEquals(okay.!.run(store.size), p.segments)
+    assertEquals(okay.freer.!.run(store.size), p.segments)
   }
 
   test("vector search finds the file about the thing asked for") {
@@ -57,7 +59,7 @@ class TestRetrieve extends munit.FunSuite {
     assertEquals(hits.head.segment.source, "Http.scala")
 
     // the index merges: halves combine into the whole
-    val M = summon[okay.Monoid[Postings]]
+    val M = summon[okay.freer.Monoid[Postings]]
     val (l, r) = segs.splitAt(segs.length / 2)
     val merged = M.combine(Keyword.index(l), Keyword.index(r))
     assertEquals(Keyword.search(merged, "network requests", 3).map(_.segment.source),
@@ -67,7 +69,7 @@ class TestRetrieve extends munit.FunSuite {
   test("symbol retrieval: exact, with no vectors in play") {
     val idx = Symbols.project(files)
     val byId = files.map(f => (f.id, f)).toMap
-    val hits = okay.!.run(Retrieve.symbols(idx, byId).retrieve("hello", 3))
+    val hits = okay.freer.!.run(Retrieve.symbols(idx, byId).retrieve("hello", 3))
     assertEquals(hits.length, 1)
     assert(hits.head.segment.text.contains("def hello"))
     assert(hits.head.segment.quotes(byId("Greeter.scala")))
@@ -90,7 +92,7 @@ class TestRetrieve extends munit.FunSuite {
     val hybrid = Retrieve.hybrid[okay.Pure](Seq(
       Retrieve.keyword(Keyword.index(segs)),
       Retrieve.symbols(Symbols.project(files), byId)))
-    val hits = okay.!.run(hybrid.retrieve("add", 5))
+    val hits = okay.freer.!.run(hybrid.retrieve("add", 5))
     assert(hits.exists(_.segment.text.contains("def add")))
   }
 
@@ -98,10 +100,10 @@ class TestRetrieve extends munit.FunSuite {
     val segs = files.flatMap(f => Ingest.segment(f, 400)(_.length))
     val base = Retrieve.keyword(Keyword.index(segs))
     val multi = Retrieve.multiQuery[okay.Pure](base)(q => Seq(s"$q numbers", s"$q sum"))
-    val hits = okay.!.run(multi.retrieve("add", 5))
+    val hits = okay.freer.!.run(multi.retrieve("add", 5))
     assert(hits.exists(_.segment.source == "Math.scala"))
     // the rewrites genuinely widened the result
-    assert(hits.length >= okay.!.run(base.retrieve("add", 5)).length)
+    assert(hits.length >= okay.freer.!.run(base.retrieve("add", 5)).length)
   }
 
   test("re-index after an edit embeds only what changed") {
@@ -114,7 +116,7 @@ class TestRetrieve extends munit.FunSuite {
     val budget = 60
     run(Ingest.run[okay.Pure](store, Seq(src), budget)(_.length)): Unit
     val session = Code.parse(src.text)
-    val sizeBefore = okay.!.run(store.size)
+    val sizeBefore = okay.freer.!.run(store.size)
 
     val at = src.text.indexOf("a * b")
     val edited = src.text.patch(at, "a - b", 5)
@@ -126,7 +128,7 @@ class TestRetrieve extends munit.FunSuite {
     assert(p.reused > 0, "nothing was reused — the whole file was re-embedded")
     assert(p.embedded < p.segments,
       s"re-embedded everything: ${p.embedded} of ${p.segments}")
-    assertEquals(okay.!.run(store.size), sizeBefore)   // no duplicates left behind
+    assertEquals(okay.freer.!.run(store.size), sizeBefore)   // no duplicates left behind
   }
 
   test("the index persists through our own codec, exactly") {
@@ -137,11 +139,11 @@ class TestRetrieve extends munit.FunSuite {
     assert(back.isRight, back.left.getOrElse(""))
     val restored = MemoryStore()
     restored.restore(back.toOption.get)
-    assertEquals(okay.!.run(restored.size), okay.!.run(store.size))
+    assertEquals(okay.freer.!.run(restored.size), okay.freer.!.run(store.size))
     // and the restored index answers the same query the same way
     val q = Vectors.hashing()("multiply numbers")
-    assertEquals(okay.!.run(restored.search(q, 3)).map(_.segment.span),
-      okay.!.run(store.search(q, 3)).map(_.segment.span))
+    assertEquals(okay.freer.!.run(restored.search(q, 3)).map(_.segment.span),
+      okay.freer.!.run(store.search(q, 3)).map(_.segment.span))
   }
 
   test("the similarity metric is a parameter, not a constant") {

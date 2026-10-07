@@ -112,7 +112,7 @@ class TestFacade extends munit.FunSuite:
   }
 
   test("Cb: a callback carries its name and its two schemas, and runs at its types") {
-    val price = Cb[okay.Reader % Map[String, Double], String, Double]("price_of")(sku => okay.Reader.ask[Map[String, Double]].map(_(sku)))
+    val price = Cb[okay.freer.Reader % Map[String, Double], String, Double]("price_of")(sku => okay.freer.Reader.ask[Map[String, Double]].map(_(sku)))
     assertEquals(price.name, "price_of")
     // its schemas are the ones it was given, at its own types; running it
     // is the far side's business (FacadeConformance.programs, Live)

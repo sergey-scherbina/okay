@@ -97,7 +97,7 @@ class TestWireTranscriptPython extends munit.FunSuite:
         def inc(self, by): self.n += by; return self.n
     def counter(n): return Counter(n)
     def scale(frame, k): return {"x": [v * k for v in frame["x"]]}
-    def pairs(): return okay.perform("choose", [1, 2]).then(lambda x: okay.done(x * 10))
+    def pairs(): return okay.freer.perform("choose", [1, 2]).then(lambda x: okay.done(x * 10))
     def quote(sku): return okay_call("price_of", sku) * 2
     def boom(): raise ValueError("no")
   """)

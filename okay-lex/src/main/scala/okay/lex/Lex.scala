@@ -2,8 +2,8 @@ package okay.lex
 
 import scala.annotation.unused
 import scala.collection.mutable.Growable
-import okay.{Aggregator, Chunks, Stage, Writer, pure}
-
+import okay.{Chunks, Stage}
+import okay.freer.{Aggregator, Writer, pure}
 /** an exact source position; length in chars */
 final case class Span(offset: Int, line: Int, column: Int, length: Int)
 
@@ -118,7 +118,7 @@ object Scan {
   def chunks[K, S](sc: Scan[K, S])(chars: Chunks[Char]): Chunks[Token[K]] =
     def emit(ts: Vector[Token[K]], rest: => Chunks[Token[K]]): Chunks[Token[K]] =
       if ts.isEmpty then rest
-      else okay.Writer.tell(okay.ChunkBuf.ofSpecialized(ts)).flatMap(_ => rest)
+      else okay.freer.Writer.tell(okay.ChunkBuf.ofSpecialized(ts)).flatMap(_ => rest)
 
     def go(s: S, rest: Chunks[Char]): Chunks[Token[K]] = Chunks.defer {
       Chunks.pull(rest) match

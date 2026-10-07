@@ -1,6 +1,7 @@
 package okay.foreign.workflow
 
-import okay.{%, !, +, Shift, Pure, Wf}
+import okay.{%, +, Pure, Wf}
+import okay.freer.{!, Shift}
 import okay.Direct.*
 import okay.codec.{Schema, WireAuth, WireFormat}
 import okay.persist.{Dialogue, MemoryStore}
@@ -78,7 +79,7 @@ func main() {
  * activities of a durable workflow */
 class TestForeignActivityGo extends munit.FunSuite:
   import GoShop.*
-  import okay.given
+  import okay.freer.given
   override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
   override def munitIgnore: Boolean = !GoWorkerBinary.available
 

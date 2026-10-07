@@ -1,8 +1,7 @@
 package okay.foreign
 
 import java.nio.file.{Files, Path}
-import okay.{Reader, given}
-
+import okay.freer.{Reader, given}
 object TestHaskellTypedEffects:
   /** the effect a Haskell program may perform, written ONCE, here, with its types */
   val priceOf = Foreign.callback[String, Double]("price_of")(sku => Reader.ask[Map[String, Double]].map(_(sku)))

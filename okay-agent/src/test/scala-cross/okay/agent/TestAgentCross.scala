@@ -1,6 +1,7 @@
 package okay.agent
 
-import okay.{!, %, +, Async, Writer, effect}
+import okay.{%, +, Async}
+import okay.freer.{!, Writer, effect}
 import okay.codec.{Json, Schema}
 import okay.llm.Transport
 import scala.collection.mutable
@@ -52,7 +53,7 @@ class TestAgentCross extends munit.FunSuite {
    */
   def drive[A](prog: A ! Agent)(transport: Transport,
                                 tools: Map[String, ToolCall => String],
-                                @scala.annotation.unused policy: okay.Aggregator[Turn, ?, Seq[Turn]] = Compact.all)
+                                @scala.annotation.unused policy: okay.freer.Aggregator[Turn, ?, Seq[Turn]] = Compact.all)
   : scala.concurrent.Future[A] =
     val noTools: A ! (Context + (Model + Async)) =
       Handlers.relayTools[A, Context + (Model + Async)](tools)(prog)

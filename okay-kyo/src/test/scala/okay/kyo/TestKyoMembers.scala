@@ -1,7 +1,8 @@
 package okay.kyo
 
-import okay.!
+import okay.freer.!
 import okay.given
+import okay.freer.given
 import _root_.kyo.{<, Abort, Async as KAsync}
 
 /** kyo's pending type as an effect of the tree (specs/foreign-effects-in-tree.md, stage 1) */

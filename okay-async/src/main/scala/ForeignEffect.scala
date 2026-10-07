@@ -1,8 +1,10 @@
 package okay
 
+
+import okay.freer.*
 import scala.concurrent.Future
 import scala.concurrent.ExecutionContext.parasitic
-import okay.Row.plus
+import okay.freer.Row.plus
 
 /**
  * A FOREIGN effect's value as an okay program (specs/direct-foreign-mark.md).

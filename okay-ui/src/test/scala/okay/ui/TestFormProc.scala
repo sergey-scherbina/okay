@@ -1,8 +1,10 @@
 package okay.ui
 
 import scala.annotation.unused
+import okay.freer.*
 
 import okay.*
+
 import okay.Proc.given
 import scala.language.implicitConversions
 

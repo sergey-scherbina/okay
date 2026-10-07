@@ -1,6 +1,6 @@
 package scala2probe
 
-import okay.TRef
+import okay.freer.TRef
 import okay.scala2._
 
 /** okay-stm from Scala 2.13 (specs/scala2-facade.md, stage 15.3) */

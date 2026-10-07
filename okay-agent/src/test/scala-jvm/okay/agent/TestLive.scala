@@ -1,7 +1,9 @@
 package okay.agent
 
-import okay.{!, +, Async, Answers}
+import okay.{+, Async, Answers}
+import okay.freer.{!}
 import okay.given
+import okay.freer.given
 import okay.codec.{Json, Schema}
 import okay.llm.{OpenAi, Transport, Transports}
 import scala.collection.mutable
@@ -109,7 +111,7 @@ class TestLive extends munit.FunSuite {
     val budget = 400
     val (_, ctx) = Handlers.context(Compact.window(budget)(Compact.chars))
 
-    val prog = (1 to 3).foldLeft(okay.pure[Agent, String]("")) { (acc, i) =>
+    val prog = (1 to 3).foldLeft(okay.freer.pure[Agent, String]("")) { (acc, i) =>
       acc.flatMap(_ => Agent.converse(s"Question $i: name one colour. " + "x" * 300))
     }
     run(prog)(provider, Handlers.tools(Map.empty), ctx): Unit

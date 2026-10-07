@@ -1,8 +1,11 @@
 package okay.demo
+import okay.freer.*
 
 import okay.*
+
 import okay.given
-import okay.!.widen
+import okay.freer.given
+import okay.freer.!.widen
 
 import java.time.Instant
 

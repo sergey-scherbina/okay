@@ -1,7 +1,9 @@
 package okay.cache
 
-import okay.{!, Async, async}
+import okay.{Async, async}
+import okay.freer.{!}
 import okay.given
+import okay.freer.given
 import okay.codec.Schema
 
 /**
@@ -122,7 +124,7 @@ object Redis {
 
     def getOrLoad(k: K)(load: K => V ! Async): V ! Async =
       get(k).flatMap {
-        case Some(v) => okay.pure(v)
+        case Some(v) => okay.freer.pure(v)
         case None => async {
           // single-flight is PER PROCESS (as in the memory engine):
           // the lock guards this node's dogpile, not the cluster's.
@@ -137,8 +139,8 @@ object Redis {
                 okay.codec.Codecs.readCbor[V](bytes).toOption.get
               case _ =>
                 loads.incrementAndGet()
-                val v = okay.!.run(Async.run[V, okay.Pure](load(k)))
-                okay.!.run(Async.run[Unit, okay.Pure](put(k, v)))
+                val v = okay.freer.!.run(Async.run[V, okay.Pure](load(k)))
+                okay.freer.!.run(Async.run[Unit, okay.Pure](put(k, v)))
                 v
           } finally flights.remove(key): Unit
         }

@@ -2,8 +2,10 @@ package okay.cats
 
 import _root_.cats.Eq
 import _root_.cats.laws.discipline.{MonadErrorTests, MonadTests}
-import okay.{!, %, +, Pure, Throws, effect, pure, runEither}
+import okay.{%, +, Pure}
+import okay.freer.{!, Throws, effect, pure, runEither}
 import okay.given
+import okay.freer.given
 import org.scalacheck.{Arbitrary, Gen}
 
 /**

@@ -1,6 +1,8 @@
 package okay.guice
 
 import okay.*
+import okay.freer.*
+
 import com.google.inject.{AbstractModule, Injector, Module as GModule}
 import com.google.inject.name.Names
 import scala.reflect.ClassTag

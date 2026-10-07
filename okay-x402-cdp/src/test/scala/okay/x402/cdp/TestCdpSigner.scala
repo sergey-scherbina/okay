@@ -6,6 +6,7 @@ import java.security.{KeyPair, KeyPairGenerator, PublicKey, Signature}
 import java.security.spec.ECGenParameterSpec
 import java.util.Base64
 import okay.*
+import okay.freer.*
 import okay.chain.Network
 import okay.codec.Json
 import okay.codec.Json.*

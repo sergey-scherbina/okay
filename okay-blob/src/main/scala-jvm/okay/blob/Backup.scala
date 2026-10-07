@@ -1,6 +1,7 @@
 package okay.blob
 
-import okay.{!, Async, Chunk, Source, Writer, async, pure}
+import okay.{Async, Source, async}
+import okay.freer.{!, Chunk, Writer, pure}
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
 
@@ -94,7 +95,7 @@ object Backup {
   // caveat Writer.scala documents on Writer.run
   private def fetch(blob: Blob, key: String, target: Path): Unit ! Async =
     async(Files.newOutputStream(target)).flatMap { out =>
-      val sink: okay.Fold[Chunk[Byte], Unit] = okay.Fold(())((_, c) => out.write(c.toArray))
+      val sink: okay.freer.Fold[Chunk[Byte], Unit] = okay.freer.Fold(())((_, c) => out.write(c.toArray))
       Writer.fold[Chunk[Byte], Unit, Either[String, Unit], Async](blob.get(key))(using summon)(using summon, sink)
         .map { (_, outcome) =>
           out.close()

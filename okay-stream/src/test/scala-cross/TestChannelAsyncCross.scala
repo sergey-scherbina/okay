@@ -1,6 +1,7 @@
 package okay
 
-import !.*
+
+import okay.freer.*
 import okay.given
 
 /** The cross-platform channel bridge: the one test that left

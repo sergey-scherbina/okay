@@ -7,7 +7,7 @@ worked effect from that declaration to four interpretations of the
 same program — a real SQLite file, a Map, a trace of either, and pure
 `State` + `Writer` with no mutation anywhere.
 
-Everything here is `import okay.*` away, and the file it is drawn from
+Everything here is `import okay.*` and `import okay.freer.*` away, and the file it is drawn from
 runs:
 
 ```
@@ -51,7 +51,7 @@ enum Cache[K, +A] derives Effect:     // Cache % K is the row member
 ```
 
 One caveat, since it is the first thing that bites: in a file that
-does `import okay.!.*`, the name `Effect` is that object's alias for
+does `import okay.freer.!.*`, the name `Effect` is that object's alias for
 an operation node. Write `derives okay.Effect` there.
 
 ## 2. Constructors, or none

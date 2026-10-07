@@ -1,6 +1,9 @@
 package okay.spring
 
 import okay.*
+import okay.freer.*
+import okay.freer.given
+
 import org.springframework.core.{MethodParameter, Ordered, ResolvableType}
 import org.springframework.web.reactive.{HandlerResult, HandlerResultHandler}
 import org.springframework.web.reactive.result.method.annotation.ResponseBodyResultHandler
@@ -25,7 +28,7 @@ final class OkayResultHandler(delegate: ResponseBodyResultHandler) extends Handl
   override def getOrder: Int = delegate.getOrder - 1
 
   override def supports(result: HandlerResult): Boolean =
-    classOf[okay.Freer[?, ?, ?, ?]].isAssignableFrom(result.getReturnTypeSource.getParameterType) && delegate.supports(result)
+    classOf[okay.freer.Freer[?, ?, ?, ?]].isAssignableFrom(result.getReturnTypeSource.getParameterType) && delegate.supports(result)
 
   override def handleResult(exchange: ServerWebExchange, result: HandlerResult): Mono[Void] =
     // index 3: `A ! F` is `Freer[Unary[F], Unit, Unit, A]` since

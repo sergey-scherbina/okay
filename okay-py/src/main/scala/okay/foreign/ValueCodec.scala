@@ -1,8 +1,11 @@
 package okay.foreign
 
-import okay.{!, +, effect, pure, Cont, />}
+import okay.{+}
+
+import okay.freer.{/>}
+import okay.freer.{!, effect, pure, Cont}
 import okay.codec.Codecs
-import okay.Row.plus
+import okay.freer.Row.plus
 import okay.codec.Schema
 import Value.*
 
@@ -348,7 +351,7 @@ object Foreign {
 
   /**
    * A Python PROGRAM-AS-DATA (remote-foreign, specs/remote-foreign.md): the
-   * function returns `okay.done(v)` or `okay.perform(name, ...).then(f)`,
+   * function returns `okay.done(v)` or `okay.freer.perform(name, ...).then(f)`,
    * each name a callback of `cbs`. The far side keeps every continuation
    * of the run by id, so a handler that resumes twice (`Choice`) continues
    * the same pure Python function twice — multi-shot across a process. The

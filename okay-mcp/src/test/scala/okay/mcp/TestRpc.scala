@@ -1,7 +1,10 @@
 package okay.mcp
+import okay.freer.*
 
 import okay.*
+
 import okay.given
+import okay.freer.given
 import okay.codec.Json
 
 /** The wire: JSON-RPC as data, and decoding that cannot throw. */

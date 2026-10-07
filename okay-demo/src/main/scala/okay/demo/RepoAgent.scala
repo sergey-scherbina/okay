@@ -1,6 +1,8 @@
 package okay.demo
 
 import okay.{+, Async, Answers, given}
+
+import okay.freer.given
 import okay.agent.*
 import okay.codec.Schema
 import okay.llm.Transports

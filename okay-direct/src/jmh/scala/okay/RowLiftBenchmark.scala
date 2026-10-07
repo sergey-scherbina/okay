@@ -1,9 +1,12 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 import okay.Direct.*
-import okay.Row.{at, plus}
+import okay.freer.Row.{at, plus}
 
 /**
  * What does attaching a row COST?
@@ -80,7 +83,7 @@ class RowLiftBenchmark {
   // does not terminate at compile time (found by trying)
   extension [A, F[+_]](p: A ! F)
     def atWalk[G[+_]](using i: In[F, G]): A ! G =
-      import okay.!.*
+      import okay.freer.!.*
       (p.resume: @unchecked) match
         case Return(a) => Free.Return(a)
         case Inject(e) => Free.inject(i.inj(e))

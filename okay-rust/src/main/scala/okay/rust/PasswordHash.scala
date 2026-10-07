@@ -1,7 +1,7 @@
 package okay.rust
 
-import okay.{!, Answers}
-
+import okay.Answers
+import okay.freer.{!}
 /**
  * Password hashing as an okay EFFECT (specs/polyglot-rust.md, stage 1): a
  * program asks for Argon2id, and the handler decides what computes it —
@@ -21,7 +21,7 @@ object PasswordHash extends PasswordHashPlatform:
   /** Argon2id of `password` and `salt`, `length` bytes */
   def argon2id(password: Array[Byte], salt: Array[Byte], memoryKb: Int, iterations: Int,
                parallelism: Int, length: Int = 32): Either[String, Array[Byte]] ! PasswordHash =
-    okay.effect[PasswordHash, Either[String, Array[Byte]]](Argon2id(password, salt, memoryKb, iterations, parallelism, length))
+    okay.freer.effect[PasswordHash, Either[String, Array[Byte]]](Argon2id(password, salt, memoryKb, iterations, parallelism, length))
 
   /** the operations answered by `f` */
   def using(f: Argon2id => Either[String, Array[Byte]]): Answers[PasswordHash] = new:

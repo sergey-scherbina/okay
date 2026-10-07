@@ -1,7 +1,9 @@
 package okay.rag
 
-import okay.{!, +, Choose, Answers, Logic, TypeableK, effect, pure, runChoice}
+import okay.{+, Answers, TypeableK}
+import okay.freer.{!, Choose, Logic, effect, pure, runChoice}
 import okay.given
+import okay.freer.given
 
 /**
  * Retrieval pipelines (specs/rag.md, P10c). Every stage that other
@@ -21,8 +23,8 @@ object Retrieve {
   def vector[F[+_]](store: VectorStore[F]): Retriever[Embed + F] =
     new Retriever[Embed + F]:
       def retrieve(query: String, k: Int): Seq[Scored] ! Embed + F =
-        okay.!.widen[Seq[Embedding], Embed, F](embed(Seq(query))).flatMap { vs =>
-          okay.!.widen[Seq[Scored], F, Embed](store.search(vs.head, k)): Seq[Scored] ! Embed + F
+        okay.freer.!.widen[Seq[Embedding], Embed, F](embed(Seq(query))).flatMap { vs =>
+          okay.freer.!.widen[Seq[Scored], F, Embed](store.search(vs.head, k)): Seq[Scored] ! Embed + F
         }
 
   /**
@@ -79,7 +81,7 @@ object Retrieve {
   def hybrid[F[+_]](rs: Seq[Retriever[F]], fanOut: Int = 10): Retriever[F] = new:
     def retrieve(query: String, k: Int): Seq[Scored] ! F =
       val each = math.max(fanOut, k)
-      okay.!.foldM(rs)(Seq.empty[Seq[Scored]])((ls, r) => r.retrieve(query, each).map(ls :+ _))
+      okay.freer.!.foldM(rs)(Seq.empty[Seq[Scored]])((ls, r) => r.retrieve(query, each).map(ls :+ _))
         .map(ls => Fusion.rrf(ls).take(k))
 
   /**
@@ -94,7 +96,7 @@ object Retrieve {
       val qs = (query +: rewrites(query)).distinct
       val search: Seq[Scored] ! Choose + F =
         effect[Choose + F, String](Choose(qs)).flatMap(q =>
-          okay.!.widen[Seq[Scored], F, Choose](r.retrieve(q, k)))
+          okay.freer.!.widen[Seq[Scored], F, Choose](r.retrieve(q, k)))
       runChoice[Seq[Scored], F](search).map(ls => Fusion.rrf(ls).take(k))
 
   /**
@@ -111,7 +113,7 @@ object Retrieve {
     def alts(xs: Seq[Scored]): Scored ! Choose + okay.Pure = effect(Choose(xs))
     val mixed = Logic.interleave[Scored, okay.Pure](alts(a), alts(b))
     // observe is the lazy take: only k answers are ever computed
-    okay.!.run(Logic.observe[Scored, okay.Pure](k)(mixed))
+    okay.freer.!.run(Logic.observe[Scored, okay.Pure](k)(mixed))
 
   /** rerank with any scorer — a cross-encoder, a heuristic, a model
    * one row up: the pipeline does not care which */

@@ -1,5 +1,4 @@
 package okay
-
 /** The JDK 25+ variant of `okay.Scoped` — see
  * `okay-platform/src/main/scala/Scoped.scala` for the baseline this
  * replaces, only on a JVM that has it, and

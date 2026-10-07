@@ -1,6 +1,7 @@
 package okay.scala2
 
-import okay.{!, Channel}
+import okay.{Channel}
+import okay.freer.{!}
 import okay.given
 import okay.agent.{ToolCall, Turn}
 import okay.codec.Json
@@ -85,7 +86,7 @@ object McpLink {
 
   private def end(out: Channel[String], in: Channel[String]): Link = new Link {
     def send(line: String): Unit ! okay.Async = out.send(line).map(_ => ())
-    def lines: okay.Source[String] = okay.Writer.of(in)
+    def lines: okay.Source[String] = okay.freer.Writer.of(in)
   }
 
   /** a link over a process's stdin and stdout, or any pair of streams */

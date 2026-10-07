@@ -8,8 +8,10 @@ package bench.okay
 // `IO(...)`, a fiber per `.start`, a join per `joinWithNever`.
 
 import java.util.concurrent.atomic.AtomicInteger
-import okay.{!, Async, Scheduler, Schedulers, async, pure}
+import okay.{Async, Scheduler, Schedulers, async}
+import okay.freer.{!, pure}
 import okay.given
+import okay.freer.given
 
 object OkayFiveWay:
 

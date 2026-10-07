@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import okay.Direct.*
 import scala.language.implicitConversions
 
@@ -45,7 +48,7 @@ class TestWf extends munit.FunSuite {
   test("the runtime answers its own questions; the oracle answers the author's") {
     var asked = List.empty[String]
     val start = !.run(Wf.resumable[String, String, String, P](booking))
-    val (st, j) = !.run(Wf.drive(start) { q => asked = asked :+ q; okay.pure("Kyiv") })
+    val (st, j) = !.run(Wf.drive(start) { q => asked = asked :+ q; okay.freer.pure("Kyiv") })
 
     assertEquals(done(st), "Kyiv/1700000000000/id-1")
     assertEquals(asked, List("city?"), "the oracle was asked the runtime's questions too")
@@ -56,7 +59,7 @@ class TestWf extends munit.FunSuite {
 
   test("replay gives the same values — the clock is read from the journal, not the wall") {
     val (st1, j) = !.run(Wf.drive(
-      !.run(Wf.resumable[String, String, String, P](booking)))(_ => okay.pure("Kyiv")))
+      !.run(Wf.resumable[String, String, String, P](booking)))(_ => okay.freer.pure("Kyiv")))
     val r1 = done(st1)
 
     // `Wf.replay` TAKES NO RUNTIME — its signature is the proof that
@@ -79,7 +82,7 @@ class TestWf extends munit.FunSuite {
     def dicey(using w: Wf.Asks[String, Double, Double, P]): Double ! Row = w.random
 
     val (stv, j) = !.run(Wf.drive(
-      !.run(Wf.resumable[String, Double, Double, P](dicey)))(_ => okay.pure(0.0)))
+      !.run(Wf.resumable[String, Double, Double, P](dicey)))(_ => okay.freer.pure(0.0)))
     val v = done(stv)
     assertEquals(reads, 1)
     val again = !.run(Wf.replay[String, Double, Double, P](dicey)(j))
@@ -106,7 +109,7 @@ class TestWf extends munit.FunSuite {
     // the old run, under v1
     val (stOld, j) = !.run(Wf.drive(
       !.run(Wf.resumable[String, String, String, P](v1)))(q =>
-        okay.pure(if q == "city?" then "Kyiv" else "3")))
+        okay.freer.pure(if q == "city?" then "Kyiv" else "3")))
     assertEquals(done(stOld), "Kyiv/3")
     assertEquals(j, List(Right("Kyiv"), Right("3")))
 
@@ -119,7 +122,7 @@ class TestWf extends munit.FunSuite {
   test("patch: a run that STARTS under v2 takes the new path, and it is journalled") {
     val (stFresh, j) = !.run(Wf.drive(
       !.run(Wf.resumable[String, String, String, P](v2)))(q =>
-        okay.pure(if q == "city?" then "Lviv" else "2")))
+        okay.freer.pure(if q == "city?" then "Lviv" else "2")))
     val fresh = done(stFresh)
     assertEquals(fresh, "Lviv/2/promo")
     // the decision is IN the journal, between the two answers
@@ -135,7 +138,7 @@ class TestWf extends munit.FunSuite {
     val half = List(Right("Kyiv"))
     val at = !.run(Wf.replay[String, String, String, P](v2)(half))
     // it stands at the patch, which is live now, so the driver decides
-    val (st, more) = !.run(Wf.drive(at)(_ => okay.pure("4")))
+    val (st, more) = !.run(Wf.drive(at)(_ => okay.freer.pure("4")))
     assertEquals(done(st), "Kyiv/4/promo")
     assertEquals(more, List(Left(Wf.SysA.Flag(true)), Right("4")))
   }

@@ -1740,3 +1740,55 @@ polymorphic rest `F + Ask` passed where `Ask +: F` is expected.
 With it, the shape of the facade's rows is settled: nominal lists, written either way, `Pure` their end; the
 `Effects` interface itself moves to that kind (one interface, the operator's rule), the machine its direct
 instance, the classic an instance through `Union[R, *]`.
+
+## Stage 45: THE CLASSIC INTO `okay.freer` (DONE, 2026-10-07)
+
+The operator, 2026-10-07: "Классика переезжает в okay.freer. В okay создаем новый фасад который работает
+одинаково и с классикой в freer и с машиной в cont"; "Control должен находиться в ядре — okay-freer и okay-cont
+не должны вообще ничего знать друг о друге"; "Интерфейс Effects остается один". Lane classic-to-freer.
+
+WHAT MOVED. Every file of the core but the interface — 46 of 51, the macros, the tests, the cross and native
+suites, the JMH lanes — to `okay-freer`, package `okay.freer`, each with `import okay.*` and `import okay.given`
+for the core's names; Monad.scala back to the core (it is the interface's); Distinct and its two macros back
+too (`Answers.union` and `flat` take it). The core (`okay`) is five files: Effects, Control, Answers, Monad,
+Prog. The classic's own `Effects.scala`: `A ! F`, `pure`, `effect`, `perform`; the default given at the
+machine carrier and `cps`; `trait Classic[M] extends Effects[M]` — level 1 (`shift`, `shift0`, `reset`,
+`handle(m, h)`, `run`, `foldMap`), the top-level functions through the typeclass by `reify`/`reflect`, `Free`
+overriding with the functions themselves, `Eager` taking the defaults — the generic programs of
+TestEffectsLevel1 and docs/effects-and-continuations.md are written over it, since `Shift` in a row is the
+classic's; `object Classic` the toolkit the old `object Effects` was, `val ! = Classic`. The two givens are
+declared at their concrete types (`FreeEffectsAt[Carrier]`, `EagerEffects.type`), so `E.run(E.handle(p, h))`
+resolves on the instance; `Effects.apply`'s `summonFrom` still binds the carrier.
+
+THE GRAPH, INVERTED. The first cut had the core on okay-freer; the classic cannot be compiled without the
+interface, so: okay-cont dependency-free; the core on okay-cont alone; okay-freer on the core alone; every
+satellite that was on the core takes okay-freer (okay-async carries it for all its dependents; okay-kernel,
+okay-optics, okay-guice, okay-cdi named). The module rules (`OkayModules`) say exactly that, and
+specs/modules-infra.md. The JDK 22 StackRoom variant (`jdk22/`) is `okay.freer.StackRoom` now, in okay-freer's
+multi-release jar, whose own tests run against it; the root `src/` holds the core alone (test, cross and native
+suites and the lanes under `okay-freer/src`).
+
+BY SCRIPT. 228 files moved; 935 files rewritten: `okay.X` → `okay.freer.X` for every top-level name the classic
+defines (computed from its sources, the core's names excluded), extension-method names (`perform`,
+`toLazyList`, `/>`, …) included; `import okay.*` and `import okay.given` get their `okay.freer` twin; a
+selective `import okay.{a, b}` is split by the same set; files in package `okay` itself (okay-async,
+okay-stream, okay-optics, okay-direct, …) get the two imports after the package clause; `okay.macros.X` for the
+classic's macros only (okay-direct's, okay-optics', okay-workflow's are theirs). The Distinct macro looks the
+classic's `Tag` and `Instances` up by name (`Symbol.classSymbol`, no failure without them). Then unused imports
+stripped from the compiler's own list — from the LAST log only: an aggregate over older logs deleted by stale
+line numbers and had to be repaired from the errors.
+
+DOTTY, LEARNED. A package member from another file ranks BELOW a wildcard import; a name both the classic
+exports and a module defines in package `okay` used to resolve to the module's by that rule and now ties, two
+wildcards being equal. Five shapes: `pure` (`!.*` exported `Free.pure` — `export Free.{pure as _, *}`);
+`foldMap` (the tree's as a top-level extension shadowed `Optic`'s, which was then never tried — an extension
+in the receiver's implicit scope is found only after the name-resolved one fails to typecheck, and the
+companion of an ALIAS is not in that scope, so it lives in `Freer`'s); `shift`/`reset` against
+`okay.Direct.*` (a named import outranks the wildcard); `toLazyList` on `Chunks` (an alias of a program:
+both the companion's and the program's apply — hidden at the use site); the package name `macros` (a wildcard
+import of `okay.freer.*` brings `okay.freer.macros` over `okay.macros`). An extension method is never tried
+when the receiver has a member of that name, whatever its signature — so `handle(m, h)` had to be a member
+(`Classic`'s), not an extension on `Effects[M]`.
+
+Numbers: okay-freer 898 tests green on its own; the JVM build of every module compiles (210 module compiles),
+warnings stripped to zero before the full gate.

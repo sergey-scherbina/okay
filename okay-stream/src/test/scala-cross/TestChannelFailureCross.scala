@@ -1,6 +1,9 @@
 package okay
 
+
+import okay.freer.*
 import okay.given
+import okay.freer.given
 
 /**
  * A producer's failure must reach the consumer — on both platforms,

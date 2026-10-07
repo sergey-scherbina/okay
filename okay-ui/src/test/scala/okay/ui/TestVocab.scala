@@ -1,7 +1,10 @@
 package okay.ui
+import okay.freer.*
 
 import okay.*
+
 import okay.given
+import okay.freer.given
 
 /**
  * Stage 0 of specs/frontend.md: two vocabulary levels in one tree.

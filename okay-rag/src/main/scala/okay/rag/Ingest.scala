@@ -1,6 +1,7 @@
 package okay.rag
 
-import okay.{!, +, Aggregator, pure}
+import okay.{+}
+import okay.freer.{!, Aggregator, pure}
 import okay.parse.Parse
 
 /**
@@ -45,9 +46,9 @@ object Ingest {
       pure[Embed + F, Progress](Progress(sources.length, segs.length, 0, 0))) {
       (acc, group) =>
         acc.flatMap { p =>
-          okay.!.widen[Seq[Embedding], Embed, F](embed(group.map(_.text))).flatMap { vs =>
+          okay.freer.!.widen[Seq[Embedding], Embed, F](embed(group.map(_.text))).flatMap { vs =>
             // a row is a union: F + Embed IS Embed + F (an ascription)
-            (okay.!.widen[Unit, F, Embed](store.upsert(group.zip(vs))): Unit ! Embed + F)
+            (okay.freer.!.widen[Unit, F, Embed](store.upsert(group.zip(vs))): Unit ! Embed + F)
               .map(_ => p.copy(embedded = p.embedded + group.length))
           }
         }
@@ -83,12 +84,12 @@ object Ingest {
     val staleSpans = before.filterNot(s => after.exists(_.span == s.span)).map(_.span)
 
     val p = Progress(1, after.length, changed.length, reused.length)
-    (okay.!.widen[Unit, F, Embed](store.delete(oldSrc.id, staleSpans)): Unit ! Embed + F)
+    (okay.freer.!.widen[Unit, F, Embed](store.delete(oldSrc.id, staleSpans)): Unit ! Embed + F)
       .flatMap { _ =>
         if changed.isEmpty then pure[Embed + F, (Parse.Parsed[Code.K, Code.S, Code.D], Progress)]((fresh, p))
         else
-          okay.!.widen[Seq[Embedding], Embed, F](embed(changed.map(_.text))).flatMap { vs =>
-            (okay.!.widen[Unit, F, Embed](store.upsert(changed.zip(vs))): Unit ! Embed + F)
+          okay.freer.!.widen[Seq[Embedding], Embed, F](embed(changed.map(_.text))).flatMap { vs =>
+            (okay.freer.!.widen[Unit, F, Embed](store.upsert(changed.zip(vs))): Unit ! Embed + F)
               .map(_ => (fresh, p))
           }
       }

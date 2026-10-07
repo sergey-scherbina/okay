@@ -1,7 +1,10 @@
 package okay.script
+import okay.freer.*
 
 import okay.*
+
 import okay.given
+import okay.freer.given
 import okay.http.{Frame, Request}
 import okay.ui.{Event, Patch, Ui, Protocol}
 

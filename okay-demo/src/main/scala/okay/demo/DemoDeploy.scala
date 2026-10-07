@@ -1,7 +1,11 @@
 package okay.demo
 
 
-import okay.{Module, given}
+
+import okay.freer.*
+import okay.given
+
+
 import okay.deploy.{Copy, Deployment, Need, Needs, Run, Service, Settings, Targets}
 
 /**

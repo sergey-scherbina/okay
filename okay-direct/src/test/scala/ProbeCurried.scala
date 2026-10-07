@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 /**
  * Probe: can the row be attached AFTER the fact, leaving every
  * constructor exactly as it ships today?
@@ -43,7 +46,7 @@ object ProbeCurried:
    */
   extension [A, F[+_]](p: A ! F)
     def at[R[+_]](using i: In[F, R]): A ! R =
-      import okay.!.*
+      import okay.freer.!.*
       (p.resume: @unchecked) match
         case Return(a) => Free.Return(a)
         case Inject(e) => Free.inject(i.inj(e))

@@ -1,7 +1,10 @@
 package okay.chat
 
 import okay.*
+import okay.freer.*
+
 import okay.given
+import okay.freer.given
 import okay.http.{Body, Http, Method, Request, Response}
 import okay.llm.{Anthropic, Cut}
 import okay.conf.Secrets

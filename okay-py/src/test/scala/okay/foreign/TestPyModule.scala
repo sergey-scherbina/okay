@@ -1,7 +1,7 @@
 package okay.foreign
 
-import okay.{Reader, given}
 
+import okay.freer.{Reader, given}
 object TestPyModule:
   val scoring = Py.module("scoring", """
     def mean(xs):

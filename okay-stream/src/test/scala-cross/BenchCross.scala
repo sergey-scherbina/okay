@@ -1,6 +1,9 @@
 package okay
 
+
+import okay.freer.*
 import okay.given
+import okay.freer.given
 import scala.concurrent.Future
 
 /**
@@ -101,7 +104,7 @@ class BenchCross extends munit.FunSuite:
   test("bench: rangeFold -- Source.range through runForeach, N elements") {
     lane("rangeFold") { () =>
       var sum = 0L
-      Source.range(0L, N.toLong).runForeach(x => okay.effect[Async, Unit](Async.Run(() => sum += x)))
+      Source.range(0L, N.toLong).runForeach(x => okay.freer.effect[Async, Unit](Async.Run(() => sum += x)))
         .map(_ => sum)
     }
   }
@@ -109,7 +112,7 @@ class BenchCross extends munit.FunSuite:
   test("bench: channelElem -- Channel.buffer(1024).drained read one element at a time") {
     lane("channelElem") { () =>
       var sum = 0L
-      Channel.buffer(1024)(list).drained.runForeach(x => okay.effect[Async, Unit](Async.Run(() => sum += x)))
+      Channel.buffer(1024)(list).drained.runForeach(x => okay.freer.effect[Async, Unit](Async.Run(() => sum += x)))
         .map(_ => sum)
     }
   }
@@ -117,7 +120,7 @@ class BenchCross extends munit.FunSuite:
   test("bench: channelChunks -- the same channel through drainedChunks") {
     lane("channelChunks") { () =>
       var sum = 0L
-      Channel.buffer(1024)(list).drainedChunks.runForeach(ch => okay.effect[Async, Unit](Async.Run(() =>
+      Channel.buffer(1024)(list).drainedChunks.runForeach(ch => okay.freer.effect[Async, Unit](Async.Run(() =>
         var i = 0
         while i < ch.length do { sum += ch(i); i += 1 })))
         .map(_ => sum)
@@ -127,7 +130,7 @@ class BenchCross extends munit.FunSuite:
   test("bench: bindChain -- N nested flatMaps through the interpreter, no channel") {
     lane("bindChain") { () =>
       def go(i: Long, acc: Long): Long ! Async =
-        if i >= N then okay.pure(acc)
+        if i >= N then okay.freer.pure(acc)
         else async(i).flatMap(x => go(i + 1, acc + x))
       go(0L, 0L)
     }
@@ -137,11 +140,11 @@ class BenchCross extends munit.FunSuite:
    * `Pure` + `Bind` + the closure per step, none of `Inject`, `Run`
    * and the thunk. The floor a fused effect node could reach, measured
    * before any node is fused. */
-  test("bench: pureChain -- N nested flatMaps over okay.pure, no effect injected") {
+  test("bench: pureChain -- N nested flatMaps over okay.freer.pure, no effect injected") {
     lane("pureChain") { () =>
       def go(i: Long, acc: Long): Long ! Async =
-        if i >= N then okay.pure(acc)
-        else okay.pure[Async, Long](i).flatMap(x => go(i + 1, acc + x))
+        if i >= N then okay.freer.pure(acc)
+        else okay.freer.pure[Async, Long](i).flatMap(x => go(i + 1, acc + x))
       go(0L, 0L)
     }
   }

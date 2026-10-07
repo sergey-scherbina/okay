@@ -1,7 +1,10 @@
 package okay.pool
 
 import okay.*
+import okay.freer.*
+
 import okay.given
+import okay.freer.given
 import okay.cluster.{Flow, Job, Jobs, Served, Wire}
 import okay.codec.{Json, Schema}
 import okay.resilience.{Discovery, Endpoint}

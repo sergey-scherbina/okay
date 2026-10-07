@@ -1,7 +1,8 @@
 package okay.ts
 
 import scala.scalajs.js
-import okay.{!, %, Async, Choose, Reader, effect, runChoice, given}
+import okay.{%, Async, given}
+import okay.freer.{!, Choose, Reader, effect, runChoice, given}
 import okay.codec.Schema
 
 object TestTs:
@@ -60,7 +61,7 @@ class TestTs extends munit.FunSuite {
   }
 
   test("okay called FROM TypeScript: an Async program as a JS Promise of its JSON value") {
-    val program = okay.pure[Async, Totals](Totals("tea", 12.0, None))
+    val program = okay.freer.pure[Async, Totals](Totals("tea", 12.0, None))
     given scala.concurrent.ExecutionContext = scala.scalajs.concurrent.JSExecutionContext.queue
     Ts.promise(program).toFuture.map(v => assertEquals(js.JSON.stringify(v), """{"sku":"tea","amount":12,"note":null}"""))
   }

@@ -1,8 +1,9 @@
 package okay.cats
 
-import okay.{!, %, +, Async, Free, Throws, effect, runEither}
-import okay.!.*
-import okay.given
+import okay.{%, +, Async}
+import okay.freer.{!, Free, Throws, effect, runEither}
+import okay.freer.!.*
+import okay.freer.given
 import _root_.cats.effect.IO
 import _root_.cats.effect.unsafe.IORuntime
 
@@ -14,7 +15,7 @@ import _root_.cats.effect.unsafe.IORuntime
 /** every okay program is a cats Monad (tailRecM builds lazily — the
  * recursion hides in the flatMap closure, run stack-safely by Free) */
 given [F[+_]]: _root_.cats.StackSafeMonad[[A] =>> A ! F] with
-  def pure[A](a: A): A ! F = okay.pure(a)
+  def pure[A](a: A): A ! F = okay.freer.pure(a)
   def flatMap[A, B](fa: A ! F)(f: A => B ! F): B ! F = fa.flatMap(f)
 
 /**
@@ -31,13 +32,13 @@ given [E, F[+_]](using okay.TypeableK[Throws % E])
 : _root_.cats.MonadError[[A] =>> A ! Throws % E + F, E] =
   new _root_.cats.StackSafeMonad[[A] =>> A ! Throws % E + F]
     with _root_.cats.MonadError[[A] =>> A ! Throws % E + F, E]:
-    def pure[A](a: A): A ! Throws % E + F = okay.pure(a)
+    def pure[A](a: A): A ! Throws % E + F = okay.freer.pure(a)
     def flatMap[A, B](fa: A ! Throws % E + F)(f: A => B ! Throws % E + F) = fa.flatMap(f)
     def raiseError[A](e: E): A ! Throws % E + F = effect(Throws(e))
     def handleErrorWith[A](fa: A ! Throws % E + F)(f: E => A ! Throws % E + F) =
       !.widen[Either[E, A], F, Throws % E](runEither[A, F, E](fa))
         .flatMap {
-          case Right(a) => okay.pure(a)
+          case Right(a) => okay.freer.pure(a)
           case Left(e) => f(e)
         }
 
@@ -103,14 +104,14 @@ object CatsInterop {
     }
 
   /** okay's accumulating `Validated` as cats' (specs/interop-classes.md) */
-  def toCatsValidated[E, A](v: okay.Validated[E, A]): _root_.cats.data.Validated[E, A] = v match
-    case okay.Validated.Valid(a) => _root_.cats.data.Validated.Valid(a)
-    case okay.Validated.Invalid(e) => _root_.cats.data.Validated.Invalid(e)
+  def toCatsValidated[E, A](v: okay.freer.Validated[E, A]): _root_.cats.data.Validated[E, A] = v match
+    case okay.freer.Validated.Valid(a) => _root_.cats.data.Validated.Valid(a)
+    case okay.freer.Validated.Invalid(e) => _root_.cats.data.Validated.Invalid(e)
 
   /** cats' `Validated` as okay's */
-  def fromCatsValidated[E, A](v: _root_.cats.data.Validated[E, A]): okay.Validated[E, A] = v match
-    case _root_.cats.data.Validated.Valid(a) => okay.Validated.Valid(a)
-    case _root_.cats.data.Validated.Invalid(e) => okay.Validated.Invalid(e)
+  def fromCatsValidated[E, A](v: _root_.cats.data.Validated[E, A]): okay.freer.Validated[E, A] = v match
+    case _root_.cats.data.Validated.Valid(a) => okay.freer.Validated.Valid(a)
+    case _root_.cats.data.Validated.Invalid(e) => okay.freer.Validated.Invalid(e)
 
   /** an okay Free program as a cats free monad, operation for operation */
   def toCats[F[+_], A](p: A ! F): _root_.cats.free.Free[F, A] =

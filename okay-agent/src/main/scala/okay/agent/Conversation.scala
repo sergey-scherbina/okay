@@ -1,6 +1,6 @@
 package okay.agent
 
-import okay.!
+import okay.freer.!
 import okay.codec.Json
 import okay.codec.Json.*
 import okay.frame.Frame
@@ -239,7 +239,7 @@ object Conversation:
     val name = in.frame.intent.toString
 
     def ask(say: Say, id: String): Reply ! Tool =
-      okay.effect[Tool, String](Tool.Call(ToolCall(id, AskOp, Say.encode(say))))
+      okay.freer.effect[Tool, String](Tool.Call(ToolCall(id, AskOp, Say.encode(say))))
         .map(s => Reply.decode(s).getOrElse(Reply.Answer(s)))
 
     /**
@@ -269,10 +269,10 @@ object Conversation:
           // kept. They are kept — `said(slot)` — rather than stored as
           // the value, which is what the old runtime had to do.
           else loop(next, skip + slot)
-        case Reply.Interrupt(i) => okay.pure[Tool, Outcome[I]](Outcome.Interrupted(i))
+        case Reply.Interrupt(i) => okay.freer.pure[Tool, Outcome[I]](Outcome.Interrupted(i))
         // a No or a Yes to a question that asked for neither is the
         // person declining to go on with it
-        case _ => okay.pure[Tool, Outcome[I]](Outcome.Declined)
+        case _ => okay.freer.pure[Tool, Outcome[I]](Outcome.Declined)
       }
 
     def loop(f: Frame[I], skip: Set[String]): Outcome[I] ! Tool =
@@ -281,7 +281,7 @@ object Conversation:
         case Some(slot) => fill(f, slot, skip, again = false)
 
     def finish(f: Frame[I]): Outcome[I] ! Tool =
-      if !in.confirm then okay.pure[Tool, Outcome[I]](Outcome.Filled(f))
+      if !in.confirm then okay.freer.pure[Tool, Outcome[I]](Outcome.Filled(f))
       else ask(Say.ReadBack(name, f.filled.view.mapValues(JStr(_)).toMap, in.readBack(f)),
         s"$name-readback").map {
         case Reply.Yes => Outcome.Filled(f)

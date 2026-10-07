@@ -1,6 +1,9 @@
 package okay.cluster
 
+
+import okay.freer.given
 import okay.given
+
 import java.util.concurrent.atomic.AtomicLong
 
 /**

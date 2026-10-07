@@ -1,5 +1,7 @@
 package okay
 
+
+import okay.freer.*
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.{AtomicReference, AtomicReferenceArray}
 import scala.annotation.tailrec
@@ -48,9 +50,9 @@ private[okay] object ReadyMerge:
     // a cancel — or a consumer that stops early — then reaches the
     // sources it has parked even while its code sits inside the
     // consumer's continuation and it never parks itself
-    okay.pure[Writer % A + Async, Unit](()).flatMap: _ =>
+    okay.freer.pure[Writer % A + Async, Unit](()).flatMap: _ =>
       val r = new Run[A](sources, onPark, quantum, onRegister, waiting, pause, release)
-      okay.effect[Writer % A + Async, Unit](Async.Run(Async.Enter(r.scope))).flatMap(_ => r.again())
+      okay.freer.effect[Writer % A + Async, Unit](Async.Run(Async.Enter(r.scope))).flatMap(_ => r.again())
 
   /** a registration's answer, when it came before the drive moved on */
   private final class Answer[X](val r: Either[Throwable, X])
@@ -204,9 +206,9 @@ private[okay] object ReadyMerge:
           // every source has ended: the scope closes, then the answer
           val f = failure
           val done =
-            if f == null then okay.pure[R, Unit](())
-            else okay.effect[R, Unit](Async.Run[Unit](() => throw f))
-          okay.effect[R, Unit](Async.Run(Async.Exit(scope))).flatMap(_ => done)
+            if f == null then okay.freer.pure[R, Unit](())
+            else okay.freer.effect[R, Unit](Async.Run[Unit](() => throw f))
+          okay.freer.effect[R, Unit](Async.Run(Async.Exit(scope))).flatMap(_ => done)
       else
         val i = pop()
         // `resume` runs the source's own code (a `Bind(Return(x), f)`
@@ -226,7 +228,7 @@ private[okay] object ReadyMerge:
                   live -= 1
                   inj.flatMap(resumeMerge) }
             { g =>
-                turn(i, g, _ => okay.pure[R, Unit](()))
+                turn(i, g, _ => okay.freer.pure[R, Unit](()))
                 step() }
           case Bind(inj @ Inject(e), k) => split[Writer % A, Async](e)
             { w0 => (w0: @unchecked) match
@@ -281,8 +283,8 @@ private[okay] object ReadyMerge:
             // asynchronous: build the continuation WITHOUT running it —
             // `k` is the source's code, and only the drive runs that
             slot(i) = r match
-              case Right(x) => okay.pure[R, X](x).flatMap(k)
-              case Left(e) => okay.effect[R, X](Async.Run[X](() => throw e)).flatMap(k)
+              case Right(x) => okay.freer.pure[R, X](x).flatMap(k)
+              case Left(e) => okay.freer.effect[R, X](Async.Run[X](() => throw e)).flatMap(k)
             cancels.set(i, null)
             woken.add(i): Unit
             fire()
@@ -303,7 +305,7 @@ private[okay] object ReadyMerge:
      * reads the queue — Dekker's handshake, so a wake-up between the two
      * is seen by one side or the other */
     private def park(): Unit ! R =
-      okay.effect[R, Unit](Async.Await[Unit](parking)).flatMap(_ => again())
+      okay.freer.effect[R, Unit](Async.Await[Unit](parking)).flatMap(_ => again())
 
     private val cancelling: () => Unit = () => cancelAll()
 

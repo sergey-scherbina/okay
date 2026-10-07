@@ -41,8 +41,8 @@ name:
 
 ```python
 def total(sku, qty):
-    return okay.perform("price_of", sku).then(lambda price:
-           okay.perform("discount", price * qty))
+    return okay.freer.perform("price_of", sku).then(lambda price:
+           okay.freer.perform("discount", price * qty))
 ```
 
 ```r

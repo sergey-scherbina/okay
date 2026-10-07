@@ -1,7 +1,8 @@
 package okay.kyo
 
-import okay.{!, Async, Free, effect}
-import okay.!.*
+import okay.Async
+import okay.freer.{!, Free, effect}
+import okay.freer.!.*
 import _root_.kyo.{<, Abort, Flat}
 
 /**

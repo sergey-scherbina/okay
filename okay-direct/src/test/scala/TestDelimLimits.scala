@@ -1,7 +1,10 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import okay.Direct.*
-import okay.Row.at
+import okay.freer.Row.at
 import scala.language.implicitConversions
 
 /**
@@ -88,7 +91,7 @@ class TestDelimLimits extends munit.FunSuite {
     // which is exactly what a capture breaks. It needs an Answers for
     // the row, and Shift has none: the compiler says no.
     val e = compileErrors(
-      "okay.bracketNow[Int, Int, okay.Shift % ? + okay.Pure](1)(_ => ())(r => okay.pure(r))")
+      "okay.freer.bracketNow[Int, Int, okay.freer.Shift % ? + okay.Pure](1)(_ => ())(r => okay.freer.pure(r))")
     assert(e.nonEmpty, "bracketNow compiled under Shift")
     assert(e.contains("Answers"), s"refused for the wrong reason: $e")
   }
@@ -101,8 +104,8 @@ class TestDelimLimits extends munit.FunSuite {
     val prog: Int ! T = Shift.delimited[Int, T]:
       direct:
         val x = !Shift.shift[Int, Int, T](k => k(1))
-        if x == 1 then !okay.raise[String, Int]("boom").at[Row] else x
-    assertEquals(!.run(okay.runEither[Int, P, String](prog)), Left("boom"))
+        if x == 1 then !okay.freer.raise[String, Int]("boom").at[Row] else x
+    assertEquals(!.run(okay.freer.runEither[Int, P, String](prog)), Left("boom"))
   }
 
   test("Throws: a handler that raises instead of resuming leaves the rest unrun") {
@@ -111,18 +114,18 @@ class TestDelimLimits extends munit.FunSuite {
     var ran = false
     val prog: Int ! T = Shift.delimited[Int, T]:
       direct:
-        val x = !Shift.shift[Int, Int, T](_ => okay.raise[String, Int]("cut").at[Row])
+        val x = !Shift.shift[Int, Int, T](_ => okay.freer.raise[String, Int]("cut").at[Row])
         ran = true
         x
-    assertEquals(!.run(okay.runEither[Int, P, String](prog)), Left("cut"))
+    assertEquals(!.run(okay.freer.runEither[Int, P, String](prog)), Left("cut"))
     assert(!ran, "the abandoned continuation ran")
   }
 
   test("`try/finally` around a mark is a COMPILE error, not a silent one") {
     val e = compileErrors("""
-      okay.Shift.delimited[Int, okay.Pure](okay.Direct.direct {
+      okay.freer.Shift.delimited[Int, okay.Pure](okay.Direct.direct {
         var closed = false
-        try { !okay.Shift.exit(1); 0 } finally { closed = true }
+        try { !okay.freer.Shift.exit(1); 0 } finally { closed = true }
       })""")
     assert(e.nonEmpty, "a finalizer around a capture compiled")
     assert(e.contains("finalizer"), s"refused for the wrong reason: $e")
@@ -188,7 +191,7 @@ class TestDelimLimits extends munit.FunSuite {
         i += 1
       acc
     val driven = !.run(Shift.drive[Int, Int, Int, P](
-      !.run(Shift.resumable[Int, Int, Int, P](asks(3000))))(q => okay.pure(q)))
+      !.run(Shift.resumable[Int, Int, Int, P](asks(3000))))(q => okay.freer.pure(q)))
     assertEquals(driven, (0 until 3000).sum)
     assertEquals(!.run(Shift.replay[Int, Int, Int, P](asks(3000))((0 until 3000).toList)).finished,
       Some((0 until 3000).sum))
@@ -213,6 +216,6 @@ class TestDelimLimits extends munit.FunSuite {
       b + c
     assertEquals(!.run(Async.run[Int, P](
       Shift.resumable[String, Int, Int, Async](body).flatMap(p =>
-        Shift.drive[String, Int, Int, Async](p)(q => okay.pure(q.length))))), 8)
+        Shift.drive[String, Int, Int, Async](p)(q => okay.freer.pure(q.length))))), 8)
   }
 }

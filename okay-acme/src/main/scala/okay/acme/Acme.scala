@@ -1,7 +1,10 @@
 package okay.acme
 
 import okay.*
+import okay.freer.*
+
 import okay.given
+import okay.freer.given
 import okay.codec.Json
 import okay.http.{Body, Http, Method, Request, Response}
 import okay.security.{Crypto, Es256}

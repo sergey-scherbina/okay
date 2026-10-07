@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import okay.Direct.*
 import scala.language.implicitConversions
 
@@ -79,7 +82,7 @@ class TestDelimPatterns extends munit.FunSuite {
 
     def answering(as: List[String]): String => String ! okay.Pure =
       var left = as
-      _ => { val a = left.head; left = left.tail; okay.pure(a) }
+      _ => { val a = left.head; left = left.tail; okay.freer.pure(a) }
 
     assertEquals(!.run(Shift.drive(start)(answering(List("Kyiv", "3", "yes")))),
       "Booked Kyiv for 3 nights")
@@ -93,7 +96,7 @@ class TestDelimPatterns extends munit.FunSuite {
     // a body that never pauses needs no evidence at all: it adapts
     val p = !.run(Shift.resumable[String, String, Int, okay.Pure](direct(41 + 1)))
     assert(p.isInstanceOf[Shift.Paused.Done[?, ?, ?, ?]], s"expected Done, got $p")
-    assertEquals(!.run(Shift.drive(p)(_ => okay.pure("unused"))), 42)
+    assertEquals(!.run(Shift.drive(p)(_ => okay.freer.pure("unused"))), 42)
   }
 
   // ---- 4 · do something on the way back

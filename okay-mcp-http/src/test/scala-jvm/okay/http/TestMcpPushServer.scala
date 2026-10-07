@@ -1,7 +1,10 @@
 package okay.http
+import okay.freer.*
 
 import okay.*
+
 import okay.given
+import okay.freer.given
 import okay.codec.Schema
 import okay.mcp.{Client, Mcp, Duplex, Server as McpServer}
 import okay.agent.ToolSpec

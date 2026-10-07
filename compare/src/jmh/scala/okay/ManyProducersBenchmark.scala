@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import cats.effect.IO
 import java.util.concurrent.TimeUnit
@@ -50,7 +53,7 @@ class ManyProducersBenchmark {
     var sum = 0L
     var go = true
     while go do
-      val chunk = cb.block[Either[Throwable, okay.Chunk[Long]]] { k =>
+      val chunk = cb.block[Either[Throwable, okay.freer.Chunk[Long]]] { k =>
         c.receiveManyAsync(4096)(k); () => ()
       }.fold(throw _, identity)
       if chunk.length == 0 then go = false

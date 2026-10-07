@@ -23,9 +23,13 @@ package okay.demoeff
 
 
 import okay.*
+import okay.freer.*
+
+
 import okay.given
+import okay.freer.given
 import java.sql.{Connection, DriverManager}
-import okay.Row.plus
+import okay.freer.Row.plus
 import okay.Direct.{direct, given}
 import scala.language.implicitConversions
 

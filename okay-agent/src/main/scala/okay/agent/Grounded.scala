@@ -1,7 +1,9 @@
 package okay.agent
 
-import okay.{!, ==>, Aggregator, Answers}
+import okay.{==>, Answers}
+import okay.freer.{!, Aggregator}
 import okay.given
+import okay.freer.given
 import okay.rag.{Retriever, Scored}
 
 /**
@@ -56,7 +58,7 @@ object Grounded {
 
     /** as many passages as the retrieval share allows */
     def passages(query: String): Seq[Turn] =
-      val hits = okay.!.run(retriever.retrieve(query, k))
+      val hits = okay.freer.!.run(retriever.retrieve(query, k))
       hits.map(turn).foldLeft((Vector.empty[Turn], 0)) { (acc, t) =>
         val (kept, used) = acc
         val cost = size(t)
@@ -144,14 +146,14 @@ object Grounded {
       // the row is covariant, so a case gives X >: its answer; `!` is
       // invariant in the answer, so each branch is built AT X
       [X] => (e: Context[X]) => e match
-        case Context.Remember(t) => okay.pure[F, X](st.remember(t))
+        case Context.Remember(t) => okay.freer.pure[F, X](st.remember(t))
         case Context.Recall() =>
           val conversation = st.recall
           lastQuestion(conversation) match
-            case None => onRecall(conversation); okay.pure[F, X](conversation)
+            case None => onRecall(conversation); okay.freer.pure[F, X](conversation)
             case Some(q) => retriever.retrieve(q, k).map[X](assemble(conversation, _))
-        case Context.Mark() => okay.pure[F, X](st.mark)
-        case Context.Restore(s) => okay.pure[F, X](st.restore(s))
+        case Context.Mark() => okay.freer.pure[F, X](st.mark)
+        case Context.Restore(s) => okay.freer.pure[F, X](st.restore(s))
 
     (st, nt)
 }

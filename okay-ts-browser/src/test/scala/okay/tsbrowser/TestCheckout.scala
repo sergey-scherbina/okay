@@ -1,7 +1,10 @@
 package okay.tsbrowser
 
 import okay.*
+
+import okay.freer.*
 import okay.given
+import okay.freer.given
 import scala.scalajs.concurrent.JSExecutionContext.Implicits.queue
 
 /** the TypeScript library, called from okay on Scala.js through its

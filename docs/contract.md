@@ -43,7 +43,9 @@ M[F, B]`, and `foldCont` is `M[F, A] => Interpr[F, C, S] => C[A, S, S]` —
 `C` the encoding's own continuation carrier, a `Control`. By default it is
 the machine's (okay-cont), for `Free`, `Eager` and `Prog` alike: a handler
 `F !> S` is a program of the machine. The CPS `Cont` is one import away,
-`import okay.cps.{given_Effects_Free, *}`, with its own `!>` and `handler`.
+`import okay.freer.cps.{given_Effects_Free, *}`, with its own `!>` and `handler`.
+The tree itself and its library are the classic, module okay-freer,
+package `okay.freer`, above the core; the interface is the core's alone.
 
 Read by what each part gives:
 
@@ -138,8 +140,8 @@ Folding a program into cats-effect's `IO` (okay-cats, `TestCatsClasses`):
 
 ```scala
 val p: Int ! Ask = for
-  a <- okay.effect(Ask.Num("a"))
-  b <- okay.effect(Ask.Num("bb"))
+  a <- okay.freer.effect(Ask.Num("a"))
+  b <- okay.freer.effect(Ask.Num("bb"))
 yield a * 10 + b
 val toIO: Ask ==> IO = [X] => (e: Ask[X]) => e match
   case Ask.Num(k) => IO(k.length)

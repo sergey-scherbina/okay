@@ -31,6 +31,6 @@ class TestJvmFacadePrograms extends munit.FunSuite:
 
   test("a Clojure function the namespace does not have is refused by name, as a program's answer") {
     val P = summon[Programs[CljModule]]
-    val out = P.run(CljModule("okay.cluster.facade"))(okay.runChoice(P.program[Int, Long, okay.Choose](CljModule("okay.cluster.facade"), "nope", Vector.empty)(0)))
+    val out = P.run(CljModule("okay.cluster.facade"))(okay.freer.runChoice(P.program[Int, Long, okay.freer.Choose](CljModule("okay.cluster.facade"), "nope", Vector.empty)(0)))
     assert(out.headOption.exists(_.left.exists(_.kind == "LookupError")), s"$out")
   }

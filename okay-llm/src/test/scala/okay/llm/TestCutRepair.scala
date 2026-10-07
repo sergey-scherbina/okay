@@ -1,7 +1,10 @@
 package okay.llm
 
 import okay.*
+import okay.freer.*
+
 import okay.given
+import okay.freer.given
 import okay.Condition.Decision
 import Cut.*
 

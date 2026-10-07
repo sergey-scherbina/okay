@@ -1,6 +1,8 @@
 package okay.ui
 
 import okay.*
+import okay.freer.*
+
 
 /**
  * The TYPED wizard — PState's style as an alternative to the monadic

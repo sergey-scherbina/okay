@@ -1,6 +1,7 @@
 package okay.semantic.ossie
 
-import okay.{!, Async, Aggregator, Bulk, Chunk, Source, Tables, Writer}
+import okay.{Async, Bulk, Source, Tables}
+import okay.freer.{!, Aggregator, Chunk, Writer}
 import okay.codec.{Json, Schema}
 import okay.semantic.{Calculation, Dimension, Group, Kind, Model, Request, Result, Value}
 import okay.semantic.Metric as CoreMetric

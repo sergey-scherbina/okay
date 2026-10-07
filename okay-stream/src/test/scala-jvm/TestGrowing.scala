@@ -1,5 +1,7 @@
 package okay
 
+
+import okay.freer.*
 import java.util.concurrent.atomic.AtomicInteger
 
 /** The laws a channel that CHANGES ITS BUFFER under load owes

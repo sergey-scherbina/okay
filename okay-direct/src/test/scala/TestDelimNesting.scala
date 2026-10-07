@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import okay.Direct.*
 import scala.language.implicitConversions
 
@@ -33,9 +36,9 @@ class TestDelimNesting extends munit.FunSuite {
   test("a pause crosses an intervening collect, and the list survives it") {
     val start = !.run(Shift.resumable[String, Int, List[Int], P](half))
     assertEquals(start.asking, Some("more?"))
-    assertEquals(!.run(Shift.drive(start)(_ => okay.pure(2))), List(1, 2, 3))
+    assertEquals(!.run(Shift.drive(start)(_ => okay.freer.pure(2))), List(1, 2, 3))
     // it is a value: the same pause, answered differently
-    assertEquals(!.run(Shift.drive(start)(_ => okay.pure(7))), List(1, 7, 3))
+    assertEquals(!.run(Shift.drive(start)(_ => okay.freer.pure(7))), List(1, 7, 3))
   }
 
   test("the same dialogue replays from its journal, producer and all") {
@@ -60,7 +63,7 @@ class TestDelimNesting extends munit.FunSuite {
     // pushes its delimiter on the machine outside, as `collecting` does
     val start = !.run(Shift.resumable[String, Int, List[Int], P](halfOld))
     assertEquals(start.asking, Some("more?"))
-    assertEquals(!.run(Shift.drive(start)(_ => okay.pure(2))), List(1, 2, 3))
+    assertEquals(!.run(Shift.drive(start)(_ => okay.freer.pure(2))), List(1, 2, 3))
     assertEquals(!.run(Shift.replay[String, Int, List[Int], P](halfOld)(List(5))).finished, Some(List(1, 5, 3)))
   }
 
@@ -81,10 +84,10 @@ class TestDelimNesting extends munit.FunSuite {
     // scope's `+ 1` and `+ 1000`, and the whole thing re-runs
     assertEquals(prog(o ?=> _ ?=> Shift.shift[Int, Int, P](using o)(k => k(5))), 1006)
     // dropping it, named OUTER: both tails go, the block answers 5
-    assertEquals(prog(o ?=> _ ?=> Shift.shift[Int, Int, P](using o)(_ => okay.pure(5))), 5)
+    assertEquals(prog(o ?=> _ ?=> Shift.shift[Int, Int, P](using o)(_ => okay.freer.pure(5))), 5)
     // dropping it, named INNER: only the inner tail goes — the outer
     // `+ 1000` still runs, because it was never captured
-    assertEquals(prog(_ ?=> i ?=> Shift.shift[Int, Int, P](using i)(_ => okay.pure(5))), 1005)
+    assertEquals(prog(_ ?=> i ?=> Shift.shift[Int, Int, P](using i)(_ => okay.freer.pure(5))), 1005)
   }
 
   test("scope: the inner evidence is the nearest one, and stays inside") {

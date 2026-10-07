@@ -1,6 +1,8 @@
 package okay.x402
 
 import okay.*
+import okay.freer.*
+
 import okay.conf.Secrets
 import okay.http.{Http, Response}
 
@@ -12,7 +14,7 @@ import okay.http.{Http, Response}
  */
 class TestDocExamplesGuideProvide extends munit.FunSuite:
 
-  def fixed: Http = _ => okay.pure(Response(200, Nil, Http.one(Array.emptyByteArray)))
+  def fixed: Http = _ => okay.freer.pure(Response(200, Nil, Http.one(Array.emptyByteArray)))
   val prodHttp: Http = fixed
   val stubHttp: Http = fixed
   val testSecrets: Secrets = Secrets.memory(Map.empty)

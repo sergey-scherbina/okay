@@ -1,8 +1,12 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 import okay.given
+import okay.freer.given
 
 /**
  * optics-core: THE GATE (specs/optics.md stage 0). An optic's `set`

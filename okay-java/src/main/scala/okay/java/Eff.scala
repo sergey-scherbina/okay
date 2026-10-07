@@ -1,7 +1,9 @@
 package okay.java
 
-import okay.{!, +, Answers, Async, Distinct, Effects, Foreign, Free, Member, TypeableK, effect, typeableK}
+import okay.{+, Answers, Async, Distinct, Effects, Foreign, TypeableK, typeableK}
+import okay.freer.{!, Free, Member, effect}
 import okay.given
+import okay.freer.given
 import java.util.function.{BiFunction, Function as JFunction, Supplier, UnaryOperator}
 
 /**
@@ -86,7 +88,7 @@ final class Eff[A] private[java] (private[java] val program: Free[Top, A]) {
 
   /** the core `Throws`: a `raise` answered by `f` of what was raised */
   def recover(f: JFunction[Any, ? <: A]): Eff[A] =
-    new Eff(coerce(okay.runEither[A, Top, Any](coerce(program))(using Rows.distinct)).map(_.fold(e => f.apply(e), a => a)))
+    new Eff(coerce(okay.freer.runEither[A, Top, Any](coerce(program))(using Rows.distinct)).map(_.fold(e => f.apply(e), a => a)))
 
   /** every operation handled: the answer. One left is refused by name */
   def run(): A = program.runWith(using Eff.unhandled)
@@ -100,7 +102,7 @@ final class Eff[A] private[java] (private[java] val program: Free[Top, A]) {
    */
   def toScala[F[+_]](using m: Member[F]): A ! F =
     // the context bound's evidence comes LAST, after the translation
-    Effects.translate[A, Top, F](coerce(program))(using Rows.distinct)([X] => (e: Top[X]) =>
+    !.translate[A, Top, F](coerce(program))(using Rows.distinct)([X] => (e: Top[X]) =>
       m.operation(Foreign.obj(e)) match
         case Some(op) => effect[F, Any](op).map(answered[X])
         case None => throw IllegalArgumentException(s"okay.java: ${Rows.named(e)} is not an operation of the row"))(
@@ -109,7 +111,7 @@ final class Eff[A] private[java] (private[java] val program: Free[Top, A]) {
 
 object Eff {
 
-  def pure[A](a: A): Eff[A] = new Eff(okay.pure(a))
+  def pure[A](a: A): Eff[A] = new Eff(okay.freer.pure(a))
 
   /** perform one operation of a Java effect */
   def perform[R](op: Op[R]): Eff[R] = new Eff(coerce(effect[Op, R](op)))
@@ -127,19 +129,19 @@ object Eff {
   // ------------------------------------------------- the core effects
 
   /** `Reader`: the environment, which `Handler.reader(env)` supplies */
-  def ask[E](): Eff[E] = from(okay.Reader.ask[E])
+  def ask[E](): Eff[E] = from(okay.freer.Reader.ask[E])
 
   /** `State`: the state, which `StateHandler.state(s0)` threads */
-  def get[S](): Eff[S] = from(okay.State.get[S])
+  def get[S](): Eff[S] = from(okay.freer.State.get[S])
 
   /** `State`: replace it, answering the new state */
-  def put[S](s: S): Eff[S] = from(okay.State.set(s))
+  def put[S](s: S): Eff[S] = from(okay.freer.State.set(s))
 
   /** `State`: apply `f` to it, answering the new state */
-  def modify[S](f: UnaryOperator[S]): Eff[S] = from(okay.State.modify[S](s => f.apply(s)))
+  def modify[S](f: UnaryOperator[S]): Eff[S] = from(okay.freer.State.modify[S](s => f.apply(s)))
 
   /** `Throws`: stop with `e`, which `recover` answers */
-  def raise[A](e: Any): Eff[A] = from(okay.raise[Any, A](e))
+  def raise[A](e: Any): Eff[A] = from(okay.freer.raise[Any, A](e))
 
   /** `Async`: `a.get()` when the program runs, possibly blocking */
   def async[A](a: Supplier[? <: A]): Eff[A] = from(okay.async[A](a.get()))
@@ -186,18 +188,18 @@ object Handler {
   // the forms over any test: by class above, by a capability's identity in `Cap`; `f` reads the raw operation
 
   private[java] def answerBy(test: TypeableK[Top], f: Any => Any): Handler =
-    val h = okay.Handler.answerOf[Top]([X] => (op: Top[X]) => answered[X](f(op)))(using test)
+    val h = okay.freer.Handler.answerOf[Top]([X] => (op: Top[X]) => answered[X](f(op)))(using test)
     new Handler([A] => (p: Free[Top, A]) => coerce[Top, Top, A](
-      h.run[A, Top](coerce(p))(using summon, Rows.distinct, okay.Handler.Nothing.any)))
+      h.run[A, Top](coerce(p))(using summon, Rows.distinct, okay.freer.Handler.Nothing.any)))
 
   private[java] def intoBy(test: TypeableK[Top], f: Any => Eff[?]): Handler =
-    val h = okay.Handler.intoOf[Top, Top]([X] => (op: Top[X]) => f(op).program.map(answered[X]))(using test)
+    val h = okay.freer.Handler.intoOf[Top, Top]([X] => (op: Top[X]) => f(op).program.map(answered[X]))(using test)
     new Handler([A] => (p: Free[Top, A]) =>
       h.run[A, Top](coerce(p))(using summon, Rows.distinct, summon))
 
   /** the core `Reader`: every `Eff.ask()` answered with `env` */
   def reader[E](env: E): Handler =
-    new Handler([A] => (p: Free[Top, A]) => coerce[Top, Top, A](okay.Reader.run[E, A, Top](env)(coerce(p))(using Rows.distinct)))
+    new Handler([A] => (p: Free[Top, A]) => coerce[Top, Top, A](okay.freer.Reader.run[E, A, Top](env)(coerce(p))(using Rows.distinct)))
 }
 
 /** a handler threading a state `S`: the program's answer arrives beside the last state */
@@ -212,15 +214,15 @@ object StateHandler {
     stateBy(Rows.test(cls), init, (s, op) => step.apply(s, cls.cast(op)))
 
   private[java] def stateBy[S](test: TypeableK[Top], init: S, step: (S, Any) => Stated[S, ?]): StateHandler[S] =
-    val h = okay.Handler.stateOf[Top, S](init)([X] => (s: S, op: Top[X]) =>
+    val h = okay.freer.Handler.stateOf[Top, S](init)([X] => (s: S, op: Top[X]) =>
       val next = step(s, op)
       (next.state, answered[X](next.value)))(using test)
     new StateHandler([A] => (p: Free[Top, A]) =>
-      h.run[A, Top](coerce(p))(using summon, Rows.distinct, okay.Handler.Nothing.any))
+      h.run[A, Top](coerce(p))(using summon, Rows.distinct, okay.freer.Handler.Nothing.any))
 
   /** the core `State`, from `init`: `Eff.get()`, `put`, `modify` */
   def state[S](init: S): StateHandler[S] =
-    new StateHandler([A] => (p: Free[Top, A]) => okay.State.handle(init)[A, Top](coerce(p))(using Rows.distinct))
+    new StateHandler([A] => (p: Free[Top, A]) => okay.freer.State.handle(init)[A, Top](coerce(p))(using Rows.distinct))
 }
 
 /** the rest of the program after an operation, as a `Control` clause holds it */

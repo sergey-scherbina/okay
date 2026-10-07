@@ -1,6 +1,8 @@
 package okay.semantic.data
 
 import okay.*
+import okay.freer.*
+
 import okay.codec.{Schema, Json}
 import okay.semantic.*
 

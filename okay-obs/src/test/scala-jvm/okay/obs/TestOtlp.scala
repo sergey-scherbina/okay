@@ -1,7 +1,9 @@
 package okay.obs
 
-import okay.{!, Async, Pure, Resource, pure}
+import okay.{Async, Pure}
+import okay.freer.{!, Resource, pure}
 import okay.given
+import okay.freer.given
 import okay.codec.Json
 import okay.http.{Http, Request, Response, Server, Transports}
 import okay.persist.{MemoryStore, Policy}

@@ -1,7 +1,7 @@
 package okay.docs
 
-import okay.{!, Async, Chunk, Source}
-
+import okay.{Async, Source}
+import okay.freer.{!, Chunk}
 /**
  * The document seam (specs/data.md, "the one new seam"): the access
  * shape SQL does not cover — get/put/delete by key, bounded queries

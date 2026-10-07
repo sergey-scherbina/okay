@@ -1,7 +1,8 @@
 package okay.cats
 
-import okay.{!, Async, Choose, Par, Scheduler, Static, Validated}
-import okay.given
+import okay.{Async, Par, Scheduler}
+import okay.freer.{!, Choose, Static, Validated}
+import okay.freer.given
 import _root_.cats.{~>, Eval}
 import _root_.cats.effect.IO
 
@@ -28,7 +29,7 @@ import _root_.cats.effect.IO
  */
 
 /** okay's accumulating `Validated` under cats' Applicative: `ap` keeps
- * EVERY error (`okay.Validated.selective`), so `List(...).traverse`
+ * EVERY error (`okay.freer.Validated.selective`), so `List(...).traverse`
  * from cats reports all of them — combined by okay's semigroup or
  * cats-kernel's ([[Combine]]) */
 given catsValidated[E](using C: Combine[E]): _root_.cats.Applicative[[A] =>> Validated[E, A]] with
@@ -89,7 +90,7 @@ object CatsClasses:
    * for the reason [[catsChoose]] is only a `MonoidK` */
   val chooseAlternative: _root_.cats.StackSafeMonad[[A] =>> A ! Choose] & _root_.cats.Alternative[[A] =>> A ! Choose] =
     new _root_.cats.StackSafeMonad[[A] =>> A ! Choose] with _root_.cats.Alternative[[A] =>> A ! Choose]:
-      def pure[A](a: A): A ! Choose = okay.pure(a)
+      def pure[A](a: A): A ! Choose = okay.freer.pure(a)
       def flatMap[A, B](fa: A ! Choose)(f: A => B ! Choose): B ! Choose = fa.flatMap(f)
       def empty[A]: A ! Choose = catsChoose.empty
       def combineK[A](x: A ! Choose, y: A ! Choose): A ! Choose = catsChoose.combineK(x, y)

@@ -1,7 +1,9 @@
 package okay.jdbc
 
-import okay.{!, +, Async, Chunk, Resource, Source}
+import okay.{+, Async, Source}
+import okay.freer.{!, Chunk, Resource}
 import okay.given
+import okay.freer.given
 import okay.sql.{Granted, Isolation, Sql, SqlValue, Typed}
 import java.sql.{DriverManager, SQLException}
 

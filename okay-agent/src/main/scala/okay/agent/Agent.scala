@@ -1,6 +1,7 @@
 package okay.agent
 
-import okay.{!, +, Async, Answers, effect, pure}
+import okay.{+, Async, Answers}
+import okay.freer.{!, effect, pure}
 import okay.codec.Json
 
 /**
@@ -129,7 +130,7 @@ object Agent {
 
   /** run every requested tool and remember each result */
   def runTools(calls: Seq[ToolCall]): Unit ! Agent =
-    okay.!.each(calls)(c => call(c).flatMap(r => remember(Turn.Result(c.id, r))))
+    okay.freer.!.each(calls)(c => call(c).flatMap(r => remember(Turn.Result(c.id, r))))
 
   /**
    * The loop: remember the message, ask (recall compacts on the way),

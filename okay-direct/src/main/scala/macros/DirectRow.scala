@@ -1,6 +1,8 @@
 package okay
 package macros
 
+
+import okay.freer.*
 import scala.quoted.*
 
 /**
@@ -17,9 +19,9 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
 
   /** the tree's class: `Freer` since freer-base-step-extractor (2026-09-29),
    * `A ! Row` being `Freer[Unary[Row], Unit, Unit, A]` */
-  lazy val freeClass = Symbol.requiredClass("okay.Freer")
-  private lazy val liftedClass = TypeRepr.of[okay.Diagonal[Option]].typeSymbol
-  private lazy val liftAlias = TypeRepr.of[okay.Unary[Option]].typeSymbol
+  lazy val freeClass = Symbol.requiredClass("okay.freer.Freer")
+  private lazy val liftedClass = TypeRepr.of[okay.freer.Diagonal[Option]].typeSymbol
+  private lazy val liftAlias = TypeRepr.of[okay.freer.Unary[Option]].typeSymbol
 
   /**
    * A PROGRAM TYPE, TAKEN APART: `(row, elem)` of an `A ! Row`, or None.
@@ -50,7 +52,7 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
   lazy val rowOf: Option[TypeRepr] =
     programOf(TypeRepr.of[F].appliedTo(TypeRepr.of[scala.Unit])).map(_._1)
 
-  lazy val stagedType: Symbol = Symbol.requiredModule("okay.Handled").typeMember("Handled")
+  lazy val stagedType: Symbol = Symbol.requiredModule("okay.freer.Handled").typeMember("Handled")
 
   /** the block's row when its F is `Handled[Row, R, *]` (specs/direct-
    * staged.md) — opaque, so it does not dealias to the function it is.
@@ -77,11 +79,11 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
       case m => List(m)
     rowOf.flatMap { r =>
       members(r.appliedTo(TypeRepr.of[Any])).collectFirst {
-        case AppliedType(w, List(wt, _)) if w.typeSymbol == Symbol.requiredClass("okay.Writer") => wt
+        case AppliedType(w, List(wt, _)) if w.typeSymbol == Symbol.requiredClass("okay.freer.Writer") => wt
       }
     }
 
-  lazy val genType: Symbol = Symbol.requiredClass("okay.Gen")
+  lazy val genType: Symbol = Symbol.requiredClass("okay.freer.Gen")
 
   /** `Gen[W]`'s W, when the type is the generator (a value class over the program) */
   def genOf(tpe: TypeRepr): Option[TypeRepr] = tpe.widen.dealias match
@@ -102,7 +104,7 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
     rowOf.exists(r => TypeRepr.of[Once[Unit]] <:< r.appliedTo(TypeRepr.of[Unit]))
 
   lazy val injectApply: Symbol =
-    Symbol.requiredModule("okay.Free.Inject").methodMember("apply").head
+    Symbol.requiredModule("okay.freer.Free.Inject").methodMember("apply").head
 
   /**
    * SHARED OPERATION NODES (specs/effect-op-cost.md D2). `State.get`
@@ -118,8 +120,8 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
     // inliner keeps for its effects, so the stage's inline match left a
     // live `Get$.apply()` per block — 1 600 B a run on StagedBenchmark,
     // read in its bytecode; a constructor it drops when nothing uses it
-    "okay.SharedOps.getNode" -> { case '[e] => '{ new okay.State.Get[e, e]() }.asTerm },
-    "okay.SharedOps.askNode" -> { case '[e] => '{ new okay.Reader.Ask[e, e]() }.asTerm })
+    "okay.freer.SharedOps.getNode" -> { case '[e] => '{ new okay.freer.State.Get[e, e]() }.asTerm },
+    "okay.freer.SharedOps.askNode" -> { case '[e] => '{ new okay.freer.Reader.Ask[e, e]() }.asTerm })
 
   /** a symbol's key in that table: its full name, the module's `$` off
    * (a reference from inside the object and one from outside name the
@@ -148,9 +150,9 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
     case None => injectTerm(op, elem, row)
 
   lazy val pureApply: Symbol =
-    Symbol.requiredModule("okay.Free.Return").methodMember("apply").head
+    Symbol.requiredModule("okay.freer.Free.Return").methodMember("apply").head
   lazy val bindApply: Symbol =
-    Symbol.requiredModule("okay.Free.Bind").methodMember("apply").head
+    Symbol.requiredModule("okay.freer.Free.Bind").methodMember("apply").head
   /** THE SAME NODES BY THEIR OTHER NAMES (freer-base-step-extractor,
    * 2026-09-29): `Free.Inject`/`Return`/`Bind` are wrapper objects over
    * the enum `Freer`, and an INLINE door — `effect`, `pure`,
@@ -158,12 +160,12 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
    * staged program reaches the reader as `Freer.Inject.apply[G, S, R,
    * A](op)` as often as `Free.Inject.apply[F, A](op)`. Both spell one
    * node; the element is the LAST type argument in either */
-  lazy val injectApplies: Set[Symbol] = Set(injectApply, Symbol.requiredModule("okay.Freer.Inject").methodMember("apply").head)
-  lazy val pureApplies: Set[Symbol] = Set(pureApply, Symbol.requiredModule("okay.Freer.Return").methodMember("apply").head)
-  lazy val bindApplies: Set[Symbol] = Set(bindApply, Symbol.requiredModule("okay.Freer.Bind").methodMember("apply").head)
+  lazy val injectApplies: Set[Symbol] = Set(injectApply, Symbol.requiredModule("okay.freer.Freer.Inject").methodMember("apply").head)
+  lazy val pureApplies: Set[Symbol] = Set(pureApply, Symbol.requiredModule("okay.freer.Freer.Return").methodMember("apply").head)
+  lazy val bindApplies: Set[Symbol] = Set(bindApply, Symbol.requiredModule("okay.freer.Freer.Bind").methodMember("apply").head)
   /** `map`'s continuation (one-bind-hot-steps): `new Freer.Mapped(f)` runs
    * as `a => Free.Return(f(a))`, and the stager reads it as that */
-  lazy val mappedClass: Symbol = Symbol.requiredClass("okay.Freer.Mapped")
+  lazy val mappedClass: Symbol = Symbol.requiredClass("okay.freer.Freer.Mapped")
 
   /**
    * THE INLINER'S PROXIES, SUBSTITUTED. An inline method's by-value
@@ -360,7 +362,7 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
       case Some(row) =>
         layerTerm(m) match
           case Some(reflected) =>
-            if !(TypeRepr.of[[A] =>> okay.Shift[?, A]].appliedTo(elem.widen) <:< row.appliedTo(elem.widen)) then
+            if !(TypeRepr.of[[A] =>> okay.freer.Shift[?, A]].appliedTo(elem.widen) <:< row.appliedTo(elem.widen)) then
               report.errorAndAbort(
                 s"the marked value ${m.tpe.show} has a Layered layer in scope, and reflecting into it " +
                   s"is a capture (Shift % ?), but this block's row ${row.show} has no Shift % ?: " +
@@ -375,8 +377,8 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
           s"the marked value has type ${m.tpe.show} — neither this block's ${fT.show}" +
             anyRow.fold("")(r => s" nor an operation of its row ${r.show}"), at)
 
-  lazy val layeredModule = Symbol.requiredModule("okay.Layered")
-  lazy val reflectCapability = Symbol.requiredClass("okay.Layered.Reflect")
+  lazy val layeredModule = Symbol.requiredModule("okay.freer.Layered")
+  lazy val reflectCapability = Symbol.requiredClass("okay.freer.Layered.Reflect")
 
   /**
    * `Layered.reflect(m)[R, Pure]` when `m: M[X]` is not a program and a
@@ -398,7 +400,7 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
       candidates.map((tycon, x) =>
         Implicits.search(reflectCapability.typeRef.appliedTo(List(tycon, TypeBounds.empty))) match
           case found: ImplicitSearchSuccess =>
-            (found.tree.tpe.widen.dealias.baseType(reflectCapability), Implicits.search(TypeRepr.of[okay.At])) match
+            (found.tree.tpe.widen.dealias.baseType(reflectCapability), Implicits.search(TypeRepr.of[okay.freer.At])) match
               case (AppliedType(_, List(_, r)), at: ImplicitSearchSuccess) =>
                 val reflect = layeredModule.methodMember("reflect").head
                 Some(Ref(layeredModule).select(reflect).appliedToTypes(List(tycon, x)).appliedTo(m)

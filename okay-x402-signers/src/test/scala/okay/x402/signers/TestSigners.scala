@@ -9,6 +9,7 @@ import java.util.Base64
 import javax.crypto.Cipher
 import javax.crypto.spec.{OAEPParameterSpec, PSource}
 import okay.*
+import okay.freer.*
 import okay.chain.Network
 import okay.codec.Json
 import okay.codec.Json.*

@@ -1,7 +1,6 @@
 package okay.ui
 
 import okay.{modify, opticFunction1}
-
 /**
  * ui-path-two-walks: what the affine costs against the hand walk.
  *

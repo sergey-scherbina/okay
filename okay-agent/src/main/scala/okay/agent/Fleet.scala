@@ -1,6 +1,8 @@
 package okay.agent
 
 import okay.*
+import okay.freer.*
+
 import okay.given
 import okay.actor.{Actor, ActorRef, Behavior}
 import Fleet.Control
@@ -147,7 +149,7 @@ final class Fleet private (store: Store, runner: Runner, now: () => Long, root: 
       Writer.uncons[Chunk[Record], Unit, Async](src).flatMap {
         case Left(_) => pure(())
         case Right((chunk, more)) =>
-          okay.!.each(chunk.toVector)(r => one(r).map(_ => applied(r.offset))).flatMap(_ => go(more))
+          okay.freer.!.each(chunk.toVector)(r => one(r).map(_ => applied(r.offset))).flatMap(_ => go(more))
       }
     go(Streams.tail(topic, 0, from, pollMillis = pollMillis))
 
@@ -440,12 +442,12 @@ object Fleet:
   def events(topic: Topic, from: Long = 0L, pollMillis: Long = 25)(using Timer): Source[Event] =
     type F = Writer % Event + Async
     def go(src: Source[Chunk[Record]]): Unit ! F =
-      okay.!.widen[Either[Unit, (Chunk[Record], Source[Chunk[Record]])], Async, Writer % Event](
+      okay.freer.!.widen[Either[Unit, (Chunk[Record], Source[Chunk[Record]])], Async, Writer % Event](
         Writer.uncons[Chunk[Record], Unit, Async](src)).flatMap {
         case Left(_) => pure(())
         case Right((chunk, more)) =>
           val evs = chunk.iterator.flatMap(r => event(Json.parse(new String(r.value, "UTF-8")))).toList
-          okay.!.each(evs)(e => effect[F, Unit](Writer(e))).flatMap(_ => go(more))
+          okay.freer.!.each(evs)(e => effect[F, Unit](Writer(e))).flatMap(_ => go(more))
       }
     go(Streams.tail(topic, 0, from, pollMillis = pollMillis))
 

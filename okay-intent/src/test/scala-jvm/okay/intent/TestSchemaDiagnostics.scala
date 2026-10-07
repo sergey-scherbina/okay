@@ -1,6 +1,8 @@
 package okay.intent
+import okay.freer.given
 
 import okay.given
+
 import okay.codec.Schema
 import okay.llm.{OpenAi, Transports}
 

@@ -1,6 +1,8 @@
 package okay.agent
+import okay.freer.*
 
 import okay.*
+
 import okay.codec.{Json, Schema}
 import Json.{JObj, JStr, JNum, JArr}
 
@@ -122,8 +124,8 @@ class TestToolbox extends munit.FunSuite {
 
   test("relayToolsF: the agent's Tool calls run the programs, the row one effect shorter") {
     val prog: String ! Tool + W =
-      okay.effect[Tool + W, String](Tool.Call(call("log", "text" -> JStr("a"), "owner" -> JStr("o")))).flatMap(r1 =>
-        okay.effect[Tool + W, String](Tool.Call(call("nosuch"))).map(r2 => s"$r1|$r2"))
+      okay.freer.effect[Tool + W, String](Tool.Call(call("log", "text" -> JStr("a"), "owner" -> JStr("o")))).flatMap(r1 =>
+        okay.freer.effect[Tool + W, String](Tool.Call(call("nosuch"))).map(r2 => s"$r1|$r2"))
     val (log, out) = !.run(Writer.run[String, String, okay.Pure](Handlers.relayToolsF[String, W](effectful.table)(prog)))
     assertEquals(log, Seq("logged a"))
     assertEquals(out, "ok|error: no such tool 'nosuch'")

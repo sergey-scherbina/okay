@@ -1,7 +1,7 @@
 package okay.foreign
 
-import okay.State
-import okay.given
+import okay.freer.State
+import okay.freer.given
 import Value.*
 
 /**

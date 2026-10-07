@@ -1,6 +1,6 @@
 package okay.cluster
 
-import okay.Aggregator
+import okay.freer.Aggregator
 import okay.codec.Schema
 
 /**

@@ -1,6 +1,7 @@
 package okay.llm
 
-import okay.{!, %, +, Async, Writer}
+import okay.{%, +, Async}
+import okay.freer.{!, Writer}
 import okay.codec.{Json, Schema}
 
 /**
@@ -150,7 +151,7 @@ object OpenAi {
    * uses, with this protocol's `token` */
   def tokensOf(lines: Unit ! Writer % String + Async)
   : Unit ! Writer % String + Async =
-    import okay.!.*
+    import okay.freer.!.*
     type F = Writer % String + Async
 
     def go(rest: Unit ! F, buf: List[String]): Unit ! F = (rest.resume: @unchecked) match
@@ -164,8 +165,8 @@ object OpenAi {
           absorb(line, buf)(b => go(k(()), b))
 
     def flush(buf: List[String]): Unit ! F =
-      if buf.isEmpty then okay.pure(())
-      else emit(buf.reverse.mkString("\n"))(okay.pure(()))
+      if buf.isEmpty then okay.freer.pure(())
+      else emit(buf.reverse.mkString("\n"))(okay.freer.pure(()))
 
     def absorb(line: String, buf: List[String])(next: List[String] => Unit ! F): Unit ! F =
       if line.isEmpty then
@@ -175,7 +176,7 @@ object OpenAi {
 
     def emit(payload: String)(next: => Unit ! F): Unit ! F =
       token(payload) match
-        case Some(t) => okay.effect[F, Unit](Writer(t)).flatMap(_ => next)
+        case Some(t) => okay.freer.effect[F, Unit](Writer(t)).flatMap(_ => next)
         case None => next
 
     go(lines, Nil)

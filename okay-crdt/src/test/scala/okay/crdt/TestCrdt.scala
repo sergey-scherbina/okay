@@ -1,7 +1,6 @@
 package okay.crdt
 
 import okay.{Hlc, Uid}
-
 /**
  * What each type MEANS, beyond obeying the laws. The laws say
  * replicas converge; these say they converge on the right answer.

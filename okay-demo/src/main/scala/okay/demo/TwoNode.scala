@@ -1,6 +1,7 @@
 package okay.demo
 
-import okay.{Async, !, pure}
+import okay.Async
+import okay.freer.{!, pure}
 import okay.http.{Http, Method, Request, Response}
 import okay.persist.{Election, FileStore, Policy}
 import okay.codec.Json

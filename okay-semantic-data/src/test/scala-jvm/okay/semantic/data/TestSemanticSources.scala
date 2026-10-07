@@ -1,7 +1,10 @@
 package okay.semantic.data
 
 import okay.*
+import okay.freer.*
+
 import okay.given
+import okay.freer.given
 import okay.codec.Json
 import okay.semantic.*
 import java.time.Instant

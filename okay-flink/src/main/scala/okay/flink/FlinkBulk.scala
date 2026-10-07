@@ -1,6 +1,8 @@
 package okay.flink
 
 import okay.*
+import okay.freer.*
+
 import org.apache.flink.api.common.RuntimeExecutionMode
 import org.apache.flink.api.common.functions.{AggregateFunction, CoGroupFunction, FilterFunction, FlatMapFunction, MapFunction, OpenContext}
 import org.apache.flink.api.common.state.{ListState, ListStateDescriptor}

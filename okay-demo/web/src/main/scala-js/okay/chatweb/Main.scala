@@ -1,6 +1,8 @@
 package okay.chatweb
 
 import okay.*
+
+import okay.freer.*
 import okay.given
 import okay.ui.{Event, React, ReactJs, Ui}
 import scala.scalajs.js

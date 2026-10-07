@@ -1,6 +1,7 @@
 package okay.refine
 
-import okay.{!, %, Async, Bulk, Channel, Chunks, Scheduler, Source, Writer, drained, effect, pure, runForeach}
+import okay.{%, Async, Bulk, Channel, Chunks, Scheduler, Source, drained, runForeach}
+import okay.freer.{!, Writer, effect, pure}
 import okay.Bulk.{aggregate, cache, flatMap, map}
 
 /**

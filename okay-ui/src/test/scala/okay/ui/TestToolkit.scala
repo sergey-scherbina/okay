@@ -1,7 +1,10 @@
 package okay.ui
+import okay.freer.*
 
 import okay.*
+
 import okay.given
+import okay.freer.given
 import okay.codec.{Json, Schema}
 
 /** specs/ui-toolkit.md, Behavior — one test per checkbox */

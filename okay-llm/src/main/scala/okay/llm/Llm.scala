@@ -1,6 +1,7 @@
 package okay.llm
 
-import okay.{!, %, +, Async, Stage, Writer, effect, pure}
+import okay.{%, +, Async, Stage}
+import okay.freer.{!, Writer, effect, pure}
 import okay.codec.{Json, Schema}
 
 /**
@@ -171,7 +172,7 @@ object Anthropic {
   : Unit ! Writer % String + Async =
     def go(rest: Unit ! Writer % String + Async, buf: List[String])
     : Unit ! Writer % String + Async =
-      import okay.!.*
+      import okay.freer.!.*
       (rest.resume: @unchecked) match
         case Return(_) => flushEvent(buf)
         case Inject(e) => okay.<|>[Async, Writer % String](e) match

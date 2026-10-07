@@ -1,6 +1,7 @@
 package okay.cluster
 
-import okay.{Aggregator, Chunks}
+import okay.Chunks
+import okay.freer.Aggregator
 import okay.codec.Json
 import scala.annotation.tailrec
 

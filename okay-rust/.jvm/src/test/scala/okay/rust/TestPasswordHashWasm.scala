@@ -1,8 +1,16 @@
 package okay.rust
 
-import java.nio.file.{Files, Path}
-import okay.{Answers, given}
 
+
+
+
+
+
+
+
+import java.nio.file.{Files, Path}
+import okay.Answers
+import okay.freer.given
 /** polyglot-rust stage 3 against a LIVE cargo with the wasm32-wasip1 target: the kernel under Chicory */
 class TestPasswordHashWasm extends munit.FunSuite {
   import TestPasswordHash.*

@@ -1,5 +1,6 @@
 package okay
 
+
 import scala.scalajs.js
 import scala.scalajs.js.annotation.*
 import scala.scalajs.js.typedarray.Uint8Array

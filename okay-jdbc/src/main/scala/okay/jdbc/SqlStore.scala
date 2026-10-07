@@ -1,7 +1,9 @@
 package okay.jdbc
 
-import okay.{!, Async, Chunk}
+import okay.Async
+import okay.freer.{!, Chunk}
 import okay.given
+import okay.freer.given
 import okay.persist.{Ack, Policy, Record, Store, Topic}
 import okay.sql.{Sql, SqlValue}
 

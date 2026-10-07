@@ -1,7 +1,7 @@
 package okay.foreign
 
 
-import okay.!
+import okay.freer.!
 import okay.codec.Json
 
 /**
@@ -152,10 +152,10 @@ final case class Handle(id: Long, pyType: String,
   def hold(method: String): Handle.HoldMethod = Handle.HoldMethod(this, method)
   /** an attribute of the held object */
   def attr[Out: okay.codec.Schema](name: String): Either[Condition, Out] ! ForeignEval =
-    okay.effect[ForeignEval, Either[Condition, Value]](ForeignEval.Call(Address.Attr(this, name), Vector.empty))
+    okay.freer.effect[ForeignEval, Either[Condition, Value]](ForeignEval.Call(Address.Attr(this, name), Vector.empty))
       .map(_.flatMap(shape.decode[Out](_)))
   /** drop the object in the worker; idempotent */
-  def release: Unit ! ForeignEval = okay.effect[ForeignEval, Unit](ForeignEval.Release(this))
+  def release: Unit ! ForeignEval = okay.freer.effect[ForeignEval, Unit](ForeignEval.Release(this))
   /** this object as a STATEFUL stage over chunks (foreign-streaming):
    * `method` per chunk, `finish` once at the end */
   def stage[I: ToPy, O: okay.codec.Schema](method: String, chunk: Int = 64,
@@ -173,7 +173,7 @@ object Handle:
     def apply[A: ToPy, B: ToPy, C: ToPy](a: A, b: B, c: C): Either[Condition, Out] ! ForeignEval =
       go(Vector(ToPy(a), ToPy(b), ToPy(c)))
     private def go(args: Vector[Value]): Either[Condition, Out] ! ForeignEval =
-      okay.effect[ForeignEval, Either[Condition, Value]](ForeignEval.Call(Address.Method(ref, name), args))
+      okay.freer.effect[ForeignEval, Either[Condition, Value]](ForeignEval.Call(Address.Method(ref, name), args))
         .map(_.flatMap(ref.shape.decode[Out](_)))
 
   final class HoldMethod(ref: Handle, name: String):
@@ -184,7 +184,7 @@ object Handle:
     def apply[A: ToPy, B: ToPy, C: ToPy](a: A, b: B, c: C): Either[Condition, Handle] ! ForeignEval =
       go(Vector(ToPy(a), ToPy(b), ToPy(c)))
     private def go(args: Vector[Value]): Either[Condition, Handle] ! ForeignEval =
-      okay.effect[ForeignEval, Either[Condition, Value]](ForeignEval.Call(Address.Method(ref, name), args, held = true))
+      okay.freer.effect[ForeignEval, Either[Condition, Value]](ForeignEval.Call(Address.Method(ref, name), args, held = true))
         .map(_.flatMap(Wire.asRef).map(_.copy(shape = ref.shape)))
 
 /** how an argument becomes a `Value`: through its `Schema`, or as the
@@ -237,7 +237,7 @@ object Frame:
  * when okay-py alone spoke this wire; since foreign-one it is the value
  * model of every language here, so the names are `Value`, `Frame`,
  * `Handle` and `ValueCodec`. These aliases keep every caller compiling
- * unchanged, the way `okay.RowLift` stayed for `okay.Row`; they go a
+ * unchanged, the way `okay.freer.RowLift` stayed for `okay.freer.Row`; they go a
  * release later. `Value.PyNone` is `Value.Null` the same way.
  */
 type PyValue = Value
@@ -295,7 +295,7 @@ enum ForeignEval[+A] derives okay.Effect:
    * Start a PROGRAM under the run id the host chose (foreign-one-program:
    * the one program protocol). The function is either kind, and the far
    * side answers the same nodes for both: a program as data (Python's
-   * `okay.done`/`okay.perform(...).then(...)`, whose continuations are
+   * `okay.done`/`okay.freer.perform(...).then(...)`, whose continuations are
    * values — multi-shot), or ordinary code calling `okay_call` (the direct
    * style, whose continuation is its parked stack — a node marked `once`).
    * `callbacks` names what `okay_call` may ask for. `direct` is the HOST's

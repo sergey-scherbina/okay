@@ -1,6 +1,7 @@
 package okay.clojure
 
-import okay.{!, %, +, Chunk, ChunkBuf, Chunks, Foreign, Free, Member, Pure, Stage, Take, Writer, pure}
+import okay.{%, +, ChunkBuf, Chunks, Foreign, Pure, Stage, Take}
+import okay.freer.{!, Chunk, Free, Member, Writer, pure}
 import clojure.lang.{AFn, Cons, IFn, ILookup, ISeq, Keyword, LazySeq, RT}
 import scala.reflect.ClassTag
 
@@ -70,7 +71,7 @@ object Program {
 
   /**
    * Whether a value from Clojure is an operation of the row F: the core's
-   * `okay.Member` (interop-shared), found for one signature, built with
+   * `okay.freer.Member` (interop-shared), found for one signature, built with
    * `|` for a union — `Program.Row.of[Reader % Long] | Program.Row.of[State % Long]`.
    */
   type Row[F[+_]] = Member[F]

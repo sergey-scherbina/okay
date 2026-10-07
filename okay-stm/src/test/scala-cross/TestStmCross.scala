@@ -1,5 +1,7 @@
 package okay
 
+
+import okay.freer.*
 import okay.given
 
 /** the transaction language behaves the same behind every handler:

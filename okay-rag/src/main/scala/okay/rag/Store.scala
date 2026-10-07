@@ -1,6 +1,6 @@
 package okay.rag
 
-import okay.{!, Aggregator, effect}
+import okay.freer.{!, Aggregator, effect}
 import okay.lex.Span
 import scala.collection.immutable.ArraySeq
 
@@ -163,21 +163,21 @@ final class MemoryStore(similarity: Similarity = Vectors.cosine)
     // re-indexing an edited definition replaces rather than doubles
     val keys = xs.map((s, _) => (s.source, s.span)).toSet
     items = items.filterNot((s, _) => keys.contains((s.source, s.span))) ++ xs
-    okay.pure(())
+    okay.freer.pure(())
 
   def search(query: Embedding, k: Int): Seq[Scored] ! okay.Pure =
     given Ordering[Scored] = Ordering.by(_.score)
     val top = Aggregator.topK[Scored](k)
-    okay.pure(
+    okay.freer.pure(
       items.foldLeft(top.init)((acc, it) =>
         top.add(acc, Scored(it._1, similarity(query, it._2)))) |> top.present)
 
   def delete(source: String, spans: Seq[Span]): Unit ! okay.Pure =
     val gone = spans.toSet
     items = items.filterNot((s, _) => s.source == source && gone.contains(s.span))
-    okay.pure(())
+    okay.freer.pure(())
 
-  def size: Int ! okay.Pure = okay.pure(items.length)
+  def size: Int ! okay.Pure = okay.freer.pure(items.length)
 
   /** everything held, for persistence and inspection */
   def snapshot: Vector[(Segment, Embedding)] = items

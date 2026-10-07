@@ -1,7 +1,9 @@
 package okay.pg
 
-import okay.{!, +, %, Async, Chunk, Source, Stream, Writer}
+import okay.{+, %, Async, Source}
+import okay.freer.{!, Chunk, Stream, Writer}
 import okay.given
+import okay.freer.given
 import okay.crypto.given
 import okay.sql.SqlValue
 
@@ -19,7 +21,7 @@ class TestCopy extends munit.FunSuite {
   val host = sys.env.getOrElse("OKAY_PG_HOST", "127.0.0.1")
   val port = sys.env.get("OKAY_PG_PORT").flatMap(_.toIntOption).getOrElse(5432)
 
-  def connect(): PgSql = okay.!.run(okay.Async.run[PgSql, okay.Pure](PgSql.connect(host, port, "okay", "okay", "okay")))
+  def connect(): PgSql = okay.freer.!.run(okay.Async.run[PgSql, okay.Pure](PgSql.connect(host, port, "okay", "okay", "okay")))
 
   lazy val available: Boolean =
     try { connect().close(); true }

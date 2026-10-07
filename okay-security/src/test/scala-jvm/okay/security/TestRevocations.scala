@@ -1,7 +1,10 @@
 package okay.security
+import okay.freer.*
 
 import okay.*
+
 import okay.given
+import okay.freer.given
 
 /**
  * The list is somebody else's, which changes nothing about the check

@@ -1,6 +1,7 @@
 package okay.llm
 
-import okay.{!, %, +, Async, Writer, effect, pure}
+import okay.{%, +, Async}
+import okay.freer.{!, Writer, effect, pure}
 import okay.given
 import okay.codec.Schema
 

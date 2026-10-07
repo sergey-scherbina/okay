@@ -1,7 +1,7 @@
 package okay.agent
 
-import okay.{!, +, Aggregator}
-
+import okay.{+}
+import okay.freer.{!, Aggregator}
 /**
  * The context handler that THREADS its state instead of holding it
  * (mirrors State.handle, and for the same reason): the compaction
@@ -32,7 +32,7 @@ object Memory {
       case Context.Restore(m) => (m.stateAs[S], ())
 
     // one step on the state engine, both faces (handler-one-step)
-    okay.HandleFrames.stateRun[Context, S, A, (S, A), F](summon[okay.TypeableK[Context]], (s, a) => okay.pure((s, a)))(
+    okay.freer.HandleFrames.stateRun[Context, S, A, (S, A), F](summon[okay.TypeableK[Context]], (s, a) => okay.freer.pure((s, a)))(
       (s, op) => answer(s, op.asInstanceOf[Context[Any]]))(init, prog)
   }
 

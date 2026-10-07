@@ -1,8 +1,11 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import java.util.concurrent.atomic.AtomicInteger
 import scala.collection.immutable.Queue
-import okay.!.*
+import okay.freer.!.*
 import scala.util.Try
 
 /**
@@ -531,7 +534,7 @@ extension [A](c: Channel[A])
    * Nothing is delayed for a batch: `receiveMany` takes only what is
    * already buffered and parks for a single element when nothing is.
    */
-  def drained: Source[A] = drainedThen(okay.pure(()))
+  def drained: Source[A] = drainedThen(okay.freer.pure(()))
 
   /** `drained`, running `last` where the channel ends instead of
    * nothing. A join that entered a cancel scope passes its EXIT here,
@@ -557,12 +560,12 @@ extension [A](c: Channel[A])
       k => { c.receiveManyAsync(Drain.Batch)(k); () => () }
     val now: () => (Either[Throwable, Chunk[A]] | Null) = () => c.receiveManyNow(Drain.Batch)
     def pull: Source[A] =
-      okay.effect[R, Chunk[A]](Async.Await[Chunk[A]](reg, now)).flatMap: got =>
+      okay.freer.effect[R, Chunk[A]](Async.Await[Chunk[A]](reg, now)).flatMap: got =>
         if got.isEmpty then last else tellFrom(got, 0)
     def tellFrom(got: Chunk[A], i: Int): Source[A] =
-      okay.effect[R, Unit](Writer(got(i))).flatMap: _ =>
+      okay.freer.effect[R, Unit](Writer(got(i))).flatMap: _ =>
         if i + 1 < got.length then tellFrom(got, i + 1) else pull
-    okay.pure[R, Unit](()).flatMap(_ => pull)
+    okay.freer.pure[R, Unit](()).flatMap(_ => pull)
 
   /**
    * The channel as a source of CHUNKS: each `receiveMany` batch told
@@ -579,10 +582,10 @@ extension [A](c: Channel[A])
       k => { c.receiveManyAsync(Drain.Batch)(k); () => () }
     val now: () => (Either[Throwable, Chunk[A]] | Null) = () => c.receiveManyNow(Drain.Batch)
     def go: Source[Chunk[A]] =
-      okay.effect[Writer % Chunk[A] + Async, Chunk[A]](Async.Await[Chunk[A]](reg, now)).flatMap: got =>
-        if got.isEmpty then okay.pure(())
-        else okay.effect[Writer % Chunk[A] + Async, Unit](Writer(got)).flatMap(_ => go)
-    okay.pure[Writer % Chunk[A] + Async, Unit](()).flatMap(_ => go)
+      okay.freer.effect[Writer % Chunk[A] + Async, Chunk[A]](Async.Await[Chunk[A]](reg, now)).flatMap: got =>
+        if got.isEmpty then okay.freer.pure(())
+        else okay.freer.effect[Writer % Chunk[A] + Async, Unit](Writer(got)).flatMap(_ => go)
+    okay.freer.pure[Writer % Chunk[A] + Async, Unit](()).flatMap(_ => go)
 
 given Stream[Channel, Async] with
   def uncons[A](c: Channel[A]): Option[(A, Channel[A])] ! Async =
@@ -954,9 +957,9 @@ object Channel {
     // counts the direct steps and FlushBudget of them go through a
     // `pure(()).flatMap` node instead — Pipe's PullBudget, here.
     def sendIf(o: Option[Chunk[A]], depth: Int)(rest: Int => Unit ! Async): Unit ! Async = o match
-      case Some(ch) => c.send(ch).flatMap(ok => if ok then rest(0) else okay.pure(()))
+      case Some(ch) => c.send(ch).flatMap(ok => if ok then rest(0) else okay.freer.pure(()))
       case None =>
-        if depth >= FlushBudget then okay.pure[Async, Unit](()).flatMap(_ => rest(0))
+        if depth >= FlushBudget then okay.freer.pure[Async, Unit](()).flatMap(_ => rest(0))
         else rest(depth + 1)
     def step[X](e: Flush[X] | (Writer % A + Async)[X], k: X => Flushing[A], depth: Int): Unit ! Async =
       split[Flush, Writer % A + Async](e)
@@ -968,8 +971,8 @@ object Channel {
             buf.modify(b => (ChunkBuffer(b.pending :+ w), ()))
             sendIf(takeChunk(buf, size, full = false), depth)(d => go(k(()), d)) })
     def go(p: Flushing[A], depth: Int): Unit ! Async = (p.resume: @unchecked) match
-      case Return(_) => sendIf(takeChunk(buf, size, full = true), depth)(_ => okay.pure(()))
-      case Inject(e) => step(e, _ => okay.pure(()), depth)
+      case Return(_) => sendIf(takeChunk(buf, size, full = true), depth)(_ => okay.freer.pure(()))
+      case Inject(e) => step(e, _ => okay.freer.pure(()), depth)
       case Bind(Inject(e), k) => step(e, k, depth)
     go(p, 0)
 

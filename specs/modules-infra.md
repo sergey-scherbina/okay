@@ -5,12 +5,15 @@ The build grows from one root into a family: the core stays plain
 `okay` (no suffix — the user's naming decision), every satellite
 carries one. Modules are kept SMALL. The core is dependency-free
 forever — no library; ScalaCheck is allowed in test scope only. Since
-2026-10-06 (freer-min, stages 29 and 33) the two monads it is written
-over are modules of their own BELOW it, `okay-freer` (the freer tree and
-the CPS `Cont`) and `okay-cont` (the continuation machine), each
-dependency-free in the same sense and knowing nothing of the other; the
-core holds what is common to them (`Control`, `Effects`) and both
-instances. The two edges the core has, and not a library.
+2026-10-07 (classic-to-freer) the core is the INTERFACE and the machine:
+`Effects`, `Control`, `Answers`, the type classes, on `okay-cont` (the
+continuation machine, dependency-free). The classic — the freer tree,
+its handler library and effects, package `okay.freer` — is `okay-freer`
+ABOVE the core: one `Effects` instance of it, chosen at compile time by
+the given in scope, knowing nothing of the machine but through the
+core's interface; the machine knows nothing of it. The one edge the
+core has, and not a library; the satellites take `okay-freer` while
+they are written in the classic.
 
 ## Interface (the layout)
 - `okay` — the core, crossProject (JVM / JS / Native): effects,

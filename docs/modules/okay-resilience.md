@@ -16,7 +16,9 @@ rides on). JVM + JS.
 state in one cell and its clock injected:
 
 ```scala
-import okay.*, okay.given
+import okay.*
+import okay.freer.*
+import okay.freer.given
 import okay.resilience.*
 
 val breaker  = Breaker("payments", failures = 5, openMillis = 10_000)

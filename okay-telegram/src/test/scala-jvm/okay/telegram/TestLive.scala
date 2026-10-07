@@ -1,7 +1,10 @@
 package okay.telegram
+import okay.freer.*
 
 import okay.*
+
 import okay.given
+import okay.freer.given
 import okay.ui.Telegram.{Act, Key, Message}
 
 /** a timer that fires when the test says so — a window closes when

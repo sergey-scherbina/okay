@@ -1,5 +1,7 @@
 package okay
 
+
+import okay.freer.*
 /**
  * The aggregating families (specs/optics.md stage 4): a kaleidoscope
  * collapses many focuses through an Applicative, an algebraic lens

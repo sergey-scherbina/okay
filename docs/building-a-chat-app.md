@@ -178,7 +178,9 @@ okay-jetty brings okay-http and Jetty.
 package example
 
 import okay.*
+import okay.freer.*
 import okay.given
+import okay.freer.given
 import okay.chat.Chat
 import okay.conf.Secrets
 import okay.http.{Http, Method, Request, Response}
@@ -332,7 +334,9 @@ okay-ui's tree on the CDN React, runs the fold on the event loop
 package example
 
 import okay.*
+import okay.freer.*
 import okay.given
+import okay.freer.given
 import okay.ui.{Event, React, ReactJs, Ui}
 import scala.scalajs.js
 import js.Dynamic.global as g
@@ -461,7 +465,9 @@ trusting that it does not.
 package example
 
 import okay.*
+import okay.freer.*
 import okay.given
+import okay.freer.given
 import okay.jetty.Jetty
 import java.net.URI
 import java.net.http.{HttpClient, HttpRequest, HttpResponse}

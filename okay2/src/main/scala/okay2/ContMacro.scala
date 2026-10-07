@@ -5,7 +5,7 @@ import scala.reflect.macros.blackbox
 
 /**
  * THE MACRO BEHIND `Cont.shift` (cont-stack-okay2-macro, Layer 1 A of specs/cont-stack.md in Scala 2; the Scala 3
- * core's `okay.macros.ContMacro`, its tail case). A shift whose body only calls its continuation in TAIL position,
+ * core's `okay.freer.macros.ContMacro`, its tail case). A shift whose body only calls its continuation in TAIL position,
  * with an argument free of it — through blocks, `if` and `match`, a `throw` in a branch allowed — IS that argument
  * evaluated when the runner reaches the shift: it is rewritten to `tailShift(() => v)` (`tailPure(v)` for a
  * literal), which the runner walks in its own loop with no frame and no room counted. Sound because the body has

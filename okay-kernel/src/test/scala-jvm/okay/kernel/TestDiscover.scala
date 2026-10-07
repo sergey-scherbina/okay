@@ -51,7 +51,7 @@ class TestDiscover extends munit.FunSuite:
     val (found, failed) = Discover.jars(dir, parent = getClass.getClassLoader)
     assertEquals(found.map(_.id), Vector("hello"))
     assertEquals(failed, Vector.empty)
-    val (r, close) = okay.Resource.open(Kernel.assemble(found))
+    val (r, close) = okay.freer.Resource.open(Kernel.assemble(found))
     assertEquals(r.all(TestDiscover.greeting), Vector("hello"))
     assertEquals(r.providers(TestDiscover.greeting), Vector(("hello", "hello")))
     close()

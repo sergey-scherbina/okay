@@ -1,7 +1,10 @@
 package okay.telegram
+import okay.freer.*
 
 import okay.*
+
 import okay.given
+import okay.freer.given
 import okay.ui.{Event, Ui}
 
 /** the README's examples, compiled — a readme whose examples do not

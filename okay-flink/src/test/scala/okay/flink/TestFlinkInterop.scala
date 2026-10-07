@@ -1,6 +1,6 @@
 package okay.flink
 
-import okay.Aggregator
+import okay.freer.Aggregator
 import FlinkInterop.*
 
 /** The AggregateFunction contract, exercised the way a Flink window

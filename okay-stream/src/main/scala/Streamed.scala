@@ -1,5 +1,7 @@
 package okay
 
+
+import okay.freer.*
 import Chunks.elements
 import Row.{In, at, plus}
 

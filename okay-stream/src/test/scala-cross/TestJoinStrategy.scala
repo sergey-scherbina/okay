@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import scala.util.Random
 import Chunks.elements
 import Tables.{Plan, Table, collect, join, sortByKey, assumeSortedByKey, select, where}

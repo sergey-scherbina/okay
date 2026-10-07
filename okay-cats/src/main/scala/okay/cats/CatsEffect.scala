@@ -1,7 +1,8 @@
 package okay.cats
 
-import okay.{!, +, Async, ==>, effect}
-import okay.!.*
+import okay.{+, Async, ==>}
+import okay.freer.{!, effect}
+import okay.freer.!.*
 import _root_.cats.~>
 import _root_.cats.effect.{IO, LiftIO}
 import _root_.cats.effect.kernel.{Cont, Deferred, Fiber, MonadCancel, Outcome, Poll, Ref, Sync, Unique}
@@ -110,7 +111,7 @@ object CatsEffect:
     def liftIO[A](io: IO[A]): Program[A] = CatsEffect.liftIO(io)
 
     // ---- Monad: okay's tree, okay's stack-safe loop
-    def pure[A](a: A): Program[A] = okay.pure(a)
+    def pure[A](a: A): Program[A] = okay.freer.pure(a)
     def flatMap[A, B](fa: Program[A])(f: A => Program[B]): Program[B] = fa.flatMap(f)
     override def map[A, B](fa: Program[A])(f: A => B): Program[B] = fa.map(f)
     def tailRecM[A, B](a: A)(f: A => Program[Either[A, B]]): Program[B] = !.loop(a)(f)

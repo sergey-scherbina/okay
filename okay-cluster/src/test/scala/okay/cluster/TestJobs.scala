@@ -1,6 +1,7 @@
 package okay.cluster
 
-import okay.{Aggregator, Pane}
+import okay.Pane
+import okay.freer.Aggregator
 import okay.codec.Schema
 
 /**

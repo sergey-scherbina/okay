@@ -3,8 +3,9 @@ package okay.cluster.foreign
 import okay.codec.Schema
 import okay.arrow.{Rows, Table}
 import okay.cluster.Flow
-import okay.{!, +}
-import okay.given
+import okay.{+}
+import okay.freer.{!}
+import okay.freer.given
 
 /**
  * THE FACADE OVER EVERY FOREIGN LANGUAGE (specs/foreign-facade.md): one

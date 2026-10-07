@@ -1,6 +1,7 @@
 package okay.llm
 
-import okay.{!, %, +, Async, Writer}
+import okay.{%, +, Async}
+import okay.freer.{!, Writer}
 import okay.codec.{Json, Schema}
 import okay.lex.Json as JsonLex
 import okay.parse.{Cst, JsonParse, Parse}
@@ -38,7 +39,7 @@ object Structured {
    */
   def cut[A](tokens: Unit ! Writer % String + Async)
             (using s: Schema[A], h: okay.Answers[Async]): Cut[A] =
-    import okay.!.*
+    import okay.freer.!.*
     type F = Writer % String + Async
 
     var text = ""

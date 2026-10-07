@@ -1,6 +1,8 @@
 package okay.x402.mcp
+import okay.freer.*
 
 import okay.*
+
 import okay.agent.{ToolCall, ToolSpec}
 import okay.chain.Network
 import okay.codec.Json.*

@@ -1,6 +1,7 @@
 package okay.r
+import okay.freer.given
 
-import okay.given
+
 
 object TestRFacade:
   val demo = R.module("rfacadedemo", """

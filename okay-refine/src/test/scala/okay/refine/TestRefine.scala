@@ -3,7 +3,6 @@ package okay.refine
 import okay.testkit.Munit.Diagnosed
 import okay.given
 import okay.{preview, set}
-
 /** specs/refine.md, stage 1: the vocabulary — a step, a path, a choice,
  * the way back, and the prism a step is */
 class TestRefine extends Diagnosed:

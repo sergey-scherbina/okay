@@ -1,7 +1,9 @@
 package okay.sql
 
-import okay.{!, Async, Chunk, Free, pure}
+import okay.Async
+import okay.freer.{!, Chunk, Free, pure}
 import okay.given
+import okay.freer.given
 import scala.collection.mutable.ArrayBuffer
 
 /**

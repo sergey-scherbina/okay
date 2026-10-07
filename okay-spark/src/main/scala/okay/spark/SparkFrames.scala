@@ -1,6 +1,9 @@
 package okay.spark
 
 import okay.*
+import okay.freer.*
+import okay.freer.given
+
 import okay.Tables.{Heap, Table}
 import okay.codec.Schema
 import okay.sql.{Query, SqlValue, Structured}
@@ -139,7 +142,7 @@ final class SparkFrames(spark: SparkSession, bulk: SparkBulk):
   /** `Structured` answered on Spark: in Catalyst where the table is
    * DataFrame-born, through the RDD otherwise */
   def structured[A, F[+_]](p: A ! Structured + F): A ! State % H + F =
-    import okay.Row.plus
+    import okay.freer.Row.plus
     !.interpret(p):
       [X] => (e: Structured[X]) => e match
         case Structured.Matching(t, w, s) =>

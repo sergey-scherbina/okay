@@ -1,6 +1,6 @@
 package okay.flink
 
-import okay.Aggregator
+import okay.freer.Aggregator
 import org.apache.flink.api.common.functions.AggregateFunction
 
 /**

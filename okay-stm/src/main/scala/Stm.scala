@@ -1,6 +1,8 @@
 package okay
 
-import okay.!.*
+
+import okay.freer.*
+import okay.freer.!.*
 import scala.annotation.tailrec
 import scala.collection.mutable
 

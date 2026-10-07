@@ -1,6 +1,7 @@
 package okay.foreign
 
-import okay.{!, given}
+
+import okay.freer.{!, given}
 import okay.durable.Durable
 
 object TestPyHandles:
@@ -70,9 +71,9 @@ class TestPyHandles extends okay.testkit.Munit.Diagnosed {
   test("Durable: a program with handles REPLAYS; a recovery onto a fresh process is refused by name") {
     def steps(n: Int): Either[Condition, Long] ! PyEval =
       Py.hold("okayh:acc")().flatMap {
-        case Left(c) => okay.pure(Left(c))
+        case Left(c) => okay.freer.pure(Left(c))
         case Right(acc) =>
-          (1 to n).foldLeft(okay.pure[PyEval, Either[Condition, Long]](Right(0L))) { (p, i) =>
+          (1 to n).foldLeft(okay.freer.pure[PyEval, Either[Condition, Long]](Right(0L))) { (p, i) =>
             p.flatMap(_ => acc.call[Long]("add")(i.toLong))
           }
       }

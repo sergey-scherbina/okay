@@ -1,7 +1,9 @@
 package okay.jdbc
 
-import okay.{!, +, %, Async, Chunk, effect, Resource, Source, Stream, Throws, Writer}
+import okay.{+, %, Async, Source}
+import okay.freer.{!, Chunk, effect, Resource, Stream, Throws, Writer}
 import okay.given
+import okay.freer.given
 import okay.codec.Schema
 import okay.sql.{Bad, Granted, Isolation, Sql, SqlType, SqlValue, Typed}
 import okay.sql.given
@@ -253,7 +255,7 @@ class TestTyped extends munit.FunSuite {
         "val h2: Typed.Db[Typed.Tx.No] = null.asInstanceOf[Typed.Db[Typed.Tx.No]]\n" +
         "Typed.region[Long, okay.Async](h2) { tx =>\n" +
         "  Typed.region[Long, okay.Async](tx)(inner =>\n" +
-        "    okay.!.widen[Long, okay.Async, okay.Resource](tx.update(\"select 1\")))\n" +
+        "    okay.freer.!.widen[Long, okay.Async, okay.freer.Resource](tx.update(\"select 1\")))\n" +
         "}")
       assert(errors.contains("Found:") && errors.contains("Tx.Yes"), errors)
     finally conn.close()
@@ -287,7 +289,7 @@ class TestTyped extends munit.FunSuite {
       intercept[java.sql.SQLException](!.run(Async.run[Long, okay.Pure](Resource.run[Long, Async](prog)))): Unit
       assert(conn.getAutoCommit, "autocommit not restored: the brake never ran")
       assertEquals(countBy(db, "id = 22"), 0L, "the insert survived the failed statement")
-      val g = run(Resource.run[Granted, Async](Typed.transact[Granted, Async](db)(g => okay.pure(g))))
+      val g = run(Resource.run[Granted, Async](Typed.transact[Granted, Async](db)(g => okay.freer.pure(g))))
       assertEquals(g.granted, Isolation.ReadCommitted)
     finally conn.close()
   }
@@ -304,7 +306,7 @@ class TestTyped extends munit.FunSuite {
       }
       val out = !.run(Async.run[Either[String, Long], Nothing](
         Resource.run[Either[String, Long], Async](
-          okay.runEither[Long, Resource + Async, String](prog))))
+          okay.freer.runEither[Long, Resource + Async, String](prog))))
       assertEquals(out, Left("changed my mind"))
       assert(conn.getAutoCommit, "autocommit not restored after the abort")
       assertEquals(countBy(db, "id = 22"), 0L, "the insert survived the abort")
@@ -314,7 +316,7 @@ class TestTyped extends munit.FunSuite {
   test("nested transact on one connection refuses loudly") {
     withDb { db =>
       val prog = Typed.transact[Granted, Async](db) { _ =>
-        Typed.transact[Granted, Async](db)(g2 => okay.pure(g2))
+        Typed.transact[Granted, Async](db)(g2 => okay.freer.pure(g2))
       }
       val e = intercept[IllegalStateException](
         !.run(Async.run[Granted, okay.Pure](Resource.run[Granted, Async](prog))))
@@ -324,7 +326,7 @@ class TestTyped extends munit.FunSuite {
 
   test("requested isolation is passed through; the granted level is exposed") {
     withDb { db =>
-      val prog = Typed.transact[Granted, Async](db, Isolation.Serializable)(g => okay.pure(g))
+      val prog = Typed.transact[Granted, Async](db, Isolation.Serializable)(g => okay.freer.pure(g))
       val g = !.run(Async.run[Granted, okay.Pure](Resource.run[Granted, Async](prog)))
       assertEquals(g.requested, Isolation.Serializable)
       assertEquals(g.granted, Isolation.Serializable)
@@ -428,7 +430,7 @@ class TestTyped extends munit.FunSuite {
       val db = JdbcSql(conn)
       val before = conn.getTransactionIsolation
       assertNotEquals(before, java.sql.Connection.TRANSACTION_SERIALIZABLE)
-      val g = run(Resource.run[Granted, Async](Typed.transact[Granted, Async](db, Isolation.Serializable, readOnly = true)(g => okay.pure(g))))
+      val g = run(Resource.run[Granted, Async](Typed.transact[Granted, Async](db, Isolation.Serializable, readOnly = true)(g => okay.freer.pure(g))))
       assertEquals(g.granted, Isolation.Serializable)
       // JDBC's setReadOnly is a hint H2 ignores: the grant reports what the connection says
       assertEquals(g.readOnly, conn.isReadOnly)

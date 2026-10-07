@@ -1,7 +1,8 @@
 package okay.scala2
 
-import okay.{Effects, Free, TypeableK}
-import okay.given
+import okay.{Effects, TypeableK}
+import okay.freer.{Free}
+import okay.freer.given
 import scala.reflect.ClassTag
 import Rows.Top
 
@@ -44,7 +45,7 @@ abstract class Effect[F[_]](implicit tag: ClassTag[F[Any]]) { self =>
   private def narrow[X](op: Op[X]): F[X] = op.asInstanceOf[F[X]]
 
   /** perform one operation */
-  def send[A](op: F[A] & Op[A]): Eff[Effect[F], A] = Eff.of(Rows.coerce(okay.effect[Op, A](op)))
+  def send[A](op: F[A] & Op[A]): Eff[Effect[F], A] = Eff.of(Rows.coerce(okay.freer.effect[Op, A](op)))
 
   /** handle this effect: `ret` for the answer, `h` for each operation */
   def handle[R, A, B](e: Eff[Effect[F] & R, A])(ret: A => Eff[R, B])(h: Handler[F, R, B]): Eff[R, B] =

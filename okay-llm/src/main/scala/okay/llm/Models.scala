@@ -1,6 +1,7 @@
 package okay.llm
 
-import okay.{!, %, +, Async, Writer, effect, pure}
+import okay.{%, +, Async}
+import okay.freer.{!, Writer, effect, pure}
 import okay.codec.Json
 import okay.codec.Json.*
 
@@ -177,7 +178,7 @@ object Models:
         J.str(j, "error").map(Progress.Failed(_))
           .orElse(if J.str(j, "status").contains("success") then Some(Progress.Done) else None)
           .orElse(J.long(j, "completed").map(c => Progress.Bytes(c, J.long(j, "total"))))
-      okay.!.widen[(Seq[String], Unit), Async, Writer % Progress](Writer.run[String, Unit, Async](lines)).flatMap { (ls, _) =>
+      okay.freer.!.widen[(Seq[String], Unit), Async, Writer % Progress](Writer.run[String, Unit, Async](lines)).flatMap { (ls, _) =>
         // the recursion is only through the program's flatMap: trampolined
         def go(rest: List[Progress]): Unit ! F = rest match
           case Nil => pure(())

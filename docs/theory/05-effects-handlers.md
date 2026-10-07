@@ -205,7 +205,7 @@ override def foldCont[S](h: Interpr[F, C0, S]): C0[A, S, S] =
 
 Three parts, and each does one thing — at the instance's carrier `C0`,
 through its `control` (the machine's by default, the CPS `Cont` under
-`import okay.cps.{given_Effects_Free, *}`; `h` is then `F !> S` and the
+`import okay.freer.cps.{given_Effects_Free, *}`; `h` is then `F !> S` and the
 fold `A /> S`).
 
 `Free.fold` supplies the *normal form*. Its rotations (chapter 4) mean

@@ -1,6 +1,7 @@
 package okay.zio
 
-import okay.{!, %, +, Async, Throws, raise}
+import okay.{%, +, Async}
+import okay.freer.{!, Throws, raise}
 import _root_.zio.{Task, ZIO}
 
 /**
@@ -48,7 +49,7 @@ given zioForeignThrows[E]: okay.ForeignEffect[[X] =>> ZIO[Any, E, X]] with
   type G[+X] = (Throws % E + Async)[X]
   def lift[A](m: ZIO[Any, E, A]): A ! G =
     !.widen[Either[E, A], Async, Throws % E](ZioInterop.fromZIO(m.either)).flatMap {
-      case Right(a) => okay.pure(a)
+      case Right(a) => okay.freer.pure(a)
       case Left(e) => !.widen[A, Throws % E, Async](raise[E, A](e))
     }
 

@@ -1,6 +1,7 @@
 package okay.sql
 
 import okay.*
+
 import okay.given
 import okay.codec.Schema
 import scala.annotation.tailrec

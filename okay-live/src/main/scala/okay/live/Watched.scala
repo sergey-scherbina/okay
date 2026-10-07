@@ -1,6 +1,8 @@
 package okay.live
 
 import okay.*
+import okay.freer.*
+
 import okay.given
 import okay.codec.{Json, JsonOptic, Schema}
 import scala.annotation.tailrec

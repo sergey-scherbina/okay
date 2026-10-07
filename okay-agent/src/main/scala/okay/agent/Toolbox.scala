@@ -1,6 +1,6 @@
 package okay.agent
 
-import okay.!
+import okay.freer.!
 import okay.codec.{Json, Schema}
 
 /**
@@ -117,7 +117,7 @@ object Toolbox {
       add(new In.Entry[F](ToolSpec[A](name, description), c =>
         ToolSpec.args[A](c) match
           case Right(a) => run(a)
-          case Left(e) => okay.pure(Toolbox.failed(name, e))))
+          case Left(e) => okay.freer.pure(Toolbox.failed(name, e))))
     def raw(name: String, description: String, schema: Json)(run: Json => String ! F): In[F] =
       add(new In.Entry[F](ToolSpec(name, description, schema), c => run(c.args)))
     def add(e: In.Entry[F]): In[F] = new In[F](entries :+ e)
@@ -138,7 +138,7 @@ object Toolbox {
 
   extension (b: Toolbox)
     /** every pure tool as a program in F — `pure` of what it answered */
-    def in[F[+_]]: In[F] = new In[F](b.entries.map(e => new In.Entry[F](e.spec, c => okay.pure(e.handle(c)))))
+    def in[F[+_]]: In[F] = new In[F](b.entries.map(e => new In.Entry[F](e.spec, c => okay.freer.pure(e.handle(c)))))
 
   /**
    * One tool: its declaration and its answer, together.

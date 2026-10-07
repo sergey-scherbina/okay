@@ -1,7 +1,10 @@
 package okay.script
+import okay.freer.*
 
 import okay.*
+
 import okay.given
+import okay.freer.given
 import okay.http.{Http, Request, Response as HttpResponse}
 
 import java.nio.charset.StandardCharsets.UTF_8

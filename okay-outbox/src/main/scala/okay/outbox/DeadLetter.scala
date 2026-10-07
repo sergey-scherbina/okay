@@ -1,6 +1,8 @@
 package okay.outbox
 
 import okay.*
+import okay.freer.*
+
 import okay.codec.Schema
 import okay.persist.{Ack, Offsets, Record, Store, Topic, Typed}
 

@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import okay.Chunks.elements
 import java.nio.file.Files
 import scala.jdk.CollectionConverters.*
@@ -63,7 +66,7 @@ class TestBulk extends munit.FunSuite {
 class TestTables extends munit.FunSuite {
   import okay.Tables.of
   import okay.Sort.sortBy
-  import okay.Row.plus
+  import okay.freer.Row.plus
 
   final case class Sale(shop: Int, amount: Long)
 

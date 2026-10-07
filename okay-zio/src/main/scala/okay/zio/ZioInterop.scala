@@ -1,7 +1,9 @@
 package okay.zio
 
-import okay.{!, %, +, Async, Chunks, Reader, Throws, raise, runEither}
+import okay.{%, +, Async, Chunks}
+import okay.freer.{!, Reader, Throws, raise, runEither}
 import okay.given
+import okay.freer.given
 import _root_.zio.{Exit, Runtime, Scope, Task, Unsafe, ZEnvironment, ZIO}
 import _root_.zio.stream.ZStream
 import scala.concurrent.ExecutionContext.parasitic
@@ -92,7 +94,7 @@ object ZioInterop {
       .flatMap { env =>
         !.widen[Either[E, A], Async, Reader % ZEnvironment[R] + Throws % E](
           fromZIO(z.provideEnvironment(env).either, runtime)).flatMap {
-          case Right(a) => okay.pure(a)
+          case Right(a) => okay.freer.pure(a)
           case Left(e) => !.widen[A, Throws % E, Reader % ZEnvironment[R] + Async](raise[E, A](e))
         }
       }

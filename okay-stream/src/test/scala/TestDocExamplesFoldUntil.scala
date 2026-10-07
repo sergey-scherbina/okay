@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 /**
  * The examples docs/tutorial.md §2, docs/guide.md §2–3 and the
  * typepedia print for `FoldUntil` and `!.loop`, VERBATIM — a doc

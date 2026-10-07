@@ -1,5 +1,7 @@
 package okay
 
+
+import okay.freer.*
 import scala.scalajs.js
 import scala.scalajs.js.typedarray.*
 

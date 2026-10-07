@@ -1,6 +1,9 @@
 package okay
 
-import okay.Row.{In, at, plus}
+
+import okay.freer.*
+import okay.freer.given
+import okay.freer.Row.{In, at, plus}
 import Chunks.elements
 
 /**

@@ -1,5 +1,6 @@
 package okay
 
+
 import org.scalacheck.Prop.forAll
 
 /**

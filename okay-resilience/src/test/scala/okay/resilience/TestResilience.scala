@@ -1,6 +1,8 @@
 package okay.resilience
 
 import okay.*
+import okay.freer.*
+
 import okay.given
 import okay.http.{Method, Request}
 

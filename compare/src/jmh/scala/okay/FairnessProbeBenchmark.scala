@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 
@@ -155,7 +158,7 @@ class FairnessProbeBenchmark {
   def queue_okay_chunkNative(): Long =
     var sum = 0L
     Channel.bufferChunked(64, size = 256)(list).drained.runForeach(ch =>
-      okay.effect[Async, Unit](Async.Run(() =>
+      okay.freer.effect[Async, Unit](Async.Run(() =>
         var i = 0
         while i < ch.length do { sum += ch(i); i += 1 }))).runWith
     sum

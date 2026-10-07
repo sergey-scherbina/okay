@@ -1,7 +1,9 @@
 package okay.pool
 
 import okay.*
+
 import okay.given
+import okay.freer.given
 import okay.codec.Json
 import okay.http.{Body, Method, Request}
 import okay.resilience.Discovery

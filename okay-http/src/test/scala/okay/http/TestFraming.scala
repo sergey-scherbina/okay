@@ -1,7 +1,10 @@
 package okay.http
 
 import okay.*
+import okay.freer.*
+
 import okay.given
+import okay.freer.given
 import okay.codec.{Json, Schema}
 import java.nio.charset.StandardCharsets.UTF_8
 

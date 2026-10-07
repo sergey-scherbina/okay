@@ -1,7 +1,7 @@
 package okay.security
 
-import okay.{!, Async, Scheduler}
-
+import okay.{Async, Scheduler}
+import okay.freer.{!}
 /**
  * SOMEBODY ELSE'S LIST OF WHAT IS OFF (specs/security.md stage 7).
  *

@@ -1,7 +1,7 @@
 package okay.bayes
 
 import scala.util.Random
-import okay.{Free, given}
+import okay.freer.{Free, given}
 import okay.codec.Schema
 import okay.foreign.{ForeignWorker, Py, PyEnv, PyEval}
 

@@ -1,8 +1,10 @@
 package okay.script.api
+import okay.freer.*
 
 import okay.*
+
 import okay.ui.{Event, Html, Ui, Wire}
-import okay.TDict
+import okay.freer.TDict
 
 /** A server-driven okay-ui app a page declares -- `Wire.serve`'s
  * three arguments, held as a value so the page can `mount` it and

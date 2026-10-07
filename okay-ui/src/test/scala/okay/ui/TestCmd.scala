@@ -1,7 +1,10 @@
 package okay.ui
+import okay.freer.*
 
 import okay.*
+
 import okay.given
+import okay.freer.given
 
 /** specs/ui.md, "The effect slot" — one test per box */
 class TestCmd extends munit.FunSuite {

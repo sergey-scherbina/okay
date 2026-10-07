@@ -1,7 +1,10 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import okay.Direct.*
-import okay.Shift.Stacked.{reset, shift}
+import okay.freer.Shift.Stacked.{reset, shift}
 import scala.language.implicitConversions
 
 /**

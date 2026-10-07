@@ -1,7 +1,7 @@
 package okay.r
 
-import okay.{Choose, Reader, effect, runChoice, given}
 
+import okay.freer.{Choose, Reader, effect, runChoice, given}
 object TestRProgram:
   val progs = R.module("progs", """
     pairs <- function() {

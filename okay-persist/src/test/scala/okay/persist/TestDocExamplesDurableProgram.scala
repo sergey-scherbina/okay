@@ -1,7 +1,8 @@
 package okay.persist
 
 import munit.FunSuite
-import okay.{%, !, +, Shift, Pure, Wf}
+import okay.{%, +, Pure, Wf}
+import okay.freer.{!, Shift}
 import okay.Direct.*
 import okay.codec.Schema
 import scala.language.implicitConversions
@@ -29,7 +30,7 @@ class TestDocExamplesDurableProgram extends FunSuite {
     val topic = MemoryStore().topic("bookings")
     val id = "booking-1"
     val oracle: String => Dialogue.Attempt ?=> String ! Pure =
-      q => okay.pure(if q == "city?" then "Kyiv" else "3")
+      q => okay.freer.pure(if q == "city?" then "Kyiv" else "3")
     val answer = !.run(
       Dialogue.workflow[String, String, String, Pure](topic, id, "booking/1")(booking)
         .runWorkflow(oracle)

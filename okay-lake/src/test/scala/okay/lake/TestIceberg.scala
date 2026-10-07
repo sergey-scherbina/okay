@@ -1,6 +1,8 @@
 package okay.lake
+import okay.freer.given
 
 import okay.given
+
 import okay.cluster.Flows
 import okay.codec.Json
 import java.nio.file.{Files, Path}

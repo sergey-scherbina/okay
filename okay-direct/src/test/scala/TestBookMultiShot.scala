@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import okay.Direct.*
 import scala.language.implicitConversions
 
@@ -78,7 +81,7 @@ class TestBookMultiShot extends munit.FunSuite {
     var ran = false
     val r = Shift.delimited[Int, Pure]:
       direct:
-        val _ = !Shift.shift[Int](_ => okay.pure(99))   // k dropped
+        val _ = !Shift.shift[Int](_ => okay.freer.pure(99))   // k dropped
         ran = true
         0
     assertEquals(!.run(r), 99)

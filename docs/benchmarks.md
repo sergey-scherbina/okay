@@ -3973,7 +3973,7 @@ the JVM's real number it is 12–18x, all of it in allocation.
 ### 18b. free-bind-node-count: the floor of a bind without its effect
 
 Before anything is fused, what fusing could buy at most: `pureChain`
-is `bindChain` with `okay.pure(i)` in place of `async(i)` — `Pure` +
+is `bindChain` with `okay.freer.pure(i)` in place of `async(i)` — `Pure` +
 `Bind` + the closure per step, none of `Inject`, `Run`, the thunk, or
 the handler round-trip `Bind(Inject(a), f)` makes. Same run, same
 process, Native (BenchCross, N=4000, median of 20 / min, us) and the

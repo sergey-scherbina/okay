@@ -1,5 +1,7 @@
 package okay
 
+
+import okay.freer.*
 /**
  * THE DISCIPLINE AS A CONSTRAINT (dialogue-replay-discipline,
  * 2026-09-17). Replay is exact only while everything the outside
@@ -20,7 +22,7 @@ class TestReplayable extends munit.FunSuite {
   }
 
   test("a row with Async is refused, and the message states the discipline") {
-    val e = compileErrors("summon[okay.Replayable[okay.Shift % ? + okay.Async]]")
+    val e = compileErrors("summon[okay.freer.Replayable[okay.freer.Shift % ? + okay.Async]]")
     assert(e.nonEmpty, "an async row was accepted as replayable")
     assert(e.contains("PERFORM AGAIN"), s"the message does not say what is wrong: $e")
     assert(e.contains("pause"), s"the message does not name the rule: $e")
@@ -31,7 +33,7 @@ class TestReplayable extends munit.FunSuite {
     // TestDelimPersist watches exactly that happen, and now has to say
     // `Replayable.unchecked` to be allowed to
     val e = compileErrors(
-      "summon[okay.Replayable[okay.Shift % ? + (okay.Writer % String + okay.Pure)]]")
+      "summon[okay.freer.Replayable[okay.freer.Shift % ? + (okay.freer.Writer % String + okay.Pure)]]")
     assert(e.nonEmpty, "a Writer row was accepted as replayable")
   }
 
@@ -40,26 +42,26 @@ class TestReplayable extends munit.FunSuite {
   // (core-modules stage 3). The Uid half is a real question and is now
   // asked where Uid lives, in okay-data's TestUidReplayable.
   test("Resource is refused: acquiring twice is not a replay") {
-    assert(compileErrors("summon[okay.Replayable[okay.Shift % ? + okay.Resource]]").nonEmpty)
+    assert(compileErrors("summon[okay.freer.Replayable[okay.freer.Shift % ? + okay.freer.Resource]]").nonEmpty)
   }
 
   test("an abstract row PROPAGATES the obligation instead of crashing the compiler") {
     // the shape that kills dotty when written as `Row.In` over an
     // abstract row: a property of a row, searched for at an abstract F
     val e = compileErrors("""
-      def helper[F[+_]](j: List[Int])(body: okay.Shift.Asking[Int, Int, Int, okay.Shift % ? + F] ?=>
-        Int ! okay.Shift % ? + F)(using okay.Shift.Machine[F]) =
-          okay.Shift.replay[Int, Int, Int, F](body)(j)""")
+      def helper[F[+_]](j: List[Int])(body: okay.freer.Shift.Asking[Int, Int, Int, okay.freer.Shift % ? + F] ?=>
+        Int ! okay.freer.Shift % ? + F)(using okay.freer.Shift.Machine[F]) =
+          okay.freer.Shift.replay[Int, Int, Int, F](body)(j)""")
     assert(e.nonEmpty, "an abstract row satisfied Replayable out of nowhere")
     assert(!e.contains("Failure to join"),
       s"THE COMPILER CRASHED — the encoding is wrong, see specs/durable-workflow.md: $e")
 
     // declared, it compiles — which is what a library author does
     val ok = compileErrors("""
-      def helper[F[+_]](j: List[Int])(body: okay.Shift.Asking[Int, Int, Int, okay.Shift % ? + F] ?=>
-        Int ! okay.Shift % ? + F)(using okay.Shift.Machine[F],
-                                      okay.Replayable[okay.Shift % ? + F], okay.At) =
-          okay.Shift.replay[Int, Int, Int, F](body)(j)""")
+      def helper[F[+_]](j: List[Int])(body: okay.freer.Shift.Asking[Int, Int, Int, okay.freer.Shift % ? + F] ?=>
+        Int ! okay.freer.Shift % ? + F)(using okay.freer.Shift.Machine[F],
+                                      okay.freer.Replayable[okay.freer.Shift % ? + F], okay.freer.At) =
+          okay.freer.Shift.replay[Int, Int, Int, F](body)(j)""")
     assert(ok.isEmpty, s"declaring the obligation did not help: $ok")
   }
 
@@ -67,7 +69,7 @@ class TestReplayable extends munit.FunSuite {
     // it takes writing the name, which is the point: a reviewer sees it
     val ev = Replayable.unchecked[Shift % ? + Async]
     assert(ev ne null)
-    val e = compileErrors("summon[okay.Replayable[okay.Shift % ? + okay.Async]]")
+    val e = compileErrors("summon[okay.freer.Replayable[okay.freer.Shift % ? + okay.Async]]")
     assert(e.nonEmpty, "unchecked leaked into implicit search")
   }
 }

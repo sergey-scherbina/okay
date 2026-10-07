@@ -1,6 +1,6 @@
 package okay.r
 
-import okay.!
+import okay.freer.!
 import okay.codec.Schema
 import okay.foreign.{ForeignEval, Foreign, Frame, PyNode, Handle, PyStream, Value, Shape, ToPy}
 
@@ -72,7 +72,7 @@ object RValue:
 final case class RRef(id: Long, rClass: String):
   private[r] def py: Handle = Handle(id, rClass, R.shape)
   /** drop the object in the R process; idempotent */
-  def release: Unit ! REval = okay.effect[REval, Unit](ForeignEval.Release(py))
+  def release: Unit ! REval = okay.freer.effect[REval, Unit](ForeignEval.Release(py))
   /** this held CLOSURE as a stateful stage over chunks (foreign-streaming);
    * `finish`, another held closure, is called with nothing at the end */
   def stage[I: ToR, O: Schema](chunk: Int = 64, finish: Option[RRef] = None): Unit ! RStream.Row[I, O] =

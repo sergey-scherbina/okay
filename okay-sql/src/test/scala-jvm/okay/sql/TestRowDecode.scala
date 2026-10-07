@@ -1,7 +1,9 @@
 package okay.sql
 
-import okay.{!, +, %, Async, Chunk, effect, pure, Source, Stream, Writer}
+import okay.{+, %, Async, Source}
+import okay.freer.{!, Chunk, effect, pure, Stream, Writer}
 import okay.given
+import okay.freer.given
 import okay.codec.Schema
 
 /**

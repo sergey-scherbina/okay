@@ -1,6 +1,8 @@
 package okay.demo
+import okay.freer.given
 
 import okay.given
+
 import okay.agent.{ToolCall, ToolSpec, Toolbox}
 import okay.codec.Json
 import okay.mcp.{Mcp, Server, Stdio}

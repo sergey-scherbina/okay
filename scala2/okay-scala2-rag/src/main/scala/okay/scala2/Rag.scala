@@ -3,6 +3,7 @@ package okay.scala2
 import scala.collection.immutable.ArraySeq
 import okay.{+, Answers}
 import okay.given
+import okay.freer.given
 import okay.rag.{Embed, Fusion, Ingest, Keyword, MemoryStore, PgVector, Postings, Retrieve, Scored, VectorStore, Vectors}
 
 /**
@@ -38,7 +39,7 @@ final class VectorIndex private[scala2] (body: IndexBody) {
     Fusion.rrf(Seq(search(query, k * 2), Keyword.search(keywords, query, k * 2))).take(k)
 
   /** how many segments are stored */
-  def size: Int = okay.!.run(body.store.size)
+  def size: Int = okay.freer.!.run(body.store.size)
 }
 
 /**

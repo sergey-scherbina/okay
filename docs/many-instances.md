@@ -224,7 +224,7 @@ Each handler INSTALLATION creates a fresh prompt, and the body reaches
 it through the instance value the installation hands it. This is the
 design of "Binders by day, labels by night" (Biernacki, Piróg, Polesiuk
 and Sieczkowski, POPL 2020): a lexical binder in the types, a fresh
-label at run time. `okay.Lexical` is the API:
+label at run time. `okay.freer.Lexical` is the API:
 
 ```scala
 val lex = run(Lexical.State.deep[Int, Int, Shift % ? + Pure](0) { outer =>
@@ -373,7 +373,7 @@ two writers collect the right elements — but only under
 `Typeable[W]` rather than testing the class, and is an OPT-IN:
 
 ```scala
-import okay.Writer.byValue.given
+import okay.freer.Writer.byValue.given
 given writerK[W](using t: Typeable[W]): TypeableK.ByValue[Writer % W]
 ```
 

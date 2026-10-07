@@ -1,7 +1,9 @@
 package okay.refine
 
-import okay.{!, %, Async, Channel, Source, Writer, drained, pure, runCollect, through}
+import okay.{%, Async, Channel, Source, drained, runCollect, through}
+import okay.freer.{!, Writer, pure}
 import okay.given
+import okay.freer.given
 import okay.testkit.Munit.Diagnosed
 import scala.util.chaining.*
 
@@ -110,7 +112,7 @@ class TestRouter extends Diagnosed:
     val swaps = Channel[Swap]()
     val boom: Source[String] =
       Source.of(List("swap:s1,EUR")).flatMap(_ =>
-        !.widen[Unit, Async, Writer % String](okay.effect[Async, Unit](Async.Run(() => throw IllegalStateException("disk gone")))))
+        !.widen[Unit, Async, Writer % String](okay.freer.effect[Async, Unit](Async.Run(() => throw IllegalStateException("disk gone")))))
     val e = intercept[IllegalStateException](Router(any).route[Swap](swaps).run(boom).runWith)
     assertEquals(e.getMessage, "disk gone")
     assertEquals(swaps.failed.map(_.getMessage), Some("disk gone"))

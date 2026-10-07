@@ -1,6 +1,8 @@
 package okay.lex
 
 import okay.*
+import okay.freer.*
+
 import okay.given
 import okay.Optic.arrows.*
 

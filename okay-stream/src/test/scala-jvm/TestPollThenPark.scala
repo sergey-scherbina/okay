@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -16,7 +19,7 @@ class TestPollThenPark extends munit.FunSuite {
   private final class Counted(misses: Int, x: Int):
     val polls = AtomicInteger(0)
     val registered = AtomicInteger(0)
-    val op: Int ! Async = okay.effect[Async, Int](Async.Await[Int](
+    val op: Int ! Async = okay.freer.effect[Async, Int](Async.Await[Int](
       k => { registered.incrementAndGet(); k(Right(x)); () => () },
       () => if polls.incrementAndGet() > misses then Right(x) else null))
 
@@ -76,11 +79,11 @@ class TestPollThenPark extends munit.FunSuite {
     // a spy on the channel's own registration path: the drained source
     // registers only when its poll came back empty for the whole wait
     val spied: Source[Int] =
-      okay.effect[Writer % Int + Async, Chunk[Int]](Async.Await[Chunk[Int]](
+      okay.freer.effect[Writer % Int + Async, Chunk[Int]](Async.Await[Chunk[Int]](
         k => { registered.incrementAndGet(); ch.receiveManyAsync(64)(k); () => () },
         () => ch.receiveManyNow(64))).flatMap { got =>
-          if got.isEmpty then okay.pure(())
-          else okay.effect[Writer % Int + Async, Unit](Writer(got(0)))
+          if got.isEmpty then okay.freer.pure(())
+          else okay.freer.effect[Writer % Int + Async, Unit](Writer(got(0)))
         }
     (1 to 3).foreach(i => assert(ch.offer(i)))
     val out = spied.runCollect.runWith

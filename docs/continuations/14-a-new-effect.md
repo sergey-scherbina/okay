@@ -71,7 +71,7 @@ compiler asks for it.
 
 ```scala
 def spend[F[+_]](n: Int)(using b: Budget[?], at: At): Unit ! Shift % ? + F =
-  if b.left.addAndGet(-n) >= 0 then okay.pure(())
+  if b.left.addAndGet(-n) >= 0 then okay.freer.pure(())
   else Shift.abort[b.Res, Unit, F](b.prompt)(b.orElse())
 ```
 

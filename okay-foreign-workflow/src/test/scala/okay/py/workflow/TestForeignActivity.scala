@@ -1,6 +1,7 @@
 package okay.foreign.workflow
 
-import okay.{%, !, +, Shift, Pure, Wf}
+import okay.{%, +, Pure, Wf}
+import okay.freer.{!, Shift}
 import okay.Direct.*
 import okay.codec.Schema
 import okay.persist.{Dialogue, MemoryStore}
@@ -43,7 +44,7 @@ object Shop:
  * workflow written in do-notation, against a live Python worker */
 class TestForeignActivity extends munit.FunSuite:
   import Shop.*
-  import okay.given
+  import okay.freer.given
   override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
   override def munitIgnore: Boolean = TestPy.python.isEmpty
 

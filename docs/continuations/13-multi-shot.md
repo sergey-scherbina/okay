@@ -109,7 +109,7 @@ Calling `k` **zero** times is the early exit of chapter 5, and nothing
 below the line runs at all:
 
 ```scala
-val _ = !Shift.shift[Int](_ => okay.pure(99))   // k dropped
+val _ = !Shift.shift[Int](_ => okay.freer.pure(99))   // k dropped
 ran = true                                       // never happens
 // 99
 ```

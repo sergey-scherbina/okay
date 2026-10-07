@@ -1,7 +1,10 @@
 package okay.cluster
 
 import okay.*
+import okay.freer.{Feed as _, *}   // `Feed` is TestJobs's here
+
 import okay.given
+import okay.freer.given
 
 /**
  * PEERS RE-RESOLVED AT EVERY EPOCH BOUNDARY (specs/cluster-pool.md,

@@ -1,7 +1,10 @@
 package okay.outbox
 
 import okay.*
+import okay.freer.*
+
 import okay.given
+import okay.freer.given
 import okay.persist.{Ack, MemoryStore, Offsets, Record, Typed, of}
 
 /**

@@ -1,7 +1,9 @@
 package okay.docs.dynamo
 
-import okay.{!, Async, Chunk, Resource, Source}
+import okay.{Async, Source}
+import okay.freer.{!, Chunk, Resource}
 import okay.given
+import okay.freer.given
 import okay.crypto.given
 import okay.blob.SigV4
 import okay.codec.{Json, Schema}
@@ -84,7 +86,7 @@ class TestPersistenceE2E extends munit.FunSuite:
       forward = o => docs.put(o.id, Doc(next), cond(o)).map {
         case PutResult.Applied(v) => o.copy(version = Some(v), log = o.log :+ name)
         case PutResult.Stale(cur) => o.copy(version = cur, log = o.log :+ s"$name (already)")
-      }.flatMap(o2 => if name == "ship" && halt then throw Saga.Halt() else okay.pure(o2)),
+      }.flatMap(o2 => if name == "ship" && halt then throw Saga.Halt() else okay.freer.pure(o2)),
       compensate = o => docs.put(o.id, Doc(s"un-$next"), Cond.Always).map(_ => o.copy(log = o.log :+ s"undo $name")))
     def saga() = Saga[Order](topic, "ord-1")(
       cas("reserve", "reserved")(_ => Cond.IfAbsent),

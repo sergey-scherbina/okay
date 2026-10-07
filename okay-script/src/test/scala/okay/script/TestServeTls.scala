@@ -1,7 +1,10 @@
 package okay.script
+import okay.freer.*
 
 import okay.*
+
 import okay.given
+import okay.freer.given
 import okay.conf.{Secret, Secrets}
 import okay.jetty.Jetty
 import okay.tls.{Tls, TlsConfig}

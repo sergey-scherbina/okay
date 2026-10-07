@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 /**
  * ZOOMING BY AN OPTIC — the half of `State` and `PState` that is
  * about optics, which is why it lives here and not in the core

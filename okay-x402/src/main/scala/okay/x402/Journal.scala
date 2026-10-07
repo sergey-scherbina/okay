@@ -1,6 +1,8 @@
 package okay.x402
 
 import okay.*
+import okay.freer.*
+
 import okay.chain.Network
 import okay.codec.Schema
 import okay.persist.{Ack, Topic, Typed, of}

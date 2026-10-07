@@ -1,5 +1,8 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import okay.Direct.*
 import scala.language.implicitConversions
 
@@ -31,7 +34,7 @@ class TestWfSuspend extends munit.FunSuite {
 
   test("a sleep STOPS the drive, and says when to come back") {
     val start = !.run(Wf.resumable[String, String, String, P](overnight))
-    val (st, j) = !.run(Wf.drive(start)(_ => okay.pure("ada")))
+    val (st, j) = !.run(Wf.drive(start)(_ => okay.freer.pure("ada")))
 
     // the clock reading is journalled; the timer's answer is not,
     // because nobody could give it
@@ -43,7 +46,7 @@ class TestWfSuspend extends munit.FunSuite {
 
   test("the deadline is JOURNALLED, so a replay does not move it") {
     val (st1, j) = !.run(Wf.drive(
-      !.run(Wf.resumable[String, String, String, P](overnight)))(_ => okay.pure("ada")))
+      !.run(Wf.resumable[String, String, String, P](overnight)))(_ => okay.freer.pure("ada")))
 
     // a runtime whose clock says something else entirely, handed to
     // the second drive explicitly (a `given` here would shadow the
@@ -57,7 +60,7 @@ class TestWfSuspend extends munit.FunSuite {
 
   test("feed the elapsed answer and the run carries on to the end") {
     val (_, j) = !.run(Wf.drive(
-      !.run(Wf.resumable[String, String, String, P](overnight)))(_ => okay.pure("ada")))
+      !.run(Wf.resumable[String, String, String, P](overnight)))(_ => okay.freer.pure("ada")))
 
     // the scheduler appends this when the instant passes
     val woken = j :+ Left(Wf.SysA.Elapsed)
@@ -74,7 +77,7 @@ class TestWfSuspend extends munit.FunSuite {
 
   test("a signal stops the drive, naming the channel it waits on") {
     val (st, j) = !.run(Wf.drive(
-      !.run(Wf.resumable[String, String, String, P](approved)))(_ => okay.pure("the budget")))
+      !.run(Wf.resumable[String, String, String, P](approved)))(_ => okay.freer.pure("the budget")))
     assertEquals(j, List(Right("the budget")))
     assertEquals(st, Wf.Step.Waiting(Wf.Wait.Signal("approval")))
   }
@@ -109,7 +112,7 @@ class TestWfSuspend extends munit.FunSuite {
       val r = !w.awaitChild("child-1")
       s"child said $r"
     val (st, _) = !.run(Wf.drive(
-      !.run(Wf.resumable[String, String, String, P](parent)))(_ => okay.pure("")))
+      !.run(Wf.resumable[String, String, String, P](parent)))(_ => okay.freer.pure("")))
     assertEquals(st, Wf.Step.Waiting(Wf.Wait.Child("child-1")))
 
     val back = !.run(Wf.replay[String, String, String, P](parent)(

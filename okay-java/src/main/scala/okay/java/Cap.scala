@@ -1,6 +1,7 @@
 package okay.java
 
-import okay.{Free, TypeableK, effect}
+import okay.TypeableK
+import okay.freer.{Free, effect}
 import java.util.function.{BiFunction, Function as JFunction, Supplier, UnaryOperator}
 import Rows.{Top, answered}
 

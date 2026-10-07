@@ -1,6 +1,7 @@
 package okay
 
 
+
 /**
  * Optics fused in the COMPILER (specs/optics.md, optics-fuse).
  *

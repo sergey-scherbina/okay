@@ -1,8 +1,10 @@
 package okay.intent
 
 import okay.agent.{FileVersions, Rerun}
+import okay.freer.given
 
 import okay.given
+
 import okay.codec.Schema
 import okay.llm.{OpenAi, Transports}
 import okay.agent.Durable.Entry

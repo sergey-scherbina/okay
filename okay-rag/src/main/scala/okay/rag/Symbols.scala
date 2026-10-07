@@ -1,6 +1,6 @@
 package okay.rag
 
-import okay.Fold
+import okay.freer.Fold
 import okay.lex.{Channel, Token}
 import okay.parse.Cst
 
@@ -47,7 +47,7 @@ final case class Index(defs: Map[String, Vector[Symbol]] = Map.empty,
 object Symbols {
 
   /** the index is a Monoid: files combine, so projects distribute */
-  given okay.Monoid[Index] with
+  given okay.freer.Monoid[Index] with
     def empty: Index = Index()
     def combine(x: Index, y: Index): Index = x.merge(y)
 

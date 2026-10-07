@@ -3,7 +3,8 @@ package okay.docs.mongo
 import com.mongodb.MongoWriteException
 import com.mongodb.client.{MongoClient, MongoClients, MongoCollection}
 import com.mongodb.client.model.{Filters, FindOneAndUpdateOptions, IndexOptions, Indexes, ReturnDocument, Updates}
-import okay.{!, +, %, Async, async, Chunk, ChunkBuf, effect, Source, Writer}
+import okay.{+, %, Async, async, ChunkBuf, Source}
+import okay.freer.{!, Chunk, effect, Writer}
 import okay.codec.Schema
 import okay.docs.{Cond, Consistency, Docs, PutResult}
 import org.bson.Document

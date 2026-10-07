@@ -54,7 +54,7 @@ the Scala callbacks that answer them:
 ```
 
 `Go.ops("shop", Foreign.callbacks(priceOf, discount))` is a package `shop` with
-`func PriceOf(a0 string) okay.Op[float64]`, and the Go program uses it:
+`func PriceOf(a0 string) okay.freer.Op[float64]`, and the Go program uses it:
 
 ```go
 func total(sku string, qty int64) okay.Program[float64] {

@@ -1,7 +1,6 @@
 package okay.kernel
 
-import okay.{!, Resource}
-
+import okay.freer.{!, Resource}
 /** how many providers a port takes: exactly one, or every one there is */
 enum Arity:
   case One, Many
@@ -60,7 +59,7 @@ final case class Provision[A](port: Port[A], built: Version, make: Wiring => A !
 object Provision:
   /** a provision with nothing to release */
   def value[A](port: Port[A], built: String)(make: Wiring => A): Provision[A] =
-    Provision(port, Version(built), w => okay.pure(make(w)))
+    Provision(port, Version(built), w => okay.freer.pure(make(w)))
 
 /**
  * A part of a program the kernel assembles. A class with a public

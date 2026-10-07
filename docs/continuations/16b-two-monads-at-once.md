@@ -510,11 +510,11 @@ and is used, unchanged, in the basket's row, in a bigger row with a
 configuration, and under either handler order:
 
 ```scala
-type Taxed = okay.Reader % Int + Basket
+type Taxed = okay.freer.Reader % Int + Basket
 
 def taxed(items: List[String]): Int ! Taxed =
   for
-    vat   <- okay.Reader.ask[Int].at[Taxed]
+    vat   <- okay.freer.Reader.ask[Int].at[Taxed]
     total <- basket(items).at[Taxed]
     _     <- audit(s"vat $vat%").at[Taxed]
   yield total * (100 + vat) / 100
@@ -585,7 +585,7 @@ multi-prompt `Shift` machine (chapter 10), where every delimiter has a
 NAME instead of a number:
 
 ```scala
-Shift.dollar[R, M[R], F](p)(r => okay.pure(L.pure(r)))(body(using new Reflect[M, R](p, L)))
+Shift.dollar[R, M[R], F](p)(r => okay.freer.pure(L.pure(r)))(body(using new Reflect[M, R](p, L)))
 ```
 
 is `reify`: a fresh delimiter whose way out is the monad's `pure`

@@ -1,6 +1,8 @@
 package okay.mcp
+import okay.freer.*
 
 import okay.*
+
 import okay.http.{Http, Nio}
 
 /**

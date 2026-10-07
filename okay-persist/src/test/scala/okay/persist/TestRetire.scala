@@ -1,7 +1,8 @@
 package okay.persist
 
 import munit.FunSuite
-import okay.{%, !, +, Shift, Pure, Wf}
+import okay.{%, +, Pure, Wf}
+import okay.freer.{!, Shift}
 import okay.Direct.*
 import okay.codec.Schema
 import scala.language.implicitConversions

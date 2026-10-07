@@ -1,6 +1,7 @@
 package okay.frege
 
 import okay.{Async, Scheduler, Schedulers, given}
+
 import okay.frege.{Programs as P}
 import frege.run8.Thunk
 

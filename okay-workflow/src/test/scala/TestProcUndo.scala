@@ -1,4 +1,5 @@
 import okay.*
+import okay.freer.*
 import okay.Optic.arrows.*
 
 /**
@@ -52,7 +53,7 @@ class TestProcUndo extends munit.FunSuite:
   def questions(p: Wf.Proc[String, String, Unit, Unit]): List[String] =
     val asked = List.newBuilder[String]
     val start = !.run(Wf.resumable[String, String, Unit, P](Wf.Proc.program(p)(())))
-    val _ = !.run(Wf.drive(start) { q => asked += q; okay.pure("ok") })
+    val _ = !.run(Wf.drive(start) { q => asked += q; okay.freer.pure("ok") })
     asked.result()
 
   // ── the step runs; the inverse does not ──────────────────────────
@@ -60,7 +61,7 @@ class TestProcUndo extends munit.FunSuite:
   test("an Undo runs its STEP and nothing else — the inverse is metadata until it is asked for"):
     val start = !.run(Wf.resumable[String, String, (String, String), P](
       Wf.Proc.program(booking)(())))
-    val (st, j) = !.run(Wf.drive(start)(_ => okay.pure("yes")))
+    val (st, j) = !.run(Wf.drive(start)(_ => okay.freer.pure("yes")))
     st match
       case Wf.Step.Done(v) => assertEquals(v, ("yes", "yes"))
       case other => fail(s"expected the drive to finish, it said $other")

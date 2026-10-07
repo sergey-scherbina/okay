@@ -1,6 +1,7 @@
 package okay.cache
 
-import okay.{!, Async}
+import okay.Async
+import okay.freer.{!}
 import okay.persist.{Ack, MemoryStore, Policy, Record}
 
 /**

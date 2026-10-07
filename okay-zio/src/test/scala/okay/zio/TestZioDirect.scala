@@ -1,8 +1,10 @@
 package okay.zio
 
-import okay.{!, Async, async, asOkay}
+import okay.{Async, async, asOkay}
+import okay.freer.{!}
 import okay.Direct.*
 import okay.given
+import okay.freer.given
 import okay.zio.given
 import ZioInterop.*
 import _root_.zio.{Runtime, Task, Unsafe, ZIO}

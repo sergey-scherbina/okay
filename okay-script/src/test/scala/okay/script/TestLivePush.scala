@@ -1,7 +1,10 @@
 package okay.script
+import okay.freer.*
 
 import okay.*
+
 import okay.given
+import okay.freer.given
 import okay.http.{Frame, Request, Transports, Ws}
 import okay.jetty.Jetty
 import okay.ui.{Event, Patch, Protocol}
@@ -20,6 +23,8 @@ class TestLivePush extends munit.FunSuite:
     """```scala declare
       |import okay.*
       |import okay.given
+      |import okay.freer.*
+      |import okay.freer.given
       |import okay.ui.*
       |import okay.script.api.*
       |// the server's two ticks: each "presses" the shown button, as okay-ui's own timer test does

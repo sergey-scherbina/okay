@@ -378,7 +378,7 @@ generation fails. Seconds per restore, and a compiler on the
 production classpath.
 
 **Symbols still resolve against a classpath.** The term refers to
-`okay.Shift.pause` and to your own definitions by name. It is not a
+`okay.freer.Shift.pause` and to your own definitions by name. It is not a
 self-contained blob — though note that **replay is in exactly the same
 position**, so this is not a cost *relative to replay*. It is a cost
 relative to the fantasy of a program in a bottle.

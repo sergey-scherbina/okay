@@ -2,9 +2,12 @@ package okay.cats
 
 import _root_.cats.effect.IO
 import _root_.cats.effect.unsafe.implicits.global
-import okay.{!, %, +, Async, Handler, State, asOkay, async, perform, via}
-import okay.Row.bind
+import okay.{%, +, Async, asOkay, async, via}
+import okay.freer.perform
+import okay.freer.{!, Handler, State}
+import okay.freer.Row.bind
 import okay.given
+import okay.freer.given
 import java.util.concurrent.atomic.AtomicInteger
 
 /**

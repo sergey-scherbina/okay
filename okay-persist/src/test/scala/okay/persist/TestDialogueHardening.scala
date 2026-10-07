@@ -1,7 +1,8 @@
 package okay.persist
 
 import munit.FunSuite
-import okay.{%, !, +, Shift, Pure}
+import okay.{%, +, Pure}
+import okay.freer.{!, Shift}
 import okay.Direct.*
 import scala.language.implicitConversions
 
@@ -91,7 +92,7 @@ class TestDialogueHardening extends FunSuite {
     def oracle(q: String, a: Dialogue.Attempt): String ! Pure =
       seen = seen :+ ((q, a))
       if q == "nights?" then throw new RuntimeException("the process dies here")
-      okay.pure("Kyiv")
+      okay.freer.pure("Kyiv")
 
     val d = Dialogue[String, String, String, Pure](t, "c-1", "booking/1")(v1)
     val _ = intercept[RuntimeException](!.run(d.run(oracle)))
@@ -106,7 +107,7 @@ class TestDialogueHardening extends FunSuite {
     val d2 = Dialogue[String, String, String, Pure](t, "c-1", "booking/1")(v1)
     def ok(q: String, a: Dialogue.Attempt): String ! Pure =
       seen = seen :+ ((q, a))
-      okay.pure("3")
+      okay.freer.pure("3")
     assertEquals(!.run(d2.run(ok)), "Kyiv/3")
     assertEquals(seen, List(("nights?", Dialogue.Attempt("c-1", 1))))
   }

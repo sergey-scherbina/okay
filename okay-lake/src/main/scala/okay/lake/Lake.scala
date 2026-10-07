@@ -1,6 +1,8 @@
 package okay.lake
 
-import okay.{!, Async, Chunks, given}
+import okay.{Async, Chunks, given}
+
+import okay.freer.{!, given}
 import okay.arrow.{Column, Rows, Table}
 import okay.blob.{Blob, Bytes}
 import okay.cluster.{Bounds, Flow, Wire}

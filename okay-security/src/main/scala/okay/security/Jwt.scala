@@ -116,7 +116,9 @@ object Jwt {
  */
 object Jwks {
 
-  import okay.{!, Async}
+  import okay.Async
+
+  import okay.freer.{!}
   import okay.http.{Http, Request}
 
   def parse(j: Json)(using c: Crypto): Map[String, Jwt.Key] =

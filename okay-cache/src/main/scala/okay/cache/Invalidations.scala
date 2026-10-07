@@ -1,6 +1,7 @@
 package okay.cache
 
-import okay.{!, Async, pure}
+import okay.Async
+import okay.freer.{!, pure}
 import okay.persist.{Ack, Topic}
 import scala.annotation.tailrec
 

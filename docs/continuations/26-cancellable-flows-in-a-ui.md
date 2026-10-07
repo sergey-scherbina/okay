@@ -34,11 +34,11 @@ fragments of it.
 A prompt delimits a cancellable sub-flow:
 
 ```scala
-def push[A](body: okay.Prompt[A] => A ! Row): A ! Row =
+def push[A](body: okay.freer.Prompt[A] => A ! Row): A ! Row =
   val p = Shift.prompt[A]
   Shift.push(p)(body(p))
 
-def cancel[A, R](p: okay.Prompt[R])(value: R): A ! Row =
+def cancel[A, R](p: okay.freer.Prompt[R])(value: R): A ! Row =
   Shift.abort[R, A, Dialog](p)(value)
 ```
 

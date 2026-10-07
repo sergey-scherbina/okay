@@ -1,6 +1,6 @@
 package okay.bayes
 
-import okay.!
+import okay.freer.!
 import okay.testkit.Munit.Diagnosed
 import Bayes.*
 import Distribution.*

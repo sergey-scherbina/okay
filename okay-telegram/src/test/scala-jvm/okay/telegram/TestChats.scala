@@ -1,7 +1,10 @@
 package okay.telegram
+import okay.freer.*
 
 import okay.*
+
 import okay.given
+import okay.freer.given
 import okay.codec.Json
 import okay.ui.{Event, Telegram, Ui}
 import okay.ui.Telegram.{Act, Message}

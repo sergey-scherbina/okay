@@ -1,6 +1,7 @@
 package okay.agent
 
-import okay.{!, +, Aggregator, Answers}
+import okay.{+, Answers}
+import okay.freer.{!, Aggregator}
 import okay.lex.Scan
 import okay.lex.Bpe
 
@@ -88,9 +89,9 @@ object Handlers {
         try f(c) catch case ex: Throwable => s"error: ${ex.getMessage}"
       case None => s"error: no such tool '${c.name}'"
 
-    okay.!.translate[A, Tool, F](prog) {
+    okay.freer.!.translate[A, Tool, F](prog) {
       [X] => (e: Tool[X]) => e match
-        case Tool.Call(c) => okay.pure[F, X](answer(c))
+        case Tool.Call(c) => okay.freer.pure[F, X](answer(c))
     }
 
   /** `relayTools` for a table of PROGRAMS (`Toolbox.In[F]`): each call
@@ -100,11 +101,11 @@ object Handlers {
    * the tool that must answer its failure does so in its own row */
   def relayToolsF[A, F[+_]](table: Map[String, ToolCall => String ! F])
                            (prog: A ! Tool + F): A ! F =
-    okay.!.translate[A, Tool, F](prog) {
+    okay.freer.!.translate[A, Tool, F](prog) {
       [X] => (e: Tool[X]) => e match
         case Tool.Call(c) => table.get(c.name) match
           case Some(f) => f(c).map(s => s: X)   // Tool.Call refines X >: String; Free is invariant
-          case None => okay.pure[F, X](s"error: no such tool '${c.name}'")
+          case None => okay.freer.pure[F, X](s"error: no such tool '${c.name}'")
     }
 
   // ---------------------------------------------------------------- model

@@ -1,8 +1,9 @@
 package okay.cats
 
-import okay.{!, +, Async, TypeableK, effect, split}
-import okay.!.*
-import okay.Row.up
+import okay.{+, Async, TypeableK, split}
+import okay.freer.{!, effect}
+import okay.freer.!.*
+import okay.freer.Row.up
 import _root_.cats.effect.IO
 
 /**
@@ -17,7 +18,7 @@ given ioTypeable: TypeableK[IO] = TypeableK.derived[IO]
 extension [A, R[+_]](p: A ! R)
   /** a program over `IO` and `Async` as one IO: an IO operation is itself, an `Async` one is IO's own
    * (`IO.delay` / `IO.async`), a bind is one `flatMap` */
-  def toIO(using okay.Row.Sub[R, IO + Async]): IO[A] = IOEffect.run(p.up[IO + Async])
+  def toIO(using okay.freer.Row.Sub[R, IO + Async]): IO[A] = IOEffect.run(p.up[IO + Async])
 
 object IOEffect:
   /** a walk, not a fold, for the reason [[CatsEffect.toIO]] gives (a law about where binds sit) */

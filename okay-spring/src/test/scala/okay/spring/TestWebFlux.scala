@@ -1,6 +1,8 @@
 package okay.spring
 
 import okay.*
+import okay.freer.*
+
 import org.springframework.context.annotation.{AnnotationConfigApplicationContext, Configuration}
 import org.springframework.web.bind.annotation.{GetMapping, RestController}
 import org.springframework.web.reactive.config.EnableWebFlux

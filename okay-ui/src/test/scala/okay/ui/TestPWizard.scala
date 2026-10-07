@@ -1,7 +1,10 @@
 package okay.ui
+import okay.freer.*
 
 import okay.*
+
 import okay.given
+import okay.freer.given
 import PWizard.*
 
 /** specs/ui-toolkit.md, "The typed wizard" — one test per box */

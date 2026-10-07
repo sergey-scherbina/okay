@@ -31,11 +31,11 @@ object PyFacadeMod:
     import okay
 
     def priced(order):
-        return okay.perform("price_of", order["sku"]).then(lambda p: okay.done(p * order["qty"]))
+        return okay.freer.perform("price_of", order["sku"]).then(lambda p: okay.done(p * order["qty"]))
 
     def pairs(_):
-        return okay.perform("choose", [1, 2]).then(lambda x:
-               okay.perform("choose", [10, 20]).then(lambda y:
+        return okay.freer.perform("choose", [1, 2]).then(lambda x:
+               okay.freer.perform("choose", [10, 20]).then(lambda y:
                okay.done(x + y)))
   """)
 

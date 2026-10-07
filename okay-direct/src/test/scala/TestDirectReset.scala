@@ -1,7 +1,12 @@
 package okay
 
+
+import okay.freer.*
+import okay.freer.given
 import okay.Direct.*
-import okay.Row.at
+// the direct-style `shift`, by name: a named import outranks the classic's wildcard
+import okay.Direct.shift
+import okay.freer.Row.at
 
 /** specs/direct-reset.md: `Direct.reset` / `Direct.shift`, a direct-style or a monadic body, no `direct` */
 class TestDirectReset extends munit.FunSuite:

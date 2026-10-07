@@ -1,6 +1,6 @@
 package okay.foreign
 
-import okay.{!, Free}
+import okay.freer.{!, Free}
 import okay.codec.Schema
 import scala.jdk.CollectionConverters.*
 
@@ -33,7 +33,7 @@ object Jvm:
       value(arg) match
         case Left(what) => refused(name, what)
         case Right(v) => cb.run(Vector(v)).flatMap {
-          case Right(answer) => okay.pure[F, AnyRef](jvm(answer))
+          case Right(answer) => okay.freer.pure[F, AnyRef](jvm(answer))
           case Left(c) => refused(name, s"${c.kind}: ${c.message}")
         }
     }

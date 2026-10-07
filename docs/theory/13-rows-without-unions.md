@@ -146,7 +146,7 @@ is recorded with its error message in specs/scala2-facade.md. The
 first three shaped the core facade:
 
 - **It refuses `inline`.** "Unsupported Scala 3 inline method flatMap;
-  found in class okay.Free". So okay's own combinators cannot be
+  found in class okay.freer.Free". So okay's own combinators cannot be
   called from Scala 2 at all. This is why the facade is a set of
   classes, not a set of type aliases.
 - **It reads constructor parameter types eagerly.** A union there

@@ -1,7 +1,7 @@
 package okay.refine
 
 import java.nio.charset.StandardCharsets.UTF_8
-import okay.{!, runChoice}
+import okay.freer.{!, runChoice}
 import okay.codec.{Json, Schema}
 
 /** the snippets in docs/modules/okay-refine.md, VERBATIM */

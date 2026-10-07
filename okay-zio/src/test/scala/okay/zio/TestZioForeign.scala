@@ -1,8 +1,10 @@
 package okay.zio
 
-import okay.{!, %, +, Async, Reader, Throws, runEither}
+import okay.{%, +, Async}
+import okay.freer.{!, Reader, Throws, runEither}
 import okay.Direct.*
 import okay.given
+import okay.freer.given
 import okay.zio.given
 import _root_.zio.{ZEnvironment, ZIO}
 

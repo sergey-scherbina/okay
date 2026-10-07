@@ -1,7 +1,10 @@
 package okay.http
 
 import okay.*
+import okay.freer.*
+
 import okay.given
+import okay.freer.given
 
 import com.sun.net.httpserver.{HttpExchange, HttpServer as JdkServer}
 import java.net.InetSocketAddress

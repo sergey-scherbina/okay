@@ -2,7 +2,8 @@ package okay.ts
 
 import scala.concurrent.Future
 import scala.scalajs.js
-import okay.{!, Async}
+import okay.Async
+import okay.freer.{!}
 import okay.codec.Schema
 
 object TestTsDurable:

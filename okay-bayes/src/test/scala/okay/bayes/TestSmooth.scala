@@ -1,7 +1,7 @@
 package okay.bayes
 
 import scala.util.Random
-import okay.!
+import okay.freer.!
 import okay.testkit.Munit.Diagnosed
 import Smooth.{param, observe, observeAll}
 import Real.{exp, log, log1p, sqrt, pow, softplus, sigmoid, lgamma, logSumExp}
@@ -104,7 +104,7 @@ class TestSmooth extends Diagnosed:
     val d = 100
     val data = Vector.tabulate(d)(i => math.sin(i.toDouble))
     def means(i: Int): Unit ! Grad =
-      if i == d then okay.pure[Grad, Unit](())
+      if i == d then okay.freer.pure[Grad, Unit](())
       else param(s"mu$i", Smooth.Normal(0, 1)).flatMap(m => observe(Smooth.Normal(m, 1), Real.const(data(i))).flatMap(_ => means(i + 1)))
     val t = Smooth.target(means(0))
     val finite = Target.finite(d)(t.logp)

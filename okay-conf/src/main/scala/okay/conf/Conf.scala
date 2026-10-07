@@ -1,6 +1,6 @@
 package okay.conf
 
-import okay.Validated
+import okay.freer.Validated
 import okay.codec.{Json, Schema}
 import scala.annotation.tailrec
 

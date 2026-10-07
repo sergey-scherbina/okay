@@ -1,6 +1,6 @@
 package okay.persist
 
-import okay.Shift
+import okay.freer.Shift
 
 /**
  * KEEPING THE PROGRAM BETWEEN CALLS (dialogue-resume-cache,

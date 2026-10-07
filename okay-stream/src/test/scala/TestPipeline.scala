@@ -1,5 +1,7 @@
 package okay
 
+
+import okay.freer.*
 import org.scalacheck.{Gen as G}
 import org.scalacheck.Prop.forAll
 

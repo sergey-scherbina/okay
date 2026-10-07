@@ -1,5 +1,9 @@
 package okay
 
+
+// the classic's `toLazyList` is a program's; a `Chunks` value takes `Chunks.toLazyList`, chunk by chunk
+import okay.freer.{toLazyList as _, *}
+import okay.freer.given
 import !.*
 import Chunks.*
 import Row.plus
@@ -18,9 +22,9 @@ class TestChunks extends munit.FunSuite {
 
   test("elements agrees with the unchunked generators") {
     assertEquals(Chunks.fibs[Long]().elements.take(10).toList,
-      okay.fibs[Long, LazyList].take(10).toList)
+      okay.freer.fibs[Long, LazyList].take(10).toList)
     assertEquals(Chunks.nats[Int](7).elements.take(20).toList,
-      okay.nats[Int, LazyList].take(20).toList)
+      okay.freer.nats[Int, LazyList].take(20).toList)
   }
 
   test("range emits a short tail chunk when size does not divide") {
@@ -29,7 +33,7 @@ class TestChunks extends munit.FunSuite {
   }
 
   test("chunked transformers agree with the LazyList reference, boundaries included") {
-    val ref = okay.nats[Int, LazyList].map(_ * 2).filter(_ % 3 == 0).take(100).toList
+    val ref = okay.freer.nats[Int, LazyList].map(_ * 2).filter(_ % 3 == 0).take(100).toList
     val c = Chunks.take(Chunks.filter(Chunks.map(Chunks.nats[Int](7))(_ * 2))(_ % 3 == 0))(100)
     assertEquals(c.elements.toList, ref)
     assertEquals(Chunks.drop(Chunks.range(0, 20, 6))(7).elements.toList, (7L until 20L).toList)

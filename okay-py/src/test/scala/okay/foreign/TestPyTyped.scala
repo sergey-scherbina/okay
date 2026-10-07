@@ -1,6 +1,8 @@
 package okay.foreign
 
-import okay.given
+
+
+import okay.freer.given
 import okay.codec.Schema
 import Value.*
 

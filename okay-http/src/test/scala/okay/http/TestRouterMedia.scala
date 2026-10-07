@@ -1,6 +1,8 @@
 package okay.http
 
 import okay.*
+import okay.freer.*
+
 
 /**
  * A DECLARED ANSWER THAT IS NOT JSON (openapi-media).

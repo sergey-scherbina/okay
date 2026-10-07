@@ -1,4 +1,5 @@
 import okay.*
+import okay.freer.*
 
 /**
  * TWO INDEPENDENT BRANCHES, AND WHAT IS ACTUALLY PARALLEL ABOUT THEM
@@ -85,7 +86,7 @@ class TestProcPar extends munit.FunSuite:
 
   test("walk and Wf.replay agree on every prefix — the FIRST pending is the engine's"):
     val full = !.run(Wf.drive(
-      !.run(Wf.resumable[String, String, (String, String), P](program)))(_ => okay.pure("yes")))._2
+      !.run(Wf.resumable[String, String, (String, String), P](program)))(_ => okay.freer.pure("yes")))._2
     assertEquals(full.length, 2, "two questions, two records")
     for n <- 0 to full.length do
       val prefix = full.take(n)
@@ -101,7 +102,7 @@ class TestProcPar extends munit.FunSuite:
 
   test("the run answers the pair, on the landed engine and with nothing changed in it"):
     val start = !.run(Wf.resumable[String, String, (String, String), P](program))
-    val (st, j) = !.run(Wf.drive(start)(q => okay.pure(if q == "finance?" then "yes" else "ok")))
+    val (st, j) = !.run(Wf.drive(start)(q => okay.freer.pure(if q == "finance?" then "yes" else "ok")))
     st match
       case Wf.Step.Done(v) => assertEquals(v, ("yes", "ok"))
       case other => fail(s"expected the drive to finish, it said $other")

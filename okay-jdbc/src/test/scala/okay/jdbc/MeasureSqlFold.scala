@@ -1,7 +1,9 @@
 package okay.jdbc
 
-import okay.{!, +, %, Async, Chunk, effect, Source, Stream, Writer}
+import okay.{+, %, Async, Source}
+import okay.freer.{!, Chunk, effect, Stream, Writer}
 import okay.given
+import okay.freer.given
 import okay.codec.Schema
 import okay.sql.{Bad, Col, Granted, Isolation, Sql, SqlValue, Typed}
 
@@ -71,22 +73,22 @@ class MeasureSqlFold extends munit.FunSuite:
 
   /** a driver that replays frames already in memory: the fold, alone */
   private final class Replay(cols: Vector[Col], frames: Vector[Vector[SqlValue]], per: Int) extends Sql:
-    def describe(sql: String): Vector[Col] ! Async = okay.pure(cols)
+    def describe(sql: String): Vector[Col] ! Async = okay.freer.pure(cols)
     def query(sql: String, params: Vector[SqlValue] = Vector.empty)
     : Source[Chunk[Vector[SqlValue]]] =
       type F = Writer % Chunk[Vector[SqlValue]] + Async
       def go(rest: Vector[Vector[SqlValue]]): Source[Chunk[Vector[SqlValue]]] =
-        if rest.isEmpty then okay.pure(())
+        if rest.isEmpty then okay.freer.pure(())
         else
           val (c, more) = rest.splitAt(per)
           val chunk: Chunk[Vector[SqlValue]] = scala.collection.immutable.ArraySeq.from(c)
           effect[F, Unit](Writer(chunk)).flatMap(_ => go(more))
       go(frames)
-    def update(sql: String, params: Vector[SqlValue] = Vector.empty): Long ! Async = okay.pure(0L)
-    def batch(sql: String, rows: Chunk[Vector[SqlValue]]): Long ! Async = okay.pure(0L)
-    def begin(isolation: Isolation, readOnly: Boolean): Granted ! Async = okay.pure(Granted(isolation, isolation))
-    def commit(): Unit ! Async = okay.pure(())
-    def rollback(): Unit ! Async = okay.pure(())
+    def update(sql: String, params: Vector[SqlValue] = Vector.empty): Long ! Async = okay.freer.pure(0L)
+    def batch(sql: String, rows: Chunk[Vector[SqlValue]]): Long ! Async = okay.freer.pure(0L)
+    def begin(isolation: Isolation, readOnly: Boolean): Granted ! Async = okay.freer.pure(Granted(isolation, isolation))
+    def commit(): Unit ! Async = okay.freer.pure(())
+    def rollback(): Unit ! Async = okay.freer.pure(())
     def cancel(): Unit = ()
 
   private def withDb[A](f: Sql => A): A =

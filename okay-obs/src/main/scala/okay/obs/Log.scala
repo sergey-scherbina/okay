@@ -1,6 +1,8 @@
 package okay.obs
 
 import okay.*
+import okay.freer.*
+
 import okay.codec.{Json, Schema}
 import okay.persist.{Ack, Topic}
 

@@ -1,6 +1,8 @@
 package okay.demo
 
 import okay.{Answers, given}
+
+import okay.freer.given
 import okay.agent.ToolCall
 import okay.rag.*
 

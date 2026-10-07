@@ -1,6 +1,6 @@
 package okay.pool
 
-import okay.Aggregator
+import okay.freer.Aggregator
 import okay.cluster.{Flow, Job, Jobs, Wire}
 import okay.codec.Schema
 
