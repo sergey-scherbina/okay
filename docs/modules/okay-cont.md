@@ -16,7 +16,7 @@ nothing of it but through the core's `Effects` and `Control`.
 | `Handler[E, A, Ans]`, `handle(h)(body)` | a handler is a delimiter: deep, its clauses outside it; `Answering` answers in place, no capture |
 | `perform(op)` | the operation, to its handler found in the context's types at compile time: none in scope, no program |
 | `A ! R`, `Free[R, A]` | a program over a nominal row `State % Int +: Say +: Pure`, built with no handler in sight, handled in any order, reordered by the compiler where another order is expected |
-| `Carrier[A, S, R]` | the machine as a `Control` carrier: a program one level over the top, `(A => S) => R`; the instance `Control[Carrier]` is the core's (Control.scala), as is the machine's instance of `Effects`, the program itself — this module knows nothing of the core |
+| `Carrier[A, S, R]` | the machine as a `Control` carrier: a program one level over the top, `(A => S) => R`; the instance `Control[Carrier]` is the core's (Effects.scala), as is the machine's instance of `Effects`, the program itself — this module knows nothing of the core |
 | `Machine.run`, `Machine.value` | a run to its typed end, `Head`: a value, or a capture handed out for a machine outside |
 | `state`, `reader`, `writer`, `throws`, `choose`, `collect`, `generate`, `dialogue` | THE EFFECT LIBRARY (stage 35): each a handler as a delimiter and doors as fragments — `get`/`put`/`modify`, `ask`/`asks`, `tell`, `raise`, `among`, `yield_`, `question`; answered in place where the handler is tail-resumptive, a capture where it is not (an abort, every path, a lazy generator's next step, a dialogue's rest) |
 
