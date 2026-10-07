@@ -1,6 +1,6 @@
 package okay.llm
 
-import okay.{guard, Async, async}
+import okay.{Async, async}
 import okay.freer.*
 
 import okay.given

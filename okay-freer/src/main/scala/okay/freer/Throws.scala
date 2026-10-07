@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.{Alternative, Effect}
+import okay.{Effect}
 
 
 import scala.reflect.*

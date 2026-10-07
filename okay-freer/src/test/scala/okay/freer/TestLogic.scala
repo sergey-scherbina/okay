@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.{MonadPlus, guard}
+import okay.{guard}
 
 import Logic.*
 

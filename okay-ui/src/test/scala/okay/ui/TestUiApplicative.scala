@@ -1,7 +1,7 @@
 package okay.ui
 import okay.freer.*
 
-import okay.{Applicative, Monad, traverseOf}
+import okay.{Monad, traverseOf}
 import okay.given
 
 

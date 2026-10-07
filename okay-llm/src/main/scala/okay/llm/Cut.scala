@@ -1,6 +1,6 @@
 package okay.llm
 
-import okay.{guard, Async, Condition}
+import okay.{Async, Condition}
 import okay.freer.*
 
 

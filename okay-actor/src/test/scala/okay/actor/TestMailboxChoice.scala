@@ -1,6 +1,6 @@
 package okay.actor
 
-import okay.{sequence, async, Async, Channel, Queues}
+import okay.{async, Async, Channel, Queues}
 import okay.freer.*
 
 import okay.given

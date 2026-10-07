@@ -1,7 +1,7 @@
 package okay.script
 import okay.freer.*
 
-import okay.{Control, Async, CanBlock, Scheduler, Source, Stage, Take, through}
+import okay.{Async, CanBlock, Scheduler, Source, Stage, Take, through}
 import okay.http.{Frame, Http, Request, Response as HttpResponse}
 import okay.security.{Decision, Policy, Verified}
 import okay.ui.{Event, Protocol}

@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.{Monad, TailRecM, ==>}
+import okay.{TailRecM, ==>}
 import okay.given
 
 /**

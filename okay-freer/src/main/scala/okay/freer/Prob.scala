@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.{Answers, Effect}
+import okay.{Effect}
 
 
 import scala.annotation.tailrec

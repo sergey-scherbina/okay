@@ -1,6 +1,6 @@
 package okay.chat
 
-import okay.{guard, Async, Source}
+import okay.{Async, Source}
 import okay.freer.*
 
 import okay.given

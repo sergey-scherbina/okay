@@ -1,6 +1,5 @@
 package okay.freer
 
-import okay.{Id}
 
 /** the sameness typeclass: a witness when the tokens are one, and
  * strict equality that follows from it */

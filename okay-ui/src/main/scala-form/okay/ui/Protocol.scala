@@ -1,7 +1,6 @@
 package okay.ui
 
 
-import okay.{Lines}
 import okay.codec.{Cbor, Json, Schema}
 
 /**

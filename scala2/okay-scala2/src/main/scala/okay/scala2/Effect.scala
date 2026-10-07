@@ -1,6 +1,6 @@
 package okay.scala2
 
-import okay.{Effects, TypeableK}
+import okay.{TypeableK}
 import okay.freer.{Free, Classic}
 import okay.freer.given
 import scala.reflect.ClassTag

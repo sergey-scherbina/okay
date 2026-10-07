@@ -1,6 +1,6 @@
 package okay.llm
 
-import okay.{guard, Stage, Take, pipe, through}
+import okay.{Stage, Take, pipe, through}
 import okay.freer.*
 import okay.freer.given
 

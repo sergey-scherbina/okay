@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.{Answers, Control, Func, Id}
+import okay.{Control, Func, Id}
 import okay.given
 
 import !.*

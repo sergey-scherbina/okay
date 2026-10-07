@@ -1,6 +1,6 @@
 package okay.cluster
 
-import okay.{guard, Chunks, Pane, Async, Fiber, Scheduler, Streamed, Windows, async}
+import okay.{Chunks, Pane, Async, Fiber, Scheduler, Streamed, Windows, async}
 import okay.freer.*
 
 import okay.Chunks.elements

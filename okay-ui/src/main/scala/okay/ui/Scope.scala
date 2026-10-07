@@ -1,7 +1,6 @@
 package okay.ui
 
 
-import okay.{via}
 import okay.freer.*
 
 import okay.freer.Shift

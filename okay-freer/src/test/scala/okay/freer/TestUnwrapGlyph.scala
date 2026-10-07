@@ -1,6 +1,5 @@
 package okay.freer
 
-import okay.{guard}
 
 /**
  * `.?` must mean something (specs/unwrap-glyph.md, stage 1).

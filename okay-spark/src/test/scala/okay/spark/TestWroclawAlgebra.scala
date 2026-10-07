@@ -1,6 +1,6 @@
 package okay.spark
 
-import okay.{guard, Bulk, Chunks, Sort, Tables}
+import okay.{Bulk, Chunks, Sort, Tables}
 import okay.freer.*
 import okay.freer.given
 import okay.Tables.{Table, read, of}

@@ -2,7 +2,6 @@ package okay.freer
 
 import okay.{Answers, Control}
 import okay.given
-import okay.freer.Row.{at}
 
 /** the union of two signatures: F + G — the classic's row (the core's `+` is the machine's, on a nominal row) */
 infix type +[F[+_], G[+_]] = [A] =>> F[A] | G[A]

@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.{Answers, TypeableK}
+import okay.{TypeableK}
 
 /**
  * A SOURCE A PROGRAM READS ONE STEP AT A TIME (specs/direct-loops.md,

@@ -3,7 +3,7 @@ package okay.reactive
 import java.util.concurrent.Flow
 import org.reactivestreams.tck.flow.FlowPublisherVerification
 import org.reactivestreams.tck.TestEnvironment
-import okay.{guard, Scheduler, Schedulers, Source}
+import okay.{Scheduler, Schedulers, Source}
 import okay.given
 
 /**

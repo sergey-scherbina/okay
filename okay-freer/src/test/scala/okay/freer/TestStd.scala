@@ -1,6 +1,5 @@
 package okay.freer
 
-import okay.{Effect}
 import okay.given
 
 

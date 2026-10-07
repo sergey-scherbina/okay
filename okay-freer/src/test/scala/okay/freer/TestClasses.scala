@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.{MonadPlus, guard, replicateA, traverse, whenS, `*>`, `<*`, unlessS}
+import okay.{guard, replicateA, traverse, whenS, `*>`, `<*`, unlessS}
 
 
 /** The typeclass hierarchy earning its keep: one generic combinator,

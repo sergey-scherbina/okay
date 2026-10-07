@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.{Applicative, Selective}
+import okay.{Selective}
 
 /**
  * EVERY ERROR, NOT THE FIRST (specs/validated.md).

@@ -1,7 +1,7 @@
 package okay.telegram
 import okay.freer.*
 
-import okay.{Answers, Async, Timer}
+import okay.{Async, Timer}
 import okay.codec.Json
 import okay.codec.Json.*
 import okay.http.{Body, Http, Request, Response}

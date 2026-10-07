@@ -1,7 +1,7 @@
 package okay.http
 import okay.freer.*
 
-import okay.{Id, Async, Channel, Fiber, Scheduler, Source, async}
+import okay.{Async, Channel, Fiber, Scheduler, Source, async}
 import okay.given
 import okay.codec.Json
 import okay.mcp.{Mcp, Rpc, Server as McpServer}

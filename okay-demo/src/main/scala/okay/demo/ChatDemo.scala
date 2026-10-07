@@ -1,7 +1,7 @@
 package okay.demo
 import okay.freer.*
 
-import okay.{guard, Async, Channel, Source, Timer}
+import okay.{Async, Channel, Source, Timer}
 import okay.given
 import okay.freer.given
 import okay.http.{Http, McpHttp, Request, Response}

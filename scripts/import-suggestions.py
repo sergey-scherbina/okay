@@ -127,7 +127,7 @@ def strip(log):
                 pos = len(b.group(1)); keep = []
                 for sel in b.group(2).split(','):
                     end = pos + len(sel)
-                    if not (pos <= col - 1 < end + 1): keep.append(sel)
+                    if not (pos <= col < end): keep.append(sel)
                     pos = end + 1
                 keep = [k.strip() for k in keep if k.strip()]
                 if keep: src[ln - 1] = b.group(1) + ', '.join(keep) + b.group(3)

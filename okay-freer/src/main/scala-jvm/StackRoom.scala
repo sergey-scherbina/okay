@@ -1,6 +1,5 @@
 package okay.freer
 
-import okay.{guard}
 
 /**
  * What the JVM can say about the stack it is running on — NOTHING, on

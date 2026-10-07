@@ -1,7 +1,6 @@
 package okay.ui
 
 
-import okay.{Retry}
 import okay.freer.Pure
 
 import okay.freer.{/>}

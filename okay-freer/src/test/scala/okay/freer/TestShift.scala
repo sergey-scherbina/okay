@@ -1,6 +1,5 @@
 package okay.freer
 
-import okay.{sequence}
 
 import okay.freer.Row.*
 

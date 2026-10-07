@@ -1,6 +1,6 @@
 package okay.resilience
 
-import okay.{Answers, Async, Timer}
+import okay.{Async, Timer}
 import okay.freer.*
 
 import okay.codec.Schema

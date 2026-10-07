@@ -1,6 +1,5 @@
 package okay.freer
 
-import okay.{guard}
 
 /**
  * specs/cont-stack.md, the Native row: the room is READ from the

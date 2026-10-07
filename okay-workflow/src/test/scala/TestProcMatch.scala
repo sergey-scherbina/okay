@@ -1,4 +1,4 @@
-import okay.{guard, Proc, Wf}
+import okay.{Proc, Wf}
 import okay.freer.*
 import okay.Direct.*
 import scala.language.implicitConversions

@@ -1,4 +1,4 @@
-import okay.{guard, Optic, Proc, Wf}
+import okay.{Optic, Proc, Wf}
 import okay.freer.*
 import okay.Optic.arrows.*
 

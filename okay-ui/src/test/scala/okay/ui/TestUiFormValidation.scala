@@ -1,7 +1,7 @@
 package okay.ui
 import okay.freer.*
 
-import okay.{Applicative, modify, toVector, traverseOf}
+import okay.{modify, toVector, traverseOf}
 import okay.given
 
 import okay.Direct.{*, given}

@@ -1,7 +1,7 @@
 package okay.ops
 import okay.freer.*
 
-import okay.{sequence, Async}
+import okay.{Async}
 import okay.given
 import okay.http.{Http, Request, Response}
 import java.util.concurrent.CountDownLatch

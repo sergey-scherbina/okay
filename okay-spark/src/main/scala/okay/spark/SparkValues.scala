@@ -1,6 +1,5 @@
 package okay.spark
 
-import okay.{sequence}
 import okay.freer.*
 import okay.freer.given
 

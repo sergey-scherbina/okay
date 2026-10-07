@@ -1,6 +1,6 @@
 package okay.ui
 
-import okay.{Async, Lens, Zipper, preview, zoom, Prism, modify}
+import okay.{Lens, Zipper, preview, zoom, Prism, modify}
 import okay.freer.*
 
 
