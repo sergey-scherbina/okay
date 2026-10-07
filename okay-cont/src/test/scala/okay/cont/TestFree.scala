@@ -27,27 +27,27 @@ class TestFree extends okay.testkit.Munit.Diagnosed:
 
 
   /** a program over a row, no handler in sight: the rows join as it is built */
-  val prog: Free[Ask :+: Say :+: RNil, Int] =
+  val prog: Free[Ask +: Say +: Pure, Int] =
     for
       n <- Free.inject(Ask.Number)
       _ <- Free.inject(Say.Line(n.toString))
     yield n + 1
 
   test("a Free program with a row runs under its handlers, head effect first"):
-    val run: Free[RNil, (List[String], Int)] = Free.handle(writer[Int])(Free.handle(reader[Int](41))(prog))
+    val run: Free[Pure, (List[String], Int)] = Free.handle(writer[Int])(Free.handle(reader[Int](41))(prog))
     assertEquals(value(Free.top(run)), (List("41"), 42))
 
   test("widen: the row reordered, the handlers in the other order"):
-    val wide: Free[Say :+: Ask :+: RNil, Int] = prog.widen
-    val run: Free[RNil, (List[String], Int)] = Free.handle(reader[(List[String], Int)](41))(Free.handle(writer[Int])(wide))
+    val wide: Free[Say +: Ask +: Pure, Int] = prog.widen
+    val run: Free[Pure, (List[String], Int)] = Free.handle(reader[(List[String], Int)](41))(Free.handle(writer[Int])(wide))
     assertEquals(value(Free.top(run)), (List("41"), 42))
 
   test("an effect not in the row cannot be injected into it; a row cannot be run with a handler missing"):
-    assert(compileErrors("""val p: Free[Ask :+: RNil, Unit] = Free.inject(Say.Line("x"))""").nonEmpty)
-    assert(compileErrors("""val r: Free[RNil, Int] = Free.handle(reader[Int](1))(prog)""").nonEmpty)
+    assert(compileErrors("""val p: Free[Ask +: Pure, Unit] = Free.inject(Say.Line("x"))""").nonEmpty)
+    assert(compileErrors("""val r: Free[Pure, Int] = Free.handle(reader[Int](1))(prog)""").nonEmpty)
 
   test("a multi-shot handler over Free: every world, every line, in order"):
-    val p: Free[Choose :+: Ask :+: Say :+: RNil, Int] =
+    val p: Free[Choose +: Ask +: Say +: Pure, Int] =
       for
         a <- Free.inject(Choose.Flip)
         n <- Free.inject(Ask.Number)
@@ -57,6 +57,6 @@ class TestFree extends okay.testkit.Munit.Diagnosed:
     assertEquals(value(Free.top(run)), (List("true10", "false10"), List(10, -10)))
 
   test("100 000 operations over Free in constant stack; the join keeps every occurrence, `widen` folds them"):
-    def loop(n: Int, acc: Int): Free[Ask :+: RNil, Int] =
+    def loop(n: Int, acc: Int): Free[Ask +: Pure, Int] =
       if n == 0 then Free.pure(acc).widen else Free.inject(Ask.Number).flatMap(x => loop(n - 1, acc + x)).widen
     assertEquals(value(Free.top(Free.handle(reader[Int](1))(loop(100000, 0)))), 100000)

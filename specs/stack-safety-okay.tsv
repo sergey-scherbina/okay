@@ -99,7 +99,7 @@ okay-codec/src/main/scala/okay/codec/TsTypes.scala	251	union	mutual		BOUNDED: re
 okay-codec/src/main/scala/okay/codec/TsTypes.scala	264	postfix	mutual		BOUNDED: recursive descent over a declaration file the program names — source a person wrote and checked in beside it, not data from a peer
 okay-codec/src/main/scala/okay/codec/TsTypes.scala	272	primary	mutual		BOUNDED: recursive descent over a declaration file the program names — source a person wrote and checked in beside it, not data from a peer
 okay-codec/src/main/scala/okay/codec/TsTypes.scala	356	typeOf	direct		BOUNDED: per level of a TsType parsed from that same declaration file
-okay-cont/src/main/scala/okay/cont/Free.scala	55	at	direct		BOUNDED: per effect of a ROW the program's TYPE names (`Ask :+: Say :+: RNil`): the path `Member` the compiler built, as long as the row a person wrote
+okay-cont/src/main/scala/okay/cont/Free.scala	55	at	direct		BOUNDED: per effect of a ROW the program's TYPE names (`Ask +: Say +: Pure`): the path `Member` the compiler built, as long as the row a person wrote
 okay-cont/src/main/scala/okay/cont/Free.scala	61	lift	direct		BOUNDED: per effect of a ROW the program's TYPE names: the list of capabilities `Has` the compiler built, as long as the row a person wrote
 okay-demo/src/main/scala/okay/demo/RepoAgent.scala	47	walk	lambda	IterableOps.flatMap	BOUNDED: per directory level of a source tree on disk, which the OS caps by path length (PATH_MAX) — and `target`/`.git`/dot-dirs are skipped
 okay-deploy/src/main/scala/okay/deploy/Paas.scala	349	pretty	lambda	Vector.map	BOUNDED: per level of a manifest Json the program built for a deploy — its own document, printed for a person

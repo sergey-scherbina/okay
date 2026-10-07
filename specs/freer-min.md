@@ -1622,3 +1622,19 @@ three sessions with nothing compiling in between.
 Not taken, by the operator's choice: `!` stays the transparent alias. The opacity comes for free later: when
 `A ! F` is the machine's program, the alias names a trait with one abstract method (`run`), an interface by
 construction, and the machine's library is written on handlers and contexts, never on nodes.
+
+## Stage 38: THE ROW OPERATOR `+:` (DONE, 2026-10-07)
+
+The operator: "Абстрагируй оператор + так чтобы он был :+:" — the classic row syntax kept, a nominal row behind
+it. Probed (ProbePlus, deleted): `+` is LEFT-associative, so `A + B + C` is `(A + B) + C`, and to take bare
+effects on both sides its result must have the effects' kind — a row as a type constructor, a nominal JOIN
+`Join[L, R, +A]`, uninhabited, a tree. `Member` (`Self`/`Left`/`Right`, by priority) and `Has` resolve for
+`Ask + Say + Cnt` and for `Ask + F` with `F` abstract, and the join's own `Self` arm answers with an absurd
+capability. One arm stays: `Has` of ONE effect asked for a `Left`/`Right` path — the row of one effect `E` may,
+for all the types know, be a join, and there is no operation in hand to call `absurd` on. That is stage 27's
+finding again, at the kind's root: a join that is an effect is an effect of nothing, and nothing excludes it.
+
+Taken instead: `+:` — right-associative by its last character, as a type too (`Ask +: Say +: Cnt +: Pure` is
+`+:[Ask, +:[Say, +:[Cnt, Pure]]]`, checked), a list of proper kind (`Row`), `Pure` its end as the classic's
+empty row is `Pure`; `Member`, `Has`, `Shape` and `Sub` total as they were at `:+:`. A polymorphic rest reads
+`State % S +: F`. The machine's row is the classic's with a colon; `+` stays the classic union.
