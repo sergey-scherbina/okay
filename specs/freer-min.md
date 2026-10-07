@@ -1725,3 +1725,18 @@ row, one `Has` a run and no split, `inject` polymorphic in the row (by the expec
 argument as the classic's `effect[F, A]` is), and a `for` over mixed effects naming the program's row, which
 the classic requires too. A design change to stage 27's `Free`, so the operator's decision; the lanes stay to
 measure it by.
+
+## Stage 44: `+` AND `+:` ARE ONE ROW (DONE, 2026-10-07)
+
+The operator: "Пусть будет одновременно и вторая и третья строка" — a row written left to right with `+`, and
+right to left with `+:`, both the one list. `infix type +[R <: Row, E[+_]] = E +: R`: `+` adds an effect to the
+ROW on its left, so `Pure + A + B` is `B +: A +: Pure` — not an append (a match type, stuck on an abstract rest:
+`F + A` must reduce, and does, structurally) and not an operator on two bare effects (a tree at the effects'
+kind, stage 38's one open arm). The order it yields is the reverse of `A +: B +: Pure`'s, and the order of
+effects in a row says nothing (`Removed`, stage 39; `Union`, stage 40): the two are one type of program.
+TestFree: `(Pure + Ask + Say) =:= (Say +: Ask +: Pure)`, their unions one, a program typed with `+` handled, a
+polymorphic rest `F + Ask` passed where `Ask +: F` is expected.
+
+With it, the shape of the facade's rows is settled: nominal lists, written either way, `Pure` their end; the
+`Effects` interface itself moves to that kind (one interface, the operator's rule), the machine its direct
+instance, the classic an instance through `Union[R, *]`.

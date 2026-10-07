@@ -86,3 +86,15 @@ class TestFree extends okay.testkit.Munit.Diagnosed:
       yield m
     val run: (List[String], (Int, Int)) ! Pure = Free.handle(writer[(Int, Int)])(Free.handle(StateCell[Int, Int](41))(counting))
     assertEquals(run.value, (List("41"), (42, 42)))
+
+  test("+ and +: are one row: Pure + A + B is B +: A +: Pure, and the same set as A +: B +: Pure"):
+    summon[(Pure + Ask + Say) =:= (Say +: Ask +: Pure)]
+    summon[Union[Pure + Ask + Say, Int] =:= Union[Ask +: Say +: Pure, Int]]
+    def rest[F <: Row](p: Int ! (F + Ask)): Int ! (Ask +: F) = p
+    val counting: Int ! (Pure + State % Int + Say) =
+      effect(State.Get[Int]()).flatMap(n => effect(Say.Line(s"$n")).map(_ => n + 1))
+    val run: (List[String], (Int, Int)) ! Pure = Free.handle(writer[(Int, Int)])(Free.handle(StateCell[Int, Int](41))(counting))
+    assertEquals(run.value, (List("41"), (41, 42)))
+    val one: Int ! (Pure + Ask) = effect(Ask.Number)
+    val same: Int ! (Ask +: Pure) = rest[Pure](one)
+    assertEquals(value(Free.top(Free.handle(reader[Int](7))(same))), 7)

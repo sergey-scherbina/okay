@@ -8,6 +8,13 @@ package okay.cont
  */
 infix type ![A, R <: Row] = Free[R, A]
 
+/** THE SAME ROW, WRITTEN LEFT TO RIGHT: `Pure + State % Int + Throws % String` is `Throws % String +: State % Int
+ * +: Pure` — `+` adds an effect to the row on its left, and `+:` puts one in front of the row on its right; both
+ * are the one list, and the order of effects in a row says nothing (`Removed`, `Union`). A polymorphic rest is
+ * `F + State % S` or `State % S +: F`. Not an operator on two bare effects: that would be a tree at the effects'
+ * kind, with one arm no type can close (specs/freer-min.md, stage 38) */
+infix type +[R <: Row, E[+_]] = E +: R
+
 /** fix the parameter of a binary signature: `State % Int`, `Throws % String` */
 infix type %[F[_, +_], S] = [X] =>> F[S, X]
 
