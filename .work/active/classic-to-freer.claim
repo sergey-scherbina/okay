@@ -1,6 +1,0 @@
-feature/classic-to-freer 2026-10-07T10:43:28Z
-agent: claude-code
-heartbeat: 2026-10-07T10:43:28Z
-status: in-progress
-done-so-far: claimed
-next: the classic Free-tree library into package okay.freer (module okay-freer); the core keeps Effects, Control, Prog, Answers/Interpr, the type classes; modules import okay.freer
