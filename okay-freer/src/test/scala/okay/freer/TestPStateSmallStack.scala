@@ -9,7 +9,7 @@ package okay.freer
  */
 class TestPStateSmallStack extends munit.FunSuite:
 
-  def steps(n: Int): Cont[Long, Long => (Long, Long), Long => (Long, Long)] =
+  def steps(n: Int): Cps[Long, Long => (Long, Long), Long => (Long, Long)] =
     (1 to n).foldLeft(PState.get[Long, (Long, Long)])((m, _) => m.flatMap(_ => PState.get.flatMap(s => PState.set(s + 1))))
 
   test("a million PState steps on 128 KB, on that thread to the end") {

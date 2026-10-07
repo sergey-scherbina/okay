@@ -42,7 +42,7 @@ spec: the general transform is *expensive*, not impossible, and two
 cheaper roads exist. Okay took both.
 
 1. **No macros at all**: delimited control makes any monad run in
-   direct style *relative to Cont* — Filinski proved it in 1994, and
+   direct style *relative to Cps* — Filinski proved it in 1994, and
    Okay's core is already a delimited-control library.
 2. **A scoped macro**: refuse the one corner that is actually
    expensive (marks under lambdas), and the transform is a few
@@ -60,7 +60,7 @@ likes, on all three platforms.
 **The idea** (Filinski, *Representing Monads*, POPL 1994): with
 delimited control, ANY monad runs in direct style. `reflect` delivers
 the `A` of an `F[A]` as a plain value; `reify` delimits a block back
-into `F`. Okay's `Cont[A, S, R]` — the parameterised continuation
+into `F`. Okay's `Cps[A, S, R]` — the parameterised continuation
 monad with answer-type modification — types the construction
 *precisely*, which most languages cannot:
 
@@ -69,18 +69,18 @@ object Monadic:
 
   extension [F[_] : Monad, A](m: F[A])
     /** the monadic value as a direct value */
-    inline def reflect[B]: Cont[A, F[B], F[B]] =
+    inline def reflect[B]: Cps[A, F[B], F[B]] =
       shift(k => m.flatMap(k))
     /** the symbolic `reflect` */
-    inline def ?[B]: Cont[A, F[B], F[B]] = reflect[B]
+    inline def ?[B]: Cps[A, F[B], F[B]] = reflect[B]
 
   /** back into the monad */
-  inline def reify[F[_], A, B](p: Cont[A, F[A], F[B]])(using M: Monad[F]): F[B] =
+  inline def reify[F[_], A, B](p: Cps[A, F[A], F[B]])(using M: Monad[F]): F[B] =
     p / (a => M.pure(a))
 ```
 
 That is the entire implementation. Read the type of a reflected
-value out loud: `Cont[A, F[B], F[B]]` is "*A now, F[B] eventually*"
+value out loud: `Cps[A, F[B], F[B]]` is "*A now, F[B] eventually*"
 — the answer-type parameters carry exactly the debt the block owes
 its monad. `reflect(m)` captures the whole rest of the block as the
 continuation `k` and hands it to the monad's own `flatMap`; the monad
@@ -89,7 +89,7 @@ calls `k` once per element (multi-shot). `reify` settles the debt
 with `pure`.
 
 ```scala
-import okay.freer.Cont.Monadic.*
+import okay.freer.Cps.Monadic.*
 
 def add(mx: Option[Int], my: Option[Int]): Option[Int] =
   reify:
@@ -116,7 +116,7 @@ separate prefix `def` alongside the extension was refuted by the
 compiler: ambiguous overload at every prefix call site.)
 
 **The one honest limit: the stack is the reflected monad's, not
-Cont's.** A strict `flatMap` (Option, Either, List) invokes `k` in
+Cps's.** A strict `flatMap` (Option, Either, List) invokes `k` in
 place, so each reflect costs a stack frame — a thousand binds is
 comfortable, a hundred thousand is not. A trampolined monad returns
 a data node instead: reflecting Okay's own program monad `A ! F`
@@ -126,7 +126,7 @@ rule is simply: deep chains go through `A ! F`, and Option/Either
 stay in the short code where they belong.
 
 **What one `Monadic` block cannot do**: mix two *different* monads.
-`Cont` has one prompt, so the answer type fixes one `F` per `reify`.
+`Cps` has one prompt, so the answer type fixes one `F` per `reify`.
 Composing effects is what the effect rows (`F + G`) are for, and one
 block reflects any *single* monad, including `A ! Row` for an
 arbitrary row. For several monads in one block, see the next section;
@@ -439,7 +439,7 @@ combinator like `State.modify(f)` or a for-comprehension over the row
 — and a program built at run time is refused with the shape in the
 message; and a staged block is `Func`, fast and NOT stack-safe on a
 left-nested chain — a loop of thousands of operations is fine, a loop
-of millions is a Free block under `Cont`.
+of millions is a Free block under `Cps`.
 
 **Which stagers ship** (specs/direct-stagers.md). `Stager.All[E, S, W,
 Err, A]` covers every effect a block is written over when it is not
@@ -1310,7 +1310,7 @@ Theory: ch. 7, the iteratee's consumer side.
   what that buys on THIS tree (10–30% between passes, the arm
   selection being where the rest was).
 - Robert Atkey, *Parameterised notions of computation* — the
-  answer-type-modified `Cont[A, S, R]` that types `reflect`
+  answer-type-modified `Cps[A, S, R]` that types `reflect`
   precisely (see [theory](theory/index.md)).
 - dotty-cps-async — the existence proof for the general Scala 3
   transform, and the CpsMonadContext capability pattern Layer 3

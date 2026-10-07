@@ -1,7 +1,7 @@
 package okay.codec
 
-import okay.freer.{/>}
-import okay.freer.Cont
+import okay.freer.{/>>}
+import okay.freer.Cps
 import scala.collection.mutable
 import scala.annotation.tailrec
 
@@ -25,7 +25,7 @@ import scala.annotation.tailrec
  * Text is read and printed with an EXPLICIT stack, so nesting depth is
  * bounded by memory on every platform; a `Schema` is encoded by the
  * `Step` algebra JSON's encoder uses and decoded natively up to
- * `Codecs.NativeThreshold`, then on the `Cont` road — JSON's two roads,
+ * `Codecs.NativeThreshold`, then on the `Cps` road — JSON's two roads,
  * so a deep document decodes on the default stack.
  */
 enum Edn:
@@ -393,7 +393,7 @@ object Edn {
   def decode[A](s: Schema[A])(e: Edn): Either[String, A] = decodeAt(s, e, 0)
 
   private def decodeAt[A](s: Schema[A], e: Edn, depth: Int): Either[String, A] =
-    if depth >= Codecs.NativeThreshold then Cont.reset(decodeC[A, Either[String, A]](s, e))
+    if depth >= Codecs.NativeThreshold then Cps.reset(decodeC[A, Either[String, A]](s, e))
     else decodeNative(s, e, depth)
 
   private def kindOf(s: Schema[?]): String = s match
@@ -487,54 +487,54 @@ object Edn {
         case _ => Left(s"missing field :$name in ${p.name}")
 
   /** the road past `NativeThreshold`: the same decisions, each child a
-   * `Cont.defer`, so depth costs heap (Json's decodeC, over EDN) */
-  private def decodeC[A, R](s: Schema[A], e: Edn): Either[String, A] /> R = leaf(s, e) match
-    case Some(r) => Cont.Pure(r)
+   * `Cps.defer`, so depth costs heap (Json's decodeC, over EDN) */
+  private def decodeC[A, R](s: Schema[A], e: Edn): Either[String, A] />> R = leaf(s, e) match
+    case Some(r) => Cps.Pure(r)
     case None => (s, e) match
-      case (Schema.SOption(_), ENil) => Cont.Pure(Right(None))
+      case (Schema.SOption(_), ENil) => Cps.Pure(Right(None))
       case (Schema.SOption(of), v) =>
-        Cont.defer(() => decodeC(of(), v))(r => Cont.Pure(r.map(Some(_))))
+        Cps.defer(() => decodeC(of(), v))(r => Cps.Pure(r.map(Some(_))))
       case (l: Schema.SList[a], v) if items(v).isDefined =>
-        def loop(rest: List[Edn], acc: List[a]): Either[String, List[a]] /> R = rest match
-          case Nil => Cont.Pure(Right(acc.reverse))
-          case x :: more => Cont.defer(() => decodeC(l.of(), x)) {
-            case Left(err) => Cont.Pure(Left(err))
+        def loop(rest: List[Edn], acc: List[a]): Either[String, List[a]] />> R = rest match
+          case Nil => Cps.Pure(Right(acc.reverse))
+          case x :: more => Cps.defer(() => decodeC(l.of(), x)) {
+            case Left(err) => Cps.Pure(Left(err))
             case Right(y) => loop(more, y :: acc)
           }
         loop(items(v).get.toList, Nil)
       case (vec: Schema.SVector[a], v) if items(v).isDefined =>
-        def loop(rest: List[Edn], acc: Vector[a]): Either[String, Vector[a]] /> R = rest match
-          case Nil => Cont.Pure(Right(acc))
-          case x :: more => Cont.defer(() => decodeC(vec.of(), x)) {
-            case Left(err) => Cont.Pure(Left(err))
+        def loop(rest: List[Edn], acc: Vector[a]): Either[String, Vector[a]] />> R = rest match
+          case Nil => Cps.Pure(Right(acc))
+          case x :: more => Cps.defer(() => decodeC(vec.of(), x)) {
+            case Left(err) => Cps.Pure(Left(err))
             case Right(y) => loop(more, acc :+ y)
           }
         loop(items(v).get.toList, Vector.empty)
       case (p: Schema.SProduct[A], EMap(kvs)) =>
         val m = entriesOf(kvs)
-        // the field decoded inside Cont.defer continues from its continuation,
+        // the field decoded inside Cps.defer continues from its continuation,
         // a call that cannot be a jump; `again` takes it, so this stays a loop
-        def again(remaining: List[((String, () => Schema[?]), Int)], acc: Vector[Any]): Either[String, Vector[Any]] /> R = loop(remaining, acc)
-        @tailrec def loop(remaining: List[((String, () => Schema[?]), Int)], acc: Vector[Any]): Either[String, Vector[Any]] /> R =
+        def again(remaining: List[((String, () => Schema[?]), Int)], acc: Vector[Any]): Either[String, Vector[Any]] />> R = loop(remaining, acc)
+        @tailrec def loop(remaining: List[((String, () => Schema[?]), Int)], acc: Vector[Any]): Either[String, Vector[Any]] />> R =
           remaining match
-            case Nil => Cont.Pure(Right(acc))
+            case Nil => Cps.Pure(Right(acc))
             case ((name, sc), i) :: more => m.get(name) match
               case None => absent(p, name, sc, i) match
-                case Left(err) => Cont.Pure(Left(err))
+                case Left(err) => Cps.Pure(Left(err))
                 case Right(v) => loop(more, acc :+ v)
-              case Some(v) => Cont.defer(() => fieldC(sc(), v)) {
-                case Left(err) => Cont.Pure(Left(err))
+              case Some(v) => Cps.defer(() => fieldC(sc(), v)) {
+                case Left(err) => Cps.Pure(Left(err))
                 case Right(x) => again(more, acc :+ x)
               }
-        loop(p.fields.zipWithIndex.toList, Vector.empty).flatMap(r => Cont.Pure(r.map(p.make)))
+        loop(p.fields.zipWithIndex.toList, Vector.empty).flatMap(r => Cps.Pure(r.map(p.make)))
       case (su: Schema.SSum[A], ETagged(ns, name, v)) =>
         caseTagged(su, ns, name) match
-          case None => Cont.Pure(Left(s"unknown case '${qualified(ns, name)}' of ${su.name}"))
-          case Some((_, sc)) => Cont.defer(() => decodeC(sc(), v))(r => Cont.Pure(r: Either[String, A]))
+          case None => Cps.Pure(Left(s"unknown case '${qualified(ns, name)}' of ${su.name}"))
+          case Some((_, sc)) => Cps.defer(() => decodeC(sc(), v))(r => Cps.Pure(r: Either[String, A]))
       case (Schema.SIso(u, to, _), v) =>
-        Cont.defer(() => decodeC(u(), v))(r => Cont.Pure(r.flatMap(to)))
-      case (want, got) => Cont.Pure(Left(s"expected ${kindOf(want)}, got ${show(got).take(60)}"))
+        Cps.defer(() => decodeC(u(), v))(r => Cps.Pure(r.flatMap(to)))
+      case (want, got) => Cps.Pure(Left(s"expected ${kindOf(want)}, got ${show(got).take(60)}"))
 
-  private def fieldC[X, R](sc: Schema[X], v: Edn): Either[String, Any] /> R =
-    Cont.defer(() => decodeC(sc, v))(r => Cont.Pure(r: Either[String, Any]))
+  private def fieldC[X, R](sc: Schema[X], v: Edn): Either[String, Any] />> R =
+    Cps.defer(() => decodeC(sc, v))(r => Cps.Pure(r: Either[String, Any]))
 }

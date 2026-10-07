@@ -4,25 +4,25 @@ Every public type and typeclass of the core, with its meaning and its
 gotchas. Source files are authoritative — their doc comments carry the
 same material with the measurements attached.
 
-## Control (Cont.scala)
+## Control (Cps.scala)
 
-- **`Cont[A, S, R]`** — the parameterised continuation monad,
+- **`Cps[A, S, R]`** — the parameterised continuation monad,
   `(A => S) => R` defunctionalized — as the freer tree itself: an
-  opaque `Freer[Shift, S, R, A]` inside `object Cont`, a shift being a
+  opaque `Freer[Shift, S, R, A]` inside `object Cps`, a shift being a
   leaf whose payload is a function of the continuation at its own
   answer types, which the nodes carry and the runner is typed by
-  (theory ch. 11). Running is `Cont.step`, tail-recursive with
+  (theory ch. 11). Running is `Cps.step`, tail-recursive with
   left-nested binds rebalanced and `Delay` forced; a fresh leaf
   absorbs its first `flatMap` (`Leaf.Absorbed`/`Mapped`), exactly
   once. The erased leaf type is written once, behind `Shift.of`
   (forget, an upcast) and `Shift.at` (remember, THE cast).
-  `Cont.delay` is the tail call. The foundation everything stands on.
+  `Cps.delay` is the tail call. The foundation everything stands on.
 - **`Control[M[_,_,_]]`** — final-tagless delimited control (`shift`,
-  `reset`, `/`); instances `Cont` and `Func`. `transparent inline def
+  `reset`, `/`); instances `Cps` and `Func`. `transparent inline def
   Control[M]` is the staging entry: resolved statically, the ops
   inline away.
-- **`A /> S`** — `Cont[A, S, S]`, the diagonal. **`Loop[A, R]`**
-  (alias `<<`) — `Cont[A, R, A => R]`: open recursion; `take` is the
+- **`A />> S`** — `Cps[A, S, S]`, the CPS diagonal (`A /> S` is the machine's, `Carrier[A, S, S]`, cont-classic-rename). **`Loop[A, R]`**
+  (alias `<<`) — `Cps[A, R, A => R]`: open recursion; `take` is the
   loop's input, `loop` ties the knot. Its `seed(body)` spelling is an
   `apply` extension on EVERY type, and it carries
   `NotGiven[A <:< NamedTuple.AnyNamedTuple]` for a measured reason: a
@@ -51,7 +51,7 @@ same material with the measurements attached.
   answer a `Right`; stack-safe because the recursive call sits inside
   the `flatMap`'s continuation and is made when the interpreter
   resumes that `Bind`. In `object !` beside `tailcall`, not top-level:
-  Generate.scala's Cont fixpoint is called as `loop(f)(a)`, the same
+  Generate.scala's Cps fixpoint is called as `loop(f)(a)`, the same
   two-list shape. okay-ui's `Toolkit` dialogs are its first callers.
 - **`TailRecM[F]`** — the same loop for a monad that is not a program:
   `M.tailRecM(a)(f)` or the class. PROVIDED BY THE CARRIER, never
@@ -91,7 +91,7 @@ same material with the measurements attached.
   from its FIRST character, `!` sits at the `=`/`!` level, and every
   tighter arrow (`~>`, `-?>`, `=?>`) parses `A ~> B ! F` as
   `(A ~> B) ! F` — measured. `|`, `^` and `&` are the looser ones, `^`
-  is already `Cont`, and `=?>` would sit one transposition away from
+  is already `Cps`, and `=?>` would sit one transposition away from
   the language's `?=>`. A union on the left binds first, so
   `Get | Post |=> Res` reads as it looks.
 - **`F !> S`** — a handler: `F ==> ([X] =>> X /> S)`; handlers are
@@ -106,9 +106,9 @@ same material with the measurements attached.
   rather than a value. This is the general shape the other two are
   ends of — `Answers[F]` is `F ==> Id` (and `Id` is exactly where a
   suspension cannot go, which is why a comonadic handler cannot do
-  I/O where nothing may park), `F !> S` is the Cont-valued handler
-  `Effects.handle` takes (abort and multi-shot, through Cont), and
-  `translate` is the tail-resumptive middle: one walk, no Cont, the
+  I/O where nothing may park), `F !> S` is the Cps-valued handler
+  `Effects.handle` takes (abort and multi-shot, through Cps), and
+  `translate` is the tail-resumptive middle: one walk, no Cps, the
   rest of the row forwarded. `Free.run(f: F ==> M)` is the same idea
   when the row is handled entirely.
 - **`Answers[F]`** — the comonadic (per-operation) handler;
@@ -341,7 +341,7 @@ same material with the measurements attached.
 - **`Functor` → `Applicative` → `Selective` → `Monad`**, plus
   **`Alternative` → `MonadPlus`** and **`Comonad`** (the basis of
   per-operation handlers: `given [F: Comonad]: Answers[F]`).
-  `ParaMonad` founds the Cont layer; every diagonal is a `Monad`, and
+  `ParaMonad` founds the Cps layer; every diagonal is a `Monad`, and
   the tree `Freer` is the instance for every signature (`Freer.Para`).
 - The GENERIC combinators the classes exist for — written once, they
   run over programs, LazyList, Choose searches: **`traverse`** /
@@ -501,7 +501,7 @@ same material with the measurements attached.
   composition; it is an iso modulo one normalisation, and the test
   names it (`Some(d)` and `None` are one point, so writing the
   default PRUNES the spine).
-- **`PState.Zooming[X, R]`** (`[A, B] =>> Cont[X, B => R, A => R]`) —
+- **`PState.Zooming[X, R]`** (`[A, B] =>> Cps[X, B => R, A => R]`) —
   a typestate transition read as a profunctor in its STATE, with
   `opticZooming` its `Strong`. `PState.zoom` is `l[Zooming[X, R]](m)`
   and has no body of its own, so every `Strong` optic zooms a
@@ -1088,7 +1088,7 @@ is [modules/okay-scala2.md](modules/okay-scala2.md).
   `Effect[KV]`. A handler receives each operation and its continuation.
   Use `KV.handle` when other effects remain and `KV.run` for the last
   one.
-- **`Cont[A, S, R]`** — okay's `Cont` as a class: `shift`, `reset`,
+- **`Cps[A, S, R]`** — okay's `Cps` as a class: `shift`, `reset`,
   `pure`, `map`, `flatMap`, `run(k)`.
 - **`Source[A]`** — the core's `Source` (`Unit ! Writer % A +
   Async`) as a class. `fromEff`/`toEff` convert to and from

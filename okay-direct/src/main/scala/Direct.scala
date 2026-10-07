@@ -12,7 +12,7 @@ import scala.language.implicitConversions
  * The macro adds SYNTAX only — every emitted program is one the
  * user could write with flatMap by hand; multi-shot, short-circuit
  * and the stack discipline of the monad are inherited, not
- * re-implemented. (The first cut compiled to the Cont binds of
+ * re-implemented. (The first cut compiled to the Cps binds of
  * Monadic reflection instead; bench-direct priced that layer at
  * 3.3x over the hand-written chain and the target retired —
  * direct-flatmap-emission in the spec's Decisions.) The block is

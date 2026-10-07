@@ -3,14 +3,14 @@
 Okay is built in layers, each founded on the one below. This guide
 walks them bottom-up; the [tutorial](tutorial.md) walks them by use.
 
-## 1. Delimited control: `Cont`
+## 1. Delimited control: `Cps`
 
-`Cont[A, S, R]` is the parameterised (Atkey-style) continuation monad:
+`Cps[A, S, R]` is the parameterised (Atkey-style) continuation monad:
 a computation of `A` that changes the answer type from `S` to `R` —
 i.e. `(A => S) => R`, defunctionalized so that running any flatMap
 chain is stack-safe. `shift` captures the continuation, `reset`
 delimits it. `Control[M[_,_,_]]` is the final-tagless interface;
-`Cont` (data, stack-safe) and `Func` (the raw function encoding) are
+`Cps` (data, stack-safe) and `Func` (the raw function encoding) are
 its instances. You rarely touch this layer directly — it is what
 handlers are made of. When you DO want it, the door is `Shift`
 (multi-prompt delimited control as an effect): cancellable Dialog
@@ -30,7 +30,7 @@ specs/writer-covariance.md). Signatures combine as unions:
 (`A ! Pure` is a pure computation; `F + Pure = F`).
 
 A handler interprets operations into continuations — `F !> S` is
-literally a natural transformation into `Cont`, and `Cont` is this
+literally a natural transformation into `Cps`, and `Cps` is this
 same freer tree at the signature "a function of the continuation"
 ([theory ch. 11](theory/11-one-tree.md)): a program and its meaning
 are made of the same nodes. For a USER the whole of it is `p.handle(h)`
@@ -1424,7 +1424,7 @@ marked in an outline. Theory and the Huet/McBride references:
 Any monad in this library can be written as plain code:
 `direct[F] { val x = m.reflect; ... }` compiles the block into the
 reflect/reify chain of `Monadic` (Filinski's construction over the
-`Cont` of chapter one), so short-circuit, multi-shot and handlers
+`Cps` of chapter one), so short-circuit, multi-shot and handlers
 all behave exactly as in the monadic spelling. Effects are
 first-class (`Writer("a")` on its own line tells; loops and `while`
 work; `!prog` performs a program in one glyph and involves no implicit
@@ -1466,7 +1466,7 @@ executes the program on the calling thread. For several effects in one program t
 an intersection that Scala 2 can write (`+` is a one-line alias for
 `with`), `A ! (State[Int] + Writer[String])`, and it is taken apart one
 handler at a time (`State.run`, `Writer.run`, ...). Continuations are
-`okay.scala2.Cont`, with `shift`, `reset` and answer-type modification.
+`okay.scala2.Cps`, with `shift`, `reset` and answer-type modification.
 A 2.13 user's own effect is plain Scala 2: its operations extend
 `Op`, and `object Console extends Effect[Console]` declares it. Its
 handler receives each operation and the continuation, and can resume

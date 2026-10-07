@@ -71,7 +71,7 @@ object ContAtm:
   /** a strict `k`: `k` from `a` to its `reset`, a run of its own */
   private def runK[A, S](k: K[A, S], a: A): S = loop(State.Apply(k, a, M.Top[S]()))
 
-  // ---- the facade, Cont's spelling ----
+  // ---- the facade, Cps's spelling ----
 
   def pure[A, R](a: A): C[A, R, R] = C.Pure(a)
   def shift[A, S, R](body: (A => S) => R): C[A, S, R] = C.Strict(body)

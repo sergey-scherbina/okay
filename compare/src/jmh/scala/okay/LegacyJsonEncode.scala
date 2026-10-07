@@ -1,11 +1,11 @@
 package okay
-import okay.freer.{Cont, />}
+import okay.freer.{Cps, />>}
 
 
 import okay.freer.*
 import okay.freer.given
-import okay.freer.{/>}
-import okay.freer.Cont
+import okay.freer.{/>>}
+import okay.freer.Cps
 import okay.codec.{Base64, Codecs, Json, Schema}
 
 /**
@@ -23,7 +23,7 @@ object LegacyJsonEncode:
     sb.toString
 
   private def encodeInto[A](s: Schema[A], a: A, sb: StringBuilder, open: Int): Unit =
-    if open >= Codecs.NativeThreshold then Cont.reset(encodeIntoC[A, Unit](s, a, sb, open))
+    if open >= Codecs.NativeThreshold then Cps.reset(encodeIntoC[A, Unit](s, a, sb, open))
     else encodeIntoNative(s, a, sb, open)
 
   private def encodeIntoNative[A](s: Schema[A], a: A, sb: StringBuilder, open: Int): Unit = s match
@@ -68,50 +68,50 @@ object LegacyJsonEncode:
       sb.append('}'): Unit
     case Schema.SIso(u, _, from) => encodeInto(u(), from(a), sb, open)
 
-  private def encodeIntoC[A, R](s: Schema[A], a: A, sb: StringBuilder, open: Int): Unit /> R = s match
-    case Schema.SInt => sb.append(a.toString); Cont.Pure(())
-    case Schema.SLong => sb.append(a.toString); Cont.Pure(())
-    case Schema.SDouble => sb.append(a.toString); Cont.Pure(())
-    case Schema.SBool => sb.append(a.toString); Cont.Pure(())
-    case Schema.SString => val _ = sb.append('"').append(Json.escape(a)).append('"'); Cont.Pure(())
-    case Schema.SChar => val _ = sb.append('"').append(Json.escape(a.toString)).append('"'); Cont.Pure(())
-    case Schema.SBytes => val _ = sb.append('"').append(Base64.encode(a)).append('"'); Cont.Pure(())
-    case Schema.SBigInt => val _ = sb.append('"').append(a.toString).append('"'); Cont.Pure(())
+  private def encodeIntoC[A, R](s: Schema[A], a: A, sb: StringBuilder, open: Int): Unit />> R = s match
+    case Schema.SInt => sb.append(a.toString); Cps.Pure(())
+    case Schema.SLong => sb.append(a.toString); Cps.Pure(())
+    case Schema.SDouble => sb.append(a.toString); Cps.Pure(())
+    case Schema.SBool => sb.append(a.toString); Cps.Pure(())
+    case Schema.SString => val _ = sb.append('"').append(Json.escape(a)).append('"'); Cps.Pure(())
+    case Schema.SChar => val _ = sb.append('"').append(Json.escape(a.toString)).append('"'); Cps.Pure(())
+    case Schema.SBytes => val _ = sb.append('"').append(Base64.encode(a)).append('"'); Cps.Pure(())
+    case Schema.SBigInt => val _ = sb.append('"').append(a.toString).append('"'); Cps.Pure(())
     case Schema.SOption(of) => a match
-      case Some(x) => Cont.defer(() => encodeIntoC(of(), x, sb, open + 1))(_ => Cont.Pure(()))
-      case None => sb.append("null"); Cont.Pure(())
+      case Some(x) => Cps.defer(() => encodeIntoC(of(), x, sb, open + 1))(_ => Cps.Pure(()))
+      case None => sb.append("null"); Cps.Pure(())
     case Schema.SList(of) =>
       sb.append('[')
-      def loop(rest: A, first: Boolean): Unit /> R =
-        if rest.isEmpty then { sb.append(']'); Cont.Pure(()) }
+      def loop(rest: A, first: Boolean): Unit />> R =
+        if rest.isEmpty then { sb.append(']'); Cps.Pure(()) }
         else
           if !first then sb.append(',')
-          Cont.defer(() => encodeIntoC(of(), rest.head, sb, open + 1))(_ => loop(rest.tail, false))
+          Cps.defer(() => encodeIntoC(of(), rest.head, sb, open + 1))(_ => loop(rest.tail, false))
       loop(a, true)
     case Schema.SVector(of) =>
       sb.append('[')
-      def loop(rest: A, first: Boolean): Unit /> R =
-        if rest.isEmpty then { sb.append(']'); Cont.Pure(()) }
+      def loop(rest: A, first: Boolean): Unit />> R =
+        if rest.isEmpty then { sb.append(']'); Cps.Pure(()) }
         else
           if !first then sb.append(',')
-          Cont.defer(() => encodeIntoC(of(), rest.head, sb, open + 1))(_ => loop(rest.tail, false))
+          Cps.defer(() => encodeIntoC(of(), rest.head, sb, open + 1))(_ => loop(rest.tail, false))
       loop(a, true)
     case p: Schema.SProduct[A] =>
       sb.append('{')
-      val steps: Vector[Unit /> R] = p.eachField(a)([X] => (n: String, sc: Schema[X], x: X) =>
-        Cont.defer(() => { val _ = sb.append('"').append(n).append("\":"); encodeIntoC(sc, x, sb, open + 1) })(_ => Cont.Pure(())))
-      def loop(rest: Vector[Unit /> R], first: Boolean): Unit /> R =
-        if rest.isEmpty then { sb.append('}'); Cont.Pure(()) }
+      val steps: Vector[Unit />> R] = p.eachField(a)([X] => (n: String, sc: Schema[X], x: X) =>
+        Cps.defer(() => { val _ = sb.append('"').append(n).append("\":"); encodeIntoC(sc, x, sb, open + 1) })(_ => Cps.Pure(())))
+      def loop(rest: Vector[Unit />> R], first: Boolean): Unit />> R =
+        if rest.isEmpty then { sb.append('}'); Cps.Pure(()) }
         else
           if !first then sb.append(',')
           rest.head.flatMap(_ => loop(rest.tail, false))
       loop(steps, true)
     case su: Schema.SSum[A] =>
       sb.append('{')
-      val step: Unit /> R = su.theCase(a)([X <: A] => (n: String, sc: Schema[X], x: X) =>
-        Cont.defer(() => { val _ = sb.append('"').append(n).append("\":"); encodeIntoC(sc, x, sb, open + 1) })(_ => Cont.Pure(())))
-      step.flatMap(_ => { sb.append('}'); Cont.Pure(()) })
-    case Schema.SIso(u, _, from) => Cont.defer(() => encodeIntoC(u(), from(a), sb, open))(_ => Cont.Pure(()))
+      val step: Unit />> R = su.theCase(a)([X <: A] => (n: String, sc: Schema[X], x: X) =>
+        Cps.defer(() => { val _ = sb.append('"').append(n).append("\":"); encodeIntoC(sc, x, sb, open + 1) })(_ => Cps.Pure(())))
+      step.flatMap(_ => { sb.append('}'); Cps.Pure(()) })
+    case Schema.SIso(u, _, from) => Cps.defer(() => encodeIntoC(u(), from(a), sb, open))(_ => Cps.Pure(()))
 
 /** `Cbor.put` as it stood before schema-fold stage 2 (`putNative`/`putC`), verbatim — the same-run reference lane */
 object LegacyCborPut:
@@ -122,7 +122,7 @@ object LegacyCborPut:
     out.toArray
 
   private def putAt[A](out: Out, s: Schema[A], a: A, open: Int): Unit =
-    if open >= Codecs.NativeThreshold then Cont.reset(putC[A, Unit](out, s, a, open))
+    if open >= Codecs.NativeThreshold then Cps.reset(putC[A, Unit](out, s, a, open))
     else putNative(out, s, a, open)
 
   private def putNative[A](out: Out, s: Schema[A], a: A, open: Int): Unit = s match
@@ -153,40 +153,40 @@ object LegacyCborPut:
       su.theCase(a)([X <: A] => (n: String, sc: Schema[X], x: X) =>
         { out.text(n); putAt(out, sc, x, open + 1) })
 
-  private def putC[A, R](out: Out, s: Schema[A], a: A, open: Int): Unit /> R = s match
+  private def putC[A, R](out: Out, s: Schema[A], a: A, open: Int): Unit />> R = s match
     case Schema.SIso(u, _, from) =>
-      Cont.defer(() => putC(out, u(), from(a), open))(_ => Cont.Pure(()))
+      Cps.defer(() => putC(out, u(), from(a), open))(_ => Cps.Pure(()))
     case Schema.SOption(of) => a match
-      case None => out.nul(); Cont.Pure(())
-      case Some(x) => Cont.defer(() => putC(out, of(), x, open + 1))(_ => Cont.Pure(()))
+      case None => out.nul(); Cps.Pure(())
+      case Some(x) => Cps.defer(() => putC(out, of(), x, open + 1))(_ => Cps.Pure(()))
     case Schema.SList(of) =>
       out.arrayHeader(a.length.toLong)
-      def loop(rest: A): Unit /> R =
-        if rest.isEmpty then Cont.Pure(())
-        else Cont.defer(() => putC(out, of(), rest.head, open + 1))(_ => loop(rest.tail))
+      def loop(rest: A): Unit />> R =
+        if rest.isEmpty then Cps.Pure(())
+        else Cps.defer(() => putC(out, of(), rest.head, open + 1))(_ => loop(rest.tail))
       loop(a)
     case Schema.SVector(of) =>
       out.arrayHeader(a.length.toLong)
-      def loop(rest: A): Unit /> R =
-        if rest.isEmpty then Cont.Pure(())
-        else Cont.defer(() => putC(out, of(), rest.head, open + 1))(_ => loop(rest.tail))
+      def loop(rest: A): Unit />> R =
+        if rest.isEmpty then Cps.Pure(())
+        else Cps.defer(() => putC(out, of(), rest.head, open + 1))(_ => loop(rest.tail))
       loop(a)
     case p: Schema.SProduct[A] =>
       out.mapHeader(p.fields.length.toLong)
-      val steps: Vector[Unit /> R] = p.eachField(a)([X] => (n: String, sc: Schema[X], x: X) =>
-        Cont.defer(() => { out.text(n); putC(out, sc, x, open + 1) })(_ => Cont.Pure(())))
-      def loop(rest: Vector[Unit /> R]): Unit /> R =
-        if rest.isEmpty then Cont.Pure(()) else rest.head.flatMap(_ => loop(rest.tail))
+      val steps: Vector[Unit />> R] = p.eachField(a)([X] => (n: String, sc: Schema[X], x: X) =>
+        Cps.defer(() => { out.text(n); putC(out, sc, x, open + 1) })(_ => Cps.Pure(())))
+      def loop(rest: Vector[Unit />> R]): Unit />> R =
+        if rest.isEmpty then Cps.Pure(()) else rest.head.flatMap(_ => loop(rest.tail))
       loop(steps)
     case su: Schema.SSum[A] =>
       out.mapHeader(1)
       su.theCase(a)([X <: A] => (n: String, sc: Schema[X], x: X) =>
-        { out.text(n); Cont.defer(() => putC(out, sc, x, open + 1))(_ => Cont.Pure(())) })
-    case Schema.SInt => out.integer(a.toLong); Cont.Pure(())
-    case Schema.SLong => out.integer(a); Cont.Pure(())
-    case Schema.SDouble => out.double(a); Cont.Pure(())
-    case Schema.SBool => out.bool(a); Cont.Pure(())
-    case Schema.SString => out.text(a); Cont.Pure(())
-    case Schema.SChar => out.text(a.toString); Cont.Pure(())
-    case Schema.SBytes => out.byteString(a); Cont.Pure(())
-    case Schema.SBigInt => out.bigInt(a); Cont.Pure(())
+        { out.text(n); Cps.defer(() => putC(out, sc, x, open + 1))(_ => Cps.Pure(())) })
+    case Schema.SInt => out.integer(a.toLong); Cps.Pure(())
+    case Schema.SLong => out.integer(a); Cps.Pure(())
+    case Schema.SDouble => out.double(a); Cps.Pure(())
+    case Schema.SBool => out.bool(a); Cps.Pure(())
+    case Schema.SString => out.text(a); Cps.Pure(())
+    case Schema.SChar => out.text(a.toString); Cps.Pure(())
+    case Schema.SBytes => out.byteString(a); Cps.Pure(())
+    case Schema.SBigInt => out.bigInt(a); Cps.Pure(())

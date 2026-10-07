@@ -22,7 +22,7 @@ import java.util.concurrent.TimeUnit
  *     and by none of okay's. ZIO's `unsafe.run` starts on the calling
  *     thread (Runtime.scala:143). Found: 7.6 / 0.04 / 0.00.
  *  2. PURE AGAINST DELAY in the bind chain. `IO(x + 1)` is a Delay
- *     node; `Cont.Pure(x + 1)` is a value. Found: 15% of the cats row.
+ *     node; `Cps.Pure(x + 1)` is a value. Found: 15% of the cats row.
  *  3. THE QUEUE CONSUMER. Every zio queue lane here sums through
  *     `Ref.update` per element. Found FAIR: a plain var is 5% cheaper
  *     and the idiomatic `runSum` is slower.
@@ -82,7 +82,7 @@ class FairnessProbeBenchmark {
     (1 to N).foldLeft(cats.effect.IO.pure(0))((m, _) => m.flatMap(x => cats.effect.IO(x + 1)))
       .unsafeRunSync()
 
-  /** the same chain with `IO.pure`, the twin of `Cont.Pure` */
+  /** the same chain with `IO.pure`, the twin of `Cps.Pure` */
   @Benchmark
   def chain_catsIO_pure(): Int =
     import cats.effect.unsafe.implicits.global
@@ -106,7 +106,7 @@ class FairnessProbeBenchmark {
   /** okay's lane from CompareBenchmark, same run, for the tie */
   @Benchmark
   def chain_okayCont(): Int =
-    Cont.reset((1 to N).foldLeft(Cont.Pure(0): Int /> Int)((m, _) => m.flatMap(x => Cont.Pure(x + 1))))
+    Cps.reset((1 to N).foldLeft(Cps.Pure(0): Int />> Int)((m, _) => m.flatMap(x => Cps.Pure(x + 1))))
 
   // ── 3. the queue consumer: Ref.update per element is not what a ───
   //    zio user writes to sum a stream, and it is not what okay's

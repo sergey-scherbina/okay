@@ -99,7 +99,7 @@ class TestInlineBudget extends munit.FunSuite {
 
   test("Freer.resume fits FreqInlineSize: every interpreter loop inlines it") {
     // `Freer` since freer-base-step-extractor: one rotation for the effect
-    // tree and for Cont, index-polymorphic, the same bytecode either way
+    // tree and for Cps, index-polymorphic, the same bytecode either way
     within("Freer.resume", sizeOf("Freer", "resume"),
       "relayPrebuilt AND handlePrebuilt/handleCapture — a resume crossing the line re-decides both")
   }

@@ -16,7 +16,7 @@ import scala.util.Random
  * The mechanism is delimited control, used as the PRIMARY road (the
  * operator's rule: primary where nothing else serves): a fiber is a
  * freer-tree program and its `k` at every operation IS the captured
- * delimited continuation — the Cont foundation this stack is built
+ * delimited continuation — the Cps foundation this stack is built
  * on, made scheduler food. Blocking primitives become OPERATIONS
  * (`SimChannel` send/receive suspend to the scheduler, as the real
  * Channel's do to whoever completes them), and the simulated one is

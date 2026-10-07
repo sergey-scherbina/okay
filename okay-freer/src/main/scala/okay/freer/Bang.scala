@@ -42,13 +42,13 @@ extension [F[+_], A](op: F[A])
   inline def perform: A ! F = effect(op)
 
 /** THE DEFAULT: the tree with THE MACHINE (okay-cont) as its carrier — a handler `F !> S` is a program of the
- * machine. The CPS `Cont` is one import away, `import okay.freer.cps.*` (stage 33) */
+ * machine. The CPS `Cps` is one import away, `import okay.freer.cps.*` (stage 33) */
 given given_Classic_Free: FreeEffectsAt[okay.cont.Carrier] = FreeEffects
 val FreeEffects: FreeEffectsAt[okay.cont.Carrier] = FreeEffectsAt(summon[Control[okay.cont.Carrier]])
 
-/** the tree at the CPS carrier, `Cont`, as it was: `import okay.freer.cps.{given_Classic_Free, *}` chooses it, with its `!>` and `handler` */
+/** the tree at the CPS carrier, `Cps`, as it was: `import okay.freer.cps.{given_Classic_Free, *}` chooses it, with its `!>` and `handler` */
 object cps:
   /** the SAME NAME as the default's: imported BY NAME it shadows the package's, so the search sees one instance (a `given` wildcard imports by type and shadows nothing) */
-  given given_Classic_Free: FreeEffectsAt[Cont] = FreeEffectsAt(summon[Control[Cont]])
-  infix type !>[F[_], S] = Interpr[F, Cont, S]
-  inline def handler[F[_] : Answers as H, S]: F !> S = [X] => e => Cont.Pure(H.handle(e))
+  given given_Classic_Free: FreeEffectsAt[Cps] = FreeEffectsAt(summon[Control[Cps]])
+  infix type !>[F[_], S] = Interpr[F, Cps, S]
+  inline def handler[F[_] : Answers as H, S]: F !> S = [X] => e => Cps.Pure(H.handle(e))

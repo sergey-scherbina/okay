@@ -21,7 +21,7 @@ import okay.{Answers, Id, TypeableK}
  */
 /** the aesthetic alias of Loop */
 infix type <<[A, R] = Loop[A, R]
-infix type Loop[A, R] = Cont[A, R, A => R]
+infix type Loop[A, R] = Cps[A, R, A => R]
 
 /**
  * Run a loop from this seed.
@@ -41,7 +41,7 @@ infix type Loop[A, R] = Cont[A, R, A => R]
 extension [A](a: A)(using scala.util.NotGiven[A <:< NamedTuple.AnyNamedTuple])
   inline def apply[R](f: A Loop R): R = loop(f)(a)
 /** the argument of the current iteration: shift identity captures the loop context */
-inline def take[A, R]: A Loop R = Cont.shift(identity)
+inline def take[A, R]: A Loop R = Cps.shift(identity)
 
 /** the first n elements of a stream (lives here to overload with the
  * Loop take above — toplevel overloads must share a file) */
@@ -57,7 +57,7 @@ inline def loop[A, R](f: A Loop R): A => R =
  *
  * NOT diagonal (put-de-diagonal, 2026-09-19): the answer is `Unit`,
  * decoupled from the element `W`. The obvious signature —
- * `put[A](a: A): A /> F[A]` — forces the carrier to answer with the
+ * `put[A](a: A): A />> F[A]` — forces the carrier to answer with the
  * value it was just told, which is why no real seam ever took one: a
  * real source is `Source[W] = Unit ! Writer % W + Async`, answer
  * `Unit`, element `W`. Every instance survives the change (the
@@ -67,10 +67,10 @@ inline def loop[A, R](f: A Loop R): A => R =
  * could exist.
  */
 trait Put[S[_]]:
-  def put[W](w: W): Unit /> S[W]
+  def put[W](w: W): Unit />> S[W]
 
 /** put a value through the instance of S */
-inline def put[W, S[_] : Put as S](w: W): Unit /> S[W] = S.put(w)
+inline def put[W, S[_] : Put as S](w: W): Unit />> S[W] = S.put(w)
 
 /** unfold: take the seed, put f(a), continue with the seed g(a) */
 inline def generate[A, B, F[_] : Put](a: A)(f: A => B)
@@ -84,8 +84,8 @@ inline def generateLazy[A, B](a: A)(f: A => B)
 
 /** put captures the continuation in the lazy tail */
 given Put[LazyList] with
-  final override inline def put[W](w: W): Unit /> LazyList[W] =
-    Cont.shift(w #:: _(()))
+  final override inline def put[W](w: W): Unit />> LazyList[W] =
+    Cps.shift(w #:: _(()))
 
 /** the identity signature: an operation is the value it produces */
 type Produce[A] = Id[A]
@@ -142,8 +142,8 @@ def producing[G[+_]](using g: TypeableK[G]): TypeableK[Produce] = new TypeableK[
 /** put suspends the value as an effect operation, and drops the echo
  * a diagonal Producer answer would have given — no caller used it */
 given Put[Producer] with
-  final override inline def put[W](w: W): Unit /> Producer[W] =
-    Cont.shift(k => produce(w).flatMap(_ => k(())))
+  final override inline def put[W](w: W): Unit />> Producer[W] =
+    Cps.shift(k => produce(w).flatMap(_ => k(())))
 
 object Producer {
 

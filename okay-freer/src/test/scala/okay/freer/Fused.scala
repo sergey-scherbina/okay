@@ -119,7 +119,7 @@ object Fused {
   // on the same 1 000-op right-nested program the Free tree walked by
   // `stateWriter` above is the FASTEST and the LEANEST of the four —
   // 13.7 us / 122 641 B/op — against the handler-passing program at
-  // Func 16.0 / 184 665, at Cont 18.0 / 200 673, and `Eff` with this
+  // Func 16.0 / 184 665, at Cps 18.0 / 200 673, and `Eff` with this
   // composite 23.5 / 297 897. A Free node (Inject + Bind + one closure)
   // is cheaper than the closure pair every CPS bind allocates, and its
   // tail-recursive runner beats closure invocation. "No tree" was the
@@ -155,7 +155,7 @@ object Fused {
 
   /** the same for a program written directly against a Control
    * carrier (`def prog[C](h: Interpr[Row, C, R]): C[A, R, R]`), at Func
-   * or Cont: the fully fused road staged-effects.md measured */
+   * or Cps: the fully fused road staged-effects.md measured */
   inline def runCtrl[C[_, _, _], S, W, A](s: S)
       (inline prog: Interpr[State % S + Writer % W, C, Answer[S, W, A]] => C[A, Answer[S, W, A], Answer[S, W, A]])
       (using TypeableK[State % S]): ((S, Vector[W]), A) =

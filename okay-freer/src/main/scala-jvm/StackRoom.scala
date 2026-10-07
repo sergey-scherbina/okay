@@ -4,7 +4,7 @@ package okay.freer
 /**
  * What the JVM can say about the stack it is running on — NOTHING, on
  * this side of JDK 22 (specs/cont-stack.md Layer 3). Every method
- * answers −1, and Cont's runner counts levels (`StackSwitch`). Where the
+ * answers −1, and Cps's runner counts levels (`StackSwitch`). Where the
  * 22+ variant reads, the runner asks it at the end of every room
  * (cont-stack-exact-first, 2026-10-04).
  *

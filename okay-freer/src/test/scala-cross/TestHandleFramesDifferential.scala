@@ -82,7 +82,7 @@ class TestHandleFramesDifferential extends munit.FunSuite:
   /** the answer, and how many operations the clause was asked: a frame that re-ran a part would ask twice */
   def relayIt(p: Int ! T1, machine: Boolean): (Int, Int) =
     var asked = 0
-    val g = [X, Y] => (e: Tick[X]) => e match { case Tick.Now(n) => asked += 1; Cont.Pure[X, Y](n * 7) }
+    val g = [X, Y] => (e: Tick[X]) => e match { case Tick.Now(n) => asked += 1; Cps.Pure[X, Y](n * 7) }
     val r =
       if machine then !.run(Shift.run[Int, Pure](Classic.relay[Int, Int, Tick, SD](!.widen[Int, T1, Shift % ?](p))(pure(_))(g)))
       else !.run(Classic.relay[Int, Int, Tick, Pure](p)(pure(_))(g))

@@ -7,7 +7,7 @@ import java.util.concurrent.TimeUnit
 
 /**
  * contAnswer's body, `k(x + 1) + 1`, at depth (cont-leaf-by-platform): the macro's LAZY leaf (a program over
- * the lazy `k`, nothing on the host stack) against the STRICT leaf (`Cont.shiftLeaf`, `k` a nested run per
+ * the lazy `k`, nothing on the host stack) against the STRICT leaf (`Cps.shiftLeaf`, `k` a nested run per
  * level, the body's `+ 1` waiting on the host stack: rooms, then StackSwitch past them). At 1000 levels the
  * strict leaf is 0.85x the time (cont-leaf-forms); this asks whether that holds where the strict one switches.
  */
@@ -24,9 +24,9 @@ class ContDepthBenchmark {
 
   @Benchmark
   def lazyLeaf(): Int =
-    Cont.reset((1 to depth).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => Cont.shift[Int, Int, Int](k => k(x + 1) + 1))))
+    Cps.reset((1 to depth).foldLeft(Cps.Pure[Int, Int](0): Int />> Int)((m, _) => m.flatMap(x => Cps.shift[Int, Int, Int](k => k(x + 1) + 1))))
 
   @Benchmark
   def strictLeaf(): Int =
-    Cont.reset((1 to depth).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => Cont.shiftLeaf[Int, Int, Int](k => k(x + 1) + 1))))
+    Cps.reset((1 to depth).foldLeft(Cps.Pure[Int, Int](0): Int />> Int)((m, _) => m.flatMap(x => Cps.shiftLeaf[Int, Int, Int](k => k(x + 1) + 1))))
 }

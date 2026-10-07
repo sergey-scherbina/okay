@@ -452,9 +452,9 @@ object Typed:
    * region is the No -> Yes transition, leaving it Yes -> No, and the
    * type system enforces the protocol order — a nested `region` does
    * not COMPILE, where `transact` refuses it at runtime. The full
-   * PState embedding (threading the state type through Cont's answer
+   * PState embedding (threading the state type through Cps's answer
    * type) was considered and declined for v1: it buys the same
-   * guarantee at the price of a Free<->Cont bridge on every step. */
+   * guarantee at the price of a Free<->Cps bridge on every step. */
   object Tx:
     sealed trait No
     sealed trait Yes

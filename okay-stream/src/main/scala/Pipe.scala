@@ -192,7 +192,7 @@ object Stage {
    *
    * The per-input transition is EXECUTED through `PState` — the
    * type-changing state the theory chapter exhibits
-   * (docs/theory/03), here doing work: one Cont program whose state
+   * (docs/theory/03), here doing work: one Cps program whose state
    * type goes S1 -> Either[S1, S2], `run` at every head input.
    *
    * Ends are honest both ways: input may end DURING the head, and

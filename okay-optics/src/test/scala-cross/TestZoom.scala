@@ -83,7 +83,7 @@ class TestZoom extends munit.FunSuite {
       Lens(_.item, (b, i) => Box(i, b.tag))
 
     // a typestate program over the PART: read a String, leave an Int
-    def parse[R]: Cont[Int, Int => R, String => R] =
+    def parse[R]: Cps[Int, Int => R, String => R] =
       PState.get[String, R].flatMap(s => PState.set[String, Int, R](s.length).map(_ => s.length))
 
     val (after, out) = PState.run[Box[String], Box[Int], Int](Box("hello", "t"))(
@@ -110,7 +110,7 @@ class TestZoom extends munit.FunSuite {
         okay.Lens(_.item, (b, i) => Box(i, b.tag))
       // the inner program leaves an Int; asking for the whole back as
       // Box[String] is the typestate error the lens exists to catch
-      def parse[R]: okay.freer.Cont[Int, Int => R, String => R] =
+      def parse[R]: okay.freer.Cps[Int, Int => R, String => R] =
         okay.freer.PState.get[String, R].flatMap(s => okay.freer.PState.set[String, Int, R](s.length).map(_ => s.length))
       okay.freer.PState.run[Box[String], Box[String], Int](Box("hello", "t"))(
         okay.freer.PState.zoom[Box[String], Box[Int], String, Int, Int, (Box[String], Int)](item)(parse))

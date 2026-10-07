@@ -1,8 +1,8 @@
 package okay.codec
 
 import Json.*
-import okay.freer.{/>}
-import okay.freer.Cont
+import okay.freer.{/>>}
+import okay.freer.Cps
 /**
  * The fast VALUE parser beside the lossless one (specs/codecs.md,
  * "Value parser"). `Json.parse` is a lexer, a CST with every trivia
@@ -64,13 +64,13 @@ object JsonValue {
      * value — counted for the native/trampoline switch, not a depth
      * REFUSAL (remove-codecs-maxdepth: there is no limit to refuse
      * past any more). PAST `Codecs.NativeThreshold`, dispatches to a
-     * `Cont.defer` trampoline (json-raw-nesting-threshold-trampoline)
+     * `Cps.defer` trampoline (json-raw-nesting-threshold-trampoline)
      * — the same design as the three already-closed sites, simpler
      * than the two schema-decoding ones: uniformly typed
      * (`Json | Null` throughout, like `Cbor.In.skipItem`'s
      * `Either[String, Unit]`), so no cross-type `R` to thread. */
     def value(open: Int): Json | Null =
-      if open >= Codecs.NativeThreshold then Cont.reset(valueC[Json | Null](open))
+      if open >= Codecs.NativeThreshold then Cps.reset(valueC[Json | Null](open))
       else valueNative(open)
 
     private def valueNative(open: Int): Json | Null =
@@ -146,71 +146,71 @@ object JsonValue {
 
     // ---- the trampoline: mirrors valueNative/objNative/arrNative
     // exactly, deferring the ONE point each descends into a fresh
-    // value through Cont.defer, so the reader's mutable `at` cursor
+    // value through Cps.defer, so the reader's mutable `at` cursor
     // still advances in the same order, just inside `/`'s loop
     // instead of the native call stack ----
 
-    private def valueC[R](open: Int): (Json | Null) /> R =
-      if at >= n then Cont.Pure(null)
+    private def valueC[R](open: Int): (Json | Null) />> R =
+      if at >= n then Cps.Pure(null)
       else s.charAt(at) match
         case '{' => objC[R](open + 1)
         case '[' => arrC[R](open + 1)
-        case '"' => Cont.Pure(str() match { case null => null; case x => JStr(x) })
-        case 't' => Cont.Pure(lit("true", JBool(true)))
-        case 'f' => Cont.Pure(lit("false", JBool(false)))
-        case 'n' => Cont.Pure(lit("null", JNull))
-        case c if c == '-' || (c >= '0' && c <= '9') => Cont.Pure(num())
-        case _ => Cont.Pure(null)
+        case '"' => Cps.Pure(str() match { case null => null; case x => JStr(x) })
+        case 't' => Cps.Pure(lit("true", JBool(true)))
+        case 'f' => Cps.Pure(lit("false", JBool(false)))
+        case 'n' => Cps.Pure(lit("null", JNull))
+        case c if c == '-' || (c >= '0' && c <= '9') => Cps.Pure(num())
+        case _ => Cps.Pure(null)
 
-    private def objC[R](open: Int): (Json | Null) /> R =
+    private def objC[R](open: Int): (Json | Null) />> R =
       at += 1
       val b = Vector.newBuilder[(String, Json)]
       skipWs()
-      if at < n && s.charAt(at) == '}' then { at += 1; Cont.Pure(JObj(Vector.empty)) }
+      if at < n && s.charAt(at) == '}' then { at += 1; Cps.Pure(JObj(Vector.empty)) }
       else
-        def loop(): (Json | Null) /> R =
+        def loop(): (Json | Null) />> R =
           skipWs()
-          if at >= n || s.charAt(at) != '"' then Cont.Pure(null)
+          if at >= n || s.charAt(at) != '"' then Cps.Pure(null)
           else
             val k = str()
-            if k == null then Cont.Pure(null)
+            if k == null then Cps.Pure(null)
             else
               skipWs()
-              if at >= n || s.charAt(at) != ':' then Cont.Pure(null)
+              if at >= n || s.charAt(at) != ':' then Cps.Pure(null)
               else
                 at += 1
                 skipWs()
-                Cont.defer(() => valueC[R](open)) { v =>
-                  if v == null then Cont.Pure(null)
+                Cps.defer(() => valueC[R](open)) { v =>
+                  if v == null then Cps.Pure(null)
                   else
                     b += ((k, v))
                     skipWs()
-                    if at >= n then Cont.Pure(null)
+                    if at >= n then Cps.Pure(null)
                     else s.charAt(at) match
                       case ',' => at += 1; loop()
-                      case '}' => at += 1; Cont.Pure(JObj(b.result()))
-                      case _ => Cont.Pure(null)
+                      case '}' => at += 1; Cps.Pure(JObj(b.result()))
+                      case _ => Cps.Pure(null)
                 }
         loop()
 
-    private def arrC[R](open: Int): (Json | Null) /> R =
+    private def arrC[R](open: Int): (Json | Null) />> R =
       at += 1
       val b = Vector.newBuilder[Json]
       skipWs()
-      if at < n && s.charAt(at) == ']' then { at += 1; Cont.Pure(JArr(Vector.empty)) }
+      if at < n && s.charAt(at) == ']' then { at += 1; Cps.Pure(JArr(Vector.empty)) }
       else
-        def loop(): (Json | Null) /> R =
+        def loop(): (Json | Null) />> R =
           skipWs()
-          Cont.defer(() => valueC[R](open)) { v =>
-            if v == null then Cont.Pure(null)
+          Cps.defer(() => valueC[R](open)) { v =>
+            if v == null then Cps.Pure(null)
             else
               b += v
               skipWs()
-              if at >= n then Cont.Pure(null)
+              if at >= n then Cps.Pure(null)
               else s.charAt(at) match
                 case ',' => at += 1; loop()
-                case ']' => at += 1; Cont.Pure(JArr(b.result()))
-                case _ => Cont.Pure(null)
+                case ']' => at += 1; Cps.Pure(JArr(b.result()))
+                case _ => Cps.Pure(null)
           }
         loop()
 

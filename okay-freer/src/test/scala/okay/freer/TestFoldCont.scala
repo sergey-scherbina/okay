@@ -5,7 +5,7 @@ import okay.{Answers}
 /**
  * What to do with `foldCont`'s result (docs/contract.md, "foldCont").
  *
- * `p.foldCont(h)` is `foldMap` into `Cont`: an `A /> S`, a computation
+ * `p.foldCont(h)` is `foldMap` into `Cps`: an `A />> S`, a computation
  * still waiting for its LAST continuation. Closing it with `/ k` runs it.
  * The choice of `S`, the answer type, is the choice of what the
  * interpretation produces: one value, every value, or a function of a
@@ -25,13 +25,13 @@ class TestFoldCont extends munit.FunSuite:
 
   test("S = the answer: resume once, close with / identity") {
     val first: Op !> (Int, Int) = [X] => (e: Op[X]) => e match
-      case Op.Pick(xs) => Cont.shift[X, (Int, Int), (Int, Int)](k => k(xs.head))
+      case Op.Pick(xs) => Cps.shift[X, (Int, Int), (Int, Int)](k => k(xs.head))
     assertEquals(pair.foldCont(first) / identity, (1, 10))
   }
 
   test("S = every answer: resume once per choice, close by wrapping the answer") {
     val all: Op !> List[(Int, Int)] = [X] => (e: Op[X]) => e match
-      case Op.Pick(xs) => Cont.shift[X, List[(Int, Int)], List[(Int, Int)]](k => xs.flatMap(k))
+      case Op.Pick(xs) => Cps.shift[X, List[(Int, Int)], List[(Int, Int)]](k => xs.flatMap(k))
     assertEquals(pair.foldCont(all) / (p => List(p)), List((1, 10), (1, 20), (2, 10), (2, 20)))
   }
 
@@ -43,8 +43,8 @@ class TestFoldCont extends munit.FunSuite:
       m <- State.get[Int]
     yield n * 100 + m
     val cell: (State % Int) !> St = [X] => (e: State[Int, X]) => e match
-      case State.Get() => Cont.shift[X, St, St](k => s => k(s)(s))
-      case State.Update(f) => Cont.shift[X, St, St](k => s => k(f(s)._1)(f(s)._2))
+      case State.Get() => Cps.shift[X, St, St](k => s => k(s)(s))
+      case State.Update(f) => Cps.shift[X, St, St](k => s => k(f(s)._1)(f(s)._2))
     assertEquals((counter.foldCont(cell) / (a => s => (s, a)))(5), (6, 506))
   }
 

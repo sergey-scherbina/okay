@@ -24,7 +24,7 @@ Contents:
 3a. [okay's names, and okay2](#3a-okays-names-and-okay2)
 4. [Failure](#4-failure)
 5. [Your own effect](#5-your-own-effect)
-6. [Continuations: `Cont`](#6-continuations-cont)
+6. [Continuations: `Cps`](#6-continuations-cps)
 7. [Streams: `Source`](#7-streams-source)
 8. [Fibers and channels](#8-fibers-and-channels)
 8a. [Codecs: JSON, CBOR, JSON Schema](#8a-codecs-json-cbor-json-schema)
@@ -100,7 +100,7 @@ libraryDependencies ++= Seq("okay-scala2-http", "okay-scala2-sql", "okay-scala2-
 
 | module | section | wraps |
 |---|---|---|
-| `okay-scala2` | 2–8 | the core: `Prog`, `Eff`, your own effects, `Cont`, `Source`, fibers, channels, `Choose` |
+| `okay-scala2` | 2–8 | the core: `Prog`, `Eff`, your own effects, `Cps`, `Source`, fibers, channels, `Choose` |
 | `okay-scala2-codec` | 8a | JSON, CBOR, JSON Schema |
 | `okay-scala2-http` | 8b | routes, a server, a client |
 | `okay-scala2-sql` | 8c | `Db`: queries, transactions |
@@ -443,16 +443,16 @@ answer itself. With `handle` in that position, scalac 2.13 has
 nothing left to infer the rest of the row from and picks `Any`, and
 `-Xlint` reports that (section 10).
 
-## 6. Continuations: `Cont`
+## 6. Continuations: `Cps`
 
-`Cont[A, S, R]` is okay's delimited continuation type. `Cont.shift`
-captures "the rest of the block" up to the nearest `Cont.reset` as a
+`Cps[A, S, R]` is okay's delimited continuation type. `Cps.shift`
+captures "the rest of the block" up to the nearest `Cps.reset` as a
 function `k`, which may be called any number of times:
 
 ```scala
 // the continuation k is "the rest of the block": here, _ * 2 then + 1
-val twice: Int = Cont.reset(
-  Cont.shift[Int, Int, Int](k => k(k(3))).map(_ * 2).map(_ + 1)
+val twice: Int = Cps.reset(
+  Cps.shift[Int, Int, Int](k => k(k(3))).map(_ * 2).map(_ + 1)
 )
 assertEquals(twice, 15)
 ```
@@ -461,7 +461,7 @@ assertEquals(twice, 15)
 parameters are what `shift` receives, what the rest of the block
 answers, and what the whole block answers; the last two may differ
 (answer-type modification). Scala 2 cannot infer them from use, so
-write them out. `Cont` is stack-safe: 100 000 binds, nested either
+write them out. `Cps` is stack-safe: 100 000 binds, nested either
 way, are tested from 2.13.
 
 ## 7. Streams: `Source`
@@ -1636,7 +1636,7 @@ Postgres' own, with numbered placeholders (`$1, $2`) where JDBC writes
 | `State.handle(s)(p)` / `State.handle(s)(p)` | `State.handle(s)(p)`, which leaves the rest of the row |
 | `enum KV[+A] derives Effect` | `sealed trait KV[A] extends Op[A]` + `object KV extends Effect[KV]` |
 | a handler as `F !> S`, `Effects[Free].handle` | `Handler[F, R, B]`, `KV.handle` / `KV.run` |
-| `shift` / `reset` / `Cont[A, S, R]` | `Cont.shift` / `Cont.reset` / `Cont[A, S, R]` |
+| `shift` / `reset` / `Cps[A, S, R]` | `Cps.shift` / `Cps.reset` / `Cps[A, S, R]` |
 | `Source[A]` (a type alias) | `Source[A]` (a class) |
 | `Async.spawn`, `Fiber`, `Channel` | `Async.fork`, `Fiber`, `Channel` |
 | `case class P(...) derives Schema` | `Schemas.productN("P", ...)(P.apply)(p => (...))` |

@@ -19,7 +19,7 @@ class StagedBenchmark {
     else steps(n - 1)(Control[M].flatMap(m)(x => Control[M].pure(x + 1)))
 
   @Benchmark
-  def cont24(): Int = Cont.reset(steps[Cont](24)(Cont.Pure(0)))
+  def cont24(): Int = Cps.reset(steps[Cps](24)(Cps.Pure(0)))
 
   @Benchmark
   def func24(): Int = steps[Func](24)(Control[Func].pure(0))(identity)
@@ -29,7 +29,7 @@ class StagedBenchmark {
     else effSteps(n - 1)(Classic[M].flatMap(m)(x => Classic[M].perform[Produce, Int](x + 1)))
 
   // `effFunc24` (the Func carrier under `runIn`) is gone with
-  // `runIn` itself — measured no faster than Cont, the rows are in
+  // `runIn` itself — measured no faster than Cps, the rows are in
   // history.tsv (core-cleanup)
   @Benchmark
   def effCont24(): Int = effSteps[Free](24)(produce(0)).runWith

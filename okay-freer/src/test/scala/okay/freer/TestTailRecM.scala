@@ -7,7 +7,7 @@ import okay.given
  * `TailRecM`, the carrier's own loop (specs/eager-carrier-depth.md), on a
  * 128 KB thread: a loop that held a host frame per iteration overflows
  * there at a thousand, so a million proves the loop holds none. The
- * first cut — a derivation through `Cont` — passed a million only on
+ * first cut — a derivation through `Cps` — passed a million only on
  * sbt's 8 MB stack and overflowed this test at 1 000.
  */
 class TestTailRecM extends munit.FunSuite:

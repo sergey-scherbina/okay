@@ -7,7 +7,7 @@ import scala.collection.immutable.ArraySeq
 
 /**
  * THE CLASSIC AS A TYPECLASS: what every encoding of the TREE implements — `Free`, the tree itself, and `Eager`
- * — over the carrier `C` it folds into, a `Control`: the machine's `Carrier` (the default) or the CPS `Cont`
+ * — over the carrier `C` it folds into, a `Control`: the machine's `Carrier` (the default) or the CPS `Cps`
  * (`cps`), so that a handler `F !> S` is what it always was. Level 0 is the monad and the fold (`pure`,
  * `perform`, `flatMap`, `foldCont`, `runWith`, `handle` by a clause); level 1 (specs/shift-effect.md) is
  * continuations (`Shift` in the row) and ready handlers (`Handler.Full`), the top-level functions through the
@@ -36,7 +36,7 @@ trait Classic[M[_[+_], _]]:
     /** `foldMap` into the carrier: the program's fold, each operation answered by `h` as a continuation
      * (`Static.foldMap` is the same fold into any `Selective`). The result is still waiting for its LAST
      * continuation: `/ identity` when `S` is the answer (`runWith`), `/ ret` to finish into `S` (`handle`).
-     * TestFoldCont and docs/contract.md show three `S`. At `C = Cont` the handler is `F !> S` and the fold `A /> S` */
+     * TestFoldCont and docs/contract.md show three `S`. At `C = Cps` the handler is `F !> S` and the fold `A />> S` */
     def foldCont[S](h: Interpr[F, C, S]): C[A, S, S]
     /** run all the effects by a comonadic Answers (the foldCont definition; encodings may override with an equivalent fast path) */
     def runWith(using Answers[F]): A = control./(m.foldCont(interpr[C, F, A](using control, summon[Answers[F]])))(identity)
@@ -78,7 +78,7 @@ trait Classic[M[_[+_], _]]:
     reify[M, F, A](m)(using this).foldMap(nt)
 
 /** the instance, a class over its CARRIER `C0` — whatever has a `Control`: the machine's (the default), the CPS
- * `Cont` (`cps`) — its type naming the carrier (`Classic.Aux`), so a handler's type is known wherever the
+ * `Cps` (`cps`) — its type naming the carrier (`Classic.Aux`), so a handler's type is known wherever the
  * instance is reached by its type — `Classic[Free]`, `summon`, a `using` — and not only through the given */
 final class FreeEffectsAt[C0[_, _, _]](val control: Control[C0]) extends Classic[Free]:
   type C = C0
@@ -116,9 +116,9 @@ final class FreeEffectsAt[C0[_, _, _]](val control: Control[C0]) extends Classic
       case Free.Bind(Free.Inject(e), f) => runFree(f(H.handle(e)))
 
   /**
-   * `Effects.handle`'s definition in one loop over the tree. The definition answers EVERY operation in `Cont`,
+   * `Effects.handle`'s definition in one loop over the tree. The definition answers EVERY operation in `Cps`,
    * so a forwarded one costs a capture spent on copying (+112.7 B and 1.51x against `relay`, docs/benchmarks.md
-   * §2, `hd-*`). Here a forwarded operation is re-emitted on the `G` side as `relay` does, and `Cont` is
+   * §2, `hd-*`). Here a forwarded operation is re-emitted on the `G` side as `relay` does, and `Cps` is
    * entered only for an operation the handler claims. The same function: a forwarded operation is already
    * committed to the `G` program, which a later abort cannot un-perform under the definition either
    * (TestHandleForward pins aborting and multi-shot forwarding, red first against a wrong arm).
@@ -198,7 +198,7 @@ def reflect[M[_[+_], _] : Classic as M, F[+_], A](m: A ! F): M[F, A] =
 /** THE CLASSIC AS A TOOLKIT, `!` for short: the functions over the tree itself — `!.run`, `!.relay`, `!.foldM`
  * — and `Free`'s constructors exported, the companion of the typeclass above */
 object Classic {
-  /** an encoding WITH ITS CARRIER NAMED: what an instance's given declares (`given Classic.Aux[Free, Cont]`), so
+  /** an encoding WITH ITS CARRIER NAMED: what an instance's given declares (`given Classic.Aux[Free, Cps]`), so
    * that `foldCont`'s handler type is concrete wherever the instance is reached by its type, not only by the
    * given's own object */
   type Aux[M[_[+_], _], C0[_, _, _]] = Classic[M] { type C = C0 }
@@ -212,7 +212,7 @@ object Classic {
   /** the staging entry for tree programs: `Classic[Free]`, `Classic[Eager]`, or any `M` with an instance in
    * scope; with `trait Classic` it forms one door, as a class and its companion do. Summoned WITH ITS CARRIER:
    * the pattern binds `c` to what the instance declares (`Classic.Aux`), so `Classic[Free].handle(…)(h)` takes
-   * the handler at `Cont` — `summonInline[Classic[M]]` answered at `Classic[M]`, the carrier unknown — and
+   * the handler at `Cps` — `summonInline[Classic[M]]` answered at `Classic[M]`, the carrier unknown — and
    * `summonFrom` still defers the search to where an inline program is expanded (`sprog[Free]`, TestEffects) */
   transparent inline def apply[M[_[+_], _]] =
     compiletime.summonFrom { case e: Classic.Aux[M, c] => e }
@@ -241,7 +241,7 @@ object Classic {
   inline def run[A](e: A ! Pure): A = e.runWith
 
   /** a tail call to a mutually recursive function returning `A ! F`: the interpreter trampolines it. A `Delay`,
-   * not `defer` with `pure`, which would push a `.flatMap(pure)` down every hop (`Cont.delay` on the Cont side) */
+   * not `defer` with `pure`, which would push a `.flatMap(pure)` down every hop (`Cps.delay` on the Cps side) */
   inline def tailcall[F[+_], A](thunk: => A ! F): A ! F =
     Free.delay(() => thunk)
 
@@ -361,7 +361,7 @@ object Classic {
    * Interpret `F` into ANOTHER ROW rather than into a value: a handler valued in a program,
    * `F ==> ([X] =>> X ! G)`, so an operation may answer with more computation. Between `F ==> Id` (`runWith`,
    * which must answer and so cannot suspend) and `F !> S` (`Effects.handle`, abort and multi-shot through
-   * `Cont`), this is the tail-resumptive middle: one walk, no `Cont`, `G` forwarded.
+   * `Cps`), this is the tail-resumptive middle: one walk, no `Cps`, `G` forwarded.
    */
   def translate[A, F[+_] : TypeableK, G[+_]](prog: A ! F + G)(using Distinct[F + G])
                                             (h: F ==> ([X] =>> X ! G)): A ! G =
@@ -384,7 +384,7 @@ object Classic {
 
   /** `translate` as a frame: an operation is its program, then the continuation */
   private def intoFrame[A, F[+_] : TypeableK, G[+_]](h: F ==> ([X] =>> X ! G))(x: A ! F + G): Shift.U[G, A] =
-    HandleFrames.control[F, A, A, G, Cont](summon[Control[Cont]], pure(_), [X] => (e: F[X]) => Cont.shift[X, A ! G, A ! G](k => h(e).flatMap(k)),
+    HandleFrames.control[F, A, A, G, Cps](summon[Control[Cps]], pure(_), [X] => (e: F[X]) => Cps.shift[X, A ! G, A ! G](k => h(e).flatMap(k)),
       summon[TypeableK[F]])(x)
 
   /**
@@ -395,18 +395,18 @@ object Classic {
    * neither abort nor perform `G`. For handlers that do, use `Effects.handle`.
    */
   def relay[A, B, F[+_] : TypeableK, G[+_]](a: A ! F + G)(using Distinct[F + G])(f: A => B ! G)
-                                           (g: [X, Y] => F[X] => X /> Y): B ! G =
+                                           (g: [X, Y] => F[X] => X />> Y): B ! G =
     // a value: run by whoever forces it, a frame for a machine that meets it
     Free.delay(new HandleFrames.Run[B, G]:
       def at(d: Int): B ! G = new Relaying[A, B, F, G](d, f, g).loop(a)
       def program: Shift.U[G, B] =
-        HandleFrames.control[F, A, B, G, Cont](summon[Control[Cont]], f, [X] => (e: F[X]) => g[X, B ! G](e), summon[TypeableK[F]])(a))
+        HandleFrames.control[F, A, B, G, Cps](summon[Control[Cps]], f, [X] => (e: F[X]) => g[X, B ! G](e), summon[TypeableK[F]])(a))
 
   /**
    * `relay`'s walk, an object per run: its depth for `HandleFrames.shallow` is a field, read in the cold arm
    * only. Threaded through the loop as a parameter it cost relayPrebuilt 1.19x; one allocation a run is cheaper.
    */
-  private final class Relaying[A, B, F[+_], G[+_]](depth: Int, f: A => B ! G, g: [X, Y] => F[X] => X /> Y)
+  private final class Relaying[A, B, F[+_], G[+_]](depth: Int, f: A => B ! G, g: [X, Y] => F[X] => X />> Y)
                                                   (using TypeableK[F]):
       /** the terminal case, at most once a program, out of the hot loop: `split`'s inline arms expand into the
        * loop, which must stay under HotSpot's FreqInlineSize (325 bytes) to be inlined into `relay` — 24 bytes
@@ -420,7 +420,7 @@ object Classic {
         forwarded[F, G](i).flatMap(x => again(k(x)))
 
       @tailrec final def loop(x: A ! F + G): B ! G = (x.resumeRun: @unchecked) match
-        // `g(e) / k`: the Cont carrier's application
+        // `g(e) / k`: the Cps carrier's application
         case Bind(i @ Inject(e), k) => split[F, G](e)(e => loop(g(e) / k))(_ => forward(i, k))
         case Inject(e) => last(e)
         case Return(a) => f(a)

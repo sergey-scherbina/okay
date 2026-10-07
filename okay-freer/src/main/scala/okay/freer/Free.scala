@@ -72,7 +72,7 @@ object Free {
    * type for another `T` to come from, so `T` IS `Unit` — said once here, for every `Bind(Inject(e), k)` site.
    * The type variables sit in the PARAMETER, so the compiler's type test binds them (in the result alone they
    * would be inferred `Nothing`); the result is the node, so the pattern allocates nothing. Unreachable on a
-   * `Cont`, which is opaque outside its companion.
+   * `Cps`, which is opaque outside its companion.
    */
   object Bind:
     def apply[F[+_], A, B](a: Free[F, A], f: A => Free[F, B]): Free[F, B] = Freer.Bind(a, f)

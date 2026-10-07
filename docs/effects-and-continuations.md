@@ -5,7 +5,7 @@ This page is everything a USER of okay needs: one type, `A ! F`, and six words, 
 `Classic[M]` typeclass, in any encoding of the tree.
 
 Writing an effect of your own, or a handler for one, is level 2. That is
-[your-own-effect.md](your-own-effect.md), [delimited.md](delimited.md) and the `Cont` chapters of
+[your-own-effect.md](your-own-effect.md), [delimited.md](delimited.md) and the `Cps` chapters of
 [theory](theory/02-continuations.md). The machine underneath is level 3 ([cont-stack.md](cont-stack.md)).
 Nothing on this page needs either.
 
@@ -191,7 +191,7 @@ In direct style over `Classic[M]`, `Classic.monad[M, F]` is the monad `direct` n
 Measured (specs/shift-effect.md, history.d `shift-effect-core`):
 
 - 1000 captures under one `reset` take 56 µs with `shift0`, against 55 µs for the same shape on `Shift`'s
-  own doors and 61 µs on level 2's `Cont`.
+  own doors and 61 µs on level 2's `Cps`.
 - `shift` takes 69 µs: it re-installs its `reset` for the body.
 - 100 separate small `reset`s take 10 µs: each starts the machine once.
 

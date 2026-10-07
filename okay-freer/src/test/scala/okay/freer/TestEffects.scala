@@ -94,7 +94,7 @@ class TestEffects extends munit.FunSuite {
     inline def sprog[C[_, _, _]](h: Interpr[Produce, C, Int]): C[Int, Int, Int] =
       val C = Control[C]
       C.flatMap(h(1))(x => h(x + 1))
-    assertEquals(sprog[Cont](interpr[Cont, Produce, Int]) / identity, 2)
+    assertEquals(sprog[Cps](interpr[Cps, Produce, Int]) / identity, 2)
     assertEquals(sprog[Func](interpr[Func, Produce, Int])(identity), 2)
   }
 
@@ -104,7 +104,7 @@ class TestEffects extends munit.FunSuite {
     val prog = (1 to n).foldLeft(effect[FG, Int](Op(0))): (m, i) =>
       m.flatMap(x => effect[FG, Int](if i % 2 == 0 then Op(x + 1) else x + 1))
     val handled: Int ! Produce = relay[Int, Int, Op, Produce](prog)(pure(_)):
-      [X, Y] => o => Cont.Pure(o.a)
+      [X, Y] => o => Cps.Pure(o.a)
     assertEquals(handled.runWith, n)
   }
 

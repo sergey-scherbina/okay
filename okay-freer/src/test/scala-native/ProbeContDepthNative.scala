@@ -3,7 +3,7 @@ package okay.freer
 
 /**
  * cont-leaf-by-platform on Native: contAnswer's body `k(x + 1) + 1` at depth, the macro's lazy leaf against
- * the strict one (`Cont.shiftLeaf`), timed by hand (no JMH on Native). Runs only with OKAY_PROBE_CONT_DEPTH
+ * the strict one (`Cps.shiftLeaf`), timed by hand (no JMH on Native). Runs only with OKAY_PROBE_CONT_DEPTH
  * set, built in release mode by whoever runs it: a debug build's timings say nothing.
  */
 class ProbeContDepthNative extends munit.FunSuite:
@@ -11,10 +11,10 @@ class ProbeContDepthNative extends munit.FunSuite:
   override def munitTimeout = scala.concurrent.duration.Duration(30, "min")
 
   private def lazyLeaf(n: Int): Int =
-    Cont.reset((1 to n).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => Cont.shift[Int, Int, Int](k => k(x + 1) + 1))))
+    Cps.reset((1 to n).foldLeft(Cps.Pure[Int, Int](0): Int />> Int)((m, _) => m.flatMap(x => Cps.shift[Int, Int, Int](k => k(x + 1) + 1))))
 
   private def strictLeaf(n: Int): Int =
-    Cont.reset((1 to n).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => Cont.shiftLeaf[Int, Int, Int](k => k(x + 1) + 1))))
+    Cps.reset((1 to n).foldLeft(Cps.Pure[Int, Int](0): Int />> Int)((m, _) => m.flatMap(x => Cps.shiftLeaf[Int, Int, Int](k => k(x + 1) + 1))))
 
   /** the median of `reps` timed runs, in microseconds, after `warm` untimed ones */
   private def time(warm: Int, reps: Int)(f: () => Int): Double =

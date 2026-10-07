@@ -99,7 +99,7 @@ object Handler:
 
   def answerOf[F[+_]](f: [X] => F[X] => X)(using t: TypeableK[F]): Stepped[F, Unit, [A] =>> A] = new Stepped[F, Unit, [A] =>> A]:
     def run[A, G[+_]](p: A ! F + G)(using A <:< Any, Distinct[F + G], Nothing[G]): A ! G =
-      Classic.relay[A, A, F, G](p)(pure(_))([X, Y] => (e: F[X]) => Cont.Pure[X, Y](f(e)))
+      Classic.relay[A, A, F, G](p)(pure(_))([X, Y] => (e: F[X]) => Cps.Pure[X, Y](f(e)))
     def takes: TypeableK[F] = t
     def init: Unit = ()
     def step(s: Unit, op: Any): (Unit, Any) | Halt[Unit] = ((), f(op.asInstanceOf[F[Any]]))

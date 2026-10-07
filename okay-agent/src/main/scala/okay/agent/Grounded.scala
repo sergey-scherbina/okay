@@ -109,7 +109,7 @@ object Grounded {
    *
    * This is the same three-point line the core already draws:
    * `F ==> Id` (comonadic), `F ==> ([X] =>> X ! G)` (this), and
-   * `F !> S` (Cont-valued, adding abort and multi-shot).
+   * `F !> S` (Cps-valued, adding abort and multi-shot).
    */
   def translating[S, F[+_]](policy: Aggregator[Turn, S, Seq[Turn]],
                             retriever: Retriever[F],

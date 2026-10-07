@@ -1958,3 +1958,14 @@ capture, as `Reaching`. The drive's Runs take the first road: 273 us, 1.15x — 
 road needs no delimiter (`Cont.Answer` carries its handler), which is what makes a split capability one case and
 no machine node. `toClassic` keeps the stopping clause: there the classic handler answers every operation.
 
+## Stage 51: THE BARE NAME IS THE MACHINE'S (DONE, 2026-10-08)
+
+Lane cont-classic-rename, last of the queue, a rename and no logic. The operator chose the names: the CPS
+paramonad `okay.freer.Cont` is `okay.freer.Cps` (`Cps[A, S, R]`, `Cps.shift`, `Cps.Pure`, Cps.scala), its
+diagonal `A />> R`; `A /> R` is the machine's, `Carrier[A, R, R]`, beside the default `!>` that was already the
+machine's (`okay.freer.cps.!>` stays the CPS one, one import away); `Cont` is the machine's alone,
+`okay.cont.Cont`. The Scala 2 facade follows (`okay.scala2.Cps`). okay2 is its own build and keeps its own
+`Cont`; okay-cats's `Cont` is cats-effect's. Recorded, as the queue item asked: the `Shift` effect,
+`ShiftMachine` and `HandleFrames` stay with the classic — dynamic prompts have no place on the machine by design
+(stage 12; the level-2 finding of 2026-10-06).
+

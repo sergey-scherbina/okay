@@ -80,7 +80,7 @@ class TestPhased extends munit.FunSuite {
     assert(errors.contains("Unit") || errors.contains("Required"), errors)
   }
 
-  test("the transition IS a PState run: the state type changes S1 -> Either under Cont") {
+  test("the transition IS a PState run: the state type changes S1 -> Either under Cps") {
     // the same shape phased executes per head input, run bare — the
     // theory chapter's exhibit doing this library's work
     type R = (Either[Int, String], Vector[String])

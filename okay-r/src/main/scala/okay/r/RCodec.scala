@@ -1,7 +1,7 @@
 package okay.r
 
-import okay.freer.{/>}
-import okay.freer.Cont
+import okay.freer.{/>>}
+import okay.freer.Cps
 import okay.codec.Codecs
 import okay.codec.Schema
 import RValue.*
@@ -51,11 +51,11 @@ object RCodec {
 
   // Both roads recurse once per level of the VALUE: below
   // `Codecs.NativeThreshold` a direct call per level, at it the rest of
-  // the value on the Cont trampoline (okay-py's ValueCodec, over RValue;
+  // the value on the Cps trampoline (okay-py's ValueCodec, over RValue;
   // stack-safety-py-r)
 
   private def enc[X](s: Schema[X], x: X, depth: Int): RValue =
-    if depth >= Codecs.NativeThreshold then Cont.reset(encC[X, RValue](s, x))
+    if depth >= Codecs.NativeThreshold then Cps.reset(encC[X, RValue](s, x))
     else encNative(s, x, depth)
 
   /** a sum's case as its named list, the case named in `type` */
@@ -96,31 +96,31 @@ object RCodec {
   /** a field's schema and value at ONE type, held for the trampoline
    * without a cast (ValueCodec's Held) */
   private final class Held[Y](sc: Schema[Y], y: Y):
-    def encC[Ans]: RValue /> Ans = RCodec.encC(sc, y)
+    def encC[Ans]: RValue />> Ans = RCodec.encC(sc, y)
 
-  private def encC[X, Ans](s: Schema[X], x: X): RValue /> Ans = s match
+  private def encC[X, Ans](s: Schema[X], x: X): RValue />> Ans = s match
     case Schema.SInt | Schema.SLong | Schema.SDouble | Schema.SBool | Schema.SString
-       | Schema.SChar | Schema.SBytes | Schema.SBigInt => Cont.Pure(encScalar(s, x))
+       | Schema.SChar | Schema.SBytes | Schema.SBigInt => Cps.Pure(encScalar(s, x))
     case o: Schema.SOption[a] => x match
-      case Some(v) => Cont.delay(() => encC(o.of(), v))
-      case None => Cont.Pure(na(o.of()))
+      case Some(v) => Cps.delay(() => encC(o.of(), v))
+      case None => Cps.Pure(na(o.of()))
     case l: Schema.SList[a] => encAll(l.of(), x.toVector)
     case v: Schema.SVector[a] => encAll(v.of(), x)
     case p: Schema.SProduct[X] =>
       val held = p.eachField(x)([Y] => (name: String, sc: Schema[Y], y: Y) => (name, Held(sc, y): Held[?]))
-      def loop(rest: List[(String, Held[?])], acc: Vector[(String, RValue)]): RValue /> Ans = rest match
-        case Nil => Cont.Pure(Named(acc))
-        case (name, h) :: more => Cont.defer(() => h.encC[Ans])(v => loop(more, acc :+ (name -> v)))
+      def loop(rest: List[(String, Held[?])], acc: Vector[(String, RValue)]): RValue />> Ans = rest match
+        case Nil => Cps.Pure(Named(acc))
+        case (name, h) :: more => Cps.defer(() => h.encC[Ans])(v => loop(more, acc :+ (name -> v)))
       loop(held.toList, Vector.empty)
     case su: Schema.SSum[X] =>
       val (name, h) = su.theCase(x)([Y <: X] => (name: String, sc: Schema[Y], y: Y) => (name, Held(sc, y): Held[?]))
-      Cont.defer(() => h.encC[Ans])(v => Cont.Pure(tagged(su, name, v)))
-    case i: Schema.SIso[X, b] => Cont.delay(() => encC(i.under(), i.from(x)))
+      Cps.defer(() => h.encC[Ans])(v => Cps.Pure(tagged(su, name, v)))
+    case i: Schema.SIso[X, b] => Cps.delay(() => encC(i.under(), i.from(x)))
 
-  private def encAll[Y, Ans](sc: Schema[Y], xs: Vector[Y]): RValue /> Ans =
-    def loop(i: Int, acc: Vector[RValue]): RValue /> Ans =
-      if i >= xs.length then Cont.Pure(Vec(acc))
-      else Cont.defer(() => encC[Y, Ans](sc, xs(i)))(v => loop(i + 1, acc :+ v))
+  private def encAll[Y, Ans](sc: Schema[Y], xs: Vector[Y]): RValue />> Ans =
+    def loop(i: Int, acc: Vector[RValue]): RValue />> Ans =
+      if i >= xs.length then Cps.Pure(Vec(acc))
+      else Cps.defer(() => encC[Y, Ans](sc, xs(i)))(v => loop(i + 1, acc :+ v))
     loop(0, Vector.empty)
 
   /** an absent value keeps its type where R has one for it */
@@ -168,7 +168,7 @@ object RCodec {
     case other => other.toString
 
   private def dec[X](s: Schema[X], v: RValue, at: At, depth: Int): Either[String, X] =
-    if depth >= Codecs.NativeThreshold then Cont.reset(decC[X, Either[String, X]](s, v, at))
+    if depth >= Codecs.NativeThreshold then Cps.reset(decC[X, Either[String, X]](s, v, at))
     else decNative(s, v, at, depth)
 
   /** the leaves, shared by both roads: a scalar has no children, so this
@@ -249,59 +249,59 @@ object RCodec {
       case _ => no(s"a named list with a '$TypeField' naming a case of ${su.name}")
 
   /** the road past the threshold: the same decisions as `decNative`,
-   * each child a `Cont.defer` (ValueCodec's decC, over RValue) */
-  private def decC[X, Ans](s: Schema[X], v: RValue, at: At): Either[String, X] /> Ans =
+   * each child a `Cps.defer` (ValueCodec's decC, over RValue) */
+  private def decC[X, Ans](s: Schema[X], v: RValue, at: At): Either[String, X] />> Ans =
     def no(what: String): Either[String, X] = Left(s"${at.where}: expected $what, got ${describe(v)}")
     s match
       case Schema.SInt | Schema.SLong | Schema.SDouble | Schema.SBool | Schema.SString
-         | Schema.SChar | Schema.SBytes | Schema.SBigInt => Cont.Pure(decScalar(s, v, at))
+         | Schema.SChar | Schema.SBytes | Schema.SBigInt => Cps.Pure(decScalar(s, v, at))
       case o: Schema.SOption[a] =>
-        if absent(v) then Cont.Pure(Right(None))
-        else Cont.defer(() => decC[a, Ans](o.of(), v, at))(r => Cont.Pure(r.map(Some(_))))
+        if absent(v) then Cps.Pure(Right(None))
+        else Cps.defer(() => decC[a, Ans](o.of(), v, at))(r => Cps.Pure(r.map(Some(_))))
       case l: Schema.SList[a] => seq(v) match
-        case Some(xs) => decAll[a, Ans](l.of(), xs, at).flatMap(r => Cont.Pure(r.map(_.toList)))
-        case None => Cont.Pure(no("a vector"))
+        case Some(xs) => decAll[a, Ans](l.of(), xs, at).flatMap(r => Cps.Pure(r.map(_.toList)))
+        case None => Cps.Pure(no("a vector"))
       case sv: Schema.SVector[a] => seq(v) match
         case Some(xs) => decAll[a, Ans](sv.of(), xs, at)
-        case None => Cont.Pure(no("a vector"))
+        case None => Cps.Pure(no("a vector"))
       case p: Schema.SProduct[X] => one(v) match
         case Named(kv) =>
           val m = kv.toMap
-          def again(i: Int, acc: Vector[Any]): Either[String, Vector[Any]] /> Ans = loop(i, acc)
-          @scala.annotation.tailrec def loop(i: Int, acc: Vector[Any]): Either[String, Vector[Any]] /> Ans =
-            if i >= p.fields.length then Cont.Pure(Right(acc))
+          def again(i: Int, acc: Vector[Any]): Either[String, Vector[Any]] />> Ans = loop(i, acc)
+          @scala.annotation.tailrec def loop(i: Int, acc: Vector[Any]): Either[String, Vector[Any]] />> Ans =
+            if i >= p.fields.length then Cps.Pure(Right(acc))
             else
               val (name, sc) = p.fields(i)
               val here = At.Field(at, name)
               m.get(name) match
-                case Some(fv) => Cont.defer(() => fieldC[Ans](sc(), fv, here)) {
-                  case Left(e) => Cont.Pure(Left(e))
+                case Some(fv) => Cps.defer(() => fieldC[Ans](sc(), fv, here)) {
+                  case Left(e) => Cps.Pure(Left(e))
                   case Right(x) => again(i + 1, acc :+ x)
                 }
                 case None => absent(p, i, sc, here) match
-                  case Left(e) => Cont.Pure(Left(e))
+                  case Left(e) => Cps.Pure(Left(e))
                   case Right(d) => loop(i + 1, acc :+ d)
-          loop(0, Vector.empty).flatMap(r => Cont.Pure(r.map(p.make)))
-        case _ => Cont.Pure(no(s"a named list for ${p.name}"))
+          loop(0, Vector.empty).flatMap(r => Cps.Pure(r.map(p.make)))
+        case _ => Cps.Pure(no(s"a named list for ${p.name}"))
       case su: Schema.SSum[X] => one(v) match
         case Named(kv) => caseOf(su, kv, at) match
-          case Left(e) => Cont.Pure(Left(e))
+          case Left(e) => Cps.Pure(Left(e))
           case Right((sc, rest)) => sc match
-            case sc: Schema[c] => Cont.defer(() => decC[c, Ans](sc, rest, at))(r => Cont.Pure(r: Either[String, X]))
-        case _ => Cont.Pure(no(s"a named list for ${su.name}"))
+            case sc: Schema[c] => Cps.defer(() => decC[c, Ans](sc, rest, at))(r => Cps.Pure(r: Either[String, X]))
+        case _ => Cps.Pure(no(s"a named list for ${su.name}"))
       case i: Schema.SIso[X, b] =>
-        Cont.defer(() => decC[b, Ans](i.under(), v, at))(r =>
-          Cont.Pure(r.flatMap(u => i.to(u).left.map(why => s"${at.where}: $why"))))
+        Cps.defer(() => decC[b, Ans](i.under(), v, at))(r =>
+          Cps.Pure(r.flatMap(u => i.to(u).left.map(why => s"${at.where}: $why"))))
 
-  private def fieldC[Ans](sc: Schema[?], v: RValue, at: At): Either[String, Any] /> Ans = sc match
-    case sc: Schema[y] => Cont.defer(() => decC[y, Ans](sc, v, at))(r => Cont.Pure(r: Either[String, Any]))
+  private def fieldC[Ans](sc: Schema[?], v: RValue, at: At): Either[String, Any] />> Ans = sc match
+    case sc: Schema[y] => Cps.defer(() => decC[y, Ans](sc, v, at))(r => Cps.Pure(r: Either[String, Any]))
 
-  private def decAll[Y, Ans](sc: Schema[Y], xs: Vector[RValue], at: At): Either[String, Vector[Y]] /> Ans =
-    def loop(i: Int, acc: Vector[Y]): Either[String, Vector[Y]] /> Ans =
-      if i >= xs.length then Cont.Pure(Right(acc))
+  private def decAll[Y, Ans](sc: Schema[Y], xs: Vector[RValue], at: At): Either[String, Vector[Y]] />> Ans =
+    def loop(i: Int, acc: Vector[Y]): Either[String, Vector[Y]] />> Ans =
+      if i >= xs.length then Cps.Pure(Right(acc))
       // R counts from 1, and so does the path an R user reads
-      else Cont.defer(() => decC[Y, Ans](sc, xs(i), At.Index(at, i))) {
-        case Left(e) => Cont.Pure(Left(e))
+      else Cps.defer(() => decC[Y, Ans](sc, xs(i), At.Index(at, i))) {
+        case Left(e) => Cps.Pure(Left(e))
         case Right(y) => loop(i + 1, acc :+ y)
       }
     loop(0, Vector.empty)

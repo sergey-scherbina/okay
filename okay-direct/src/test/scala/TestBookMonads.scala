@@ -89,9 +89,9 @@ class TestBookMonads extends munit.FunSuite {
   //     Two definitions. There is no state primitive underneath --
   //     the store is the continuation's argument.
 
-  def sGet[S, R]: Cont[S, S => R, S => R] = Cont.shift(k => s => k(s)(s))
-  def sSet[S, R](s2: S): Cont[Unit, S => R, S => R] = Cont.shift(k => _ => k(())(s2))
-  def sRun[S, A](s: S)(m: Cont[A, S => (S, A), S => (S, A)]): (S, A) =
+  def sGet[S, R]: Cps[S, S => R, S => R] = Cps.shift(k => s => k(s)(s))
+  def sSet[S, R](s2: S): Cps[Unit, S => R, S => R] = Cps.shift(k => _ => k(())(s2))
+  def sRun[S, A](s: S)(m: Cps[A, S => (S, A), S => (S, A)]): (S, A) =
     (m / (a => (fin: S) => (fin, a)))(s)
 
   test("a state monad derived from shift alone threads the store") {

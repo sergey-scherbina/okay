@@ -53,8 +53,8 @@ type Source[W] = Unit ! Writer % W + Async
  * always `Unit` and never the element.
  */
 given Put[Source] with
-  final override inline def put[W](w: W): Unit /> Source[W] =
-    Cont.shift(k => !.widen[Unit, Writer % W, Async](Writer.tell(w)).flatMap(_ => k(())))
+  final override inline def put[W](w: W): Unit />> Source[W] =
+    Cps.shift(k => !.widen[Unit, Writer % W, Async](Writer.tell(w)).flatMap(_ => k(())))
 
 object Source {
   /**

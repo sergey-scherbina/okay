@@ -108,11 +108,11 @@ class TestFused extends munit.ScalaCheckSuite {
     assertEquals(Fused.stateWriter(5)(p), ((6, Vector("a", "b")), 5))
   }
 
-  test("stage B: a program written against a Control carrier agrees at Cont and at Func") {
+  test("stage B: a program written against a Control carrier agrees at Cps and at Func") {
     inline def prog[C[_, _, _]](h: Interpr[SW, C, Fused.Answer[Int, String, Int]]): C[Int, Fused.Answer[Int, String, Int], Fused.Answer[Int, String, Int]] =
       val C = Control[C]
       C.flatMap(h(Writer.Say("a")))(_ => C.flatMap(h(State.Get()))(s => C.flatMap(h(State.Update(_ => (s + 1, s + 1))))(_ => C.flatMap(h(Writer.Say("b")))(_ => C.pure(s)))))
-    assertEquals(Fused.runCtrl[Cont, Int, String, Int](5)(prog[Cont]), ((6, Vector("a", "b")), 5))
+    assertEquals(Fused.runCtrl[Cps, Int, String, Int](5)(prog[Cps]), ((6, Vector("a", "b")), 5))
     assertEquals(Fused.runCtrl[Func, Int, String, Int](5)(prog[Func]), ((6, Vector("a", "b")), 5))
   }
 }

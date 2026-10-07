@@ -20,7 +20,7 @@ import ProbeFreerStep.Freer.{Return, Op, Bind}
  *    pair, as `State.handle` does for the fixed-type state: `Return`
  *    gives `S = R` by the GADT, so `(r, a)` IS the `(S, A)` owed; `Get`
  *    gives `X = T = R`, so the continuation takes the state held. No
- *    `k`, no `Reentry`, no room counted — the whole of Cont's stack
+ *    `k`, no `Reentry`, no room counted — the whole of Cps's stack
  *    machinery exists because a shift body calls `k`, and nothing here
  *    calls anything.
  *  - `@tailrec` WITH THE TYPE ARGUMENTS CHANGING PER CALL. Every

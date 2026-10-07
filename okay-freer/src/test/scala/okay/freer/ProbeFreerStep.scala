@@ -4,7 +4,7 @@ package okay.freer
 import scala.annotation.tailrec
 
 /**
- * ONE INDEXED BASE FOR `Free` AND `Cont`, PROBED (freer-base-step-
+ * ONE INDEXED BASE FOR `Free` AND `Cps`, PROBED (freer-base-step-
  * extractor, 2026-09-29) — AND LANDED the same day: `okay.freer.Freer` is
  * this enum with `A` last and `Lift` a class projection (specs/
  * freer-base.md, "The dual placement, LANDED", says what the compiler
@@ -17,10 +17,10 @@ import scala.annotation.tailrec
  * makes the intermediate index existential, the 106 match sites want
  * `k: X => A ! F`, and the pinning extractor tried then — the type
  * variable only in `unapply`'s RESULT — infers it as `Nothing`. The
- * facade that landed instead (`Cont = Free[Shift, A]`, indexes on the
- * outside) pays two casts in Cont's runner (`Shift.at`, `pinned`).
+ * facade that landed instead (`Cps = Free[Shift, A]`, indexes on the
+ * outside) pays two casts in Cps's runner (`Shift.at`, `pinned`).
  *
- * THIS PROBE IS THE DUAL, and it compiles: the tree is indexed, Cont's
+ * THIS PROBE IS THE DUAL, and it compiles: the tree is indexed, Cps's
  * runner is typed by the GADT again (no cast at all — `Return` gives
  * `S = R`, the leaf is `(A => S) => R` precisely), and the erased side
  * pays ONE cast, in `Step` — an extractor whose pattern-bound type
@@ -40,11 +40,11 @@ import scala.annotation.tailrec
  * (multi-shot), an answer-type-modifying chain "seed5!". Refused, as
  * they must be: a bind whose answer types do not meet (E007), a run
  * with a continuation of the wrong answer type (E007), `Step` on a
- * `Cont[Int, Int, Int]` (E030 unreachable — proved, not trusted),
+ * `Cps[Int, Int, Int]` (E030 unreachable — proved, not trusted),
  * `Step` on a `Freer[G, A, Unit, Unit]` with G abstract (E092, the
  * type test cannot be checked — a warning, which this repository's
  * gate makes red). `Step` on the DIAGONAL at an abstract R,
- * `Cont[A, R, R]`, is the one shape the compiler lets through: R is a
+ * `Cps[A, R, R]`, is the one shape the compiler lets through: R is a
  * method type parameter and the GADT may bind it to Unit, so the test
  * reads as checkable. `Step` therefore belongs beside `Free` in
  * `object !`, applied to scrutinees typed `Free[F, A]` — the standing
@@ -116,23 +116,23 @@ object ProbeFreerStep:
       case Freer.Op(e) => Free.inject(e)
       case Step(Freer.Op(e), k) => Free.inject(e).flatMap(x => relay(k(x)))
 
-  // ---- Cont: the same base at the precise leaf ----
+  // ---- Cps: the same base at the precise leaf ----
 
   type Shift = [X, S, R] =>> (X => S) => R
-  type Cont[A, S, R] = Freer[Shift, A, S, R]
+  type Cps[A, S, R] = Freer[Shift, A, S, R]
 
-  object Cont:
-    def pure[A, R](a: A): Cont[A, R, R] = Freer.Return(a)
-    def shift[A, S, R](f: (A => S) => R): Cont[A, S, R] = Freer.Op(f)
-    def reset[A, R](c: Cont[A, A, R]): R = run(c)(identity)
+  object Cps:
+    def pure[A, R](a: A): Cps[A, R, R] = Freer.Return(a)
+    def shift[A, S, R](f: (A => S) => R): Cps[A, S, R] = Freer.Op(f)
+    def reset[A, R](c: Cps[A, A, R]): R = run(c)(identity)
 
     /** the continuation a shift's body receives: direct style's own
      * frame (the library's `Reentry`), out of `run` so @tailrec checks
      * the loop */
-    private def reenter[X, B, S, T](g: X => Cont[B, S, T], k: B => S): X => T = x => run(g(x))(k)
+    private def reenter[X, B, S, T](g: X => Cps[B, S, T], k: B => S): X => T = x => run(g(x))(k)
 
-    /** the old Cont's runner: the GADT types every line — no `Shift.at`, no `pinned` */
-    @tailrec def run[A, S, R](c: Cont[A, S, R])(k: A => S): R = c match
+    /** the old Cps's runner: the GADT types every line — no `Shift.at`, no `pinned` */
+    @tailrec def run[A, S, R](c: Cps[A, S, R])(k: A => S): R = c match
       case Freer.Return(a) => k(a)
       case Freer.Op(f) => f(k)
       case Freer.Bind(Freer.Op(f), g) => f(reenter(g, k))
@@ -159,8 +159,8 @@ object ProbeFreerStep:
   def answers: (Int, Int, Int, Int, String) =
     val p: Free[Ask, Int] = Free.inject(Ask.Get).flatMap(a => Free.inject(Ask.Get).flatMap(b => Free.pure(a + b)))
     val deep = (1 to 100000).foldLeft(Free.pure[Ask, Int](0))((m, _) => m.flatMap(x => Free.pure(x + 1)))
-    val c: Cont[Int, Int, Int] = Cont.shift[Int, Int, Int](k => k(1) + k(10))
-    val atm: Cont[Unit, String => String, String] =
-      Cont.shift[Int, String => String, String](k => k(5)("seed")).flatMap(n =>
-        Cont.shift[Unit, String => String, String => String](k => s => k(())(s + n)))
-    (runFree(p), runFree(relay(p)), runFree(deep), Cont.reset(c), Cont.run(atm)(_ => s => s + "!"))
+    val c: Cps[Int, Int, Int] = Cps.shift[Int, Int, Int](k => k(1) + k(10))
+    val atm: Cps[Unit, String => String, String] =
+      Cps.shift[Int, String => String, String](k => k(5)("seed")).flatMap(n =>
+        Cps.shift[Unit, String => String, String => String](k => s => k(())(s + n)))
+    (runFree(p), runFree(relay(p)), runFree(deep), Cps.reset(c), Cps.run(atm)(_ => s => s + "!"))

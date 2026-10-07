@@ -5,7 +5,7 @@ import java.util.concurrent.ConcurrentLinkedDeque
 import java.util.concurrent.locks.LockSupport
 
 /**
- * PARKED WORKERS WITH BIG STACKS, reused across `Cont` stack switches
+ * PARKED WORKERS WITH BIG STACKS, reused across `Cps` stack switches
  * (specs/cont-stack.md plan stage D3; JVM and Native share it).
  *
  * WHY: the stage-A A/B (2026-09-25) found a switch on the count road
@@ -115,4 +115,4 @@ private[okay] object StackPool:
     h.out match
       case Right(r) => r
       case Left(e) => throw e
-      case null => throw IllegalStateException("okay: a Cont stack switch finished without an answer")
+      case null => throw IllegalStateException("okay: a Cps stack switch finished without an answer")

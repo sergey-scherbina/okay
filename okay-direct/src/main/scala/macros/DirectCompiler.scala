@@ -33,7 +33,7 @@ private[okay] object DirectCompiler:
    * at the try's type, then bound as one mark. The emission target
    * is plain `F[T]` terms (direct-flatmap-emission): a bind is a
    * Monad.flatMap call, the pure tail is M.pure — exactly the
-   * program a careful hand would write, with no Cont layer between
+   * program a careful hand would write, with no Cps layer between
    * the block and its monad. */
   def pipeline[F[_] : Type, A: Type](using q: Quotes)(topLevelBody: q.reflect.Term,
                                      M0: Expr[Monad[F]],

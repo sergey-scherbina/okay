@@ -4,13 +4,13 @@ package okay.freer
 import java.util.concurrent.atomic.AtomicLong
 
 /**
- * A fresh stack for a deep direct-style Cont program (specs/cont-stack.md Layer 2): the runner counts
+ * A fresh stack for a deep direct-style Cps program (specs/cont-stack.md Layer 2): the runner counts
  * levels per stack and, at zero, runs the rest on a parked worker's 1 GB platform thread. The first room is
  * the VM's default thread stack over a cold level, halved; a smaller explicit stack sets `-Dokay.cont.room`.
  */
 private[okay] object StackSwitch:
-  /** a fresh stack is this platform's answer to a deep strict `k` (`Cont.Mode.Auto`); re-execution only when asked
-   * for (`Cont.Mode.Replay`, `-Dokay.cont.mode=replay`; cont-safe-mode) */
+  /** a fresh stack is this platform's answer to a deep strict `k` (`Cps.Mode.Auto`); re-execution only when asked
+   * for (`Cps.Mode.Replay`, `-Dokay.cont.mode=replay`; cont-safe-mode) */
   val replayByDefault: Boolean = false
 
   /** bytes one level takes in a cold JVM, what every room is derived from. A strict `k` on `Delimited` is a

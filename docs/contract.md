@@ -54,7 +54,7 @@ the classic's UNION rows (`State % Int + Throws % String`), with the
 carrier under them — `foldCont`, `Control`, a handler `F !> S` as a
 continuation — which the rest of this part describes. `Free` (the tree)
 and `Eager` are its encodings; `import okay.freer.cps.{given_Classic_Free,
-*}` chooses the CPS `Cont` as their carrier in place of the machine's.
+*}` chooses the CPS `Cps` as their carrier in place of the machine's.
 
 Read by what each part gives:
 
@@ -63,13 +63,13 @@ Read by what each part gives:
 | `pure`, `perform`, `flatMap` | a monad for EVERY row `F`; an operation is a program |
 | `handle` | the one thing a plain monad lacks: take an effect OFF the row, `M[E + F, A]` to `M[F, B]`. Programs stay open, and the caller chooses what each effect means |
 | `shift`, `shift0`, `reset` | delimited control as an effect in the same row, so generators, early exit, backtracking and coroutines are ordinary programs |
-| `foldCont` | the meaning: a program's image in `Cont`, where a handler IS a continuation |
+| `foldCont` | the meaning: a program's image in `Cps`, where a handler IS a continuation |
 | `defer`, `tailcall` | stack safety for any bind shape, mutual recursion included |
 | `run` | a program with an empty row, to its value |
 
 ### `foldCont`, and what to do with its result
 
-`p.foldCont(h)` is `foldMap` into `Cont`. It folds the program's tree and
+`p.foldCont(h)` is `foldMap` into `Cps`. It folds the program's tree and
 answers each operation with `h`, a handler written as a continuation
 (`F !> S` is `F ==> ([X] =>> X /> S)`). `Static.foldMap` is the same fold
 into any `Selective`.
@@ -96,7 +96,7 @@ closes it. That is exactly what `runWith` is:
 
 ```scala
 val first: Op !> (Int, Int) = [X] => (e: Op[X]) => e match
-  case Op.Pick(xs) => Cont.shift[X, (Int, Int), (Int, Int)](k => k(xs.head))
+  case Op.Pick(xs) => Cps.shift[X, (Int, Int), (Int, Int)](k => k(xs.head))
 
 assertEquals(pair.foldCont(first) / identity, (1, 10))
 ```
@@ -106,7 +106,7 @@ concatenates. The last continuation wraps the one final answer:
 
 ```scala
 val all: Op !> List[(Int, Int)] = [X] => (e: Op[X]) => e match
-  case Op.Pick(xs) => Cont.shift[X, List[(Int, Int)], List[(Int, Int)]](k => xs.flatMap(k))
+  case Op.Pick(xs) => Cps.shift[X, List[(Int, Int)], List[(Int, Int)]](k => xs.flatMap(k))
 
 assertEquals(pair.foldCont(all) / (p => List(p)), List((1, 10), (1, 20), (2, 10), (2, 20)))
 ```
@@ -123,8 +123,8 @@ val counter: Int ! State % Int = for
   m <- State.get[Int]
 yield n * 100 + m
 val cell: (State % Int) !> St = [X] => (e: State[Int, X]) => e match
-  case State.Get() => Cont.shift[X, St, St](k => s => k(s)(s))
-  case State.Update(f) => Cont.shift[X, St, St](k => s => k(f(s)._1)(f(s)._2))
+  case State.Get() => Cps.shift[X, St, St](k => s => k(s)(s))
+  case State.Update(f) => Cps.shift[X, St, St](k => s => k(f(s)._1)(f(s)._2))
 
 assertEquals((counter.foldCont(cell) / (a => s => (s, a)))(5), (6, 506))
 ```

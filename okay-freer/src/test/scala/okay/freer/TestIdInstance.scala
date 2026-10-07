@@ -8,7 +8,7 @@ import okay.given
  * (comonad-id-map-capture, 2026-09-23). As a package-level given,
  * `Comonad[Id]` put `Functor`'s `map` extension on every type in
  * package `okay` and under `import okay.given`, where it beat facade
- * companions (`Static`, `Cont`, `Prog`) and foreign `.map`s (kyo, the
+ * companions (`Static`, `Cps`, `Prog`) and foreign `.map`s (kyo, the
  * throws union). In `Comonad`'s companion it is still in the IMPLICIT
  * scope of `Comonad[Id]` — so summoning it and the handler it derives
  * work unchanged — but no longer in the lexical scope of a bare value.

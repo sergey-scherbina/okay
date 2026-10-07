@@ -24,7 +24,7 @@ import java.util.concurrent.TimeUnit
  *   scalaTailCalls  the standard library's trampoline
  *   catsEval, catsIO, zio, kyoIO   each library's own suspension
  *   okayFree        `!.tailcall` on a Free program, `!.run`
- *   okayCont        `Cont.delay` on a Cont program, `reset`
+ *   okayCont        `Cps.delay` on a Cps program, `reset`
  *
  * and the JVM roads that are NOT trampolines:
  *
@@ -113,7 +113,7 @@ class MutualRecursionBenchmark {
   def okayFree(): Boolean = !.run(OkayFree.even(N))
 
   @Benchmark
-  def okayCont(): Boolean = Cont.reset(OkayCont.even(N))
+  def okayCont(): Boolean = Cps.reset(OkayCont.even(N))
 
   private val bigStack = java.util.concurrent.Executors.newSingleThreadExecutor { r =>
     val t = new Thread(null, r, "big-stack", 1L << 30)
@@ -246,7 +246,7 @@ object MutualRecursionBenchmark {
   }
 
   object OkayCont {
-    def even(n: Int): Boolean /> Boolean = if n == 0 then Cont.Pure(true) else Cont.delay(() => odd(n - 1))
-    def odd(n: Int): Boolean /> Boolean = if n == 0 then Cont.Pure(false) else Cont.delay(() => even(n - 1))
+    def even(n: Int): Boolean />> Boolean = if n == 0 then Cps.Pure(true) else Cps.delay(() => odd(n - 1))
+    def odd(n: Int): Boolean />> Boolean = if n == 0 then Cps.Pure(false) else Cps.delay(() => even(n - 1))
   }
 }

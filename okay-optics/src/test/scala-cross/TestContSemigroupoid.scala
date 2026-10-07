@@ -12,7 +12,7 @@ import okay.freer.given
  * 2026-09-18, the operator asking what optics and arrows do WITH
  * continuations).
  *
- * `PState.Zooming[X, R] = [A, B] =>> Cont[X, B => R, A => R]` — a
+ * `PState.Zooming[X, R] = [A, B] =>> Cps[X, B => R, A => R]` — a
  * program computing an `X` that takes the state from `A` to `B`. Read
  * as `P[A, B]`:
  *
@@ -39,11 +39,11 @@ class TestContSemigroupoid extends munit.FunSuite {
   /** run one typestate program then the next — the semigroupoid's compose */
   private def andThenP[X, R, A, B, C](f: PState.Zooming[X, R][A, B],
                                       g: PState.Zooming[X, R][B, C]): PState.Zooming[X, R][A, C] =
-    Cont.shift(k => (a: A) => (f / (x => (b: B) => (g / (_ => (c: C) => k(x)(c)))(b)))(a))
+    Cps.shift(k => (a: A) => (f / (x => (b: B) => (g / (_ => (c: C) => k(x)(c)))(b)))(a))
 
   /** the identity, WITH the answer handed in — the only way it exists */
   private def idGiven[X, R, A](x: X): PState.Zooming[X, R][A, A] =
-    Cont.shift(k => (a: A) => k(x)(a))
+    Cps.shift(k => (a: A) => k(x)(a))
 
   test("compose: two typestate programs, in order, with the state threaded") {
     // R is what the RUN answers — `(final state, value)` — so it is

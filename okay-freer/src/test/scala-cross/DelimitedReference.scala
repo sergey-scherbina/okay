@@ -3,7 +3,7 @@ package okay.freer
 
 /**
  * specs/delimited.md stage 2: a SECOND instance of `Delimited`, the
- * reference — what `Control[Func]` is to `Control[Cont]`. The context is
+ * reference — what `Control[Func]` is to `Control[Cps]`. The context is
  * an immutable list of frames and delimiters, innermost first; a value
  * is plugged into it, `shift0` splits it at the delimiter (`k` WITH the
  * delimiter), `resume` prepends `k`. Nothing in it can be subtle: no

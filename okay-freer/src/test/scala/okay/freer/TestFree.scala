@@ -5,16 +5,16 @@ import okay.given
 
 /**
  * The shared tree (Free.scala) under both encodings, and the LAW that
- * licenses `Cont`'s runner to hold its own copy of the rotation.
+ * licenses `Cps`'s runner to hold its own copy of the rotation.
  *
- * `!.resume` is the rotation Free's interpreters use; `Cont.step`
- * (Cont.scala) interleaves the same four cases with elimination and
+ * `!.resume` is the rotation Free's interpreters use; `Cps.step`
+ * (Cps.scala) interleaves the same four cases with elimination and
  * composes through `bind` so a rotated continuation can be absorbed.
  * A second copy is only safe while something checks the equation,
  * and that is this file.
  *
  * The reference is `Func`, which the library already calls "the
- * reference implementation of Control" (Cont.scala): it composes
+ * reference implementation of Control" (Cps.scala): it composes
  * closures and NEVER rotates, so agreeing with it over every
  * bind-tree shape — on the answer AND on the order the effects
  * happened in — is exactly the claim the runner's copy makes.
@@ -87,9 +87,9 @@ class TestFree extends munit.FunSuite {
   )
 
   for (name, shape) <- shapes do
-    test(s"rotation law: Cont's inlined runner agrees with Func — $name") {
+    test(s"rotation law: Cps's inlined runner agrees with Func — $name") {
       val tc = List.newBuilder[Int]
-      val answerCont = Control[Cont].reset(shape[Cont](tc += _))
+      val answerCont = Control[Cps].reset(shape[Cps](tc += _))
       val tf = List.newBuilder[Int]
       val answerFunc = Control[Func].reset(shape[Func](tf += _))
       assertEquals(answerCont, answerFunc, "answer")
@@ -99,7 +99,7 @@ class TestFree extends munit.FunSuite {
   test("resume normalizes every shape to a head form") {
     // the contract the 89 `(x.resume: @unchecked) match` sites depend
     // on, asserted rather than described — on Free programs, since the
-    // Cont facade is opaque and its tree is its own business
+    // Cps facade is opaque and its tree is its own business
     import okay.freer.!.*
     def headForm(c: Any): Boolean = c match
       case Return(_) => true

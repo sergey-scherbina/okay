@@ -9,24 +9,24 @@ class TestProbeDelimAtm extends munit.FunSuite:
 
   test("ATM at the nearest delimiter: Int → String and Boolean → Int in one run, strict and lazy") {
     val strict: C[Boolean, Boolean, String] = for
-      a <- Cont.shift[Int, Int, String](k => k(1).toString)
-      b <- Cont.shift[Boolean, Boolean, Int](k => if k(true) then 1 else 0)
+      a <- Cps.shift[Int, Int, String](k => k(1).toString)
+      b <- Cps.shift[Boolean, Boolean, Int](k => if k(true) then 1 else 0)
     yield a > 0 && b
     val lazily: C[Boolean, Boolean, String] = for
-      a <- Cont.shiftLazy[Int, Int, String]([X] => k => Cont.call[Int, Int, X](k, 1).map(_.toString))
-      b <- Cont.shiftLazy[Boolean, Boolean, Int]([X] => k => Cont.call[Boolean, Boolean, X](k, true).map(h => if h then 1 else 0))
+      a <- Cps.shiftLazy[Int, Int, String]([X] => k => Cps.call[Int, Int, X](k, 1).map(_.toString))
+      b <- Cps.shiftLazy[Boolean, Boolean, Int]([X] => k => Cps.call[Boolean, Boolean, X](k, true).map(h => if h then 1 else 0))
     yield a > 0 && b
-    assertEquals((Cont.run(strict)(identity), Cont.run(lazily)(identity)), ("1", "1"))
+    assertEquals((Cps.run(strict)(identity), Cps.run(lazily)(identity)), ("1", "1"))
   }
 
   test("k(x + 1) + k(x + 1) chained d deep, lazy, against closures") {
     def lazily(d: Int): C[Int, Int, Int] =
       (1 to d).foldLeft(pure[Int, Int](0))((m, _) => m.flatMap(x =>
-        Cont.shiftLazy[Int, Int, Int]([X] => k =>
-          Cont.call[Int, Int, X](k, x + 1).flatMap(a => Cont.call[Int, Int, X](k, x + 1).map(b => a + b)))))
+        Cps.shiftLazy[Int, Int, Int]([X] => k =>
+          Cps.call[Int, Int, X](k, x + 1).flatMap(a => Cps.call[Int, Int, X](k, x + 1).map(b => a + b)))))
     def closures(d: Int): Func[Int, Int, Int] =
       (1 to d).foldLeft[Func[Int, Int, Int]](k => k(0))((m, _) => k => m(x => k(x + 1) + k(x + 1)))
-    for d <- 0 to 6 do assertEquals(Cont.run(lazily(d))(identity), closures(d)(identity), s"d = $d")
+    for d <- 0 to 6 do assertEquals(Cps.run(lazily(d))(identity), closures(d)(identity), s"d = $d")
   }
 
   test("a capture by name crosses a level of another prompt, and its k puts that level back") {
@@ -44,7 +44,7 @@ class TestProbeDelimAtm extends munit.FunSuite:
   test("the nearest capture takes the innermost level, whatever the prompts") {
     val p = new Prompt[Int]("p")
     val q = new Prompt[Int]("q")
-    val c: C[Int, Int, Int] = reset(p)(reset(q)(Cont.shiftLazy[Int, Int, Int]([X] => k => Cont.call[Int, Int, X](k, 1).map(_ * 100))
+    val c: C[Int, Int, Int] = reset(p)(reset(q)(Cps.shiftLazy[Int, Int, Int]([X] => k => Cps.call[Int, Int, X](k, 1).map(_ * 100))
       .map(_ + 1)).map(_ + 10))
     // q's level: (1 + 1) * 100 = 200; p's: 200 + 10
     assertEquals(run(c), 210)
@@ -77,12 +77,12 @@ class TestProbeDelimAtm extends munit.FunSuite:
   test("stack safety on 256 KB: 1M lazy shifts, 1M binds, a named capture through 100 000 levels") {
     val n = 1000000
     val shifts = (1 to n).foldLeft(pure[Int, Int](0))((m, _) =>
-      m.flatMap(x => Cont.shiftLazy[Int, Int, Int]([X] => k => Cont.call[Int, Int, X](k, x + 1).map(_ + 1))))
+      m.flatMap(x => Cps.shiftLazy[Int, Int, Int]([X] => k => Cps.call[Int, Int, X](k, x + 1).map(_ + 1))))
     val binds = (1 to n).foldLeft(pure[Int, Int](0))((m, _) => m.flatMap(x => pure(x + 1)))
     val p = new Prompt[Int]("p")
     val levels = 100000
     val inner: C[Int, Int, Int] = C.To[Int, Int, Int](p, [W] => k => C.ResumeCap[Int, Int, W](k, 1))
     val deep = (1 to levels).foldLeft(inner)((c, i) => reset(new Prompt[Int](s"q$i"))(c).map(_ + 1))
-    assertEquals(onSmallStack((Cont.run(shifts)(identity), Cont.run(binds)(identity), run(reset(p)(deep)))),
+    assertEquals(onSmallStack((Cps.run(shifts)(identity), Cps.run(binds)(identity), run(reset(p)(deep)))),
       (2 * n, n, 1 + levels))
   }

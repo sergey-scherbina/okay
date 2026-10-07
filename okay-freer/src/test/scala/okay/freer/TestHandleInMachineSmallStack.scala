@@ -59,7 +59,7 @@ class TestHandleInMachineSmallStack extends munit.FunSuite:
     else Classic[Free].handle[Tick, Pure](
       !.tailcall(controlled(n - 1)).at[Tick + Pure].flatMap(x => effect[Tick, Int](Tick.Now).map(_ + x)))(pure(_))(
       [X] => (e: Tick[X]) => e match
-        case Tick.Now => Cont.shift[X, Int ! Pure, Int ! Pure](k => k(1)))
+        case Tick.Now => Cps.shift[X, Int ! Pure, Int ! Pure](k => k(1)))
 
   test("100 000 nested Effects.handle on 128 KB") {
     assertEquals(!.run(controlled(3)), 3)

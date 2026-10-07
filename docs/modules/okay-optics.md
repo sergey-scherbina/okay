@@ -33,7 +33,7 @@ State.zoomWith(look: S => A, put: A => S => S)(p)
 and this module gives the lens spelling back as an extension on
 `State.type`. `PState.zoom` was already one line — the optic run at
 the `Zooming` carrier — so only the `Optic.Strong` instance for that
-carrier moved; the `Zooming` alias is a `Cont` and stayed.
+carrier moved; the `Zooming` alias is a `Cps` and stayed.
 
 ## Using it
 

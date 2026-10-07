@@ -145,7 +145,7 @@ ask what it will do, from one slot and no special code.
 ## Continuations: where an optic turns out to be the machinery
 
 A typestate program — one that changes the TYPE of its state as it
-runs — is `Cont[X, B => R, A => R]`: it computes an `X` and takes the
+runs — is `Cps[X, B => R, A => R]`: it computes an `X` and takes the
 state from `A` to `B`. Read that as `P[A, B]` and it is a profunctor
 in its own state, and a `Strong` one. So this:
 
@@ -164,10 +164,10 @@ The identity is not:
 
 ```scala
 // exists: hand it the answer
-def idGiven[X, R, A](x: X): Zooming[X, R][A, A] = Cont.shift(k => a => k(x)(a))
+def idGiven[X, R, A](x: X): Zooming[X, R][A, A] = Cps.shift(k => a => k(x)(a))
 
 // does not: where would the X come from?
-def id[X, R, A]: Zooming[X, R][A, A] = Cont.shift(k => a => k(???)(a))
+def id[X, R, A]: Zooming[X, R][A, A] = Cps.shift(k => a => k(???)(a))
 ```
 
 The identity must compute an `X` while leaving the state alone, and

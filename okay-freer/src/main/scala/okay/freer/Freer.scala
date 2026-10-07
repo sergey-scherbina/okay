@@ -7,7 +7,7 @@ import scala.annotation.tailrec
 /**
  * The freer monad (Kiselyov–Ishii 2015): free over any signature with no Functor requirement, because `Bind`
  * keeps the continuation as a plain function. The signature `G` also carries the answer types `S` and `R` of a
- * `(A => S) => R`, so the same tree is `Cont`'s (Cont.scala): a `Bind` joins a left side answering `T => R` to
+ * `(A => S) => R`, so the same tree is `Cps`'s (Cps.scala): a `Bind` joins a left side answering `T => R` to
  * a continuation answering `S => T`, Danvy–Filinski's answer-type modification written on the node. A
  * signature that ignores them (`Lift`) gives the plain effect tree, `Free[F, A]`, at `Unit`.
  *
@@ -23,7 +23,7 @@ enum Freer[G[_, _, +_], S, R, +A] {
   case Return[G[_, _, +_], R, A](a: A) extends Freer[G, R, R, A]
 
   /** a single operation of the signature: for an effect, `F[A]`; for
-   * `Cont`, the shift body `(A => S) => R` itself */
+   * `Cps`, the shift body `(A => S) => R` itself */
   case Inject[G[_, _, +_], S, R, A](a: G[S, R, A]) extends Freer[G, S, R, A]
 
   /** sequencing: run a, then feed its value to the plain-function
@@ -98,7 +98,7 @@ object Freer {
 
   /** a bind whose LEFT side is deferred: forced only when an interpreter's loop reaches it, so functions
    * returning `A ! F` call each other in tail position without a JVM frame per call (`!.tailcall`;
-   * `Cont.defer` on the Cont side) */
+   * `Cps.defer` on the Cps side) */
   def defer[G[_, _, +_], S, T, R, A, B](thunk: () => Freer[G, T, R, A])(f: A => Freer[G, S, T, B]): Freer[G, S, R, B] =
     // not a node of its own: one node more at construction, two cases fewer in every loop that walks the tree
     Bind(Delay(thunk), f)

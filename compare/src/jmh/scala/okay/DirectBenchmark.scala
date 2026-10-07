@@ -37,7 +37,7 @@ class DirectBenchmark {
     val chain = (1 to N).foldLeft(pure[Pure, Int](0))((m, _) => m.flatMap(step))
     okay.freer.!.run(chain)
 
-  /** the macro rewrites the block into Monadic's Cont binds — the
+  /** the macro rewrites the block into Monadic's Cps binds — the
    * delta over okayFlatMap is the whole price of direct style */
   @Benchmark
   def okayDirect(): Int =

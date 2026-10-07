@@ -20,7 +20,7 @@ Three claims, each with a reason.
 
 **Reach for an effect first.** A continuation is not a feature you
 choose, it is what effect handlers are made of: a handler in this
-library is a Cont-valued natural transformation (`F !> S = F ==> ([X]
+library is a Cps-valued natural transformation (`F !> S = F ==> ([X]
 =>> X /> S)`, `Effects.scala:120`), so `Logic`'s backtracking,
 `Once`'s call-by-need cell, `State`'s threading and `Choice`'s
 multi-shot are already captures — with names, laws, and handlers you

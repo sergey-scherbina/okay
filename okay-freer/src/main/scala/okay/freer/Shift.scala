@@ -637,12 +637,12 @@ object Shift {
   given typeableK[R](using k: Key[R]): TypeableK.ByValue[Shift % R] = new:
     def test(x: Any): Boolean = promptOf(x) eq k.prompt
 
-  /** level 2: the program as a `Cont` whose answers are programs: `c / k` is `reset(q >>= k)` */
-  def cont[A, R, F[+_]](q: A ! Shift % R + F)(using Key[R], Distinct[Shift % R + F], Machine[F]): Cont[A, R ! F, R ! F] =
-    Cont.shift[A, R ! F, R ! F](k => okay.freer.reset[R, F](q.flatMap(a => k(a).plus[Shift % R])))
+  /** level 2: the program as a `Cps` whose answers are programs: `c / k` is `reset(q >>= k)` */
+  def cont[A, R, F[+_]](q: A ! Shift % R + F)(using Key[R], Distinct[Shift % R + F], Machine[F]): Cps[A, R ! F, R ! F] =
+    Cps.shift[A, R ! F, R ! F](k => okay.freer.reset[R, F](q.flatMap(a => k(a).plus[Shift % R])))
 
-  /** level 2: a whole `Cont` as one capture */
-  def embed[A, R, F[+_]](c: Cont[A, R ! F, R ! F])(using Key[R], At): A ! Shift % R + F =
+  /** level 2: a whole `Cps` as one capture */
+  def embed[A, R, F[+_]](c: Cps[A, R ! F, R ! F])(using Key[R], At): A ! Shift % R + F =
     okay.freer.shift0[R, A, F](k => c / k)
 
   /**

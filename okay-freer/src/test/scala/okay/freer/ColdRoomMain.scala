@@ -12,8 +12,8 @@ object ColdRoomMain:
 
   private def deep(n: Int, levels: Int): Int =
     if n == 0 then
-      Cont.reset((1 to levels).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) =>
-        m.flatMap(x => Cont.shiftLeaf[Int, Int, Int](k => k(x + 1) + 1))))
+      Cps.reset((1 to levels).foldLeft(Cps.Pure[Int, Int](0): Int />> Int)((m, _) =>
+        m.flatMap(x => Cps.shiftLeaf[Int, Int, Int](k => k(x + 1) + 1))))
     else deep(n - 1, levels) + 0
 
   def main(args: Array[String]): Unit =

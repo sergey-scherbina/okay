@@ -122,24 +122,24 @@ index above lists them all with one-line summaries.
   program to a continuation, `Delay` a subprogram. A program is data,
   `A ! F` is `Free[F, A]`, and nothing runs until a handler walks the
   tree. The enum is `Freer[G, S, R, A]`, indexed by the answer types a
-  `Cont` needs (below); `Free` is it at a signature that ignores them. Left-nested binds are rebalanced by tail-recursive rotations, so
+  `Cps` needs (below); `Free` is it at a signature that ignores them. Left-nested binds are rebalanced by tail-recursive rotations, so
   a walk is stack-safe and stepping one operation at a time costs about
   what running in bulk does, with no type-aligned queue.
-- `Cont[A, S, R]` (Cont.scala) — the parameterised continuation monad
+- `Cps[A, S, R]` (Cps.scala) — the parameterised continuation monad
   (answer-type modification, shift/reset), and it is an effect inside
   the same tree: an opaque `Freer[Shift, S, R, A]` whose one operation
   is the shift body `(A => S) => R` itself, answer types on the nodes,
-  so the runner is typed by the GADT with no cast. Running a `Cont`
+  so the runner is typed by the GADT with no cast. Running a `Cps`
   handles that one effect, so a program and its meaning are one tree,
   a flatMap chain is stack-safe, and the same walk serves both
   ([theory ch. 11](docs/theory/11-one-tree.md)).
-- `Control[M[_, _, _]]` (Cont.scala) — final tagless interface of
-  delimited control; instances: `Cont` (stack-safe data) and `Func`
+- `Control[M[_, _, _]]` (Effects.scala) — final tagless interface of
+  delimited control; instances: `Cps` (stack-safe data) and `Func`
   (the function encoding, the reference).
 - `Effects[M[_[+_], _]]` (Effects.scala) — final tagless interface of
   extensible effects, founded on the continuation paramonad: a handler
   is `F !> S = F ==> ([X] =>> X /> S)`, an interpretation of the
-  operations in Cont, and the meaning of a computation is its `foldCont`;
+  operations in Cps, and the meaning of a computation is its `foldCont`;
   `runWith` and `handle` derive from it. Instances: `Free` (initial,
   defunctionalized) and the opt-in `Eager` (pure binds apply at
   construction); `reflect` and `reify` move programs between them.
@@ -217,7 +217,7 @@ From the everyday to the rare; each name links to its own page, with examples. T
   of Dybvig, Peyton Jones and Sabry (2007): a `Prompt` is a first-class
   tag carrying its delimiter's answer type, `push` installs one and
   `shift` captures up to a NAMED prompt, not the nearest. shift, control,
-  shift0 and control0 are one operation with two flags. It is `Cont`'s
+  shift0 and control0 are one operation with two flags. It is `Cps`'s
   shift/reset as an operation in a row, so it composes with the other
   effects, and one machine owns the prompt stack (Shift.scala,
   [continuations book](docs/continuations/index.md)).
@@ -322,7 +322,7 @@ or "we are slow" for the wrong reason.
 
 **Bind chain** — 10k left-nested flatMaps, built and run:
 
-| **Okay Eager** | kyo | **Okay Cont** | **Okay Free** | cats Free | cats Eval | cats IO | ZIO | atnos |
+| **Okay Eager** | kyo | **Okay Cps** | **Okay Free** | cats Free | cats Eval | cats IO | ZIO | atnos |
 |---|---|---|---|---|---|---|---|---|
 | **5.5** | 60 | **95** | **112** | 117 | 153 | 163 | 193 | 286 |
 
@@ -330,7 +330,7 @@ or "we are slow" for the wrong reason.
 with the hazard stated: construction evaluates, so a self-referential
 program diverges before it runs, exactly what compare/TestLaziness
 catches kyo on (it runs 513 iterations at the CONSTRUCTION of an
-infinite program). Free/Cont keep the laziness contract; the user
+infinite program). Free/Cps keep the laziness contract; the user
 chooses per program.)
 
 **Reader** — 10k asks. The shape is part of the measurement: a

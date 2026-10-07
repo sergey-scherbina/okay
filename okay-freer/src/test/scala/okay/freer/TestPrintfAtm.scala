@@ -5,7 +5,7 @@ package okay.freer
  * specs/atm-beyond-state-docs.md: answer-type modification (ATM)
  * beyond `PState` — Asai's typed printf (Asai, "On typing delimited
  * continuations: three new solutions to the printf problem", HOSC
- * 2009), built directly on `Cont`'s `shift`, no state cell anywhere.
+ * 2009), built directly on `Cps`'s `shift`, no state cell anywhere.
  * `hole`'s shift is the whole mechanism: the continuation `k: T=>S`
  * IS "the rest of the format, once given a T", so answering with
  * `(t:T) => k(t)` makes the WHOLE program's answer type `T => S`
@@ -16,25 +16,25 @@ package okay.freer
 class TestPrintfAtm extends munit.FunSuite:
 
   /** literal text: no argument, the answer type is unchanged (S -> S) */
-  def lit(s: String): Cont[Unit, String, String] = Cont.shift(k => s + k(()))
+  def lit(s: String): Cps[Unit, String, String] = Cps.shift(k => s + k(()))
 
   /** one hole: the answer type grows an arrow, T => (whatever it was) —
    * `hole` does not render T itself; whoever consumes the bound value
    * (typically the `lit` that follows) decides how */
-  def hole[T]: Cont[T, String, T => String] = Cont.shift(k => (t: T) => k(t))
+  def hole[T]: Cps[T, String, T => String] = Cps.shift(k => (t: T) => k(t))
 
   test("one hole: the format's answer type is Int => String, not String") {
     // "Score: " ++ show(hole) — bind's OWN result type keeps hole's R
     // (Int => String, unchanged by what follows) and takes ITS "A"
     // from whatever comes AFTER the hole (here, `lit`'s Unit)
-    val fmt: Cont[Unit, String, Int => String] = hole[Int].flatMap(n => lit(s"Score: $n"))
+    val fmt: Cps[Unit, String, Int => String] = hole[Int].flatMap(n => lit(s"Score: $n"))
     val asFunction: Int => String = fmt / (_ => "")
     assertEquals(asFunction(7), "Score: 7")
     assertEquals(asFunction(-3), "Score: -3")
   }
 
   test("a literal alone needs no argument: run with `/`, not `reset` — its A (Unit) is not its S (String)") {
-    val fmt: Cont[Unit, String, String] = lit("no holes here")
+    val fmt: Cps[Unit, String, String] = lit("no holes here")
     assertEquals(fmt / (_ => ""), "no holes here")
   }
 
@@ -52,8 +52,8 @@ class TestPrintfAtm extends munit.FunSuite:
     // solutions" on exactly this multi-hole case), which this
     // documentation illustration does not attempt to rebuild.
     val e = compileErrors("""
-      val h: okay.freer.Cont[Int, String, Int => String] = okay.freer.Cont.shift(k => (t: Int) => k(t))
-      h.flatMap((a: Int) => h.flatMap((b: Int) => okay.freer.Cont.shift[Unit, String, String](k => "x" + k(()))))
+      val h: okay.freer.Cps[Int, String, Int => String] = okay.freer.Cps.shift(k => (t: Int) => k(t))
+      h.flatMap((a: Int) => h.flatMap((b: Int) => okay.freer.Cps.shift[Unit, String, String](k => "x" + k(()))))
     """)
     assert(e.nonEmpty, "two holes composed by ordinary flatMap nesting, which the spec says should not typecheck")
   }

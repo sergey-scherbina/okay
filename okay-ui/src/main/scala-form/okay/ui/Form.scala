@@ -3,8 +3,8 @@ package okay.ui
 
 import okay.freer.Pure
 
-import okay.freer.{/>}
-import okay.freer.{!, Cont}
+import okay.freer.{/>>}
+import okay.freer.{!, Cps}
 import okay.freer.given
 import okay.codec.{Codecs, Json, Schema}
 import scala.annotation.tailrec
@@ -423,14 +423,14 @@ object Form {
    * ... folded here through the SAME edit a live edit takes" — a
    * remote submission road exists). Same fix, same shape
    * (form-recursive-depth-safety): `Codecs.NativeThreshold`-then-
-   * `Cont.defer`, mirroring `mergePatch`/`mergePatchC` (okay-codec's
+   * `Cps.defer`, mirroring `mergePatch`/`mergePatchC` (okay-codec's
    * `Json.scala`) — a value-returning fold, not a side-effecting one.
    */
   private def editAt(s: Schema[?], value: Json, path: List[Seg], ev: Edit): Json =
     editAtAt(s, value, path, ev, 0)
 
   private def editAtAt(s: Schema[?], value: Json, path: List[Seg], ev: Edit, open: Int): Json =
-    if open >= Codecs.NativeThreshold then Cont.reset(editAtC[Json](s, value, path, ev, open))
+    if open >= Codecs.NativeThreshold then Cps.reset(editAtC[Json](s, value, path, ev, open))
     else editAtNative(s, value, path, ev, open)
 
   private def editAtNative(s: Schema[?], value: Json, path: List[Seg], ev: Edit, open: Int): Json =
@@ -479,14 +479,14 @@ object Form {
         case (_: Schema.SProduct[?], Nil) => value
         case _ => value
 
-  private def editAtC[R](s: Schema[?], value: Json, path: List[Seg], ev: Edit, open: Int): Json /> R =
+  private def editAtC[R](s: Schema[?], value: Json, path: List[Seg], ev: Edit, open: Int): Json />> R =
     s match
-      case Schema.SIso(u, _, _) => Cont.defer(() => editAtC[R](u(), value, path, ev, open))(v => Cont.Pure(v))
+      case Schema.SIso(u, _, _) => Cps.defer(() => editAtC[R](u(), value, path, ev, open))(v => Cps.Pure(v))
       case _ => (s, path) match
         case (su: Schema.SSum[?], Seg.Case :: Nil) => ev match
           case Edit.Choose(i) if i >= 0 && i < su.cases.length =>
-            Cont.Pure(Json.JObj(Vector(su.cases(i)._1 -> Json.JObj(Vector.empty))))
-          case _ => Cont.Pure(value)
+            Cps.Pure(Json.JObj(Vector(su.cases(i)._1 -> Json.JObj(Vector.empty))))
+          case _ => Cps.Pure(value)
         case (su: Schema.SSum[?], _) =>
           val (name, cs) = value match
             case Json.JObj(Vector((n, _))) => su.cases.find(_._1 == n).getOrElse(su.cases.head)
@@ -494,36 +494,36 @@ object Form {
           val inner = value match
             case Json.JObj(Vector((_, v))) => v
             case _ => Json.JObj(Vector.empty)
-          Cont.defer(() => editAtC[R](cs(), inner, path, ev, open + 1)) { v =>
-            Cont.Pure(Json.JObj(Vector(name -> v)))
+          Cps.defer(() => editAtC[R](cs(), inner, path, ev, open + 1)) { v =>
+            Cps.Pure(Json.JObj(Vector(name -> v)))
           }
         case (p: Schema.SProduct[?], Seg.Field(n) :: rest) =>
           p.fields.find(_._1 == n) match
-            case None => Cont.Pure(value)
+            case None => Cps.Pure(value)
             case Some((_, fs)) =>
-              if rest.isEmpty then Cont.Pure(set(value, n, leaf(fs(), ev, get(value, n))))
-              else Cont.defer(() => editAtC[R](fs(), get(value, n).getOrElse(empty(fs())), rest, ev, open + 1)) { v =>
-                Cont.Pure(set(value, n, v))
+              if rest.isEmpty then Cps.Pure(set(value, n, leaf(fs(), ev, get(value, n))))
+              else Cps.defer(() => editAtC[R](fs(), get(value, n).getOrElse(empty(fs())), rest, ev, open + 1)) { v =>
+                Cps.Pure(set(value, n, v))
               }
         case (p: Schema.SProduct[?], Seg.Index(n, i) :: rest) =>
           p.fields.find(_._1 == n) match
-            case None => Cont.Pure(value)
+            case None => Cps.Pure(value)
             case Some((_, fs)) => itemSchema(fs()) match
-              case None => Cont.Pure(value)
+              case None => Cps.Pure(value)
               case Some(item) =>
                 val arr = get(value, n) match
                   case Some(Json.JArr(vs)) => vs
                   case _ => Vector.empty
-                if i < 0 || i >= arr.length then Cont.Pure(value)
+                if i < 0 || i >= arr.length then Cps.Pure(value)
                 else if rest.isEmpty && ev == Edit.Del then
-                  Cont.Pure(set(value, n, Json.JArr(arr.patch(i, Nil, 1))))
+                  Cps.Pure(set(value, n, Json.JArr(arr.patch(i, Nil, 1))))
                 else if rest.isEmpty && !isList(item) && !isComposite(item) then
-                  Cont.Pure(set(value, n, Json.JArr(arr.updated(i, leaf(item, ev, Some(arr(i)))))))
-                else Cont.defer(() => editAtC[R](item, arr(i), rest, ev, open + 1)) { v =>
-                  Cont.Pure(set(value, n, Json.JArr(arr.updated(i, v))))
+                  Cps.Pure(set(value, n, Json.JArr(arr.updated(i, leaf(item, ev, Some(arr(i)))))))
+                else Cps.defer(() => editAtC[R](item, arr(i), rest, ev, open + 1)) { v =>
+                  Cps.Pure(set(value, n, Json.JArr(arr.updated(i, v))))
                 }
-        case (_: Schema.SProduct[?], Nil) => Cont.Pure(value)
-        case _ => Cont.Pure(value)
+        case (_: Schema.SProduct[?], Nil) => Cps.Pure(value)
+        case _ => Cps.Pure(value)
 
   @tailrec private def isList(s: Schema[?]): Boolean = s match
     case Schema.SIso(u, _, _) => isList(u())

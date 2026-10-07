@@ -9,14 +9,14 @@ object ContProgramAnswer:
   type Dyn = Int ! Shift % ? + Pure
 
   /** `n` levels, each an opaque body that calls `k` itself and answers a program, built by `leaf` */
-  def nested[S](n: Int, step: S => S)(leaf: ((Int => S) => S) => Cont[Int, S, S]): Cont[Int, S, S] =
-    (1 to n).foldLeft(Cont.Pure[Int, S](0))((m, _) => m.flatMap(x => leaf(k => step(k(x + 1)))))
+  def nested[S](n: Int, step: S => S)(leaf: ((Int => S) => S) => Cps[Int, S, S]): Cps[Int, S, S] =
+    (1 to n).foldLeft(Cps.Pure[Int, S](0))((m, _) => m.flatMap(x => leaf(k => step(k(x + 1)))))
 
-  def pureAns(n: Int, leaf: ((Int => Ans) => Ans) => Cont[Int, Ans, Ans]): Ans =
-    Cont.run(nested[Ans](n, _.map(identity))(leaf))((v: Int) => pure(v))
+  def pureAns(n: Int, leaf: ((Int => Ans) => Ans) => Cps[Int, Ans, Ans]): Ans =
+    Cps.run(nested[Ans](n, _.map(identity))(leaf))((v: Int) => pure(v))
 
   def dynAns(n: Int): Dyn =
-    Cont.run(nested[Dyn](n, _.map(identity))(Cont.programLeaf[Int, Dyn, Dyn]))((v: Int) => pure(v))
+    Cps.run(nested[Dyn](n, _.map(identity))(Cps.programLeaf[Int, Dyn, Dyn]))((v: Int) => pure(v))
 
 /** specs/cont-js-depth.md, cont-program-answer: an opaque body that calls `k` and answers a program gets a lazy
  * `k` — no nested run — with the strict leaf's answers, on every platform */
@@ -25,8 +25,8 @@ class TestContProgramAnswer extends munit.FunSuite:
 
   test("the same answers as the strict leaf: multi-shot, drop, and a rest that maps") {
     def both(body: (Int => Ans) => Ans): (Int, Int) =
-      (!.run(Cont.run(Cont.programLeaf[Int, Ans, Ans](body).map(_ * 2))((v: Int) => pure(v))),
-       !.run(Cont.run(Cont.shiftLeaf[Int, Ans, Ans](body).map(_ * 2))((v: Int) => pure(v))))
+      (!.run(Cps.run(Cps.programLeaf[Int, Ans, Ans](body).map(_ * 2))((v: Int) => pure(v))),
+       !.run(Cps.run(Cps.shiftLeaf[Int, Ans, Ans](body).map(_ * 2))((v: Int) => pure(v))))
     val (twice, twiceStrict) = both(k => k(1).flatMap(a => k(10).map(b => a + b)))
     assertEquals(twice, 22)
     assertEquals(twice, twiceStrict)
@@ -37,25 +37,25 @@ class TestContProgramAnswer extends munit.FunSuite:
   }
 
   test("the contract: host effects after k(a) in the body run before k's rest (the strict leaf: after)") {
-    def order(leaf: ((Int => Ans) => Ans) => Cont[Int, Ans, Ans]): List[String] =
+    def order(leaf: ((Int => Ans) => Ans) => Cps[Int, Ans, Ans]): List[String] =
       val log = ListBuffer.empty[String]
       val c = leaf(k => { val p = k(1); log += "body"; p }).map(v => { log += "rest"; v })
-      val _ = !.run(Cont.run(c)((v: Int) => pure(v)))
+      val _ = !.run(Cps.run(c)((v: Int) => pure(v)))
       log.toList
-    assertEquals(order(Cont.programLeaf[Int, Ans, Ans]), List("body", "rest"))
-    assertEquals(order(Cont.shiftLeaf[Int, Ans, Ans]), List("rest", "body"))
+    assertEquals(order(Cps.programLeaf[Int, Ans, Ans]), List("body", "rest"))
+    assertEquals(order(Cps.shiftLeaf[Int, Ans, Ans]), List("rest", "body"))
   }
 
   test("the macro picks the lazy k for a body that calls k itself and answers a program") {
     val log = ListBuffer.empty[String]
-    val c = Cont.shift[Int, Ans, Ans](k => { val p = k(1); log += "body"; p.flatMap(v => k(v)) })
+    val c = Cps.shift[Int, Ans, Ans](k => { val p = k(1); log += "body"; p.flatMap(v => k(v)) })
       .map(v => { log += "rest"; v })
-    val _ = !.run(Cont.run(c)((v: Int) => pure(v)))
+    val _ = !.run(Cps.run(c)((v: Int) => pure(v)))
     assertEquals(log.toList.take(2), List("body", "rest"))
   }
 
   test("a million nested program-answered bodies: forced by the Free fold, no nested run") {
-    assertEquals(!.run(pureAns(1000000, Cont.programLeaf[Int, Ans, Ans])), 1000000)
+    assertEquals(!.run(pureAns(1000000, Cps.programLeaf[Int, Ans, Ans])), 1000000)
   }
 
   test("a million nested, consumed by a RUNNING machine: it steps in and continues into each answer") {

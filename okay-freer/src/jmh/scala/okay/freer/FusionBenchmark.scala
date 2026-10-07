@@ -71,7 +71,7 @@ class FusionBenchmark {
       case _ => C.flatMap(h(Writer.Say("w")))(_ => rightCtrl(h)(i + 1, acc + 1))
 
   @Benchmark
-  def ctrlContSWr(): Int = Fused.runCtrl[Cont, Int, String, Int](0)(h => rightCtrl[Cont](h)(0, 0))._2
+  def ctrlContSWr(): Int = Fused.runCtrl[Cps, Int, String, Int](0)(h => rightCtrl[Cps](h)(0, 0))._2
 
   @Benchmark
   def ctrlFuncSWr(): Int = Fused.runCtrl[Func, Int, String, Int](0)(h => rightCtrl[Func](h)(0, 0))._2
@@ -129,9 +129,9 @@ class FusionBenchmark {
     if i >= Iters then Control[Func].pure(acc)
     else block10[Func](h, Control[Func])(i, acc)(acc2 => blockFunc(h)(i + 1, acc2))
 
-  def blockCont(h: Interpr[SW, Cont, R])(i: Int, acc: Int): Cont[Int, R, R] =
-    if i >= Iters then Control[Cont].pure(acc)
-    else block10[Cont](h, Control[Cont])(i, acc)(acc2 => blockCont(h)(i + 1, acc2))
+  def blockCont(h: Interpr[SW, Cps, R])(i: Int, acc: Int): Cps[Int, R, R] =
+    if i >= Iters then Control[Cps].pure(acc)
+    else block10[Cps](h, Control[Cps])(i, acc)(acc2 => blockCont(h)(i + 1, acc2))
 
   /** the CEILING: binds AND handler static — each operation written as
    * its shift directly (the arms of `Fused.stateWriterInterp`, chosen
@@ -233,7 +233,7 @@ class FusionBenchmark {
   def blockFuncR(): Int = Fused.runCtrl[Func, Int, String, Int](0)(h => blockFunc(h)(0, 0))._2
 
   @Benchmark
-  def blockContR(): Int = Fused.runCtrl[Cont, Int, String, Int](0)(h => blockCont(h)(0, 0))._2
+  def blockContR(): Int = Fused.runCtrl[Cps, Int, String, Int](0)(h => blockCont(h)(0, 0))._2
 
   @Benchmark
   def blockFuncStagedR(): Int =

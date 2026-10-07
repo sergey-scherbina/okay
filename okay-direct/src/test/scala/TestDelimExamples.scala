@@ -122,12 +122,12 @@ class TestDelimExamples extends munit.FunSuite {
 
   // ---- 4 · answer-type modification
   //      Danvy & Filinski (1990): the block produces an Int and the
-  //      delimiter answers a String. `Cont[A, S, R]` carries that; a
+  //      delimiter answers a String. `Cps[A, S, R]` carries that; a
   //      plain monad cannot say it.
 
   test("answer-type modification: the answer changes type along the way") {
-    val r: String = Cont.reset[Int, String](
-      Cont.shift[Int, Int, String](k => s"answer: ${k(20) + 2}").map(_ + 20))
+    val r: String = Cps.reset[Int, String](
+      Cps.shift[Int, Int, String](k => s"answer: ${k(20) + 2}").map(_ + 20))
     assertEquals(r, "answer: 42")
   }
 
@@ -177,9 +177,9 @@ class TestDelimExamples extends munit.FunSuite {
   //      example 5 threads by hand is what the continuation is.
 
   object Fmt:
-    def lit[T](s: String): Cont[String, T, T] = Cont.shift(k => k(s))
-    def str[T]: Cont[String, T, String => T] = Cont.shift(k => (x: String) => k(x))
-    def int[T]: Cont[String, T, Int => T] = Cont.shift(k => (n: Int) => k(n.toString))
+    def lit[T](s: String): Cps[String, T, T] = Cps.shift(k => k(s))
+    def str[T]: Cps[String, T, String => T] = Cps.shift(k => (x: String) => k(x))
+    def int[T]: Cps[String, T, Int => T] = Cps.shift(k => (n: Int) => k(n.toString))
 
   test("printf via shift/reset: the format is a for-comprehension") {
     import Fmt.*
@@ -187,7 +187,7 @@ class TestDelimExamples extends munit.FunSuite {
 
     // NOTHING is annotated inside: the expected type on `reset` carries
     // the whole chain of answer types through the generators
-    val greeting: Out = Cont.reset[String, Out]:
+    val greeting: Out = Cps.reset[String, Out]:
       for
         x <- lit("Hello, ")
         y <- str
@@ -200,25 +200,25 @@ class TestDelimExamples extends munit.FunSuite {
     // the order of the directives is the order of the arguments, and
     // the types say so: swap them and it does not compile
     assert(compileErrors("""
-      val g: String => Int => String = okay.freer.Cont.reset[String, String => Int => String](
+      val g: String => Int => String = okay.freer.Cps.reset[String, String => Int => String](
         for { x <- Fmt.int; y <- Fmt.str } yield x + y)
     """).nonEmpty, "the directives were accepted in the wrong order")
   }
 
   test("printf is exactly what a direct block cannot express") {
-    // `Cont.direct.shift` takes the answer type from the block, which
+    // `Cps.direct.shift` takes the answer type from the block, which
     // presumes the block HAS one: a direct block is diagonal, one
     // `F[A]` for all of it. Every directive above moves the answer
     // type, so there is no `AnswerOf` for it — and that is the
     // boundary, stated by the compiler rather than by this comment.
     val moving = compileErrors(
-      "summon[okay.freer.Cont.direct.AnswerOf[[X] =>> okay.freer.Cont[X, String, String => String]]]")
+      "summon[okay.freer.Cps.direct.AnswerOf[[X] =>> okay.freer.Cps[X, String, String => String]]]")
     assert(moving.nonEmpty, "a moving answer type was accepted as a direct block's monad")
 
     // the diagonal, the shape a direct block does have, resolves —
     // and TestContDirect runs a block written that way
     val fixed = compileErrors(
-      "summon[okay.freer.Cont.direct.AnswerOf[[X] =>> okay.freer.Cont[X, String, String]]]")
+      "summon[okay.freer.Cps.direct.AnswerOf[[X] =>> okay.freer.Cps[X, String, String]]]")
     assertEquals(fixed, "", "the diagonal lost its witness")
   }
 }

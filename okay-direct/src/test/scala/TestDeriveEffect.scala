@@ -40,7 +40,7 @@ class TestDeriveEffect extends munit.FunSuite {
       yield r
     val handled: Option[Int] ! Writer % String =
       !.relay[Option[Int], Option[Int], Db, Writer % String](p)(pure):
-        [X, Y] => e => Cont.Pure(handler.handle(e))
+        [X, Y] => e => Cps.Pure(handler.handle(e))
     assertEquals(!.run(Writer.run[String, Option[Int], Pure](handled)),
       (Seq("asking"), Some(1)))
   }

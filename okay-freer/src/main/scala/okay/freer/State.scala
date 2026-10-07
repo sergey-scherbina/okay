@@ -254,8 +254,8 @@ object State {
 /**
  * Parameterised (type-changing) state, founded on the continuation
  * paramonad: a computation of A that changes the state TYPE from S to
- * S2, with the final answer R, is Cont[A, S2 => R, S => R] — the state
- * is threaded by the answer type, get and set are shifts, and Cont's
+ * S2, with the final answer R, is Cps[A, S2 => R, S => R] — the state
+ * is threaded by the answer type, get and set are shifts, and Cps's
  * flatMap already composes the transitions S -> S2 -> S3 (typestate:
  * the compiler enforces the protocol order). Unlike the State effect
  * above, whose handler loop is tail-recursive, every operation is a
@@ -276,10 +276,10 @@ object State {
  */
 object PState {
   /** read the state, leaving its type unchanged */
-  inline def get[S, R]: Cont[S, S => R, S => R] = Cont.shift(k => getAt(k))
+  inline def get[S, R]: Cps[S, S => R, S => R] = Cps.shift(k => getAt(k))
 
   /** write a state of a possibly different type; the old state is the value */
-  inline def set[S, S2, R](s2: S2): Cont[S, S2 => R, S => R] = Cont.shift(k => setAt(k, s2))
+  inline def set[S, S2, R](s2: S2): Cps[S, S2 => R, S => R] = Cps.shift(k => setAt(k, s2))
 
   // The two bodies are GENERIC methods, not lambdas at the inline call
   // site (cont-stack-fastpath, 2026-09-27). Written inline, the lambda
@@ -331,32 +331,32 @@ object PState {
       case g => g(a)
 
   /** run from an initial state to (final state, value) */
-  inline def run[S, S2, A](s: S)(m: Cont[A, S2 => (S2, A), S => (S2, A)]): (S2, A) =
+  inline def run[S, S2, A](s: S)(m: Cps[A, S2 => (S2, A), S => (S2, A)]): (S2, A) =
     (m / (a => s2 => (s2, a)))(s)
 
   /**
    * THE CARRIER: a typestate transition, seen as a profunctor in its
    * state (specs/optics.md stage 12, `optics-cont-profunctor`).
    *
-   * `Cont[X, B => R, A => R]` computes an `X` and takes the state from
+   * `Cps[X, B => R, A => R]` computes an `X` and takes the state from
    * `A` to `B`. Read as `P[A, B]`, that is a profunctor — and an optic
    * IS a function `P[A1, A2] => P[S1, S2]` for every `P` with the
    * right structure, which is why `PState.zoom` is one line: the
    * optic run at this carrier.
    *
    * THE ALIAS IS ALL THAT IS LEFT HERE (core-modules stage 4). It
-   * names a `Cont` and nothing else, so it stays in the core; the
+   * names a `Cps` and nothing else, so it stays in the core; the
    * `Optic.Strong` instance for it, and the `zoom` and `zoomCase`
    * spellings that need one, moved to okay-optics (`Zoom.scala`).
    * Callers write the same thing they always did.
    */
-  type Zooming[X, R] = [A, B] =>> Cont[X, B => R, A => R]
+  type Zooming[X, R] = [A, B] =>> Cps[X, B => R, A => R]
 
   /**
    * THE THREADED ROAD (pstate-threaded, 2026-09-30): the same typestate
    * as DATA on the indexed tree, run by `State.handle`'s loop with the
    * TYPE moving. `get` and `set` above are shift bodies — the state
-   * rides in the answer type (`S => R`), the runner is Cont's, and every
+   * rides in the answer type (`S => R`), the runner is Cps's, and every
    * operation is a re-entry through a `Reentry`, which is the 1.79x
    * against `State.handle` that the header of this object records.
    * With the base's indexes invariant (freer-consumed-index) the other

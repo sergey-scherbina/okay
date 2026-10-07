@@ -25,7 +25,7 @@ class CompareBenchmark {
 
   @Benchmark
   def okayCont(): Int =
-    Cont.reset((1 to N).foldLeft(Cont.Pure(0): Int /> Int)((m, _) => m.flatMap(x => Cont.Pure(x + 1))))
+    Cps.reset((1 to N).foldLeft(Cps.Pure(0): Int />> Int)((m, _) => m.flatMap(x => Cps.Pure(x + 1))))
 
   @Benchmark
   def okayFree(): Int =

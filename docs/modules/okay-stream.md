@@ -3,7 +3,7 @@
 Streams, channels, chunked collections and the buffers under them.
 
 Until 2026-09-18 all of this was in the core. It moved out because
-the dependency graph said it could: the whole control layer — `Cont`,
+the dependency graph said it could: the whole control layer — `Cps`,
 `Free`, `Effects`, `Monad`, `Shift`, `State`, `Direct`, `Par`,
 `Resource`, `Logic`, `Throws`, `Validated`, `Static` — never named a
 channel, a source or a chunk in code. Every apparent reference was a

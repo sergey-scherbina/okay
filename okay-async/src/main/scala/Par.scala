@@ -45,7 +45,7 @@ import okay.freer.*
  *
  * WHY THE CARRIER IS OPAQUE INSIDE THIS OBJECT rather than at top
  * level: a top-level `opaque type` is transparent to its whole
- * PACKAGE (Cont.scala says the same, and paid for it), so declared
+ * PACKAGE (Cps.scala says the same, and paid for it), so declared
  * there `Par[A]` would still be plainly `A ! Async` everywhere in
  * `okay` — and `Free`'s own `Monad` would answer `Applicative[Par]`
  * inside the package, sequentially, from the same call. Inside an

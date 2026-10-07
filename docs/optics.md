@@ -240,7 +240,7 @@ Everything above focuses inside a value. The same optic also focuses
 inside a *stateful program*, and this is the part with no counterpart
 in the hand-written column — there is nothing short to compare it to.
 
-A typestate program `Cont[X, B => R, A => R]` computes an `X` and
+A typestate program `Cps[X, B => R, A => R]` computes an `X` and
 moves the state from `A` to `B`. Read as `P[A, B]` that is a
 profunctor, so a lens onto part of the state turns a program over the
 part into a program over the whole:

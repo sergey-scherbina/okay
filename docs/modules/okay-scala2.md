@@ -8,7 +8,7 @@ lambdas, pattern matches) and the real library runs underneath.
 | | |
 |---|---|
 | `Eff[-R, +A]` | a program over an OPEN row of effects, written `A ! R` with `R` an intersection of capabilities joined by `+` — the aliases come from [`okay-scala2-prelude`](okay-scala2-prelude.md) with `import okay.scala2._` ([scala2.md](../scala2.md), section 3): `A ! (State[Int] + Writer[String])`, parentheses included. The operations and handlers live on the capabilities' companions under okay's names: `State.get`/`set`/`modify`/`handle`/`run`, `Reader.ask`/`run`, `Writer.tell`/`run`/`collect`, `Throws.raise`/`runEither`, `Async(a)`/`attempt`/`catching` |
-| `Cont[A, S, R]` | delimited continuations: `Cont.shift`, `Cont.reset`, `Cont.pure`, `map`, `flatMap`, `run(k)`, with answer-type modification |
+| `Cps[A, S, R]` | delimited continuations: `Cps.shift`, `Cps.reset`, `Cps.pure`, `map`, `flatMap`, `run(k)`, with answer-type modification |
 | `Op`, `Effect[F]`, `Handler[F, R, B]` | YOUR OWN effect, declared in plain Scala 2: operations extend `Op`, `object Console extends Effect[Console]` is the whole declaration, and a handler gets each operation together with its continuation |
 | `Source[A]` | streams: `Source(...)`, `range`, `unfold`, `fromEff`; `map`, `filter`, `take`, `takeWhile`, `drop`, `zipWithIndex`, `++`, `merge`; `runCollect`, `runForeach`, `runFold` |
 | `Fiber[A]`, `Channel[A]` | concurrency: `Async.fork`, `par`, `race`, `sleep`, `timeout`; a fiber's `join`/`joinEither`/`cancel`; a bounded channel's `send`/`receive` (programs that wait), `offer`, `close`, `source` |
@@ -147,25 +147,25 @@ stores the program at a single top row, and each handler re-types it
 at the concrete row it handles. The reason is written beside that one
 function (`Rows.coerce`).
 
-## Continuations: `Cont`
+## Continuations: `Cps`
 
-`Cont[A, S, R]` is okay's continuation paramonad, and it is
+`Cps[A, S, R]` is okay's continuation paramonad, and it is
 stack-safe. `shift` captures the continuation up to the nearest
 `reset` and may change the answer type (Danvy & Filinski, *Abstracting
 Control*, LFP 1990, doi:10.1145/91556.91622; answer-type modification
 and its typing: Asai, *On typing delimited continuations: three new
 solutions to the printf problem*, HOSC 2009,
 doi:10.1007/s10990-009-9049-5). The code below is copied from
-`scala2/okay-scala2/probe/src/test/scala/TestContFromScala2.scala`:
+`scala2/okay-scala2/probe/src/test/scala/TestCpsFromScala2.scala`:
 
 ```scala
-val c: Cont[Int, Int, Int] = for {
-  a <- Cont.shift[Int, Int, Int](k => k(k(10)))
-  b <- Cont.pure[Int, Int](1)
+val c: Cps[Int, Int, Int] = for {
+  a <- Cps.shift[Int, Int, Int](k => k(k(10)))
+  b <- Cps.pure[Int, Int](1)
 } yield a + b
-assertEquals(Cont.reset(c), 12)
+assertEquals(Cps.reset(c), 12)
 
-val s: String = Cont.reset(Cont.shift[Int, Int, String](k => "k(5)=" + k(5)).map(_ * 2))
+val s: String = Cps.reset(Cps.shift[Int, Int, String](k => "k(5)=" + k(5)).map(_ * 2))
 assertEquals(s, "k(5)=10")
 ```
 
@@ -322,11 +322,11 @@ intersection; the Scala 3 source writes `&`.
 `run[A, B](e: A ! Effect[F])(ret: A => B ! Pure)(h: Handler[F, Pure, B]): B`;
 `trait Handler[F[_], R, B] { def apply[X](op: F[X], k: X => B ! R): B ! R }`.
 
-**`Cont[A, S, R]`** — `map[B](f: A => B): Cont[B, S, R]`,
-`flatMap[B, S2](f: A => Cont[B, S2, S]): Cont[B, S2, R]`,
-`run(k: A => S): R`. `object Cont`: `pure[A, R](a: A): Cont[A, R, R]`,
-`shift[A, S, R](f: (A => S) => R): Cont[A, S, R]`,
-`reset[A, R](c: Cont[A, A, R]): R`.
+**`Cps[A, S, R]`** — `map[B](f: A => B): Cps[B, S, R]`,
+`flatMap[B, S2](f: A => Cps[B, S2, S]): Cps[B, S2, R]`,
+`run(k: A => S): R`. `object Cps`: `pure[A, R](a: A): Cps[A, R, R]`,
+`shift[A, S, R](f: (A => S) => R): Cps[A, S, R]`,
+`reset[A, R](c: Cps[A, A, R]): R`.
 
 **`Source[A]`** — `map`, `filter`, `mapConcat[B](f: A => Iterable[B])`,
 `take(n: Int)`, `takeWhile`, `drop(n: Int)`,

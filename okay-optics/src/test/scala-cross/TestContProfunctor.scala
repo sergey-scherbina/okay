@@ -11,7 +11,7 @@ import scala.compiletime.testing.typeCheckErrors
  * A TYPESTATE TRANSITION IS A PROFUNCTOR IN ITS STATE
  * (specs/optics.md stage 12, `optics-cont-profunctor`).
  *
- * `Cont[X, B => R, A => R]` computes an `X` and takes the state from
+ * `Cps[X, B => R, A => R]` computes an `X` and takes the state from
  * `A` to `B`. Read as `P[A, B]` it is `Strong`, so `PState.zoom` is
  * no longer a hand-written `shift`: it is the optic run at this
  * carrier, and `TestZoom` passing unchanged is that claim's evidence.
@@ -27,11 +27,11 @@ class TestContProfunctor extends munit.FunSuite {
 
   // the inner program, in both directions of the typestate: read the
   // Int state, leave a String state, answer the Int that was there
-  def render[R]: Cont[Int, String => R, Int => R] =
+  def render[R]: Cps[Int, String => R, Int => R] =
     PState.get[Int, R].flatMap(n => PState.set[Int, String, R](s"n=$n").map(_ => n))
 
   // a state-preserving one, for the optics that do not change types
-  def bump[R](by: Int): Cont[Int, Int => R, Int => R] =
+  def bump[R](by: Int): Cps[Int, Int => R, Int => R] =
     PState.get[Int, R].flatMap(n => PState.set[Int, Int, R](n + by).map(_ => n + by))
 
   final case class Wrapped(v: Int)
@@ -46,12 +46,12 @@ class TestContProfunctor extends munit.FunSuite {
     val P = PState.strong[Int, R]
 
     // the direct road this instance takes
-    val direct: Cont[Int, Box[String] => R, Box[Int] => R] =
+    val direct: Cps[Int, Box[String] => R, Box[Int] => R] =
       P.lens[Box[Int], Box[String], Int, String](_.item, (b, s) => Box(s, b.tag))(render[R])
 
     // the textbook derivation `Strong` would have used: pair the focus
     // with the whole, run `first`, put it back
-    val derived: Cont[Int, Box[String] => R, Box[Int] => R] =
+    val derived: Cps[Int, Box[String] => R, Box[Int] => R] =
       P.dimap(P.first[Int, String, Box[Int]](render[R]))(
         (b: Box[Int]) => (b.item, b),
         (sb: (String, Box[Int])) => Box(sb._1, sb._2.tag))
@@ -67,7 +67,7 @@ class TestContProfunctor extends munit.FunSuite {
   test("`first`: the state is a pair, the program works on the left half, the right rides along") {
     type R = ((String, Boolean), Int)
     val P = PState.strong[Int, R]
-    val paired: Cont[Int, ((String, Boolean)) => R, ((Int, Boolean)) => R] =
+    val paired: Cps[Int, ((String, Boolean)) => R, ((Int, Boolean)) => R] =
       P.first[Int, String, Boolean](render[R])
 
     assertEquals(PState.run[(Int, Boolean), (String, Boolean), Int]((3, true))(paired),
@@ -78,7 +78,7 @@ class TestContProfunctor extends munit.FunSuite {
     type R = (Wrapped, Int)
     val unwrap: Iso[Wrapped, Wrapped, Int, Int] = Iso(_.v, Wrapped(_))
 
-    val zoomed: Cont[Int, Wrapped => R, Wrapped => R] = unwrap[PState.Zooming[Int, R]](bump[R](5))
+    val zoomed: Cps[Int, Wrapped => R, Wrapped => R] = unwrap[PState.Zooming[Int, R]](bump[R](5))
     assertEquals(PState.run[Wrapped, Wrapped, Int](Wrapped(1))(zoomed), (Wrapped(6), 6))
   }
 
@@ -116,7 +116,7 @@ class TestContProfunctor extends munit.FunSuite {
   test("zoomCase: the inner program is not merely skipped — it never runs at all") {
     type R = (Option[String], Option[Int])
     var ran = 0
-    def counted[Rr]: Cont[Int, String => Rr, Int => Rr] =
+    def counted[Rr]: Cps[Int, String => Rr, Int => Rr] =
       PState.get[Int, Rr].flatMap { n => ran += 1; PState.set[Int, String, Rr](s"n=$n").map(_ => n) }
 
     val zoomed = PState.zoomCase[Option[Int], Option[String], Int, String, Int, R](

@@ -64,7 +64,7 @@ them read as "we are slow" or "we are fast" for the wrong reason.
 | the question | okay | best competitor | § |
 |---|---|---|---|
 | run an already-finished program | **0.0021** | ZIO 0.043 | [§0](#0-the-floor--what-each-runtime-charges-to-run-nothing) |
-| 10 000 flatMaps, built and run | **5.5** eager, **95** Cont | kyo 60 | [§1](#1-bind-chain--10k-left-nested-flatmaps-built-and-run) |
+| 10 000 flatMaps, built and run | **5.5** eager, **95** Cps | kyo 60 | [§1](#1-bind-chain--10k-left-nested-flatmaps-built-and-run) |
 | direct syntax over its own flatMap chain | **1.05x** | zio-direct 0.65x | [§1b](#1b-direct-syntax--the-same-10k-binds-written-as-code) |
 | 10 000 handled reads | **60.6** | kyo 253 | [§2](#2-reader--10k-asks--writer--10k-tells) |
 | 10 000 handled writes | **159** | kyo 178 | [§2](#2-reader--10k-asks--writer--10k-tells) |
@@ -262,7 +262,7 @@ cannot show it.)
 
 ## 1. Bind chain — 10k left-nested flatMaps, built and run
 
-| **Okay Eager** | kyo | **Okay Cont** | **Okay Free** | cats Free | cats Eval | cats IO | ZIO | atnos |
+| **Okay Eager** | kyo | **Okay Cps** | **Okay Free** | cats Free | cats Eval | cats IO | ZIO | atnos |
 |---|---|---|---|---|---|---|---|---|
 | **5.5** | 60 | **95** | **112** | 117 | 153 | 163 | 193 | 286 |
 
@@ -279,7 +279,7 @@ program:
   remorse" problem solved with two lines of pattern match instead of
   a type-aligned queue (measured: stepping one-by-one costs only ~8%
   over bulk, so the queue is unneeded, with evidence).
-- `Cont` is the same discipline one level down — and since 2026-09-15
+- `Cps` is the same discipline one level down — and since 2026-09-15
   the same TREE: an opaque `Freer[Shift, S, R, A]` whose runner is one
   tail-recursive loop, plus one step of closure absorption (a fresh
   leaf takes its first flatMap/map into itself; a depth budget of 128
@@ -306,7 +306,7 @@ open-union tagging of classic freer on every operation.
 
 **The cats row is 15% node kind, not runtime (benchmark-fairness-
 audit, 2026-09-06).** The lane binds `IO(x + 1)` — what a cats user
-types, and a `Delay` node carrying a thunk — against `Cont.Pure(x +
+types, and a `Delay` node carrying a thunk — against `Cps.Pure(x +
 1)`, a value. The like-for-like cats twin of `Pure` is `IO.pure`, and
 with it the row reads **124.1 ±2.9 against 149.1 ±4.0** for the
 `IO(...)` spelling, same run, quiet box; `okayCont` 87.3 ±7.1 in that
@@ -349,7 +349,7 @@ bench-direct run of the same suite — their code did not change.
 
 **Why Okay's numbers.** The macro emits the monad's own plain
 flatMap binds (direct-flatmap-emission, specs/direct-macro.md; the
-first cut emitted Monadic's Cont layer, priced right here at 3.3x
+first cut emitted Monadic's Cps layer, priced right here at 3.3x
 and retired — this table is what filed that optimization). The
 recursion form is FASTER than the hand-written chain by the same
 mechanism that credits zio-direct below: the macro emits
@@ -441,7 +441,7 @@ pair of numbers each carried 24.6 µs of tree construction that
 diluted the ratio. That measurement also said what the gap WAS:
 allocation, +112.7 bytes on every FORWARDED operation, the operation
 the handler never touches, because `Effects.handle` folded the whole
-program through `Cont` and spent a `shift` on it.
+program through `Cps` and spent a `shift` on it.
 
 Giving `handle` relay's forwarding arm closes it:
 
@@ -473,7 +473,7 @@ own first version: trampolining EVERY handled operation through a
 shape this tree rewrites — so each handled operation taxed every
 operation after it. The shipped version keeps that node only for a
 handler that really captures the continuation; one that does not
-answers with `Cont.Pure`, and the loop simply goes on from the
+answers with `Cps.Pure`, and the loop simply goes on from the
 answer. Rows `hff-*`, and `hd-*` for the measurement that started it.
 
 Writer's `tell` is ZERO allocation: the operation is an
@@ -657,7 +657,7 @@ Per level, lower better:
 | hand-written trampoline (`Done`/`More`) | 1.90 ns | 32 | 2 |
 | cats `Eval.defer` | 1.91 ns | 32 | 2 |
 | `scala.util.control.TailCalls` | 1.92 ns | 32 | 2 |
-| okay `Cont.delay` | 2.16 ns | 32 | 1 |
+| okay `Cps.delay` | 2.16 ns | 32 | 1 |
 | okay `!.tailcall` (Free) | 2.26 ns | 40 | 1 |
 | ZIO `suspendSucceed` | 4.17 ns | 56 | 2 |
 | `Iterator.iterate` (no recursion left: a stepped state) | 5.55 ns | 40 | 1 |
@@ -4000,7 +4000,7 @@ which inlines none of it, the split between the objects and the
 round-trip is not yet known — it is the next measurement. A fourth
 `Free` case was priced and declined on the spot: 118 places outside
 Free.scala match on `Pure` / `Bind` / `Inject` directly (Stm,
-Condition, Chunks, Cont…), and every one would have to learn it. The
+Condition, Chunks, Cps…), and every one would have to learn it. The
 open lever is the loop, not the node: `Drive.apply` written as
 `runFree` and `Stm`'s runner already are, a direct match with `Run`
 and `Await` inlined — `async-direct-loop`, whose ceiling on the JVM is

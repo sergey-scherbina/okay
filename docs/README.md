@@ -88,7 +88,7 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
 - **[okay2: the core in Scala 2.13](okay2.md)** — not the facade
   but the core itself written a second time: the freer tree, rows as
   kind-`*` types, handlers in any order by a type-level witness,
-  `Cont`, State/Writer/Throws/Reader, with nothing of Scala 3 on the
+  `Cps`, State/Writer/Throws/Reader, with nothing of Scala 3 on the
   classpath; interop with cats, fs2 and zio by interpreting the tree
   in the target monad; the pure stream layer (chunks, stages,
   pipelines, windows); the Async effect and the JVM platform under it
@@ -171,7 +171,7 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   `dollar`, `shift0`, `resume`), Dybvig, Peyton Jones and Sabry's
   framework in λ$'s variant; writing against the trait; resuming a
   continuation with a computation, not just a value.
-- **[Cont and the stack](cont-stack.md)** — what nests and what does
+- **[Cps and the stack](cont-stack.md)** — what nests and what does
   not: a body that only calls `k` last is the value it passes (no
   frame, decided at compile time); one that uses the answer is a frame
   a level, counted, and past the room continued on a parked worker's
@@ -295,7 +295,7 @@ API reference, gotchas.
 | module | what it is |
 |---|---|
 | `okay` (core) | the interface over rows (`Effects[M]`), its words members of the instance (`A ! R`, `pure`, `effect`, `handle`, `value`; `import okay.*` is the machine's), the type classes; the guide/tutorial/typepedia above are the classic's |
-| [`okay-freer`](modules/okay-freer.md) | the classic: the effect library over the freer tree — `A ! F`, handlers, rows, the effects, `Cont` and its machine — package `okay.freer`, above the core as one `Effects` instance; `import okay.freer.*` beside `import okay.*` |
+| [`okay-freer`](modules/okay-freer.md) | the classic: the effect library over the freer tree — `A ! F`, handlers, rows, the effects, `Cps` and its machine — package `okay.freer`, above the core as one `Effects` instance; `import okay.freer.*` beside `import okay.*` |
 | [`okay-cont`](modules/okay-cont.md) | delimited continuations typed by two stacks of answer types, handlers as delimiters, and the machine that runs them; `Effects[Prog]` beside `Effects[Free]` |
 | [`okay-async`](modules/okay-async.md) | the portable `Async` effect and its callback-based runtime semantics, with no platform default instances of its own |
 | [`okay-direct`](modules/okay-direct.md) | the optional direct syntax (`direct { ... }`) and its compile-time macro implementation |
@@ -459,17 +459,17 @@ Start with [the roadmap](../ROADMAP.md) for the shape of the whole.
   [Freer Monads, More Extensible Effects](https://okmij.org/ftp/Haskell/extensible/more.pdf).
   The freer monad and extensible-effects design the effect layer is
   built on — and, since 2026-09-15, the ONE tree under both effect
-  programs and `Cont` itself: a shift is a freer leaf whose payload
+  programs and `Cps` itself: a shift is a freer leaf whose payload
   is a function of the continuation ([theory ch. 11](theory/11-one-tree.md)).
 - Robert Atkey —
   [Parameterised notions of computation](https://bentnib.org/paramnotions-jfp.html).
-  The parameterised (answer-type-changing) monad `Cont[A, S, R]` is
+  The parameterised (answer-type-changing) monad `Cps[A, S, R]` is
   founded on.
 - Rúnar Óli Bjarnason —
   [Stackless Scala With Free Monads](https://blog.higher-order.com/assets/trampolines.pdf).
   Why stack safety on the JVM means trampolining through data — the
   reason `Free` is a defunctionalized enum with a tail-recursive
-  runner rather than raw closures, `Cont` a facade over it, and a
+  runner rather than raw closures, `Cps` a facade over it, and a
   tail call one `Delay` node.
 - Oleg Kiselyov et al. — the delimited-control lineage (`shift`/
   `reset`) that makes handlers literally continuations (`F !> S`).

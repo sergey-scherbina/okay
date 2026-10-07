@@ -22,7 +22,7 @@ import okay.{Monad}
  * `Func`'s contract is this type's contract: fast, fused, NOT
  * stack-safe on a left-nested chain. A block that loops ten thousand
  * operations is fine; one that must loop a million runs as a Free
- * block under `Cont`.
+ * block under `Cps`.
  */
 object Handled:
   opaque type Handled[F[+_], R, A] = (A => R) => R

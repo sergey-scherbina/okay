@@ -7,21 +7,21 @@ import scala.collection.LinearSeq
 
 /**
  * Danvy-Filinski's one-prompt `shift`/`reset` with answer-type modification: `M[A, S, R]` is `(A => S) => R`.
- * Instances: `Cont` (data, stack-safe) and `Func` (closures). THIS FILE IS THE FACADE: the machine is
+ * Instances: `Cps` (data, stack-safe) and `Func` (closures). THIS FILE IS THE FACADE: the machine is
  * the stack of continuations (`Delimited`), typed per reset installation, so nothing here is claimed; ContMacro
  * turns what it can read into data first.
  */
-/** `Cont[A, R, R]`: the diagonal, an ordinary monad */
-infix type />[A, R] = Cont[A, R, R]
+/** `Cps[A, R, R]`: the diagonal, an ordinary monad */
+infix type />>[A, R] = Cps[A, R, R]
 /** what `reset` can delimit */
-infix type ^[A, R] = Cont[A, A, R]
+infix type ^[A, R] = Cps[A, A, R]
 /**
  * `(A => S) => R` as data: a freer tree whose indexes are the answer types; `/` runs it.
- * Free is Cont whose shift body the handler chooses.
+ * Free is Cps whose shift body the handler chooses.
  */
-type Cont[A, S, R] = Cont.Rep[A, S, R]
+type Cps[A, S, R] = Cps.Rep[A, S, R]
 
-object Cont:
+object Cps:
 
   /** opaque inside the object, not the package: package-wide it would pick up every program extension */
   opaque type Rep[A, S, R] = Freer[Sig, S, R, A]
@@ -50,7 +50,7 @@ object Cont:
    * `Auto` (the default) each platform's cheapest — re-execution on Scala.js, a fresh stack on the JVM and Native;
    * `Replay` re-execution everywhere (a body's part before its pending `k` runs again: pure or idempotent bodies);
    * `Safe` never re-execute — a fresh stack on the JVM and Native, the engine's stack on Scala.js, where the
-   * guarantee is the compile-time one (`Cont.safe`). Set at start: `-Dokay.cont.mode=auto|replay|safe`, or here.
+   * guarantee is the compile-time one (`Cps.safe`). Set at start: `-Dokay.cont.mode=auto|replay|safe`, or here.
    */
   enum Mode:
     case Auto, Replay, Safe
@@ -59,7 +59,7 @@ object Cont:
   def setMode(m: Mode): Unit = ContReplay.set(m)
 
   /**
-   * COMPILE-TIME SAFE SHIFTS in a scope: `import okay.freer.Cont.safe.given`. Every `shift` body that uses `k` is CPS-
+   * COMPILE-TIME SAFE SHIFTS in a scope: `import okay.freer.Cps.safe.given`. Every `shift` body that uses `k` is CPS-
    * transformed — `k` is data, nothing waits on the host stack, nothing is re-executed, on every platform, side
    * effects run once and in order — or it is a compile error saying why. A body answering a program gets the lazy
    * `k`. The run-time mode cannot reach these bodies: no strict leaf is left.
@@ -68,7 +68,7 @@ object Cont:
   object safe:
     given Safe = Safe()
 
-  /** COMPILE-TIME, a scope's opaque bodies NEVER re-executed (`import okay.freer.Cont.noReplay.given`): they compile as
+  /** COMPILE-TIME, a scope's opaque bodies NEVER re-executed (`import okay.freer.Cps.noReplay.given`): they compile as
    * before, and their `k` is a barrier whatever the run-time mode — for a body with effects the macro cannot read */
   final class NoReplay private[okay] () extends Shifts
   object noReplay:
@@ -188,7 +188,7 @@ object Cont:
   /** `defer` with nothing after it */
   def delay[A, S, R](thunk: () => Rep[A, S, R]): Rep[A, S, R] = Freer.delay(thunk)
 
-  /** flatMap in prefix form: the extension and `Control[Cont]` both call this, so neither resolves into the other */
+  /** flatMap in prefix form: the extension and `Control[Cps]` both call this, so neither resolves into the other */
   def bind[A, B, S, S2, R](c: Rep[A, S, R])(f: A => Rep[B, S2, S]): Rep[B, S2, R] = Bind(c, f)
 
   /** map, as `Freer.map`'s node */
@@ -200,7 +200,7 @@ object Cont:
    */
   def run[A, S, R](c: Rep[A, S, R])(k: A => S): R = Delimited(Steps).run(c, k)
 
-  /** a Cont program performs no effect but its own */
+  /** a Cps program performs no effect but its own */
   private[okay] type Sig = Op
 
   /** CONT'S OPERATIONS, an effect on the stack of continuations (`Delimited`): the leaves of shift in the forms
@@ -247,14 +247,14 @@ object Cont:
       case Return(a) => ifAnswer(a)
       case _ => otherwise
 
-  extension [A, S, R](c: Cont[A, S, R])
-    def flatMap[B, S2](f: A => Cont[B, S2, S]): Cont[B, S2, R] = bind(c)(f)
-    def map[B](f: A => B): Cont[B, S, R] = mapped(c)(f)
+  extension [A, S, R](c: Cps[A, S, R])
+    def flatMap[B, S2](f: A => Cps[B, S2, S]): Cps[B, S2, R] = bind(c)(f)
+    def map[B](f: A => B): Cps[B, S, R] = mapped(c)(f)
     infix def /(k: A => S): R = run(c)(k)
     // no `apply`: Generate.scala's `apply` wins in lexical scope; `c / k` is the spelling
 
   /**
-   * `shift` with one type argument inside a direct block over Cont's diagonal; its own import, so
+   * `shift` with one type argument inside a direct block over Cps's diagonal; its own import, so
    * `shift: k => ...` elsewhere keeps resolving to the package-level one
    */
   object direct:
@@ -262,30 +262,30 @@ object Cont:
     /** the answer type of a diagonal block */
     trait AnswerOf[F[_]]:
       type R
-      def apply[A](c: Cont[A, R, R]): F[A]
+      def apply[A](c: Cps[A, R, R]): F[A]
 
     object AnswerOf:
-      given [R0]: AnswerOf[[X] =>> Cont[X, R0, R0]] with
+      given [R0]: AnswerOf[[X] =>> Cps[X, R0, R0]] with
         type R = R0
-        def apply[A](c: Cont[A, R0, R0]): Cont[A, R0, R0] = c
+        def apply[A](c: Cps[A, R0, R0]): Cps[A, R0, R0] = c
 
     /** capture to the block's `reset`; `DummyImplicit` makes `shift[Int]` name `A` */
     inline def shift[A](using d: DummyImplicit)[F[_]]
                        (using inline ctx: DirectCtx[F])
                        (using a: AnswerOf[F])
                        (f: (A => a.R) => a.R): F[A] =
-      a(Cont.shift[A, a.R, a.R](f))
+      a(Cps.shift[A, a.R, a.R](f))
 
   /** monadic reflection (Filinski, POPL 1994): any monad in direct style */
   object Monadic:
 
     extension [F[_] : Monad, A](m: F[A])
       /** the monadic value as a direct value */
-      inline def reflect[B]: Cont[A, F[B], F[B]] =
+      inline def reflect[B]: Cps[A, F[B], F[B]] =
         shift(k => m.flatMap(k))
       /** the symbolic `reflect` */
-      inline def ?[B]: Cont[A, F[B], F[B]] = reflect[B]
+      inline def ?[B]: Cps[A, F[B], F[B]] = reflect[B]
 
     /** back into the monad */
-    inline def reify[F[_], A, B](p: Cont[A, F[A], F[B]])(using M: Monad[F]): F[B] =
+    inline def reify[F[_], A, B](p: Cps[A, F[A], F[B]])(using M: Monad[F]): F[B] =
       p / (a => M.pure(a))

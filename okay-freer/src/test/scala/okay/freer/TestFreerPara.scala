@@ -15,12 +15,12 @@ import okay.freer.Freer.{Return, Inject, Bind}
  * Two readings of `Freer[G, S, R, A]`, and the base admits BOTH since
  * its indexes are invariant:
  *
- *  - ANSWER TYPES (Cont's, PState's): a leaf is `(X => S) => R`, `R`
+ *  - ANSWER TYPES (Cps's, PState's): a leaf is `(X => S) => R`, `R`
  *    is what the handler PRODUCES. A handler for an indexed signature
  *    is an indexed natural transformation `G ~> Shift` — it chooses
  *    the shift body, which is the one sentence specs/freer-base.md
- *    carries ("Free is Cont whose shift body the handler chooses") —
- *    and the runner is Cont's, typed by the GADT. `PSt` below is
+ *    carries ("Free is Cps whose shift body the handler chooses") —
+ *    and the runner is Cps's, typed by the GADT. `PSt` below is
  *    `PState` as data, run exactly so.
  *  - BEFORE/AFTER STATE (McBride's `IxFree`): `R` is the state the
  *    program CONSUMES, `S` the one it leaves. A handler threading a
@@ -86,14 +86,14 @@ class TestFreerPara extends munit.FunSuite:
       // a lambda
       // `k(s)(s)` cannot be written: Generate.scala's seed-side `apply`
       // is in lexical scope for package okay and takes the second call
-      // (`Cont`'s "NO `apply` extension" comment) — the continuation's
+      // (`Cps`'s "NO `apply` extension" comment) — the continuation's
       // answer is named at its own type first
       case _: PSt.Get[s0, z] => val f: s0 => z = s => { val g: s0 => z = k(s); g(s) }; f
       case p: PSt.Put[s0, t, z] => val f: s0 => z = s => { val g: t => z = k(s); g(p.t) }; f
 
   /**
-   * Cont's runner at ANY signature, the handler supplying the leaf's
-   * body: `ProbeFreerStep.Cont.run` with `h` where the leaf was the
+   * Cps's runner at ANY signature, the handler supplying the leaf's
+   * body: `ProbeFreerStep.Cps.run` with `h` where the leaf was the
    * function. Typed by the GADT end to end — `Return` gives `S <: R`,
    * so `k(a): S` IS the `R`. The re-entry is direct style's own frame,
    * as in the library's runner; a probe, not a production loop.

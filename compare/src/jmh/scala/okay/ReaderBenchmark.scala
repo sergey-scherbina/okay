@@ -54,7 +54,7 @@ class ReaderBenchmark {
    * per bind: 10k left-nested binds overflow (measured). The
    * instance serves modest widths (traverse over a config, a page
    * of readers); DEPTH belongs to the row Reader, which trampolines
-   * on Cont. The boundary is in capabilities.md. */
+   * on Cps. The boundary is in capabilities.md. */
   @Benchmark
   def okayCtxMonad(): Int =
     val M = summon[Monad[[X] =>> Int ?=> X]]

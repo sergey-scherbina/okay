@@ -6,7 +6,7 @@ import okay.freer.Eager.given
 
 /**
  * `runWith` is DEFINED as `m.foldCont(handler[F, A]) / identity` — the
- * program lowered into Cont and run against the identity continuation.
+ * program lowered into Cps and run against the identity continuation.
  * Free and Eager both OVERRIDE it with a one-pass fast path (`runFree`,
  * the eager fold), and the comment on each says "the same answer as the
  * foldCont definition". That equation was, until this suite, stated and

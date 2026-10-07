@@ -1,7 +1,7 @@
 package okay.codec
 
-import okay.freer.{/>}
-import okay.freer.Cont
+import okay.freer.{/>>}
+import okay.freer.Cps
 /**
  * The STRICT JSON reader: characters straight into a `Schema`, no
  * tokens, no CST, no `Json` tree — the second door beside the
@@ -90,7 +90,7 @@ object JsonStrict {
 
     /**
      * The walk: `Cbor.get`'s shape, `Json.decode`'s rules — and, past
-     * `Codecs.NativeThreshold`, the same `Cont.defer` trampoline both
+     * `Codecs.NativeThreshold`, the same `Cps.defer` trampoline both
      * already carry (jsonstrict-threshold-trampoline, the third and
      * last instance of the pattern). `open` IS the counter this
      * dispatch reads: `array`/`product`/`sum` already bump it via
@@ -100,10 +100,10 @@ object JsonStrict {
      */
     /** BOUNDED (specs/stack-safety.md): a container descent counts one
      * `open`, and past Codecs.NativeThreshold the reader continues on
-     * Cont; an Option or iso step between two containers is bounded by
+     * Cps; an Option or iso step between two containers is bounded by
      * the schema, which must cross a product or sum to recurse */
     def get[A](sc: Schema[A]): Either[String, A] =
-      if open >= Codecs.NativeThreshold then Cont.reset(getC[A, Either[String, A]](sc))
+      if open >= Codecs.NativeThreshold then Cps.reset(getC[A, Either[String, A]](sc))
       else getNative(sc)
 
     private def getNative[A](sc: Schema[A]): Either[String, A] = sc match
@@ -331,128 +331,128 @@ object JsonStrict {
     // the trampoline (jsonstrict-threshold-trampoline): PAST
     // Codecs.NativeThreshold, `get` runs this instead of `getNative`.
     // Same walk, same rules — the ONE difference is that a descent
-    // into a NESTED schema is `Cont.defer`red rather than called
+    // into a NESTED schema is `Cps.defer`red rather than called
     // directly, exactly `Cbor.get`'s `getC`/`Json.decode`'s `decodeC`
     // (cbor-decode-threshold-trampoline, json-decode-threshold-
     // -trampoline) against this reader's own scanning primitives
     // instead of `Cbor.In`'s byte cursor or a `Json` value tree.
     //
-    // No cast: `Cont`'s invariance needs the same one `.map` widening
+    // No cast: `Cps`'s invariance needs the same one `.map` widening
     // `getNative`'s callers already get for free from `Either`'s
     // covariance (a product's field joining `Vector[Any]`, a sum's
     // case narrowing to its parent type).
     // ---------------------------------------------------------------
 
-    /** one container's worth of nesting, Cont-shaped — `leave()` fires
+    /** one container's worth of nesting, Cps-shaped — `leave()` fires
       * once the inner computation's VALUE is ready, via `flatMap`, not
-      * when this function returns (it returns a `Cont`, not a value) */
-    private def insideC[X, R](body: => (Either[String, X] /> R)): Either[String, X] /> R =
+      * when this function returns (it returns a `Cps`, not a value) */
+    private def insideC[X, R](body: => (Either[String, X] />> R)): Either[String, X] />> R =
       enter()
-      body.flatMap { v => leave(); Cont.Pure(v) }
+      body.flatMap { v => leave(); Cps.Pure(v) }
 
-    /** `field`'s Cont-shaped twin: widened to `Any` the same way
+    /** `field`'s Cps-shaped twin: widened to `Any` the same way
       * `field` widens via `Either`'s covariance */
-    private def fieldC[X, R](sc: Schema[X]): Either[String, Any] /> R =
+    private def fieldC[X, R](sc: Schema[X]): Either[String, Any] />> R =
       getC(sc).map(e => e: Either[String, Any])
 
-    private def getC[A, R](sc: Schema[A]): Either[String, A] /> R = sc match
+    private def getC[A, R](sc: Schema[A]): Either[String, A] />> R = sc match
       case Schema.SIso(u, to, _) =>
-        Cont.defer(() => getC(u()))(r => Cont.Pure(r.flatMap(to)))
-      case Schema.SInt => Cont.Pure(number().flatMap(Numbers.int))
-      case Schema.SLong => Cont.Pure(number().flatMap(Numbers.long))
-      case Schema.SDouble => Cont.Pure(number())
-      case Schema.SBool => Cont.Pure(bool())
-      case Schema.SString => Cont.Pure(string())
-      case Schema.SChar => Cont.Pure(string().flatMap(x =>
+        Cps.defer(() => getC(u()))(r => Cps.Pure(r.flatMap(to)))
+      case Schema.SInt => Cps.Pure(number().flatMap(Numbers.int))
+      case Schema.SLong => Cps.Pure(number().flatMap(Numbers.long))
+      case Schema.SDouble => Cps.Pure(number())
+      case Schema.SBool => Cps.Pure(bool())
+      case Schema.SString => Cps.Pure(string())
+      case Schema.SChar => Cps.Pure(string().flatMap(x =>
         if x.length == 1 then Right(x.head) else Left(s"expected one character, got ${x.length}")))
-      case Schema.SBytes => Cont.Pure(string().flatMap(Base64.decode))
-      case Schema.SBigInt => Cont.Pure(bigInt())
+      case Schema.SBytes => Cps.Pure(string().flatMap(Base64.decode))
+      case Schema.SBigInt => Cps.Pure(bigInt())
       case Schema.SOption(of) =>
-        if lit("null") then Cont.Pure(Right(None))
-        else Cont.defer(() => getC(of()))(r => Cont.Pure(r.map(Some(_))))
+        if lit("null") then Cps.Pure(Right(None))
+        else Cps.defer(() => getC(of()))(r => Cps.Pure(r.map(Some(_))))
       case l: Schema.SList[a] => arrayC[a, R](l.of()).map(_.map(_.toList))
       case v: Schema.SVector[a] => arrayC[a, R](v.of())
       case p: Schema.SProduct[A] => productC[A, R](p)
       case su: Schema.SSum[A] => sumC[A, R](su)
 
-    private def arrayC[X, R](of: Schema[X]): Either[String, Vector[X]] /> R =
+    private def arrayC[X, R](of: Schema[X]): Either[String, Vector[X]] />> R =
       insideC[Vector[X], R] { arrayHereC[X, R](of) }
 
-    private def arrayHereC[X, R](of: Schema[X]): Either[String, Vector[X]] /> R =
+    private def arrayHereC[X, R](of: Schema[X]): Either[String, Vector[X]] />> R =
       expect('[') match
-        case Left(e) => Cont.Pure(Left(e))
+        case Left(e) => Cps.Pure(Left(e))
         case Right(_) =>
           skipWs()
-          if peek == ']' then { at += 1; Cont.Pure(Right(Vector.empty)) }
+          if peek == ']' then { at += 1; Cps.Pure(Right(Vector.empty)) }
           else
-            def loop(acc: Vector[X]): Either[String, Vector[X]] /> R =
+            def loop(acc: Vector[X]): Either[String, Vector[X]] />> R =
               skipWs()
-              Cont.defer(() => getC[X, R](of)) {
-                case Left(e) => Cont.Pure(Left(e))
+              Cps.defer(() => getC[X, R](of)) {
+                case Left(e) => Cps.Pure(Left(e))
                 case Right(x) =>
                   val acc2 = acc :+ x
                   skipWs()
                   peek match
                     case ',' => at += 1; loop(acc2)
-                    case ']' => at += 1; Cont.Pure(Right(acc2))
-                    case _ => Cont.Pure(fail[Vector[X]]("expected ',' or ']'"))
+                    case ']' => at += 1; Cps.Pure(Right(acc2))
+                    case _ => Cps.Pure(fail[Vector[X]]("expected ',' or ']'"))
               }
             loop(Vector.empty)
 
-    private def productC[A, R](p: Schema.SProduct[A]): Either[String, A] /> R =
+    private def productC[A, R](p: Schema.SProduct[A]): Either[String, A] />> R =
       insideC[A, R] { productHereC[A, R](p) }
 
-    private def productHereC[A, R](p: Schema.SProduct[A]): Either[String, A] /> R =
+    private def productHereC[A, R](p: Schema.SProduct[A]): Either[String, A] />> R =
       expect('{') match
-        case Left(e) => Cont.Pure(Left(e))
+        case Left(e) => Cps.Pure(Left(e))
         case Right(_) =>
           skipWs()
           if peek == '}' then { at += 1; assembleC[A, R](p, Map.empty) }
           else
-            def afterField(found: Map[String, Any]): Either[String, A] /> R =
+            def afterField(found: Map[String, Any]): Either[String, A] />> R =
               skipWs()
               peek match
                 case ',' => at += 1; loop(found)
                 case '}' => at += 1; assembleC[A, R](p, found)
-                case _ => Cont.Pure(fail[A]("expected ',' or '}'"))
+                case _ => Cps.Pure(fail[A]("expected ',' or '}'"))
             // Fields up to the next KNOWN one, by ITERATION. A known field
-            // descends through Cont.defer, so its continuation runs in the
+            // descends through Cps.defer, so its continuation runs in the
             // trampoline's loop; an unknown one is skipped in place, and
             // its separator is read here rather than by a call back into
             // `loop` — which cost a frame per skipped field and overflowed
             // on an object with many of them (stack-safety-json,
             // TestJsonStrict, 2026-09-25).
-            def loop(found: Map[String, Any]): Either[String, A] /> R =
-              var out: (Either[String, A] /> R) | Null = null
+            def loop(found: Map[String, Any]): Either[String, A] />> R =
+              var out: (Either[String, A] />> R) | Null = null
               while out == null do
                 skipWs()
                 string() match
-                  case Left(e) => out = Cont.Pure(Left(e))
+                  case Left(e) => out = Cps.Pure(Left(e))
                   case Right(k) =>
                     skipWs()
                     expect(':') match
-                      case Left(e) => out = Cont.Pure(Left(e))
+                      case Left(e) => out = Cps.Pure(Left(e))
                       case Right(_) =>
                         skipWs()
                         p.fields.find(_._1 == k) match
                           case Some((_, sc)) =>
-                            out = Cont.defer(() => fieldC(sc())) {
-                              case Left(e) => Cont.Pure(Left(e))
+                            out = Cps.defer(() => fieldC(sc())) {
+                              case Left(e) => Cps.Pure(Left(e))
                               case Right(v) => afterField(found + (k -> v))
                             }
                           case None => skipValue() match
-                            case Left(e) => out = Cont.Pure(Left(e))
+                            case Left(e) => out = Cps.Pure(Left(e))
                             case Right(_) =>
                               skipWs()
                               peek match
                                 case ',' => at += 1
                                 case '}' => at += 1; out = assembleC[A, R](p, found)
-                                case _ => out = Cont.Pure(fail[A]("expected ',' or '}'"))
+                                case _ => out = Cps.Pure(fail[A]("expected ',' or '}'"))
               out.nn
             loop(Map.empty)
 
-    private def assembleC[A, R](p: Schema.SProduct[A], found: Map[String, Any]): Either[String, A] /> R =
-      Cont.Pure(
+    private def assembleC[A, R](p: Schema.SProduct[A], found: Map[String, Any]): Either[String, A] />> R =
+      Cps.Pure(
         p.fields.zipWithIndex.foldLeft(Right(Vector.empty[Any]): Either[String, Vector[Any]]) { (acc, fi) =>
           val (f, i) = fi
           acc.flatMap { xs =>
@@ -467,30 +467,30 @@ object JsonStrict {
         }.map(p.make)
       )
 
-    private def sumC[A, R](su: Schema.SSum[A]): Either[String, A] /> R =
+    private def sumC[A, R](su: Schema.SSum[A]): Either[String, A] />> R =
       insideC[A, R] { sumHereC[A, R](su) }
 
-    private def sumHereC[A, R](su: Schema.SSum[A]): Either[String, A] /> R =
+    private def sumHereC[A, R](su: Schema.SSum[A]): Either[String, A] />> R =
       expect('{') match
-        case Left(e) => Cont.Pure(Left(e))
+        case Left(e) => Cps.Pure(Left(e))
         case Right(_) =>
           skipWs()
           string() match
-            case Left(e) => Cont.Pure(Left(e))
+            case Left(e) => Cps.Pure(Left(e))
             case Right(name) =>
               skipWs()
               expect(':') match
-                case Left(e) => Cont.Pure(Left(e))
+                case Left(e) => Cps.Pure(Left(e))
                 case Right(_) =>
                   skipWs()
                   su.cases.find(_._1 == name) match
-                    case None => Cont.Pure(Left(s"unknown case '$name' of ${su.name}"))
+                    case None => Cps.Pure(Left(s"unknown case '$name' of ${su.name}"))
                     case Some((_, sc)) =>
-                      Cont.defer(() => getC(sc()).map(e => e: Either[String, A])) {
-                        case Left(e) => Cont.Pure(Left(e))
+                      Cps.defer(() => getC(sc()).map(e => e: Either[String, A])) {
+                        case Left(e) => Cps.Pure(Left(e))
                         case Right(v) =>
                           skipWs()
-                          Cont.Pure(expect('}').map(_ => v))
+                          Cps.Pure(expect('}').map(_ => v))
                       }
 
     /** RFC 8259 number, `-? int frac? exp?`, as `JsonValue.num` reads

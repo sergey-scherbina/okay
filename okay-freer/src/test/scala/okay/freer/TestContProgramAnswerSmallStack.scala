@@ -8,7 +8,7 @@ class TestContProgramAnswerSmallStack extends munit.FunSuite:
   val n = 1000000
 
   test("a million nested program-answered bodies on 128 KB: forced by the Free fold") {
-    assertEquals(SmallStack.run(128)(!.run(pureAns(n, Cont.programLeaf[Int, Ans, Ans]))), n)
+    assertEquals(SmallStack.run(128)(!.run(pureAns(n, Cps.programLeaf[Int, Ans, Ans]))), n)
   }
 
   test("a million nested on 128 KB, consumed by a running machine that steps in") {

@@ -41,8 +41,8 @@ class TestBind extends munit.FunSuite:
       case other => fail(s"not a single Bind on the Ask: $other")
     val counted = relay[Int, Int, Reader % Int, Writer % String](p)(pure(_)):
       [X, Y] => e => e match
-        case Reader.Ask() => asked += 1; Cont.Pure(3)
-        case Reader.Asks(f) => asked += 1; Cont.Pure(f(3))
+        case Reader.Ask() => asked += 1; Cps.Pure(3)
+        case Reader.Asks(f) => asked += 1; Cps.Pure(f(3))
     assertEquals(!.run(Writer.run[String, Int, Pure](counted)), (Seq("3"), 3))
     assertEquals(asked, 1)
   }

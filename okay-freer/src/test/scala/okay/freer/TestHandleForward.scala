@@ -12,7 +12,7 @@ case class Claim[+A](a: A) derives Effect
  * What a handler may observe, pinned before `handle`'s forwarding arm
  * is touched (BACKLOG handle-forward-fast).
  *
- * `Effects.handle` today folds the whole program through `Cont` and
+ * `Effects.handle` today folds the whole program through `Cps` and
  * answers a FORWARDED operation with `shift(k => perform(e).flatMap(k))`
  * — a continuation capture spent on an operation no handler claims,
  * measured at +112.7 bytes per forwarded operation (handle-decompose).
@@ -49,7 +49,7 @@ class TestHandleForward extends munit.FunSuite {
     E.handle[Claim, Produce](mixed)(pure(_))(h)
 
   test("forwarding: a resuming handler leaves both forwarded ops, in order") {
-    val (a, ops) = trace(handled([X] => (c: Claim[X]) => Cont.Pure(c.a)))
+    val (a, ops) = trace(handled([X] => (c: Claim[X]) => Cps.Pure(c.a)))
     assertEquals(a, 14)
     assertEquals(ops, List(1, 3))
   }
@@ -59,7 +59,7 @@ class TestHandleForward extends munit.FunSuite {
     // but produce(1) was already committed to the target program and
     // an abort cannot un-perform it. That asymmetry is the whole
     // argument for moving the forwarding arm, so it is asserted.
-    val (a, ops) = trace(handled([X] => (_: Claim[X]) => Cont.shift(_ => pure(-1))))
+    val (a, ops) = trace(handled([X] => (_: Claim[X]) => Cps.shift(_ => pure(-1))))
     assertEquals(a, -1)
     assertEquals(ops, List(1))
   }
@@ -67,7 +67,7 @@ class TestHandleForward extends munit.FunSuite {
   test("forwarding: a MULTI-SHOT handler forwards what follows it TWICE") {
     val h: Claim !> (Int ! Produce) =
       [X] => (c: Claim[X]) =>
-        Cont.shift[X, Int ! Produce, Int ! Produce]: k =>
+        Cps.shift[X, Int ! Produce, Int ! Produce]: k =>
           k(c.a).flatMap(x => k(c.a).map(y => x + y))
     val (a, ops) = trace(handled(h))
     // each run of the continuation performs produce(3) and answers
@@ -77,7 +77,7 @@ class TestHandleForward extends munit.FunSuite {
   }
 
   test("forwarding: the handled operation's own answer reaches the rest") {
-    val (a, ops) = trace(handled([X] => (c: Claim[X]) => Cont.Pure(c.a)))
+    val (a, ops) = trace(handled([X] => (c: Claim[X]) => Cps.Pure(c.a)))
     assertEquals(a, 14)
     assertEquals(ops, List(1, 3))
   }
@@ -87,7 +87,7 @@ class TestHandleForward extends munit.FunSuite {
     val prog = (1 to n).foldLeft(pure[Claim + Produce, Int](0)): (m, _) =>
       m.flatMap(x => effect[Claim + Produce, Int](x + 1))
     @nowarn("msg=cannot be checked at runtime")
-    val g = E.handle[Claim, Produce](prog)(pure(_))([X] => (c: Claim[X]) => Cont.Pure(c.a))
+    val g = E.handle[Claim, Produce](prog)(pure(_))([X] => (c: Claim[X]) => Cps.Pure(c.a))
     assertEquals(g.runWith, n)
   }
 
@@ -96,7 +96,7 @@ class TestHandleForward extends munit.FunSuite {
     val prog = (1 to n).foldLeft(pure[Claim + Produce, Int](0)): (m, _) =>
       m.flatMap(x => effect[Claim + Produce, Int](Claim(x + 1)))
     @nowarn("msg=cannot be checked at runtime")
-    val g = E.handle[Claim, Produce](prog)(pure(_))([X] => (c: Claim[X]) => Cont.Pure(c.a))
+    val g = E.handle[Claim, Produce](prog)(pure(_))([X] => (c: Claim[X]) => Cps.Pure(c.a))
     assertEquals(g.runWith, n)
   }
 
@@ -107,7 +107,7 @@ class TestHandleForward extends munit.FunSuite {
         if i % 2 == 0 then effect[Claim + Produce, Int](Claim(x + 1))
         else effect[Claim + Produce, Int](x + 1)
     @nowarn("msg=cannot be checked at runtime")
-    val g = E.handle[Claim, Produce](prog)(pure(_))([X] => (c: Claim[X]) => Cont.Pure(c.a))
+    val g = E.handle[Claim, Produce](prog)(pure(_))([X] => (c: Claim[X]) => Cps.Pure(c.a))
     assertEquals(g.runWith, n)
   }
 }

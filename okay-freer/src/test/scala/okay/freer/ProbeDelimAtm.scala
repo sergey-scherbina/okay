@@ -140,12 +140,12 @@ object DelimAtm:
     def flatMap[B, S2](f: A => C[B, S2, S]): C[B, S2, R] = C.Bind(c, f)
     def map[B](f: A => B): C[B, S, R] = C.Bind(c, (a: A) => C.Pure[B, S](f(a)))
 
-  /** Cont over it: D-F's shift is a capture to the nearest, its body under a level of its own */
-  object Cont:
+  /** Cps over it: D-F's shift is a capture to the nearest, its body under a level of its own */
+  object Cps:
     def shift[A, S, R](body: (A => S) => R): C[A, S, R] =
       C.Near([X] => (k: K[A, S]) => C.Pure[R, X](body(a => runK(k, a))))
     def shiftLazy[A, S, R](body: [X] => K[A, S] => C[R, X, X]): C[A, S, R] = C.Near(body)
     def call[A, S, X](k: K[A, S], a: A): C[S, X, X] = C.Resume(k, a)
     /** `c / k`: a run whose own delimiter's `ret` is the user's `k` */
     def run[A, S, R](c: C[A, S, R])(k: A => S): R =
-      DelimAtm.run(C.Dollar(new Prompt[R]("Cont.run"), (a: A) => C.Pure[S, S](k(a)), c))
+      DelimAtm.run(C.Dollar(new Prompt[R]("Cps.run"), (a: A) => C.Pure[S, S](k(a)), c))

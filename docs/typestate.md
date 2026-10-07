@@ -17,9 +17,9 @@ at `(T, R)` to a continuation at `(S, T)` and is itself at `(S, R)`.
 The middle type must meet. What the pair *means* is the signature's
 choice, and two readings type:
 
-- **Answer types** (`Cont`, `PState.get`/`set`): a program is `(A => S)
+- **Answer types** (`Cps`, `PState.get`/`set`): a program is `(A => S)
   => R`. `R` is what running it produces, `S` what its continuation
-  must produce. The handler is Cont's runner and a shift body gets `k`.
+  must produce. The handler is Cps's runner and a shift body gets `k`.
   This is Danvy and Filinski's answer-type modification.
 - **A state the handler consumes** (`PState.Threaded`, `Tx.Data`): a
   program is `R => (S, A)`. The handler holds an `R`, runs the
@@ -138,7 +138,7 @@ its caller, as it always was.
   in `Threaded.run`'s shape.
 - The body needs the continuation as a value — multi-shot, an answer
   computed from `k`, a zoom through a profunctor: the shift road,
-  `PState.get`/`set` over `Cont`.
+  `PState.get`/`set` over `Cps`.
 - The protocol lives beside other effects: the indexed row, `Op +~
   Unary[F]`, and a handler in `State.handleIndexed`'s shape.
 

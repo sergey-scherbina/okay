@@ -20,8 +20,8 @@ class TestReaderBridge extends munit.FunSuite:
     var asks = 0
     val counted = relay[Int, Int, Reader % Int, Pure](p)(pure(_)):
       [X, Y] => e => e match
-        case Reader.Ask() => asks += 1; Cont.Pure(5)
-        case Reader.Asks(f) => asks += 1; Cont.Pure(f(5))
+        case Reader.Ask() => asks += 1; Cps.Pure(5)
+        case Reader.Asks(f) => asks += 1; Cps.Pure(f(5))
     assertEquals(!.run(counted), 10)
     assertEquals(asks, 1)
   }

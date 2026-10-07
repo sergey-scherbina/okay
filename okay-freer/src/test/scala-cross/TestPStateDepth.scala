@@ -7,7 +7,7 @@ package okay.freer
  */
 class TestPStateDepth extends munit.FunSuite:
 
-  def steps(n: Int): Cont[Long, Long => (Long, Long), Long => (Long, Long)] =
+  def steps(n: Int): Cps[Long, Long => (Long, Long), Long => (Long, Long)] =
     (1 to n).foldLeft(PState.get[Long, (Long, Long)])((m, _) => m.flatMap(_ => PState.get.flatMap(s => PState.set(s + 1))))
 
   test("a hundred thousand PState steps") {
@@ -23,5 +23,5 @@ class TestPStateDepth extends munit.FunSuite:
   test("set changes the state's type, and a body written with the helper keeps its meaning") {
     val p = PState.get[Int, (String, Int)].flatMap(i => PState.set[Int, String, (String, Int)](s"n=$i").map(_ => i))
     assertEquals(PState.run(7)(p), ("n=7", 7))
-    assertEquals((Cont.shift[Int, Int => Int, Int => Int](k => (s: Int) => k(s + 1)(s * 2)) / (a => (s: Int) => a + s))(3), 10)
+    assertEquals((Cps.shift[Int, Int => Int, Int => Int](k => (s: Int) => k(s + 1)(s * 2)) / (a => (s: Int) => a + s))(3), 10)
   }

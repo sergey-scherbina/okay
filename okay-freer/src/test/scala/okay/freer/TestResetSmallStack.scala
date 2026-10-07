@@ -13,7 +13,7 @@ class TestResetSmallStack extends munit.FunSuite:
   test("100 000 nested resets on 128 KB, no fresh stack") {
     val before = StackSwitch.switches.get
     assertEquals(SmallStack.run(128)(!.run(nest(100000))), 100000)
-    // the counter is PROCESS-WIDE: a suite running beside this one may switch for its own Cont (one did, in a
+    // the counter is PROCESS-WIDE: a suite running beside this one may switch for its own Cps (one did, in a
     // full gate); the room this replaced switched every ~300 levels, hundreds of times for 100 000
     val switched = StackSwitch.switches.get - before
     assert(switched < 10, s"$switched stack switches: a nested reset ran a machine of its own")

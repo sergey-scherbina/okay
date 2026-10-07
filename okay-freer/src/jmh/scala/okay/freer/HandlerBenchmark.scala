@@ -44,7 +44,7 @@ class HandlerBenchmark {
   @nowarn("msg=cannot be checked at runtime")
   @Benchmark
   def relayForward(): Int =
-    relay[Int, Int, Ask, Produce](prog)(pure(_))([X, Y] => a => Cont.Pure(a.a)).runWith
+    relay[Int, Int, Ask, Produce](prog)(pure(_))([X, Y] => a => Cps.Pure(a.a)).runWith
 
   /**
    * relayForward's `prog` is a `def`, so that lane BUILDS a 10 000-node
@@ -65,7 +65,7 @@ class HandlerBenchmark {
   @nowarn("msg=cannot be checked at runtime")
   @Benchmark
   def relayPrebuilt(): Int =
-    relay[Int, Int, Ask, Produce](built)(pure(_))([X, Y] => a => Cont.Pure(a.a)).runWith
+    relay[Int, Int, Ask, Produce](built)(pure(_))([X, Y] => a => Cps.Pure(a.a)).runWith
 
   // relay/handle inline a type test on the operation type, which
   // erasure cannot verify for Ask[Nothing] — the trusted kernel's
@@ -79,7 +79,7 @@ class HandlerBenchmark {
   @nowarn("msg=cannot be checked at runtime")
   @Benchmark
   def handleForwardCps(): Int =
-    cps.given_Classic_Free.handle[Ask, Produce](prog)(pure(_))([X] => a => Cont.Pure(a.a)).runWith
+    cps.given_Classic_Free.handle[Ask, Produce](prog)(pure(_))([X] => a => Cps.Pure(a.a)).runWith
 
   /**
    * `handleForward` builds its 10 000-node tree on every invocation,
@@ -100,7 +100,7 @@ class HandlerBenchmark {
   @nowarn("msg=cannot be checked at runtime")
   @Benchmark
   def handlePrebuiltCps(): Int =
-    cps.given_Classic_Free.handle[Ask, Produce](built)(pure(_))([X] => a => Cont.Pure(a.a)).runWith
+    cps.given_Classic_Free.handle[Ask, Produce](built)(pure(_))([X] => a => Cps.Pure(a.a)).runWith
 
   /**
    * THE SHAPE `delay-node` IS ABOUT (specs/core-cleanup.md Decisions):
@@ -123,7 +123,7 @@ class HandlerBenchmark {
   @nowarn("msg=cannot be checked at runtime")
   @Benchmark
   def handleCaptureCps(): Int =
-    cps.given_Classic_Free.handle[Ask, Produce](built)(pure(_))([X] => a => Cont.shift(k => k(a.a))).runWith
+    cps.given_Classic_Free.handle[Ask, Produce](built)(pure(_))([X] => a => Cps.shift(k => k(a.a))).runWith
 
   /** the other road to the same node: `!.tailcall` between two
    * mutually recursive functions, N deep — every hop WAS a
@@ -189,13 +189,13 @@ class HandlerBenchmark {
    * part per level) instead of a frame per level */
   @Benchmark
   def contAnswer(): Int =
-    Cont.reset((1 to M).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => Cont.shift[Int, Int, Int](k => k(x + 1) + 1))))
+    Cps.reset((1 to M).foldLeft(Cps.Pure[Int, Int](0): Int />> Int)((m, _) => m.flatMap(x => Cps.shift[Int, Int, Int](k => k(x + 1) + 1))))
 
-  /** `contAnswer`'s body as the STRICT leaf (`Cont.shiftLeaf`, no macro): `k` a nested run per level, the
+  /** `contAnswer`'s body as the STRICT leaf (`Cps.shiftLeaf`, no macro): `k` a nested run per level, the
    * body's `+ 1` waiting on the host stack (cont-leaf-forms: what the lazy leaf is worth) */
   @Benchmark
   def contAnswerStrict(): Int =
-    Cont.reset((1 to M).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => Cont.shiftLeaf[Int, Int, Int](k => k(x + 1) + 1))))
+    Cps.reset((1 to M).foldLeft(Cps.Pure[Int, Int](0): Int />> Int)((m, _) => m.flatMap(x => Cps.shiftLeaf[Int, Int, Int](k => k(x + 1) + 1))))
 
   @Benchmark
   def statePara(): (Long, Long) =

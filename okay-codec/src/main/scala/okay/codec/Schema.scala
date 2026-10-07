@@ -2,8 +2,8 @@ package okay.codec
 
 import scala.compiletime.{constValueTuple, erasedValue, summonInline}
 import scala.deriving.Mirror
-import okay.freer.{/>}
-import okay.freer.Cont
+import okay.freer.{/>>}
+import okay.freer.Cps
 /**
  * The reified shape of a datatype (specs/codecs.md): every derivation
  * — JSON, CBOR, a validator, a Spark encoder — is a CATAMORPHISM over
@@ -239,7 +239,7 @@ object Schema {
    * `open`, answer `R`. Two roads with one implementation each: `run`
    * is native, `cont` the trampoline, and the ONE place a step
    * descends into a child (`child`, below) takes the road by depth —
-   * `Codecs.NativeThreshold`, then `Cont.defer`. This is the split
+   * `Codecs.NativeThreshold`, then `Cps.defer`. This is the split
    * five doors carried by hand on 2026-09-10/11 (`encodeIntoC`,
    * `putC`, `renderC`, `errorsOfC`, ...), lifted out of them: an
    * algebra whose carrier is `Step` cannot have the depth defect, and
@@ -253,7 +253,7 @@ object Schema {
    */
   trait Step[E, -A, R]:
     def run(e: E, a: A, open: Int): R
-    def cont(e: E, a: A, open: Int): R /> R
+    def cont(e: E, a: A, open: Int): R />> R
 
   object Step:
     /** the algebra carrier a value walk folds to */
@@ -265,33 +265,33 @@ object Schema {
     /** THE descent: below the threshold native, at or past it the
       * trampoline — one node forced per iteration of `/`'s loop */
     private def child[E, X, R](s: Step[E, X, R], e: E, x: X, open: Int): R =
-      if open >= Codecs.NativeThreshold then Cont.reset(s.cont(e, x, open))
+      if open >= Codecs.NativeThreshold then Cps.reset(s.cont(e, x, open))
       else s.run(e, x, open)
 
     def leaf[E, A, R](f: (E, A) => R): Step[E, A, R] = new Step[E, A, R]:
       def run(e: E, a: A, open: Int): R = f(e, a)
-      def cont(e: E, a: A, open: Int): R /> R = Cont.Pure(f(e, a))
+      def cont(e: E, a: A, open: Int): R />> R = Cps.Pure(f(e, a))
 
     /** the newtype node: not a level, exactly as it is not one on the
       * read side — `A` travels as `B` at the SAME depth */
     def via[E, A, B, R](from: A => B, under: () => Step[E, B, R]): Step[E, A, R] = new Step[E, A, R]:
       def run(e: E, a: A, open: Int): R = under().run(e, from(a), open)
-      def cont(e: E, a: A, open: Int): R /> R = Cont.defer(() => under().cont(e, from(a), open))(r => Cont.Pure(r))
+      def cont(e: E, a: A, open: Int): R />> R = Cps.defer(() => under().cont(e, from(a), open))(r => Cps.Pure(r))
 
     /** delegate at the SAME depth with the environment and the answer
       * mapped — an option's "(optional)" label, a wrapper that only
       * re-keys; not a level, like `via` */
     def adapt[E, A, R](env: E => E, out: R => R, under: () => Step[E, A, R]): Step[E, A, R] = new Step[E, A, R]:
       def run(e: E, a: A, open: Int): R = out(under().run(env(e), a, open))
-      def cont(e: E, a: A, open: Int): R /> R = Cont.defer(() => under().cont(env(e), a, open))(r => Cont.Pure(out(r)))
+      def cont(e: E, a: A, open: Int): R />> R = Cps.defer(() => under().cont(env(e), a, open))(r => Cps.Pure(out(r)))
 
     def option[E, A, R](none: E => R, some: () => Step[E, A, R]): Step[E, Option[A], R] = new Step[E, Option[A], R]:
       def run(e: E, a: Option[A], open: Int): R = a match
         case Some(x) => child(some(), e, x, open + 1)
         case None => none(e)
-      def cont(e: E, a: Option[A], open: Int): R /> R = a match
-        case Some(x) => Cont.defer(() => some().cont(e, x, open + 1))(r => Cont.Pure(r))
-        case None => Cont.Pure(none(e))
+      def cont(e: E, a: Option[A], open: Int): R />> R = a match
+        case Some(x) => Cps.defer(() => some().cont(e, x, open + 1))(r => Cps.Pure(r))
+        case None => Cps.Pure(none(e))
 
     /**
      * A product's fields: fixed arity, values from `parts` in field
@@ -311,7 +311,7 @@ object Schema {
       private def at(e: E, k: Edge[Walk[E, R], Any], v: Any, open: Int): R =
         val st = k()
         child(st, e, v.asInstanceOf[k.X], open)
-      private def atC(e: E, k: Edge[Walk[E, R], Any], v: Any, open: Int): R /> R =
+      private def atC(e: E, k: Edge[Walk[E, R], Any], v: Any, open: Int): R />> R =
         val st = k()
         st.cont(e, v.asInstanceOf[k.X], open)
       def run(e: E, a: A, open: Int): R =
@@ -324,13 +324,13 @@ object Schema {
           s = step(s, at(e, k, ps(i), open + 1))
           i += 1
         close(e, a, s)
-      def cont(e: E, a: A, open: Int): R /> R =
+      def cont(e: E, a: A, open: Int): R />> R =
         val ps = parts(a)
-        def loop(i: Int, s: S): R /> R =
-          if i >= kids.length then Cont.Pure(close(e, a, s))
+        def loop(i: Int, s: S): R />> R =
+          if i >= kids.length then Cps.Pure(close(e, a, s))
           else
             val (n, k) = kids(i)
-            Cont.defer(() => { before(e, i, n); atC(e, k, ps(i), open + 1) })(r => loop(i + 1, step(s, r)))
+            Cps.defer(() => { before(e, i, n); atC(e, k, ps(i), open + 1) })(r => loop(i + 1, step(s, r)))
         loop(0, enter(e, a))
 
     /** a sum: the ONE case the value is, by `which` (the Mirror's
@@ -346,10 +346,10 @@ object Schema {
         before(e, n)
         val st = k()
         close(e, a, s, child(st, e, a.asInstanceOf[k.X], open + 1))
-      def cont(e: E, a: A, open: Int): R /> R =
+      def cont(e: E, a: A, open: Int): R />> R =
         val s = enter(e, a)
         val (n, k) = kids(which(a))
-        Cont.defer(() => { before(e, n); val st = k(); st.cont(e, a.asInstanceOf[k.X], open + 1) })(r => Cont.Pure(close(e, a, s, r)))
+        Cps.defer(() => { before(e, n); val st = k(); st.cont(e, a.asInstanceOf[k.X], open + 1) })(r => Cps.Pure(close(e, a, s, r)))
 
     /**
      * A child chosen by the ALGEBRA, with its own environment and
@@ -365,16 +365,16 @@ object Schema {
                          step: (S, R) => S,
                          close: (E, A, S) => R): Step[E, A, R] = new Step[E, A, R]:
       private def at[X](k: Kid[E, X, R], open: Int): R = child(k.step, k.env, k.value, open)
-      private def atC[X](k: Kid[E, X, R], open: Int): R /> R = k.step.cont(k.env, k.value, open)
+      private def atC[X](k: Kid[E, X, R], open: Int): R />> R = k.step.cont(k.env, k.value, open)
       def run(e: E, a: A, open: Int): R =
         var s = enter(e, a)
         kids(e, a).foreach { k => s = step(s, at(k, open + 1)) }
         close(e, a, s)
-      def cont(e: E, a: A, open: Int): R /> R =
+      def cont(e: E, a: A, open: Int): R />> R =
         val ks = kids(e, a)
-        def loop(i: Int, s: S): R /> R =
-          if i >= ks.length then Cont.Pure(close(e, a, s))
-          else Cont.defer(() => atC(ks(i), open + 1))(r => loop(i + 1, step(s, r)))
+        def loop(i: Int, s: S): R />> R =
+          if i >= ks.length then Cps.Pure(close(e, a, s))
+          else Cps.defer(() => atC(ks(i), open + 1))(r => loop(i + 1, step(s, r)))
         loop(0, enter(e, a))
 
     /** a sequence: homogeneous elements, no per-element object */
@@ -394,14 +394,14 @@ object Schema {
           i += 1
         }
         close(e, a, s)
-      def cont(e: E, a: A, open: Int): R /> R =
+      def cont(e: E, a: A, open: Int): R />> R =
         val st = each()
         val it = items(a).iterator
-        def loop(i: Int, s: S): R /> R =
-          if !it.hasNext then Cont.Pure(close(e, a, s))
+        def loop(i: Int, s: S): R />> R =
+          if !it.hasNext then Cps.Pure(close(e, a, s))
           else
             val x = it.next()
-            Cont.defer(() => { before(e, i); st.cont(e, x, open + 1) })(r => loop(i + 1, step(s, r)))
+            Cps.defer(() => { before(e, i); st.cont(e, x, open + 1) })(r => loop(i + 1, step(s, r)))
         loop(0, enter(e, a))
 
   given Schema[Int] = Schema.SInt

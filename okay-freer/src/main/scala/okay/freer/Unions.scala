@@ -74,7 +74,7 @@ inline def over[F[+_], R[+_]](using T: TypeableK[F])[A]
  * (specs/staged-effects.md; the measured probes are `Fused` in the
  * test sources), which is what "staged effects" means here:
  * a carrier-generic fold on the ENCODING (`foldIn`/`runIn`) was
- * measured no faster than Cont and is gone (core-cleanup) */
+ * measured no faster than Cps and is gone (core-cleanup) */
 type Interpr[F[_], C[_, _, _], S] = F ==> C[*, S, S]
 
 /**
@@ -86,6 +86,10 @@ type Interpr[F[_], C[_, _, _], S] = F ==> C[*, S, S]
  * That is, handlers are continuations.
  */
 infix type !>[F[_], S] = Interpr[F, okay.cont.Carrier, S]
+
+/** `A /> R`: the machine as a control carrier at its diagonal, an ordinary monad — the bare name is the machine's
+ * (cont-classic-rename); the CPS paramonad's is `A />> R`, over `Cps` */
+infix type />[A, R] = okay.cont.Carrier[A, R, R]
 
 /** A comonadic handler interprets each operation by its own value */
 /** A comonadic (per-operation) Answers at every answer type. */

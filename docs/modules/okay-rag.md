@@ -266,8 +266,8 @@ Async.runAsync(grounded)
 So the three handler forms line up as they do everywhere else in this
 library: `F ==> Id` is the comonadic handler (fastest, cannot
 suspend), `F ==> ([X] =>> X ! G)` is this (forwards a residual row),
-and `F !> S` is the Cont-valued handler (adds abort and multi-shot at
-the price of going through Cont). `TestGroundedTranslating` proves the
+and `F !> S` is the Cps-valued handler (adds abort and multi-shot at
+the price of going through Cps). `TestGroundedTranslating` proves the
 difference with a retriever that answers from another thread, and
 shows a failed retrieval arriving as the row's error rather than as an
 exception thrown inside context assembly.

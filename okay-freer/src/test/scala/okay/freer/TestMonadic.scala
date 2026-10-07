@@ -2,9 +2,9 @@ package okay.freer
 
 import okay.{Monad}
 
-import okay.freer.Cont.Monadic.*
+import okay.freer.Cps.Monadic.*
 
-/** Filinski's monadic reflection over Cont: specs/monadic-reflection.md */
+/** Filinski's monadic reflection over Cps: specs/monadic-reflection.md */
 class TestMonadic extends munit.FunSuite {
 
   // stdlib instances live HERE, not in the core (see the spec's
@@ -114,7 +114,7 @@ class TestMonadic extends munit.FunSuite {
   test("a strict monad reflects a modest chain: 200 binds") {
     // a strict flatMap invokes the continuation in place, so each
     // reflect costs a stack frame — the budget is the MONAD's, not
-    // Cont's (see the spec's Decisions); trampolined depth is below.
+    // Cps's (see the spec's Decisions); trampolined depth is below.
     // MODEST means inside a default stack with room to spare:
     // 1_000 overflowed -Xss512k cold on JDK 21 here and the 1 MB
     // default of a CI runner's x64 JVM (interpreted frames are the
@@ -122,7 +122,7 @@ class TestMonadic extends munit.FunSuite {
     // JIT decision from red (ci-runner-shape-flakes, 2026-09-20)
     val n = 200
     val r: Option[Int] = reify:
-      (1 to n).foldLeft(Cont.Pure(0): Cont[Int, Option[Int], Option[Int]]) {
+      (1 to n).foldLeft(Cps.Pure(0): Cps[Int, Option[Int], Option[Int]]) {
         (acc, _) => acc.flatMap(x => reflect(Option(x + 1)))
       }
     assertEquals(r, Some(n))
@@ -131,7 +131,7 @@ class TestMonadic extends munit.FunSuite {
   test("a trampolined monad reflects stack-safely: 100_000 binds") {
     val n = 100_000
     val prog: Int ! Pure = reify:
-      (1 to n).foldLeft(Cont.Pure(0): Cont[Int, Int ! Pure, Int ! Pure]) {
+      (1 to n).foldLeft(Cps.Pure(0): Cps[Int, Int ! Pure, Int ! Pure]) {
         (acc, _) => acc.flatMap(x => reflect(Free.pure[Pure, Int](x + 1)))
       }
     assertEquals(!.run(prog), n)

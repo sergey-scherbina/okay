@@ -1,7 +1,7 @@
 # `Delimited`: the continuation machine as an interface
 
 Every control operator in okay — `reset`, `shift`, `shift0`, `abort`,
-`$`, the handlers of `Lexical`, `Cont` — is built from four
+`$`, the handlers of `Lexical`, `Cps` — is built from four
 primitives. They are a trait, `Delimited[M]`, and the frame machine is
 one implementation of it. This is Dybvig, Peyton Jones and Sabry's
 design \[[JFP 2007](#ref-dpjs-2007)\], in the variant λ$ calls for
@@ -26,7 +26,7 @@ leaves for the run outside), with the rest of `m` as its continuation.
 `run(m)` is `runHead` under a boundary, where such a capture is
 `NoPrompt`. `runHeadAt(k)(a)` is the same door entered from a captured
 `k`: `runHead(k(a))` without building `k(a)`, which is how a strict `k`
-resumes. The machine's loop itself is closed: `Cont`'s strict `k`,
+resumes. The machine's loop itself is closed: `Cps`'s strict `k`,
 `Shift`'s nested runs and `Stacked` all enter through `runHead` (or its
 lazy form, the machine's `owned`), so the reference implementation —
 whose `runHead` is the program itself — checks exactly the door every

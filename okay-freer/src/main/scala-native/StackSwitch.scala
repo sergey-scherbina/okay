@@ -5,7 +5,7 @@ import java.util.concurrent.atomic.AtomicLong
 import scala.scalanative.unsafe.*
 
 /**
- * A fresh stack for a deep direct-style Cont program on Scala Native, and how much room the current one has:
+ * A fresh stack for a deep direct-style Cps program on Scala Native, and how much room the current one has:
  * READ, always (specs/cont-stack.md, road 3; operator, 2026-10-04: the host stack only where its bound is known).
  *
  * The runtime keeps a `ThreadInfo` per thread for its own StackOverflowError (nativelib `nativeThreadTLS.h`,
@@ -22,8 +22,8 @@ import scala.scalanative.unsafe.*
  * `pthread_attr_setstacksize`, and pages are committed only as touched.
  */
 private[okay] object StackSwitch:
-  /** a fresh stack is this platform's answer to a deep strict `k` (`Cont.Mode.Auto`); re-execution only when asked
-   * for (`Cont.Mode.Replay`, `-Dokay.cont.mode=replay`; cont-safe-mode) */
+  /** a fresh stack is this platform's answer to a deep strict `k` (`Cps.Mode.Auto`); re-execution only when asked
+   * for (`Cps.Mode.Replay`, `-Dokay.cont.mode=replay`; cont-safe-mode) */
   val replayByDefault: Boolean = false
 
   /** `ThreadInfo` as nativelib 0.5.12 lays it out; only the first six fields are read */

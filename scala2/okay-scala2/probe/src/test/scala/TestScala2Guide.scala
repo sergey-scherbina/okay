@@ -148,8 +148,8 @@ class TestScala2Guide extends munit.FunSuite {
 
   test("§6 shift and reset") {
     // the continuation k is "the rest of the block": here, _ * 2 then + 1
-    val twice: Int = Cont.reset(
-      Cont.shift[Int, Int, Int](k => k(k(3))).map(_ * 2).map(_ + 1)
+    val twice: Int = Cps.reset(
+      Cps.shift[Int, Int, Int](k => k(k(3))).map(_ * 2).map(_ + 1)
     )
     assertEquals(twice, 15)
   }

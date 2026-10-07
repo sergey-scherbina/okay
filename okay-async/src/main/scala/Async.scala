@@ -193,8 +193,8 @@ object Async {
   def run[A, F[+_]](prog: A ! Async + F)(using cb: CanBlock, w: Wait, p: Pause): A ! F =
     relay[A, A, Async, F](prog)(pure(_)):
       [X, Y] => e => e match
-        case Run(f) => Cont.Pure(f())
-        case Await(reg, poll) => Cont.Pure(pollThenBlock(reg, poll).fold(e => throw e, identity))
+        case Run(f) => Cps.Pure(f())
+        case Await(reg, poll) => Cps.Pure(pollThenBlock(reg, poll).fold(e => throw e, identity))
 
   /** POLL, THEN PARK for a blocking runner (drive-poll-then-park): an
    * Await that carries a poll is asked by the given `Wait` on THIS

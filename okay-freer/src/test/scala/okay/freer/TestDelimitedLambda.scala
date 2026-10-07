@@ -7,7 +7,7 @@ import okay.freer.Freer.{Return, Inject}
  * A SECOND EFFECT on the same machine (specs/cont-atm.md): delimited control with named prompts, the shape of
  * `Shift % P` — programs at `Unit` as `Free`'s are, a prompt a VALUE boundary on the stack: a value passes it, a
  * capture to it stops there. `push` installs it, `shift0` cuts the stack there (`cut`), a resumption puts the piece
- * back (`reinstall`). The machine is the one Cont runs on, unchanged.
+ * back (`reinstall`). The machine is the one Cps runs on, unchanged.
  */
 class TestDelimitedLambda extends munit.FunSuite:
 

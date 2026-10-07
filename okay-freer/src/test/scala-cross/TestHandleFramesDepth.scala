@@ -42,7 +42,7 @@ class TestHandleFramesDepth extends munit.FunSuite:
     else Classic[Free].handle[Tick, Pure](
       !.tailcall(controlled(n - 1)).at[Tick + Pure].flatMap(x => effect[Tick, Int](Tick.Now).map(_ + x)))(pure(_))(
       [X] => (e: Tick[X]) => e match
-        case Tick.Now => Cont.shift[X, Int ! Pure, Int ! Pure](k => k(1)))
+        case Tick.Now => Cps.shift[X, Int ! Pure, Int ! Pure](k => k(1)))
 
   test("nested Effects.handle") {
     assertEquals(!.run(controlled(n)), n)
@@ -55,7 +55,7 @@ class TestHandleFramesDepth extends munit.FunSuite:
     else Classic.relay[Int, Int, Tick, Pure](
       !.tailcall(relayed(n - 1)).at[Tick + Pure].flatMap(x => effect[Tick, Int](Tick.Now).map(_ + x)))(pure(_))(
       [X, Y] => (e: Tick[X]) => e match
-        case Tick.Now => Cont.Pure[X, Y](1))
+        case Tick.Now => Cps.Pure[X, Y](1))
 
   test("nested Effects.relay") {
     assertEquals(!.run(relayed(n)), n)
