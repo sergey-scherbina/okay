@@ -3,6 +3,8 @@ package okay
 
 import okay.given
 
+
+
 /**
  * specs/optics.md, optics-fuse: the optic fused in the compiler.
  * The law is the only one that matters — the fused update is the

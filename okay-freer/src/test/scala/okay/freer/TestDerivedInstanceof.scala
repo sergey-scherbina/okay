@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.*
+import okay.{Effect, typeableK}
 
 /**
  * typeablek-instanceof: a derived signature's test is a class of its

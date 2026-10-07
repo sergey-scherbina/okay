@@ -1,9 +1,9 @@
 package okay.http
 
-import okay.*
+
+import okay.{Async, CanBlock, async}
 import okay.freer.*
 
-import okay.given
 import okay.freer.given
 
 import com.sun.net.httpserver.{HttpExchange, HttpServer as JdkServer}

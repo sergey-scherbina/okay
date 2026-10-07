@@ -34,7 +34,7 @@ class TestDirect extends munit.FunSuite {
         Writer("recovered").reflect
         7
     }
-    val (ws, a) = !.run(Writer.run[String, Int, okay.Pure](prog))
+    val (ws, a) = !.run(Writer.run[String, Int, okay.freer.Pure](prog))
     assertEquals(ws, Seq("before", "recovered"))
     assertEquals(a, 7)
   }
@@ -233,7 +233,7 @@ class TestDirect extends munit.FunSuite {
       Writer.tell("b").reflect
       x * 2
     }
-    val (ws, a) = !.run(Writer.run[String, Int, okay.Pure](prog))
+    val (ws, a) = !.run(Writer.run[String, Int, okay.freer.Pure](prog))
     assertEquals(ws, Seq("a", "b"))
     assertEquals(a, 42)
   }
@@ -245,7 +245,7 @@ class TestDirect extends munit.FunSuite {
       effect[F, Unit](Writer(s"env=$env")).reflect
       env + 1
     }
-    val (ws, a) = !.run(Writer.run[String, Int, okay.Pure](
+    val (ws, a) = !.run(Writer.run[String, Int, okay.freer.Pure](
       Reader.run[Int, Int, Writer % String](41)(prog)))
     assertEquals(ws, Seq("env=41"))
     assertEquals(a, 42)
@@ -259,7 +259,7 @@ class TestDirect extends munit.FunSuite {
       (s + "!").tell
       3
     }
-    val (ws, a) = !.run(Writer.run[String, Int, okay.Pure](prog("abc")))
+    val (ws, a) = !.run(Writer.run[String, Int, okay.freer.Pure](prog("abc")))
     assertEquals(ws, Seq("start", "abc", "abc!"))
     assertEquals(a, 3)
   }
@@ -270,12 +270,12 @@ class TestDirect extends munit.FunSuite {
       val n = 3
       s"n=$n got ${pure[W, Int](7).reflect} and ${pure[W, String]("x").reflect}!"
     }
-    assertEquals(!.run(Writer.run[String, String, okay.Pure](prog)), (Seq(), "n=3 got 7 and x!"))
+    assertEquals(!.run(Writer.run[String, String, okay.freer.Pure](prog)), (Seq(), "n=3 got 7 and x!"))
   }
 
   test("w.tell outside a block is the program Writer.tell(w)") {
     val p: Int ! Writer % String = "outside".tell.flatMap(_ => pure(4))
-    assertEquals(!.run(Writer.run[String, Int, okay.Pure](p)), (Seq("outside"), 4))
+    assertEquals(!.run(Writer.run[String, Int, okay.freer.Pure](p)), (Seq("outside"), 4))
   }
 
   test("a mark on a program of a NARROWER row is coerced into the block's row") {
@@ -324,7 +324,7 @@ class TestDirect extends munit.FunSuite {
       Writer(s"env=$env").reflect
       env + 1
     }
-    val (ws, a) = !.run(Writer.run[String, Int, okay.Pure](
+    val (ws, a) = !.run(Writer.run[String, Int, okay.freer.Pure](
       Reader.run[Int, Int, Writer % String](41)(prog)))
     assertEquals(ws, Seq("env=41"))
     assertEquals(a, 42)
@@ -385,7 +385,7 @@ class TestDirect extends munit.FunSuite {
     val prog: Unit ! W = direct {
       for t <- "a b c".split(' ') do Writer(t + " ").reflect
     }
-    val (ws, _) = !.run(Writer.run[String, Unit, okay.Pure](prog))
+    val (ws, _) = !.run(Writer.run[String, Unit, okay.freer.Pure](prog))
     assertEquals(ws, Seq("a ", "b ", "c "))
   }
 
@@ -452,7 +452,7 @@ class TestDirect extends munit.FunSuite {
     val prog: Unit ! W = direct {
       for t <- "a b c".split(' ') do Writer(t)   // no mark at all
     }
-    val (ws, _) = !.run(Writer.run[String, Unit, okay.Pure](prog))
+    val (ws, _) = !.run(Writer.run[String, Unit, okay.freer.Pure](prog))
     assertEquals(ws, Seq("a", "b", "c"))
   }
 
@@ -463,7 +463,7 @@ class TestDirect extends munit.FunSuite {
       while { n += 1; pure[W, Boolean](n < 3).reflect } do Writer(s"tick$n"): Unit
       n
     }
-    val (ws, a) = !.run(Writer.run[String, Int, okay.Pure](prog))
+    val (ws, a) = !.run(Writer.run[String, Int, okay.freer.Pure](prog))
     assertEquals(ws, Seq("tick1", "tick2"))
     assertEquals(a, 3)
   }

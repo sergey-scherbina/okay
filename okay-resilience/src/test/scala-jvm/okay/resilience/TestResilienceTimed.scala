@@ -1,6 +1,7 @@
 package okay.resilience
 
-import okay.*
+
+import okay.{Async, Scheduler}
 import okay.freer.*
 
 import okay.given

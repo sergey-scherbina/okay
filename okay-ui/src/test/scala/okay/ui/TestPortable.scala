@@ -1,9 +1,12 @@
 package okay.ui
+
+import okay.{Async, Channel, Source, async}
 import okay.freer.*
 
-import okay.*
 
 import okay.given
+
+
 
 /** the seam's claim, directly: one application, two hosts */
 class TestPortable extends munit.FunSuite {

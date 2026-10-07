@@ -129,11 +129,14 @@ final class Shift0At[X]:
 trait Handler[E[+_], A, Ans]:
   def ret(a: A): Ans
   def apply[X, Oc <: Ctx](using o: Oc)(op: E[X], k: X => Cont[o.Here, o.Here, Ans]): Cont[o.Here, o.Here, Ans]
+  /** this handler as one that answers in place, if it is one: the road with no delimiter (`Free.handle`) */
+  def inPlace: Option[Answering[E, A, Ans]] = None
 /** a TAIL-RESUMPTIVE handler: each clause `k(value(op))`, the value of the operation alone — so the operation is
  * ANSWERED IN PLACE, where it is performed, when the machine gets there: no capture, no delimiter touched (Koka's,
  * Effekt's optimisation, here by the handler's declaration, chosen at compile time by the context's type) */
 trait Answering[E[+_], A, Ans] extends Handler[E, A, Ans]:
   def value[X](op: E[X]): X
+  override def inPlace: Option[Answering[E, A, Ans]] = Some(this)
   final def apply[X, Oc <: Ctx](using o: Oc)(op: E[X], k: X => Cont[o.Here, o.Here, Ans]): Cont[o.Here, o.Here, Ans] = k(value(op))
 /** the context of a handler's body: it handles `E` */
 sealed trait Handling[E[+_], Ans, Oc <: Ctx] extends In[Ans, Oc]:
@@ -197,6 +200,15 @@ sealed trait Target[E[+_], N <: Tuple]:
   type Ansn
   def reach: Reach[N, Dn, Ansn]
   def clause: Clause[E, Dn, Ansn]
+object Target:
+  /** a target built outside the machine: a delimiter reached and the clause the operation brings to it (the
+   * classic's reifying context, okay.freer.Rowed) */
+  def apply[E[+_], N <: Tuple, D <: Tuple, A](r: Reach[N, D, A], c: Clause[E, D, A]): Target[E, N] { type Dn = D; type Ansn = A } =
+    new Target[E, N]:
+      type Dn = D
+      type Ansn = A
+      def reach: Reach[N, D, A] = r
+      def clause: Clause[E, D, A] = c
 object Reaches:
   /** the context is the handler's: its delimiter is the nearest */
   given here[E[+_], Ans, C <: Handling[E, Ans, ?]]: Reaches[E, C] with

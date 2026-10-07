@@ -1,6 +1,8 @@
 package okay.clojure
 
-import okay.{%, Stage, through}
+import okay.{Stage, through}
+
+import okay.freer.{%}
 import okay.freer.{!, Writer, pure}
 import clojure.lang.{IFn, PersistentVector}
 import java.util.concurrent.atomic.AtomicInteger

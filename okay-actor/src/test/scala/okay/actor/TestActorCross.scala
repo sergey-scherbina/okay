@@ -1,9 +1,11 @@
 package okay.actor
 
-import okay.*
+
+import okay.{async, Async, Channel}
 import okay.freer.*
 
 import okay.given
+
 
 /**
  * AN ACTOR THAT RUNS ON JS (actor-on-js, 2026-09-09).

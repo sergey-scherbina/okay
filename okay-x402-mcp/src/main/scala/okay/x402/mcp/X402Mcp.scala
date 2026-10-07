@@ -1,8 +1,7 @@
 package okay.x402.mcp
 import okay.freer.*
 
-import okay.*
-
+import okay.{Answers, ==>, Async, CanBlock}
 import okay.given
 import okay.freer.given
 import okay.agent.{Tool, ToolCall}

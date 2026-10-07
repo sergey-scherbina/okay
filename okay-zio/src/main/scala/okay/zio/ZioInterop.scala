@@ -1,6 +1,8 @@
 package okay.zio
 
-import okay.{%, +, Async, Chunks}
+import okay.{Async, Chunks}
+
+import okay.freer.{%, +}
 import okay.freer.{!, Reader, Throws, raise, runEither}
 import okay.given
 import okay.freer.given

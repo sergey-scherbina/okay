@@ -1,8 +1,8 @@
 package okay.ui
 
-import okay.*
-
+import okay.{guard, preview, set}
 import okay.given
+
 import okay.codec.{Json, JsonOptic, Schema}
 
 /**

@@ -3,7 +3,12 @@ package okay.foreign
 
 
 
-import okay.{%, +, Take}
+import okay.{Take}
+
+
+
+
+import okay.freer.{%, +}
 import okay.freer.{!, Writer, effect, pure, given}
 import okay.freer.Row.plus
 

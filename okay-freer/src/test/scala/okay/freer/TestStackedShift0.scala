@@ -1,7 +1,5 @@
 package okay.freer
 
-import okay.*
-import okay.given
 
 import okay.freer.Shift.Stacked.{dollar, reset, shift, shift0}
 import okay.freer.Row.at
@@ -13,14 +11,14 @@ import okay.freer.Row.at
  */
 class TestStackedShift0 extends munit.FunSuite:
 
-  type P = okay.Pure
+  type P = Pure
 
   // ---------------------------------------------------------- the hole this lane closed
 
   test("CLOSED: a shift from a shift's body to the CAPTURED inner prompt is a compile error (it was NoPrompt at run time)") {
     val e = compileErrors("""
-      okay.freer.Shift.Stacked.reset[Int, okay.Pure] { outer =>
-        okay.freer.Shift.Stacked.reset[Int, okay.freer.Shift % outer.type + okay.Pure] { inner =>
+      okay.freer.Shift.Stacked.reset[Int, Pure] { outer =>
+        okay.freer.Shift.Stacked.reset[Int, okay.freer.Shift % outer.type + Pure] { inner =>
           okay.freer.Shift.Stacked.shift(outer)[Int](k =>
             okay.freer.Shift.Stacked.shift(inner)[Int](k2 => k2(1)).flatMap(k))
         }
@@ -57,7 +55,7 @@ class TestStackedShift0 extends munit.FunSuite:
 
   test("shift0: a shift to the CONSUMED prompt from its body is a compile error") {
     val e = compileErrors("""
-      okay.freer.Shift.Stacked.reset[Int, okay.Pure] { s =>
+      okay.freer.Shift.Stacked.reset[Int, Pure] { s =>
         okay.freer.Shift.Stacked.shift0(s)[Int](k =>
           okay.freer.Shift.Stacked.shift(s)[Int](k2 => k2(1)).flatMap(k))
       }""")
@@ -77,8 +75,8 @@ class TestStackedShift0 extends munit.FunSuite:
     // it (k1's segment never captures to p1); the row cannot know that,
     // so it asks for p1 and refuses. Sound, not complete.
     val e = compileErrors("""
-      okay.freer.Shift.Stacked.reset[String, okay.Pure] { p1 =>
-        okay.freer.Shift.Stacked.reset[String, okay.freer.Shift % p1.type + okay.Pure] { p2 =>
+      okay.freer.Shift.Stacked.reset[String, Pure] { p1 =>
+        okay.freer.Shift.Stacked.reset[String, okay.freer.Shift % p1.type + Pure] { p2 =>
           okay.freer.Shift.Stacked.shift0(p2)[String](k1 =>
             okay.freer.Shift.Stacked.shift0(p1)[String](k2 =>
               k2(".").flatMap(k1).map("A cat" + _))).map(" has " + _)
@@ -98,10 +96,10 @@ class TestStackedShift0 extends munit.FunSuite:
 
   test("dollar, keyed: the dollar's prompt is gone after it returns") {
     val e = compileErrors("""
-      var leaked: okay.freer.Shift.Stacked.Reset[Int, okay.Pure] | Null = null
-      okay.freer.!.run(okay.freer.Shift.Stacked.dollar[Int, Int, okay.Pure](i => okay.freer.pure(i)) { d =>
+      var leaked: okay.freer.Shift.Stacked.Reset[Int, Pure] | Null = null
+      okay.freer.!.run(okay.freer.Shift.Stacked.dollar[Int, Int, Pure](i => okay.freer.pure(i)) { d =>
         leaked = d
-        okay.freer.pure[okay.freer.Shift % d.type + okay.Pure, Int](1)
+        okay.freer.pure[okay.freer.Shift % d.type + Pure, Int](1)
       }.flatMap { _ =>
         val l = leaked.nn
         okay.freer.Shift.Stacked.shift(l)[Int](k => k(1))

@@ -1,6 +1,8 @@
 package okay.java
 
-import okay.{%, Pane, Stage, through}
+import okay.{Pane, Stage, through}
+
+import okay.freer.{%}
 import okay.freer.{!, Aggregator, Writer, pure}
 import java.util.stream.{Gatherers, Stream}
 import scala.jdk.CollectionConverters.*

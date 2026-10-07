@@ -97,7 +97,7 @@ class TestDirectOnce extends munit.FunSuite {
   type R = Once + W
 
   def logged[A](p: A ! R): (Seq[String], A) =
-    !.run(Writer.run[String, A, okay.Pure](Once.run(p)))
+    !.run(Writer.run[String, A, okay.freer.Pure](Once.run(p)))
 
   // ---- the effect, without direct
 
@@ -249,7 +249,7 @@ class TestDirectOnce extends munit.FunSuite {
 
   test("a val used BOTH as a program and as a value is refused with both readings") {
     val e = compileErrors("""
-      import okay.*, okay.Direct.*
+      import okay.freer.*, okay.Direct.*
       import scala.language.implicitConversions
       type R = Once + Writer % String
       def told(s: String): Int ! R = direct { s.tell; s.length }
@@ -379,7 +379,7 @@ class TestDirectOnce extends munit.FunSuite {
 
   test("Once.run INSIDE the search: the cells backtrack, each branch runs its own once") {
     val handled: Seq[Int] ! W = runChoice[Int, W](Once.run[Int, Choose + W](insideProg))
-    val (log, out) = !.run(Writer.run[String, Seq[Int], okay.Pure](handled))
+    val (log, out) = !.run(Writer.run[String, Seq[Int], okay.freer.Pure](handled))
     assertEquals(out, Seq(11, 12))
     assertEquals(hitsInside, 2)
     assertEquals(log, Seq("x", "x"))
@@ -393,7 +393,7 @@ class TestDirectOnce extends munit.FunSuite {
 
   test("Once.run OUTSIDE the search: one store, the second branch sees the first's value") {
     val handled: Seq[Int] ! W = Once.run[Seq[Int], W](runChoice[Int, Once + W](outsideProg))
-    val (log, out) = !.run(Writer.run[String, Seq[Int], okay.Pure](handled))
+    val (log, out) = !.run(Writer.run[String, Seq[Int], okay.freer.Pure](handled))
     assertEquals(out, Seq(11, 12))
     assertEquals(hitsOutside, 1)
     assertEquals(log, Seq("x"))

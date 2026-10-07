@@ -1,6 +1,5 @@
 package okay.freer
 
-import okay.*
 
 /**
  * specs/generators.md — a generator is a program that tells; the laws

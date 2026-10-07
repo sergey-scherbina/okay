@@ -2,7 +2,8 @@ package okay.cats
 
 import _root_.cats.effect.IO
 import _root_.cats.effect.unsafe.implicits.global
-import okay.{%, +, Async, asOkay, async, via}
+import okay.{Async, asOkay, async, via}
+import okay.freer.{%, +}
 import okay.freer.perform
 import okay.freer.{!, Handler, State}
 import okay.freer.Row.bind

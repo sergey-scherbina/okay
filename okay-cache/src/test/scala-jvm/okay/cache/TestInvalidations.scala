@@ -13,7 +13,7 @@ import okay.persist.{MemoryStore, Policy}
  */
 class TestInvalidations extends munit.FunSuite {
 
-  def run[A](p: A ! Async): A = !.run(Async.run[A, okay.Pure](p))
+  def run[A](p: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](p))
 
   test("A's write reaches B: drain, then B's next read reloads") {
     val topic = MemoryStore().topic("__invalidations", 1, Policy())

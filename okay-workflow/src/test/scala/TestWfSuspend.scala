@@ -21,7 +21,7 @@ import scala.language.implicitConversions
  */
 class TestWfSuspend extends munit.FunSuite {
 
-  type P = okay.Pure
+  type P = okay.freer.Pure
   type Row = Shift % ? + P
 
   given Wf.Runtime = Wf.Runtime.scripted(millis = 1_000L, id = "id", dice = 0.5)

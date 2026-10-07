@@ -1,7 +1,5 @@
 package okay.freer
 
-import okay.*
-import okay.given
 
 import Prob.*
 import okay.freer.Row.at
@@ -31,14 +29,14 @@ class TestProb extends munit.FunSuite:
     yield rain
 
   test("wet grass: P(Rain | WetGrass) by hand — 15/29, 14/29") {
-    val post = !.run(runExact[Boolean, okay.Pure](wetGrass)).posterior
+    val post = !.run(runExact[Boolean, Pure](wetGrass)).posterior
     assertEqualsDouble(post(true), 15.0 / 29.0, 1e-12)
     assertEqualsDouble(post(false), 14.0 / 29.0, 1e-12)
     assertEqualsDouble(post.values.sum, 1.0, 1e-12)
   }
 
   test("wet grass: the UNNORMALIZED joint before observe sums to less than 1 — mass was pruned") {
-    val joint = !.run(runExact[Boolean, okay.Pure](wetGrass))
+    val joint = !.run(runExact[Boolean, Pure](wetGrass))
     assertEqualsDouble(joint.values.sum, 0.58, 1e-12, "0.3*0.4 + 0.3*0.6 + 0.7*0.4 survive; 0.7*0.6 (both false) was pruned")
   }
 
@@ -57,7 +55,7 @@ class TestProb extends munit.FunSuite:
         _ <- observe(rain || sprinkler)
       yield rain
     val p =
-      !.run(runExact[Boolean, okay.Pure](wetGrass)).posterior(true)   // 15.0/29.0
+      !.run(runExact[Boolean, Pure](wetGrass)).posterior(true)   // 15.0/29.0
     assertEqualsDouble(p, 15.0 / 29.0, 1e-12)
   }
 
@@ -104,7 +102,7 @@ class TestProb extends munit.FunSuite:
     acc.view.mapValues(_ / total).toMap
 
   test("small HMM: two days observed Happy, day-2 state — exact inference agrees with the hand enumerator") {
-    val post = !.run(runExact[Weather, okay.Pure](hmm)).posterior
+    val post = !.run(runExact[Weather, Pure](hmm)).posterior
     val hand = handComputeHMM()
     assertEqualsDouble(post(Weather.Sunny), hand(Weather.Sunny), 1e-12)
     assertEqualsDouble(post(Weather.Rainy), hand(Weather.Rainy), 1e-12)
@@ -123,11 +121,11 @@ class TestProb extends munit.FunSuite:
 
   test("observe(false) prunes: an impossible branch contributes nothing") {
     val p: Int ! Dist = dist(1 -> 0.5, 2 -> 0.5).flatMap(x => observe(x == 3).map(_ => x))
-    assertEquals(!.run(runExact[Int, okay.Pure](p)), Map.empty[Int, Double])
+    assertEquals(!.run(runExact[Int, Pure](p)), Map.empty[Int, Double])
   }
 
   test("uniform: every alternative equally weighted") {
-    val post = !.run(runExact[Int, okay.Pure](uniform(1, 2, 3, 4))).posterior
+    val post = !.run(runExact[Int, Pure](uniform(1, 2, 3, 4))).posterior
     for i <- 1 to 4 do assertEqualsDouble(post(i), 0.25, 1e-12)
   }
 
@@ -138,7 +136,7 @@ class TestProb extends munit.FunSuite:
       dist(true -> 0.5, false -> 0.5).at[Dist + Writer % String].flatMap { b =>
         Writer.tell(if b then "heads" else "tails").at[Dist + Writer % String].map(_ => b)
       }
-    val (told, post) = !.run(Writer.run[String, Map[Boolean, Double], okay.Pure](
+    val (told, post) = !.run(Writer.run[String, Map[Boolean, Double], Pure](
       runExact[Boolean, Writer % String](p)))
     assertEquals(told.sorted, Seq("heads", "tails"), "both branches ran, so both tells happened")
     assertEqualsDouble(post.posterior(true), 0.5, 1e-12)
@@ -150,13 +148,13 @@ class TestProb extends munit.FunSuite:
     // check) — the hand enumerator has NO effect machinery at all, so
     // the gap IS the price of multi-shot capture, per branch, on the
     // shipping runners
-    (1 to 2000).foreach(_ => { (handComputeHMM(): Unit); (!.run(runExact[Weather, okay.Pure](hmm)): Unit) })
+    (1 to 2000).foreach(_ => { (handComputeHMM(): Unit); (!.run(runExact[Weather, Pure](hmm)): Unit) })
     val n = 20000
     val t0 = System.nanoTime()
     (1 to n).foreach(_ => handComputeHMM())
     val handNs = (System.nanoTime() - t0).toDouble / n
     val t1 = System.nanoTime()
-    (1 to n).foreach(_ => !.run(runExact[Weather, okay.Pure](hmm)))
+    (1 to n).foreach(_ => !.run(runExact[Weather, Pure](hmm)))
     val exactNs = (System.nanoTime() - t1).toDouble / n
     // print rather than assert a ratio: the point is the number exists
     // and is bounded, not a specific multiple that would flake on a

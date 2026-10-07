@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.*
+import okay.{Answers, Control}
 
 
 /**
@@ -47,14 +47,14 @@ object Eager {
 
   // the Free instance, named: in this scope A ! F conforms to
   // Eager[F, A ! F], so unqualified extension calls would recurse
-  private def FreeE: FreeEffectsAt[cont.Carrier] = FreeEffects
+  private def FreeE: FreeEffectsAt[okay.cont.Carrier] = FreeEffects
 
-  given given_Effects_Eager: EagerEffects.type = EagerEffects
+  given given_Classic_Eager: EagerEffects.type = EagerEffects
 
   /** at the default carrier, `Free`'s: the tree world it normalises into; a `Classic`, level 1 through the tree */
   object EagerEffects extends Classic[Eager]:
-    type C = cont.Carrier
-    def control: Control[cont.Carrier] = FreeEffects.control
+    type C = okay.cont.Carrier
+    def control: Control[okay.cont.Carrier] = FreeEffects.control
 
     override inline def pure[F[+_], A](a: A): Eager[F, A] = a
     override inline def perform[F[+_], A](e: F[A]): Eager[F, A] = Free.Inject(e)
@@ -69,7 +69,7 @@ object Eager {
       override def flatMap[B](f: A => Eager[F, B]): Eager[F, B] =
         fold(m)(f, t => t.flatMap(x => toFree(f(x))))
 
-      override def foldCont[S](h: F !> S): cont.Carrier[A, S, S] =
+      override def foldCont[S](h: F !> S): okay.cont.Carrier[A, S, S] =
         FreeE.foldCont(toFree(m))(h)
 
       /** a pure value runs in O(1); a suspended tree runs like Free */

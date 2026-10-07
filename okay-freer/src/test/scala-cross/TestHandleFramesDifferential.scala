@@ -1,7 +1,6 @@
 package okay.freer
 
-import okay.*
-import okay.given
+import okay.{Effect}
 
 import okay.freer.Row.*
 

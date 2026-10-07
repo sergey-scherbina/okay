@@ -1,6 +1,5 @@
 package okay.freer
 
-import okay.*
 
 /**
  * specs/delimited.md: the machine through its interface. Every program

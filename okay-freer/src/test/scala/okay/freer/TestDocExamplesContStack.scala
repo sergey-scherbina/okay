@@ -1,6 +1,5 @@
 package okay.freer
 
-import okay.*
 
 /**
  * docs/cont-stack.md's examples, VERBATIM (doc-snippet-debt): each

@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.*
+import okay.{Id}
 
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
 import scala.annotation.tailrec

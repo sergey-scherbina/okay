@@ -26,7 +26,7 @@ class TestComposed extends munit.FunSuite {
   val verify: String => Verified =
     t => Jwt.verify(t, _ => Some(Jwt.Key.Hmac(secret)), Some("api"), now)
 
-  def run[A](p: A ! Async): A = !.run(Async.run[A, okay.Pure](p))
+  def run[A](p: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](p))
 
   /** the stored value: needs BOTH capabilities, uses both */
   val api: (Principal, Tracer) ?=> Traced.Route = {

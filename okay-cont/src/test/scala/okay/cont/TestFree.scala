@@ -26,7 +26,7 @@ class TestFree extends okay.testkit.Munit.Diagnosed:
       case Choose.Flip => k(true).flatMap(xs => k(false).map(ys => xs ++ ys))
 
 
-  /** a program over a row, no handler in sight: the rows join as it is built */
+  /** a program over a row, no handler in sight: the row is declared, each operation finds its path in it */
   val prog: Free[Ask +: Say +: Pure, Int] =
     for
       n <- Free.inject(Ask.Number)
@@ -71,9 +71,9 @@ class TestFree extends okay.testkit.Munit.Diagnosed:
     val run = Free.handle(writer[List[Int]])(Free.handle(reader[List[Int]](10))(Free.handle(every[Int])(p)))
     assertEquals(value(Free.top(run)), (List("true10", "false10"), List(10, -10)))
 
-  test("100 000 operations over Free in constant stack; the join keeps every occurrence, `widen` folds them"):
+  test("100 000 operations over Free in constant stack, at one row: no widen, no join"):
     def loop(n: Int, acc: Int): Free[Ask +: Pure, Int] =
-      if n == 0 then Free.pure(acc).widen else Free.inject(Ask.Number).flatMap(x => loop(n - 1, acc + x)).widen
+      if n == 0 then Free.pure(acc) else Free.inject(Ask.Number).flatMap(x => loop(n - 1, acc + x))
     assertEquals(value(Free.top(Free.handle(reader[Int](1))(loop(100000, 0)))), 100000)
 
   test("the classic spelling: A ! R over the machine's row, % for a parameterised effect, run at the end"):
@@ -95,6 +95,6 @@ class TestFree extends okay.testkit.Munit.Diagnosed:
       effect(State.Get[Int]()).flatMap(n => effect(Say.Line(s"$n")).map(_ => n + 1))
     val run: (List[String], (Int, Int)) ! Pure = Free.handle(writer[(Int, Int)])(Free.handle(StateCell[Int, Int](41))(counting))
     assertEquals(run.value, (List("41"), (41, 42)))
-    val one: Int ! (Pure + Ask) = effect(Ask.Number)
+    val one: Int ! (Pure + Ask) = effect(Ask.Number)   // a bare operation, at the row expected
     val same: Int ! (Ask +: Pure) = rest[Pure](one)
     assertEquals(value(Free.top(Free.handle(reader[Int](7))(same))), 7)

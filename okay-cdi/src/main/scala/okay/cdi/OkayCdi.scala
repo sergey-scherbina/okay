@@ -1,6 +1,5 @@
 package okay.cdi
 
-import okay.*
 import okay.freer.*
 
 import jakarta.inject.Singleton

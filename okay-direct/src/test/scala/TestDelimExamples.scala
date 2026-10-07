@@ -14,7 +14,7 @@ import scala.language.implicitConversions
  */
 class TestDelimExamples extends munit.FunSuite {
 
-  type R = Shift % ? + okay.Pure
+  type R = Shift % ? + okay.freer.Pure
 
   // ---- 1 · reverse-mode automatic differentiation
   //      Wang & Rompf, "Demystifying Differentiable Programming" (2018).
@@ -41,7 +41,7 @@ class TestDelimExamples extends munit.FunSuite {
 
   def grad(f: Shift.Prompted[Unit] ?=> Num => Num ! R)(x: Double): Double =
     val v = Num(x)
-    !.run(Shift.delimited[Unit, okay.Pure]:
+    !.run(Shift.delimited[Unit, okay.freer.Pure]:
       direct:
         val y = !f(v)
         y.d = 1.0)             // seed the output adjoint
@@ -78,7 +78,7 @@ class TestDelimExamples extends munit.FunSuite {
         !walk(r)
 
   def elements(t: Tree[Int]): List[Int] =
-    !.run(Shift.delimited[Items, okay.Pure]:
+    !.run(Shift.delimited[Items, okay.freer.Pure]:
       direct:
         !walk(t)
         List.empty[Int])
@@ -113,7 +113,7 @@ class TestDelimExamples extends munit.FunSuite {
     def answer(p: Page, as: List[String]): Page = (p, as) match
       case (Page.Ask(_, resume), a :: rest) => answer(resume(a), rest)
       case (done, _) => done
-    val start = !.run(Shift.delimited[Page, okay.Pure](booking))
+    val start = !.run(Shift.delimited[Page, okay.freer.Pure](booking))
     assertEquals(answer(start, List("Kyiv", "3", "yes")),
       Page.Done("Booked Kyiv for 3 nights"))
     // the SAME start page, answered differently — the dialogue is a value

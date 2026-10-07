@@ -1,6 +1,8 @@
 package okay.clojure
 
-import okay.{%, +, Async, Chunks, Stage, through}
+import okay.{Async, Chunks, Stage, through}
+
+import okay.freer.{%, +}
 import okay.freer.{!, Choose, Reader, State, Throws, Writer, effect, pure, runChoice, runEither}
 import okay.given
 import okay.freer.given

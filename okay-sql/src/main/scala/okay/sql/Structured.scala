@@ -1,6 +1,6 @@
 package okay.sql
 
-import okay.*
+import okay.{Effect, Tables}
 import okay.freer.*
 
 import okay.freer.Row.{In, at, plus}

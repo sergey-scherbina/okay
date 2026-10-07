@@ -1,4 +1,6 @@
-package okay
+package okay.freer
+
+import okay.{TypeableK}
 
 import scala.quoted.*
 
@@ -56,7 +58,7 @@ final class Distinct[R[+_]] private ()
 
 object Distinct:
 
-  inline given derive[R[+_]]: Distinct[R] = ${ okay.macros.DistinctMacros.impl[R] }
+  inline given derive[R[+_]]: Distinct[R] = ${ okay.freer.macros.DistinctMacros.impl[R] }
 
   /**
    * THE ESCAPE HATCH, and the reason this is a class and not an

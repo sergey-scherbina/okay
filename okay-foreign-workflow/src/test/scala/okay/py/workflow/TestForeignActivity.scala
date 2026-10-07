@@ -1,6 +1,8 @@
 package okay.foreign.workflow
 
-import okay.{%, +, Pure, Wf}
+import okay.{Wf}
+
+import okay.freer.{%, +, Pure}
 import okay.freer.{!, Shift}
 import okay.Direct.*
 import okay.codec.Schema

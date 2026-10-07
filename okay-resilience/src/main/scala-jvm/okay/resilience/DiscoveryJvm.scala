@@ -1,6 +1,7 @@
 package okay.resilience
 
-import okay.*
+
+import okay.{Async}
 import okay.freer.*
 
 import java.net.{InetAddress, UnknownHostException}

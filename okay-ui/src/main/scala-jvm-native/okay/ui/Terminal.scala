@@ -1,6 +1,6 @@
 package okay.ui
 
-import okay.*
+import okay.{sequence, Async, Source, async}
 import okay.freer.*
 
 

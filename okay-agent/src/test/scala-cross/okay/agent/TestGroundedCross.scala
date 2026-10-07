@@ -1,6 +1,8 @@
 package okay.agent
 
-import okay.{+, Async}
+import okay.{Async}
+
+import okay.freer.{+}
 import okay.freer.{!}
 import okay.given
 import okay.rag.*

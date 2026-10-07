@@ -17,7 +17,7 @@ import scala.language.implicitConversions
  */
 class TestBookInTheSystem extends munit.FunSuite {
 
-  type P = okay.Pure
+  type P = okay.freer.Pure
   type Row = Shift % ? + State % Int
 
   // ---- ORDER ONE: the handler is OUTSIDE the delimiter.

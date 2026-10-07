@@ -1,6 +1,6 @@
 package okay.obs
 
-import okay.*
+import okay.{Answers}
 import okay.freer.*
 
 import okay.codec.{Json, Schema}

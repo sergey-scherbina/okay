@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.*
+import okay.{Answers, Comonad, ComonadAnswers, Id}
 import okay.given
 
 /**

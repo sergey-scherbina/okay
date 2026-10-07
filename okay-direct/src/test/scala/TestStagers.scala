@@ -108,7 +108,7 @@ class TestStagers extends munit.FunSuite:
     for _ <- 1 to 300 do
       val xs = List.fill(rnd.nextInt(10))(rnd.nextInt(40))
       val env = Env(rnd.nextInt(5), 60 + rnd.nextInt(100))
-      val expected = !.run(runEither[Int, okay.Pure, String](Reader.run[Env, Int, Throws % String](env)(freeRT(xs))))
+      val expected = !.run(runEither[Int, okay.freer.Pure, String](Reader.run[Env, Int, Throws % String](env)(freeRT(xs))))
       val (_, a) = rt.run(env, ())(stagedRT(xs))
       assertEquals(a, expected, s"xs=$xs env=$env")
   }
@@ -149,7 +149,7 @@ class TestStagers extends munit.FunSuite:
       e.bias * k + e2.limit
     }
     assertEquals(rd.run(Env(3, 7))(p(10)), 37)
-    assertEquals(rd.run(Env(3, 7))(p(10)), !.run(Reader.run[Env, Int, okay.Pure](Env(3, 7))(direct[[A] =>> A ! Reader % Env] {
+    assertEquals(rd.run(Env(3, 7))(p(10)), !.run(Reader.run[Env, Int, okay.freer.Pure](Env(3, 7))(direct[[A] =>> A ! Reader % Env] {
       val e = Reader.ask[Env].?
       val e2 = Reader.ask[Env].?
       e.bias * 10 + e2.limit

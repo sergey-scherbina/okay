@@ -1792,3 +1792,95 @@ when the receiver has a member of that name, whatever its signature — so `hand
 
 Numbers: okay-freer 898 tests green on its own; the JVM build of every module compiles (210 module compiles),
 warnings stripped to zero before the full gate.
+
+## Stage 46: THE ROW IS FIXED — AN OPERATION IS A PROGRAM OVER ANY ROW THAT HAS ITS EFFECT (DONE, 2026-10-07)
+
+The operator's decision after stage 43 (cont-state-cost): a FIXED-ROW `Free`. `flatMap` binds at one row, and a
+run finds every operation's capability by its path in the ONE `Has` of the run — no `++`, no `Shape.split`
+rebuilding the capabilities at every bind. An operation is `Op[E, X]`, a program over ANY row that has its
+effect: its `flatMap` and `map` take the row from the EXPECTED TYPE (`Member`, the path the compiler builds), as
+the classic's `effect` takes its signature from the context, so a `for` over mixed effects declares the program's
+row and nothing else; a bare operation becomes a `Free[R, X]` where one is expected (`at`, or the conversion in
+`Op`'s companion). Bound, it performs through the run's `Has` at its path: no program built around it, no row
+joined. `Free.pure` is at any row. The same effects in another order are still one program (`reordered`), a row
+with fewer effects still `widen`s by `Sub`, written. The benchmark's row program lost its `widen`s and nothing
+else; TestFree's loop of 100 000 operations at one row is the same program with no `widen` at each step.
+MEASURED (quiet box, one lane a run): `rowAnswering` 26.7 µs for 2000 operations, was 47.8 (stage 43) — 13.3
+ns an operation against 24; `rowGeneral` 43.6, was 64.5 — 21.8 against 32. The 21 µs gone is the join and the
+split; what is left over the context form (6.7 and 16.5) is the path walked in the one `Has` per operation and
+the `Op` with its closure, 5 to 7 ns.
+
+Lane effects-rows. The rows also grew what the classic needs to be an instance of the interface over them
+(stage 47): `Tagged[R, X]`, an operation with its path (`Tagged.At(op, path)`); `Members[R]`, the row as a
+value; `Removed.route`, a tagged operation of `R` told as the handler's or the rest's with its path in `Out` —
+by the path, total — and `Removed.rest`, the rest as `Members`; `Target.apply`, a target built outside the
+machine (a delimiter reached and the clause the operation brings); `Free.delay`/`defer` for the interface's
+`tailcall`.
+
+## Stage 47: THE INTERFACE OVER ROWS, THE FACADE IN THE CORE (DONE, 2026-10-07)
+
+The operator: "В okay создаем новый фасад который работает одинаково и с классикой в freer и с машиной в
+cont"; "Интерфейс Effects остается один (если нужно меняй его)"; the default is the new one. So:
+
+THE INTERFACE. `trait Effects[M[_ <: Row, _]]` in the core (Effects.scala): `pure` at any row; `perform(op)` by
+its path (`Member[E, R]`); `defer`/`tailcall`; `flatMap`/`map` at the ONE row; `handle(h)(m)` for a handler of
+the machine's kind — `Handler` has the continuation, `Answering` answers in place and says so (`h.inPlace`,
+so one `handle` serves both: an overload at the facade's extension was ambiguous on an `Answering`, E134) —
+taking its effect off the row wherever it is (`Removed`), the result over `rm.Out`; `run` for a program over
+`Pure`. Nothing of the
+carrier: `C`, `control`, `foldCont`, `runWith`, the level-2 `handle(m)(ret)(clause)` were the TREE's (`Cont`
+handlers, `F !> S`) and are the classic's typeclass now. The rows are the machine's, named at the core's door
+(`export okay.cont.{Row, +:, Pure, Union, Member, Removed, Sub, Tagged, Members}`). `Effects.given_Effects_Free`
+is THE MACHINE'S instance — the program itself, `okay.cont.Free[R, A]`, found with no import as a companion's
+given is; `Effects.monad[M, R]` for direct style.
+
+THE FACADE (Bang.scala): `A ! R` is `okay.cont.Free[R, A]`, transparent (stage 37); `Pure + A + B` and `A +:
+B +: Pure` one row (stage 44); `State % Int`; `pure`, `effect(op)` and `op.perform` (an `Op`, stage 46);
+`p.handle(h)` for the machine's handlers, wherever the effect is in the row; `p.value` for a closed program
+(`run` is the trait's own, E194). The machine's library — `State`, `Reader`, `Writer`, `Throws`, `Choose`,
+`Emit`, `Dialogue` (stage 35) — is the library of this `!`. `Prog` (stage 30, the machine as an instance of the
+union-kinded interface through `Dispatch`) is gone: the machine's instance is its program.
+
+THE CLASSIC. Its typeclass is `okay.freer.Classic[M[_[+_], _]]` — the old interface, level 0 (the monad, the
+fold, the clause handler at the carrier) and level 1 (`shift`, `reset`, `handle(m, h)`, `run`, `foldMap`) in one
+trait, `Classic.Aux`, `Classic.monad`, `Classic[Free]`; `Free` and `Eager` its instances; the union row's
+machinery is the classic's: `+` (the union), `Pure` (`Nothing`), `%`, `|=>`, `split`, `<|>`, `over`, `Interpr`,
+`!>`, `handler`, `interpr`, `TypeableK[Pure]`, `Answers[Pure]` (Unions.scala), `Distinct` with its macro,
+`Row.union` and `Row.flat` (were `Answers.union`/`flat` in the core; `Row.flat`'s macro is `FlatMacros`).
+
+THE CLASSIC UNDER THE FACADE: `okay.freer.Rowed[R, A]`, the tree over a row — `Free[[X] =>> Tagged[R, X], A]`,
+its operations tagged with their path — is the tree's instance of the core's `Effects`
+(`given_Effects_Rowed`). `pure`, `perform`, `flatMap`, `defer` are the tree's own. A handler is the machine's,
+and the tree RUNS IT ON THE MACHINE: `Rowed.machine` folds the tree into the machine's program over the row (each
+operation performed by its path, `Free.fold` with a `Delay` per step), the machine handles it, and
+`Rowed.reify` brings the handled program back as a tree over the rest of the row — run at the top under one
+delimiter whose answer IS the tree, every remaining effect's capability a clause (`Target.apply`) that puts the
+operation into the tree and resumes the machine when the tree is bound further (`Machine.value(k(x))` under a
+`delay`): one hop of the machine per operation, so the depth is constant and a continuation resumed twice is
+resumed twice. `run` folds and runs. No class test anywhere: a handler tells its operations from the rest's by
+`Removed.route`. DOTTY, LEARNED: `Tagged[R, +X]` is covariant (a classic signature's kind), and a MATCH on its
+case `At(op, path)` against a `t: Tagged[R, X]` binds the case's `X` as a FRESH type under `X`, which the
+compiler closes at `Nothing` — the lambda bound on the operation's answer was then compiled at `Nothing` and
+cast its argument to it, a ClassCastException at the machine's next frame (TestRowed, red first). So the
+operation performs itself by a METHOD (`Tagged.perform(c)(has)`, the static `X`), and the match stays where it
+is harmless (`Removed.route`, whose `Left(op)` only widens). And one of the toolchain's: a name not found in
+okay-ui crashed the compiler INSTEAD of reporting it — `ImportSuggestions`, looking for the import that would
+fix it, walks every root on the classpath and the JDK 25 rt-ext jar's `javax.swing.BufferStrategyPaintManager`
+fails its classfile parser (an assertion on an inner class; `import javax.swing.*` in Swing.scala puts the
+package in reach). `-Ximport-suggestion-timeout 0` on the module for one compile shows the error itself (two
+optics extension names, `modify` and `toVector`, Ui.scala had taken from `okay.*`); the flag is not kept; a continuation of one world never pretends to be the other's — the mismatch that ruled out a
+shared general handler through the carrier (a classic clause's continuation returns the tree as a VALUE, a
+machine clause's a program at its delimiter) is what the round trip through the machine resolves.
+
+NAMES, AND WHERE A FILE LOOKS. The facade's names (`!`, `+`, `%`, `Pure`, `pure`, `effect`, `perform`, `handle`,
+`value`) are the classic's names too, in `okay.freer`. A file in package `okay.freer` that imported `okay.*`
+found the CORE's `!` first — a wildcard import outranks the package's own members from other files (stage 45's
+finding, now in the other direction); a file in another package importing both wildcards found two. So no file
+imports `okay.*` any more: each imports BY NAME what it takes from the core — `import okay.{Answers, Effect,
+TypeableK, Monad, …}`, the names computed from its text and settled by the compiler's own suggestions (the
+compiler names the import that would fix an extension method it could not find; a prefix call of one,
+`whenS(c)(b)`, needs the name imported too) — and a file that also imports a same-named term by name from the
+classic (`Bisim.Answers`) hides the facade and takes the wildcard: `import okay.{! as _, + as _, … , *}`. A file
+in package `okay` itself (okay-async, okay-stream, okay-direct, …) sees the core's facade as package members
+and the classic's by `import okay.freer.*`, which wins. `okay.Pure` written in full in a module is the classic's
+now, `okay.freer.Pure`.

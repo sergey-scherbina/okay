@@ -62,7 +62,7 @@ class TestCatsEffectResolution extends munit.FunSuite {
   }
 
   test("a plain program still gets the default monad") {
-    val p: List[Int] ! okay.Pure = List(1, 2).traverse(i => okay.freer.pure[okay.Pure, Int](i * 10))
+    val p: List[Int] ! okay.freer.Pure = List(1, 2).traverse(i => okay.freer.pure[okay.freer.Pure, Int](i * 10))
     assertEquals(!.run(p), List(10, 20))
   }
 }

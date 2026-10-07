@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.*
+import okay.{Control, Monad}
 
 /**
  * specs/direct-staged.md: a program over a row with its handler

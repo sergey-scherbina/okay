@@ -1,7 +1,8 @@
 package okay.wroclaw
 
-import okay.*
 
+
+import okay.{Async, Chunks, Pane, Windows, through, async}
 import okay.freer.{Feed as _, *}
 import okay.given
 import okay.freer.given

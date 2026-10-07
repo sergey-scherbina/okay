@@ -1,6 +1,8 @@
 package okay.scala2
 
-import okay.{+, Answers}
+import okay.{Answers}
+
+import okay.freer.{+, Row}
 import okay.agent.{Agent, Compact, Context, Durable, Handlers, Reply, ToolCall, Toolbox, Turn}
 import okay.agent.{Model as ModelEffect, Tool as ToolEffect}
 import okay.codec.Schema
@@ -113,9 +115,9 @@ final class Chat private (model: Model, tools: Tools, policy: Policy, maxSteps: 
     given modelH: Answers[ModelEffect] = model.handler
     given toolH: Answers[ToolEffect] = tool
     given contextH: Answers[Context] = context
-    given contextAsyncH: Answers[Context + okay.Async] = Answers.union[Context, okay.Async]
-    given modelContextAsyncH: Answers[ModelEffect + (Context + okay.Async)] = Answers.union[ModelEffect, Context + okay.Async]
-    given agentH: Answers[Agent] = Answers.union[ToolEffect, ModelEffect + (Context + okay.Async)]
+    given contextAsyncH: Answers[Context + okay.Async] = Row.union[Context, okay.Async]
+    given modelContextAsyncH: Answers[ModelEffect + (Context + okay.Async)] = Row.union[ModelEffect, Context + okay.Async]
+    given agentH: Answers[Agent] = Row.union[ToolEffect, ModelEffect + (Context + okay.Async)]
     Agent.converse(message, tools.box.specs, maxSteps).runWith
   })
 

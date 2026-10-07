@@ -1,7 +1,6 @@
 package okay.freer
 
-import okay.*
-
+import okay.{Answers, Selective, traverse, ==>, `*>`}
 /**
  * The free selective (specs/applicative-static.md, stage 2): what a
  * program will do, known before it does it.

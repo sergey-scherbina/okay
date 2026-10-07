@@ -1,6 +1,9 @@
 package okay.ui
 
 
+
+
+import okay.{sequence}
 /**
  * The terminal's PURE half: a frame is a Vector[String], focus is an
  * index into the tab order, and a raw key against a tree is an

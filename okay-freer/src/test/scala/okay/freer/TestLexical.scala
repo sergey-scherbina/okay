@@ -1,8 +1,6 @@
 package okay.freer
 
-import okay.*
-import okay.given
-
+import okay.{! as _, pure as _, effect as _, value as _, + as _, % as _, Pure as _, *}
 import Bisim.{Answers, Verdict}
 import Lexical.State.{get, set}
 import okay.freer.Row.at
@@ -195,7 +193,7 @@ class TestLexicalTail extends munit.FunSuite:
 /** specs/lexical-instances.md stage 2: keyed instances (shift-prompt-key: each instance's prompt a key in the row) */
 class TestLexicalStacked extends munit.FunSuite:
 
-  type P = okay.Pure
+  type P = Pure
 
   object StateClauses:
     /** the answer is a program at the clauses' own row */
@@ -230,21 +228,21 @@ class TestLexicalStacked extends munit.FunSuite:
   // it compiles, at another it is refused — the twin is what makes the refusal a proof rather than a typo
   test("keyed clauses are typed at the row outside their prompt: clauses over another row are refused at the installation") {
     assertEquals(compileErrors("""
-      val c = new okay.freer.Lexical.Clauses[okay.freer.State % Int, Int, Int, okay.freer.Lexical.Unstacked[okay.Pure]]:
-        def ret(a: Int) = okay.freer.pure[okay.Pure, Int](a)
-        def op[X](e: okay.freer.State[Int, X], k: X => Int ! okay.Pure) = e match
+      val c = new okay.freer.Lexical.Clauses[okay.freer.State % Int, Int, Int, okay.freer.Lexical.Unstacked[Pure]]:
+        def ret(a: Int) = okay.freer.pure[Pure, Int](a)
+        def op[X](e: okay.freer.State[Int, X], k: X => Int ! Pure) = e match
           case okay.freer.State.Get() => k(0)
-          case _ => okay.freer.pure[okay.Pure, Int](0)
-      okay.freer.Lexical.Stacked.deep[okay.freer.State % Int, Int, Int, okay.Pure](c) { b =>
+          case _ => okay.freer.pure[Pure, Int](0)
+      okay.freer.Lexical.Stacked.deep[okay.freer.State % Int, Int, Int, Pure](c) { b =>
         b.perform(okay.freer.State.Get[Int, Int]())
       }"""), "")
     val e = compileErrors("""
-      val c = new okay.freer.Lexical.Clauses[okay.freer.State % Int, Int, Int, okay.freer.Lexical.Unstacked[okay.freer.Reader % Int + okay.Pure]]:
-        def ret(a: Int) = okay.freer.pure[okay.freer.Reader % Int + okay.Pure, Int](a)
-        def op[X](e: okay.freer.State[Int, X], k: X => Int ! okay.freer.Reader % Int + okay.Pure) = e match
+      val c = new okay.freer.Lexical.Clauses[okay.freer.State % Int, Int, Int, okay.freer.Lexical.Unstacked[okay.freer.Reader % Int + Pure]]:
+        def ret(a: Int) = okay.freer.pure[okay.freer.Reader % Int + Pure, Int](a)
+        def op[X](e: okay.freer.State[Int, X], k: X => Int ! okay.freer.Reader % Int + Pure) = e match
           case okay.freer.State.Get() => k(0)
-          case _ => okay.freer.pure[okay.freer.Reader % Int + okay.Pure, Int](0)
-      okay.freer.Lexical.Stacked.deep[okay.freer.State % Int, Int, Int, okay.Pure](c) { b =>
+          case _ => okay.freer.pure[okay.freer.Reader % Int + Pure, Int](0)
+      okay.freer.Lexical.Stacked.deep[okay.freer.State % Int, Int, Int, Pure](c) { b =>
         b.perform(okay.freer.State.Get[Int, Int]())
       }""")
     assert(e.contains("Required:"), s"compiled, or not a type error: $e")
@@ -252,10 +250,10 @@ class TestLexicalStacked extends munit.FunSuite:
 
   test("a keyed instance used AFTER its installation returned does not compile where it is run") {
     val e = compileErrors("""
-      var leaked: okay.freer.Lexical.Stacked.Tail[okay.freer.State % Int, Int, Int, okay.Pure] | Null = null
-      okay.freer.!.run(okay.freer.Lexical.Stacked.tail[okay.freer.State % Int, Int, Int, okay.Pure](0)(null) { a =>
+      var leaked: okay.freer.Lexical.Stacked.Tail[okay.freer.State % Int, Int, Int, Pure] | Null = null
+      okay.freer.!.run(okay.freer.Lexical.Stacked.tail[okay.freer.State % Int, Int, Int, Pure](0)(null) { a =>
         leaked = a
-        okay.freer.pure[okay.freer.Shift % a.p.type + okay.Pure, Int](1)
+        okay.freer.pure[okay.freer.Shift % a.p.type + Pure, Int](1)
       }.flatMap { _ =>
         val l = leaked.nn
         l.perform(okay.freer.State.Get[Int, Int]()).map(v => (v, v))

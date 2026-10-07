@@ -1,6 +1,8 @@
 package okay.llm
 
-import okay.{%, +, Async, Web}
+import okay.{Async, Web}
+
+import okay.freer.{%, +}
 import okay.freer.{!, Writer, effect}
 import scala.scalajs.js
 

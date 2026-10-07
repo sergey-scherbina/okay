@@ -1,7 +1,8 @@
 package okay.ts
 
 import scala.scalajs.js
-import okay.{%, Async, given}
+import okay.{Async, given}
+import okay.freer.{%}
 import okay.freer.{!, Choose, Reader, effect, runChoice, given}
 import okay.codec.Schema
 

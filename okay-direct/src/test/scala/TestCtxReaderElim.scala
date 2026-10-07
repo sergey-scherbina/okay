@@ -30,9 +30,9 @@ class TestCtxReaderElim extends munit.FunSuite {
   }
 
   test("the same program, both spellings, the same answers") {
-    val (ws1, a1) = !.run(Writer.run[String, Int, okay.Pure](
+    val (ws1, a1) = !.run(Writer.run[String, Int, okay.freer.Pure](
       Reader.run[Int, Int, W](41)(viaReader)))
-    val (ws2, a2) = !.run(Writer.run[String, Int, okay.Pure](
+    val (ws2, a2) = !.run(Writer.run[String, Int, okay.freer.Pure](
       provide(41)(viaCtx)))
     assertEquals((ws1, a1), (Seq("env=41"), 42))
     assertEquals((ws2, a2), (ws1, a1))
@@ -40,7 +40,7 @@ class TestCtxReaderElim extends munit.FunSuite {
 
   test("nearest-wins overriding reaches through the effectful block") {
     def prog: Int ?=> Int ! W = viaCtx
-    val (ws, a) = !.run(Writer.run[String, Int, okay.Pure](
+    val (ws, a) = !.run(Writer.run[String, Int, okay.freer.Pure](
       provide(1)(provide(100)(prog))))
     assertEquals(ws, Seq("env=100"))
     assertEquals(a, 101)
@@ -49,10 +49,10 @@ class TestCtxReaderElim extends munit.FunSuite {
   test("the one-line bridges — from the library now (ctx-reader-bridge, 2026-09-23), the same two lines") {
     // ctx -> Reader program: a FUNCTION, never a Conversion (E10)
     val fromCtx: Int ! Reader % Int = Reader.lift((e: Int) ?=> e * 2)
-    assertEquals(!.run(Reader.run[Int, Int, okay.Pure](21)(fromCtx)), 42)
+    assertEquals(!.run(Reader.run[Int, Int, okay.freer.Pure](21)(fromCtx)), 42)
 
     val back: Int ?=> Int ! W = Reader.unlift[Int, Int, W](viaReader)
-    val (ws, a) = !.run(Writer.run[String, Int, okay.Pure](provide(7)(back)))
+    val (ws, a) = !.run(Writer.run[String, Int, okay.freer.Pure](provide(7)(back)))
     assertEquals((ws, a), (Seq("env=7"), 8))
   }
 }

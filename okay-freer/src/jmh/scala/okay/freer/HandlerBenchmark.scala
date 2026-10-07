@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.*
+import okay.{Effect}
 import okay.given
 
 import org.openjdk.jmh.annotations.{State as JmhState, *}
@@ -79,7 +79,7 @@ class HandlerBenchmark {
   @nowarn("msg=cannot be checked at runtime")
   @Benchmark
   def handleForwardCps(): Int =
-    cps.given_Effects_Free.handle[Ask, Produce](prog)(pure(_))([X] => a => Cont.Pure(a.a)).runWith
+    cps.given_Classic_Free.handle[Ask, Produce](prog)(pure(_))([X] => a => Cont.Pure(a.a)).runWith
 
   /**
    * `handleForward` builds its 10 000-node tree on every invocation,
@@ -100,7 +100,7 @@ class HandlerBenchmark {
   @nowarn("msg=cannot be checked at runtime")
   @Benchmark
   def handlePrebuiltCps(): Int =
-    cps.given_Effects_Free.handle[Ask, Produce](built)(pure(_))([X] => a => Cont.Pure(a.a)).runWith
+    cps.given_Classic_Free.handle[Ask, Produce](built)(pure(_))([X] => a => Cont.Pure(a.a)).runWith
 
   /**
    * THE SHAPE `delay-node` IS ABOUT (specs/core-cleanup.md Decisions):
@@ -123,14 +123,14 @@ class HandlerBenchmark {
   @nowarn("msg=cannot be checked at runtime")
   @Benchmark
   def handleCaptureCps(): Int =
-    cps.given_Effects_Free.handle[Ask, Produce](built)(pure(_))([X] => a => Cont.shift(k => k(a.a))).runWith
+    cps.given_Classic_Free.handle[Ask, Produce](built)(pure(_))([X] => a => Cont.shift(k => k(a.a))).runWith
 
   /** the other road to the same node: `!.tailcall` between two
    * mutually recursive functions, N deep — every hop WAS a
    * `Defer(thunk, pure)` before delay-node, and is one `Delay` now */
-  def isEven(n: Int): Boolean ! okay.Pure =
+  def isEven(n: Int): Boolean ! Pure =
     if n == 0 then pure(true) else !.tailcall(isOdd(n - 1))
-  def isOdd(n: Int): Boolean ! okay.Pure =
+  def isOdd(n: Int): Boolean ! Pure =
     if n == 0 then pure(false) else !.tailcall(isEven(n - 1))
 
   @Benchmark

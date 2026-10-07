@@ -1,6 +1,7 @@
 package okay.agent
 
-import okay.{+, Async, Answers}
+import okay.{Async, Answers}
+import okay.freer.{+}
 import okay.freer.{!}
 import okay.given
 import okay.freer.given
@@ -98,7 +99,7 @@ class TestGroundedTranslating extends munit.FunSuite {
       budget = 4000, share = 0.6, k = 2, onRecall = v => ntSeen = v)(Compact.chars)
 
     given Answers[Context] = handler
-    given Answers[Context + Async] = okay.Answers.union[Context, Async]
+    given Answers[Context + Async] = okay.freer.Row.union[Context, Async]
     val viaHandler = ask.runWith
 
     Async.runAsync(okay.freer.!.translate(ask)(nt)).map { viaTranslate =>

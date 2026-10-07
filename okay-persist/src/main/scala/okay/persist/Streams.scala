@@ -1,6 +1,8 @@
 package okay.persist
 
-import okay.{+, %, Async, ChunkBuf, Chunks, Source, Timer}
+import okay.{Async, ChunkBuf, Chunks, Source, Timer}
+
+import okay.freer.{+, %}
 import okay.freer.{!, Chunk, Writer, effect}
 /**
  * Streaming reads over a topic (specs/persist.md, Interface): a

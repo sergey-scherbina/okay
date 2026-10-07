@@ -372,7 +372,7 @@ import okay.Direct.*
  * flattened — a plain `for` passes through with one extra bind.
  */
 @scala.annotation.publicInBinary private[okay] object DirectResetMacros:
-  import okay.{+}
+  import okay.freer.{+}
   import okay.freer.{!}
   def blockImpl[R: Type, K[+_] : Type, F[+_] : Type](block: Expr[DirectCtx[[X] =>> X ! K + F] ?=> Any],
                                                      d: Expr[Deferral], b: Expr[Binds])

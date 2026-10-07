@@ -6,7 +6,7 @@ import okay.arrow.Rows
 import okay.cluster.{Flow, Flows}
 import okay.given
 import okay.freer.given
-import okay.{%}
+import okay.freer.{%}
 import okay.freer.{!, Choose, Reader, effect, runChoice}
 /**
  * THE CONFORMANCE SUITE (specs/foreign-facade.md): one body per

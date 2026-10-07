@@ -3,7 +3,7 @@ package okay.cluster.foreign
 import okay.codec.Schema
 import okay.arrow.{Rows, Table}
 import okay.cluster.Flow
-import okay.{+}
+import okay.freer.{+}
 import okay.freer.{!}
 import okay.freer.given
 

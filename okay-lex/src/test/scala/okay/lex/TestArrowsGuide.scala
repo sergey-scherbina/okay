@@ -1,9 +1,11 @@
 package okay.lex
 
-import okay.*
+
+import okay.{`>=>`, Lens, Traversal, foldMap, toVector, traverseOf}
 import okay.freer.*
 
 import okay.given
+
 import okay.Optic.arrows.*
 
 /**

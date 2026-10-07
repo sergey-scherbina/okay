@@ -2,7 +2,7 @@ package okay.cats
 
 import _root_.cats.Eq
 import _root_.cats.laws.discipline.{MonadErrorTests, MonadTests}
-import okay.{%, +, Pure}
+import okay.freer.{%, +, Pure}
 import okay.freer.{!, Throws, effect, pure, runEither}
 import okay.given
 import okay.freer.given

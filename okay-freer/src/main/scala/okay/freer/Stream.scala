@@ -1,7 +1,6 @@
 package okay.freer
 
-import okay.*
-import okay.given
+import okay.{Answers, MonadPlus, TypeableK}
 
 /**
  * A stream is codata: defined not by its constructors but by the one

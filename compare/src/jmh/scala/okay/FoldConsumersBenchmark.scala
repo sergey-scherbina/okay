@@ -51,10 +51,10 @@ class FoldConsumersBenchmark {
   // ---- Writer.fold
 
   @Benchmark
-  def writerGeneric: Long = !.run(Writer.fold[Long, Long, Unit, okay.Pure](teller)(using summon)(using summon, generic))._1
+  def writerGeneric: Long = !.run(Writer.fold[Long, Long, Unit, okay.freer.Pure](teller)(using summon)(using summon, generic))._1
 
   @Benchmark
-  def writerSpecialized: Long = !.run(Writer.fold[Long, Long, Unit, okay.Pure](teller)(using summon)(using summon, specialized))._1
+  def writerSpecialized: Long = !.run(Writer.fold[Long, Long, Unit, okay.freer.Pure](teller)(using summon)(using summon, specialized))._1
 
   // ---- Stream.fold, through a plain (un-chunked) Producer
 

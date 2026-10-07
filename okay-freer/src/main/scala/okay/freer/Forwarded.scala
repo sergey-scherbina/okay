@@ -1,6 +1,5 @@
 package okay.freer
 
-import okay.*
 
 /**
  * THE MATCHED NODE, FORWARDED (relay-forward-same-inject, 2026-09-27).

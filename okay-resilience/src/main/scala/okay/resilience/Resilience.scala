@@ -1,6 +1,8 @@
 package okay.resilience
 
-import okay.{Async, +, TypeableK}
+import okay.{Async, TypeableK}
+
+import okay.freer.{+}
 import okay.freer.{!}
 import okay.freer.!.Inject
 import okay.freer.Free.{Bind, Return}
@@ -99,7 +101,7 @@ object Attempt:
   /** one operation of the row: ours to guard, or someone else's to relay */
   private def split[X, A, F[+_]](e: Async[X] | F[X], k: X => A ! F + Async)
                                 (using TypeableK[Async]): Either[Throwable, A] ! F + Async =
-    okay.<|>[Async, F][X](e) match
+    okay.freer.<|>[Async, F][X](e) match
       case Left(a) => stepIn(a, k)
       case Right(f) =>
         okay.freer.effect[F + Async, X](f).flatMap(x => continueIn(k, x))

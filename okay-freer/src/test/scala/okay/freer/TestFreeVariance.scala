@@ -1,7 +1,5 @@
 package okay.freer
 
-import okay.*
-import okay.given
 
 
 /**
@@ -20,7 +18,7 @@ class TestFreeVariance extends munit.FunSuite:
     val q: AnyVal ! F = p
     val r: Any ! F = q
     assert(r eq p, "widening the answer built a node")
-    assertEquals(!.run(Writer.run[String, Any, okay.Pure](r)), (Seq("x"), 1))
+    assertEquals(!.run(Writer.run[String, Any, Pure](r)), (Seq("x"), 1))
   }
 
   test("a handler over a covariant GADT answers its program with no upcast") {
@@ -31,7 +29,7 @@ class TestFreeVariance extends munit.FunSuite:
       case Once.Force(_) => pure[F, Option[Nothing]](None)
       case Once.Store(_, v) => pure[F, X](v)
     val p: Option[Int] ! F = answer(Once.Force(new Once.Handle[Int]))
-    assertEquals(!.run(Writer.run[String, Option[Int], okay.Pure](p)), (Seq(), None))
+    assertEquals(!.run(Writer.run[String, Option[Int], Pure](p)), (Seq(), None))
   }
 
   test("the row is still invariant, on purpose") {

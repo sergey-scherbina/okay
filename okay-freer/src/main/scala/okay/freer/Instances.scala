@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.*
+import okay.{Answers, Effect, TypeableK}
 
 import okay.freer.Row.plus
 
@@ -138,7 +138,7 @@ object Instances:
    */
   def exhausted[F[+_], A, G[+_]](using TypeableK[Of[F]])
                                 (p: A ! Of[F] + G): A ! G =
-    !.interpret[A, Of[F], okay.Pure, G](p)([X] => (e: Instances[F, X]) => throw Survived(e.at))
+    !.interpret[A, Of[F], Pure, G](p)([X] => (e: Instances[F, X]) => throw Survived(e.at))
 
   /** an instance's operation reached `exhausted`: nothing answered it.
    * Either `only` never stripped that handle, or a `Lexical.walk`

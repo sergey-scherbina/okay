@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.*
+import okay.{Effect, MonadPlus, TypeableK, typeableK}
 
 
 /**
@@ -111,7 +111,7 @@ object Choose:
 
 /** all the results of all the branches, forwarding the effects F */
 def runChoice[A, F[+_]](a: A ! Choose + F): Seq[A] ! F =
-  val E = Effects[Free]
+  val E = Classic[Free]
   E.handle[Choose, F](a)(x => pure(Seq(x))):
     [X] => c => E.control.shift: k =>
       val all = okay.freer.!.foldM(c.as)(Seq.empty[A])((s, x) => k(x).map(s ++ _))
@@ -144,7 +144,7 @@ def runChoice[A, F[+_]](a: A ! Choose + F): Seq[A] ! F =
  * same handler is the point.
  */
 def runSeq[S[+X] <: Seq[X], A, F[+_]](p: A ! S + F)(using TypeableK[S]): Seq[A] ! F =
-  val E = Effects[Free]
+  val E = Classic[Free]
   E.handle[S, F](p)(x => pure(Seq(x))):
     [X] => (s: S[X]) => E.control.shift: k =>
       okay.freer.!.foldM(s)(Seq.empty[A])((prev, x) => k(x).map(prev ++ _))

@@ -40,7 +40,7 @@
  *  WHAT IT COSTS AT THE CALL SITE. `reset { p => ... }` becomes
  *  `reset { s => import s.given; ... }` — one line — and the prompt is
  *  `s.p`. The type arguments on `shift` are NOT a new cost: TestDelim
- *  already writes `shift[Int, Int, okay.Pure](p)` at every call today.
+ *  already writes `shift[Int, Int, okay.freer.Pure](p)` at every call today.
  *
  *  The tree here is a stub on purpose. `Free` is not the question, and
  *  nothing in this file is proposed as the implementation — the facade

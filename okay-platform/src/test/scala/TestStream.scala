@@ -43,7 +43,7 @@ class TestStream extends munit.FunSuite {
     given Fold[Int, Int] = new:
       def init: Int = 0
       def add(s: Int, a: Int): Int = s + a
-    assertEquals(Stream.fold[Producer, okay.Pure, Int, Int](p12), 3)
+    assertEquals(Stream.fold[Producer, okay.freer.Pure, Int, Int](p12), 3)
     assertEquals(nats[Int, Producer].take(5).foldLeft(0)(_ + _), 10)
   }
 
@@ -58,8 +58,8 @@ class TestStream extends munit.FunSuite {
     val seen = collection.mutable.ListBuffer.empty[Int]
     p12.foreach(seen += _)
     assertEquals(seen.toList, List(1, 2))
-    assertEquals(Stream.fold[[W] =>> Unit ! Writer % W, okay.Pure, Int, Int](feed)(using Fold.sum[Int]), 6)
-    assertEquals(Stream.fold[[W] =>> Unit ! Writer % W, okay.Pure, Int, Long](feed)(using Fold.count[Int]), 3L)
+    assertEquals(Stream.fold[[W] =>> Unit ! Writer % W, okay.freer.Pure, Int, Int](feed)(using Fold.sum[Int]), 6)
+    assertEquals(Stream.fold[[W] =>> Unit ! Writer % W, okay.freer.Pure, Int, Long](feed)(using Fold.count[Int]), 3L)
     assertEquals(Stream.fold(okay.freer.pure[Produce, Int](0): Producer[Int])(using Fold.count[Int]), 0L)
   }
 
@@ -74,7 +74,7 @@ class TestStream extends munit.FunSuite {
     val MP = summon[MonadPlus[LazyList]]
     assertEquals(MP.empty[Int].append(LazyList(1)).append(LazyList(2)).toList, List(1, 2))
     val CP = summon[MonadPlus[[A] =>> A ! Choose]]
-    assertEquals(!.run(runChoice[Int, okay.Pure](
+    assertEquals(!.run(runChoice[Int, okay.freer.Pure](
       CP.append(choose(1, 2))(CP.empty).append(choose(3)))), Seq(1, 2, 3))
   }
 
@@ -82,9 +82,9 @@ class TestStream extends munit.FunSuite {
     assertEquals(1 |+| 2, 3)
     assertEquals("a" |+| "b", "ab")
     assertEquals((LazyList(1) |+| LazyList(2)).toList, List(1, 2))
-    assertEquals(Stream.fold[Producer, okay.Pure, Int, Int](p12), 3)          // Fold from Monoid[Int]
+    assertEquals(Stream.fold[Producer, okay.freer.Pure, Int, Int](p12), 3)          // Fold from Monoid[Int]
     val words = produce("ab").flatMap(_ => produce("c"))
-    assertEquals(Stream.fold[Producer, okay.Pure, String, String](words), "abc")
+    assertEquals(Stream.fold[Producer, okay.freer.Pure, String, String](words), "abc")
   }
 
   test("instances: Fold primitives and Foldable[Producer]") {

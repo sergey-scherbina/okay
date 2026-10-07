@@ -1,8 +1,7 @@
 package okay.mcp
 import okay.freer.*
 
-import okay.*
-
+import okay.{Answers, Async, Channel, Source}
 import okay.given
 import okay.freer.given
 import okay.agent.*
@@ -43,9 +42,9 @@ class TestAgentOverMcp extends munit.FunSuite {
     given Answers[Model] = script
     given Answers[Tool] = tool
     given Answers[Context] = Handlers.context(Compact.all)._2
-    given rowCA: Answers[Context + Async] = Answers.union[Context, Async]
-    given rowTCA: Answers[Tool + (Context + Async)] = Answers.union[Tool, Context + Async]
-    given rowAll: Answers[Agent] = Answers.union[Model, Tool + (Context + Async)]
+    given rowCA: Answers[Context + Async] = Row.union[Context, Async]
+    given rowTCA: Answers[Tool + (Context + Async)] = Row.union[Tool, Context + Async]
+    given rowAll: Answers[Agent] = Row.union[Model, Tool + (Context + Async)]
     prog.runWith
 
   /** an MCP server of the same tools, on a fiber, and a session to it */
@@ -71,9 +70,9 @@ class TestAgentOverMcp extends munit.FunSuite {
     given Answers[Model] = script
     given Answers[Tool] = Handlers.recording(mcpTools)(seen)
     given Answers[Context] = ctx
-    given rowCA: Answers[Context + Async] = Answers.union[Context, Async]
-    given rowTCA: Answers[Tool + (Context + Async)] = Answers.union[Tool, Context + Async]
-    given rowAll: Answers[Agent] = Answers.union[Model, Tool + (Context + Async)]
+    given rowCA: Answers[Context + Async] = Row.union[Context, Async]
+    given rowTCA: Answers[Tool + (Context + Async)] = Row.union[Tool, Context + Async]
+    given rowAll: Answers[Agent] = Row.union[Model, Tool + (Context + Async)]
     val _ = program.runWith
 
     assertEquals(seen.map(_.name).toList, List("search"))

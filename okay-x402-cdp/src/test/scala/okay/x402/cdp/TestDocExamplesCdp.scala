@@ -1,6 +1,7 @@
 package okay.x402.cdp
 
-import okay.*
+
+import okay.{Async}
 import okay.freer.*
 
 import okay.chain.Network

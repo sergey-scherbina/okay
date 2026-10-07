@@ -76,7 +76,6 @@ class TestPrototype extends munit.FunSuite {
 
   test("fresh where a module installed the singleton says which road to take") {
     val e = compileErrors("""
-      import okay.*
       val db = okay.freer.module[String]("x")(_ => ())
       db { okay.freer.fresh[String] }
     """)

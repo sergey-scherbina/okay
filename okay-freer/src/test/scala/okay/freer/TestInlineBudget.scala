@@ -10,7 +10,7 @@ import java.io.DataInputStream
  * HotSpot pastes a hot callee into its caller only while the callee's
  * bytecode is at most `FreqInlineSize` bytes: 325 on this JDK (`java
  * -XX:+PrintFlagsFinal -version | grep FreqInlineSize`). Four measured
- * cases (docs/benchmarks.md, and the comment on `Effects[Free].handle` in Effects.scala) show that a
+ * cases (docs/benchmarks.md, and the comment on `Classic[Free].handle` in Effects.scala) show that a
  * method crossing that line in EITHER direction re-decides every caller:
  * `relay` lost 10-12% at 329 bytes, and `resume` shrinking to 323 made
  * `relay` -6% and `handle` +15% until handle's loop was cut to 318.
@@ -95,7 +95,7 @@ class TestInlineBudget extends munit.FunSuite {
   def within(what: String, bytes: Int, remeasure: String): Unit =
     assert(bytes <= FreqInlineSize,
       s"$what is $bytes bytes, over FreqInlineSize ($FreqInlineSize): HotSpot will stop inlining it " +
-      s"into its callers. Re-measure $remeasure before landing (Effects.scala, the comment on Effects[Free].handle).")
+      s"into its callers. Re-measure $remeasure before landing (Effects.scala, the comment on Classic[Free].handle).")
 
   test("Freer.resume fits FreqInlineSize: every interpreter loop inlines it") {
     // `Freer` since freer-base-step-extractor: one rotation for the effect
@@ -113,7 +113,7 @@ class TestInlineBudget extends munit.FunSuite {
   test("handle's loop fits: it had to be cut to 318 once resume became inlinable") {
     // `.*loop`: since handle-frames the loop is reached from the run object's `apply` too, and a local def
     // reached from an inner class is lifted under a mangled public name (`okay$...$$$_$loop$2`)
-    within("Effects[Free].handle's loop", sizeOf("FreeEffectsAt", ".*loop\\$\\d+"),
+    within("Classic[Free].handle's loop", sizeOf("FreeEffectsAt", ".*loop\\$\\d+"),
       "handlePrebuilt and handleCapture (rows hff-*, de-*)")
   }
 

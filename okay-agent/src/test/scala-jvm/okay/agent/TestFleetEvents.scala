@@ -1,7 +1,8 @@
 package okay.agent
+
+import okay.{Async, Source}
 import okay.freer.*
 
-import okay.*
 
 import okay.given
 import okay.freer.given

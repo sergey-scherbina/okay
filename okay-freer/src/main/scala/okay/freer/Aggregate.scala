@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.*
+import okay.{Answers}
 
 import scala.compiletime.summonFrom
 import scala.annotation.tailrec

@@ -1,6 +1,7 @@
 package okay.ui
 
-import okay.*
+
+import okay.{Async, Scheduler, Source, Stage}
 import okay.freer.*
 
 import Protocol.Msg

@@ -1,6 +1,6 @@
 package okay.rag
 
-import okay.{+}
+import okay.freer.{+}
 import okay.freer.{!, Aggregator, pure}
 import okay.parse.Parse
 

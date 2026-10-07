@@ -1,7 +1,6 @@
 package okay.freer
 
-import okay.*
-import okay.given
+import okay.{Monad}
 
 import okay.freer.Cont.Monadic.*
 
@@ -131,9 +130,9 @@ class TestMonadic extends munit.FunSuite {
 
   test("a trampolined monad reflects stack-safely: 100_000 binds") {
     val n = 100_000
-    val prog: Int ! okay.Pure = reify:
-      (1 to n).foldLeft(Cont.Pure(0): Cont[Int, Int ! okay.Pure, Int ! okay.Pure]) {
-        (acc, _) => acc.flatMap(x => reflect(Free.pure[okay.Pure, Int](x + 1)))
+    val prog: Int ! Pure = reify:
+      (1 to n).foldLeft(Cont.Pure(0): Cont[Int, Int ! Pure, Int ! Pure]) {
+        (acc, _) => acc.flatMap(x => reflect(Free.pure[Pure, Int](x + 1)))
       }
     assertEquals(!.run(prog), n)
   }
@@ -156,7 +155,7 @@ class TestMonadic extends munit.FunSuite {
         x <- Free.pure[W, Int](21).reflect
         _ <- Writer.tell("b").reflect
       yield x * 2
-    val (ws, a) = !.run(Writer.run[String, Int, okay.Pure](prog))
+    val (ws, a) = !.run(Writer.run[String, Int, Pure](prog))
     assertEquals(ws, Seq("a", "b"))
     assertEquals(a, 42)
   }

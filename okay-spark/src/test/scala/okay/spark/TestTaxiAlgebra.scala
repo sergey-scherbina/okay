@@ -3,7 +3,6 @@ package okay.spark
 import okay.{Bulk, Chunks, localBulk}
 import okay.freer.{Aggregator, Monoid, sliding}
 import okay.Chunks.elements
-import okay.given // Group[N] for every Numeric — the window's evidence
 import okay.freer.given
 import okay.codec.Schema
 import okay.parquet.ParquetFile

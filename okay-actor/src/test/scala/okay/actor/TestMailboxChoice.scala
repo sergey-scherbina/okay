@@ -1,9 +1,10 @@
 package okay.actor
 
-import okay.*
+import okay.{sequence, async, Async, Channel, Queues}
 import okay.freer.*
 
 import okay.given
+
 
 /**
  * THE MAILBOX CHOICE `ActorRef`'s header offers, COMPILED AND RUN.

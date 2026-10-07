@@ -57,7 +57,7 @@ object Traced {
           t.root(name(req), h("traceparent"), h("tracestate")) {
             t.context.foreach(here.set)
             try
-              val res = okay.freer.!.run(Async.run[Response, okay.Pure](r(using t)(req)))
+              val res = okay.freer.!.run(Async.run[Response, okay.freer.Pure](r(using t)(req)))
               t.annotate(Attr("http.status", res.status.toString))
               if res.status >= 500 then t.fail()
               res

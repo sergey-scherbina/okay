@@ -1,6 +1,8 @@
 package okay.kyo
 
-import okay.{Async, Pure, async}
+import okay.{Async, async}
+
+import okay.freer.{Pure}
 import okay.freer.{!}
 import okay.given
 import okay.freer.given
@@ -43,8 +45,7 @@ object KyoInterop {
   // ContextEffect (reader-family): outbound walks, inbound asks once
   // and runs theirs with the constant environment — semantically exact.
 
-  import okay.{%}
-
+  import okay.freer.{%}
   import okay.freer.{Reader, Writer, Throws, Choose, effect}
   import okay.freer.!.*
   import _root_.kyo.{Tag, Frame, Env, Emit, Choice, Abort}

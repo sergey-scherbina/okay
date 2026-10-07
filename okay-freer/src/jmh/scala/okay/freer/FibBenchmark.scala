@@ -1,6 +1,5 @@
 package okay.freer
 
-import okay.*
 import okay.given
 
 import org.openjdk.jmh.annotations._

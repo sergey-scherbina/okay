@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.*
+import okay.{Answers, TypeableK}
 
 /**
  * Row membership as a witness, and the one cast it licenses.
@@ -38,6 +38,52 @@ import okay.*
  * specs/writer-covariance.md, rowlift.
  */
 object Row:
+
+  // THE HANDLER OF A UNION ROW FROM ITS PARTS (`Row.union` and `.flat` in the core until stage 47)
+  /**
+   * Handlers compose along the union: split the operation by the F
+   * test and delegate — one handler per effect, one row. Spelled as
+   * an EXPLICIT combinator, not a given, on purpose: a given whose
+   * subject is a union type lambda enters implicit scope for every
+   * Answers query and crashes the 3.7.1 type comparer ("Failure to
+   * join alternatives F and G") while it is being compared against
+   * unrelated handlers. Called by name, the same code is fine — the
+   * types at a call site are concrete.
+   */
+  def union[F[+_], G[+_]](using T: TypeableK[F], hf: Answers[F], hg: Answers[G])
+                         (using Distinct[F + G])
+  : Answers[F + G] = new Answers[F + G]:
+    def handle[A](a: F[A] | G[A]): A =
+      // the split is the kernel's (`split`), the one place the
+      // union's excluded middle is claimed — and with no Either on
+      // the way (split-without-either)
+      split[F, G](a)(f => hf.handle(f))(g => hg.handle(g))
+
+  /**
+   * The same row handler as `union`, assembled by a macro into ONE
+   * dispatch expression. The row is read APPLIED (the `Distinct` trick:
+   * only a union's body is an `OrType`, whatever the call site's
+   * spelling), its members taken in row order, and `handle` emitted as
+   * `if T1.test(a) then h1.handle(a) else if T2.test(a) … else hk.handle(a)`
+   * — the last member by exclusion. Those are exactly the tests the
+   * nested `union` chain performs; what is gone is the k−1 handler
+   * OBJECTS between the test and the answer and their virtual `handle`
+   * calls. Measured (handler-fusion-flat, 2026-09-22, FlatDispatchBenchmark,
+   * a four-effect row, bytes identical on every lane): this macro is
+   * 1.08x over the nested chain at position 4 and at parity at
+   * position 1; the hand-written flat match that CALLS the four
+   * handlers is 1.14x, and the one that inlines their bodies 1.24x —
+   * which no macro over opaque `Answers` givens can reach. The 5%
+   * between this and the calling form is the test: `Class.isInstance`
+   * through a field against a constant-class `instanceof`
+   * (specs/handler-fusion.md, and BACKLOG typeablek-instanceof).
+   *
+   * Every member needs a `Answers` in scope and every member but the
+   * last a `TypeableK`; a missing one is a compile error naming the
+   * member. `Distinct[R]` is required as for `union`, for the same
+   * reason: a class test cannot tell two `Reader % _` apart.
+   */
+  inline def flat[R[+_]](using Distinct[R]): Answers[R] = ${ okay.freer.macros.FlatMacros.flatImpl[R] }
 
   /** F is a member of the row R. */
   opaque type In[F[+_], R[+_]] = Unit

@@ -7,7 +7,7 @@ import okay.freer.given
 import okay.http.{Http, Request, Response}
 
 class TestConditionalObjects extends okay.testkit.Munit.Diagnosed:
-  private def run[A](p: A ! Async): A = !.run(Async.run[A, okay.Pure](p))
+  private def run[A](p: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](p))
 
   test("create-only condition is signed; 412 is distinct from 409 and errors") {
     var requests = Vector.empty[Request]

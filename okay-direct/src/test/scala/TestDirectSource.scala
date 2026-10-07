@@ -14,7 +14,7 @@ import okay.Direct.*
 class TestDirectSource extends munit.FunSuite:
 
   type W = Writer % String
-  def run[A](p: A ! W): (Seq[String], A) = !.run(Writer.run[String, A, okay.Pure](p))
+  def run[A](p: A ! W): (Seq[String], A) = !.run(Writer.run[String, A, okay.freer.Pure](p))
   def say(s: String): Unit ! W = Writer.tell(s)
 
   test("Pull.loop is a program: nothing runs until it is run, then every element in order") {

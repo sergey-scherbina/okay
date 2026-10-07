@@ -1,9 +1,11 @@
 package okay.http
 
-import okay.*
+
+import okay.{Async, Source, async, Channel}
 import okay.freer.*
 
 import okay.given
+
 
 import java.net.URI
 import java.net.http.{HttpClient, HttpRequest, HttpResponse, WebSocket}

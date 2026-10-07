@@ -1,6 +1,5 @@
 package okay.http
 
-import okay.*
 import okay.freer.*
 
 import okay.codec.Schema

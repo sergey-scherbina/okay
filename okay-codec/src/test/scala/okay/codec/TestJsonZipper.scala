@@ -1,7 +1,8 @@
 package okay.codec
 
-import okay.*
 
+
+import okay.{Affine, preview, set, Zipper}
 import okay.given
 import Json.*
 

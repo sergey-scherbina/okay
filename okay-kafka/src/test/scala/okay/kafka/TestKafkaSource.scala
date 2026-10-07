@@ -2,6 +2,7 @@ package okay.kafka
 
 import okay.given
 
+
 import okay.freer.{Aggregator, given}
 import okay.cluster.{Cluster, Feeds, Flow, Flows, Job, Jobs, Scope, Wire}
 import okay.codec.Schema

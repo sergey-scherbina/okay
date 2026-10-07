@@ -1,6 +1,8 @@
 package okay.agent
 
-import okay.{+, Async, Answers}
+import okay.{Async, Answers}
+
+import okay.freer.{+, Row}
 import okay.freer.{!}
 import okay.given
 import okay.freer.given
@@ -18,9 +20,9 @@ class TestAgent extends munit.FunSuite {
     given Answers[Model] = model
     given Answers[Tool] = tool
     given Answers[Context] = ctx
-    given rowCA: Answers[Context + Async] = Answers.union[Context, Async]
-    given rowTCA: Answers[Tool + (Context + Async)] = Answers.union[Tool, Context + Async]
-    given rowAll: Answers[Agent] = Answers.union[Model, Tool + (Context + Async)]
+    given rowCA: Answers[Context + Async] = Row.union[Context, Async]
+    given rowTCA: Answers[Tool + (Context + Async)] = Row.union[Tool, Context + Async]
+    given rowAll: Answers[Agent] = Row.union[Model, Tool + (Context + Async)]
     prog.runWith
 
   case class SearchArgs(query: String, limit: Option[Int])

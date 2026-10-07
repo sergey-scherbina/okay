@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.*
+import okay.{Control}
 
 /**
  * specs/cont-stack.md plan stage B, Layer 1 A: a shift whose body only

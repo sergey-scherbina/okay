@@ -1,7 +1,6 @@
 package okay.live
 
 import java.nio.file.{Files, Path}
-import okay.*
 import okay.freer.*
 import okay.given
 import okay.freer.given

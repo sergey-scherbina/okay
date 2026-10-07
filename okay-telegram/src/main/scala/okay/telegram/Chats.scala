@@ -1,7 +1,8 @@
 package okay.telegram
+
+import okay.{Async, Scheduler, Timer, async}
 import okay.freer.*
 
-import okay.*
 
 import okay.ui.{Host, Telegram}
 import okay.ui.Telegram.{Act, Message}

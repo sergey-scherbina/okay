@@ -21,14 +21,14 @@ import scala.language.implicitConversions
 class TestDirectDeep extends munit.FunSuite {
 
   // ---- zero annotation: `import Direct.given` colours the self-call, the macro defers it
-  def fib(n: Int): Long ! okay.Pure = direct:
+  def fib(n: Int): Long ! okay.freer.Pure = direct:
     if n < 2 then n.toLong else fib(n - 1) + fib(n - 2)
 
   /** `1 + sum(n - 1)`: the shape @tailrec cannot take */
-  def sum(n: Int): Long ! okay.Pure = direct:
+  def sum(n: Int): Long ! okay.freer.Pure = direct:
     if n == 0 then 0L else 1L + sum(n - 1)
 
-  def count(xs: List[Int], acc: Long): Long ! okay.Pure = direct:
+  def count(xs: List[Int], acc: Long): Long ! okay.freer.Pure = direct:
     xs match
       case Nil => acc
       case h :: t => count(t, acc + h)
@@ -53,13 +53,13 @@ class TestDirectDeep extends munit.FunSuite {
   }
 
   test("a real row: tells interleave with the recursion, in order") {
-    val (ws, a) = !.run(Writer.run[String, Long, okay.Pure](told(3)))
+    val (ws, a) = !.run(Writer.run[String, Long, okay.freer.Pure](told(3)))
     assertEquals(a, 3L)
     assertEquals(ws, Seq("at 3", "at 2", "at 1"))
   }
 
   // ---- the marked spelling, and what the marks still do
-  def fibM(n: Int): Long ! okay.Pure = direct:
+  def fibM(n: Int): Long ! okay.freer.Pure = direct:
     if n < 2 then n.toLong else fibM(n - 1).reflect + fibM(n - 2).reflect
 
   // mutual recursion needs the tailcall — the deferral rule inside a
@@ -68,15 +68,15 @@ class TestDirectDeep extends munit.FunSuite {
   // like any other, and `Free.directColor` colours it (mutual-mark-free,
   // 2026-09-16; a report that it did not was a probe compiled against
   // classes older than `directColor`).
-  def isEven(n: Int): Boolean ! okay.Pure = direct:
+  def isEven(n: Int): Boolean ! okay.freer.Pure = direct:
     if n == 0 then true else !.tailcall(isOdd(n - 1))
-  def isOdd(n: Int): Boolean ! okay.Pure = direct:
+  def isOdd(n: Int): Boolean ! okay.freer.Pure = direct:
     if n == 0 then false else !.tailcall(isEven(n - 1))
 
   /** the same pair with the mark written out: both spellings must work */
-  def isEvenM(n: Int): Boolean ! okay.Pure = direct:
+  def isEvenM(n: Int): Boolean ! okay.freer.Pure = direct:
     if n == 0 then true else !.tailcall(isOddM(n - 1)).reflect
-  def isOddM(n: Int): Boolean ! okay.Pure = direct:
+  def isOddM(n: Int): Boolean ! okay.freer.Pure = direct:
     if n == 0 then false else !.tailcall(isEvenM(n - 1)).reflect
 
   test("a marked self-call is deferred the same way") {
@@ -89,9 +89,9 @@ class TestDirectDeep extends munit.FunSuite {
   }
 
   // ---- mutual recursion with NO word at all (direct-tail-defer)
-  def evenNW(n: Int): Boolean ! okay.Pure = direct:
+  def evenNW(n: Int): Boolean ! okay.freer.Pure = direct:
     if n == 0 then true else oddNW(n - 1)
-  def oddNW(n: Int): Boolean ! okay.Pure = direct:
+  def oddNW(n: Int): Boolean ! okay.freer.Pure = direct:
     if n == 0 then false else evenNW(n - 1)
 
   test("a tail-position call to ANOTHER def is deferred too") {
@@ -105,9 +105,9 @@ class TestDirectDeep extends munit.FunSuite {
   }
 
   // ---- a NON-tail mutual call: deferred by default (direct-defer-default)
-  def nonTailEven(n: Int): Long ! okay.Pure = direct:
+  def nonTailEven(n: Int): Long ! okay.freer.Pure = direct:
     if n == 0 then 0L else 1L + nonTailOdd(n - 1)
-  def nonTailOdd(n: Int): Long ! okay.Pure = direct:
+  def nonTailOdd(n: Int): Long ! okay.freer.Pure = direct:
     if n == 0 then 0L else 1L + nonTailEven(n - 1)
 
   test("a NON-tail mutual call is deferred too, by default") {
@@ -118,11 +118,11 @@ class TestDirectDeep extends munit.FunSuite {
    * call where it stands, and keeps the two shapes measured free */
   object Opted:
     import okay.Direct.eagerCalls.given    // this scope builds calls where they stand
-    def fib(n: Int): Long ! okay.Pure = direct:
+    def fib(n: Int): Long ! okay.freer.Pure = direct:
       if n < 2 then n.toLong else fib(n - 1) + fib(n - 2)      // self, non-tail: still deferred
-    def even(n: Int): Boolean ! okay.Pure = direct:
+    def even(n: Int): Boolean ! okay.freer.Pure = direct:
       if n == 0 then true else odd(n - 1)                      // other def, tail: still deferred
-    def odd(n: Int): Boolean ! okay.Pure = direct:
+    def odd(n: Int): Boolean ! okay.freer.Pure = direct:
       if n == 0 then false else even(n - 1)
 
   test("the opt-out keeps the free rules: the enclosing def anywhere, another def in tail position") {
@@ -182,11 +182,11 @@ class TestDirectDeep extends munit.FunSuite {
   }
 
   test("a self-call under a lambda is a value, untouched") {
-    def twice(n: Int): List[Long] ! okay.Pure = direct:
+    def twice(n: Int): List[Long] ! okay.freer.Pure = direct:
       if n == 0 then Nil
       else
         val below: List[Long] = twice(n - 1)
-        val ps: List[Long ! okay.Pure] = List(1, 2).map(i => fib(i))   // a lambda: values
+        val ps: List[Long ! okay.freer.Pure] = List(1, 2).map(i => fib(i))   // a lambda: values
         ps.map(p => !.run(p)) ++ below
     assertEquals(!.run(twice(2)), List(1L, 1L, 1L, 1L))
   }

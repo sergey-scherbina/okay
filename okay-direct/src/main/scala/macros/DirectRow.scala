@@ -404,7 +404,7 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
               case (AppliedType(_, List(_, r)), at: ImplicitSearchSuccess) =>
                 val reflect = layeredModule.methodMember("reflect").head
                 Some(Ref(layeredModule).select(reflect).appliedToTypes(List(tycon, x)).appliedTo(m)
-                  .appliedToTypes(List(r, TypeRepr.of[okay.Pure])).appliedTo(found.tree, at.tree))
+                  .appliedToTypes(List(r, TypeRepr.of[okay.freer.Pure])).appliedTo(found.tree, at.tree))
               case _ => None
           case _ => None
       ).collectFirst { case Some(t) => t }

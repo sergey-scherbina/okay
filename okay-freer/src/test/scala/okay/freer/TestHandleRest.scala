@@ -1,7 +1,5 @@
 package okay.freer
 
-import okay.*
-import okay.given
 
 /** handle-values-rest: every ready effect's handler as a value */
 class TestHandleRest extends munit.FunSuite:

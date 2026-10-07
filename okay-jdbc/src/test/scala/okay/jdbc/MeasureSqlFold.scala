@@ -1,6 +1,8 @@
 package okay.jdbc
 
-import okay.{+, %, Async, Source}
+import okay.{Async, Source}
+
+import okay.freer.{+, %}
 import okay.freer.{!, Chunk, effect, Stream, Writer}
 import okay.given
 import okay.freer.given

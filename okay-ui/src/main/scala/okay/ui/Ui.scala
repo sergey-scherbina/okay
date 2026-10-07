@@ -1,9 +1,10 @@
 package okay.ui
 
-import okay.*
+import okay.{Applicative, Source, Async, CanBlock, Plate, Scheduler, Affine, Channel, Traversal, async, merge, modify, toVector}
 import okay.freer.*
 
 import okay.given
+
 
 /**
  * The view is a VALUE (specs/ui.md): no functions inside, so it has

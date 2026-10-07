@@ -139,8 +139,8 @@ object Redis {
                 okay.codec.Codecs.readCbor[V](bytes).toOption.get
               case _ =>
                 loads.incrementAndGet()
-                val v = okay.freer.!.run(Async.run[V, okay.Pure](load(k)))
-                okay.freer.!.run(Async.run[Unit, okay.Pure](put(k, v)))
+                val v = okay.freer.!.run(Async.run[V, okay.freer.Pure](load(k)))
+                okay.freer.!.run(Async.run[Unit, okay.freer.Pure](put(k, v)))
                 v
           } finally flights.remove(key): Unit
         }

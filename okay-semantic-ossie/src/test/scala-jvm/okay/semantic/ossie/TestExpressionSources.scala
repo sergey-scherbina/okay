@@ -1,6 +1,7 @@
 package okay.semantic.ossie
 
-import okay.*
+
+import okay.{Source, Async}
 import okay.freer.*
 
 import okay.given

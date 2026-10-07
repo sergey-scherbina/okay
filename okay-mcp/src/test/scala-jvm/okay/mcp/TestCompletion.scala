@@ -1,7 +1,8 @@
 package okay.mcp
+
+import okay.{Async, Channel, Source, through}
 import okay.freer.*
 
-import okay.*
 
 import okay.given
 import okay.freer.given

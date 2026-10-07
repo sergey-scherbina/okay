@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.*
+import okay.{Answers, TypeableK}
 
 import scala.annotation.tailrec
 import Free.*

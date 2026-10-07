@@ -1,6 +1,6 @@
 package okay.frege
 
-import okay.{%}
+import okay.freer.{%}
 import okay.freer.{!, Reader}
 import okay.foreign.{Foreign, Jvm, Shape}
 

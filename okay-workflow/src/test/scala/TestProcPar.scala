@@ -1,4 +1,4 @@
-import okay.*
+import okay.{Proc, Wf}
 import okay.freer.*
 
 /**
@@ -20,7 +20,7 @@ import okay.freer.*
  */
 class TestProcPar extends munit.FunSuite:
 
-  type P = okay.Pure
+  type P = okay.freer.Pure
   type Row = Shift % ? + P
 
   given Wf.Runtime = Wf.Runtime.scripted(millis = 1_700_000_000_000L,

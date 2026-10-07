@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.*
+import okay.{Answers, Effect}
 
 
 import scala.annotation.tailrec
@@ -76,7 +76,7 @@ object Prob:
     def run[A, F[+_]](p: A ! Dist + F)(using A <:< Any, Distinct[Dist + F], Handler.Nothing[F]): Map[A, Double] ! F = runExact(p)
 
   def runExact[A, F[+_]](p: A ! Dist + F): Map[A, Double] ! F =
-    val E = Effects[Free]
+    val E = Classic[Free]
     E.handle[Dist, F](p)(a => pure[F, Map[A, Double]](Map(a -> 1.0))):
       [X] => (c: Dist[X]) => E.control.shift: k =>
         okay.freer.!.foldM(c.choices)(Map.empty[A, Double]): (m, choice) =>

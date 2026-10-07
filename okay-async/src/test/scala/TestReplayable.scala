@@ -33,7 +33,7 @@ class TestReplayable extends munit.FunSuite {
     // TestDelimPersist watches exactly that happen, and now has to say
     // `Replayable.unchecked` to be allowed to
     val e = compileErrors(
-      "summon[okay.freer.Replayable[okay.freer.Shift % ? + (okay.freer.Writer % String + okay.Pure)]]")
+      "summon[okay.freer.Replayable[okay.freer.Shift % ? + (okay.freer.Writer % String + okay.freer.Pure)]]")
     assert(e.nonEmpty, "a Writer row was accepted as replayable")
   }
 

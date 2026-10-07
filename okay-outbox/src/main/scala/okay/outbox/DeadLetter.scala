@@ -1,6 +1,6 @@
 package okay.outbox
 
-import okay.*
+import okay.{Answers, Async, Scheduler}
 import okay.freer.*
 
 import okay.codec.Schema

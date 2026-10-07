@@ -1,6 +1,6 @@
 package okay.pool
 
-import okay.*
+import okay.{guard, Async, Scheduler}
 import okay.freer.*
 
 import okay.given

@@ -27,7 +27,7 @@ class TestPersistenceE2E extends munit.FunSuite:
   val pgPort = sys.env.get("OKAY_PG_PORT").flatMap(_.toIntOption).getOrElse(5432)
   val dynamo = sys.env.getOrElse("OKAY_DYNAMO", "http://127.0.0.1:8000")
 
-  def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.Pure](prog))
+  def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](prog))
   def connect(): PgSql ! Async = PgSql.connect(pgHost, pgPort, "okay", "okay", "okay")
 
   lazy val pgUp: Boolean = try { run(connect()).close(); true } catch { case _: Throwable => false }

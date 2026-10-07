@@ -1,6 +1,5 @@
 package okay.freer
 
-import okay.*
 
 /** cont-js-depth stage 4 on a 128 KB JVM thread: re-execution on, no fresh stack needed for a million strict levels */
 class TestContReplaySmallStack extends munit.FunSuite:

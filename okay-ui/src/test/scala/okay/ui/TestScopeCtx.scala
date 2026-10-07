@@ -43,7 +43,6 @@ class TestScopeCtx extends munit.FunSuite {
    */
   test("an exit with a forged prompt does not compile — and a real scope still does") {
     val forged = compileErrors("""
-      import okay.*
       import okay.freer.*
       import okay.ui.*
       given okay.freer.Prompt[String] = okay.freer.Shift.prompt[String]
@@ -51,7 +50,6 @@ class TestScopeCtx extends munit.FunSuite {
     """)
     assert(forged.nonEmpty, "a forged prompt still compiles")
     assertEquals(compileErrors("""
-      import okay.*
       import okay.freer.*
       import okay.ui.*
       val p: String ! Dialog = Scope.bounded[String](Scope.exit[String, String]("ok"))

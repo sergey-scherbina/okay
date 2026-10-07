@@ -1,6 +1,8 @@
 package okay.scala2
 
-import okay.{%, +, Take}
+import okay.{Take}
+
+import okay.freer.{%, +}
 import okay.freer.{!}
 import okay.freer.Row.plus
 import okay.given

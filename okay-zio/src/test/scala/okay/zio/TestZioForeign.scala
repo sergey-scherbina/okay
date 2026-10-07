@@ -1,6 +1,8 @@
 package okay.zio
 
-import okay.{%, +, Async}
+import okay.{Async}
+
+import okay.freer.{%, +}
 import okay.freer.{!, Reader, Throws, runEither}
 import okay.Direct.*
 import okay.given

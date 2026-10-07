@@ -1,6 +1,7 @@
 package okay.resilience
 
-import okay.*
+
+import okay.{Async}
 import okay.freer.*
 
 import okay.http.{Http, Request, Response}

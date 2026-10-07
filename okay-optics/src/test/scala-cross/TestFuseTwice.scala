@@ -3,6 +3,8 @@ package okay
 
 import okay.given
 
+
+
 /** the functor-law rewrite: two modifies through ONE optic are one */
 class TestFuseTwice extends munit.FunSuite {
   val each = Traversal.each[Int, Int]

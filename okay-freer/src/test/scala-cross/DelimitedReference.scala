@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.*
+import okay.{Control}
 
 /**
  * specs/delimited.md stage 2: a SECOND instance of `Delimited`, the

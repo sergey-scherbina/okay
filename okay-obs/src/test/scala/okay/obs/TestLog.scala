@@ -1,9 +1,8 @@
 package okay.obs
 import okay.freer.*
 
-import okay.*
+import okay.{Answers}
 
-import okay.given
 import okay.freer.given
 import okay.codec.{Cbor, Json}
 import okay.persist.{MemoryStore, Topic}

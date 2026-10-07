@@ -1,6 +1,8 @@
 package okay.foreign
 
-import okay.{%, +, Take}
+import okay.{Take}
+
+import okay.freer.{%, +}
 import okay.freer.{!, Row as OkRow, Writer, effect, pure}
 import okay.codec.Schema
 

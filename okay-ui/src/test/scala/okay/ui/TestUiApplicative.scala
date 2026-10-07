@@ -1,9 +1,9 @@
 package okay.ui
 import okay.freer.*
 
-import okay.*
-
+import okay.{Applicative, Monad, traverseOf}
 import okay.given
+
 
 /**
  * `Ui`'s traversals are applicative-POLYMORPHIC, and this pins what

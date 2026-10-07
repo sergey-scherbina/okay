@@ -1,6 +1,8 @@
 package okay.docs.cassandra
 
-import okay.{+, %, Async, async, ChunkBuf, Source}
+import okay.{Async, async, ChunkBuf, Source}
+
+import okay.freer.{+, %}
 import okay.freer.{!, Chunk, effect, Writer}
 import okay.codec.{Codecs, Schema}
 import okay.docs.{Cond, Consistency, Docs, PutResult}

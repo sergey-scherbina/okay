@@ -1,6 +1,8 @@
 package okay.docs
 
-import okay.{+, %, Async, async, ChunkBuf, Source}
+import okay.{Async, async, ChunkBuf, Source}
+
+import okay.freer.{+, %}
 import okay.freer.{!, Chunk, effect, Writer}
 import okay.codec.Schema
 import okay.persist.{Ack, Topic, Typed}

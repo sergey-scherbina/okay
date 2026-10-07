@@ -18,7 +18,7 @@ import scala.language.implicitConversions
  */
 class TestDelimLimits extends munit.FunSuite {
 
-  type P = okay.Pure
+  type P = okay.freer.Pure
 
   // ==== STATE ======================================================
 
@@ -91,7 +91,7 @@ class TestDelimLimits extends munit.FunSuite {
     // which is exactly what a capture breaks. It needs an Answers for
     // the row, and Shift has none: the compiler says no.
     val e = compileErrors(
-      "okay.freer.bracketNow[Int, Int, okay.freer.Shift % ? + okay.Pure](1)(_ => ())(r => okay.freer.pure(r))")
+      "okay.freer.bracketNow[Int, Int, okay.freer.Shift % ? + okay.freer.Pure](1)(_ => ())(r => okay.freer.pure(r))")
     assert(e.nonEmpty, "bracketNow compiled under Shift")
     assert(e.contains("Answers"), s"refused for the wrong reason: $e")
   }
@@ -123,7 +123,7 @@ class TestDelimLimits extends munit.FunSuite {
 
   test("`try/finally` around a mark is a COMPILE error, not a silent one") {
     val e = compileErrors("""
-      okay.freer.Shift.delimited[Int, okay.Pure](okay.Direct.direct {
+      okay.freer.Shift.delimited[Int, okay.freer.Pure](okay.Direct.direct {
         var closed = false
         try { !okay.freer.Shift.exit(1); 0 } finally { closed = true }
       })""")

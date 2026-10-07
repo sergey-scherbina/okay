@@ -1,8 +1,6 @@
 package okay.codec
 
-import okay.*
-
-
+import okay.{Answers, Applicative, Affine, Lens, Optic, Plate, Traversal, Iso, Prism}
 /**
  * Optics over `Json` (specs/optics.md stage 1). They are the other
  * carrier: for a derived `Schema[A]`, a field's lens on the VALUE and

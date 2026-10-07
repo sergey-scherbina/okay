@@ -1,6 +1,6 @@
 package okay.resilience
 
-import okay.*
+import okay.{guard, Async}
 import okay.freer.*
 
 import okay.codec.Schema

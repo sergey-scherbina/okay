@@ -10,7 +10,7 @@ it names what composition already gives, and adds the one thing it
 does not — **supervision**.
 
 ```scala
-import okay.*
+import okay.{Async, async}
 import okay.freer.*
 import okay.freer.given
 import okay.actor.*

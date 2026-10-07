@@ -1,7 +1,8 @@
 package okay.zio
 
 import _root_.zio.{Runtime, Task, Unsafe, ZEnvironment, ZIO}
-import okay.{+, via}
+import okay.{via}
+import okay.freer.{+}
 import okay.freer.perform
 import okay.freer.{!}
 import okay.freer.Row.bind

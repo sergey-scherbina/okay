@@ -1,6 +1,7 @@
 package okay.spring
 
-import okay.*
+
+import okay.{Async}
 import okay.freer.*
 
 import org.springframework.core.{MethodParameter, Ordered, ResolvableType}

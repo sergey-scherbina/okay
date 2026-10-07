@@ -1,7 +1,5 @@
 package okay.freer
 
-import okay.*
-import okay.given
 
 /** the helpers: Handler[F] names the effect once, every form delegates to its one implementation */
 class TestHandlerFor extends munit.FunSuite:

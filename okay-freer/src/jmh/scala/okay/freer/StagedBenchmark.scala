@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.*
+import okay.{Control, Func}
 import okay.given
 
 import org.openjdk.jmh.annotations.*
@@ -26,7 +26,7 @@ class StagedBenchmark {
 
   inline def effSteps[M[_[+_], _]](inline n: Int)(m: M[Produce, Int]): M[Produce, Int] =
     inline if n == 0 then m
-    else effSteps(n - 1)(Effects[M].flatMap(m)(x => Effects[M].perform[Produce, Int](x + 1)))
+    else effSteps(n - 1)(Classic[M].flatMap(m)(x => Classic[M].perform[Produce, Int](x + 1)))
 
   // `effFunc24` (the Func carrier under `runIn`) is gone with
   // `runIn` itself — measured no faster than Cont, the rows are in

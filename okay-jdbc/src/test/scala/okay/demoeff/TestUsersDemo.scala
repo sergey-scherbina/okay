@@ -1,9 +1,9 @@
 package okay.demoeff
 
-import okay.*
+
+import okay.{tracing}
 import okay.freer.*
 
-import okay.given
 import okay.freer.given
 import UsersDemo.{Store, InMemory, rename, tracked}
 

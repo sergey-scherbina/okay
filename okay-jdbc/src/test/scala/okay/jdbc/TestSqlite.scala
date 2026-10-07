@@ -1,6 +1,8 @@
 package okay.jdbc
 
-import okay.{+, %, Async, Source}
+import okay.{Async, Source}
+
+import okay.freer.{+, %}
 import okay.freer.{!, Chunk, effect, Resource, Stream, Throws, Writer}
 import okay.given
 import okay.freer.given
@@ -56,7 +58,7 @@ class TestSqlite extends munit.FunSuite {
     try f(JdbcSql(conn))
     finally conn.close()
 
-  def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.Pure](prog))
+  def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](prog))
 
   def collectChunks[A](s: Source[Chunk[A]]): List[Chunk[A]] =
     summon[Stream[[W] =>> Unit ! Writer % W + Async, Async]].iterator(s).toList
@@ -90,7 +92,7 @@ class TestSqlite extends munit.FunSuite {
     try
       val db = JdbcSql(conn)
       // granted isolation is read back, not assumed
-      val g = !.run(Async.run[Granted, okay.Pure](Resource.run[Granted, Async](
+      val g = !.run(Async.run[Granted, okay.freer.Pure](Resource.run[Granted, Async](
         Typed.transact[Granted, Async](db, Isolation.Serializable)(g => okay.freer.pure(g)))))
       assertEquals(g.granted, Isolation.Serializable)
 

@@ -1,6 +1,8 @@
 package okay.jdbc
 
-import okay.{+, %, Async}
+import okay.{Async}
+
+import okay.freer.{+, %}
 import okay.freer.{!, Stream, Writer}
 import okay.given
 import okay.freer.given
@@ -38,7 +40,7 @@ class TestQuerySqlite extends munit.FunSuite {
     try f(JdbcSql(conn))
     finally conn.close()
 
-  def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.Pure](prog))
+  def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](prog))
 
   def rows(db: Sql, sql: String, params: Vector[SqlValue]): Vector[Customer] =
     summon[Stream[[W] =>> Unit ! Writer % W + Async, Async]]

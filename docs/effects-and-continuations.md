@@ -2,7 +2,7 @@
 
 This page is everything a USER of okay needs: one type, `A ! F`, and six words, `pure`, `perform`, `shift`,
 `reset`, `handle` and `run`. They work the same in the monadic and the direct style, and the same through the
-`Effects[M]` typeclass, in any encoding.
+`Classic[M]` typeclass, in any encoding of the tree.
 
 Writing an effect of your own, or a handler for one, is level 2. That is
 [your-own-effect.md](your-own-effect.md), [delimited.md](delimited.md) and the `Cont` chapters of
@@ -170,7 +170,7 @@ val j = quiet.handle(State(5)).run   // (5, 32)
 ## Through the typeclass
 
 Code that should not commit to one encoding of the tree is written over `Classic[M]`, the classic's own
-typeclass (`okay.freer`): the core's `Effects[M]` with the same words as the top level — `pure`, `perform`,
+typeclass (`okay.freer`): the same words as the top level — `pure`, `perform`,
 `shift`, `shift0`, `reset`, `handle(m, h)` and `run(m)`. `Free`, the tree, is the default. `Eager` applies
 pure binds as it builds. One program answers the same in both:
 
@@ -180,11 +180,11 @@ def program[M[_[+_], _]](using E: Classic[M]): M[State % Int, Int] =
     E.shift[Int, Int, State % Int](k => k(1).flatMap(a => k(10).map(b => a + b))).flatMap(x =>
       E.perform[Shift % Int + State % Int, Int](State.Get[Int, Int]()).map(s => x * 2 + s)))
 
-val inFree = summon[Effects[Free]].run(summon[Effects[Free]].handle(program[Free], State(5)))      // (5, 32)
-val inEager = summon[Effects[Eager]].run(summon[Effects[Eager]].handle(program[Eager], State(5)))  // (5, 32)
+val inFree = summon[Classic[Free]].run(summon[Classic[Free]].handle(program[Free], State(5)))      // (5, 32)
+val inEager = summon[Classic[Eager]].run(summon[Classic[Eager]].handle(program[Eager], State(5)))  // (5, 32)
 ```
 
-In direct style over `Effects[M]`, `Effects.monad[M, F]` is the monad `direct` needs.
+In direct style over `Classic[M]`, `Classic.monad[M, F]` is the monad `direct` needs.
 
 ## What it costs
 

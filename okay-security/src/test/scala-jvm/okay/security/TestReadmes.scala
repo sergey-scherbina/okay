@@ -1,7 +1,8 @@
 package okay.security
+
+import okay.{Async}
 import okay.freer.*
 
-import okay.*
 
 import okay.given
 import okay.freer.given
@@ -90,7 +91,7 @@ class TestReadmes extends munit.FunSuite {
     given okay.Answers[Model] = model
     given okay.Answers[Tool] = tool
     given okay.Answers[Context] = ctx
-    given rowAll: okay.Answers[Agent] = okay.Answers.flat[Agent]
+    given rowAll: okay.Answers[Agent] = okay.freer.Row.flat[Agent]
     prog.runWith
 
   // ── okay-http/README.md ────────────────────────────────────────

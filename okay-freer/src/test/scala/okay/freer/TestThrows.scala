@@ -1,7 +1,5 @@
 package okay.freer
 
-import okay.*
-import okay.given
 
 // NO `import scala.language.implicitConversions` here, and that is the
 // point of this file since throws-into: `throws` is declared `into`,

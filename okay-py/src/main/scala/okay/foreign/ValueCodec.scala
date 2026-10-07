@@ -1,7 +1,6 @@
 package okay.foreign
 
-import okay.{+}
-
+import okay.freer.{+}
 import okay.freer.{/>}
 import okay.freer.{!, effect, pure, Cont}
 import okay.codec.Codecs

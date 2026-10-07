@@ -1,9 +1,11 @@
 package okay.cluster
 
-import okay.*
+
+import okay.{Bulk, Chunks, Tables}
 import okay.freer.*
 
 import okay.given
+
 import okay.Tables.read
 import okay.Chunks.elements
 import scala.util.Random

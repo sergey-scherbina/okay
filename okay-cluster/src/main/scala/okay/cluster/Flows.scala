@@ -1,9 +1,8 @@
 package okay.cluster
 
-import okay.*
+import okay.{guard, Chunks, Pane, Async, Fiber, Scheduler, Streamed, Windows, async}
 import okay.freer.*
 
-import okay.given
 import okay.Chunks.elements
 import scala.collection.mutable
 

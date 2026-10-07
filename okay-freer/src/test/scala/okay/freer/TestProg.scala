@@ -1,7 +1,5 @@
 package okay.freer
 
-import okay.*
-import okay.given
 
 import okay.freer.Shift.Stacked.{abort, reset, shift}
 import okay.freer.Row.at
@@ -15,7 +13,7 @@ import okay.freer.Row.at
  */
 class TestProg extends munit.FunSuite:
 
-  type P = okay.Pure
+  type P = Pure
 
   // ---------------------------------------------------------- positives
 
@@ -92,9 +90,9 @@ class TestProg extends munit.FunSuite:
 
   test("7. a shift to a FOREIGN delimiter is a compile error: its key is not in the body's row") {
     val e = compileErrors("""
-      okay.freer.Shift.Stacked.reset[Int, okay.Pure] { s =>
-        var stolen: okay.freer.Shift.Stacked.Reset[Int, okay.Pure] | Null = null
-        okay.freer.Shift.Stacked.reset[Int, okay.Pure] { other => stolen = other; okay.freer.pure(1) }
+      okay.freer.Shift.Stacked.reset[Int, Pure] { s =>
+        var stolen: okay.freer.Shift.Stacked.Reset[Int, Pure] | Null = null
+        okay.freer.Shift.Stacked.reset[Int, Pure] { other => stolen = other; okay.freer.pure(1) }
         val t = stolen.nn
         okay.freer.Shift.Stacked.shift(t)[Int](k => k(1))
       }""")
@@ -104,9 +102,9 @@ class TestProg extends munit.FunSuite:
   test("8. a delimiter that ESCAPES its reset and is shifted to afterwards is a compile error") {
     // after the inner reset returns, the row in force is the OUTER one, and the leaked delimiter's key is not in it
     val e = compileErrors("""
-      okay.freer.Shift.Stacked.reset[Int, okay.Pure] { outer =>
-        var leaked: okay.freer.Shift.Stacked.Reset[Int, okay.freer.Shift % outer.type + okay.Pure] | Null = null
-        okay.freer.Shift.Stacked.reset[Int, okay.freer.Shift % outer.type + okay.Pure] { inner =>
+      okay.freer.Shift.Stacked.reset[Int, Pure] { outer =>
+        var leaked: okay.freer.Shift.Stacked.Reset[Int, okay.freer.Shift % outer.type + Pure] | Null = null
+        okay.freer.Shift.Stacked.reset[Int, okay.freer.Shift % outer.type + Pure] { inner =>
           leaked = inner
           okay.freer.Shift.Stacked.shift(inner)[Int](k => k(1))
         }.flatMap { _ =>

@@ -1,7 +1,8 @@
 package okay.mcp
+
+import okay.{Async, Source, Take, through}
 import okay.freer.*
 
-import okay.*
 
 import okay.http.{Http, Nio}
 

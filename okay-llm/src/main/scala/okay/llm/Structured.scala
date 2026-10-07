@@ -1,6 +1,8 @@
 package okay.llm
 
-import okay.{%, +, Async}
+import okay.{Async}
+
+import okay.freer.{%, +}
 import okay.freer.{!, Writer}
 import okay.codec.{Json, Schema}
 import okay.lex.Json as JsonLex
@@ -59,12 +61,12 @@ object Structured {
 
     @tailrec def walk(rest: Unit ! F): Cut[A] = (rest.resume: @unchecked) match
       case Return(_) => Cut(None, text, count, stopped = false)
-      case Inject(e) => okay.<|>[Async, Writer % String](e) match
+      case Inject(e) => okay.freer.<|>[Async, Writer % String](e) match
         case Left(a) => h.handle(a); Cut(None, text, count, stopped = false)
         case Right(Writer.Say(w)) => feed(w) match
           case Some(v) => Cut(Some(v), text, count, stopped = true)
           case None => Cut(None, text, count, stopped = false)
-      case Bind(Inject(e), k) => okay.<|>[Async, Writer % String](e) match
+      case Bind(Inject(e), k) => okay.freer.<|>[Async, Writer % String](e) match
         case Left(a) => walk(k(h.handle(a)))
         case Right(Writer.Say(w)) => feed(w) match
           // complete: the rest of the stream is never pulled, which

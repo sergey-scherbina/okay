@@ -26,7 +26,7 @@ class TestKafkaInterop extends munit.FunSuite {
     val c = mockConsumer(10)
     val s = source(c, pollMillis = 10)
     // take one chunk: the mock returns everything scheduled in one poll
-    val first = !.run(okay.Async.run[Chunk1, okay.Pure](firstChunk(s)))
+    val first = !.run(okay.Async.run[Chunk1, okay.freer.Pure](firstChunk(s)))
     assertEquals(first.map(_.value).toList, (0 until 10).map(i => s"v$i").toList)
   }
 
@@ -43,7 +43,7 @@ class TestKafkaInterop extends munit.FunSuite {
   test("commit records the position; a restarted consumer resumes there") {
     val c = mockConsumer(5)
     c.poll(java.time.Duration.ofMillis(10))              // consume all five
-    !.run(okay.Async.run[Unit, okay.Pure](commit(c)))
+    !.run(okay.Async.run[Unit, okay.freer.Pure](commit(c)))
     assertEquals(c.committed(java.util.Set.of(tp)).get(tp).offset(), 5L)
   }
 
@@ -51,14 +51,14 @@ class TestKafkaInterop extends munit.FunSuite {
     val p = MockProducer[String, String](true, StringSerializer(), StringSerializer())
     val records = okay.ChunkBuf.of(
       (1 to 3).map(i => ProducerRecord[String, String]("t", s"k$i", s"v$i")))
-    !.run(okay.Async.run[Unit, okay.Pure](sink(p)(records)))
+    !.run(okay.Async.run[Unit, okay.freer.Pure](sink(p)(records)))
     assertEquals(p.history().asScala.map(_.value()).toList, List("v1", "v2", "v3"))
   }
 
   test("managed consumer closes with its Resource scope") {
     val c = MockConsumer[String, String](OffsetResetStrategy.EARLIEST)
     val prog = okay.freer.Resource.acquire(c)(_.close()).map(_ => ())
-    !.run(okay.freer.Resource.run[Unit, okay.Pure](prog))
+    !.run(okay.freer.Resource.run[Unit, okay.freer.Pure](prog))
     assert(c.closed())
   }
 }

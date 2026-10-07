@@ -1,7 +1,5 @@
 package okay.freer
 
-import okay.*
-import okay.given
 
 /**
  * widen-split (specs/widen-split.md): `!.widen` is a coercion and

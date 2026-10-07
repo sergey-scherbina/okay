@@ -1,6 +1,8 @@
 package okay.delta
 
-import okay.{+, %, Async, ChunkBuf, Source}
+import okay.{Async, ChunkBuf, Source}
+
+import okay.freer.{+, %}
 import okay.freer.{!, Chunk, Stream, Writer}
 import okay.given
 import okay.freer.given
@@ -32,7 +34,7 @@ class TestDelta extends munit.FunSuite:
         "(Subject.getSubject, JEP 486); build.sbt runs it on JDK 21 where one is installed")
     v >= 24
 
-  def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.Pure](prog))
+  def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](prog))
 
   def collectChunks[A](s: Source[Chunk[A]]): List[Chunk[A]] =
     summon[Stream[[W] =>> Unit ! Writer % W + Async, Async]].iterator(s).toList

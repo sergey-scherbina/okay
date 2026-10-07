@@ -1,6 +1,8 @@
 package okay.foreign.workflow
 
-import okay.{%, +, Wf}
+import okay.{Wf}
+
+import okay.freer.{%, +}
 import okay.freer.{!, At, Shift, effect}
 import okay.codec.Schema
 import okay.foreign.{Condition, ForeignEval, PyNode, Value, Shape, ToPy, Wire}

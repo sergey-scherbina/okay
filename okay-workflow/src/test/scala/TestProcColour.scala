@@ -1,4 +1,4 @@
-import okay.*
+import okay.{Proc, Wf}
 import okay.freer.*
 import okay.Direct.*
 import okay.Proc.given
@@ -18,7 +18,7 @@ import scala.language.implicitConversions
  */
 class TestProcColour extends munit.FunSuite:
 
-  type P = okay.Pure
+  type P = okay.freer.Pure
   type Row = Shift % ? + P
   type Sig = Wf.Asked[String, String]
 

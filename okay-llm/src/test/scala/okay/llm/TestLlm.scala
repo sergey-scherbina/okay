@@ -1,6 +1,8 @@
 package okay.llm
 
-import okay.{%, +, Async}
+import okay.{Async}
+
+import okay.freer.{%, +}
 import okay.freer.{!, Writer, effect, pure}
 import okay.given
 import okay.freer.given
@@ -74,10 +76,10 @@ class TestLlm extends munit.FunSuite {
     def go(rest: Unit ! Writer % String + Async, acc: List[String]): List[String] =
       (rest.resume: @unchecked) match
         case Return(_) => acc.reverse
-        case Inject(e) => okay.<|>[Async, Writer % String](e) match
+        case Inject(e) => okay.freer.<|>[Async, Writer % String](e) match
           case Left(a) => summon[okay.Answers[Async]].handle(a); acc.reverse
           case Right(Writer.Say(w)) => (w :: acc).reverse
-        case Bind(Inject(e), k) => okay.<|>[Async, Writer % String](e) match
+        case Bind(Inject(e), k) => okay.freer.<|>[Async, Writer % String](e) match
           case Left(a) => go(k(summon[okay.Answers[Async]].handle(a)), acc)
           // a tell answers nothing — the continuation gets unit, not the line
           case Right(Writer.Say(w)) => go(k(()), w :: acc)

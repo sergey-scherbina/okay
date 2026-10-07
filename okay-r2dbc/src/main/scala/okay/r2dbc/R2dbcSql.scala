@@ -1,6 +1,8 @@
 package okay.r2dbc
 
-import okay.{+, %, Async, async, ChunkBuf, Source}
+import okay.{Async, async, ChunkBuf, Source}
+
+import okay.freer.{+, %}
 import okay.freer.{!, Chunk, effect, Writer}
 import okay.sql.{Col, Granted, Isolation, Sql, SqlType, SqlValue}
 import io.r2dbc.spi.{Connection, ColumnMetadata, IsolationLevel, Result, Row, RowMetadata, Statement, TransactionDefinition}

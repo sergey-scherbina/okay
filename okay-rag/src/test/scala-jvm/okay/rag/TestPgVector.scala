@@ -24,10 +24,10 @@ class TestPgVector extends munit.FunSuite {
   val port = sys.env.get("OKAY_PG_PORT").flatMap(_.toIntOption).getOrElse(5432)
 
   lazy val available: Boolean =
-    try { okay.freer.!.run(okay.Async.run[PgSql, okay.Pure](PgSql.connect(host, port, "okay", "okay", "okay"))).close(); true }
+    try { okay.freer.!.run(okay.Async.run[PgSql, okay.freer.Pure](PgSql.connect(host, port, "okay", "okay", "okay"))).close(); true }
     catch { case _: Throwable => false }
 
-  def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.Pure](prog))
+  def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](prog))
 
   val dim = 64
   val embed = Vectors.hashing(dim)
@@ -49,7 +49,7 @@ class TestPgVector extends munit.FunSuite {
 
   def withStore[A](f: PgVector => A): A =
     assume(available, s"no Postgres at $host:$port — the live suite skips")
-    val db = okay.freer.!.run(okay.Async.run[PgSql, okay.Pure](PgSql.connect(host, port, "okay", "okay", "okay")))
+    val db = okay.freer.!.run(okay.Async.run[PgSql, okay.freer.Pure](PgSql.connect(host, port, "okay", "okay", "okay")))
     try
       val store = PgVector(db, "rag_test", dim)
       run(store.ensure())

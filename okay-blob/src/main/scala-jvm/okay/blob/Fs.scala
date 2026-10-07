@@ -1,6 +1,8 @@
 package okay.blob
 
-import okay.{+, %, Async, Source, async}
+import okay.{Async, Source, async}
+
+import okay.freer.{+, %}
 import okay.freer.{!, Chunk, Writer, effect, pure}
 import okay.freer.Row.plus
 import java.nio.file.{Files, Path, StandardCopyOption}

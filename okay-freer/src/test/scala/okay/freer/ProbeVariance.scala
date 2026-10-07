@@ -1,7 +1,5 @@
 package okay.freer
 
-import okay.*
-import okay.given
 
 /** Probe: constrain the row with evidence instead of leaving F free. */
 object ProbeVariance:

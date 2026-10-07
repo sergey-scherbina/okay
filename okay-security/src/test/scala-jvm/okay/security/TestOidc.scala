@@ -1,7 +1,8 @@
 package okay.security
+
+import okay.{Async}
 import okay.freer.*
 
-import okay.*
 
 import okay.given
 import okay.freer.given

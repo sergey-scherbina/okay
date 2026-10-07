@@ -71,7 +71,7 @@ class TestDirectAuto extends munit.FunSuite {
                                               // the statement IS the mark
       env + 1
     }
-    val (ws, a) = !.run(Writer.run[String, Int, okay.Pure](
+    val (ws, a) = !.run(Writer.run[String, Int, okay.freer.Pure](
       Reader.run[Int, Int, Writer % String](41)(prog)))
     assertEquals(ws, Seq("env=41"))
     assertEquals(a, 42)
@@ -88,7 +88,7 @@ class TestDirectAuto extends munit.FunSuite {
       Writer(s"env=$env"): Unit  // no mark either — see Layer 4
       env + 1
     }
-    val (ws, a) = !.run(Writer.run[String, Int, okay.Pure](
+    val (ws, a) = !.run(Writer.run[String, Int, okay.freer.Pure](
       Reader.run[Int, Int, Writer % String](41)(prog)))
     assertEquals(ws, Seq("env=41"))
     assertEquals(a, 42)
@@ -122,7 +122,7 @@ class TestDirectAuto extends munit.FunSuite {
       Writer(s"env=$env"): Unit  // a bare statement of a row type: RUNS
       env + 1
     }
-    val (ws, a) = !.run(Writer.run[String, Int, okay.Pure](
+    val (ws, a) = !.run(Writer.run[String, Int, okay.freer.Pure](
       Reader.run[Int, Int, Writer % String](41)(prog)))
     assertEquals(ws, Seq("env=41"))
     assertEquals(a, 42)

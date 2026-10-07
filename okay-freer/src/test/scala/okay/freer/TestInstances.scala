@@ -1,7 +1,6 @@
 package okay.freer
 
-import okay.*
-import okay.given
+import okay.{Effect}
 
 import okay.freer.Row.{at, plus}
 
@@ -60,8 +59,8 @@ class TestInstances extends munit.FunSuite:
 
     val p: (String, String) ! Instances.Of[Store] =
       for
-        a <- Instances.route[Store](one)[String, okay.Pure](read)
-        b <- Instances.route[Store](two)[String, okay.Pure](read)
+        a <- Instances.route[Store](one)[String, Pure](read)
+        b <- Instances.route[Store](two)[String, Pure](read)
       yield (a, b)
 
     val rows = Map(one -> "первый", two -> "второй")
@@ -86,16 +85,16 @@ class TestInstances extends munit.FunSuite:
 
     // strip "small" and run it at 1 — `State.handle` keeps the rest of
     // the row, which is exactly the shape `only` hands it
-    val afterSmall: (Int, (Int, Int)) ! Instances.Of[State % Int] + okay.Pure =
-      State.handle(1)(Instances.only[State % Int](small)(p.plus[okay.Pure]))
+    val afterSmall: (Int, (Int, Int)) ! Instances.Of[State % Int] + Pure =
+      State.handle(1)(Instances.only[State % Int](small)(p.plus[Pure]))
 
     // now strip "big" and run it at 10
-    val done: (Int, (Int, (Int, Int))) ! Instances.Of[State % Int] + okay.Pure =
+    val done: (Int, (Int, (Int, Int))) ! Instances.Of[State % Int] + Pure =
       State.handle(10)(Instances.only[State % Int](big)(afterSmall))
 
     // nothing is left wrapped: the residual member has no operations
     val (bigEnd, (smallEnd, answer)) =
-      !.run(Instances.exhausted[State % Int, (Int, (Int, (Int, Int))), okay.Pure](done))
+      !.run(Instances.exhausted[State % Int, (Int, (Int, (Int, Int))), Pure](done))
     assertEquals(answer, (1, 10))
     assertEquals(smallEnd, 1)
     assertEquals(bigEnd, 10)
@@ -120,7 +119,7 @@ class TestInstances extends munit.FunSuite:
 
     // an Effect IS a TypeableK, so the union's split is the row's own
     assertEquals(
-      p.runWith(using Answers.union[Instances.Of[Store], Instances.Of[Reader % Int]](
+      p.runWith(using Row.union[Instances.Of[Store], Instances.Of[Reader % Int]](
         using summon[okay.Effect[Instances.Of[Store]]], hs, hr)),
       ("ada", 7))
   }

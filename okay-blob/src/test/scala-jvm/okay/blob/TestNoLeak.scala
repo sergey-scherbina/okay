@@ -22,7 +22,7 @@ class TestNoLeak extends munit.FunSuite {
     val s3 = S3(recording, "http://s3.example", "bucket", "us-east-1",
       SigV4.Creds("AKIAEXAMPLE", canary))
 
-    def run[A](p: A ! Async): A = !.run(Async.run[A, okay.Pure](p))
+    def run[A](p: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](p))
     assertEquals(run(s3.head("k")), None)
     run(s3.delete("k"))
     val err = intercept[IllegalStateException](

@@ -1,7 +1,6 @@
 package okay.freer
 
-import okay.*
-import okay.given
+import okay.{Effect}
 
 import okay.freer.Row.{at, plus}
 
@@ -61,17 +60,17 @@ class TestDocExamplesGuide extends munit.FunSuite:
     Users.save(1, "ada").flatMap(_ => Users.find(1))
 
   test("guide: the Users signature, handled two ways, answers alike") {
-    def runBoth(p: Option[String] ! (State % Store + Writer % String + okay.Pure)) =
+    def runBoth(p: Option[String] ! (State % Store + Writer % String + Pure)) =
       !.run(Writer.run(State.handle[Store](Map.empty)(p)))
-    val (logA, (_, a)) = runBoth(viaInterpret.tracked[Option[String], okay.Pure](prog))
-    val (logB, (_, b)) = runBoth(viaTracing.tracked[Option[String], okay.Pure](prog))
+    val (logA, (_, a)) = runBoth(viaInterpret.tracked[Option[String], Pure](prog))
+    val (logB, (_, b)) = runBoth(viaTracing.tracked[Option[String], Pure](prog))
     assertEquals((a, b), (Some("ada"), Some("ada")))
     assertEquals(logA, Seq("save(1)", "find(1)"))
     assertEquals(logB, Seq("Save(1,ada)", "Find(1)"))
   }
 
   test("guide: Reader.local overrides ask for one block") {
-    val p = Reader.local[Int, Int, okay.Pure](_ * 10)(Reader.ask[Int])
+    val p = Reader.local[Int, Int, Pure](_ * 10)(Reader.ask[Int])
     assertEquals(!.run(Reader.run(5)(p)), 50)
   }
 
@@ -88,7 +87,7 @@ class TestDocExamplesGuide extends munit.FunSuite:
     val twice: (Int, Int) ! (Small + Big) =
       for
         a <- Tag.tag["small", State % Int](bump(1)).plus[Big]
-        b <- Tag.tag["big",   State % Int][Int, okay.Pure](bump(10)).at[Small + Big]
+        b <- Tag.tag["big",   State % Int][Int, Pure](bump(10)).at[Small + Big]
       yield (a, b)
 
     val afterSmall = State.handle[Int](1)(Tag.untag["small", State % Int](twice))

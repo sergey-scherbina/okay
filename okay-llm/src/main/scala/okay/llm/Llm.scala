@@ -1,6 +1,8 @@
 package okay.llm
 
-import okay.{%, +, Async, Stage}
+import okay.{Async, Stage}
+
+import okay.freer.{%, +}
 import okay.freer.{!, Writer, effect, pure}
 import okay.codec.{Json, Schema}
 
@@ -175,10 +177,10 @@ object Anthropic {
       import okay.freer.!.*
       (rest.resume: @unchecked) match
         case Return(_) => flushEvent(buf)
-        case Inject(e) => okay.<|>[Async, Writer % String](e) match
+        case Inject(e) => okay.freer.<|>[Async, Writer % String](e) match
           case Left(a) => Inject(a).flatMap(_ => flushEvent(buf))
           case Right(Writer.Say(line)) => emitFrom(line, buf)(b => flushEvent(b))
-        case Bind(Inject(e), k) => okay.<|>[Async, Writer % String](e) match
+        case Bind(Inject(e), k) => okay.freer.<|>[Async, Writer % String](e) match
           case Left(a) => Inject(a).flatMap(x => go(k(x), buf))
           case Right(Writer.Say(line)) =>
             // the constructor gives the told line AND refines the

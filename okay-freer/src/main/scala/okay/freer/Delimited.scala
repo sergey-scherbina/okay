@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.*
+import okay.{guard}
 
 
 import okay.freer.Freer.{Return, Inject, Bind, Delay}

@@ -1,7 +1,8 @@
 package okay.mcp
+
+import okay.{Stage}
 import okay.freer.*
 
-import okay.*
 
 import okay.codec.Json
 

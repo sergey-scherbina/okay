@@ -1,7 +1,5 @@
 package okay.freer
 
-import okay.*
-import okay.given
 
 
 /** specs/left-nested-build-cost.md: the right-nested builders */

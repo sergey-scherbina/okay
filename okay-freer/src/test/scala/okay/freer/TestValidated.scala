@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.*
+import okay.{Applicative, Monad, traverse}
 
 /**
  * Every error, not the first (specs/validated.md).

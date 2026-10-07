@@ -1,7 +1,5 @@
 package okay.freer
 
-import okay.*
-import okay.given
 
 import org.scalacheck.Prop.forAll
 

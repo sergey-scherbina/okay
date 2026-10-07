@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.*
+import okay.{guard}
 
 import java.util.concurrent.atomic.AtomicLong
 

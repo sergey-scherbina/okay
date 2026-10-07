@@ -1,6 +1,5 @@
 package okay.demo.e2e
 
-import okay.*
 
 import okay.freer.*
 import okay.given

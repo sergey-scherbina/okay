@@ -1,7 +1,6 @@
 package okay.freer
 
-import okay.*
-import okay.given
+import okay.{MonadPlus, guard, replicateA, traverse, whenS, `*>`, `<*`, unlessS}
 
 
 /** The typeclass hierarchy earning its keep: one generic combinator,
@@ -15,7 +14,7 @@ class TestClasses extends munit.FunSuite {
     val prog: Seq[Int] ! F =
       traverse(Seq(1, 2, 3))(x =>
         effect[F, Unit](Writer(s"at $x")).map(_ => x * 10))
-    val (told, got) = !.run(Writer.run[String, Seq[Int], okay.Pure](prog))
+    val (told, got) = !.run(Writer.run[String, Seq[Int], Pure](prog))
     assertEquals(got, Seq(10, 20, 30))
     assertEquals(told, Seq("at 1", "at 2", "at 3"))
   }
@@ -38,7 +37,7 @@ class TestClasses extends munit.FunSuite {
     // a tell answers nothing, so the value comes back EXPLICITLY
     def say(s: String): PF[String] = effect[F, Unit](Writer(s)).map(_ => s)
     val picked: PF[String] = say("a") *> say("b") <* say("c")
-    val (told, kept) = !.run(Writer.run[String, String, okay.Pure](picked))
+    val (told, kept) = !.run(Writer.run[String, String, Pure](picked))
     assertEquals(kept, "b")
     assertEquals(told, Seq("a", "b", "c"))
   }
@@ -49,7 +48,7 @@ class TestClasses extends munit.FunSuite {
       whenS(pure(true): PF[Boolean])(tell("yes")).flatMap(_ =>
         whenS(pure(false): PF[Boolean])(tell("no")).flatMap(_ =>
           unlessS(pure(false): PF[Boolean])(tell("fallback"))))
-    val (told, _) = !.run(Writer.run[String, Unit, okay.Pure](prog))
+    val (told, _) = !.run(Writer.run[String, Unit, Pure](prog))
     assertEquals(told, Seq("yes", "fallback"))
   }
 

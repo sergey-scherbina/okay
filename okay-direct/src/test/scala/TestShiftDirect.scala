@@ -10,7 +10,7 @@ import okay.Direct.{shift, reset}
 /** specs/shift-effect.md: `shift`/`reset` in direct style, with the existing `direct` and no form of their own */
 class TestShiftDirect extends munit.FunSuite:
 
-  type P = okay.Pure
+  type P = okay.freer.Pure
   type S = State % Int
 
   test("reset over a direct block, shift's body a direct block") {

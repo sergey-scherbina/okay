@@ -1,7 +1,5 @@
 package okay.freer
 
-import okay.*
-import okay.given
 
 import okay.freer.Row.at
 
@@ -79,24 +77,24 @@ class TestScopedEffects extends munit.FunSuite:
         .recover(_ => State.get[Int].at[Row])
     assertEquals(State.run(0)(runEither[Int, State % Int, String](p)), (5, Right(5)))
 
-    val q = Reader.local[Int, Int, okay.Pure](_ * 10)(Reader.ask[Int])
-    assertEquals(!.run(Reader.run[Int, Int, okay.Pure](5)(q)), 50)
-    assertEquals(!.run(Reader.run[Int, Int, okay.Pure](5)(Reader.ask[Int].at[Reader % Int + okay.Pure])), 5)
+    val q = Reader.local[Int, Int, Pure](_ * 10)(Reader.ask[Int])
+    assertEquals(!.run(Reader.run[Int, Int, Pure](5)(q)), 50)
+    assertEquals(!.run(Reader.run[Int, Int, Pure](5)(Reader.ask[Int].at[Reader % Int + Pure])), 5)
   }
 
   // ---------------------------------------------------------- Reader.local
 
   test("local overrides asks inside p; outside it, ask sees the ambient value") {
-    val p = Reader.local[Int, Int, okay.Pure](_ * 10)(Reader.ask[Int]).flatMap { inside =>
-      Reader.ask[Int].at[Reader % Int + okay.Pure].map(outside => (inside, outside))
+    val p = Reader.local[Int, Int, Pure](_ * 10)(Reader.ask[Int]).flatMap { inside =>
+      Reader.ask[Int].at[Reader % Int + Pure].map(outside => (inside, outside))
     }
-    assertEquals(!.run(Reader.run[Int, (Int, Int), okay.Pure](5)(p)), (50, 5))
+    assertEquals(!.run(Reader.run[Int, (Int, Int), Pure](5)(p)), (50, 5))
   }
 
   test("local composes across a flatMap chain inside p") {
-    val p = Reader.local[Int, Int, okay.Pure](_ + 1)(
+    val p = Reader.local[Int, Int, Pure](_ + 1)(
       Reader.ask[Int].flatMap(a => Reader.ask[Int].map(b => a + b)))
-    assertEquals(!.run(Reader.run[Int, Int, okay.Pure](10)(p)), 22, "both asks inside p saw 11")
+    assertEquals(!.run(Reader.run[Int, Int, Pure](10)(p)), 22, "both asks inside p saw 11")
   }
 
   test("FOUND, NOT ASSUMED — nesting composes INSIDE-OUT: local(f2)(local(f1)(p)) sees f1(f2(r))") {
@@ -112,10 +110,10 @@ class TestScopedEffects extends munit.FunSuite:
     // "current environment" is the INTERPRETER's own hidden state,
     // never a program-visible ask; here it is built FROM the same
     // vocabulary it overrides, and that is the whole difference.
-    val p = Reader.local[Int, Int, okay.Pure](_ + 100)(
-      Reader.local[Int, Int, okay.Pure](_ * 2)(Reader.ask[Int])
-    ).flatMap { inner => Reader.ask[Int].at[Reader % Int + okay.Pure].map(outer => (inner, outer)) }
-    assertEquals(!.run(Reader.run[Int, (Int, Int), okay.Pure](3)(p)), (206, 3),
+    val p = Reader.local[Int, Int, Pure](_ + 100)(
+      Reader.local[Int, Int, Pure](_ * 2)(Reader.ask[Int])
+    ).flatMap { inner => Reader.ask[Int].at[Reader % Int + Pure].map(outer => (inner, outer)) }
+    assertEquals(!.run(Reader.run[Int, (Int, Int), Pure](3)(p)), (206, 3),
       "(3+100)*2 = 206: the OUTER's +100 reached the inner's OWN ask for r, not just the user's")
   }
 
@@ -154,15 +152,15 @@ class TestScopedEffects extends munit.FunSuite:
     // the shift's own `f`) inside operation payloads — the one shape
     // a Bind-based generic handler cannot see through.
     val prompt = Shift.prompt[Int]
-    type F = Reader % Int + okay.Pure
+    type F = Reader % Int + Pure
     val body: Int ! Shift % ? + F =
       Shift.shift[Int, Int, F](prompt)(k => k(1).flatMap(a => k(2).map(b => a + b)))
         .flatMap(n => Reader.ask[Int].at[Shift % ? + F].map(_ + n))
-    val localized = Reader.local[Int, Int, Shift % ? + okay.Pure](_ * 10)(
-      Shift.push(prompt)(body).at[Reader % Int + (Shift % ? + okay.Pure)])
+    val localized = Reader.local[Int, Int, Shift % ? + Pure](_ * 10)(
+      Shift.push(prompt)(body).at[Reader % Int + (Shift % ? + Pure)])
     val driven: Int ! F =
       Shift.run[Int, F](localized.at[Shift % ? + F])
-    assertEquals(!.run(Reader.run[Int, Int, okay.Pure](1)(driven)), 23,
+    assertEquals(!.run(Reader.run[Int, Int, Pure](1)(driven)), 23,
       "local's frame answers the body's asks: 1 * 10 = 10; k(1) = 10 + 1 = 11, k(2) = 10 + 2 = 12, 11 + 12 = 23")
   }
 
@@ -174,8 +172,8 @@ class TestScopedEffects extends munit.FunSuite:
     // was first written down. This is the whole mechanism behind the
     // Shift case too, demonstrated here without Shift's machinery.
     val k: Int ! Reader % Int = Reader.ask[Int] // built with NO local in sight
-    val underLocal = Reader.local[Int, Int, okay.Pure](_ * 10)(k.at[Reader % Int + okay.Pure])
-    assertEquals(!.run(Reader.run[Int, Int, okay.Pure](1)(underLocal)), 10,
+    val underLocal = Reader.local[Int, Int, Pure](_ * 10)(k.at[Reader % Int + Pure])
+    assertEquals(!.run(Reader.run[Int, Int, Pure](1)(underLocal)), 10,
       "k has no memory of its own textual origin; whoever wraps it decides")
     // and k ITSELF, run plain, still answers the ambient value —
     // it is a value, evaluated fresh each time it is handed to a runner

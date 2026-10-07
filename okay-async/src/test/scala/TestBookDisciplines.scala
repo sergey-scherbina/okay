@@ -16,7 +16,7 @@ import scala.language.implicitConversions
  */
 class TestBookDisciplines extends munit.FunSuite {
 
-  type P = okay.Pure
+  type P = okay.freer.Pure
 
   // A helper over an abstract row that DECLARES the obligation.
   // It compiles with no concrete row in sight: the witness is simply

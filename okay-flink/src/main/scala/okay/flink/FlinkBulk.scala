@@ -1,6 +1,7 @@
 package okay.flink
 
-import okay.*
+
+import okay.{Bulk, Chunks, Csv}
 import okay.freer.*
 
 import org.apache.flink.api.common.RuntimeExecutionMode

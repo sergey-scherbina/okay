@@ -1,6 +1,7 @@
 package okay.codec
 
-import okay.*
+
+import okay.{through}
 import okay.freer.*
 
 import okay.lex.Scan

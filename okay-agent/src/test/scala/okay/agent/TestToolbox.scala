@@ -1,7 +1,6 @@
 package okay.agent
 import okay.freer.*
 
-import okay.*
 
 import okay.codec.{Json, Schema}
 import Json.{JObj, JStr, JNum, JArr}
@@ -111,13 +110,13 @@ class TestToolbox extends munit.FunSuite {
 
   test("a tool that is a program performs its effect in the caller's row, and a pure box lifts beside it") {
     assertEquals(effectful.specs.map(_.name), Seq("log", "add", "list"))
-    val (log, out) = !.run(Writer.run[String, String, okay.Pure](effectful.table("log")(call("log", "text" -> JStr("t"), "owner" -> JStr("o")))))
+    val (log, out) = !.run(Writer.run[String, String, okay.freer.Pure](effectful.table("log")(call("log", "text" -> JStr("t"), "owner" -> JStr("o")))))
     assertEquals((log, out), (Seq("logged t"), "ok"))
     // the lifted pure tool answers what it answered, with nothing told
-    val (log2, out2) = !.run(Writer.run[String, String, okay.Pure](effectful.table("add")(call("add", "text" -> JStr("t"), "owner" -> JStr("o")))))
+    val (log2, out2) = !.run(Writer.run[String, String, okay.freer.Pure](effectful.table("add")(call("add", "text" -> JStr("t"), "owner" -> JStr("o")))))
     assertEquals((log2, out2), (Seq.empty, box.table("add")(call("add", "text" -> JStr("t"), "owner" -> JStr("o")))))
     // a bad argument is still an ANSWER, as a program
-    val (_, bad) = !.run(Writer.run[String, String, okay.Pure](effectful.table("log")(call("log", "text" -> JNum(1)))))
+    val (_, bad) = !.run(Writer.run[String, String, okay.freer.Pure](effectful.table("log")(call("log", "text" -> JNum(1)))))
     assert(bad.contains("\"error\""), bad)      // Toolbox.failed answers DATA, as the pure box does
     assertEquals(effectful.call(call("nosuch")).isDefined, false)
   }
@@ -126,7 +125,7 @@ class TestToolbox extends munit.FunSuite {
     val prog: String ! Tool + W =
       okay.freer.effect[Tool + W, String](Tool.Call(call("log", "text" -> JStr("a"), "owner" -> JStr("o")))).flatMap(r1 =>
         okay.freer.effect[Tool + W, String](Tool.Call(call("nosuch"))).map(r2 => s"$r1|$r2"))
-    val (log, out) = !.run(Writer.run[String, String, okay.Pure](Handlers.relayToolsF[String, W](effectful.table)(prog)))
+    val (log, out) = !.run(Writer.run[String, String, okay.freer.Pure](Handlers.relayToolsF[String, W](effectful.table)(prog)))
     assertEquals(log, Seq("logged a"))
     assertEquals(out, "ok|error: no such tool 'nosuch'")
   }

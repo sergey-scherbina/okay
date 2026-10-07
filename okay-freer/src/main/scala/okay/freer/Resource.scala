@@ -1,7 +1,6 @@
 package okay.freer
 
-import okay.*
-import okay.given
+import okay.{Answers, Effect}
 
 
 import okay.freer.!.*
@@ -20,10 +19,10 @@ trait Failing[F[+_]]:
   def guard[X](e: F[X], onFailure: () => Unit): F[X]
 
 object Failing:
-  /** Pure has no failure channel to decorate. `okay.Pure` because this
+  /** Pure has no failure channel to decorate. `Pure` because this
    * file's own `import okay.freer.!.*` shadows it with the Free.Return case
    * (see Effects.scala's note on the same trap). */
-  given pure: Failing[okay.Pure] with
+  given pure: Failing[Pure] with
     def guard[X](e: Nothing, onFailure: () => Unit): Nothing = e
 
 /**

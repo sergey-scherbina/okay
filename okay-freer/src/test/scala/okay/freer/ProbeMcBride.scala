@@ -1,6 +1,5 @@
 package okay.freer
 
-import okay.*
 
 import scala.annotation.tailrec
 import ProbeFreerStep.Freer

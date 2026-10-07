@@ -154,30 +154,30 @@ object Vectors {
  * interface.
  */
 final class MemoryStore(similarity: Similarity = Vectors.cosine)
-  extends VectorStore[okay.Pure] {
+  extends VectorStore[okay.freer.Pure] {
 
   private var items: Vector[(Segment, Embedding)] = Vector.empty
 
-  def upsert(xs: Seq[(Segment, Embedding)]): Unit ! okay.Pure =
+  def upsert(xs: Seq[(Segment, Embedding)]): Unit ! okay.freer.Pure =
     // a segment is identified by its source and byte range, so
     // re-indexing an edited definition replaces rather than doubles
     val keys = xs.map((s, _) => (s.source, s.span)).toSet
     items = items.filterNot((s, _) => keys.contains((s.source, s.span))) ++ xs
     okay.freer.pure(())
 
-  def search(query: Embedding, k: Int): Seq[Scored] ! okay.Pure =
+  def search(query: Embedding, k: Int): Seq[Scored] ! okay.freer.Pure =
     given Ordering[Scored] = Ordering.by(_.score)
     val top = Aggregator.topK[Scored](k)
     okay.freer.pure(
       items.foldLeft(top.init)((acc, it) =>
         top.add(acc, Scored(it._1, similarity(query, it._2)))) |> top.present)
 
-  def delete(source: String, spans: Seq[Span]): Unit ! okay.Pure =
+  def delete(source: String, spans: Seq[Span]): Unit ! okay.freer.Pure =
     val gone = spans.toSet
     items = items.filterNot((s, _) => s.source == source && gone.contains(s.span))
     okay.freer.pure(())
 
-  def size: Int ! okay.Pure = okay.freer.pure(items.length)
+  def size: Int ! okay.freer.Pure = okay.freer.pure(items.length)
 
   /** everything held, for persistence and inspection */
   def snapshot: Vector[(Segment, Embedding)] = items

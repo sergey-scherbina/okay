@@ -1,7 +1,8 @@
 package okay.semantic.arrow
 
-import okay.*
 
+
+import okay.{Bulk}
 import okay.codec.Schema
 import okay.arrow.{Rows, ArrowCodec}
 import okay.parquet.{ParquetCodec, ParquetFormat, ReadAt}

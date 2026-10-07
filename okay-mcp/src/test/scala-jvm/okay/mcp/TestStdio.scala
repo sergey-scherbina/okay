@@ -1,7 +1,8 @@
 package okay.mcp
 
-import okay.*
 
+
+import okay.{Async}
 import okay.given
 import okay.freer.given
 import okay.agent.{ToolCall, Toolbox}

@@ -1,6 +1,8 @@
 package okay.security
 
-import okay.{+, %, Async}
+import okay.{Async}
+
+import okay.freer.{+, %}
 import okay.freer.{!, Throws, pure, raise, runEither}
 import okay.freer.Row.at
 import okay.codec.Json

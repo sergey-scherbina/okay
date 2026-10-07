@@ -1,6 +1,7 @@
 package okay.semantic.data
 
-import okay.*
+
+import okay.{Bulk, Chunks, Csv, Tables}
 import okay.freer.*
 
 import okay.codec.{Schema, Json}

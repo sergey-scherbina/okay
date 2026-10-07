@@ -1,6 +1,5 @@
 package okay.freer
 
-import okay.*
 
 /**
  * The machine's depth, through `Delimited` ALONE, on every platform

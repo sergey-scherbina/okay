@@ -1,7 +1,8 @@
 package okay.refine
 
 import scala.reflect.ClassTag
-import okay.{%, Prism, Stage}
+import okay.{Prism, Stage}
+import okay.freer.{%}
 import okay.freer.{!, Choose, Throws, choose, effect, pure, raise}
 import okay.codec.{Json, Schema}
 

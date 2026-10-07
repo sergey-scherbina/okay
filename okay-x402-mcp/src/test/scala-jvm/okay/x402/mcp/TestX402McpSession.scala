@@ -1,7 +1,8 @@
 package okay.x402.mcp
+
+import okay.{Async, Channel, Source}
 import okay.freer.*
 
-import okay.*
 
 import okay.given
 import okay.freer.given

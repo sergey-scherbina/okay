@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.*
+import okay.{Effect, TypeableK}
 
 import okay.freer.Row.at
 

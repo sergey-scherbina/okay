@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.*
+import okay.{TypeableK, typeableK}
 import okay.given
 
 import org.openjdk.jmh.annotations.*

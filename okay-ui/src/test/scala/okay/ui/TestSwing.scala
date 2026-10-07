@@ -1,7 +1,8 @@
 package okay.ui
+
+import okay.{Async, Source}
 import okay.freer.*
 
-import okay.*
 
 import okay.given
 import okay.freer.given
@@ -20,7 +21,7 @@ class TestSwing extends munit.FunSuite {
 
   import Ui.*
 
-  def now[A](p: A ! Async): A = !.run(Async.run[A, okay.Pure](p))
+  def now[A](p: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](p))
 
   /** a component tree as a string: what a frame LOOKS like, structurally */
   def show(c: Component): String = c match

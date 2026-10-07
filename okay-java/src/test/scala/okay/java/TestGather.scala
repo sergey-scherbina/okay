@@ -1,6 +1,8 @@
 package okay.java
 
-import okay.{%, Pane, Stage, through}
+import okay.{Pane, Stage, through}
+
+import okay.freer.{%}
 import okay.freer.{!, Aggregator, Writer, pure}
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.stream.{Gatherer, Gatherers, Stream}

@@ -17,7 +17,7 @@ import scala.language.implicitConversions
  */
 class TestBookCaptureAndTheRest extends munit.FunSuite {
 
-  type P = okay.Pure
+  type P = okay.freer.Pure
 
   test("a plain var is SHARED by every branch -- it is one heap cell") {
     // Contrast with chapter 17: State's behaviour depended on handler

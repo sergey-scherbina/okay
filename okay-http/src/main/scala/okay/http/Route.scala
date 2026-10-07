@@ -1,6 +1,6 @@
 package okay.http
 
-import okay.*
+import okay.{guard, Async, Prism, Source}
 import okay.freer.*
 
 import scala.deriving.Mirror

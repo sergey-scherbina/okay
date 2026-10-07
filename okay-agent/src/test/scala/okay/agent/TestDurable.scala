@@ -1,6 +1,8 @@
 package okay.agent
 
-import okay.{+, Async, Answers}
+import okay.{Async, Answers}
+
+import okay.freer.{+}
 import okay.freer.{!}
 import okay.given
 import okay.freer.given
@@ -20,10 +22,10 @@ class TestDurable extends okay.testkit.Munit.Diagnosed {
     given Answers[Model] = model
     given Answers[Tool] = tool
     given Answers[Context] = ctx
-    given rowMA: Answers[Model + Async] = okay.Answers.union[Model, Async]
+    given rowMA: Answers[Model + Async] = okay.freer.Row.union[Model, Async]
     given rowCMA: Answers[Context + (Model + Async)] =
-      okay.Answers.union[Context, Model + Async]
-    given rowAll: Answers[Agent] = okay.Answers.union[Tool, Context + (Model + Async)]
+      okay.freer.Row.union[Context, Model + Async]
+    given rowAll: Answers[Agent] = okay.freer.Row.union[Tool, Context + (Model + Async)]
     prog.runWith
 
   val charge = ToolCall("c1", "charge",

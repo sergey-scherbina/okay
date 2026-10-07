@@ -1,14 +1,13 @@
 package okay.freer
 
-import okay.*
-import okay.given
+import okay.{sequence}
 
 import okay.freer.Row.*
 
 /** specs/shift-effect.md, specs/shift-merge.md: `Shift % R`, the continuation as an effect, on the one machine */
 class TestShift extends munit.FunSuite:
 
-  type P = okay.Pure
+  type P = Pure
   type S = State % Int
 
   test("laws: reset(pure(v)) is v; reset(shift(k => k(v))) is v; dropping k aborts") {

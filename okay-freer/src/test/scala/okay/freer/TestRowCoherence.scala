@@ -1,8 +1,6 @@
 package okay.freer
 
-import okay.*
-import okay.given
-
+import okay.{! as _, pure as _, effect as _, handle as _, + as _, % as _, Pure as _, *}
 import okay.freer.Bisim.{Answers, Verdict}
 import okay.freer.Row.{at, plus}
 import okay.freer.Writer.byValue.given
@@ -87,7 +85,7 @@ class TestRowCoherence extends munit.FunSuite:
   val keyed: (Int, Int) ! Small + Big =
     for
       a <- Tag.tag["small", State % Int](bump(1)).plus[Big]
-      b <- Tag.tag["big", State % Int][Int, okay.Pure](bump(10)).at[Small + Big]
+      b <- Tag.tag["big", State % Int][Int, Pure](bump(10)).at[Small + Big]
     yield (a, b)
   // `+` takes its test from its LEFT member, so a row of answers nests
   // to the right: A + (B + added)

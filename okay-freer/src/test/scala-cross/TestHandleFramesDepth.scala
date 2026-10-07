@@ -1,13 +1,12 @@
 package okay.freer
 
-import okay.*
-import okay.given
+import okay.{Effect}
 
 import okay.freer.Row.*
 
 /** handle-frames on every platform: a handler per level, a hundred thousand levels, on the engine's own stack */
 class TestHandleFramesDepth extends munit.FunSuite:
-  import okay.freer.cps.given_Effects_Free
+  import okay.freer.cps.given_Classic_Free
 
   val n = 100000
 
@@ -40,7 +39,7 @@ class TestHandleFramesDepth extends munit.FunSuite:
 
   def controlled(n: Int): Int ! Pure =
     if n == 0 then pure(0)
-    else Effects[Free].handle[Tick, Pure](
+    else Classic[Free].handle[Tick, Pure](
       !.tailcall(controlled(n - 1)).at[Tick + Pure].flatMap(x => effect[Tick, Int](Tick.Now).map(_ + x)))(pure(_))(
       [X] => (e: Tick[X]) => e match
         case Tick.Now => Cont.shift[X, Int ! Pure, Int ! Pure](k => k(1)))

@@ -93,7 +93,7 @@ class TestGenerator extends munit.FunSuite:
     val prog: Unit ! W = direct {
       for x <- src.take(3) do Writer.tell(s"got $x").?
     }
-    val (log, _) = !.run(Writer.run[String, Unit, okay.Pure](prog))
+    val (log, _) = !.run(Writer.run[String, Unit, okay.freer.Pure](prog))
     assertEquals(log, Seq("got 1", "got 2", "got 3"))
     assertEquals(steps, 3, "the source ran to its third yield and stopped")
   }

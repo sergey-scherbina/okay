@@ -1,6 +1,7 @@
 package okay.spring
 
-import okay.*
+
+import okay.{Async, async}
 import okay.freer.*
 
 import org.springframework.context.annotation.{AnnotationConfigApplicationContext, Configuration}

@@ -1,8 +1,7 @@
 package okay.demo
 import okay.freer.*
 
-import okay.*
-
+import okay.{guard, Async, Channel, Source, Timer}
 import okay.given
 import okay.freer.given
 import okay.http.{Http, McpHttp, Request, Response}
@@ -167,11 +166,11 @@ object ChatDemo {
     given okay.Answers[Tool] = Handlers.tools(boardTable(b))
     val ctx = Handlers.context(Compact.all)._2
     given okay.Answers[AgentContext] = ctx
-    given r1: okay.Answers[AgentModel + Async] = okay.Answers.union[AgentModel, Async]
+    given r1: okay.Answers[AgentModel + Async] = okay.freer.Row.union[AgentModel, Async]
     given r2: okay.Answers[AgentContext + (AgentModel + Async)] =
-      okay.Answers.union[AgentContext, AgentModel + Async]
+      okay.freer.Row.union[AgentContext, AgentModel + Async]
     given r3: okay.Answers[Tool + (AgentContext + (AgentModel + Async))] =
-      okay.Answers.union[Tool, AgentContext + (AgentModel + Async)]
+      okay.freer.Row.union[Tool, AgentContext + (AgentModel + Async)]
     import okay.Direct.*
     def seed(ms: List[Anthropic.Message]): Unit ! okay.agent.Agent = ms match
       case Nil => pure(())

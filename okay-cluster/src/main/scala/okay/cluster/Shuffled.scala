@@ -1,6 +1,7 @@
 package okay.cluster
 
-import okay.*
+
+import okay.{Chunks}
 import okay.freer.*
 
 import okay.codec.{Codecs, Schema}

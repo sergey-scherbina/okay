@@ -1,6 +1,5 @@
 package okay.freer
 
-import okay.*
 
 /**
  * specs/cont-stack.md plan stage D3, moved up by the stage-A A/B: on

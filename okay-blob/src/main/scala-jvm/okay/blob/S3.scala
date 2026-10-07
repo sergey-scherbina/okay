@@ -1,6 +1,8 @@
 package okay.blob
 
-import okay.{+, %, Async, Source}
+import okay.{Async, Source}
+
+import okay.freer.{+, %}
 import okay.freer.{!, Chunk, Writer, pure}
 import okay.freer.Row.plus
 import okay.http.{Body, Http, Method, Request, Response}

@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.*
+import okay.{TypeableK, typeableK}
 
 
 /**
@@ -101,4 +101,4 @@ object Refs:
         case Write(c, v) => ((s._1, s._2.updated(c, v)), v))((0, Map.empty), p)
 
   /** run a program that uses cells, and nothing else */
-  inline def run[A](p: A ! Refs): A = !.run(handle[A, okay.Pure](p))
+  inline def run[A](p: A ! Refs): A = !.run(handle[A, Pure](p))

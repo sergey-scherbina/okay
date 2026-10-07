@@ -1,6 +1,7 @@
 package okay.openapi
 
-import okay.*
+
+import okay.{Async}
 import okay.freer.*
 
 import okay.codec.{Json, Schema}

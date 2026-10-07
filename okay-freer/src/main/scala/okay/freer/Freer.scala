@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.*
+import okay.{Functor, Monad, ParaMonad, TailRecM, ==>}
 
 import scala.annotation.tailrec
 

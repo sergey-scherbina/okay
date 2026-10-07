@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.*
+import okay.{Answers, Effect}
 
 import okay.freer.Row.at
 
@@ -10,8 +10,8 @@ case class Fc[+A](a: A) derives Effect
 case class Fd[+A](a: A) derives Effect
 
 /**
- * `Answers.flat` agrees with `Answers.union` — specs/handler-fusion.md,
- * the `Answers.flat` box. The handlers are identities that RECORD, so
+ * `Row.flat` agrees with `Row.union` — specs/handler-fusion.md,
+ * the `Row.flat` box. The handlers are identities that RECORD, so
  * "agrees" is checked on which handler saw which operation, in what
  * order, not only on the answer (four identity handlers would answer
  * the same value even if every operation went to the wrong one).
@@ -33,10 +33,10 @@ class TestFlat extends munit.FunSuite:
     def seen: (List[Any], List[Any], List[Any], List[Any]) = (a.result(), b.result(), c.result(), d.result())
 
     val union: Answers[Row] =
-      given h34: Answers[Fc + Fd] = Answers.union[Fc, Fd]
-      given h234: Answers[Fb + (Fc + Fd)] = Answers.union[Fb, Fc + Fd]
-      Answers.union[Fa, Fb + (Fc + Fd)]
-    val flat: Answers[Row] = Answers.flat[Row]
+      given h34: Answers[Fc + Fd] = Row.union[Fc, Fd]
+      given h234: Answers[Fb + (Fc + Fd)] = Row.union[Fb, Fc + Fd]
+      Row.union[Fa, Fb + (Fc + Fd)]
+    val flat: Answers[Row] = Row.flat[Row]
 
   /** one operation at every position, twice, interleaved */
   def mixed: Int ! Row =
@@ -77,7 +77,7 @@ class TestFlat extends munit.FunSuite:
     type L = (Fa + Fb) + (Fc + Fd)
     val f = Logs()
     import f.given
-    val h: Answers[L] = Answers.flat[L]
+    val h: Answers[L] = Row.flat[L]
     val p: Int ! L = effect[L, Int](Fd(4)).flatMap(x => effect[L, Int](Fa(x + 1)))
     assertEquals(p.runWith(using h), 5)
     assertEquals(f.seen, (List(5), Nil, Nil, List(4)))
@@ -90,7 +90,7 @@ class TestFlat extends munit.FunSuite:
     val f = Logs()
     import f.given
     given Answers[Tag.Of["t", Fb]] = Tag.handler["t", Fb](f.hb)
-    val h: Answers[T] = Answers.flat[T]
+    val h: Answers[T] = Row.flat[T]
     val p: Int ! T =
       effect[T, Int](Fa(1)).flatMap(x => Tag.one["t", Fb](Fb(x + 1)).at[T])
     assertEquals(p.runWith(using h), 2)
@@ -100,7 +100,7 @@ class TestFlat extends munit.FunSuite:
   test("a member without an Answers in scope is refused at compile time, naming the member") {
     val e = compileErrors("""
       given Answers[Fa] = new Answers[Fa] { def handle[A](e: Fa[A]): A = e.a }
-      Answers.flat[Fa + Fb]
+      Row.flat[Fa + Fb]
     """)
     assert(e.contains("no Answers"), e)
     assert(e.contains("Fb"), e)

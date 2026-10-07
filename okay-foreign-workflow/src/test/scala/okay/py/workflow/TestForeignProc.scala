@@ -1,6 +1,8 @@
 package okay.foreign.workflow
 
-import okay.{%, +, Proc, Pure, Wf}
+import okay.{Proc, Wf}
+
+import okay.freer.{%, +, Pure}
 import okay.freer.{!, Shift}
 import okay.Direct.*
 import okay.Optic.arrows.*

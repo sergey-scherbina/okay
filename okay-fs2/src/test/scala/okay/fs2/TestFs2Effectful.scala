@@ -1,6 +1,8 @@
 package okay.fs2
 
-import okay.{%, +, Async, Source, Stage}
+import okay.{Async, Source, Stage}
+
+import okay.freer.{%, +}
 import okay.freer.{!, Writer}
 import okay.given
 import okay.freer.given

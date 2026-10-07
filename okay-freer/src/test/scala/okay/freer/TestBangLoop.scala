@@ -1,7 +1,5 @@
 package okay.freer
 
-import okay.*
-import okay.given
 
 /**
  * specs/fold-until.md, stage 2 — `!.loop(s)(f)`: continue on Left,

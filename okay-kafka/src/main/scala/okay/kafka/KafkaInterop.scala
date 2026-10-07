@@ -1,6 +1,8 @@
 package okay.kafka
 
-import okay.{+, %, Async, Source, async}
+import okay.{Async, Source, async}
+
+import okay.freer.{+, %}
 import okay.freer.{!, Chunk, Writer, effect}
 import org.apache.kafka.clients.consumer.{Consumer, ConsumerRecord, KafkaConsumer}
 import org.apache.kafka.clients.producer.{KafkaProducer, Producer as JProducer, ProducerRecord}

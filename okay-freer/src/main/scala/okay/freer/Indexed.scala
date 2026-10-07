@@ -1,7 +1,6 @@
 package okay.freer
 
-import okay.*
-import okay.given
+import okay.{Answers, Monad, TailRecM}
 
 import scala.annotation.implicitNotFound
 import scala.quoted.*

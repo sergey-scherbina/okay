@@ -1,6 +1,6 @@
 package okay.resilience
 
-import okay.*
+import okay.{TypeableK, guard, Async, Scheduler, Timer}
 import okay.freer.*
 
 import okay.http.{Http, Method, Request, Response}

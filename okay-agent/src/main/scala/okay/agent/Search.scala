@@ -1,6 +1,8 @@
 package okay.agent
 
-import okay.{+, guard}
+import okay.{guard}
+
+import okay.freer.{+}
 import okay.freer.{!, Choose, Logic, effect, runChoice}
 import okay.freer.given
 

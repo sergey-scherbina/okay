@@ -145,12 +145,12 @@ class ContBenchmark {
     value(writer[Int, Int](body))._1.length
 
   /** M operations of a ROW program, `Free[Ask +: Tick +: Pure, Int]`, under two answering handlers: the row's
-   * capabilities (`Has`) built once per run, the operation's capability found by its path (`rowAnswering`,
+   * capabilities (`Has`) built once per run, the operation's capability found by its path, the row fixed (`rowAnswering`,
    * beside `handlePrebuiltAnswering`, the same program written against contexts) */
   val rowProg: Free[Ask +: Tick +: Pure, Int] =
     def loop(i: Int, acc: Int): Free[Ask +: Tick +: Pure, Int] =
-      if i >= M then Free.pure(acc).widen
-      else Free.inject(Ask.Value(1)).flatMap(a => Free.inject(Tick.Value(1)).flatMap(t => loop(i + 1, acc + a + t))).widen
+      if i >= M then Free.pure(acc)
+      else Free.inject(Ask.Value(1)).flatMap(a => Free.inject(Tick.Value(1)).flatMap(t => loop(i + 1, acc + a + t)))
     loop(0, 0)
   @Benchmark
   def rowAnswering(): Int =

@@ -1,4 +1,4 @@
-import okay.*
+import okay.{guard, Proc, Wf}
 import okay.freer.*
 import okay.Direct.*
 import scala.language.implicitConversions
@@ -11,7 +11,7 @@ import scala.language.implicitConversions
  */
 class TestProcMatch extends munit.FunSuite:
 
-  type P = okay.Pure
+  type P = okay.freer.Pure
   type Sig = Wf.Asked[String, String]
 
   def ask(q: String): Wf.Question[String, String, String] = Wf.Question.Ask(q)

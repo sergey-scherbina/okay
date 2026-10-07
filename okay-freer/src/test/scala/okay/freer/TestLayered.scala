@@ -1,7 +1,5 @@
 package okay.freer
 
-import okay.*
-import okay.given
 
 import Layered.*
 
@@ -115,7 +113,7 @@ class TestLayeredStacked extends munit.FunSuite:
   import okay.freer.Layered.Stacked.{reify, reflect}
   import okay.freer.Row.at
 
-  type P = okay.Pure
+  type P = Pure
 
   test("keyed: List outside Option, each reflect reaching its own layer — the stage-0 answer") {
     val r = !.run(reify[List, Option[Int], P] { lst =>
@@ -143,10 +141,10 @@ class TestLayeredStacked extends munit.FunSuite:
 
   test("keyed: a layer used AFTER its reify returned does not compile where it is run (stage 0 threw NoPrompt)") {
     val e = compileErrors("""
-      var leaked: okay.freer.Shift.Stacked.Reset[Option[Int], okay.Pure] | Null = null
-      okay.freer.!.run(okay.freer.Layered.Stacked.reify[Option, Int, okay.Pure] { opt =>
+      var leaked: okay.freer.Shift.Stacked.Reset[Option[Int], Pure] | Null = null
+      okay.freer.!.run(okay.freer.Layered.Stacked.reify[Option, Int, Pure] { opt =>
         leaked = opt
-        okay.freer.pure[okay.freer.Shift % opt.type + okay.Pure, Int](1)
+        okay.freer.pure[okay.freer.Shift % opt.type + Pure, Int](1)
       }.flatMap { _ =>
         val l = leaked.nn
         okay.freer.Layered.Stacked.reflect(Option(2))(l).map(Option(_))

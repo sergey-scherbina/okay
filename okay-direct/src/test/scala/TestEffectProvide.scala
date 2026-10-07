@@ -110,6 +110,6 @@ class TestEffectProvide extends munit.FunSuite {
       val env: Int = rask
       env + 1
     }
-    assertEquals(!.run(Reader.run[Int, Int, okay.Pure](41)(p)), 42)
+    assertEquals(!.run(Reader.run[Int, Int, okay.freer.Pure](41)(p)), 42)
   }
 }

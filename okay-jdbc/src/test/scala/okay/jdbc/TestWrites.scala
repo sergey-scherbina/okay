@@ -32,7 +32,7 @@ class TestWrites extends munit.FunSuite {
     try f(JdbcSql(conn))
     finally conn.close()
 
-  def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.Pure](prog))
+  def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](prog))
 
   def clear(db: Sql): Unit = { run(db.update("delete from orders")): Unit }
 

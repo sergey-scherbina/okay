@@ -20,7 +20,7 @@ class TestGranted extends munit.FunSuite {
   val verify: String => Verified =
     t => Jwt.verify(t, _ => Some(Jwt.Key.Hmac(secret)), Some("api"), now)
 
-  def run[A](p: A ! Async): A = !.run(Async.run[A, okay.Pure](p))
+  def run[A](p: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](p))
 
   val route = Secure.granted(verify, Policy.scoped("read")) {
     // no lambda parameter: the principal is ambient

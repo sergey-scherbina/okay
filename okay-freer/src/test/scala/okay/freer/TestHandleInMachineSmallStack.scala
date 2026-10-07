@@ -1,7 +1,6 @@
 package okay.freer
 
-import okay.*
-import okay.given
+import okay.{Effect}
 
 import okay.freer.Row.*
 
@@ -13,7 +12,7 @@ import okay.freer.Row.*
  * the handler's loop, unless the one machine runs both.
  */
 class TestHandleInMachineSmallStack extends munit.FunSuite:
-  import okay.freer.cps.given_Effects_Free
+  import okay.freer.cps.given_Classic_Free
 
   type R = Shift % Int + Pure
 
@@ -57,7 +56,7 @@ class TestHandleInMachineSmallStack extends munit.FunSuite:
 
   def controlled(n: Int): Int ! Pure =
     if n == 0 then pure(0)
-    else Effects[Free].handle[Tick, Pure](
+    else Classic[Free].handle[Tick, Pure](
       !.tailcall(controlled(n - 1)).at[Tick + Pure].flatMap(x => effect[Tick, Int](Tick.Now).map(_ + x)))(pure(_))(
       [X] => (e: Tick[X]) => e match
         case Tick.Now => Cont.shift[X, Int ! Pure, Int ! Pure](k => k(1)))

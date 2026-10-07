@@ -1,9 +1,9 @@
 package okay.ui
 import okay.freer.*
 
-import okay.*
-
+import okay.{Applicative, modify, Traversal, preview, toVector}
 import okay.given
+
 
 /**
  * The tree's optics (specs/optics.md stage 2): `everywhere`, `shown`,

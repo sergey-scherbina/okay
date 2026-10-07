@@ -1,6 +1,8 @@
 package okay.agent
 
-import okay.{%, +, Async}
+import okay.{Async}
+
+import okay.freer.{%, +}
 import okay.freer.{!, Writer, effect}
 import okay.codec.{Json, Schema}
 import okay.llm.Transport

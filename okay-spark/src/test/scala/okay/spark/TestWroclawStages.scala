@@ -1,9 +1,9 @@
 package okay.spark
 
-import okay.*
 
+
+import okay.{Bulk, Csv, Tables}
 import okay.freer.*
-import okay.given
 import okay.freer.given
 import okay.Tables.read
 import okay.freer.Row.plus
@@ -82,7 +82,7 @@ class TestWroclawStages extends munit.FunSuite:
         .join(read(file("trips.txt")).select(r => r("trip_id") -> (r("route_id"), r("service_id"))))
         .aggregate(Aggregator.count[Any])
     def run(p: Long ! Tables, rewrite: Boolean): Long =
-      State.run(Tables.Heap.empty[D])(Tables.via(B, rewrite = rewrite)(p.plus[okay.Pure]))._2
+      State.run(Tables.Heap.empty[D])(Tables.via(B, rewrite = rewrite)(p.plus[okay.freer.Pure]))._2
     val a = timed("joins small-side-left, as written")(run(wrongWayRound, false))
     val b = timed("joins small-side-left, rewritten")(run(wrongWayRound, true))
     assertEquals(a, b)

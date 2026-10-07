@@ -1,6 +1,5 @@
 package okay.pool
 
-import okay.*
 
 import okay.given
 import okay.freer.given

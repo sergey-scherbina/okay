@@ -1,6 +1,7 @@
 package okay.resilience
 
-import okay.*
+
+import okay.{Async, Scheduler, Timer, Fiber}
 import okay.freer.*
 
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger, AtomicReference}

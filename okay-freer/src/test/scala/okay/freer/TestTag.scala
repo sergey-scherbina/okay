@@ -1,7 +1,6 @@
 package okay.freer
 
-import okay.*
-import okay.given
+import okay.{Answers, Effect}
 
 import okay.freer.Row.{at, plus}
 
@@ -27,7 +26,7 @@ class TestTag extends munit.FunSuite {
         // the second clause, written: `G` infers from the program,
         // and a program of State alone gives back State rather than
         // Pure — `.at[Both]` needs the Pure row (generalized-method-syntax)
-        b <- Tag.tag["big", State % Int][Int, okay.Pure](bump(10)).at[Both]
+        b <- Tag.tag["big", State % Int][Int, Pure](bump(10)).at[Both]
       yield (a, b)
 
     // handling is the effect's OWN: untag one key, run State, repeat
@@ -51,7 +50,7 @@ class TestTag extends munit.FunSuite {
       yield (x, y)
     val inner = Reader.run[Int, (Int, Int), A](7)(
       Tag.untag["b", Reader % Int](p.at[B + A]))
-    val out = !.run(Reader.run[Int, (Int, Int), okay.Pure](1)(
+    val out = !.run(Reader.run[Int, (Int, Int), Pure](1)(
       Tag.untag["a", Reader % Int](inner)))
     assertEquals(out, (1, 7))
   }
@@ -92,7 +91,7 @@ class TestTag extends munit.FunSuite {
     intercept[ClassCastException] {
       val inner = Reader.run[String, (Int, String), A](
         "ada")(Tag.untag["same", Reader % String](p.at[B + A]))
-      !.run(Reader.run[Int, (Int, String), okay.Pure](
+      !.run(Reader.run[Int, (Int, String), Pure](
         7)(Tag.untag["same", Reader % Int](inner)))
     }
   }
@@ -130,7 +129,7 @@ class TestTag extends munit.FunSuite {
       def handle[X](e: Buzz[X]): X = e match { case Buzz.Bzz() => "ada" }
 
     assertEquals(
-      p.runWith(using Answers.union[A, B](
+      p.runWith(using Row.union[A, B](
         using summon[okay.Effect[A]], Tag.handler["same", Beep](hb),
         Tag.handler["same", Buzz](hz))),
       (42, "ada"))

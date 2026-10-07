@@ -1,7 +1,8 @@
 package okay.spark
 
-import okay.*
 
+
+import okay.{Tables}
 import okay.freer.*
 import okay.given
 import okay.freer.given

@@ -1,8 +1,7 @@
 package okay.security
 import okay.freer.*
 
-import okay.*
-
+import okay.{Answers, Async}
 import okay.given
 import okay.freer.given
 import okay.agent.{Handlers, Tool, ToolCall, ToolSpec}

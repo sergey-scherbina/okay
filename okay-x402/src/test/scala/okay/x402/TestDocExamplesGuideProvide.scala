@@ -1,6 +1,5 @@
 package okay.x402
 
-import okay.*
 import okay.freer.*
 
 import okay.conf.Secrets

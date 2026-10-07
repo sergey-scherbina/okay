@@ -1,6 +1,6 @@
 package okay.chat
 
-import okay.*
+import okay.{guard, Async, Source}
 import okay.freer.*
 
 import okay.given
@@ -18,7 +18,7 @@ import java.nio.charset.StandardCharsets.UTF_8
  */
 class TestChat extends munit.FunSuite {
 
-  def run[A](p: A ! Async): A = !.run(Async.run[A, okay.Pure](p))
+  def run[A](p: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](p))
 
   def text(src: Source[Chunk[Byte]]): String =
     run(Http.text(Response(200, Nil, src)))

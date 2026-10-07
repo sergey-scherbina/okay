@@ -1,6 +1,8 @@
 package okay.agent
 
-import okay.{+, Async, Answers}
+import okay.{Async, Answers}
+
+import okay.freer.{+}
 import okay.freer.{!, effect, pure}
 import okay.codec.Json
 

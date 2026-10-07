@@ -1,7 +1,6 @@
 package okay.live
 
-import okay.*
-
+import okay.{sequence, preview, set}
 import okay.given
 import okay.codec.{Json, JsonOptic, Schema}
 import Json.*

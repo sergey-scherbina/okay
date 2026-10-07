@@ -1,6 +1,5 @@
 package okay.semantic.sql
 
-import okay.*
 
 import okay.given
 import okay.freer.given

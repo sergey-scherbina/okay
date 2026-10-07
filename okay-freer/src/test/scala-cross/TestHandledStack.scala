@@ -1,7 +1,6 @@
 package okay.freer
 
-import okay.*
-import okay.given
+import okay.{TypeableK}
 
 import okay.freer.Row.at
 

@@ -1,6 +1,5 @@
 package okay.freer
 
-import okay.*
 
 
 import okay.freer.Shift.{Abort, Dollar, Push, Resume, Resumption, Shift0}

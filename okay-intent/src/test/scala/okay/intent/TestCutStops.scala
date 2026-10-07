@@ -2,7 +2,10 @@ package okay.intent
 
 import okay.given
 
-import okay.{%, +, Async, Answers}
+
+import okay.{Async, Answers}
+
+import okay.freer.{%, +}
 import okay.freer.{!, Writer}
 import okay.codec.Schema
 import okay.llm.Structured

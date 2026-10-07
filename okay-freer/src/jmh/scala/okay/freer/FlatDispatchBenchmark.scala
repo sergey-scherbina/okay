@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.*
+import okay.{Answers, Effect}
 import okay.given
 
 import org.openjdk.jmh.annotations.{State as JmhState, *}
@@ -14,12 +14,12 @@ case class E3[+A](a: A) derives Effect
 case class E4[+A](a: A) derives Effect
 
 /**
- * specs/handler-fusion.md, the `Answers.flat` box — its CEILING,
+ * specs/handler-fusion.md, the `Row.flat` box — its CEILING,
  * measured before anything is built (staged-block-lanes, 2026-09-22).
  *
- * `Answers.union` is a nested chain: on `E1 + (E2 + (E3 + E4))` an E4
+ * `Row.union` is a nested chain: on `E1 + (E2 + (E3 + E4))` an E4
  * operation passes three `split` tests and three nested `handle` calls
- * before its own handler sees it. `Answers.flat` would assemble the
+ * before its own handler sees it. `Row.flat` would assemble the
  * same row inline as ONE match over the four operation classes. The
  * hand-written match below is what that unrolls to, so the difference
  * between the two arms is the whole prize of building it. Both arms
@@ -58,11 +58,11 @@ class FlatDispatchBenchmark {
 
   /** the shipping composition: the README's shape, nested in row order */
   val union: Answers[Row] =
-    given h34: Answers[E3 + E4] = Answers.union[E3, E4]
-    given h234: Answers[E2 + (E3 + E4)] = Answers.union[E2, E3 + E4]
-    Answers.union[E1, E2 + (E3 + E4)]
+    given h34: Answers[E3 + E4] = Row.union[E3, E4]
+    given h234: Answers[E2 + (E3 + E4)] = Row.union[E2, E3 + E4]
+    Row.union[E1, E2 + (E3 + E4)]
 
-  /** what `Answers.flat` would unroll to: one match, row order, no
+  /** what `Row.flat` would unroll to: one match, row order, no
    * nested handler call — position 4 pays four class tests and nothing
    * else */
   val flat: Answers[Row] = new Answers[Row]:
@@ -87,7 +87,7 @@ class FlatDispatchBenchmark {
 
   /** the shipped form: the macro's one expression over the row —
    * held to within 10% of `flatCalls` */
-  val inlined: Answers[Row] = Answers.flat[Row]
+  val inlined: Answers[Row] = Row.flat[Row]
 
   def prog4(i: Int, acc: Int): Int ! Row =
     if i >= N then pure(acc) else effect[Row, Int](E4(i)).flatMap(x => prog4(i + 1, acc + x))

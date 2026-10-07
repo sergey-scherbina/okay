@@ -1,7 +1,8 @@
 package okay.http
 
-import okay.*
 
+
+import okay.{Async}
 import scala.scalajs.js
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.util.{Failure, Success}

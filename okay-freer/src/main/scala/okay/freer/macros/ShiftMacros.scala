@@ -1,7 +1,6 @@
 package okay.freer
 package macros
 
-import okay.*
 
 import scala.quoted.*
 

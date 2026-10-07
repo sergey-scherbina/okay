@@ -1,7 +1,7 @@
 package okay.freer
 package macros
 
-import okay.*
+import okay.{guard}
 
 import scala.quoted.*
 

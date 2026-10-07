@@ -1,9 +1,9 @@
 package okay.mcp
+
+import okay.{through}
 import okay.freer.*
 
-import okay.*
 
-import okay.given
 import okay.freer.given
 import okay.codec.Json
 

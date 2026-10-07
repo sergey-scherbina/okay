@@ -1,7 +1,5 @@
 package okay.freer
 
-import okay.*
-import okay.given
 
 /**
  * PROBE (rowlift): the one-cast design, exercised.

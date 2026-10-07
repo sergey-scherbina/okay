@@ -1,6 +1,7 @@
 package okay.cluster
 
-import okay.*
+
+import okay.{Async}
 import okay.freer.{Feed as _, *}   // `Feed` is TestJobs's here
 
 import okay.given

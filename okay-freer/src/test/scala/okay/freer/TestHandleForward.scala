@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.*
+import okay.{Answers, Effect, tracing}
 import okay.given
 
 import scala.annotation.nowarn
@@ -27,9 +27,9 @@ case class Claim[+A](a: A) derives Effect
  * order, and how many times.
  */
 class TestHandleForward extends munit.FunSuite {
-  import okay.freer.cps.{given_Effects_Free, *}
+  import okay.freer.cps.{given_Classic_Free, *}
 
-  val E = summon[Effects[Free]]
+  val E = summon[Classic[Free]]
 
   /** run a forwarded program, recording every operation it performs */
   def trace(p: Int ! Produce): (Int, List[Any]) =

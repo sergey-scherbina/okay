@@ -13,7 +13,7 @@ class TestSaga extends munit.FunSuite {
 
   final case class Order(id: String, total: Int, log: Vector[String]) derives Schema
 
-  def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.Pure](prog))
+  def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](prog))
 
   final class World:
     val facts = scala.collection.mutable.Set.empty[String]

@@ -1,9 +1,9 @@
 package okay.mcp
+
+import okay.{through}
 import okay.freer.*
 
-import okay.*
 
-import okay.given
 import okay.freer.given
 import okay.agent.{ToolCall, ToolSpec, Turn}
 import okay.codec.{Json, Schema}

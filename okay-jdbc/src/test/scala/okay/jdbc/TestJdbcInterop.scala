@@ -1,6 +1,8 @@
 package okay.jdbc
 
-import okay.{+, %, Async, Source}
+import okay.{Async, Source}
+
+import okay.freer.{+, %}
 import okay.freer.{!, Chunk, effect, Stream, Throws, Writer}
 import okay.given
 import okay.freer.given
@@ -17,16 +19,16 @@ class TestJdbcInterop extends munit.FunSuite {
 
   test("a query streams fetch-size rows per chunk, in order") {
     withDb { c =>
-      !.run(okay.Async.run[Unit, okay.Pure](execute(c, "create table nums(n int)")))
+      !.run(okay.Async.run[Unit, okay.freer.Pure](execute(c, "create table nums(n int)")))
       val rows = okay.ChunkBuf.of(1 to 250)
-      val inserted = !.run(okay.Async.run[Int, okay.Pure](
+      val inserted = !.run(okay.Async.run[Int, okay.freer.Pure](
         batch(c, "insert into nums values (?)")((ps, n: Int) => ps.setInt(1, n))(rows)))
       assertEquals(inserted, 250)
 
       val all = collectChunks(query(c, "select n from nums order by n", 64)(_.getInt(1)))
       assertEquals(all.map(_.length), List(64, 64, 64, 58))
       assertEquals(all.flatten, (1 to 250).toList)
-      !.run(okay.Async.run[Unit, okay.Pure](execute(c, "drop table nums")))
+      !.run(okay.Async.run[Unit, okay.freer.Pure](execute(c, "drop table nums")))
     }
   }
 
@@ -42,7 +44,7 @@ class TestJdbcInterop extends munit.FunSuite {
       conn = c
       effect[F, Int](Throws("boom"))
     }
-    val out = !.run(okay.freer.Resource.run[Either[String, Int], okay.Pure](
+    val out = !.run(okay.freer.Resource.run[Either[String, Int], okay.freer.Pure](
       okay.freer.runEither[Int, okay.freer.Resource, String](prog2)))
     assertEquals(out, Left("boom"))
     assert(conn.isClosed, "the region must close the connection after the abort")

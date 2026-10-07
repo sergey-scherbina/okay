@@ -1,7 +1,5 @@
 package okay.freer
 
-import okay.*
-import okay.given
 
 /**
  * specs/shift0-dollar.md, STAGE 0: what today's `Shift` already says

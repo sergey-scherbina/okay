@@ -1,7 +1,8 @@
 package okay.script
+
+import okay.{Async, Stage, through}
 import okay.freer.*
 
-import okay.*
 
 import okay.given
 import okay.freer.given
@@ -21,7 +22,7 @@ class TestLivePush extends munit.FunSuite:
 
   private val page =
     """```scala declare
-      |import okay.*
+      |import okay.{Async, Source}
       |import okay.given
       |import okay.freer.*
       |import okay.freer.given

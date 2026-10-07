@@ -1,6 +1,5 @@
 package okay.freer
 
-import okay.*
 
 /**
  * Run a body on a thread with a SMALL stack (specs/stack-safety.md):

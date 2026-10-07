@@ -32,7 +32,7 @@ class TestPgJdbc extends munit.FunSuite {
     try f(JdbcSql(conn))
     finally conn.close()
 
-  def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.Pure](prog))
+  def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](prog))
 
   def drain[A](p: Source[Chunk[A]]): Vector[A] ! Async = Source.concat(p)
 

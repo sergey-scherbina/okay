@@ -1,6 +1,5 @@
 package okay.freer
 
-import okay.*
 
 /**
  * PState's function answer on EVERY platform (cont-fun-answer): a hundred thousand `get`/`set` steps, past

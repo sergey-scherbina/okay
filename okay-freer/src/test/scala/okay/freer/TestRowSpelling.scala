@@ -1,6 +1,5 @@
 package okay.freer
 
-import okay.*
 
 /**
  * The spelling of a program's type, pinned (bang-row-no-parens,

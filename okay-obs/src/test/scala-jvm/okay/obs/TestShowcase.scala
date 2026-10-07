@@ -27,7 +27,7 @@ class TestShowcase extends munit.FunSuite {
       }
   }
 
-  def run[A](p: A ! Async): A = !.run(Async.run[A, okay.Pure](p))
+  def run[A](p: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](p))
 
   // ---- world one: the production edge ---------------------------
   // the doors install the capabilities from the wire — a verified

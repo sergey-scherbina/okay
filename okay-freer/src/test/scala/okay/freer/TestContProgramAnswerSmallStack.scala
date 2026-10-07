@@ -1,7 +1,5 @@
 package okay.freer
 
-import okay.*
-import okay.given
 
 /** cont-program-answer on a 128 KB JVM thread: the strict leaf nests a run per level and needs a stack switch
  * there; the lazy `k` holds no host frame per level, forced or stepped into */

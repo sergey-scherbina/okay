@@ -1,6 +1,6 @@
 package bookcats
 
-import okay.{+, %, Pure}
+import okay.freer.{+, %, Pure}
 import okay.freer.{!, Shift, pure}
 /**
  * THE BOOK'S CHAPTER 16b, one program three ways
@@ -163,7 +163,6 @@ object LayeredBasket:
 object EffectsBasket:
   import okay.freer.{Choose, Throws, Writer, choose, raise, runChoice, runEither}
   import okay.freer.Row.at
-  import okay.given
   import okay.freer.given
   import Shops.prices
 
@@ -333,7 +332,6 @@ object LayeredTrips:
 object EffectsTrips:
   import okay.freer.{Choose, Throws, Writer, choose, raise, runChoice, runEither}
   import okay.freer.Row.at
-  import okay.given
   import okay.freer.given
   import Trips.{routes, soldOut}
 
@@ -425,7 +423,6 @@ class TestBookTwoMonadsCats extends munit.FunSuite:
 
   test("effects: the two teams' helpers, each on its own row, widen into the union row with no conversion") {
     import okay.freer.{Choose, Writer, runChoice, runEither}
-    import okay.given
     import okay.freer.given
     val checked = runEither[Int, Choose + Writer % String, String](EffectsBasket.teams(List("tea", "cake")))
     val logged  = Writer.collect[String, Either[String, Int], Choose](checked)
@@ -466,7 +463,6 @@ class TestBookTwoMonadsCats extends munit.FunSuite:
 
   test("effects: the helper written once works in a bigger row and under either handler order") {
     import okay.freer.{Choose, Throws, Writer, runChoice, runEither}
-    import okay.given
     import okay.freer.given
     val withVat = okay.freer.Reader.run[Int, Int, EffectsBasket.Basket](20)(EffectsBasket.taxed(List("tea")))
     val checked = runEither[Int, Choose + Writer % String, String](withVat)

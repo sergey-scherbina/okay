@@ -1,9 +1,7 @@
 package okay.cdi
 
-import okay.*
 import okay.freer.*
 
-import okay.given
 import okay.freer.given
 import jakarta.enterprise.inject.literal.NamedLiteral
 import jakarta.enterprise.inject.se.SeContainerInitializer
@@ -51,7 +49,7 @@ class TestOkayCdi extends munit.FunSuite {
     val clock = Module.value[Clock](Clock(7L))
     val c = container(OkayCdi.extension(clock.exports))
     val stamp: Clock ?=> Module[[X] =>> String ?=> X] = Module.value[String](s"t@${wire[Clock].now}")
-    val got = !.run(Resource.run[String, okay.Pure]((OkayCdi.instance[Clock](c) and stamp) { wire[String] }))
+    val got = !.run(Resource.run[String, okay.freer.Pure]((OkayCdi.instance[Clock](c) and stamp) { wire[String] }))
     assertEquals(got, "t@7")
     c.close()
   }

@@ -1,9 +1,9 @@
 package okay.ui
 
-import okay.*
+
+import okay.{Source, through, Async, Take}
 import okay.freer.*
 
-import okay.given
 import okay.freer.given
 import okay.codec.{Json, Schema}
 import okay.persist.{Ack, Record, Topic}

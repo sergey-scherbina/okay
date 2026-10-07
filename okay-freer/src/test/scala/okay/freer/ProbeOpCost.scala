@@ -1,7 +1,5 @@
 package okay.freer
 
-import okay.*
-import okay.given
 
 /** effect-op-cost: EXACT bytes per operation, the operation built fresh
  * (as `State.get` builds it) against a shared node */

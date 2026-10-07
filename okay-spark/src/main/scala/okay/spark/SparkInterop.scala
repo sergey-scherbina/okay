@@ -1,6 +1,5 @@
 package okay.spark
 
-import okay.*
 import okay.freer.*
 
 import org.apache.spark.rdd.RDD

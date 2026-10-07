@@ -17,7 +17,7 @@ import scala.language.implicitConversions
  */
 class TestDelimDiagnostics extends munit.FunSuite {
 
-  type P = okay.Pure
+  type P = okay.freer.Pure
 
   // ---- At: the caller's position, at compile time
 

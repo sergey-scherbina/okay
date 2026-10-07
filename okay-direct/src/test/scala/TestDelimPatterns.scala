@@ -14,14 +14,14 @@ import scala.language.implicitConversions
  */
 class TestDelimPatterns extends munit.FunSuite {
 
-  type R = Shift % ? + okay.Pure
+  type R = Shift % ? + okay.freer.Pure
 
   // ---- 1 · leave early with an answer
 
   val txs = List(10, 20, 30, 40)
   val rules: List[Int => Boolean] = List(_ > 25, _ % 7 == 0)
 
-  def firstHit: Option[Int] ! okay.Pure = Shift.delimited[Option[Int], okay.Pure]:
+  def firstHit: Option[Int] ! okay.freer.Pure = Shift.delimited[Option[Int], okay.freer.Pure]:
     direct:
       for t <- txs; r <- rules do
         if r(t) then !Shift.exit(Some(t))   // out of BOTH loops, with a value
@@ -39,7 +39,7 @@ class TestDelimPatterns extends munit.FunSuite {
   }
 
   test("exit: nothing matches, so the block runs to its end") {
-    val none = Shift.delimited[Option[Int], okay.Pure]:
+    val none = Shift.delimited[Option[Int], okay.freer.Pure]:
       direct:
         for t <- List(1, 2) do
           if t > 100 then !Shift.exit(Some(t))
@@ -63,10 +63,10 @@ class TestDelimPatterns extends munit.FunSuite {
 
   test("collect/emit: the producer stays a walk, the caller gets a list") {
     val t = Tree.Node(Tree.Node(Tree.Leaf(1), Tree.Leaf(2)), Tree.Leaf(3))
-    assertEquals(!.run(Shift.collect[Int, okay.Pure](walk(t))), List(1, 2, 3))
-    assertEquals(!.run(Shift.collect[Int, okay.Pure](walk(Tree.Leaf(7)))), List(7))
+    assertEquals(!.run(Shift.collect[Int, okay.freer.Pure](walk(t))), List(1, 2, 3))
+    assertEquals(!.run(Shift.collect[Int, okay.freer.Pure](walk(Tree.Leaf(7)))), List(7))
     // a producer that emits nothing is not a special case
-    assertEquals(!.run(Shift.collect[Int, okay.Pure](direct(()))), List.empty[Int])
+    assertEquals(!.run(Shift.collect[Int, okay.freer.Pure](direct(()))), List.empty[Int])
   }
 
   // ---- 3 · stop in the middle, carry on later
@@ -78,9 +78,9 @@ class TestDelimPatterns extends munit.FunSuite {
     if pay == "yes" then s"Booked $city for $nights nights" else "Cancelled"
 
   test("pause/resumable: the rest of the dialogue is a value") {
-    val start = !.run(Shift.resumable[String, String, String, okay.Pure](booking))
+    val start = !.run(Shift.resumable[String, String, String, okay.freer.Pure](booking))
 
-    def answering(as: List[String]): String => String ! okay.Pure =
+    def answering(as: List[String]): String => String ! okay.freer.Pure =
       var left = as
       _ => { val a = left.head; left = left.tail; okay.freer.pure(a) }
 
@@ -94,7 +94,7 @@ class TestDelimPatterns extends munit.FunSuite {
 
   test("pause: a program that never asks is Done already") {
     // a body that never pauses needs no evidence at all: it adapts
-    val p = !.run(Shift.resumable[String, String, Int, okay.Pure](direct(41 + 1)))
+    val p = !.run(Shift.resumable[String, String, Int, okay.freer.Pure](direct(41 + 1)))
     assert(p.isInstanceOf[Shift.Paused.Done[?, ?, ?, ?]], s"expected Done, got $p")
     assertEquals(!.run(Shift.drive(p)(_ => okay.freer.pure("unused"))), 42)
   }
@@ -102,7 +102,7 @@ class TestDelimPatterns extends munit.FunSuite {
   // ---- 4 · do something on the way back
 
   test("onReturn: the rest of the block is a value you can act on") {
-    val r = !.run(Shift.delimited[Int, okay.Pure]:
+    val r = !.run(Shift.delimited[Int, okay.freer.Pure]:
       direct:
         !Shift.onReturn(n => n * 10)   // runs LAST, on whatever comes back
         1 + 2)
@@ -112,8 +112,8 @@ class TestDelimPatterns extends munit.FunSuite {
   test("onReturn: a compensation folded into the answer from the middle") {
     // the shape: halfway through, register what to do about the
     // outcome — without the code around it changing at all
-    def charge(amount: Int, ok: Boolean): String ! okay.Pure =
-      Shift.delimited[String, okay.Pure]:
+    def charge(amount: Int, ok: Boolean): String ! okay.freer.Pure =
+      Shift.delimited[String, okay.freer.Pure]:
         direct:
           !Shift.onReturn(s => if s.startsWith("failed") then s"$s; refunded $amount" else s)
           if ok then s"charged $amount" else "failed: card declined"

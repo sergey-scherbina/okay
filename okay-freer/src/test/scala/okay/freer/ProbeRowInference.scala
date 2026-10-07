@@ -1,7 +1,5 @@
 package okay.freer
 
-import okay.*
-import okay.given
 
 import okay.freer.Row.at
 
@@ -20,7 +18,7 @@ class ProbeRowInference extends munit.FunSuite:
   test("a bare-X ascription DOES satisfy an X + Pure slot directly — no .at needed") {
     val e = compileErrors("""
       val p: Int ! okay.freer.Writer % String = okay.freer.Writer.tell("x").map(_ => 1)
-      val q: Int ! okay.freer.Writer % String + okay.Pure = p
+      val q: Int ! okay.freer.Writer % String + Pure = p
       q
     """)
     assert(e.isEmpty, s"a bare row did not satisfy its own row + Pure: $e")
@@ -28,7 +26,7 @@ class ProbeRowInference extends munit.FunSuite:
 
   test("and the ambient row's OWN operations still resolve through it — the ascription is not a coercion, it typechecks as the SAME value") {
     val p: Int ! Writer % String = Writer.tell("x").map(_ => 1)
-    val q: Int ! Writer % String + okay.Pure = p
+    val q: Int ! Writer % String + Pure = p
     assert(q eq p, "the ascription built a new value where none was needed")
   }
 
@@ -70,7 +68,7 @@ class ProbeRowInference extends munit.FunSuite:
   test("...spelling the type arguments at the call site fixes it") {
     def wants[R, F[+_]](p: R ! Shift % ? + F): Unit = ()
     def has[R, F[+_]](p: R ! ([A] =>> Shift[?, A] | F[A])): Unit = wants[R, F](p)
-    has[Int, okay.Pure](Shift.push(Shift.prompt[Int])(pure(1)))
+    has[Int, Pure](Shift.push(Shift.prompt[Int])(pure(1)))
   }
 
   // ---------------------------------------------------------- shape 4: ACI, precisely
@@ -99,7 +97,7 @@ class ProbeRowInference extends munit.FunSuite:
 
   test("and the REVERSE: X + Pure satisfies a bare X slot too — the spike's answer, no new given needed") {
     val e = compileErrors("""
-      val p: Int ! okay.freer.Writer % String + okay.Pure = okay.freer.Writer.tell("x").map(_ => 1)
+      val p: Int ! okay.freer.Writer % String + Pure = okay.freer.Writer.tell("x").map(_ => 1)
       val q: Int ! okay.freer.Writer % String = p
       q
     """)

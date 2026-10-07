@@ -1,6 +1,5 @@
 package okay.freer
 
-import okay.*
 
 /**
  * specs/stack-safety.md stage 1c: direct-style Cont past the stack.

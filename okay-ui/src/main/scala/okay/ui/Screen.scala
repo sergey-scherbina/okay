@@ -1,7 +1,8 @@
 package okay.ui
+
+import okay.{Async, CanBlock, Scheduler, Source}
 import okay.freer.*
 
-import okay.*
 
 import scala.annotation.tailrec
 

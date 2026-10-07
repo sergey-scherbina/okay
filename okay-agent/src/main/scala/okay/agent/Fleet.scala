@@ -1,9 +1,10 @@
 package okay.agent
 
-import okay.*
+import okay.{! as _, + as _, % as _, pure as _, effect as _, *}
 import okay.freer.*
 
 import okay.given
+
 import okay.actor.{Actor, ActorRef, Behavior}
 import Fleet.Control
 import okay.codec.{Json, Schema}

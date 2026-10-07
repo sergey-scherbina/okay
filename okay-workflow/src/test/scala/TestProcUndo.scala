@@ -1,4 +1,4 @@
-import okay.*
+import okay.{guard, Optic, Proc, Wf}
 import okay.freer.*
 import okay.Optic.arrows.*
 
@@ -19,7 +19,7 @@ import okay.Optic.arrows.*
  */
 class TestProcUndo extends munit.FunSuite:
 
-  type P = okay.Pure
+  type P = okay.freer.Pure
   type Row = Shift % ? + P
   type Sig = Wf.Asked[String, String]
 

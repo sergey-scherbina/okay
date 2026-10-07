@@ -1,9 +1,7 @@
 package okay.spark
 
-import okay.*
-
+import okay.{guard, Bulk, Chunks, Sort, Tables}
 import okay.freer.*
-import okay.given // Group[N] for every Numeric, and the local Bulk[Chunks]
 import okay.freer.given
 import okay.Tables.{Table, read, of}
 import okay.Chunks.elements
@@ -213,7 +211,7 @@ class TestWroclawAlgebra extends munit.FunSuite:
     r
 
   test("the plan, printed before anything runs") {
-    val traced = okay.freer.!.tracing(Gtfs.departures(file).plus[okay.Pure])([X] => (e: Tables[X]) => e.productPrefix)
+    val traced = okay.freer.!.tracing(Gtfs.departures(file).plus[okay.freer.Pure])([X] => (e: Tables[X]) => e.productPrefix)
     val handled = State.handle(Tables.Heap.empty[Chunks])(Tables.via(localBulk)(traced))
     val (plan, _) = okay.freer.!.run(okay.freer.Writer.run(handled))
     println(s"  plan: ${plan.mkString(" ")}")

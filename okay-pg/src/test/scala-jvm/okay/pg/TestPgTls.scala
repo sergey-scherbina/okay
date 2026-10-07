@@ -1,6 +1,8 @@
 package okay.pg
 
-import okay.{+, %, Async, Source}
+import okay.{Async, Source}
+
+import okay.freer.{+, %}
 import okay.freer.{!, Chunk, Stream, Writer}
 import okay.given
 import okay.freer.given
@@ -25,7 +27,7 @@ class TestPgTls extends munit.FunSuite:
   val host = sys.env.getOrElse("OKAY_PG_HOST", "127.0.0.1")
   val port = sys.env.get("OKAY_PG_PORT").flatMap(_.toIntOption).getOrElse(5432)
 
-  def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.Pure](prog))
+  def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](prog))
 
   private def connectTls(cfg: TlsConfig): PgSql =
     run(PgTls.connect(host, port, "okay", "okay", "okay", cfg, Secrets.file))

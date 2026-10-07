@@ -1,9 +1,12 @@
 package okay.codec
+
+import okay.{Lens, Prism, get, modify, preview, set, toVector, Traversal}
 import okay.freer.*
 
-import okay.*
 
 import okay.given
+
+
 
 /**
  * Optics over Json (specs/optics.md stage 1): the laws of each, and

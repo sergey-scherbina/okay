@@ -320,7 +320,7 @@ class StagedBenchmark {
 
   @Benchmark
   def freeDirectRT(): Int =
-    !.run(runEither[Int, okay.Pure, String](Reader.run[Cfg, Int, Throws % String](cfg)(freeRT(0, 0)))) match
+    !.run(runEither[Int, okay.freer.Pure, String](Reader.run[Cfg, Int, Throws % String](cfg)(freeRT(0, 0)))) match
       case Right(a) => a
       case Left(_) => -1
 

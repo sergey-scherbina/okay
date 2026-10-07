@@ -1,9 +1,10 @@
 package okay.resilience
 
-import okay.*
+import okay.{guard, Async}
 import okay.freer.*
 
 import okay.given
+
 
 /**
  * The guards around a STREAMING seam (specs/resilience.md,

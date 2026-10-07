@@ -1,6 +1,7 @@
 package okay.desktop
 
-import okay.*
+
+import okay.{Async}
 import okay.freer.*
 
 import okay.http.{Http, Method, Request, Response}

@@ -20,19 +20,19 @@ class TestKyoInterop extends munit.FunSuite {
   }
 
   test("structural mapping: Reader <-> Env") {
-    import okay.{%}
+    import okay.freer.{%}
     import okay.freer.{Reader, effect, pure}
     import _root_.kyo.Env
     val ours: Int ! Reader % Int =
       effect[Reader % Int, Int](Reader.Ask()).flatMap(x => pure(x * 2))
     assertEquals(Env.run(21)(toKyoEnv(ours)).eval, 42)
     val theirs: Int < Env[Int] = Env.get[Int].flatMap((x: Int) => x + 1)
-    assertEquals(!.run(okay.freer.Reader.run[Int, Int, okay.Pure](41)(
+    assertEquals(!.run(okay.freer.Reader.run[Int, Int, okay.freer.Pure](41)(
       okay.freer.!.widen(fromKyoEnv(theirs)))), 42)
   }
 
   test("structural mapping: Writer <-> Emit, tell for tell") {
-    import okay.{%}
+    import okay.freer.{%}
     import okay.freer.{Writer, effect}
     import _root_.kyo.Emit
     val ours: Int ! Writer % String =
@@ -45,12 +45,12 @@ class TestKyoInterop extends munit.FunSuite {
       Emit.valueWith("x")(Emit.valueWith("y")(5: Int < Emit[String]))
     val back = fromKyoEmit(theirs)
     assertEquals(okay.freer.Writer.uncons(back).toOption.map(_._1), Some("x"))
-    val (ws, r) = !.run(okay.freer.Writer.run[String, Int, okay.Pure](okay.freer.!.widen(back)))
+    val (ws, r) = !.run(okay.freer.Writer.run[String, Int, okay.freer.Pure](okay.freer.!.widen(back)))
     assertEquals((ws, r), (Seq("x", "y"), 5))
   }
 
   test("structural mapping: Throws <-> Abort") {
-    import okay.{%}
+    import okay.freer.{%}
     import okay.freer.{Throws, effect}
     import _root_.kyo.Abort
     val ours: Int ! Throws % String =
@@ -71,7 +71,7 @@ class TestKyoInterop extends munit.FunSuite {
       List(10, 20, 20, 30, 40, 60))
     val theirs: Int < Choice =
       Choice.get(Seq(1, 2)).flatMap((x: Int) => Choice.get(Seq(10, 20)).flatMap((y: Int) => x * y))
-    assertEquals(!.run(okay.freer.runChoice[Int, okay.Pure](okay.freer.!.widen(fromKyoChoice(theirs)))).sorted,
+    assertEquals(!.run(okay.freer.runChoice[Int, okay.freer.Pure](okay.freer.!.widen(fromKyoChoice(theirs)))).sorted,
       Seq(10, 20, 20, 40))
   }
 

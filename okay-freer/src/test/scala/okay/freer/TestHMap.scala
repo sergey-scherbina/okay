@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.*
+import okay.{Id}
 
 /** the static heterogeneous map: entries in the type, lookup by the
  * compiler, no cast, a missing key is a compile error */

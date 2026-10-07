@@ -1,6 +1,8 @@
 package okay.sql
 
-import okay.{+, Async, Scheduler, Timer}
+import okay.{Async, Scheduler, Timer}
+
+import okay.freer.{+}
 import okay.freer.{!, Resource, TRef, pure}
 import java.util.concurrent.atomic.AtomicBoolean
 import scala.annotation.tailrec

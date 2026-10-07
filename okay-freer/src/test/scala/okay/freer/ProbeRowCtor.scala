@@ -1,7 +1,5 @@
 package okay.freer
 
-import okay.*
-import okay.given
 
 /** Probe: can ONE row-polymorphic constructor replace the narrow one? */
 object ProbeRowCtor:

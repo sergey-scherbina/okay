@@ -1,8 +1,11 @@
 package okay.ui
 
-import okay.*
 
+
+import okay.{Zipper, preview, set}
 import okay.given
+
+
 
 /**
  * specs/zipper.md — `Plate[Ui]` against `Ui.path`: the cursor's path

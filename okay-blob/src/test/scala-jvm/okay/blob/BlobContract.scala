@@ -1,6 +1,8 @@
 package okay.blob
 
-import okay.{+, %, Async, Source}
+import okay.{Async, Source}
+
+import okay.freer.{+, %}
 import okay.freer.{!, Chunk, Fold, Writer}
 import okay.freer.Row.plus
 import okay.given
@@ -16,7 +18,7 @@ abstract class BlobContract(engine: String) extends munit.FunSuite {
 
   def make(): Blob
 
-  def run[A](p: A ! Async): A = !.run(Async.run[A, okay.Pure](p))
+  def run[A](p: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](p))
 
   /** a Source of `total` deterministic bytes in `piece`-sized chunks */
   def bytes(total: Int, piece: Int = 8 * 1024): Source[Chunk[Byte]] =

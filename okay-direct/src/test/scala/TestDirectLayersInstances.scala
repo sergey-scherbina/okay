@@ -93,19 +93,19 @@ class TestDirectLayersInstances extends munit.FunSuite:
 
   test("a layer in scope but a block row WITHOUT Shift: refused, naming Shift") {
     val e = compileErrors("""
-      okay.freer.Layered.reify[List, Int, okay.Pure] {
+      okay.freer.Layered.reify[List, Int, okay.freer.Pure] {
         val inner: Int ! okay.freer.Writer % String = okay.Direct.direct {
           val x = List(1, 2, 3).?
           x
         }
-        okay.freer.Shift.shift0[List[Int], Int, okay.Pure](???)(k => ???)
+        okay.freer.Shift.shift0[List[Int], Int, okay.freer.Pure](???)(k => ???)
       }""")
     assert(e.contains("has no Shift % ?"), s"compiled, or refused for another reason: $e")
   }
 
   test("no layer in scope: the mark on a List is refused as it always was") {
     val e = compileErrors("""
-      val p: Int ! okay.freer.Shift % ? + okay.Pure = okay.Direct.direct {
+      val p: Int ! okay.freer.Shift % ? + okay.freer.Pure = okay.Direct.direct {
         val x = List(1, 2, 3).?
         x
       }""")

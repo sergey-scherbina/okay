@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.*
+import okay.{Effect, TypeableK}
 
 
 import okay.freer.Row.at
@@ -51,7 +51,7 @@ object Maybe:
       Maybe.run(p)
 
   def run[A, F[+_]](p: A ! Maybe + F): Option[A] ! F =
-    val E = Effects[Free]
+    val E = Classic[Free]
     E.handle[Maybe, F](p)(a => pure[F, Option[A]](Some(a))):
       [X] => m => m.value match
         case Some(x) => E.control.pure(x)

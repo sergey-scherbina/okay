@@ -1,8 +1,6 @@
 package okay.freer
 
-import okay.*
-import okay.given
-
+import okay.{! as _, effect as _, + as _, % as _, Pure as _, *}
 import Bisim.{Answers, Verdict}
 import okay.freer.Row.at
 

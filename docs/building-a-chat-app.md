@@ -177,7 +177,7 @@ okay-jetty brings okay-http and Jetty.
 ```scala
 package example
 
-import okay.*
+import okay.Async
 import okay.freer.*
 import okay.given
 import okay.freer.given
@@ -333,7 +333,7 @@ okay-ui's tree on the CDN React, runs the fold on the event loop
 ```scala
 package example
 
-import okay.*
+import okay.Async
 import okay.freer.*
 import okay.given
 import okay.freer.given
@@ -464,7 +464,7 @@ trusting that it does not.
 ```scala
 package example
 
-import okay.*
+import okay.Async
 import okay.freer.*
 import okay.given
 import okay.freer.given

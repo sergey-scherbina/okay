@@ -1,4 +1,4 @@
-import okay.*
+import okay.{Wf, Proc}
 import okay.freer.*
 import okay.Direct.*
 import scala.language.implicitConversions
@@ -16,7 +16,7 @@ import scala.language.implicitConversions
  */
 class TestProcDirect extends munit.FunSuite:
 
-  type P = okay.Pure
+  type P = okay.freer.Pure
   type Row = Shift % ? + P
   type Sig = Wf.Asked[String, String]
 

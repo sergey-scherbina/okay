@@ -5,7 +5,7 @@ library's streams meet Akka/Pekko, RxJava, Reactor, fs2 and ZIO on the
 SPI they all speak.
 
 ```scala
-import okay.*
+import okay.{Async, Source}
 import okay.freer.*
 import okay.freer.given
 import okay.reactive.Reactive

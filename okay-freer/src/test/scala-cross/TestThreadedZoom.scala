@@ -1,6 +1,5 @@
 package okay.freer
 
-import okay.*
 
 /**
  * `PState.Threaded.zoomWith` (specs/cont-js-depth.md stage 3a): a

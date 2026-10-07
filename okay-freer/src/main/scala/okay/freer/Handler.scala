@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.*
+import okay.{Answers, TypeableK}
 
 
 import okay.freer.Row.up
@@ -179,7 +179,7 @@ object Handler:
   def control[F[+_], O[_]](ret: [A] => A => O[A])(f: [X, A, G[+_]] => (F[X], X => O[A] ! G) => O[A] ! G)
                           (using TypeableK[F]): Handler[F, O] = new Handler[F, O]:
     def run[A, G[+_]](p: A ! F + G)(using A <:< Any, Distinct[F + G], Nothing[G]): O[A] ! G =
-      val E = Effects[Free]
+      val E = Classic[Free]
       E.handle[F, G](p)(a => pure[G, O[A]](ret(a)))(
         [X] => (e: F[X]) =>
           val resume = new Resume[X, O[A], G]

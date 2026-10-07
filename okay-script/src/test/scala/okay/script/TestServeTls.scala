@@ -1,7 +1,6 @@
 package okay.script
 import okay.freer.*
 
-import okay.*
 
 import okay.given
 import okay.freer.given

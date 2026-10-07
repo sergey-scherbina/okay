@@ -2,6 +2,8 @@ package okay
 
 
 import okay.given
+
+
 import okay.laws.{ArrowLaws, ArrowLawsSuite}
 
 /**

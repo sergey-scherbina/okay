@@ -1,9 +1,9 @@
 package okay.netty
 
-import okay.*
+
+import okay.{Async, CanBlock, Scheduler, Source}
 import okay.freer.*
 
-import okay.given
 import okay.freer.given
 import okay.http.{Body, Frame, Http, Method, Request, Response, Socket, Sockets}
 

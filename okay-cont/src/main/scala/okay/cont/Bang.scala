@@ -18,8 +18,8 @@ infix type +[R <: Row, E[+_]] = E +: R
 /** fix the parameter of a binary signature: `State % Int`, `Throws % String` */
 infix type %[F[_, +_], S] = [X] =>> F[S, X]
 
-/** an operation as a program: its effect alone is the row */
-def effect[E[+_], X](op: E[X]): X ! (E +: Pure) = Free.inject(op)
+/** an operation as a program, over any row that has its effect: the row is the program's it is bound into (`Op`) */
+def effect[E[+_], X](op: E[X]): Op[E, X] = Free.inject(op)
 
 extension [A](p: A ! Pure)
   /** a program with nothing left to handle, run at the top: its value (`run` is the trait's own, at a context) */

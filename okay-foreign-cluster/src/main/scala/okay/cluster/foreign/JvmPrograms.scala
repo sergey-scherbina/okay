@@ -1,6 +1,6 @@
 package okay.cluster.foreign
 
-import okay.{+}
+import okay.freer.{+}
 import okay.freer.{!, pure}
 import okay.freer.given
 import okay.freer.Row.plus

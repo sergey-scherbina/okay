@@ -1,6 +1,7 @@
 package okay.sql
 
-import okay.*
+
+import okay.{Bulk, Chunks, Tables}
 import okay.freer.*
 
 import okay.codec.Schema

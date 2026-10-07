@@ -1,7 +1,6 @@
 package okay.codec
 
-import okay.*
-
+import okay.{Applicative, Traversal, modify}
 import okay.given
 import scala.annotation.tailrec
 

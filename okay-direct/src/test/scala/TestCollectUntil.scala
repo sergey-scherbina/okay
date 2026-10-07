@@ -14,7 +14,7 @@ import scala.language.implicitConversions
  */
 class TestCollectUntil extends munit.FunSuite {
 
-  type R = Shift % ? + okay.Pure
+  type R = Shift % ? + okay.freer.Pure
 
   enum Tree[+A]:
     case Leaf(a: A)
@@ -36,37 +36,37 @@ class TestCollectUntil extends munit.FunSuite {
 
   test("take(3) over the walk: three leaves visited, the rest of the walk never runs") {
     var n = 0
-    assertEquals(!.run(Shift.collectUntil[Int, Vector[Int], Vector[Int], okay.Pure](using FoldUntil.take(3))(walk(tree(1, 8), () => n += 1))), Vector(1, 2, 3))
+    assertEquals(!.run(Shift.collectUntil[Int, Vector[Int], Vector[Int], okay.freer.Pure](using FoldUntil.take(3))(walk(tree(1, 8), () => n += 1))), Vector(1, 2, 3))
     assertEquals(n, 3)
   }
 
   test("find pulls up to and including its match") {
     var n = 0
-    assertEquals(!.run(Shift.collectUntil[Int, Option[Int], Option[Int], okay.Pure](using FoldUntil.find[Int](_ == 5))(walk(tree(1, 8), () => n += 1))), Some(5))
+    assertEquals(!.run(Shift.collectUntil[Int, Option[Int], Option[Int], okay.freer.Pure](using FoldUntil.find[Int](_ == 5))(walk(tree(1, 8), () => n += 1))), Some(5))
     assertEquals(n, 5)
   }
 
   test("done(init): take(0) runs no body at all") {
     var n = 0
-    assertEquals(!.run(Shift.collectUntil[Int, Vector[Int], Vector[Int], okay.Pure](using FoldUntil.take(0))(walk(tree(1, 8), () => n += 1))), Vector.empty[Int])
+    assertEquals(!.run(Shift.collectUntil[Int, Vector[Int], Vector[Int], okay.freer.Pure](using FoldUntil.take(0))(walk(tree(1, 8), () => n += 1))), Vector.empty[Int])
     assertEquals(n, 0)
   }
 
   test("a fold that is never done answers what collect answers, on the same producer") {
     var n = 0
     val t = tree(1, 8)
-    val whole = !.run(Shift.collect[Int, okay.Pure](walk(t, () => ())))
-    assertEquals(!.run(Shift.collectUntil[Int, Vector[Int], Vector[Int], okay.Pure](using FoldUntil.take(100))(walk(t, () => n += 1))), whole.toVector)
+    val whole = !.run(Shift.collect[Int, okay.freer.Pure](walk(t, () => ())))
+    assertEquals(!.run(Shift.collectUntil[Int, Vector[Int], Vector[Int], okay.freer.Pure](using FoldUntil.take(100))(walk(t, () => n += 1))), whole.toVector)
     assertEquals(n, 8)
     // the operator's shape: a running sum that stops itself
     val until = FoldUntil.until[Int, Int, Int](0)((s, a) => if s + a > 10 then Right(s) else Left(s + a))(identity)
-    assertEquals(!.run(Shift.collectUntil[Int, Either[Int, Int], Int, okay.Pure](using until)(walk(t, () => ()))), 10)   // 1+2+3+4 = 10, +5 stops
+    assertEquals(!.run(Shift.collectUntil[Int, Either[Int, Int], Int, okay.freer.Pure](using until)(walk(t, () => ()))), 10)   // 1+2+3+4 = 10, +5 stops
   }
 
   test("a producer that emits nothing, and one that stops on its last element") {
-    assertEquals(!.run(Shift.collectUntil[Int, Vector[Int], Vector[Int], okay.Pure](using FoldUntil.take(3))(direct(()))), Vector.empty[Int])
+    assertEquals(!.run(Shift.collectUntil[Int, Vector[Int], Vector[Int], okay.freer.Pure](using FoldUntil.take(3))(direct(()))), Vector.empty[Int])
     var n = 0
-    assertEquals(!.run(Shift.collectUntil[Int, Vector[Int], Vector[Int], okay.Pure](using FoldUntil.take(8))(walk(tree(1, 8), () => n += 1))), (1 to 8).toVector)
+    assertEquals(!.run(Shift.collectUntil[Int, Vector[Int], Vector[Int], okay.freer.Pure](using FoldUntil.take(8))(walk(tree(1, 8), () => n += 1))), (1 to 8).toVector)
     assertEquals(n, 8)
   }
 
@@ -76,7 +76,7 @@ class TestCollectUntil extends munit.FunSuite {
       while i < n do
         !Shift.emit(i)
         i += 1
-    assertEquals(!.run(Shift.collectUntil[Int, Long, Long, okay.Pure](using FoldUntil.long[Int, Long](0L)((s, a) => s + a)(_ => false)(identity))(many(10000))), (0L until 10000L).sum)
+    assertEquals(!.run(Shift.collectUntil[Int, Long, Long, okay.freer.Pure](using FoldUntil.long[Int, Long](0L)((s, a) => s + a)(_ => false)(identity))(many(10000))), (0L until 10000L).sum)
   }
 
   test("docs/continuations-in-practice.md §2, verbatim") {
@@ -89,10 +89,10 @@ class TestCollectUntil extends munit.FunSuite {
         case Tree2.Leaf(a)    => visited += 1; !Shift.emit(a)
         case Tree2.Node(l, r) => !walk(l); !walk(r)
     val t = Tree2.Node(Tree2.Node(Tree2.Leaf(1), Tree2.Leaf(2)), Tree2.Leaf(3))
-    assertEquals(!.run(Shift.collect[Int, okay.Pure](walk(t))), List(1, 2, 3))
-    assertEquals(!.run(Shift.collectUntil[Int, Vector[Int], Vector[Int], okay.Pure](using FoldUntil.take(2))(walk(t))), Vector(1, 2))
+    assertEquals(!.run(Shift.collect[Int, okay.freer.Pure](walk(t))), List(1, 2, 3))
+    assertEquals(!.run(Shift.collectUntil[Int, Vector[Int], Vector[Int], okay.freer.Pure](using FoldUntil.take(2))(walk(t))), Vector(1, 2))
     assertEquals(visited, 3 + 2, "the third leaf is never visited by the stopping read")
-    assertEquals(!.run(Shift.collectUntil[Int, Option[Int], Option[Int], okay.Pure](using FoldUntil.find[Int](_ > 1))(walk(t))), Some(2))
+    assertEquals(!.run(Shift.collectUntil[Int, Option[Int], Option[Int], okay.freer.Pure](using FoldUntil.find[Int](_ > 1))(walk(t))), Some(2))
   }
 
   test("docs/tutorial.md §13, verbatim") {
@@ -125,8 +125,8 @@ class TestCollectUntil extends munit.FunSuite {
 
   test("collectingUntil nests under a delimited, and stops there too") {
     var n = 0
-    val prog: Vector[Int] ! okay.Pure = Shift.delimited[Vector[Int], okay.Pure]:
-      Shift.collectingUntil[Int, Vector[Int], Vector[Int], okay.Pure](using FoldUntil.take(2))(walk(tree(1, 8), () => n += 1))
+    val prog: Vector[Int] ! okay.freer.Pure = Shift.delimited[Vector[Int], okay.freer.Pure]:
+      Shift.collectingUntil[Int, Vector[Int], Vector[Int], okay.freer.Pure](using FoldUntil.take(2))(walk(tree(1, 8), () => n += 1))
     assertEquals(!.run(prog), Vector(1, 2))
     assertEquals(n, 2)
   }

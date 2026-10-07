@@ -1,8 +1,9 @@
 package okay.frege
 
-import okay.{%, +, Stage, through}
+import okay.{Stage, through}
+
+import okay.freer.{%, +}
 import okay.freer.{!, Choose, Reader, State, Throws, Writer, pure, runChoice, runEither}
-import okay.given
 import okay.freer.given
 import frege.run8.Thunk
 import java.util.concurrent.atomic.AtomicInteger

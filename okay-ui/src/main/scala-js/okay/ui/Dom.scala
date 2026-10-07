@@ -1,7 +1,8 @@
 package okay.ui
 
-import okay.*
 
+
+import okay.{Async, Channel, Source, async}
 import okay.freer.*
 import okay.given
 import scala.scalajs.js

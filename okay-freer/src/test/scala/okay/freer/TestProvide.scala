@@ -1,7 +1,6 @@
 package okay.freer
 
-import okay.*
-import okay.given
+import okay.{Applicative, Monad, replicateA, sequence, traverse}
 
 /**
  * The installer half of the capability pair (ctx-everywhere):
@@ -195,7 +194,7 @@ class TestApOp extends munit.FunSuite {
   }
 
   test("<*> over an effect row — the same generic code") {
-    val got: String ! okay.Pure = idiom[[X] =>> X ! okay.Pure](pure("bob"), pure(1))
+    val got: String ! Pure = idiom[[X] =>> X ! Pure](pure("bob"), pure(1))
     assertEquals(!.run(got), "bob#1")
   }
 }

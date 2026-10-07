@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.*
+import okay.{Answers, TypeableK, typeableK}
 
 import okay.freer.Eager.given
 
@@ -37,41 +37,41 @@ class TestLowering extends munit.FunSuite {
   /** one program shape, written once and read at every encoding */
   trait Shape:
     def name: String
-    def apply[M[_[+_], _]](using E: Effects[M]): M[Op, Int]
+    def apply[M[_[+_], _]](using E: Classic[M]): M[Op, Int]
 
-  private def shape(n: String)(f: [M[_[+_], _]] => Effects[M] ?=> M[Op, Int]): Shape =
+  private def shape(n: String)(f: [M[_[+_], _]] => Classic[M] ?=> M[Op, Int]): Shape =
     new Shape:
       def name = n
-      def apply[M[_[+_], _]](using Effects[M]): M[Op, Int] = f[M]
+      def apply[M[_[+_], _]](using Classic[M]): M[Op, Int] = f[M]
 
   val shapes: List[Shape] = List(
-    shape("pure")([M[_[+_], _]] => (E: Effects[M]) ?=> E.pure(42)),
-    shape("one operation")([M[_[+_], _]] => (E: Effects[M]) ?=> E.perform(Op.Get())),
-    shape("map only")([M[_[+_], _]] => (E: Effects[M]) ?=> E.perform(Op.Get()).map(_ * 2)),
-    shape("pure bound")([M[_[+_], _]] => (E: Effects[M]) ?=> E.pure(1).flatMap(a => E.pure(a + 1))),
+    shape("pure")([M[_[+_], _]] => (E: Classic[M]) ?=> E.pure(42)),
+    shape("one operation")([M[_[+_], _]] => (E: Classic[M]) ?=> E.perform(Op.Get())),
+    shape("map only")([M[_[+_], _]] => (E: Classic[M]) ?=> E.perform(Op.Get()).map(_ * 2)),
+    shape("pure bound")([M[_[+_], _]] => (E: Classic[M]) ?=> E.pure(1).flatMap(a => E.pure(a + 1))),
     // right-nested: the shape a for-comprehension writes
-    shape("right-nested")([M[_[+_], _]] => (E: Effects[M]) ?=>
+    shape("right-nested")([M[_[+_], _]] => (E: Classic[M]) ?=>
       E.perform(Op.Get()).flatMap(a =>
         E.perform(Op.Say(s"got $a")).flatMap(_ =>
           E.perform(Op.Get()).map(b => a + b)))),
     // left-nested: the shape a fold writes — the case the runners re-associate
-    shape("left-nested")([M[_[+_], _]] => (E: Effects[M]) ?=>
+    shape("left-nested")([M[_[+_], _]] => (E: Classic[M]) ?=>
       E.perform(Op.Get())
         .flatMap(a => E.perform(Op.Get()).map(_ + a))
         .flatMap(a => E.perform(Op.Say(s"sum $a")).map(_ => a))
         .flatMap(a => E.perform(Op.Get()).map(_ + a))),
     // an operation whose continuation is dropped
-    shape("continuation discards its input")([M[_[+_], _]] => (E: Effects[M]) ?=>
+    shape("continuation discards its input")([M[_[+_], _]] => (E: Classic[M]) ?=>
       E.perform(Op.Get()).flatMap(_ => E.pure(0))),
     // both associations in one tree
-    shape("mixed associations")([M[_[+_], _]] => (E: Effects[M]) ?=>
+    shape("mixed associations")([M[_[+_], _]] => (E: Classic[M]) ?=>
       E.perform(Op.Get())
         .flatMap(a => E.perform(Op.Say("l")).flatMap(_ => E.pure(a)))
         .flatMap(b => E.perform(Op.Get()).map(_ + b))),
-    shape("deep left-nested chain")([M[_[+_], _]] => (E: Effects[M]) ?=>
+    shape("deep left-nested chain")([M[_[+_], _]] => (E: Classic[M]) ?=>
       (1 to 5000).foldLeft(E.pure[Op, Int](0))((m, _) =>
         m.flatMap(x => E.perform(Op.Get()).map(_ => x + 1)))),
-    shape("deep right-nested chain")([M[_[+_], _]] => (E: Effects[M]) ?=>
+    shape("deep right-nested chain")([M[_[+_], _]] => (E: Classic[M]) ?=>
       def go(i: Int): M[Op, Int] =
         if i == 0 then E.pure(0)
         else E.perform(Op.Get()).flatMap(_ => go(i - 1).map(_ + 1))
@@ -85,10 +85,10 @@ class TestLowering extends munit.FunSuite {
     (v, said.toList, gets)
 
   /** the definition: lower into the encoding's carrier, run against identity */
-  private def byDefinition[M[_[+_], _] : Effects as E](m: M[Op, Int]): Int =
+  private def byDefinition[M[_[+_], _] : Classic as E](m: M[Op, Int]): Int =
     E.control./(m.foldCont(interpr[E.C, Op, Int](using E.control, summon[Answers[Op]])))(identity)
 
-  private def agree[M[_[+_], _] : Effects](enc: String, s: Shape): Unit =
+  private def agree[M[_[+_], _] : Classic](enc: String, s: Shape): Unit =
     val m = s[M]
     val defn = observe(byDefinition(m))
     val fast = observe(s[M].runWith)

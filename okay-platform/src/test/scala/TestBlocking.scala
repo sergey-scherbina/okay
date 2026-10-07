@@ -1,4 +1,4 @@
-import okay.*
+import okay.{Blocking, CanBlock}
 import okay.given
 
 /** Blocking[A]: the parks-a-thread requirement as a stored VALUE,

@@ -41,7 +41,7 @@ class TestWireTls extends FunSuite:
 
   private def bytes(s: String): Array[Byte] = s.getBytes("UTF-8")
   private def str(b: Array[Byte]): String = new String(b, "UTF-8")
-  private def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.Pure](prog))
+  private def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](prog))
 
   private def cert = s"${TestWireTls.dir}/cert.pem"
   private def key = Secret(s"file:${TestWireTls.dir}/key.pem")

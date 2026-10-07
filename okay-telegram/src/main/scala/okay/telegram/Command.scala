@@ -1,7 +1,8 @@
 package okay.telegram
+
+import okay.{Async}
 import okay.freer.*
 
-import okay.*
 
 
 /**

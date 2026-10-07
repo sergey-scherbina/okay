@@ -1,9 +1,11 @@
 package okay.ui
 
-import okay.*
+
+import okay.{! as _, effect as _, *}
 import okay.freer.*
 
 import okay.given
+
 import java.awt.{Color, Component, Container, Font}
 import javax.swing.*
 import javax.swing.event.{DocumentEvent, DocumentListener}

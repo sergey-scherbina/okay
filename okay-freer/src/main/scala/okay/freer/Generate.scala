@@ -1,7 +1,6 @@
 package okay.freer
 
-import okay.*
-import okay.given
+import okay.{Answers, Id, TypeableK}
 
 /**
  * Generators from delimited control: take is the input of a loop
@@ -229,11 +228,11 @@ object Producer {
  * the operations are erased by the identity — the value type A is the
  * only witness left.
  */
-given Stream[Producer, okay.Pure] with
+given Stream[Producer, Pure] with
   import !.*
   import scala.annotation.tailrec
 
-  def uncons[A](p: Producer[A]): Option[(A, Producer[A])] ! okay.Pure = pure((p.resume: @unchecked) match
+  def uncons[A](p: Producer[A]): Option[(A, Producer[A])] ! Pure = pure((p.resume: @unchecked) match
     case Free.Return(_) => None
     case Inject(e) => Some((e, Free.Return(e)))
     case Bind(Inject(e), k) => Some((produced[A](e), k(e))))
@@ -241,7 +240,7 @@ given Stream[Producer, okay.Pure] with
   /** the specialized linear view: a direct walk of the freer tree —
    * no Option, no tuple per element (measured; the generic default
    * pays both). What remains per element is the stepping itself. */
-  override def iterator[A](p: Producer[A])(using Answers[okay.Pure]): Iterator[A] =
+  override def iterator[A](p: Producer[A])(using Answers[Pure]): Iterator[A] =
     new Iterator[A]:
       private var cur: Producer[A] = p
       private var ready = false

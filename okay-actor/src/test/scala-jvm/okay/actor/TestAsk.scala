@@ -1,7 +1,8 @@
 package okay.actor
+
+import okay.{async, Scheduler, Schedulers}
 import okay.freer.*
 
-import okay.*
 
 import okay.given
 import okay.freer.given

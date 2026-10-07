@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.*
+import okay.{Control, Func}
 import okay.given
 
 /**

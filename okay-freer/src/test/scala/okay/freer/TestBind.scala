@@ -1,7 +1,5 @@
 package okay.freer
 
-import okay.*
-import okay.given
 
 import okay.freer.!.*
 import okay.freer.Row.{plus, bind, andThen}
@@ -18,7 +16,7 @@ class TestBind extends munit.FunSuite:
   test("the other row is read off the continuation; the same answer and log as the two-plus spelling") {
     val viaBindIn: Int ! Two = Reader.ask[Int].bind(e => Writer.tell(s"env=$e").map(_ => e + 1))
     val viaPlus: Int ! Two = Reader.ask[Int].plus[Writer % String].flatMap(e => Writer.tell(s"env=$e").map(_ => e + 1).plus[Reader % Int])
-    def run(p: Int ! Two) = !.run(Writer.run[String, Int, okay.Pure](Reader.run[Int, Int, Writer % String](41)(p)))
+    def run(p: Int ! Two) = !.run(Writer.run[String, Int, Pure](Reader.run[Int, Int, Writer % String](41)(p)))
     assertEquals(run(viaBindIn), (Seq("env=41"), 42))
     assertEquals(run(viaBindIn), run(viaPlus))
   }
@@ -28,7 +26,7 @@ class TestBind extends munit.FunSuite:
       Reader.ask[Int]
         .bind(e => Writer.tell(s"saw $e"))
         .bind(_ => State.modify[Int](_ + 1))
-    val ((log, (cell, out))) = !.run(Writer.run[String, (Int, Int), okay.Pure](
+    val ((log, (cell, out))) = !.run(Writer.run[String, (Int, Int), Pure](
       Reader.run[Int, (Int, Int), Writer % String](5)(State.handle(10)(p))))
     assertEquals(log, Seq("saw 5"))
     assertEquals((cell, out), (11, 11))
@@ -45,11 +43,11 @@ class TestBind extends munit.FunSuite:
       [X, Y] => e => e match
         case Reader.Ask() => asked += 1; Cont.Pure(3)
         case Reader.Asks(f) => asked += 1; Cont.Pure(f(3))
-    assertEquals(!.run(Writer.run[String, Int, okay.Pure](counted)), (Seq("3"), 3))
+    assertEquals(!.run(Writer.run[String, Int, Pure](counted)), (Seq("3"), 3))
     assertEquals(asked, 1)
   }
 
   test("andThen: both sides run, in order, the first answer dropped") {
     val p: Int ! Two = Reader.ask[Int].andThen(Writer.tell("after").map(_ => 7))
-    assertEquals(!.run(Writer.run[String, Int, okay.Pure](Reader.run[Int, Int, Writer % String](1)(p))), (Seq("after"), 7))
+    assertEquals(!.run(Writer.run[String, Int, Pure](Reader.run[Int, Int, Writer % String](1)(p))), (Seq("after"), 7))
   }

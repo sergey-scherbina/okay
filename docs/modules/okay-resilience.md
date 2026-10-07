@@ -16,7 +16,7 @@ rides on). JVM + JS.
 state in one cell and its clock injected:
 
 ```scala
-import okay.*
+import okay.Async
 import okay.freer.*
 import okay.freer.given
 import okay.resilience.*

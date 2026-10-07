@@ -1,6 +1,9 @@
 package okay.java
 
-import okay.{+, Answers, Async, Distinct, Effects, Foreign, TypeableK, typeableK}
+import okay.{Answers, Async, Foreign, TypeableK, typeableK}
+
+import okay.freer.{Distinct, Classic, Row}
+import okay.freer.{+}
 import okay.freer.{!, Free, Member, effect}
 import okay.given
 import okay.freer.given
@@ -159,7 +162,7 @@ object Eff {
       case _ => throw IllegalStateException(s"okay.java: no handler took ${Rows.named(op)}")
 
   private[java] val asyncOnly: Answers[Async + Top] =
-    Answers.union[Async, Top](using summon[TypeableK[Async]], summon[Answers[Async]], unhandled)(using Rows.distinct)
+    Row.union[Async, Top](using summon[TypeableK[Async]], summon[Answers[Async]], unhandled)(using Rows.distinct)
 
   /** `toScala` re-types every operation */
   private[java] val everything: TypeableK[Top] = _ => true
@@ -239,7 +242,7 @@ trait Clause[O, B] {
 /** form 4: a handler with the continuation in hand, its return clause turning the answer `A` into `B` */
 final class Control[A, B] private[java] (test: TypeableK[Top], ret: JFunction[? >: A, Eff[B]], clause: Clause[Any, B]) {
   private[java] def run(e: Eff[A]): Eff[B] =
-    val E = Effects[Free]
+    val E = Classic[Free]
     new Eff(E.handle[Top, Top](using test)[A, B](coerce(e.program))(a => ret.apply(a).program)(
       [X] => (op: Top[X]) =>
         E.control.shift[X, Free[Top, B], Free[Top, B]](k => clause(op, x => new Eff(k(answered[X](x)))).program)))

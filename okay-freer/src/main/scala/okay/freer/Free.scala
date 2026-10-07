@@ -1,6 +1,5 @@
 package okay.freer
 
-import okay.*
 
 /**
  * THE EFFECT TREE: `Free[F, A]`, the freer monad (`Freer`, module okay-freer, package `okay` as everything of the

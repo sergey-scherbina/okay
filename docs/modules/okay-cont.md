@@ -16,7 +16,7 @@ nothing of it but through the core's `Effects` and `Control`.
 | `Handler[E, A, Ans]`, `handle(h)(body)` | a handler is a delimiter: deep, its clauses outside it; `Answering` answers in place, no capture |
 | `perform(op)` | the operation, to its handler found in the context's types at compile time: none in scope, no program |
 | `A ! R`, `Free[R, A]` | a program over a nominal row `State % Int +: Say +: Pure`, built with no handler in sight, handled in any order, reordered by the compiler where another order is expected |
-| `Carrier[A, S, R]` | the machine as a `Control` carrier: a program one level over the top, `(A => S) => R`; the instance `Control[Carrier]` and `Prog`, the machine as an `Effects` encoding, are the core's (Control.scala, Prog.scala) — this module knows nothing of the core |
+| `Carrier[A, S, R]` | the machine as a `Control` carrier: a program one level over the top, `(A => S) => R`; the instance `Control[Carrier]` is the core's (Control.scala), as is the machine's instance of `Effects`, the program itself — this module knows nothing of the core |
 | `Machine.run`, `Machine.value` | a run to its typed end, `Head`: a value, or a capture handed out for a machine outside |
 | `state`, `reader`, `writer`, `throws`, `choose`, `collect`, `generate`, `dialogue` | THE EFFECT LIBRARY (stage 35): each a handler as a delimiter and doors as fragments — `get`/`put`/`modify`, `ask`/`asks`, `tell`, `raise`, `among`, `yield_`, `question`; answered in place where the handler is tail-resumptive, a capture where it is not (an abort, every path, a lazy generator's next step, a dialogue's rest) |
 
@@ -31,12 +31,15 @@ def reader[A](n: Int): Handler[Ask, A, A] = new Handler[Ask, A, A]:
     case Ask.Number => k(n)
 ```
 
-The same program over any `Effects` encoding, the machine's chosen by its given:
+The same program over any `Effects` encoding — the core's interface over rows, the machine its instance found
+with no import (the core's `TestEffectsRows`):
 
 ```scala
-def prog[M[_[+_], _]](using E: Effects[M]): M[Produce, Int] =
-  E.perform[Produce, Int](1).flatMap(x => E.perform[Produce, Int](x + 1).map(y => x + y))
-assertEquals(summon[Effects[Prog]].runWith(prog[Prog]), 3)
+def prog[M[_ <: Row, _]](using E: Effects[M]): M[Ask +: Say +: Pure, Int] =
+  E.perform[Ask, Ask +: Say +: Pure, Int](Ask.Number).flatMap(n =>
+    E.perform[Say, Ask +: Say +: Pure, Unit](Say.Line(n.toString)).map(_ => n + 1))
+val E = Effects[okay.cont.Free]
+assertEquals(E.run(E.handle(writer[Int])(E.handle(reader[Int](41))(prog[okay.cont.Free]))), (List("41"), 42))
 ```
 
 Measured against the core's handlers (stage 28): general clauses 1.29x,

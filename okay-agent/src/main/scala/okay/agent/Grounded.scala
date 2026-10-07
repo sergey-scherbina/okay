@@ -2,7 +2,6 @@ package okay.agent
 
 import okay.{==>, Answers}
 import okay.freer.{!, Aggregator}
-import okay.given
 import okay.freer.given
 import okay.rag.{Retriever, Scored}
 
@@ -41,7 +40,7 @@ object Grounded {
    * the other.
    */
   def context[S](policy: Aggregator[Turn, S, Seq[Turn]],
-                 retriever: Retriever[okay.Pure],
+                 retriever: Retriever[okay.freer.Pure],
                  budget: Int, share: Double = 0.5, k: Int = 4,
                  // what the model ACTUALLY sees is assembled here and
                  // nowhere else, so without a seam it is invisible —

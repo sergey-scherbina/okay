@@ -1,6 +1,8 @@
 package okay.persist
 
-import okay.{Condition, Pure}
+import okay.{Condition}
+
+import okay.freer.{Pure}
 import okay.freer.{!, pure}
 /**
  * Typed.Bad meets Condition (specs/condition.md's first consumer

@@ -39,14 +39,14 @@ class ReaderBenchmark {
   def okayReader(): Int =
     val prog = (1 to N).foldLeft(Reader.ask[Int]): (m, _) =>
       m.flatMap(_ => Reader.ask[Int])
-    !.run(Reader.run[Int, Int, okay.Pure](42)(prog))
+    !.run(Reader.run[Int, Int, okay.freer.Pure](42)(prog))
 
   /** the same N asks, RIGHT-nested by recursion */
   @Benchmark
   def okayReaderRec(): Int =
     def go(i: Int): Int ! Reader % Int =
       if i == 0 then Reader.ask[Int] else Reader.ask[Int].flatMap(_ => go(i - 1))
-    !.run(Reader.run[Int, Int, okay.Pure](42)(go(N)))
+    !.run(Reader.run[Int, Int, okay.freer.Pure](42)(go(N)))
 
   /** the ctx-fn reader THROUGH THE INSTANCE — at N/10: each
    * flatMap is literally f(fb) and run is application (the compiler

@@ -1,6 +1,5 @@
-import okay.*
+import okay.{Stage, through}
 import okay.freer.*
-import okay.given
 import okay.freer.given
 
 /**

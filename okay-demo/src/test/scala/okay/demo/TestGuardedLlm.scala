@@ -1,8 +1,7 @@
 package okay.demo
 import okay.freer.*
 
-import okay.*
-
+import okay.{guard, Async, Timer}
 import okay.given
 import okay.freer.given
 import okay.resilience.{Breaker, Limiter, Refused}

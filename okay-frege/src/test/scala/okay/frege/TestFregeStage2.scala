@@ -1,6 +1,8 @@
 package okay.frege
 
-import okay.{%, +, Async, Chunks, through}
+import okay.{Async, Chunks, through}
+
+import okay.freer.{%, +}
 import okay.freer.{!, Reader, Writer, effect, pure}
 import okay.given
 import okay.freer.given

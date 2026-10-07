@@ -1,6 +1,5 @@
 package okay.freer
 
-import okay.*
 
 /**
  * specs/atm-beyond-state-docs.md: answer-type modification (ATM)

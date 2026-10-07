@@ -1,8 +1,9 @@
 package okay.reactive
 
+
+import okay.{Source, Async, CanBlock, Channel, Drain, Scheduler}
 import java.util.concurrent.Flow
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicLong, AtomicReference}
-import okay.*
 import okay.freer.*
 import okay.given
 import okay.freer.given

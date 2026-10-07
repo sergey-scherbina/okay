@@ -1,6 +1,8 @@
 package okay.pg
 
-import okay.{+, %, Async, ChunkBuf, Net, NetConn, Source}
+import okay.{Async, ChunkBuf, Net, NetConn, Source}
+
+import okay.freer.{+, %}
 import okay.freer.{!, Chunk, effect, pure, Writer}
 import okay.sql.{Col, Granted, Isolation, Sql, SqlType, SqlValue, Temporal}
 import okay.crypto.Crypto

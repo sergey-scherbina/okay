@@ -1,7 +1,8 @@
 package okay.flink
 
-import okay.*
 
+
+import okay.{Tables}
 import okay.wroclaw.{Gtfs, OneJob}
 import _root_.java.io.File
 

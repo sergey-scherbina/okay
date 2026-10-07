@@ -1,7 +1,8 @@
 package okay.ui.gtk
 
-import okay.*
 
+
+import okay.{Async, Source}
 import okay.freer.*
 import okay.given
 import okay.freer.given
@@ -27,7 +28,7 @@ class TestGtk extends munit.FunSuite {
 
   val display: Boolean = Gtk.init()
 
-  def now[A](p: A ! Async): A = !.run(Async.run[A, okay.Pure](p))
+  def now[A](p: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](p))
 
   /** a widget tree as a string: type names and values, structurally */
   def show(w: Gtk4.Widget): String =

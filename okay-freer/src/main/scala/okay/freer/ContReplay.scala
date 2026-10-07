@@ -1,6 +1,5 @@
 package okay.freer
 
-import okay.*
 
 /**
  * THE STRICT `k` BY RE-EXECUTION (cont-js-depth stages 4-5, specs/cont-js-depth.md): whether a strict body's `k` that

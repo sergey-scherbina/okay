@@ -1,6 +1,7 @@
 package okay.pool
 
-import okay.*
+
+import okay.{Async, Scheduler}
 import okay.freer.*
 
 import okay.cluster.{Checkpoint, Jobs, Lease}

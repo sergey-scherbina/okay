@@ -61,7 +61,7 @@ class CompareBenchmark {
   @Benchmark
   def okayEager(): Int =
     import Eager.given
-    val E = Effects[Eager]
+    val E = Classic[Eager]
     (1 to N).foldLeft(E.pure[Produce, Int](0))((m, _) => E.flatMap(m)(x => E.pure(x + 1)))
       .runWith
 

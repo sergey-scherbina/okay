@@ -1,9 +1,9 @@
 package okay.ui
 import okay.freer.*
 
-import okay.*
-
+import okay.{Applicative, modify, toVector, traverseOf}
 import okay.given
+
 import okay.Direct.{*, given}
 // the colourless vals below go through selfColor, an implicit
 // CONVERSION, so this file needs the language import — the same note

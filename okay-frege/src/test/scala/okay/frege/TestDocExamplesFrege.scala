@@ -1,6 +1,8 @@
 package okay.frege
 
-import okay.{%, +, Chunks, through}
+import okay.{Chunks, through}
+
+import okay.freer.{%, +}
 import okay.freer.{!, Choose, Reader, State, Writer, effect, pure, runChoice}
 import okay.frege.{Programs as P}
 import frege.run8.Thunk

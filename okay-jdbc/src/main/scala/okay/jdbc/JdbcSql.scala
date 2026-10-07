@@ -1,6 +1,8 @@
 package okay.jdbc
 
-import okay.{+, %, Async, async, ChunkBuf, Source}
+import okay.{Async, async, ChunkBuf, Source}
+
+import okay.freer.{+, %}
 import okay.freer.{!, Chunk, effect, Writer}
 import okay.sql.{Col, Granted, Isolation, Sql, SqlType, SqlValue, Temporal}
 import java.sql.{Connection, PreparedStatement, ResultSet, ResultSetMetaData, Types}

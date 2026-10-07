@@ -1,13 +1,6 @@
 package okay.r
 
-import okay.{%, +}
-
-
-
-
-
-
-
+import okay.freer.{%, +}
 import okay.freer.*
 
 

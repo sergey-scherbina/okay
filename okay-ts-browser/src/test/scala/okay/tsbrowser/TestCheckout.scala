@@ -1,6 +1,5 @@
 package okay.tsbrowser
 
-import okay.*
 
 import okay.freer.*
 import okay.given

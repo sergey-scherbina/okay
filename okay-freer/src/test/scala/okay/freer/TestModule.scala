@@ -1,7 +1,5 @@
 package okay.freer
 
-import okay.*
-import okay.given
 
 /** Modules: installers that acquire in a scope (specs/di.md, stage 0). */
 class TestModule extends munit.FunSuite {

@@ -1,6 +1,9 @@
 package okay.cats
 
-import okay.{+, Async, TypeableK, split}
+import okay.{Async, TypeableK}
+
+import okay.freer.{split}
+import okay.freer.{+}
 import okay.freer.{!, effect}
 import okay.freer.!.*
 import okay.freer.Row.up

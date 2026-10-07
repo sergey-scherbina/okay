@@ -1,10 +1,27 @@
 package okay.freer
 
-import okay.*
+import okay.{Answers, Control, Monad, TailRecM, TypeableK, ==>}
 import okay.given
 import okay.freer.Row.{at, plus}
 import scala.annotation.tailrec
 import scala.collection.immutable.ArraySeq
+
+/** the union of two signatures: F + G — the classic's row (the core's `+` is the machine's, on a nominal row) */
+infix type +[F[+_], G[+_]] = [A] =>> F[A] | G[A]
+
+/** the empty signature: a computation over it is pure, with nothing to perform; the zero of `+` */
+type Pure[+A] = Nothing
+
+/** fix the parameter of a binary signature: State % S, Throws % E */
+infix type %[F[_, _], S] = F[S, *]
+
+/**
+ * A partial function, infix: `Request |=> Response ! Async`. The spelling is forced by `!`: an infix type's
+ * precedence comes from its first character, and anything binding tighter than `!` (`~>`, `-?>`, `=?>`)
+ * parses `A ~> B ! F` as `(A ~> B) ! F`. A union on the left binds first, so `Get | Post |=> Res` reads as
+ * it looks.
+ */
+infix type |=>[A, B] = PartialFunction[A, B]
 
 /** a computation of A performing the operations of F: A ! F */
 infix type ![A, F[+_]] = Free[F, A]
@@ -29,25 +46,60 @@ extension [F[+_], A](op: F[A])
 
 /** THE DEFAULT: the tree with THE MACHINE (okay-cont) as its carrier — a handler `F !> S` is a program of the
  * machine. The CPS `Cont` is one import away, `import okay.freer.cps.*` (stage 33) */
-given given_Effects_Free: FreeEffectsAt[cont.Carrier] = FreeEffects
-val FreeEffects: FreeEffectsAt[cont.Carrier] = FreeEffectsAt(summon[Control[cont.Carrier]])
+given given_Classic_Free: FreeEffectsAt[okay.cont.Carrier] = FreeEffects
+val FreeEffects: FreeEffectsAt[okay.cont.Carrier] = FreeEffectsAt(summon[Control[okay.cont.Carrier]])
 
-/** the tree at the CPS carrier, `Cont`, as it was: `import okay.freer.cps.{given_Effects_Free, *}` chooses it, with its `!>` and `handler` */
+/** the tree at the CPS carrier, `Cont`, as it was: `import okay.freer.cps.{given_Classic_Free, *}` chooses it, with its `!>` and `handler` */
 object cps:
   /** the SAME NAME as the default's: imported BY NAME it shadows the package's, so the search sees one instance (a `given` wildcard imports by type and shadows nothing) */
-  given given_Effects_Free: FreeEffectsAt[Cont] = FreeEffectsAt(summon[Control[Cont]])
+  given given_Classic_Free: FreeEffectsAt[Cont] = FreeEffectsAt(summon[Control[Cont]])
   infix type !>[F[_], S] = Interpr[F, Cont, S]
   inline def handler[F[_] : Answers as H, S]: F !> S = [X] => e => Cont.Pure(H.handle(e))
 
 /**
- * THE CLASSIC AS A TYPECLASS: level 1 (specs/shift-effect.md) over any encoding of the tree — continuations
- * (`Shift` in the row) and ready handlers (`Handler.Full`), the top-level functions through the typeclass. A
- * program written once over `Classic[M]` runs in `Free` and in `Eager` alike (TestEffectsLevel1). The
- * defaults go through the tree, by `reify` and `reflect`; `Effects[Free]` overrides them with the top-level
- * functions themselves. The core's `Effects` is the interface every encoding has — the machine's too — and
- * knows none of these: they are the classic's own.
+ * THE CLASSIC AS A TYPECLASS: what every encoding of the TREE implements — `Free`, the tree itself, and `Eager`
+ * — over the carrier `C` it folds into, a `Control`: the machine's `Carrier` (the default) or the CPS `Cont`
+ * (`cps`), so that a handler `F !> S` is what it always was. Level 0 is the monad and the fold (`pure`,
+ * `perform`, `flatMap`, `foldCont`, `runWith`, `handle` by a clause); level 1 (specs/shift-effect.md) is
+ * continuations (`Shift` in the row) and ready handlers (`Handler.Full`), the top-level functions through the
+ * typeclass — by default through the tree, `reify` and `reflect`; `Classic[Free]` overrides them with the
+ * functions themselves. A program written once over `Classic[M]` runs in `Free` and in `Eager` alike
+ * (TestEffectsLevel1). The core's `Effects` is the interface over ROWS, every encoding's — the machine's and
+ * this tree's under it (`Rowed`); this is the classic's own, over its union signatures (stage 47).
  */
-trait Classic[M[_[+_], _]] extends Effects[M]:
+trait Classic[M[_[+_], _]]:
+  /** the continuation carrier `foldCont` folds into: `(A => S) => R` as the encoding has it */
+  type C[_, _, _]
+  /** the carrier's `shift` and `/` */
+  def control: Control[C]
+
+  def pure[F[+_], A](a: A): M[F, A]
+  def perform[F[+_], A](e: F[A]): M[F, A]
+  /** a bind whose left side is deferred, forced only when the encoding's interpreter reaches it, so that
+   * mutually recursive functions returning `M[F, A]` call each other in tail position with no JVM frame each */
+  def defer[F[+_], A, B](thunk: () => M[F, A])(f: A => M[F, B]): M[F, B]
+  /** a tail call to a mutually recursive function, for code written over any `M: Classic` (`!.tailcall` on `Free`) */
+  def tailcall[F[+_], A](thunk: => M[F, A]): M[F, A] = defer(() => thunk)(pure)
+
+  extension [F[+_], A](m: M[F, A])
+    def flatMap[B](f: A => M[F, B]): M[F, B]
+    inline def map[B](f: A => B): M[F, B] = m.flatMap(a => pure(f(a)))
+    /** `foldMap` into the carrier: the program's fold, each operation answered by `h` as a continuation
+     * (`Static.foldMap` is the same fold into any `Selective`). The result is still waiting for its LAST
+     * continuation: `/ identity` when `S` is the answer (`runWith`), `/ ret` to finish into `S` (`handle`).
+     * TestFoldCont and docs/contract.md show three `S`. At `C = Cont` the handler is `F !> S` and the fold `A /> S` */
+    def foldCont[S](h: Interpr[F, C, S]): C[A, S, S]
+    /** run all the effects by a comonadic Answers (the foldCont definition; encodings may override with an equivalent fast path) */
+    def runWith(using Answers[F]): A = control./(m.foldCont(interpr[C, F, A](using control, summon[Answers[F]])))(identity)
+  /** handle the effect F by h (and the values by ret), forwarding the effects G; for mass tail-resumption
+   * prefer !.relay (measured) */
+  def handle[F[+_], G[+_]](using TypeableK[F])[A, B](m: M[F + G, A])
+                          (ret: A => M[G, B])
+                          (h: Interpr[F, C, M[G, B]]): M[G, B] =
+    control./(m.foldCont[M[G, B]]([X] => e => split[F, G](e)(e => h(e))(e => control.shift(k => perform(e).flatMap(k)))))(ret)
+
+  // LEVEL 1 (specs/shift-effect.md): continuations and ready handlers in any encoding, through the tree by
+  // default; `Classic[Free]` overrides them with the top-level functions themselves
 
   /** Danvy-Filinski's capture (the top-level `shift`) */
   def shift[R, A, F[+_]](f: (A => M[Shift % R + F, R]) => M[Shift % R + F, R])(using k: Shift.Key[R], at: At): M[Shift % R + F, A] =
@@ -77,8 +129,8 @@ trait Classic[M[_[+_], _]] extends Effects[M]:
     reify[M, F, A](m)(using this).foldMap(nt)
 
 /** the instance, a class over its CARRIER `C0` — whatever has a `Control`: the machine's (the default), the CPS
- * `Cont` (`cps`) — its type naming the carrier (`Effects.Aux`), so a handler's type is known wherever the
- * instance is reached by its type — `Effects[Free]`, `summon`, a `using` — and not only through the given */
+ * `Cont` (`cps`) — its type naming the carrier (`Classic.Aux`), so a handler's type is known wherever the
+ * instance is reached by its type — `Classic[Free]`, `summon`, a `using` — and not only through the given */
 final class FreeEffectsAt[C0[_, _, _]](val control: Control[C0]) extends Classic[Free]:
   type C = C0
 
@@ -171,8 +223,8 @@ final class FreeEffectsAt[C0[_, _, _]](val control: Control[C0]) extends Classic
  * by `pure` and `perform` and `foldCont` is the fold, so there is one structure-preserving way across.
  * `reify` and `reflect` are this at the two ends.
  */
-inline def convert[M[_[+_], _] : Effects as M,
-  N[_[+_], _] : Effects as N, F[+_], A](m: M[F, A]): N[F, A] =
+inline def convert[M[_[+_], _] : Classic as M,
+  N[_[+_], _] : Classic as N, F[+_], A](m: M[F, A]): N[F, A] =
   M.control./(m.foldCont[N[F, A]]([X] => e => M.control.shift(k =>
     N.perform(e).flatMap(k))))(a => N.pure(a))
 
@@ -181,7 +233,7 @@ extension [F[_]](M: Monad[F])
   def tailRecM[A, B](a: A)(f: A => F[Either[A, B]])(using R: TailRecM[F]): F[B] = R.tailRecM(a)(f)
 
 /** any Effects program as a `Free` tree: building the syntax is itself an interpretation */
-inline def reify[M[_[+_], _] : Effects, F[+_], A](m: M[F, A]): A ! F =
+inline def reify[M[_[+_], _] : Classic, F[+_], A](m: M[F, A]): A ! F =
   convert[M, Free, F, A](m)
 
 /**
@@ -189,7 +241,7 @@ inline def reify[M[_[+_], _] : Effects, F[+_], A](m: M[F, A]): A ! F =
  * syntax (for a debugger, a rewriter, `Pipeline`'s optimizer). Together they round-trip (TestReflect). Inside
  * package `okay` the name shadows `scala.reflect`: write `scala.reflect.X` there.
  */
-def reflect[M[_[+_], _] : Effects as M, F[+_], A](m: A ! F): M[F, A] =
+def reflect[M[_[+_], _] : Classic as M, F[+_], A](m: A ! F): M[F, A] =
   // straight into the target: a tree is already syntax, so no continuation is reified on the way
   Free.fold(m)(M.pure)([X] => e => k => M.perform(e).flatMap(x => reflect[M, F, A](k(x))))
 
@@ -197,6 +249,25 @@ def reflect[M[_[+_], _] : Effects as M, F[+_], A](m: A ! F): M[F, A] =
 /** THE CLASSIC AS A TOOLKIT, `!` for short: the functions over the tree itself — `!.run`, `!.relay`, `!.foldM`
  * — and `Free`'s constructors exported, the companion of the typeclass above */
 object Classic {
+  /** an encoding WITH ITS CARRIER NAMED: what an instance's given declares (`given Classic.Aux[Free, Cont]`), so
+   * that `foldCont`'s handler type is concrete wherever the instance is reached by its type, not only by the
+   * given's own object */
+  type Aux[M[_[+_], _], C0[_, _, _]] = Classic[M] { type C = C0 }
+
+  /** level 1, any encoding in direct style: `M[F, *]` as a monad, for `direct[[A] =>> M[F, A]]` over `Classic[M]` */
+  def monad[M[_[+_], _], F[+_]](using E: Classic[M]): Monad[[A] =>> M[F, A]] = new Monad[[A] =>> M[F, A]]:
+    def pure[A](a: A): M[F, A] = E.pure(a)
+    extension [A](a: M[F, A])
+      def flatMap[B](f: A => M[F, B]): M[F, B] = E.flatMap(a)(f)
+
+  /** the staging entry for tree programs: `Classic[Free]`, `Classic[Eager]`, or any `M` with an instance in
+   * scope; with `trait Classic` it forms one door, as a class and its companion do. Summoned WITH ITS CARRIER:
+   * the pattern binds `c` to what the instance declares (`Classic.Aux`), so `Classic[Free].handle(…)(h)` takes
+   * the handler at `Cont` — `summonInline[Classic[M]]` answered at `Classic[M]`, the carrier unknown — and
+   * `summonFrom` still defers the search to where an inline program is expanded (`sprog[Free]`, TestEffects) */
+  transparent inline def apply[M[_[+_], _]] =
+    compiletime.summonFrom { case e: Classic.Aux[M, c] => e }
+
   // the tree's constructors and `loop`; not `pure`, the top-level function's (a file importing both `okay.freer.*`
   // and `!.*` would find it twice)
   export Free.{pure as _, *}

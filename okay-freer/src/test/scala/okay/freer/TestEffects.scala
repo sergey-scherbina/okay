@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.*
+import okay.{Answers, Control, Func, Id}
 import okay.given
 
 import !.*
@@ -13,7 +13,7 @@ given okay.TypeableK[Op] = okay.typeableK(classOf[Op[?]])
 
 class TestEffects extends munit.FunSuite {
 
-  def prog[M[_[+_], _]](using E: Effects[M]): M[Produce, Int] =
+  def prog[M[_[+_], _]](using E: Classic[M]): M[Produce, Int] =
     E.perform[Produce, Int](1).flatMap(x => E.perform[Produce, Int](x + 1).map(y => x + y))
 
   test("tagless Effects: Free and Eager agree") {
@@ -39,11 +39,11 @@ class TestEffects extends munit.FunSuite {
 
   test("Effects.tailcall: mutual tail recursion, tagless — Free and Eager agree") {
     import Eager.given
-    def isEven[M[_[+_], _] : Effects](n: Int): M[okay.Pure, Boolean] =
-      val E = summon[Effects[M]]
+    def isEven[M[_[+_], _] : Classic](n: Int): M[Pure, Boolean] =
+      val E = summon[Classic[M]]
       if n == 0 then E.pure(true) else E.tailcall(isOdd[M](n - 1))
-    def isOdd[M[_[+_], _] : Effects](n: Int): M[okay.Pure, Boolean] =
-      val E = summon[Effects[M]]
+    def isOdd[M[_[+_], _] : Classic](n: Int): M[Pure, Boolean] =
+      val E = summon[Classic[M]]
       if n == 0 then E.pure(false) else E.tailcall(isEven[M](n - 1))
     assertEquals(isEven[Free](1000000).runWith, true)
     assertEquals(isEven[Eager](1000000).runWith, true)
@@ -52,9 +52,9 @@ class TestEffects extends munit.FunSuite {
   }
 
   test("!.tailcall: mutual tail recursion across two functions, stack-safe") {
-    def isEven(n: Int): Boolean ! okay.Pure =
+    def isEven(n: Int): Boolean ! Pure =
       if n == 0 then pure(true) else !.tailcall(isOdd(n - 1))
-    def isOdd(n: Int): Boolean ! okay.Pure =
+    def isOdd(n: Int): Boolean ! Pure =
       if n == 0 then pure(false) else !.tailcall(isEven(n - 1))
     // runFree (Effects.scala, the runWith fast path)
     assert(!.run(isEven(1000000)))
@@ -70,7 +70,7 @@ class TestEffects extends munit.FunSuite {
       effect[F, Int](2).flatMap: x =>
         (if b then effect[F, Int](Throws("boom")) else effect[F, Int](3)).map(_ + x)
 
-    val E = summon[Effects[Free]]
+    val E = summon[Classic[Free]]
     def run(b: Boolean): Int =
       E.handle[Throws % String, Produce](calc(b))(a => pure(a)):
         [X] => _ => E.control.shift(_ => pure(-1))
@@ -85,7 +85,7 @@ class TestEffects extends munit.FunSuite {
 
   test("staged effects: one inline program, the run carrier is chosen") {
     inline def sprog[M[_[+_], _]]: M[Produce, Int] =
-      val E = Effects[M]
+      val E = Classic[M]
       E.flatMap(E.perform[Produce, Int](1))(x => E.perform[Produce, Int](x + 1))
     assertEquals(sprog[Free].runWith, 2)
   }
@@ -113,55 +113,55 @@ class TestEffects extends munit.FunSuite {
     // Answers[F] is F ==> Id, and Id is where a suspension cannot go.
     // translate takes the general form — F ==> ([X] =>> X ! G) — so an
     // operation may answer with more computation.
-    type Row = Reader % Int + (Writer % String + okay.Pure)
+    type Row = Reader % Int + (Writer % String + Pure)
 
     val prog: Int ! Row =
       effect[Row, Int](Reader.Ask()).flatMap(x =>
         effect[Row, Int](Reader.Ask()).map(_ + x))
 
     // the Reader is answered by a program that TELLS on the way
-    val told: Int ! Writer % String + okay.Pure =
-      !.translate[Int, Reader % Int, Writer % String + okay.Pure](prog) {
+    val told: Int ! Writer % String + Pure =
+      !.translate[Int, Reader % Int, Writer % String + Pure](prog) {
         [X] => (e: (Reader % Int)[X]) => e match
           case Reader.Ask() =>
-            effect[Writer % String + okay.Pure, Unit](Writer("asked"))
+            effect[Writer % String + Pure, Unit](Writer("asked"))
               .map(_ => 21.asInstanceOf[X])
           case Reader.Asks(f) =>
-            effect[Writer % String + okay.Pure, Unit](Writer("asked"))
+            effect[Writer % String + Pure, Unit](Writer("asked"))
               .map(_ => f(21))
       }
 
-    val (ws, a) = !.run(Writer.run[String, Int, okay.Pure](told))
+    val (ws, a) = !.run(Writer.run[String, Int, Pure](told))
     assertEquals(a, 42)
     assertEquals(ws, Seq("asked", "asked"))
   }
 
   test("translate with a pure transformation IS a comonadic handler") {
-    type Row = Reader % Int + okay.Pure
+    type Row = Reader % Int + Pure
     val prog: Int ! Row = effect[Row, Int](Reader.Ask()).map(_ * 2)
 
-    val viaTranslate = !.run(!.translate[Int, Reader % Int, okay.Pure](prog) {
+    val viaTranslate = !.run(!.translate[Int, Reader % Int, Pure](prog) {
       [X] => (e: (Reader % Int)[X]) => e match
         case Reader.Ask() => okay.freer.pure(7.asInstanceOf[X])
         case Reader.Asks(f) => okay.freer.pure(f(7))
     })
-    val viaHandler = !.run(Reader.run[Int, Int, okay.Pure](7)(prog))
+    val viaHandler = !.run(Reader.run[Int, Int, Pure](7)(prog))
     assertEquals(viaTranslate, viaHandler)
   }
 
   test("translate forwards the effects it was not given") {
-    type Row = Reader % Int + (Writer % String + okay.Pure)
+    type Row = Reader % Int + (Writer % String + Pure)
     val prog: Int ! Row =
       effect[Row, Unit](Writer("before")).flatMap(_ =>
         effect[Row, Int](Reader.Ask())).flatMap(x =>
         effect[Row, Unit](Writer("after")).map(_ => x))
 
-    val told = !.translate[Int, Reader % Int, Writer % String + okay.Pure](prog) {
+    val told = !.translate[Int, Reader % Int, Writer % String + Pure](prog) {
       [X] => (e: (Reader % Int)[X]) => e match
         case Reader.Ask() => okay.freer.pure(5.asInstanceOf[X])
         case Reader.Asks(f) => okay.freer.pure(f(5))
     }
-    val (ws, a) = !.run(Writer.run[String, Int, okay.Pure](told))
+    val (ws, a) = !.run(Writer.run[String, Int, Pure](told))
     assertEquals(a, 5)
     assertEquals(ws, Seq("before", "after"))
   }

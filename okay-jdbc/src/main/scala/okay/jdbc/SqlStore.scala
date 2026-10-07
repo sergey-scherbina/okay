@@ -101,7 +101,7 @@ final class SqlStore(db: Sql, prefix: String = "okay_persist") extends Store:
 
   // ── plumbing ───────────────────────────────────────────────────
 
-  private def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.Pure](prog))
+  private def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](prog))
 
   private def drain(p: okay.Source[Chunk[Vector[SqlValue]]])
   : Vector[Vector[SqlValue]] = run(okay.Source.concat(p))

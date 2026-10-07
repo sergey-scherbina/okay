@@ -1,6 +1,8 @@
 package okay.cats
 
-import okay.{+, Async, ==>}
+import okay.{Async, ==>}
+
+import okay.freer.{+}
 import okay.freer.{!, effect}
 import okay.freer.!.*
 import _root_.cats.~>

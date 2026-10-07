@@ -11,7 +11,7 @@ import okay.freer.Row.at
 /** specs/direct-reset.md: `Direct.reset` / `Direct.shift`, a direct-style or a monadic body, no `direct` */
 class TestDirectReset extends munit.FunSuite:
 
-  type P = okay.Pure
+  type P = okay.freer.Pure
   type S = State % Int
 
   test("a direct-style body, marks only: no `direct` around reset or shift") {

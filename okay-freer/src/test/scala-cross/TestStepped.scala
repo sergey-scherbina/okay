@@ -1,7 +1,5 @@
 package okay.freer
 
-import okay.*
-import okay.given
 
 /**
  * handler-single-pass stage 1 (specs/handler-single-pass.md): a `Handler.Stepped` built-in, walked through its

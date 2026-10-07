@@ -1,8 +1,7 @@
 package okay.agent
 import okay.freer.*
 
-import okay.*
-
+import okay.{! as _, + as _, % as _, Pure as _, *}
 import okay.given
 import okay.freer.given
 import okay.codec.Json

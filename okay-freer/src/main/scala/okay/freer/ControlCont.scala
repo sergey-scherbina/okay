@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.*
+import okay.{Control}
 
 /** the stack-safe data instance */
 given Control[Cont] with

@@ -1,8 +1,7 @@
 package okay.x402.mcp
 import okay.freer.*
 
-import okay.*
-
+import okay.{Answers, Async, Channel, Source}
 import okay.given
 import okay.freer.given
 import okay.agent.*
@@ -37,9 +36,9 @@ class TestX402McpAgent extends munit.FunSuite:
     given Answers[Model] = Handlers.scripted(replies)
     given Answers[Tool] = tool
     given Answers[Context] = Handlers.context(Compact.all)._2
-    given rowCA: Answers[Context + Async] = Answers.union[Context, Async]
-    given rowTCA: Answers[Tool + (Context + Async)] = Answers.union[Tool, Context + Async]
-    given rowAll: Answers[Agent] = Answers.union[Model, Tool + (Context + Async)]
+    given rowCA: Answers[Context + Async] = Row.union[Context, Async]
+    given rowTCA: Answers[Tool + (Context + Async)] = Row.union[Tool, Context + Async]
+    given rowAll: Answers[Agent] = Row.union[Model, Tool + (Context + Async)]
     program.runWith
 
   private val anyUsdc = Policy.upTo(BigInt(20000), Set(price.network), Set(usdc))

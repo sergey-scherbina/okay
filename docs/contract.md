@@ -17,35 +17,40 @@ Everything else is syntax over these (`direct` blocks), doors into them
 
 ## 1. The kernel: `Effects[M]`
 
-`A ! F` is a program that answers an `A` and may perform the operations
-of `F`. `F` is a ROW: a union of effects, `State % Int + Throws % String`.
-A program with nothing left in its row is `A ! Pure`. The operations on
-such programs form one final-tagless interface (`src/main/scala/Effects.scala`):
+`A ! R` is a program that answers an `A` and may perform the operations
+of `R`. `R` is a ROW: a nominal list of effects, `State % Int +: Throws %
+String +: Pure`, written either way (`Pure + State % Int + Throws %
+String`); the order of effects in a row says nothing, the order of
+handlers everything. A program with nothing left in its row is `A ! Pure`.
+The operations on such programs form one interface, over rows
+(`src/main/scala/Effects.scala`):
 
 ```scala
-trait Effects[M[_[+_], _]]:
-  type C[_, _, _]
-  def control: Control[C]
-  def pure[F[+_], A](a: A): M[F, A]
-  def perform[F[+_], A](e: F[A]): M[F, A]
+trait Effects[M[_ <: Row, _]]:
+  def pure[R <: Row, A](a: A): M[R, A]
+  def perform[E[+_], R <: Row, X](op: E[X])(using Member[E, R]): M[R, X]
   ...
-  extension [F[+_], A](m: M[F, A])
-    def flatMap[B](f: A => M[F, B]): M[F, B]
-    ...
-    def foldCont[S](h: Interpr[F, C, S]): C[A, S, S]
-  ...
-  def run[A](m: M[Pure, A]): A = reify[M, Pure, A](m)(using this).run
+  extension [R <: Row, A](m: M[R, A])
+    def flatMap[B](f: A => M[R, B]): M[R, B]
+  def handle[E[+_], A, Ans, R <: Row](h: Handler[E, A, Ans])(m: M[R, A])(using rm: Removed[E, R]): M[rm.Out, Ans]
+  def run[A](m: M[Pure, A]): A
 ```
 
-`flatMap` and `foldCont` are extension methods, so their first argument is
-the program itself, `m: M[F, A]`: `flatMap` is `M[F, A] => (A => M[F, B]) =>
-M[F, B]`, and `foldCont` is `M[F, A] => Interpr[F, C, S] => C[A, S, S]` —
-`C` the encoding's own continuation carrier, a `Control`. By default it is
-the machine's (okay-cont), for `Free`, `Eager` and `Prog` alike: a handler
-`F !> S` is a program of the machine. The CPS `Cont` is one import away,
-`import okay.freer.cps.{given_Effects_Free, *}`, with its own `!>` and `handler`.
-The tree itself and its library are the classic, module okay-freer,
-package `okay.freer`, above the core; the interface is the core's alone.
+An operation is performed by its PATH in the row (`Member`, the compiler
+builds it); a handler takes its effect off the row wherever it is
+(`Removed`). Handlers are the machine's (okay-cont): `Answering` answers
+in place — state, reader, writer — and `Handler` has the continuation —
+choose, dialogue. `A ! R` itself is the machine's program, `okay.cont.Free[R,
+A]`, and the machine is the interface's default instance, found with no
+import; the classic tree is its other instance (`okay.freer.Rowed`), its
+operations tagged with their path and its handlers run on the machine.
+
+The classic's own kernel is `okay.freer.Classic[M]`: the same words over
+the classic's UNION rows (`State % Int + Throws % String`), with the
+carrier under them — `foldCont`, `Control`, a handler `F !> S` as a
+continuation — which the rest of this part describes. `Free` (the tree)
+and `Eager` are its encodings; `import okay.freer.cps.{given_Classic_Free,
+*}` chooses the CPS `Cont` as their carrier in place of the machine's.
 
 Read by what each part gives:
 
@@ -159,10 +164,10 @@ folded into: that is a compile error, not an overflow.
 You call it yourself only to write an interpretation the ready handlers
 do not have. To USE an effect, `handle` and `run` are the words.
 
-Two encodings implement it. `Free` is a tree you can step, inspect and
-relay. `Eager` binds pure steps as they are built. Code written against
-`Effects[M]` runs on either, and programs move between them (`reflect`,
-`reify`).
+Two encodings implement the classic's kernel. `Free` is a tree you can
+step, inspect and relay. `Eager` binds pure steps as they are built. Code
+written against `Classic[M]` runs on either, and programs move between
+them (`reflect`, `reify`).
 
 Underneath sit `ParaMonad`, `Control` and `Delimited`: Atkey's
 parameterised monad and the delimited-control machine that gives

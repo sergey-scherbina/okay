@@ -1,9 +1,7 @@
 package okay.conf
 
-import okay.*
 import okay.freer.*
 
-import okay.given
 import okay.freer.given
 import okay.codec.Schema
 
@@ -18,7 +16,7 @@ class TestConfModule extends munit.FunSuite {
   final case class DbConf(url: String, password: Secret) derives Schema
   final class Db(val url: String, val password: String) { var closed = false }
 
-  def run[A](p: A ! Resource): A = !.run(Resource.run[A, okay.Pure](p))
+  def run[A](p: A ! Resource): A = !.run(Resource.run[A, okay.freer.Pure](p))
 
   test("a config value and a secrets resolver are modules; the connection resolves its secret while acquiring") {
     val conf = Module.value[DbConf](DbConf("jdbc:h2:mem:t", Secret("env:PG_PASSWORD")))

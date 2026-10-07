@@ -1,7 +1,5 @@
 package okay.freer
 
-import okay.*
-import okay.given
 
 /**
  * A strict `k` whose body answers a PROGRAM holds no host stack (cont-program-leaf-always, answered

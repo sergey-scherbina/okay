@@ -47,7 +47,7 @@ an effect AUTHOR writes `Handler[F] { case … }` or one of its forms
 - `Effects.handle` — the general form: abortive handlers (Throws),
   multi-shot handlers (Choice explores every branch), forwarding.
 
-Two ENCODINGS, one interface (`Effects[M]`): `Free` (the tree — for
+Two ENCODINGS of the tree, one typeclass (`okay.freer.Classic[M]`; the core's `Effects[M]` is the interface over rows every encoding has, the machine first): `Free` (the tree — for
 stepping, relaying, stack safety on any bind shape) and the opt-in
 `Eager` (`import Eager.given` — the kyo trick: pure binds apply at
 construction, 10x under kyo on pure chains, with kyo's hazards stated:
@@ -120,7 +120,7 @@ val wetGrass: Boolean ! Dist =
     sprinkler <- dist(true -> 0.4, false -> 0.6)
     _ <- observe(rain || sprinkler)
   yield rain
-!.run(runExact[Boolean, okay.Pure](wetGrass)).posterior(true)   // 15.0/29.0
+!.run(runExact[Boolean, Pure](wetGrass)).posterior(true)   // 15.0/29.0
 ```
 
 `Prob.runRejection` is the other reading of the same program — single-
@@ -344,7 +344,7 @@ overrides `ask` for one block the same way `recover` answers `raise`
 for one block — built on the same tool, `Effects.handle`:
 
 ```scala
-val p = Reader.local[Int, Int, okay.Pure](_ * 10)(Reader.ask[Int])
+val p = Reader.local[Int, Int, Pure](_ * 10)(Reader.ask[Int])
 // Reader.run(5)(p) == 50; asking OUTSIDE the local still sees 5
 ```
 
@@ -446,7 +446,7 @@ type Big   = Tag.Of["big",   State % Int]
 val twice: (Int, Int) ! (Small + Big) =
   for
     a <- Tag.tag["small", State % Int](bump(1)).plus[Big]
-    b <- Tag.tag["big",   State % Int][Int, okay.Pure](bump(10)).at[Small + Big]
+    b <- Tag.tag["big",   State % Int][Int, Pure](bump(10)).at[Small + Big]
   yield (a, b)
 ```
 

@@ -1,4 +1,4 @@
-import okay.*
+import okay.{Monad, ==>, Optic, Proc, Wf}
 import okay.freer.*
 import okay.Direct.*
 import okay.laws.{ArrowLaws, ArrowLawsSuite}
@@ -58,7 +58,7 @@ object TestProcLaws:
  */
 class TestProc extends munit.FunSuite:
 
-  type P = okay.Pure
+  type P = okay.freer.Pure
   type Row = Shift % ? + P
   type Sig = Wf.Asked[String, String]
 

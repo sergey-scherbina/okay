@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.*
+import okay.{Applicative, Selective, ==>}
 
 
 import scala.annotation.tailrec

@@ -1,7 +1,5 @@
 package okay.freer
 
-import okay.*
-import okay.given
 
 /**
  * specs/fold-until.md — a fold that can stop. The instances agree

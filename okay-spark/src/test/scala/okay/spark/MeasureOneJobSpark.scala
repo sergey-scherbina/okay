@@ -1,7 +1,8 @@
 package okay.spark
 
-import okay.*
 
+
+import okay.{Tables}
 import okay.wroclaw.{Gtfs, OneJob}
 import org.apache.spark.sql.SparkSession
 import java.io.File

@@ -1,6 +1,7 @@
 package okay.cluster
 
-import okay.*
+
+import okay.{Pane, Streamed, Tables, Bulk}
 import okay.freer.*
 
 import okay.given

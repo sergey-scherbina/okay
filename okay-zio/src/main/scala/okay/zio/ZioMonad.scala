@@ -1,6 +1,8 @@
 package okay.zio
 
-import okay.{%, +, Async}
+import okay.{Async}
+
+import okay.freer.{%, +}
 import okay.freer.{!, Throws, raise}
 import _root_.zio.{Task, ZIO}
 

@@ -1,7 +1,10 @@
 package okay.script
 
-import okay.*
 
+
+
+import okay.freer.{Pure}
+import okay.{Async}
 import okay.given
 import okay.freer.given
 import okay.http.{Http, Request}

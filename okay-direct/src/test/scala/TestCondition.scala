@@ -188,7 +188,7 @@ class TestCondition extends munit.FunSuite {
         b <- !.widen[Int, Op, Async](signal[Int]("double it"))
         c <- !.widen[Int, Async, Op](async(2))
       yield a + b + c
-    val out = !.run(Async.run[Int, okay.Pure](
+    val out = !.run(Async.run[Int, okay.freer.Pure](
       Condition.run[Int, Async]((_, _) => Resume(20))(prog)))
     assertEquals(out, 42)
   }

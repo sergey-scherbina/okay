@@ -1,6 +1,7 @@
 package okay.mail
 
-import okay.*
+
+import okay.{Async}
 import okay.freer.*
 
 import okay.conf.{Secret, Secrets}

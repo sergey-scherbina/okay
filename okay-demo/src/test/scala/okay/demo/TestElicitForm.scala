@@ -1,7 +1,8 @@
 package okay.demo
+
+import okay.{Async, Channel, Source, async}
 import okay.freer.*
 
-import okay.*
 
 import okay.given
 import okay.freer.given

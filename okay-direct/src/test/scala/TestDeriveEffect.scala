@@ -56,7 +56,7 @@ class TestDeriveEffect extends munit.FunSuite {
   test("a row has no instance of its own, and needs none") {
     // the erasure-based fallback is gone: every signature declares its
     // test with `derives Effect`, and a ROW is split by testing its
-    // PARTS — `Answers.union[F, G]` and `<|>` ask only about the left
+    // PARTS — `Row.union[F, G]` and `<|>` ask only about the left
     // side, so a composite instance is never needed. It is also not
     // available, deliberately:
     assert(!scala.compiletime.testing.typeChecks(

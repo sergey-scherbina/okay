@@ -1,7 +1,5 @@
 package okay.freer
 
-import okay.*
-import okay.given
 
 import okay.freer.Row.*
 
@@ -123,8 +121,8 @@ class TestDocExamplesLevel1 extends munit.FunSuite:
         E.shift[Int, Int, State % Int](k => k(1).flatMap(a => k(10).map(b => a + b))).flatMap(x =>
           E.perform[Shift % Int + State % Int, Int](State.Get[Int, Int]()).map(s => x * 2 + s)))
 
-    val inFree = summon[Effects[Free]].run(summon[Effects[Free]].handle(program[Free], State(5)))      // (5, 32)
-    val inEager = summon[Effects[Eager]].run(summon[Effects[Eager]].handle(program[Eager], State(5)))  // (5, 32)
+    val inFree = summon[Classic[Free]].run(summon[Classic[Free]].handle(program[Free], State(5)))      // (5, 32)
+    val inEager = summon[Classic[Eager]].run(summon[Classic[Eager]].handle(program[Eager], State(5)))  // (5, 32)
     assertEquals(inFree, (5, 32))
     assertEquals(inEager, (5, 32))
   }

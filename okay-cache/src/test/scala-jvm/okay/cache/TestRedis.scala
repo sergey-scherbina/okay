@@ -27,7 +27,7 @@ class TestRedis extends munit.FunSuite {
   final case class Quote(sym: String, price: Double, tags: Vector[String] = Vector.empty)
   given Schema[Quote] = Schema.derived
 
-  def run[A](p: A ! Async): A = !.run(Async.run[A, okay.Pure](p))
+  def run[A](p: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](p))
 
   private var n = 0
   def fresh(regime: Regime): Cache[String, Quote] =

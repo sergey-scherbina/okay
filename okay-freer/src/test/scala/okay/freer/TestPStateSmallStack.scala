@@ -1,6 +1,5 @@
 package okay.freer
 
-import okay.*
 
 /**
  * PState's FUNCTION ANSWER applied by a loop (cont-fun-answer): a million `get`/`set` steps on a 128 KB thread,

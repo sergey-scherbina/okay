@@ -1,6 +1,8 @@
 package okay.jdbc
 
-import okay.{+, Async, Source}
+import okay.{Async, Source}
+
+import okay.freer.{+}
 import okay.freer.{!, Chunk, Resource}
 import okay.given
 import okay.freer.given
@@ -41,7 +43,7 @@ class TestRetry extends munit.FunSuite {
     def cancel(): Unit = { cancels += 1; inner.cancel() }
     override def sqlState(t: Throwable) = inner.sqlState(t)
 
-  def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.Pure](prog))
+  def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](prog))
 
   def withDb[A](failures: Int, state: String)(f: Losing => A): A =
     val conn = DriverManager.getConnection(url, "sa", "")

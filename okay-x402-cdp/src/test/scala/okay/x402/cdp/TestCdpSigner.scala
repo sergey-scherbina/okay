@@ -1,11 +1,12 @@
 package okay.x402.cdp
 
+
+import okay.{Async}
 import java.math.BigInteger
 import java.nio.charset.StandardCharsets.UTF_8
 import java.security.{KeyPair, KeyPairGenerator, PublicKey, Signature}
 import java.security.spec.ECGenParameterSpec
 import java.util.Base64
-import okay.*
 import okay.freer.*
 import okay.chain.Network
 import okay.codec.Json

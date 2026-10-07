@@ -1,7 +1,8 @@
 package okay.ui
+
+import okay.{Async, Lens, Source, TypedZipper, async, field}
 import okay.freer.*
 
-import okay.*
 
 import okay.given
 import okay.freer.given

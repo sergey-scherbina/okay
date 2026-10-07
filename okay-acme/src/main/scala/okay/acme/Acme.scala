@@ -1,6 +1,7 @@
 package okay.acme
 
-import okay.*
+
+import okay.{Async, CanBlock}
 import okay.freer.*
 
 import okay.given

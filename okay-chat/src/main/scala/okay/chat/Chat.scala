@@ -1,6 +1,7 @@
 package okay.chat
 
-import okay.*
+
+import okay.{Async, Source}
 import okay.freer.*
 
 import okay.http.{Body, Method, Request, Response}

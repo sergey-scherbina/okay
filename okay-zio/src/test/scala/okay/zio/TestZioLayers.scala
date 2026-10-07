@@ -1,7 +1,6 @@
 package okay.zio
 
 import okay.freer.{!, Module, Resource, module, wire}
-import okay.given
 import okay.freer.given
 import ZioLayers.*
 import _root_.zio.{Runtime, Scope, Unsafe, ZEnvironment, ZIO, ZLayer}
@@ -29,7 +28,7 @@ class TestZioLayers extends munit.FunSuite {
     val layer: ZLayer[Any, Throwable, Db] =
       ZLayer.scoped(ZIO.acquireRelease(ZIO.succeed { log ::= "open"; new Db { val q = "z" } })(_ => ZIO.succeed(log ::= "close")))
     val pool: Db ?=> Module[[X] =>> Pool ?=> X] = module[Pool](new Pool { val db = wire[Db] })(_ => ())
-    val got = !.run(Resource.run[String, okay.Pure]((fromLayer(layer) and pool) { wire[Pool].db.q }))
+    val got = !.run(Resource.run[String, okay.freer.Pure]((fromLayer(layer) and pool) { wire[Pool].db.q }))
     assertEquals(got, "z")
     assertEquals(log.reverse, List("open", "close"))
   }

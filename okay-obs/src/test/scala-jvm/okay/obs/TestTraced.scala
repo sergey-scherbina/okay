@@ -12,7 +12,7 @@ import okay.persist.{MemoryStore, Policy, Topic}
  * ambient children, and the stored route self-wiring twice */
 class TestTraced extends munit.FunSuite {
 
-  def run[A](p: A ! Async): A = !.run(Async.run[A, okay.Pure](p))
+  def run[A](p: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](p))
 
   def spansOf(topic: Topic): Vector[Span] =
     topic.read(0, 0, 100) match

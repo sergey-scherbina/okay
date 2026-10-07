@@ -1,6 +1,8 @@
 package okay.jdbc
 
-import okay.{+, %, Async, async, Source}
+import okay.{Async, async, Source}
+
+import okay.freer.{+, %}
 import okay.freer.{!, Chunk, effect, Writer}
 import java.sql.{Connection, DriverManager, PreparedStatement, ResultSet}
 

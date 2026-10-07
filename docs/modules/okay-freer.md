@@ -9,23 +9,26 @@ specs/modules-infra.md).
 | | |
 |---|---|
 | `A ! F`, `pure`, `effect`, `op.perform` | a program of the tree: `Free[F, A]`, the effect tree at the unary signature over `Freer[G, S, R, A]`, the indexed tree (Kiselyov–Ishii, with Atkey's indexes) |
-| `Classic[M]` | the classic as a typeclass: the core's `Effects[M]` with level 1 — `shift`, `shift0`, `reset`, `handle(m, h)`, `run`, `foldMap` — for a program written once over any encoding of the tree; `Free` and `Eager` are its instances |
+| `Classic[M]` | the classic as a typeclass, over its union rows: level 0 — `pure`, `perform`, `flatMap`, `foldCont` into the carrier, `handle` by a clause — and level 1 — `shift`, `shift0`, `reset`, `handle(m, h)`, `run`, `foldMap` — for a program written once over any encoding of the tree; `Free` and `Eager` are its instances |
+| `Rowed[R, A]` | the tree under the core's facade: its instance of `Effects[M]`, the interface over nominal rows — operations tagged with their path, the machine's handlers run on the machine and reified back into the tree |
 | `Classic`, `!` for short | the classic as a toolkit: `!.run`, `!.relay`, `!.translate`, `!.interpret`, `!.foldM`, `!.loop`, and the tree's constructors |
-| `given_Effects_Free`, `FreeEffects`, `cps` | THE DEFAULT instance: the tree with the machine as its carrier; `import okay.freer.cps.{given_Effects_Free, *}` chooses the CPS `Cont` as it was |
-| `Handler`, `Answers`-handlers, `Row`, `Member`, `Distinct` | handlers as values, rows as unions, their evidence |
+| `given_Classic_Free`, `FreeEffects`, `cps` | the tree's `Classic` instance with the machine as its carrier; `import okay.freer.cps.{given_Classic_Free, *}` chooses the CPS `Cont` as it was |
+| `Handler`, `Answers`-handlers, `Row`, `Member`, `Distinct`, `Row.union`, `Row.flat` | handlers as values, rows as unions, their evidence; `split` and `TypeableK[Pure]`, the class test a union handler dispatches by |
 | `State`, `Reader`, `Writer`, `Throws`, `Choose`, `Shift`, `Resource`, `Once`, `Supply`, `Random`, `Clock`, … | the effects and their handlers |
 | `Cont[A, S, R]`, `Delimited`, `StackRoom`, `StackPool` | the CPS tree at the shift signature, and the classic's machine of delimited continuations (the JDK 22 StackRoom variant is in this module's multi-release jar) |
 | `Stream`, `Gen`, `Producer`, `Aggregator`, `Fold`, `Chunk` | the streams and folds written over the tree |
 | `DirectCtx`, `Diagonal`, the macros | what `okay-direct`'s `direct` block and the handler macros need, under `okay.freer.macros` |
 
-What stays in the core (`okay`): `Effects`, `Control`, `Answers`, `TypeableK`, `Effect`, `Distinct` (with
-`Answers.union`/`flat` and their macros), the type classes (`Monad`, `TailRecM`, …), `Prog` — the interface
-and the machine's instance, with no classic in it.
+What stays in the core (`okay`): `Effects` over rows and the machine's instance of it, the program `A ! R`
+(the machine's `Free`) with `pure`, `effect`, `perform`, `handle`, `value`, the rows at its door, `Control`,
+`Answers`, `TypeableK`, `Effect`, the type classes (`Monad`, `TailRecM`, …) — the interface and the machine,
+with no classic in it. A file takes the core's names BY NAME (`import okay.{Answers, Effect, Monad}`) beside
+`import okay.freer.*`: the two have `!`, `+`, `%`, `Pure`, `pure`, `effect`, `perform` each, the machine's and
+the classic's, and a wildcard would make them tie — or, in a file of package `okay.freer`, win.
 
 ## Using it
 
 ```scala
-import okay.*
 import okay.freer.*
 import okay.freer.given
 
@@ -41,8 +44,8 @@ def program[M[_[+_], _]](using E: Classic[M]): M[State % Int, Int] =
     E.shift[Int, Int, State % Int](k => k(1).flatMap(a => k(10).map(b => a + b))).flatMap(x =>
       E.perform[Shift % Int + State % Int, Int](State.Get[Int, Int]()).map(s => x * 2 + s)))
 
-val inFree = summon[Effects[Free]].run(summon[Effects[Free]].handle(program[Free], State(5)))      // (5, 32)
-val inEager = summon[Effects[Eager]].run(summon[Effects[Eager]].handle(program[Eager], State(5)))  // (5, 32)
+val inFree = summon[Classic[Free]].run(summon[Classic[Free]].handle(program[Free], State(5)))      // (5, 32)
+val inEager = summon[Classic[Eager]].run(summon[Classic[Eager]].handle(program[Eager], State(5)))  // (5, 32)
 ```
 
 A macro or a tool that names the tree by its path names it at its home: `okay.freer.Freer`, `okay.freer.Free`,

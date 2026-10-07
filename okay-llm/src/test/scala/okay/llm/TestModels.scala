@@ -1,6 +1,8 @@
 package okay.llm
 
-import okay.{%, +, Async, Pure}
+import okay.{Async}
+
+import okay.freer.{%, +, Pure}
 import okay.freer.{!, Writer, effect, pure}
 import okay.given
 import okay.freer.given

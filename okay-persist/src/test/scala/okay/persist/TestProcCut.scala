@@ -1,7 +1,8 @@
 package okay.persist
 
 import munit.FunSuite
-import okay.{Proc, Pure, Wf}
+import okay.{Proc, Wf}
+import okay.freer.{Pure}
 import okay.freer.{!}
 import okay.Proc.given
 import okay.codec.Schema

@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.*
+import okay.{Effect}
 import okay.given
 
 
@@ -46,13 +46,13 @@ class TestStd extends munit.FunSuite {
     // map or flatMap, which is the Bind branch, so this is the one
     // place where a wrong answer here would go unnoticed.
     val w: Unit ! Writer % Int = Writer.tell(5)
-    val (ws, a) = !.run(Writer.run[Int, Unit, okay.Pure](w))
+    val (ws, a) = !.run(Writer.run[Int, Unit, Pure](w))
     assertEquals(ws, Seq(5))
     assertEquals(a, (), "a tell emits; it does not produce")
 
     // getting the value back is the CALLER's business, said explicitly
     val kept: Int ! Writer % Int = Writer.tell(5).map(_ => 5)
-    assertEquals(!.run(Writer.run[Int, Int, okay.Pure](kept)), (Seq(5), 5))
+    assertEquals(!.run(Writer.run[Int, Int, Pure](kept)), (Seq(5), 5))
 
     // and through a custom Fold, so the specialized dispatch sees it too
     val (n, a2) = !.run(Writer.fold[Int, Long, Unit, Pure](w)(using summon)(using summon, Fold.count))

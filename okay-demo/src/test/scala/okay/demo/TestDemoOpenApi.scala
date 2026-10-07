@@ -1,7 +1,6 @@
 package okay.demo
 
-import okay.*
-
+import okay.{guard, Async}
 import okay.given
 import okay.freer.given
 import okay.codec.Json

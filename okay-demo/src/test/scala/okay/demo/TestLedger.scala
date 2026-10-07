@@ -14,7 +14,7 @@ import java.nio.file.Files
 class TestLedger extends munit.FunSuite {
   import Ledger.*
 
-  def run[A](p: A ! Async): A = !.run(Async.run[A, okay.Pure](p))
+  def run[A](p: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](p))
 
   /** three days of a small shop: three items, deterministic amounts */
   val day0 = 1_700_000_000_000L / Day * Day

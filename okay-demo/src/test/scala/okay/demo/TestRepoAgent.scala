@@ -1,6 +1,6 @@
 package okay.demo
 
-import okay.{Answers, given}
+import okay.{Answers}
 
 import okay.freer.given
 import okay.agent.ToolCall

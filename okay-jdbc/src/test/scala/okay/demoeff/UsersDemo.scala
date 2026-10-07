@@ -22,11 +22,10 @@ package okay.demoeff
  */
 
 
-import okay.*
+import okay.{Answers, Effect, tracing}
 import okay.freer.*
 
 
-import okay.given
 import okay.freer.given
 import java.sql.{Connection, DriverManager}
 import okay.freer.Row.plus

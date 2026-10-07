@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.*
+import okay.{TypeableK}
 
 /**
  * Whether a value is an operation of the row F — for an operation that
@@ -37,4 +37,6 @@ trait Member[F[+_]]:
 
 object Member:
   given one[F[+_]](using t: TypeableK[F]): Member[F] = x => t.test(x)
+  /** the empty signature, found with no import: its `TypeableK` is the classic's (Unions.scala) */
+  given pure: Member[Pure] = one[Pure]
   def of[F[+_]](using t: TypeableK[F]): Member[F] = one[F]

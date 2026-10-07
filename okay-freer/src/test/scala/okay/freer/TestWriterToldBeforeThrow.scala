@@ -1,7 +1,5 @@
 package okay.freer
 
-import okay.*
-import okay.given
 
 /**
  * A TOLD VALUE IS DELIVERED even when the program's continuation after

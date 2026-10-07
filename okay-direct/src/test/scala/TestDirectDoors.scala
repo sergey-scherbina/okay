@@ -2,7 +2,6 @@ package okay
 
 
 import okay.freer.*
-import okay.given
 import okay.freer.given
 
 import okay.Direct.*
@@ -27,14 +26,14 @@ class TestDirectDoors extends munit.FunSuite {
 
   test("door outside, direct inside: three layers, three machines") {
     val (log, uid) = provide(Env("ada", 7)):
-      !.run(Writer.run[String, Int, okay.Pure](told))
+      !.run(Writer.run[String, Int, okay.freer.Pure](told))
     assertEquals(log, Vector("hello ada", "bye"))
     assertEquals(uid, 7)
   }
 
   test("the same program, another environment — the DI claim survives the block") {
     val (log, uid) = provide(Env("bob", 1)):
-      !.run(Writer.run[String, Int, okay.Pure](told))
+      !.run(Writer.run[String, Int, okay.freer.Pure](told))
     assertEquals(log, Vector("hello bob", "bye"))
     assertEquals(uid, 1)
   }
@@ -55,7 +54,7 @@ class TestDirectDoors extends munit.FunSuite {
   test("providing composes over the block too") {
     val base = providing[Env](Env("ada", 7))
     val (_, uid) = (base and providing[Env](Env("eve", 9))) {
-      !.run(Writer.run[String, Int, okay.Pure](told))
+      !.run(Writer.run[String, Int, okay.freer.Pure](told))
     }
     assertEquals(uid, 9)
   }

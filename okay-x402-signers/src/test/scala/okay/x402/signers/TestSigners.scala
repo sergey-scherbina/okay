@@ -1,5 +1,7 @@
 package okay.x402.signers
 
+
+import okay.{Async}
 import java.math.BigInteger
 import java.nio.charset.StandardCharsets.UTF_8
 import java.security.{KeyPairGenerator, Signature}
@@ -8,7 +10,6 @@ import java.security.spec.{ECGenParameterSpec, ECPrivateKeySpec, ECPublicKeySpec
 import java.util.Base64
 import javax.crypto.Cipher
 import javax.crypto.spec.{OAEPParameterSpec, PSource}
-import okay.*
 import okay.freer.*
 import okay.chain.Network
 import okay.codec.Json

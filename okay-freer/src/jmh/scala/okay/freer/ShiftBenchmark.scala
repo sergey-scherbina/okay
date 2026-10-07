@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.*
+import okay.{guard, sequence}
 import okay.given
 
 import org.openjdk.jmh.annotations.{State as JmhState, *}
@@ -22,7 +22,7 @@ import okay.freer.Row.at
 class ShiftBenchmark {
 
   final val N = 1000
-  type P = okay.Pure
+  type P = Pure
 
   def seq0(n: Int): Int ! Shift % Int =
     if n == 0 then pure(0)

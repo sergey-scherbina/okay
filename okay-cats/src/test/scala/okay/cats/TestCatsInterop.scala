@@ -1,6 +1,8 @@
 package okay.cats
 
-import okay.{%, +, Async, async}
+import okay.{Async, async}
+
+import okay.freer.{%, +}
 import okay.freer.{!, Produce, Throws, produce, pure}
 import okay.given
 import okay.freer.given

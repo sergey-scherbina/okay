@@ -1,6 +1,8 @@
 package okay.parse
 
-import okay.{%, through}
+import okay.{through}
+
+import okay.freer.{%}
 import okay.freer.{!, Writer, pure}
 import okay.freer.toLazyList
 import okay.lex.{Scan, Token}

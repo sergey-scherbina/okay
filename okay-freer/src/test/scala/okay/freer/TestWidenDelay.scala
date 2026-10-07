@@ -1,7 +1,5 @@
 package okay.freer
 
-import okay.*
-import okay.given
 
 /**
  * windows-stage-rerun-loses-pane, the sixth door: `!.widen` and
@@ -21,7 +19,7 @@ class TestWidenDelay extends munit.FunSuite:
   type Row = Reader % Int + Writer % String
 
   def runBoth(p: Int ! Row): (Seq[String], Int) =
-    !.run(Writer.run[String, Int, okay.Pure](Reader.run[Int, Int, Writer % String](0)(p)))
+    !.run(Writer.run[String, Int, Pure](Reader.run[Int, Int, Writer % String](0)(p)))
 
   test("!.widen keeps a deferred head deferred: no start at widen, one start per run") {
     var starts = 0
@@ -51,7 +49,7 @@ class TestWidenDelay extends munit.FunSuite:
     val wide: Int ! Writer % CharSequence + Reader % Int =
       Writer.widen[String, CharSequence, Int, Reader % Int](delayed)
     assertEquals(starts, 0, "widening runs nothing")
-    def run = !.run(Reader.run[Int, (Seq[CharSequence], Int), okay.Pure](0)(
+    def run = !.run(Reader.run[Int, (Seq[CharSequence], Int), Pure](0)(
       Writer.run[CharSequence, Int, Reader % Int](wide)))
     assertEquals(run._1.map(_.toString), Seq("x"))
     assertEquals(run._1.map(_.toString), Seq("x"))

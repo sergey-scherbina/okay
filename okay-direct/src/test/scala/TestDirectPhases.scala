@@ -14,7 +14,7 @@ import scala.language.implicitConversions
  */
 class TestDirectPhases extends munit.FunSuite {
 
-  type Prog[A] = A ! okay.Pure
+  type Prog[A] = A ! okay.freer.Pure
   type W[A] = A ! Writer % String
   type Asy[A] = A ! Async
 
@@ -23,7 +23,7 @@ class TestDirectPhases extends munit.FunSuite {
     extension [A](m: Option[A])
       override def flatMap[B](f: A => Option[B]): Option[B] = m.flatMap(f)
 
-  def other(n: Int): Long ! okay.Pure = Free.pure(n.toLong)
+  def other(n: Int): Long ! okay.freer.Pure = Free.pure(n.toLong)
 
   // ---- defer: the pre-pass, before any bind. The pass looks for the
   // def the block is the body of (a self-call is a call to IT), and

@@ -120,7 +120,7 @@ parameter erased before anything could compare it.
 
 The compiler checks it: `Distinct[R]` (below) refuses a row with two
 members that cannot be told apart, and the runners that split such a
-row (`Reader.run`, `Answers.union`, …) require it (tag-distinct-keys,
+row (`Reader.run`, `Row.union`, …) require it (tag-distinct-keys,
 2026-09-11). Keys are literals, so the collision is also easy to see
 by eye in the type alias block.
 
@@ -346,7 +346,7 @@ summon[Distinct[Tag.Of["a", Reader % Int] + Tag.Of["b", Reader % Int]]]  // fine
 summon[Distinct[Reader % Int + Reader % String]]        // refused
 ```
 
-**Where it is asked.** `Answers.union` and `Answers.flat` compose a
+**Where it is asked.** `Row.union` and `Row.flat` compose a
 split, so they require it; and since distinct-on-handlers (2026-09-24)
 so does every handler that splits a PARAMETERISED signature out of an
 open row — `State.handle`/`zoomWith`, `Reader.run`/`unlift`/`local`,

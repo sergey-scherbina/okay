@@ -1,6 +1,5 @@
 package okay.freer
 
-import okay.*
 
 /**
  * The STATIC heterogeneous map: the map's TYPE lists its entries, as

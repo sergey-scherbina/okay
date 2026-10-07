@@ -1,6 +1,7 @@
 package okay.scala2
 
 import okay.given
+
 import okay.resilience.{Breaker, Bulkhead, Deadline, Hedge, Limiter}
 
 /**

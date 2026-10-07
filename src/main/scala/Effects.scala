@@ -1,89 +1,63 @@
 package okay
 
-/**
- * Extensible effects: THE INTERFACE (specs/freer-min.md, stage 45). `Effects[M]` is what every encoding of a
- * program implements — the classic freer tree (`okay.freer`, with its `!`, `pure`, `effect` and toolkit) and the
- * machine (`okay.cont`, `Prog` here) — over the carrier `C` it folds into, a `Control`. The core holds the
- * interface and what both encodings share: `Control`, `Answers`, `Interpr`, the type classes.
- */
-
-/** the union of two signatures: F + G */
-infix type +[F[+_], G[+_]] = [A] =>> F[A] | G[A]
-
-/** the empty signature: a computation over it is pure, with nothing to perform; the zero of `+` */
-type Pure[+A] = Nothing
-
-/** fix the parameter of a binary signature: State % S, Throws % E */
-infix type %[F[_, _], S] = F[S, *]
+import okay.cont.Handler
 
 /**
- * A partial function, infix: `Request |=> Response ! Async`. The spelling is forced by `!`: an infix type's
- * precedence comes from its first character, and anything binding tighter than `!` (`~>`, `-?>`, `=?>`)
- * parses `A ~> B ! F` as `(A ~> B) ! F`. A union on the left binds first, so `Get | Post |=> Res` reads as
- * it looks.
+ * Extensible effects: THE INTERFACE, over ROWS (specs/freer-min.md, stage 47). `Effects[M]` is what every encoding of
+ * a program implements — the machine's `Free[R, A]` (okay-cont; the program `A ! R` of the core, Bang.scala) and
+ * the classic tree under it (`okay.freer.Rowed`) — and what code generic in the encoding is written over. A row
+ * is a nominal list of effects, `Ask +: Say +: Pure`, written either way (`Pure + Ask + Say`); an operation is
+ * performed by its PATH in the row (`Member`, the compiler builds it), a handler takes its effect off the row
+ * WHEREVER it is (`Removed`): the order of effects in a type says nothing, the order of handlers everything.
+ * Handlers are the machine's: `Answering` answers in place (state, reader, writer), `Handler` has the
+ * continuation (choose, dialogue); an encoding runs them its own way.
  */
-infix type |=>[A, B] = PartialFunction[A, B]
 
-/** Final tagless interface of extensible effects: `M[F, A]` computes `A` performing the signature `F`. Its
- * meaning is its image in a continuation paramonad (`foldCont`), on which `run` and `handle` are founded — the
- * encoding's own CARRIER `C`, a `Control`: `Cont` for the tree encodings, so that a handler `F !> S` is what it
- * always was; a machine of its own may bring its own (specs/freer-min.md, stage 32). Code written over any
- * `M: Effects` speaks to the carrier through `control` — `control.shift`, `control./` — and never names `Cont` */
-trait Effects[M[_[+_], _]]:
-  /** the continuation carrier `foldCont` folds into: `(A => S) => R` as the encoding has it */
-  type C[_, _, _]
-  /** the carrier's `shift` and `/` */
-  def control: Control[C]
+/** the rows, the machine's, named at the core's door */
+export okay.cont.{Row, +:, Pure, Union, Member, Removed, Sub, Tagged, Members}
 
-  def pure[F[+_], A](a: A): M[F, A]
-  def perform[F[+_], A](e: F[A]): M[F, A]
+trait Effects[M[_ <: Row, _]]:
+  def pure[R <: Row, A](a: A): M[R, A]
+  /** an operation, by its path in the row */
+  def perform[E[+_], R <: Row, X](op: E[X])(using Member[E, R]): M[R, X]
   /** a bind whose left side is deferred, forced only when the encoding's interpreter reaches it, so that
-   * mutually recursive functions returning `M[F, A]` call each other in tail position with no JVM frame each */
-  def defer[F[+_], A, B](thunk: () => M[F, A])(f: A => M[F, B]): M[F, B]
-  /** a tail call to a mutually recursive function, for code written over any `M: Effects` (`!.tailcall` on `Free`) */
-  def tailcall[F[+_], A](thunk: => M[F, A]): M[F, A] = defer(() => thunk)(pure)
+   * mutually recursive functions returning `M[R, A]` call each other in tail position with no JVM frame each */
+  def defer[R <: Row, A, B](thunk: () => M[R, A])(f: A => M[R, B]): M[R, B]
+  /** a tail call to a mutually recursive function, for code written over any `M: Effects` */
+  def tailcall[R <: Row, A](thunk: => M[R, A]): M[R, A] = defer(() => thunk)(pure)
 
-  extension [F[+_], A](m: M[F, A])
-    def flatMap[B](f: A => M[F, B]): M[F, B]
-    inline def map[B](f: A => B): M[F, B] = m.flatMap(a => pure(f(a)))
-    /** `foldMap` into the carrier: the program's fold, each operation answered by
-     * `h` as a continuation (`Static.foldMap` is the same fold into any
-     * `Selective`). The result is still waiting for its LAST continuation:
-     * `/ identity` when `S` is the answer (`runWith`), `/ ret` to finish
-     * into `S` (`handle`). TestFoldCont and docs/contract.md show three `S`.
-     * At `C = Cont` the handler is `F !> S` and the fold `A /> S` */
-    def foldCont[S](h: Interpr[F, C, S]): C[A, S, S]
-    /** run all the effects by a comonadic Answers (the foldCont definition; encodings may override with an equivalent fast path) */
-    def runWith(using Answers[F]): A = control./(m.foldCont(interpr[C, F, A](using control, summon[Answers[F]])))(identity)
-  /** handle the effect F by h (and the values by ret), forwarding the
-   * effects G; for mass tail-resumption prefer !.relay (measured) */
-  def handle[F[+_], G[+_]](using TypeableK[F])[A, B](m: M[F + G, A])
-                          (ret: A => M[G, B])
-                          (h: Interpr[F, C, M[G, B]]): M[G, B] =
-    control./(m.foldCont[M[G, B]]([X] => e => split[F, G](e)(e => h(e))(e => control.shift(k => perform(e).flatMap(k)))))(ret)
+  extension [R <: Row, A](m: M[R, A])
+    /** at the one row: a program's row is declared, its operations find their paths in it */
+    def flatMap[B](f: A => M[R, B]): M[R, B]
+    inline def map[B](f: A => B): M[R, B] = m.flatMap(a => pure(f(a)))
 
+  /** the effect `E` handled, wherever it is in the row; the result over the row without it. A handler that
+   * answers in place (`Answering`, `h.inPlace`) takes the road with no delimiter */
+  def handle[E[+_], A, Ans, R <: Row](h: Handler[E, A, Ans])(m: M[R, A])(using rm: Removed[E, R]): M[rm.Out, Ans]
+  /** a program with nothing left to handle, to its value */
+  def run[A](m: M[Pure, A]): A
 
-/** the freer monad, the initial encoding: `Inject` is a suspended shift, given its meaning by `foldCont`.
- * Choose it when the program is a thing — to step, inspect or relay it — stack-safe on any bind shape */
+object Effects:
+  /** THE DEFAULT: the machine's program itself, `A ! R` — found with no import, as a companion's given is */
+  given given_Effects_Free: Effects[okay.cont.Free] with
+    def pure[R <: Row, A](a: A): okay.cont.Free[R, A] = okay.cont.Free.pure(a)
+    def perform[E[+_], R <: Row, X](op: E[X])(using m: Member[E, R]): okay.cont.Free[R, X] = okay.cont.Free.inject(op).at[R]
+    def defer[R <: Row, A, B](thunk: () => okay.cont.Free[R, A])(f: A => okay.cont.Free[R, B]): okay.cont.Free[R, B] =
+      okay.cont.Free.defer(thunk)(f)
+    override def tailcall[R <: Row, A](thunk: => okay.cont.Free[R, A]): okay.cont.Free[R, A] = okay.cont.Free.delay(() => thunk)
+    extension [R <: Row, A](m: okay.cont.Free[R, A])
+      def flatMap[B](f: A => okay.cont.Free[R, B]): okay.cont.Free[R, B] = m.flatMap(f)
+    def handle[E[+_], A, Ans, R <: Row](h: Handler[E, A, Ans])(m: okay.cont.Free[R, A])(using rm: Removed[E, R]): okay.cont.Free[rm.Out, Ans] =
+      h.inPlace match
+        case Some(a) => okay.cont.Free.handle(a)(m)
+        case None => okay.cont.Free.handle(h)(m)
+    def run[A](m: okay.cont.Free[Pure, A]): A = okay.cont.Machine.value(okay.cont.Free.top(m))
 
-object Effects {
-  /** an encoding WITH ITS CARRIER NAMED: what an instance's given declares (`given Effects.Aux[Free, Cont]`), so
-   * that `foldCont`'s handler type is concrete wherever the instance is reached by its type, not only by the
-   * given's own object */
-  type Aux[M[_[+_], _], C0[_, _, _]] = Effects[M] { type C = C0 }
+  /** any encoding in direct style: `M[R, *]` as a monad, for `direct[[A] =>> M[R, A]]` over `Effects[M]` */
+  def monad[M[_ <: Row, _], R <: Row](using E: Effects[M]): Monad[[A] =>> M[R, A]] = new Monad[[A] =>> M[R, A]]:
+    def pure[A](a: A): M[R, A] = E.pure(a)
+    extension [A](a: M[R, A])
+      def flatMap[B](f: A => M[R, B]): M[R, B] = E.flatMap(a)(f)
 
-  /** level 1, any encoding in direct style: `M[F, *]` as a monad, for `direct[[A] =>> M[F, A]]` over `Effects[M]` */
-  def monad[M[_[+_], _], F[+_]](using E: Effects[M]): Monad[[A] =>> M[F, A]] = new Monad[[A] =>> M[F, A]]:
-    def pure[A](a: A): M[F, A] = E.pure(a)
-    extension [A](a: M[F, A])
-      def flatMap[B](f: A => M[F, B]): M[F, B] = E.flatMap(a)(f)
-
-  /** the staging entry for effect programs: `Effects[Free]`, `Effects[Eager]`, or any `M` with an instance
-   * in scope; with `trait Effects` it forms one door, as a class and its companion do. Summoned WITH ITS
-   * CARRIER: the pattern binds `c` to what the instance declares (`Effects.Aux`), so `Effects[Free].handle(…)(h)`
-   * takes the handler at `Cont` — `summonInline[Effects[M]]` answered at `Effects[M]`, the carrier unknown — and
-   * `summonFrom` still defers the search to where an inline program is expanded (`sprog[Free]`, TestEffects) */
-  transparent inline def apply[M[_[+_], _]] =
-    compiletime.summonFrom { case e: Effects.Aux[M, c] => e }
-
-}
+  /** the instance in scope, by its encoding: `Effects[Free]` */
+  inline def apply[M[_ <: Row, _]](using E: Effects[M]): E.type = E

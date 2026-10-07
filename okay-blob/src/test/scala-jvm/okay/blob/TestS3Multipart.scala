@@ -27,12 +27,12 @@ class TestS3Multipart extends munit.FunSuite {
       .withZone(java.time.ZoneOffset.UTC).format(java.time.Instant.now)
     val auth = SigV4.sign("PUT", s"/$name", Nil,
       Seq("host" -> "127.0.0.1:9000"), SigV4.emptyHash, "us-east-1", stamp, creds)
-    val r = !.run(Async.run[okay.http.Response, okay.Pure](
+    val r = !.run(Async.run[okay.http.Response, okay.freer.Pure](
       http.send(Request(Method.Put, s"${TestLiveS3.endpoint}/$name", auth))))
     assert(r.ok, s"bucket create: HTTP ${r.status}")
     name
 
-  def run[A](p: A ! Async): A = !.run(Async.run[A, okay.Pure](p))
+  def run[A](p: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](p))
 
   /** byte `i` of the object: a pure function, so the bytes need not be held */
   def byteAt(i: Long): Byte =

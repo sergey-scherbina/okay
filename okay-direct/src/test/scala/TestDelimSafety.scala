@@ -16,7 +16,7 @@ import scala.language.implicitConversions
  */
 class TestDelimSafety extends munit.FunSuite {
 
-  type P = okay.Pure
+  type P = okay.freer.Pure
   type Row = Shift % ? + P
 
   test("collect inside a Shift row compiles and nests: its emits reach it, a capture crosses it") {

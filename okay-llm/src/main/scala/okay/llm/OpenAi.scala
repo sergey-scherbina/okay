@@ -1,6 +1,8 @@
 package okay.llm
 
-import okay.{%, +, Async}
+import okay.{Async}
+
+import okay.freer.{%, +}
 import okay.freer.{!, Writer}
 import okay.codec.{Json, Schema}
 
@@ -156,10 +158,10 @@ object OpenAi {
 
     def go(rest: Unit ! F, buf: List[String]): Unit ! F = (rest.resume: @unchecked) match
       case Return(_) => flush(buf)
-      case Inject(e) => okay.<|>[Async, Writer % String](e) match
+      case Inject(e) => okay.freer.<|>[Async, Writer % String](e) match
         case Left(a) => Inject(a).flatMap(_ => flush(buf))
         case Right(Writer.Say(line)) => absorb(line, buf)(b => flush(b))
-      case Bind(Inject(e), k) => okay.<|>[Async, Writer % String](e) match
+      case Bind(Inject(e), k) => okay.freer.<|>[Async, Writer % String](e) match
         case Left(a) => Inject(a).flatMap(x => go(k(x), buf))
         case Right(Writer.Say(line)) =>
           absorb(line, buf)(b => go(k(()), b))

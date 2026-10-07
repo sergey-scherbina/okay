@@ -1,6 +1,8 @@
 package okay.agent
 
-import okay.{+, Answers}
+import okay.{Answers}
+
+import okay.freer.{+}
 import okay.freer.{!, Aggregator}
 import okay.lex.Scan
 import okay.lex.Bpe

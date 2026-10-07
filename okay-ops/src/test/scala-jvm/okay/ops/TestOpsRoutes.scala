@@ -1,6 +1,5 @@
 package okay.ops
 
-import okay.*
 import okay.freer.*
 
 import okay.given

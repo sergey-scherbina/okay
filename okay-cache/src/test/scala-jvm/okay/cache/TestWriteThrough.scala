@@ -21,7 +21,7 @@ class TestWriteThrough extends munit.FunSuite {
   final case class Row(price: Long)
   given Schema[Row] = Schema.derived
 
-  def run[A](p: A ! Async): A = !.run(Async.run[A, okay.Pure](p))
+  def run[A](p: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](p))
 
   private var n = 0
   def fixture(): (Sql, Cache[String, Long]) =

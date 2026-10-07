@@ -1,7 +1,5 @@
 package okay.freer
 
-import okay.*
-import okay.given
 
 import okay.freer.Row.plus
 
@@ -53,7 +51,7 @@ class TestRefs extends munit.FunSuite {
         _ <- Writer.tell("made it").plus[Refs]
         n <- Refs.write(c, 42).plus[Writer % String]
       yield n
-    assertEquals(!.run(Writer.run[String, Int, okay.Pure](Refs.handle[Int, Writer % String](p))),
+    assertEquals(!.run(Writer.run[String, Int, Pure](Refs.handle[Int, Writer % String](p))),
       (Seq("made it"), 42))
   }
 }

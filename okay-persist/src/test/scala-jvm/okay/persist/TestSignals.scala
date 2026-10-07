@@ -1,7 +1,8 @@
 package okay.persist
 
 import munit.FunSuite
-import okay.{%, +, Async, CanBlock, Pure, Wf}
+import okay.{Async, CanBlock, Wf}
+import okay.freer.{%, +, Pure}
 import okay.freer.{!, Shift}
 import okay.given_CanBlock
 import okay.Direct.*

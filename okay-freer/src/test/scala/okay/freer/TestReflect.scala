@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.*
+import okay.{Answers, TypeableK, typeableK}
 
 import okay.freer.Eager.given
 
@@ -30,12 +30,12 @@ class TestReflect extends munit.FunSuite {
       case Op.Say(s) => said += s; ()
 
   /** a program with values, operations and a bind chain */
-  def program[M[_[+_], _]](using M: Effects[M]): M[Op, Int] =
+  def program[M[_[+_], _]](using M: Classic[M]): M[Op, Int] =
     M.perform(Op.Get()).flatMap(a =>
       M.perform(Op.Say(s"got $a")).flatMap(_ =>
         M.perform(Op.Get()).map(b => a + b)))
 
-  def run[M[_[+_], _] : Effects](m: M[Op, Int]): (Int, List[String]) =
+  def run[M[_[+_], _] : Classic](m: M[Op, Int]): (Int, List[String]) =
     said.clear()
     val v = m.runWith
     (v, said.toList)

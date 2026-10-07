@@ -1,6 +1,8 @@
 package okay.frege
 
-import okay.{%, +, ChunkBuf, Chunks, Foreign, Pure, Stage, Take}
+import okay.{ChunkBuf, Chunks, Foreign, Stage, Take}
+
+import okay.freer.{%, +, Pure}
 import okay.freer.{!, Chunk, Free, Member, Writer, pure}
 import okay.frege.Prog.TProg
 import frege.prelude.PreludeBase.{TList, TMaybe}

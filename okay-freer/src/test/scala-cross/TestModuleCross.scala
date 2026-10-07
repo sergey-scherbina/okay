@@ -1,8 +1,6 @@
 package okay.freer
 
-import okay.*
 
-import okay.given
 
 /**
  * The module vocabulary on EVERY platform (di-cross, specs/di.md).

@@ -1,6 +1,7 @@
 package okay.jetty
 
-import okay.*
+
+import okay.{Async, CanBlock, Channel, Scheduler, Source}
 import okay.freer.*
 
 import okay.given

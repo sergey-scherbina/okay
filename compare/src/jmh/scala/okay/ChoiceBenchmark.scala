@@ -35,7 +35,7 @@ class ChoiceBenchmark {
   def okayChoice(): Int =
     def go(d: Int): Int ! Choose = choose(0, 1).flatMap: x =>
       if d == 0 then pure(x) else go(d - 1).map(x + _)
-    !.run(runChoice[Int, okay.Pure](go(D))).size
+    !.run(runChoice[Int, okay.freer.Pure](go(D))).size
 
   @Benchmark
   def kyoChoice(): Int =

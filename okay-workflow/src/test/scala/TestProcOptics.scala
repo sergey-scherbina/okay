@@ -1,4 +1,4 @@
-import okay.*
+import okay.{Lens, Optic, Prism, Proc, Wf}
 import okay.freer.*
 import okay.Proc.given
 import scala.language.implicitConversions
@@ -20,7 +20,7 @@ import scala.language.implicitConversions
  */
 class TestProcOptics extends munit.FunSuite:
 
-  type P = okay.Pure
+  type P = okay.freer.Pure
   type Row = Shift % ? + P
   type Sig = Wf.Asked[String, String]
 

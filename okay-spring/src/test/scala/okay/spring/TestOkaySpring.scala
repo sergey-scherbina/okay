@@ -1,6 +1,7 @@
 package okay.spring
 
-import okay.*
+
+import okay.{Async, async}
 import okay.freer.*
 
 import okay.given
@@ -39,7 +40,7 @@ class TestOkaySpring extends munit.FunSuite {
     ctx.registerBean(classOf[Clock], (() => Clock(7L)): java.util.function.Supplier[Clock])
     ctx.refresh()
     val stamp: Clock ?=> Module[[X] =>> String ?=> X] = Module.value[String](s"t@${wire[Clock].now}")
-    val got = !.run(Resource.run[String, okay.Pure]((OkaySpring.bean[Clock](ctx) and stamp) { wire[String] }))
+    val got = !.run(Resource.run[String, okay.freer.Pure]((OkaySpring.bean[Clock](ctx) and stamp) { wire[String] }))
     assertEquals(got, "t@7")
     ctx.close()
   }

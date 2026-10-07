@@ -1,7 +1,8 @@
 package okay.x402.mcp
+
+import okay.{Async, through}
 import okay.freer.*
 
-import okay.*
 
 import okay.freer.given
 import okay.codec.Json

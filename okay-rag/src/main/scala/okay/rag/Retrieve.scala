@@ -1,8 +1,9 @@
 package okay.rag
 
-import okay.{+, Answers, TypeableK}
+import okay.{Answers}
+
+import okay.freer.{+}
 import okay.freer.{!, Choose, Logic, effect, pure, runChoice}
-import okay.given
 import okay.freer.given
 
 /**
@@ -38,19 +39,19 @@ object Retrieve {
    * that retrieval belongs in the agent's row, through the search
    * tool, where it can park.
    */
-  def handled[F[+_]](r: Retriever[F])(using Answers[F]): Retriever[okay.Pure] =
-    new Retriever[okay.Pure]:
-      def retrieve(query: String, k: Int): Seq[Scored] ! okay.Pure =
+  def handled[F[+_]](r: Retriever[F])(using Answers[F]): Retriever[okay.freer.Pure] =
+    new Retriever[okay.freer.Pure]:
+      def retrieve(query: String, k: Int): Seq[Scored] ! okay.freer.Pure =
         pure(r.retrieve(query, k).runWith)
 
   /** the keyword side: no embedding, no store, just the fold */
-  def keyword(index: Postings): Retriever[okay.Pure] = new:
-    def retrieve(query: String, k: Int): Seq[Scored] ! okay.Pure =
+  def keyword(index: Postings): Retriever[okay.freer.Pure] = new:
+    def retrieve(query: String, k: Int): Seq[Scored] ! okay.freer.Pure =
       pure(Keyword.search(index, query, k))
 
   /** the symbol side: exact structural retrieval, no vectors at all */
-  def symbols(idx: Index, sources: Map[String, Source]): Retriever[okay.Pure] = new:
-    def retrieve(query: String, k: Int): Seq[Scored] ! okay.Pure =
+  def symbols(idx: Index, sources: Map[String, Source]): Retriever[okay.freer.Pure] = new:
+    def retrieve(query: String, k: Int): Seq[Scored] ! okay.freer.Pure =
       // an ITERATOR, so only the k segments actually returned are
       // cut out of their sources: a common name in a large project
       // has hundreds of definitions, and materializing all of them to
@@ -110,10 +111,10 @@ object Retrieve {
     // the alternatives never perform an F: built in Choose + Pure and
     // observed there, no re-typing needed (F stays the signature's
     // promise to callers)
-    def alts(xs: Seq[Scored]): Scored ! Choose + okay.Pure = effect(Choose(xs))
-    val mixed = Logic.interleave[Scored, okay.Pure](alts(a), alts(b))
+    def alts(xs: Seq[Scored]): Scored ! Choose + okay.freer.Pure = effect(Choose(xs))
+    val mixed = Logic.interleave[Scored, okay.freer.Pure](alts(a), alts(b))
     // observe is the lazy take: only k answers are ever computed
-    okay.freer.!.run(Logic.observe[Scored, okay.Pure](k)(mixed))
+    okay.freer.!.run(Logic.observe[Scored, okay.freer.Pure](k)(mixed))
 
   /** rerank with any scorer — a cross-encoder, a heuristic, a model
    * one row up: the pipeline does not care which */

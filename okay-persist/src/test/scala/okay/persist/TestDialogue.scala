@@ -1,7 +1,7 @@
 package okay.persist
 
 import munit.FunSuite
-import okay.{%, +, Pure}
+import okay.freer.{%, +, Pure}
 import okay.freer.{!, Shift}
 import okay.Direct.*
 import okay.codec.Schema

@@ -15,7 +15,7 @@ import okay.Direct.*
 class TestDirectLoops2 extends munit.FunSuite:
 
   type W = Writer % String
-  def run[A](p: A ! W): (Seq[String], A) = !.run(Writer.run[String, A, okay.Pure](p))
+  def run[A](p: A ! W): (Seq[String], A) = !.run(Writer.run[String, A, okay.freer.Pure](p))
   def say(s: String): Unit ! W = Writer.tell(s)
   def look(i: Int): Int ! W = Writer.tell(s"look $i").flatMap(_ => pure(i * 10))
 

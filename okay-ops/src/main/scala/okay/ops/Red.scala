@@ -1,6 +1,7 @@
 package okay.ops
 
-import okay.*
+
+import okay.{Async}
 import okay.freer.*
 
 import okay.codec.Schema

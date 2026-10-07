@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.*
+import okay.{Control, Func, Monad}
 import okay.given
 
 class TestCont extends munit.FunSuite {
@@ -150,7 +150,7 @@ class TestCont extends munit.FunSuite {
       Cont.shift[Int, Int ! Rd, String ! Rd](k => Reader.ask[Int].flatMap(e => k(e)).map(n => s"n=$n"))
     val prog: String ! Rd = Cont.run(c.map(_ + 1))(x => Freer.Return(x))
     // the body asks 5; k(5) is 5 + 1 as a program; the body answers it as text
-    assertEquals(!.run(Reader.run[Int, String, okay.Pure](5)(prog)), "n=6")
+    assertEquals(!.run(Reader.run[Int, String, Pure](5)(prog)), "n=6")
   }
 
 }

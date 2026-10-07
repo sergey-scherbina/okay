@@ -1,0 +1,2 @@
+2026-10-07	bc58488d8	quiet	ContBenchmark.rowAnswering us/op (2000 ops)	26.672	47.8	0.56	effects-rows (stage 46, the row fixed): a row program under two answering handlers, 13.3 ns/op, was 24 with the join and split at every bind; the context form 6.7
+2026-10-07	bc58488d8	quiet	ContBenchmark.rowGeneral us/op (2000 ops)	43.569	64.5	0.68	effects-rows (stage 46, the row fixed): the same program under the general handlers, 21.8 ns/op, was 32; the context form 16.5

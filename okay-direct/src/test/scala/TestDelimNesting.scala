@@ -21,7 +21,7 @@ import scala.language.implicitConversions
  */
 class TestDelimNesting extends munit.FunSuite {
 
-  type P = okay.Pure
+  type P = okay.freer.Pure
 
   // ---- a producer that PAUSES in the middle of producing
 

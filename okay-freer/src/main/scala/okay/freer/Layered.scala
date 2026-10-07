@@ -1,6 +1,5 @@
 package okay.freer
 
-import okay.*
 
 /**
  * LAYERED MONADIC REFLECTION (Filinski POPL 1999; Brachthäuser et al. 2020): each `reify` installs its

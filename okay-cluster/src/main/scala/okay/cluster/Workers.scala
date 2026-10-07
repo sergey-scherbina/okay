@@ -1,6 +1,7 @@
 package okay.cluster
 
-import okay.*
+
+import okay.{Async, Chunks, Scheduler}
 import okay.freer.*
 
 import okay.codec.{Codecs, Digest, Schema}

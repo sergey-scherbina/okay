@@ -1,7 +1,5 @@
 package okay.freer
 
-import okay.*
-import okay.given
 
 /**
  * THE SPIKE (delim-forward-not-throw, specs/delim-safety.md stage 1):
@@ -22,7 +20,7 @@ import okay.given
  */
 class TestDelimForward extends munit.FunSuite {
 
-  type P = okay.Pure
+  type P = Pure
 
   // an inner machine over a row that still has a Shift in it: the
   // shape `Shift.run` refuses and `runNested` is for

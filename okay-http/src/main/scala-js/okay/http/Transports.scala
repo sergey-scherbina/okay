@@ -1,9 +1,11 @@
 package okay.http
 
-import okay.*
+
+import okay.{Source, async, Async, Channel, Web}
 import okay.freer.*
 
 import okay.given
+
 
 import scala.scalajs.js
 import scala.scalajs.js.typedarray.Uint8Array

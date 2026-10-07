@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.*
+import okay.{guard}
 import okay.given
 
 import org.openjdk.jmh.annotations.{State as JmhState, *}

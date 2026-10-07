@@ -1,6 +1,6 @@
 package okay.http
 
-import okay.*
+import okay.{sequence, Async, Lines, Source, Stage, Take}
 import okay.freer.*
 
 import okay.codec.Schema

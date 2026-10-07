@@ -66,7 +66,7 @@ class TestDocExamplesRefine extends munit.FunSuite:
       case other => other.toString
     val asJson = fromBytes.write(Swap("s1", 1000000.0, 0.03)).map(new String(_, UTF_8))
     // Right("{\"id\":\"s1\",\"notional\":1000000,\"fixedRate\":0.03}") — read from YAML, written as JSON: a conversion
-    val readings = !.run(runChoice[Swap, okay.Pure](swap.search(Json.parse("""{"id": "s1", "notional": 1.0, "fixedRate": 0.03}"""))))
+    val readings = !.run(runChoice[Swap, okay.freer.Pure](swap.search(Json.parse("""{"id": "s1", "notional": 1.0, "fixedRate": 0.03}"""))))
     // Seq(Swap("s1", 1.0, 0.03)) — a pattern is a search: Unclear is a choice point, Declined an empty one
     // ---- snippet ends
     assertEquals(where, "text/yaml/value/swap")

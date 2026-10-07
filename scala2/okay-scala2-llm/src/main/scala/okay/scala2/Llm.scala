@@ -1,6 +1,6 @@
 package okay.scala2
 
-import okay.{%, +}
+import okay.freer.{%, +}
 import okay.freer.{!, Writer}
 import okay.given
 import okay.codec.Schema

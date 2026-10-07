@@ -1,6 +1,8 @@
 package okay.agent
 
-import okay.{%, +, Async, Answers}
+import okay.{Async, Answers}
+
+import okay.freer.{%, +}
 import okay.freer.{!, Writer, effect, pure}
 import okay.given
 import okay.freer.given
@@ -47,10 +49,10 @@ class TestProvider extends munit.FunSuite {
     given Answers[Model] = model
     given Answers[Tool] = tool
     given Answers[Context] = ctx
-    given rowMA: Answers[Model + Async] = okay.Answers.union[Model, Async]
+    given rowMA: Answers[Model + Async] = okay.freer.Row.union[Model, Async]
     given rowCMA: Answers[Context + (Model + Async)] =
-      okay.Answers.union[Context, Model + Async]
-    given rowAll: Answers[Agent] = okay.Answers.union[Tool, Context + (Model + Async)]
+      okay.freer.Row.union[Context, Model + Async]
+    given rowAll: Answers[Agent] = okay.freer.Row.union[Tool, Context + (Model + Async)]
     prog.runWith
 
   test("the request carries the turns and the DERIVED tool schema") {
@@ -155,10 +157,10 @@ class TestProvider extends munit.FunSuite {
     def go(rest: Unit ! Writer % String + Async, acc: List[String]): List[String] =
       (rest.resume: @unchecked) match
         case Return(_) => acc.reverse
-        case Inject(e) => okay.<|>[Async, Writer % String](e) match
+        case Inject(e) => okay.freer.<|>[Async, Writer % String](e) match
           case Left(a) => summon[Answers[Async]].handle(a); acc.reverse
           case Right(Writer.Say(w)) => (w :: acc).reverse
-        case Bind(Inject(e), k) => okay.<|>[Async, Writer % String](e) match
+        case Bind(Inject(e), k) => okay.freer.<|>[Async, Writer % String](e) match
           case Left(a) => go(k(summon[Answers[Async]].handle(a)), acc)
           // a tell answers nothing — the continuation gets unit, not the line
           case Right(Writer.Say(w)) => go(k(()), w :: acc)

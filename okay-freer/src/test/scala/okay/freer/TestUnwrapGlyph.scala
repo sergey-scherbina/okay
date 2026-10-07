@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.*
+import okay.{guard}
 
 /**
  * `.?` must mean something (specs/unwrap-glyph.md, stage 1).
@@ -23,7 +23,7 @@ class TestUnwrapGlyph extends munit.FunSuite {
     // with no `import Direct.*` in this file the only `?` a program
     // could find is the Throws one, and it must not find it. (With
     // Direct imported the glyph IS the mark — TestUnwrapMark.)
-    assert(compileErrors("okay.freer.pure[okay.Pure, Int](1).?").nonEmpty,
+    assert(compileErrors("okay.freer.pure[Pure, Int](1).?").nonEmpty,
       "a program took the Throws glyph silently again")
   }
 

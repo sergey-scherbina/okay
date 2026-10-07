@@ -1,6 +1,7 @@
 package okay.semantic.data
 
-import okay.*
+
+import okay.{Source, Async}
 import okay.freer.*
 
 import okay.given

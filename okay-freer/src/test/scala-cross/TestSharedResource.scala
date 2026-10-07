@@ -1,7 +1,6 @@
 package okay.freer
 
-import okay.*
-import okay.given
+import okay.{guard}
 
 import okay.freer.Row.*
 import okay.freer.Logic.*

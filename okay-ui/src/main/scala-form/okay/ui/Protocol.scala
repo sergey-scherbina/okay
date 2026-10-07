@@ -1,5 +1,7 @@
 package okay.ui
 
+
+import okay.{Lines}
 import okay.codec.{Cbor, Json, Schema}
 
 /**
@@ -198,7 +200,6 @@ ${describe(Vector(summon[Schema[Msg]], summon[Schema[Ui]], summon[Schema[Event]]
   def conformance: Vector[String] =
     import okay.through
     import okay.freer.{!, Writer}
-    import okay.given
     import okay.freer.given
     def view(n: Int): Ui = Ui.Box(Vector(
       Ui.Text(s"count: $n", Style(tone = Tone.Emphasis)),

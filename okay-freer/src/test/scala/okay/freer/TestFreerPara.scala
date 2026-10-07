@@ -1,7 +1,6 @@
 package okay.freer
 
-import okay.*
-import okay.given
+import okay.{Monad, ParaMonad}
 
 import okay.freer.Freer.{Return, Inject, Bind}
 

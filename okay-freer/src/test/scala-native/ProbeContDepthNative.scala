@@ -1,6 +1,5 @@
 package okay.freer
 
-import okay.*
 
 /**
  * cont-leaf-by-platform on Native: contAnswer's body `k(x + 1) + 1` at depth, the macro's lazy leaf against

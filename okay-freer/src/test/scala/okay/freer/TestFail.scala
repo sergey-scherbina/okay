@@ -1,7 +1,6 @@
 package okay.freer
 
-import okay.*
-import okay.given
+import okay.{Answers}
 
 import okay.freer.Row.{at, plus}
 
@@ -41,7 +40,7 @@ class TestFail extends munit.FunSuite {
 
   test("an if guard is a precondition where the row can stop") {
     def check(n: Int): Option[Int] =
-      !.run(runOption[Int, okay.Pure](for { x <- pure[Abort, Int](n); if x > 0 } yield x))
+      !.run(runOption[Int, Pure](for { x <- pure[Abort, Int](n); if x > 0 } yield x))
     assertEquals(check(5), Some(5))
     assertEquals(check(-5), None)
   }
@@ -56,7 +55,7 @@ class TestFail extends munit.FunSuite {
         _            <- Writer.tell(s"kept $n").at[R]
       yield n * 10
     val (told, answers) =
-      !.run(Writer.run[String, Seq[Int], okay.Pure](runChoice[Int, Writer % String](p)))
+      !.run(Writer.run[String, Seq[Int], Pure](runChoice[Int, Writer % String](p)))
     assertEquals(answers, Seq(10, 30))
     assertEquals(told, Seq("kept 1", "kept 3"))
   }
@@ -67,7 +66,7 @@ class TestFail extends munit.FunSuite {
       for case Some(n) <- effect[R, Option[Int]](Choose(Seq(Some(1), None, Some(3)))) yield n
     // aborting would answer None for the whole search; pruning keeps
     // the branches that matched
-    assertEquals(!.run(runOption[Seq[Int], okay.Pure](runChoice[Int, Abort](p))), Some(Seq(1, 3)))
+    assertEquals(!.run(runOption[Seq[Int], Pure](runChoice[Int, Abort](p))), Some(Seq(1, 3)))
   }
 
   test("plus names only what is added; the row you are in is already in the type") {

@@ -1,7 +1,5 @@
 package okay.freer
 
-import okay.*
-import okay.given
 
 import okay.freer.!.*
 
@@ -16,11 +14,11 @@ class TestReaderBridge extends munit.FunSuite:
     val cf: Int ?=> Int = { applied += 1; summon[Int] * 2 }
     val p: Int ! Reader % Int = Reader.lift(cf)
     assertEquals(applied, 0)                                   // nothing ran at lift
-    assertEquals(!.run(Reader.run[Int, Int, okay.Pure](21)(p)), 42)
+    assertEquals(!.run(Reader.run[Int, Int, Pure](21)(p)), 42)
     assertEquals(applied, 1)
     // one Ask per lift: count the operations by stepping
     var asks = 0
-    val counted = relay[Int, Int, Reader % Int, okay.Pure](p)(pure(_)):
+    val counted = relay[Int, Int, Reader % Int, Pure](p)(pure(_)):
       [X, Y] => e => e match
         case Reader.Ask() => asks += 1; Cont.Pure(5)
         case Reader.Asks(f) => asks += 1; Cont.Pure(f(5))
@@ -34,9 +32,9 @@ class TestReaderBridge extends munit.FunSuite:
       case Free.Inject(Reader.Asks(_)) => ()
       case other => fail(s"lift is not one operation: $other")
     val p: Int ! Reader % Int = Reader.lift[Int, Int]((e: Int) ?=> e * 10)
-    assertEquals(!.run(Reader.run[Int, Int, okay.Pure](4)(p)), 40)
-    val scoped = Reader.local[Int, Int, okay.Pure](_ + 1)(p)
-    assertEquals(!.run(Reader.run[Int, Int, okay.Pure](4)(scoped)), 50)
+    assertEquals(!.run(Reader.run[Int, Int, Pure](4)(p)), 40)
+    val scoped = Reader.local[Int, Int, Pure](_ + 1)(p)
+    assertEquals(!.run(Reader.run[Int, Int, Pure](4)(scoped)), 50)
   }
 
   test("a forwarded Asks is answered by the outer Reader") {
@@ -44,7 +42,7 @@ class TestReaderBridge extends munit.FunSuite:
     import okay.freer.Row.at
     val p: Int ! Fx =
       Reader.lift[Int, Int]((e: Int) ?=> e + 2).at[Fx].flatMap(n => Writer.tell(s"n=$n").at[Fx].map(_ => n))
-    assertEquals(!.run(Reader.run[Int, (Seq[String], Int), okay.Pure](5)(Writer.run[String, Int, Reader % Int](p))), (Seq("n=7"), 7))
+    assertEquals(!.run(Reader.run[Int, (Seq[String], Int), Pure](5)(Writer.run[String, Int, Reader % Int](p))), (Seq("n=7"), 7))
   }
 
   test("unlift: a Reader program is a context function run under the ambient E, the rest forwarded") {
@@ -53,15 +51,15 @@ class TestReaderBridge extends munit.FunSuite:
       !.widen[Int, Reader % Int, Writer % String](Reader.ask[Int]).flatMap(e =>
         !.widen[Unit, Writer % String, Reader % Int](Writer.tell(s"env=$e")).map(_ => e + 1))
     val cf: Int ?=> Int ! Writer % String = Reader.unlift[Int, Int, Writer % String](p)
-    val (log, a) = !.run(Writer.run[String, Int, okay.Pure](provide(41)(cf)))
+    val (log, a) = !.run(Writer.run[String, Int, Pure](provide(41)(cf)))
     assertEquals((log, a), (Seq("env=41"), 42))
   }
 
   test("the round trips: unlift(lift(cf)) is cf; lift(unlift(p)) at e is p at e") {
     val cf: String ?=> Int = summon[String].length
-    val back: String ?=> Int ! okay.Pure = Reader.unlift[String, Int, okay.Pure](Reader.lift(cf))
+    val back: String ?=> Int ! Pure = Reader.unlift[String, Int, Pure](Reader.lift(cf))
     assertEquals(!.run(provide("four")(back)), provide("four")(cf))
     val p: Int ! Reader % Int = Reader.ask[Int].map(_ * 3)
-    val again: Int ! Reader % Int = Reader.lift(Reader.unlift[Int, Int, okay.Pure](p) match { case prog => !.run(prog) })
-    assertEquals(!.run(Reader.run[Int, Int, okay.Pure](7)(again)), !.run(Reader.run[Int, Int, okay.Pure](7)(p)))
+    val again: Int ! Reader % Int = Reader.lift(Reader.unlift[Int, Int, Pure](p) match { case prog => !.run(prog) })
+    assertEquals(!.run(Reader.run[Int, Int, Pure](7)(again)), !.run(Reader.run[Int, Int, Pure](7)(p)))
   }

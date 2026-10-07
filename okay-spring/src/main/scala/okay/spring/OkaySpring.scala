@@ -1,6 +1,5 @@
 package okay.spring
 
-import okay.*
 import okay.freer.*
 
 import org.springframework.beans.factory.{BeanFactory, DisposableBean}

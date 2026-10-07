@@ -1,6 +1,7 @@
 package okay.http
 
-import okay.*
+
+import okay.{Async, Scheduler, Source, async}
 import okay.freer.*
 
 

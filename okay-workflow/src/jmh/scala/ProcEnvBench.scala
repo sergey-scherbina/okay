@@ -1,6 +1,6 @@
 package okay.bench
 
-import okay.*
+import okay.{Id, Monad}
 
 import okay.freer.*
 import okay.Direct.*

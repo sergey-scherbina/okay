@@ -1,7 +1,5 @@
 package okay.freer
 
-import okay.*
-import okay.given
 
 import ProbeVariance.{In, tell as inTell, get as inGet}
 

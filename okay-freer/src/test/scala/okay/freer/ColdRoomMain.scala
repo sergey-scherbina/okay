@@ -1,6 +1,5 @@
 package okay.freer
 
-import okay.*
 
 /**
  * The count road's first room in a COLD JVM (cont-stack-cold-bytes-per-level), run as its own process by

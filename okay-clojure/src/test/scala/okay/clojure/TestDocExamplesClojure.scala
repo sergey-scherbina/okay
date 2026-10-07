@@ -1,6 +1,8 @@
 package okay.clojure
 
-import okay.{%, +, Chunks, Stage, through}
+import okay.{Chunks, Stage, through}
+
+import okay.freer.{%, +}
 import okay.freer.{!, Reader, State, Writer, pure}
 import clojure.lang.{IFn, PersistentVector}
 import scala.jdk.CollectionConverters.*

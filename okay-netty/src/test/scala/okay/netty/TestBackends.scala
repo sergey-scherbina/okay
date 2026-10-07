@@ -1,7 +1,8 @@
 package okay.netty
+
+import okay.{Async, Stage}
 import okay.freer.*
 
-import okay.*
 
 import okay.given
 import okay.freer.given

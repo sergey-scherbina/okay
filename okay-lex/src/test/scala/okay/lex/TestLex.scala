@@ -1,6 +1,8 @@
 package okay.lex
 
-import okay.{%, Chunks, through}
+import okay.{Chunks, through}
+
+import okay.freer.{%}
 import okay.freer.{!, Writer, pure}
 import okay.freer.toLazyList
 import Json.K

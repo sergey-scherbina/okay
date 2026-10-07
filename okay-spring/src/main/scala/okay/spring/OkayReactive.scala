@@ -1,6 +1,7 @@
 package okay.spring
 
-import okay.*
+
+import okay.{async, Async}
 import okay.freer.*
 
 import okay.given

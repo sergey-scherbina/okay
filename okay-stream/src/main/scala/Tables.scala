@@ -272,7 +272,7 @@ object Tables:
 
   /** run a program of tables, and nothing else, on a platform */
   def run[A, D[_]](B: Bulk[D])(p: A ! Tables): A =
-    State.run(Heap.empty[D])(via[A, D, okay.Pure](B)(p))._2
+    State.run(Heap.empty[D])(via[A, D, okay.freer.Pure](B)(p))._2
 
 /**
  * An operation `Bulk` does not have, added WITHOUT touching it: a new

@@ -1,8 +1,7 @@
 package okay.agent
 import okay.freer.*
 
-import okay.*
-
+import okay.{Answers, Async}
 import okay.given
 import okay.freer.given
 import okay.codec.Json
@@ -14,7 +13,7 @@ class TestStepper extends munit.FunSuite {
   def runRest[A](prog: A ! Rest)(model: Answers[Model], ctx: Answers[Context]): A =
     given Answers[Model] = model
     given Answers[Context] = ctx
-    given rowAll: Answers[Rest] = Answers.flat[Rest]
+    given rowAll: Answers[Rest] = Row.flat[Rest]
     prog.runWith
 
   def freshCtx: Answers[Context] = Handlers.context(Compact.all)._2
@@ -41,7 +40,7 @@ class TestStepper extends munit.FunSuite {
       given Answers[Model] = model
       given Answers[Tool] = Handlers.tools(table)
       given Answers[Context] = freshCtx
-      given r: Answers[Agent] = Answers.flat[Agent]
+      given r: Answers[Agent] = Row.flat[Agent]
       agent.runWith
 
     // stepped: collect what paused, answer from the same table
@@ -92,7 +91,7 @@ class TestStepper extends munit.FunSuite {
       given Answers[Model] = model
       given Answers[Tool] = Handlers.tools(table)
       given Answers[Context] = freshCtx
-      given r: Answers[Agent] = Answers.flat[Agent]
+      given r: Answers[Agent] = Row.flat[Agent]
       agent.runWith
     assertEquals(runRest(transparent(stepped(agent))(table))(model, freshCtx), direct)
   }
@@ -107,7 +106,7 @@ class TestStepper extends munit.FunSuite {
       given Answers[Model] = model
       given Answers[Tool] = Handlers.tools(table)
       given Answers[Context] = freshCtx
-      given r: Answers[Agent] = Answers.flat[Agent]
+      given r: Answers[Agent] = Row.flat[Agent]
       agent.runWith
     assertEquals(runRest(transparentF(stepped(agent))(tableF))(model, freshCtx), direct)
     assertEquals(performed, 1)

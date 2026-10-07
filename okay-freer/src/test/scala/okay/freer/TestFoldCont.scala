@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.*
+import okay.{Answers}
 
 /**
  * What to do with `foldCont`'s result (docs/contract.md, "foldCont").
@@ -13,7 +13,7 @@ import okay.*
  * the only thing that changes.
  */
 class TestFoldCont extends munit.FunSuite:
-  import okay.freer.cps.{given_Effects_Free, *}
+  import okay.freer.cps.{given_Classic_Free, *}
 
   enum Op[+A]:
     case Pick(xs: List[Int]) extends Op[Int]
