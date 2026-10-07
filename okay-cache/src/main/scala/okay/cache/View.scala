@@ -1,7 +1,7 @@
 package okay.cache
 
-import okay.{Async, async}
-import okay.freer.{!}
+import okay.{Async, Op}
+import okay.AsyncCont.async
 import okay.persist.{Record, Topic}
 import scala.collection.immutable.ArraySeq
 import scala.collection.mutable
@@ -23,14 +23,14 @@ import scala.collection.mutable
 trait View[K, V]:
   /** the fold's current state for this key — serves without
    * touching the log; how behind it is, `lag` says */
-  def latest(k: K): Option[V] ! Async
+  def latest(k: K): Op[Async, Option[V]]
 
   /** end minus consumed, summed over partitions: THE staleness
    * number, and it is consumer lag */
   def lag: Long
 
   /** reading on — the whole of regime-1 "invalidation" */
-  def refresh(): Unit ! Async
+  def refresh(): Op[Async, Unit]
 
 object View:
 
@@ -66,11 +66,11 @@ object View:
         p += 1
     }
 
-    def latest(k: K): Option[V] ! Async =
+    def latest(k: K): Op[Async, Option[V]] =
       async(synchronized(state.get(ArraySeq.unsafeWrapArray(keyOf(k)))))
 
     def lag: Long = synchronized {
       (0 until topic.partitions).map(p => math.max(0L, topic.end(p) - consumed(p))).sum
     }
 
-    def refresh(): Unit ! Async = async(advance())
+    def refresh(): Op[Async, Unit] = async(advance())

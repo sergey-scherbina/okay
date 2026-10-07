@@ -15,7 +15,7 @@ module that moved from 3.7.4 to 3.9.0 keeps both, and the old one
 reports rows for code that is gone."""
 import os, re, subprocess, sys, collections
 root = sys.argv[1]; skips = sys.argv[2:]
-DEFER_OWNER = re.compile(r'^(okay2?/Free|okay2?/Free\$.*|okay2?/Cont.*|okay2?/.*package\$\!|okay/package\$|okay2/package\$|okay2?/Thunk.*|okay/frege/Thunk.*|scala/collection/immutable/LazyList.*|scala/Function0|okay2?/Once.*|okay2?/Eval.*|okay2?/\$bang\$.*|okay2?/Row\$.*|okay/async/.*|okay2/async/.*|fs2/Stream.*|zio/ZIO.*|cats/effect/IO.*)$')
+DEFER_OWNER = re.compile(r'^(okay2?/Free|okay2?/Free\$.*|okay2?/Cont.*|okay2?/.*package\$\!|okay/package\$|okay2/package\$|okay2?/Thunk.*|okay/frege/Thunk.*|scala/collection/immutable/LazyList.*|scala/Function0|okay2?/Once.*|okay2?/Eval.*|okay2?/\$bang\$.*|okay2?/Row\$.*|okay/async/.*|okay/Effects.*|okay/cont/Free.*|okay/cont/Op.*|okay2/async/.*|fs2/Stream.*|zio/ZIO.*|cats/effect/IO.*)$')
 DEFER_NAME = re.compile(r'^(flatMap|map|andThen|defer|delay|suspend|onAnswer|foldCont|lazy|shared|bind|then|flatMap\w*|map\w*|resumeWith|tailcall|\$greater\$greater\$eq|\$times\$greater|as|void|attempt|handleWith|\$plus\$plus)$')
 
 def module_of(d):

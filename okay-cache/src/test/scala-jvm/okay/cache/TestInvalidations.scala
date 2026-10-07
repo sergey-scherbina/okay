@@ -1,9 +1,7 @@
 package okay.cache
 
-import okay.Async
-import okay.freer.{!}
+import okay.{!, +:, Async, AsyncCont, Op, Pure}
 import okay.given
-import okay.freer.given
 import okay.persist.{MemoryStore, Policy}
 
 /**
@@ -13,12 +11,13 @@ import okay.persist.{MemoryStore, Policy}
  */
 class TestInvalidations extends munit.FunSuite {
 
-  def run[A](p: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](p))
+  def run[A](p: A ! (Async +: Pure)): A = AsyncCont.run(p)
+  def runOp[A](op: Op[Async, A]): A = run(op.at[Async +: Pure])
 
   test("A's write reaches B: drain, then B's next read reloads") {
     val topic = MemoryStore().topic("__invalidations", 1, Policy())
     var truth = Map("okay" -> 100L)
-    def load(k: String): Long ! Async = okay.async(truth(k))
+    def load(k: String): Long ! (Async +: Pure) = AsyncCont.async(truth(k)).at
 
     val a = Cache.memory[String, Long](Regime.Invalidated, 64)
     val b = Cache.memory[String, Long](Regime.Invalidated, 64)
@@ -27,7 +26,7 @@ class TestInvalidations extends munit.FunSuite {
 
     // node A commits, invalidates ITSELF, and appends the event
     truth = Map("okay" -> 150L)
-    val _ = run(WriteThrough.write(a, "okay")(okay.async(())))
+    val _ = run(WriteThrough.write(a, "okay")(AsyncCont.async(()).at[Async +: Pure]))
     Invalidations.append(topic, "okay"): Unit
 
     // B has not drained yet: the honest window, cross-node edition
@@ -43,7 +42,7 @@ class TestInvalidations extends munit.FunSuite {
   test("a node that was down replays the topic and converges") {
     val topic = MemoryStore().topic("__invalidations", 1, Policy())
     var truth = Map("k1" -> 1L, "k2" -> 2L)
-    def load(k: String): Long ! Async = okay.async(truth(k))
+    def load(k: String): Long ! (Async +: Pure) = AsyncCont.async(truth(k)).at
 
     val down = Cache.memory[String, Long](Regime.Invalidated, 64)
     assertEquals(run(down.getOrLoad("k1")(load)), 1L)

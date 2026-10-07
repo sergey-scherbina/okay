@@ -1,9 +1,7 @@
 package okay.cache
 
-import okay.Async
-import okay.freer.{!}
+import okay.{!, +:, Async, AsyncCont, Op, Pure}
 import okay.given
-import okay.freer.given
 import okay.codec.Schema
 
 /**
@@ -27,7 +25,8 @@ class TestRedis extends munit.FunSuite {
   final case class Quote(sym: String, price: Double, tags: Vector[String] = Vector.empty)
   given Schema[Quote] = Schema.derived
 
-  def run[A](p: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](p))
+  def run[A](p: A ! (Async +: Pure)): A = AsyncCont.run(p)
+  def runOp[A](op: Op[Async, A]): A = run(op.at[Async +: Pure])
 
   private var n = 0
   def fresh(regime: Regime): Cache[String, Quote] =
@@ -37,18 +36,18 @@ class TestRedis extends munit.FunSuite {
 
   test("the contract over the wire: put/get round-trips CBOR, invalidate removes, absent is None") {
     val c = fresh(Regime.Invalidated)
-    assertEquals(run(c.get("aapl")), None)
-    run(c.put("aapl", Quote("AAPL", 187.5, Vector("tech"))))
-    assertEquals(run(c.get("aapl")), Some(Quote("AAPL", 187.5, Vector("tech"))))
-    run(c.invalidate("aapl"))
-    assertEquals(run(c.get("aapl")), None)
-    run(c.invalidate("aapl"))   // idempotent, like the trait says
+    assertEquals(runOp(c.get("aapl")), None)
+    runOp(c.put("aapl", Quote("AAPL", 187.5, Vector("tech"))))
+    assertEquals(runOp(c.get("aapl")), Some(Quote("AAPL", 187.5, Vector("tech"))))
+    runOp(c.invalidate("aapl"))
+    assertEquals(runOp(c.get("aapl")), None)
+    runOp(c.invalidate("aapl"))   // idempotent, like the trait says
   }
 
   test("getOrLoad: a miss loads once and caches; a hit does not load") {
     val c = fresh(Regime.Invalidated)
     var loaded = 0
-    def load(k: String): Quote ! Async = okay.async { loaded += 1; Quote(k, 1.0) }
+    def load(k: String): Quote ! (Async +: Pure) = AsyncCont.async { loaded += 1; Quote(k, 1.0) }.at
     assertEquals(run(c.getOrLoad("x")(load)), Quote("x", 1.0))
     assertEquals(run(c.getOrLoad("x")(load)), Quote("x", 1.0))
     assertEquals(loaded, 1)
@@ -57,14 +56,14 @@ class TestRedis extends munit.FunSuite {
 
   test("expiry is SERVER-side: a Budget entry vanishes without this process filtering it") {
     val c = fresh(Regime.Budget(ttlMillis = 200))
-    run(c.put("gone", Quote("GONE", 1.0)))
-    assertEquals(run(c.get("gone")).map(_.sym), Some("GONE"))
+    runOp(c.put("gone", Quote("GONE", 1.0)))
+    assertEquals(runOp(c.get("gone")).map(_.sym), Some("GONE"))
     // poll until the SERVER expires it — a deadline, not a sleep-and-hope
     val deadline = System.currentTimeMillis + 3000
     var last: Option[Quote] = Some(Quote("GONE", 1.0))
     while last.nonEmpty && System.currentTimeMillis < deadline do
       Thread.sleep(50)
-      last = run(c.get("gone"))
+      last = runOp(c.get("gone"))
     assertEquals(last, None, "the server never expired the entry")
   }
 

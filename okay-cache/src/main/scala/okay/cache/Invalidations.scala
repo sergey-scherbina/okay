@@ -1,7 +1,6 @@
 package okay.cache
 
-import okay.Async
-import okay.freer.{!, pure}
+import okay.{!, Async, Member, Row, pure}
 import okay.persist.{Ack, Topic}
 import scala.annotation.tailrec
 
@@ -27,14 +26,14 @@ object Invalidations {
    * and the offset journaled by the caller is what makes a restart
    * converge instead of guessing.
    */
-  @tailrec def drain[K, V](topic: Topic, cache: Cache[K, V], keyOf: String => K,
-                  from: Long, max: Int = 512): Long ! Async =
+  @tailrec def drain[K, V, R <: Row](topic: Topic, cache: Cache[K, V], keyOf: String => K,
+                  from: Long, max: Int = 512)(using Member[Async, R]): Long ! R =
     topic.read(0, from, max) match
       case Topic.Read.TooEarly(begin) => drain(topic, cache, keyOf, begin, max)
       case Topic.Read.Records(rs) =>
-        def go(rest: List[okay.persist.Record]): Long ! Async = rest match
+        def go(rest: List[okay.persist.Record]): Long ! R = rest match
           case Nil => pure(rs.lastOption.map(_.offset + 1).getOrElse(from))
           case r :: more =>
-            cache.invalidate(keyOf(String(r.key, "UTF-8"))).flatMap(_ => go(more))
+            cache.invalidate(keyOf(String(r.key, "UTF-8"))).flatMap[R, Long](_ => go(more))
         go(rs.toList)
 }

@@ -1,9 +1,8 @@
 package okay.cache
 
-import okay.{Async, async}
-import okay.freer.{!}
-import okay.given
-import okay.freer.given
+import okay.{!, +:, Async, AsyncCont, Member, Op, Pure, Row, pure}
+import okay.AsyncCont.async
+import okay.given_CanBlock
 import okay.codec.Schema
 
 /**
@@ -94,7 +93,7 @@ object Redis {
 
     private def raw(k: K): Array[Byte] = keyOf(k).getBytes("UTF-8")
 
-    def get(k: K): Option[V] ! Async = async {
+    def get(k: K): Op[Async, Option[V]] = async {
       resp.command("GET".getBytes, raw(k)) match
         case Right(Some(bytes)) if bytes.nonEmpty =>
           okay.codec.Codecs.readCbor[V](bytes) match
@@ -103,7 +102,7 @@ object Redis {
         case _ => misses.incrementAndGet(); None
     }
 
-    def put(k: K, v: V): Unit ! Async = async {
+    def put(k: K, v: V): Op[Async, Unit] = async {
       val body = okay.codec.Codecs.writeCbor(v)
       val ok = regime match
         case Regime.Budget(ttl) =>
@@ -116,15 +115,15 @@ object Redis {
         case _ => ()
     }
 
-    def invalidate(k: K): Unit ! Async = async {
+    def invalidate(k: K): Op[Async, Unit] = async {
       resp.command("DEL".getBytes, raw(k)) match
         case Left(e) => throw IllegalStateException(s"redis DEL refused: $e")
         case _ => ()
     }
 
-    def getOrLoad(k: K)(load: K => V ! Async): V ! Async =
-      get(k).flatMap {
-        case Some(v) => okay.freer.pure(v)
+    def getOrLoad[R <: Row](k: K)(load: K => V ! (Async +: Pure))(using Member[Async, R]): V ! R =
+      get(k).flatMap[R, V] {
+        case Some(v) => pure(v)
         case None => async {
           // single-flight is PER PROCESS (as in the memory engine):
           // the lock guards this node's dogpile, not the cluster's.
@@ -139,11 +138,11 @@ object Redis {
                 okay.codec.Codecs.readCbor[V](bytes).toOption.get
               case _ =>
                 loads.incrementAndGet()
-                val v = okay.freer.!.run(Async.run[V, okay.freer.Pure](load(k)))
-                okay.freer.!.run(Async.run[Unit, okay.freer.Pure](put(k, v)))
+                val v = AsyncCont.run(load(k))
+                AsyncCont.run(put(k, v).at[Async +: Pure])
                 v
           } finally flights.remove(key): Unit
-        }
+        }.at[R]
       }
 
     def stats: Cache.Stats =

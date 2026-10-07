@@ -7,6 +7,7 @@ import okay.cache.{Cache, Invalidations, View, WriteThrough}
 import okay.codec.Schema
 import okay.docs.{Cond, Docs, PutResult, TopicDocs}
 import okay.persist.Topic
+import okay.{!, +:, AsyncCont}
 
 /*
  * okay-cache, okay-blob and okay-docs for Scala 2.13
@@ -23,30 +24,35 @@ import okay.persist.Topic
  * `Blob` or `Docs` under two wildcard imports.
  */
 
-/** okay-cache's operations */
+/** okay-cache's operations — okay-cache is on the machine (cont-first-module), this facade on the classic tree:
+ * each operation crosses by `AsyncCont.toClassic`, a Scala 2 loader or commit by `fromClassic` */
 object Caches {
-  def get[K, V](c: Cache[K, V], k: K): Eff[Async, Option[V]] = Async.lift(c.get(k))
-  def put[K, V](c: Cache[K, V], k: K, v: V): Eff[Async, Unit] = Async.lift(c.put(k, v))
-  def invalidate[K, V](c: Cache[K, V], k: K): Eff[Async, Unit] = Async.lift(c.invalidate(k))
+  private type One = okay.Async +: okay.Pure
+  private def classic[A](p: A ! One): Eff[Async, A] = Async.lift(AsyncCont.toClassic(p))
+  private def machine[A](e: Eff[Async, A]): A ! One = AsyncCont.fromClassic(Async.core(e)).at
+
+  def get[K, V](c: Cache[K, V], k: K): Eff[Async, Option[V]] = classic(c.get(k).at)
+  def put[K, V](c: Cache[K, V], k: K, v: V): Eff[Async, Unit] = classic(c.put(k, v).at)
+  def invalidate[K, V](c: Cache[K, V], k: K): Eff[Async, Unit] = classic(c.invalidate(k).at)
 
   /** the read most callers should use: on a miss ONE load per key runs,
    * and concurrent callers wait for it instead of loading again */
   def getOrLoad[K, V](c: Cache[K, V], k: K)(load: K => Eff[Async, V]): Eff[Async, V] =
-    Async.lift(c.getOrLoad(k)(key => Async.core(load(key))))
+    classic(c.getOrLoad(k)(key => machine(load(key))))
 
   /** run the committing write, then invalidate `k`: the order is held
    * here, not at every call site */
   def writeThrough[K, V, A](c: Cache[K, V], k: K)(commit: Eff[Async, A]): Eff[Async, A] =
-    Async.lift(WriteThrough.write(c, k)(Async.core(commit)))
+    classic(WriteThrough.write(c, k)(machine(commit)))
 
   /** invalidate every key published on `topic` from `from` on; the
    * answer is the next offset to drain from */
   def drain[K, V](topic: Topic, c: Cache[K, V], keyOf: String => K, from: Long, max: Int = 512): Eff[Async, Long] =
-    Async.lift(Invalidations.drain(topic, c, keyOf, from, max))
+    classic(Invalidations.drain(topic, c, keyOf, from, max))
 
   /** a view's newest value for `k` */
-  def latest[K, V](v: View[K, V], k: K): Eff[Async, Option[V]] = Async.lift(v.latest(k))
-  def refresh[K, V](v: View[K, V]): Eff[Async, Unit] = Async.lift(v.refresh())
+  def latest[K, V](v: View[K, V], k: K): Eff[Async, Option[V]] = classic(v.latest(k).at)
+  def refresh[K, V](v: View[K, V]): Eff[Async, Unit] = classic(v.refresh().at)
 }
 
 /** okay-blob's operations */

@@ -1,7 +1,6 @@
 package okay.cache
 
-import okay.Async
-import okay.freer.{!}
+import okay.{!, Async, Member, Row}
 /**
  * Regime 2, the write path (specs/cache.md): truth lives in a
  * foreign system and writes flow through us, so INSIDE the same code
@@ -22,5 +21,5 @@ object WriteThrough:
   /** run the committing write, then invalidate — the order held by
    * construction, so a review points here instead of auditing call
    * sites */
-  def write[K, V, A](cache: Cache[K, V], k: K)(commit: => A ! Async): A ! Async =
-    commit.flatMap(a => cache.invalidate(k).map(_ => a))
+  def write[K, V, A, R <: Row](cache: Cache[K, V], k: K)(commit: => A ! R)(using Member[Async, R]): A ! R =
+    commit.flatMap(a => cache.invalidate(k).map[R, A](_ => a))
