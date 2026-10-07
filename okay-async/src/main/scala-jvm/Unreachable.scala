@@ -1,7 +1,6 @@
 package okay
 
 
-import okay.freer.given
 import java.lang.ref.Cleaner
 
 /** the collector as the last door of a release (abandoned-lazylist-

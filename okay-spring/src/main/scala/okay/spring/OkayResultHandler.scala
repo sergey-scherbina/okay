@@ -2,7 +2,6 @@ package okay.spring
 
 import okay.*
 import okay.freer.*
-import okay.freer.given
 
 import org.springframework.core.{MethodParameter, Ordered, ResolvableType}
 import org.springframework.web.reactive.{HandlerResult, HandlerResultHandler}
