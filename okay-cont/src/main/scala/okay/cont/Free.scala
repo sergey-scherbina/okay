@@ -54,19 +54,35 @@ object Members:
   given nil: Members[Pure] = MNil()
   given cons[E[+_], T <: Row](using t: Members[T]): Members[E +: T] = MCons(t)
 
-/** a CAPABILITY: how `E` is performed in the context `C` — answered in place, or reached by a capture; and the
- * same capability in a context one level inside, the operation reached from there */
+/** a CAPABILITY: how `E` is performed in the context `C` — answered in place, or reached by a capture, or each
+ * operation one or the other; and the same capability in a context one level inside, the operation reached from
+ * there */
 enum Cap[E[+_], C <: Ctx]:
   case Answers[E[+_], C <: Ctx](a: Answered[E, C]) extends Cap[E, C]
   case Reaching[E[+_], C <: In[?, ?]](r: Reaches[E, C]) extends Cap[E, C]
+  /** PER OPERATION (drive-in-place): an operation `a` answers (`a.answers(op)`) is answered by it where it is
+   * performed — the answering road, no walk, no capture; any other is reached by a capture to the handler `r`.
+   * A handler that can answer some of its operations at once and must capture for others (a callback drive: a
+   * Run at once, a pending Await never) takes both roads, the choice the operation's */
+  case Split[E[+_], C <: In[?, ?]](a: Partly[E], r: Reaches[E, C]) extends Cap[E, C]
   def perform[X](op: E[X], c: C): Cont[c.Here, c.Here, X] = this match
     case Answers(a) => Cont.Answer[c.Here, X, E](op, a.at(c))
     case Reaching(r) =>
       val t = r.target(c)
       Cont.Op[c.Here, X, t.Dn, t.Ansn, E](t.reach, op, t.clause)
+    case Split(a, r) =>
+      if a.answers(op) then Cont.Answer[c.Here, X, E](op, a)
+      else
+        val t = r.target(c)
+        Cont.Op[c.Here, X, t.Dn, t.Ansn, E](t.reach, op, t.clause)
   def lift[C2 <: In[?, C]]: Cap[E, C2] = this match
     case Answers(a) => Answers(Answered.outside[E, C, C2](using a))
     case Reaching(r) => Reaching(Reaches.out[E, C, C2](using r))
+    case Split(a, r) => Split(a, Reaches.out[E, C, C2](using r))
+/** the answering half of a `Cap.Split`: which operations it answers in place, and their values */
+trait Partly[E[+_]] extends Answering[E, Any, Any]:
+  def answers[X](op: E[X]): Boolean
+  def ret(a: Any): Any = a
 object Cap extends CapLow:
   given answers[E[+_], C <: Ctx](using a: Answered[E, C]): Cap[E, C] = Answers(a)
 sealed trait CapLow:

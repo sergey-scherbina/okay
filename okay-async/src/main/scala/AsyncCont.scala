@@ -1,6 +1,6 @@
 package okay
 
-import okay.cont.{Answering, Cap, Clause, Cont, Has, Machine, Reaches, Root, Top}
+import okay.cont.{Answering, Cap, Clause, Cont, Has, Machine, Partly, Reaches, Root, Top}
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
 import scala.concurrent.{Future, Promise}
 import scala.util.control.NonFatal
@@ -47,7 +47,7 @@ object AsyncCont:
   def runAsync[A](p: A ! (Async +: Pure)): Future[A] =
     val promise = Promise[A]()
     val d = Drive(promise)
-    d.loop(top(p, d.clause, Driven.Done(_)))
+    d.loop(top(p, d.clause, Driven.Done(_), Runs))
     promise.future
 
   /** A MACHINE PROGRAM AS A CLASSIC ONE, for code still on the tree (the Scala 2 facade, a classic caller): each
@@ -80,9 +80,23 @@ object AsyncCont:
   private def stops[A]: Clause[Async, EmptyTuple, Step[A]] = new Clause[Async, EmptyTuple, Step[A]]:
     def apply[X](op: Async[X], k: X => Top[Step[A]]): Top[Step[A]] = Cont.Return(Step.At(op, k))
 
-  private def top[A, Ans](p: A ! (Async +: Pure), clause: Clause[Async, EmptyTuple, Ans], done: A => Ans): Top[Ans] =
+  /** the program under the clause at the top; with `runs`, a Run never reaches the clause (`Cap.Split`) */
+  private def top[A, Ans](p: A ! (Async +: Pure), clause: Clause[Async, EmptyTuple, Ans], done: A => Ans,
+                          runs: Partly[Async] | Null = null): Top[Ans] =
     okay.cont.handle[Async, A, Ans](done)(clause)(using Root): inner ?=>
-      p.run(using inner, Has.HCons(Cap.Reaching(Reaches.here[Async, Ans, inner.type]), Has.HNil[inner.type]()))
+      val reach = Reaches.here[Async, Ans, inner.type]
+      val cap = if runs == null then Cap.Reaching(reach) else Cap.Split(runs, reach)
+      p.run(using inner, Has.HCons(cap, Has.HNil[inner.type]()))
+
+  /** a Run answered where it is performed, on the answering road: no walk to the clause, no capture */
+  private object Runs extends Partly[Async]:
+    def answers[X](op: Async[X]): Boolean = op match
+      case Async.Run(_) => true
+      case _ => false
+    def value[X](op: Async[X]): X = op match
+      case Async.Run(f) => f()
+      // `answers` sends an Await to the clause; this is never reached
+      case Async.Await(_, _) => throw IllegalStateException("an Await is answered by the drive's clause, not in place")
 
   /** where the drive stands when the machine stops: the program's answer, or parked at an Await whose callback
    * will continue it */
@@ -91,10 +105,11 @@ object AsyncCont:
     case Parked
 
   /**
-   * THE DRIVE ANSWERS IN PLACE WHAT IT CAN (drive-in-place). Its clause returns `k(x)` as its whole body for a Run
-   * (`x` its value) and for an Await whose callback fired during the registration — and a clause that returns the
-   * last `k(x)` is answered WHERE THE OPERATION WAS, the stack as it stands, nothing captured (the machine's own
-   * tail-resumption, `Captured.tail`). Only an Await still pending stops the machine: the clause keeps `k` for the
+   * THE DRIVE ANSWERS IN PLACE WHAT IT CAN (drive-in-place). A Run never reaches the clause: the capability
+   * splits per operation (`Cap.Split`), a Run answered on the answering road where it is performed (`Runs`). The
+   * clause returns `k(x)` as its whole body for an Await whose callback fired during the registration — and a
+   * clause that returns the last `k(x)` is answered WHERE THE OPERATION WAS, the stack as it stands, nothing
+   * captured (the machine's own tail-resumption, `Captured.tail`). Only an Await still pending stops the machine: the clause keeps `k` for the
    * callback and answers `Parked`. The callback may fire during the registration, on this thread or another:
    * whoever comes SECOND to the flag continues — the clause in place, or the callback by re-entering `loop` with
    * `k(x)`, a program at the top. The answer is written before the callback's turn at the flag, so the clause
@@ -103,7 +118,7 @@ object AsyncCont:
   private final class Drive[A](promise: Promise[A]):
     val clause: Clause[Async, EmptyTuple, Driven[A]] = new Clause[Async, EmptyTuple, Driven[A]]:
       def apply[X](op: Async[X], k: X => Top[Driven[A]]): Top[Driven[A]] = op match
-        case Async.Run(f) => k(f())
+        case Async.Run(f) => k(f())   // only through `toClassic`'s road; the drive's Runs are answered in place
         case Async.Await(reg, _) =>
           val got = AtomicReference[Either[Throwable, X] | Null](null)
           val second = AtomicBoolean(false)
