@@ -1921,3 +1921,25 @@ a compiler crash in `ImportSuggestions` is named by the gate with the flag that 
 the compile-and-apply-the-compiler's-suggestions loop that carried the import migration is
 `scripts/import-suggestions.py`; the runner's whole build found 169 unused imports the affected-scoped gates had
 never recompiled (zinc reports a warning only for a file it compiles), fixed from the runner's own log.
+
+## Stage 49: THE FIRST MODULE ON THE MACHINE (DONE, 2026-10-07)
+
+Lane cont-first-module: one real module written on the machine's `A ! R` before any other moves — okay-cache,
+and under it what it needs, Async. ASYNC IS NOT REDEFINED: an operation is a value of `Async[X]` on both
+encodings, so `AsyncCont` (okay-async) is only its words and handlers on the machine — `async`/`await` as
+`Op`s; `blocking`, an `Answering` handler (a Run executed, an Await parked); `runAsync`, the callback drive,
+Async the outermost handler as a CLAUSE AT THE TOP (`Root`), so every operation stops the machine with the rest
+as a program at the top (the `generate` pattern: the drive runs a Run and goes on, an Await keeps the rest
+until its callback re-enters; whoever comes second to a flag continues, so a callback that fires during its
+registration never nests); and the bridges, per program, `toClassic` (each stop an operation of a classic
+program) and `fromClassic` (a classic program as one Await).
+
+okay-cache on it: a single operation is an `Op[Async, X]`, a program over any row that has Async; a program of
+several steps takes the row, `getOrLoad[R <: Row](k)(load)(using Member[Async, R]): V ! R`; the loader is a
+program of Async alone (it runs under its own drive, single-flight). The Scala 2 facade crosses by the bridges,
+TestWriteThrough reaches okay-sql (classic) by `fromClassic`. Measured (AsyncDriveBenchmark, 10k Runs): the
+answering handler 263 us against the classic `runWith`'s 241; the callback drive 562 against 236 — a capture
+per Run. What the module found — rows in every multi-step signature, the facade's conversion warning at use
+sites, no row inferred through an overload, per-program bridges, the per-operation capture, and what Async
+still lacks (attempt, cancel scopes, fibers, poll-then-park) — is backlog.d/okay-core/cont-first-module-findings.md.
+

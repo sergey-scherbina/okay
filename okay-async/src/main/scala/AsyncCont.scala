@@ -12,10 +12,12 @@ import scala.util.control.NonFatal
  *
  *  - `blocking`, an `Answering` handler: each operation answered IN PLACE, no capture — a Run executed, an Await
  *    parked (hence the evidence, as the classic's `Async.run`);
- *  - `runAsync`, the callback drive: the program run until it parks, the machine's state at the park kept as the
- *    Await's continuation, the callback re-entering it. Async is the OUTERMOST handler here, at the top: the
- *    drive is a clause at the top level (`Root`), so its continuation is a program at the top, run again by
- *    `Machine.value` when the answer arrives — the `generate` pattern, the consumer being the callback.
+ *  - `runAsync`, the callback drive: Async is the OUTERMOST handler, a clause at the top level (`Root`), so every
+ *    operation stops the machine with the rest as a program at the top — the `generate` pattern. The drive
+ *    executes a Run and runs the rest at once; an Await keeps the rest until the callback re-enters it.
+ *
+ * And the two bridges to the classic, per program: `toClassic` (each stop of the machine an operation of a
+ * classic program) and `fromClassic` (a classic program as one Await of the machine).
  */
 object AsyncCont:
 

@@ -1,0 +1,2 @@
+2026-10-07	ed426a695	quiet	AsyncDriveBenchmark.contRun10k us/op (10k ops)	262.702	240.951	1.09	cont-first-module: AsyncCont.run, the answering handler, beside the classic runWith (the base): 26 ns/op against 24
+2026-10-07	ed426a695	quiet	AsyncDriveBenchmark.contRunAsync10k us/op (10k ops)	561.682	236.020	2.38	cont-first-module: AsyncCont.runAsync, every operation stops the machine (a capture per Run), beside the classic runAsync (the base): 56 ns/op against 24

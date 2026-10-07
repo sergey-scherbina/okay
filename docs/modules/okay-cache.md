@@ -7,6 +7,17 @@
 
 Depends on: the core only. Cross-built JVM/JS/Native.
 
+**On the machine** (the first module there, cont-first-module): its
+programs are the core's `A ! R` (`import okay.*`), not the classic
+tree's. A single operation (`get`, `put`, `invalidate`, `latest`,
+`refresh`) is an `Op[Async, X]` — a program over ANY row that has
+Async, the row taken from where it is bound (`.at` writes it); a
+program of several steps takes the row: `getOrLoad[R]`,
+`WriteThrough.write[.., R]`, `Invalidations.drain[.., R]`. The loader
+is a program of Async alone. Run with `AsyncCont.run` (blocking) or
+`AsyncCont.runAsync`; classic code crosses with `AsyncCont.toClassic`
+and `fromClassic` (the Scala 2 facade does).
+
 ## Guide
 
 **Three regimes, one rule.** Truth in the log (okay-persist) → the

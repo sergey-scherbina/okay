@@ -20,3 +20,16 @@ Reach for it when you want to describe asynchronous programs — build
 `Fiber`s, race, retry — without committing to a runtime yet. Add
 `okay-platform` (or your own `CanBlock`/`Scheduler`) when you actually
 need to run one.
+
+## On the machine
+
+`AsyncCont` is Async for the core's `A ! R` (the machine's programs,
+`import okay.*`): the same `Async.Run`/`Async.Await` operations,
+`async`/`await`/`awaitEither` as `Op`s, `blocking` (an `Answering`
+handler: each operation in place, no capture) with `run`, the callback
+drive `runAsync` (every operation stops the machine; the rest is a
+program at the top the drive or the callback continues), and the two
+bridges to the classic tree, `toClassic` and `fromClassic`, one crossing
+per program. Not yet there: `attempt`, cancel scopes, fibers, the
+poll-then-park drive (backlog: cont-first-module-findings).
+
