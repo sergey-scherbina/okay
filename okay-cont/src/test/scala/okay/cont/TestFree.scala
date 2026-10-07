@@ -41,6 +41,18 @@ class TestFree extends okay.testkit.Munit.Diagnosed:
     val run: Free[Pure, (List[String], Int)] = Free.handle(reader[(List[String], Int)](41))(Free.handle(writer[Int])(prog))
     assertEquals(value(Free.top(run)), (List("41"), 42))
 
+  test("the same effects in another order are one type of program: no widen written"):
+    def wants(p: Free[Say +: Ask +: Pure, Int]): Free[Say +: Ask +: Pure, Int] = p
+    val run = Free.handle(writer[Int])(Free.handle(reader[Int](41))(wants(prog)))
+    assertEquals(value(Free.top(run)), (List("41"), 42))
+    assertEquals(value(Free.top(Free.handle(reader[(List[String], Int)](41))(Free.handle(writer[Int])(wants(prog))))), (List("41"), 42))
+    // the unions, by name
+    summon[Union[Ask +: Say +: Pure, Int] =:= Union[Say +: Ask +: Pure, Int]]
+    summon[Union[Ask +: Say +: Pure, Int] =:= (Ask[Int] | Say[Int])]
+
+  test("a row with fewer effects is not widened silently"):
+    assert(compileErrors("""def wants(p: Free[Say +: Ask +: Choose +: Pure, Int]): Unit = (); wants(prog)""").nonEmpty)
+
   test("widen: a row with the same effects in another order, by Sub"):
     val wide: Free[Say +: Ask +: Pure, Int] = prog.widen
     assertEquals(value(Free.top(Free.handle(writer[Int])(Free.handle(reader[Int](41))(wide)))), (List("41"), 42))

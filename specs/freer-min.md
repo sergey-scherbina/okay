@@ -1655,3 +1655,19 @@ union is commutative — and a union cannot be enumerated, which is why the clas
 operation's class. A nominal row is compatible by evidence: `Sub` (`widen`, explicit), or an implicit widening
 in `Free`'s companion if asked for, or signatures polymorphic in the row with `Member` constraints, which is the
 machine's idiom and where the question does not arise.
+
+## Stage 40: A ROW AS THE UNION — `A +: B` IS `A + B` WHERE TYPES ARE COMPARED (DONE, 2026-10-07)
+
+The operator, on `A + B = B + A`: "там где это необходимо для сравнения типов сделать преобразование из списка в
+объединение". `Union[R, X]` is that: a match type, `Pure` to `Nothing`, `e +: t` to `e[X] | Union[t, X]` — a
+match type binds a head of kind `[+_]` (probed: `Union[Ask +: Say +: Pure, Int] =:= Union[Say +: Ask +: Pure,
+Int]` and `=:= (Ask[Int] | Say[Int])` both hold). It is also the row the classic `!` writes for the same program,
+a bridge for mixed code.
+
+Compatibility, then, is the unions being one: `Free.reordered` in `Free`'s companion, a `Conversion[Free[R1, A],
+Free[R2, A]]` given `Union[R1, Any] =:= Union[R2, Any]` — at `Any`, the top of every effect of a row (its
+effects are covariant), where `State % Int` and `State % String` still differ — and `Sub[R1, R2]`, which does
+the work: the capabilities re-laid by position. So a program over `Ask +: Say +: Pure` is passed where `Say +:
+Ask +: Pure` is expected with nothing written (TestFree), and handled in either order; a row with FEWER effects
+is not widened silently — that stays `widen`, written, so a row never grows unseen. No feature warning: a `given
+Conversion` found in the companion is the library's own.

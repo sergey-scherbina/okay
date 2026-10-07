@@ -22,6 +22,13 @@ type ++[R1 <: Row, R2 <: Row] <: Row = R1 match
   case Pure => R2
   case e +: t => e +: (t ++ R2)
 
+/** A ROW AS THE CLASSIC UNION of its effects' operations: `Union[A +: B +: Pure, X]` is `A[X] | B[X]`. A union
+ * is commutative, so two rows with the same effects in any order have ONE union — that is what makes them one
+ * type of program (`Free.reordered`), and it is the row the classic `!` writes for the same program */
+type Union[R <: Row, X] = R match
+  case Pure => Nothing
+  case e +: t => e[X] | Union[t, X]
+
 /** `E` is in the row `R`: a path to it, the compiler builds it — the first, by priority */
 enum Member[E[+_], R <: Row]:
   case Head[E[+_], T <: Row]() extends Member[E, E +: T]
@@ -124,6 +131,13 @@ trait Free[R <: Row, +A]:
   def widen[R2 <: Row](using sub: Sub[R, R2]): Free[R2, A] = new Free[R2, A]:
     def run(using c: Ctx, has: Has[R2, c.type]): Cont[c.Here, c.Here, A] = Free.this.run(using c, sub(has))
 object Free:
+  /** THE SAME EFFECTS IN ANOTHER ORDER ARE ONE TYPE OF PROGRAM: where a program over `R2` is expected and one over
+   * `R1` is given, the compiler widens it by `Sub` when the rows' unions are one — at `Any`, the top of every
+   * effect (a row's effects are covariant), where `State % Int` and `State % String` still differ. A row with
+   * FEWER effects is not widened silently: that is `widen`, written */
+  given reordered[R1 <: Row, R2 <: Row, A](using same: Union[R1, Any] =:= Union[R2, Any], sub: Sub[R1, R2]): Conversion[Free[R1, A], Free[R2, A]] =
+    p => { val _ = same; p.widen[R2](using sub) }
+
   def pure[A](a: A): Free[Pure, A] = new Free[Pure, A]:
     def run(using c: Ctx, has: Has[Pure, c.type]): Cont[c.Here, c.Here, A] = Cont.Return(a)
   /** an operation: its effect alone is the row */
