@@ -281,7 +281,7 @@ effect author does not need them.
 | answer and carry a state, the last state in the result | `Handler[F].state(s0) { … }` (form 2) | `HandleFrames.stateRun` |
 | answer with a program in effects the row already holds | `Handler[F].into[G] { … }` (form 3) | `!.translate` |
 | the same into effects the row does NOT hold yet | `!.interpret(p)` (§7): `p.plus[G]`, then `translate` | `!.translate` |
-| record what is asked and answer nothing | `!.tracing(p)` (§6) | `!.interpret` |
+| record what is asked and answer nothing | `Writer.tracing(p)` (§6) | `!.interpret` |
 | abort, resume twice, keep the continuation | `Handler[F].control[O](ret)` (form 4) | `Effects.handle` |
 | two instances of one effect, told apart by name | `Lexical.deep` / `tail` / `walk` ([many-instances.md](many-instances.md)) | a prompt per installation |
 | *(library)* a built-in's fold that threads a state | `HandleFrames.stateRun`, `stateRunUntil` (stops when the state is done), `stateRunOr` (a step may stop the run) | one step, as a loop and as a machine frame |
@@ -302,7 +302,7 @@ rename(7, "grace").runWith(using mem.tracing(log += _))
 ```
 
 `h.tracing` wears any handler, the SQLite one included — recording is
-not a test-only trick. `!.tracing(p)(show)` is the same idea one level
+not a test-only trick. `Writer.tracing(p)(show)` is the same idea one level
 up: it records at the PROGRAM level, before anything is interpreted,
 telling each operation to a `Writer` and then performing it exactly as
 before. It knows nothing about the effect beyond `show`.
@@ -338,11 +338,11 @@ Two layers, one job each, composed:
 ```scala
 def tracked[A, S : Store, F[+_]](prog: A ! (Users + F)): A ! (State % S + Writer % String + F) =
   stored[A, S, Writer % String + F](
-    !.tracing(prog)([X] => (e: Users[X]) => e.toString))
+    Writer.tracing(prog)([X] => (e: Users[X]) => e.toString))
 ```
 
 `stored` answers and could not log if it wanted to — it knows nothing
-about a Writer being in the row. `!.tracing` logs and answers nothing.
+about a Writer being in the row. `Writer.tracing` logs and answers nothing.
 Order is the meaning: recording happens BEFORE interpretation, so the
 log holds what the program ASKED, not what the store did about it.
 

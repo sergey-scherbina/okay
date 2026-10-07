@@ -410,7 +410,7 @@ block text, run as a function of its continuation with each
 operation compiled to its handler's arm:
 
 ```scala
-val sw = Stager.StateWriter[Int, String, Int]()   // the row's staged interpreter
+val sw = Stagers.StateWriter[Int, String, Int]()   // the row's staged interpreter
 
 def step(i: Int, acc: Int): Handled[sw.Row, sw.R, Int] =
   if i >= 100 then Handled.pure(acc)
@@ -441,7 +441,7 @@ message; and a staged block is `Func`, fast and NOT stack-safe on a
 left-nested chain — a loop of thousands of operations is fine, a loop
 of millions is a Free block under `Cps`.
 
-**Which stagers ship** (specs/direct-stagers.md). `Stager.All[E, S, W,
+**Which stagers ship** (specs/direct-stagers.md). `Stagers.All[E, S, W,
 Err, A]` covers every effect a block is written over when it is not
 `Async` — `Reader % E + State % S + Writer % W + Throws % Err` — in one
 layout: the environment an argument, the state and the log threaded,
@@ -451,7 +451,7 @@ for those members are in the match and never chosen:
 
 ```scala
 case class Cfg(k: Int, limit: Int)
-val rt = Stager.All[Cfg, Unit, Nothing, String, Int]()   // Reader + Throws, nothing else
+val rt = Stagers.All[Cfg, Unit, Nothing, String, Int]()   // Reader + Throws, nothing else
 
 def total(xs: List[Int]): Handled[rt.Row, rt.R, Int] = Direct.staged(rt) {
   val cfg = Reader.ask[Cfg].?
@@ -469,9 +469,9 @@ rt.run(Cfg(2, 5), ())(total(List(1, 2, 3)))._2       // Left("over 6")
 `raise(e).?` inside a staged block drops the continuation and
 answers `Left(e)` — `run` is the block's catch; `catching`/`local`
 are handlers, i.e. programs, and stay outside (the rule above). The
-four singles — `Stager.Reading[E, A]`, `Stateful[S, A]`,
+four singles — `Stagers.Reading[E, A]`, `Stateful[S, A]`,
 `Logging[W, A]`, `Failing[Err, A]` — are the same arms with the tuple
-removed, for a block over one effect: `Stager.Stateful[Int, Int]()`
+removed, for a block over one effect: `Stagers.Stateful[Int, Int]()`
 runs as `st.run(s0)(block)` to `(state, answer)`. Why one class over
 the full row and not one per combination: a stager composed from
 per-effect arms cannot be written in plain Scala (the product would
@@ -742,7 +742,7 @@ def once[A, F[+_]](p: => A ! Once + F): A ! Once + F =
 def run[A, F[+_]](a: A ! Once + F): A ! F =
 ```
 
-`once` is the word behind `!.once`, `run` behind `Once.run`. `!.once(p)`
+`once` is the word behind `Once.once`, `run` behind `Once.run`. `Once.once(p)`
 is a program value: its first demand runs `p` and stores
 the answer under a fresh handle; every later demand of *that value*
 answers from the store. The handle carries no program, which is what
@@ -886,14 +886,14 @@ silently meant `def`: measured as `val, val, lazy val, lazy val, def,
 def`. Now the declaration decides, as the words do everywhere else in
 Scala. A val whose uses are coloured is a binding; a lazy val is the
 `Once` cell; a val held as a PROGRAM — marked at its uses, passed to
-`!.once`, stored — is a value and is untouched. A val read both ways
+`Once.once`, stored — is a value and is untouched. A val read both ways
 in one block is a compile error naming both readings.
 
 **What "once" counts.** Once per handle, and a handle is made per
-`!.once(p)` evaluated — as a `lazy val` is per declaration, not per
-right-hand side. `!.once(p) + !.once(p)` runs `p` twice; a bare `!p`
-beside a `!.once(p)` runs every time and knows nothing of the cell;
-`!.once` inside a `def` makes a new handle per call. Share the VALUE
+`Once.once(p)` evaluated — as a `lazy val` is per declaration, not per
+right-hand side. `Once.once(p) + Once.once(p)` runs `p` twice; a bare `!p`
+beside a `Once.once(p)` runs every time and knows nothing of the cell;
+`Once.once` inside a `def` makes a new handle per call. Share the VALUE
 to share the cell. The type does not say which values are once'd,
 any more than `State` in a row says what the state is.
 

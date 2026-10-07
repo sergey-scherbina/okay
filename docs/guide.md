@@ -415,7 +415,7 @@ def tracked[A, F[+_]](p: A ! (Users + F)): A ! (State % Store + Writer % String 
 The expected type solves every row, so there is no type argument and
 `F` — whatever the caller was already doing — rides through untouched.
 
-Interpreters compose, and are better small. `!.tracing(p)(show)`
+Interpreters compose, and are better small. `Writer.tracing(p)(show)`
 records every operation into a `Writer` and then performs it exactly
 as before — it answers nothing, and knows nothing about the effect
 beyond `show` — so the storage half can be written without a Writer
@@ -423,7 +423,7 @@ anywhere in it:
 
 ```scala
 def tracked[A, F[+_]](p: A ! (Users + F)): A ! (State % Store + Writer % String + F) =
-  stored[A, Writer % String + F](!.tracing(p)([X] => (e: Users[X]) => e.toString))
+  stored[A, Writer % String + F](Writer.tracing(p)([X] => (e: Users[X]) => e.toString))
 ```
 
 Order is the meaning: recording happens BEFORE interpretation, so the
@@ -571,7 +571,7 @@ machine's cores (`okay.java.Parallel`) by the instance in scope. No
 evidence per element type: a platform stores objects, and the Spark
 instance says so in its type rather than asking a `ClassTag` per step.
 Over the seam the same road is an EFFECT, `Tables`: the plan is a value
-(`!.tracing` prints it), the handler is one translation into
+(`Writer.tracing` prints it), the handler is one translation into
 `State % Heap[D]` for every platform, and an operation the seam lacks —
 `Sort` — is a new signature in the row, answered through the primitives
 or natively, with no platform's build touched. The heap holds plans, not
@@ -1434,7 +1434,7 @@ self-call is deferred into the tree, and every refusal is a
 positioned compile error naming the workaround. Two more doors on the
 same block: `Direct.staged(stager) { … }` compiles each operation to
 its handler's arm when the handlers are known at the call site
-(`Stager.All` for Reader/State/Writer/Throws; 2.24x–2.56x over the
+(`Stagers.All` for Reader/State/Writer/Throws; 2.24x–2.56x over the
 Free block, parity with the hand-written program), and
 `generator[W] { … }` makes `for … yield`, `Gen.emit` and `Gen.stop`
 a Python-style generator read lazily through `Gen` (§3). The whole

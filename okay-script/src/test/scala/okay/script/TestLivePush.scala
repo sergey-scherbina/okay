@@ -26,6 +26,8 @@ class TestLivePush extends munit.FunSuite:
       |import okay.given
       |import okay.freer.*
       |import okay.freer.given
+      |import okay.std.*
+      |import okay.std.given
       |import okay.ui.*
       |import okay.script.api.*
       |// the server's two ticks: each "presses" the shown button, as okay-ui's own timer test does

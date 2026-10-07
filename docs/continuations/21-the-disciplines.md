@@ -39,10 +39,15 @@ the same thing again on every replay, and a clock read between two
 pauses reads a different time. Both are in `TestDelimPersist`, and that
 measurement is the reason anybody believes the rule.
 
-So the row of a replayable program is constrained:
+So the row of a replayable program is constrained: every operation it can hold extends
+`Replayable.Safe`, a marker the effect declares where it is defined — `Shift` in okay-freer, `State`,
+`Reader` and `Throws` in okay-std:
 
+<!-- not-a-test: the declarations, quoted from three files -->
 ```scala
-type Safe = Shift[?, Any] | State[?, Any] | Reader[?, Any] | Throws[?, Any]
+sealed trait Shift[R, +A] extends Replayable.Safe
+enum State[S, +A] extends Replayable.Safe derives Effect
+case class Throws[E, +A](e: E) extends Final, Replayable.Safe derives Effect
 ```
 
 **In, and why each:** `State` and `Reader` are re-threaded from the

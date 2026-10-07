@@ -5485,7 +5485,7 @@ since effect-op-cost, 2026-09-27, the State+Writer Free lane reads 13.1
 — §2c's 14.2 is the same lane before that change; the Reader+Throws row was not
 re-run), parity to 1% with the
 hand-written program (the +800 and +2 400 B are the block's hoisted
-vals). The stagers that ship (direct-stagers): `Stager.All[E, S, W,
+vals). The stagers that ship (direct-stagers): `Stagers.All[E, S, W,
 Err, A]` over Reader + State + Writer + Throws in one layout, a subrow
 through `Unit`/`Nothing` slots — priced at +2% / +5.6% B on the
 State+Writer block for two unused slots, the extra `env =>` level per

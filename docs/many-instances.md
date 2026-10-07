@@ -227,8 +227,8 @@ and Sieczkowski, POPL 2020): a lexical binder in the types, a fresh
 label at run time. `okay.freer.Lexical` is the API:
 
 ```scala
-val lex = run(Lexical.State.deep[Int, Int, Shift % ? + Pure](0) { outer =>
-  Lexical.State.deep[Int, Int, Shift % ? + Pure](10) { inner => outer.get.flatMap(o => inner.get.map(i => o * 100 + i)) }
+val lex = run(LexicalState.deep[Int, Int, Shift % ? + Pure](0) { outer =>
+  LexicalState.deep[Int, Int, Shift % ? + Pure](10) { inner => outer.get.flatMap(o => inner.get.map(i => o * 100 + i)) }
     .map(_._2)
 })
 assertEquals(lex, (0, 10), "outer answered 0, inner answered 10")
@@ -269,7 +269,7 @@ body's whole row, `Inst[F, G]`. `deep` needs `Shift` in it.
 keeps its cell and needs no machine, and the program is an ordinary one:
 
 ```scala
-val p: (Int, Int) ! Pure = Lexical.State[Int, Int, Pure](5)(s => s.get.flatMap(v => s.set(v * 3)))
+val p: (Int, Int) ! Pure = LexicalState[Int, Int, Pure](5)(s => s.get.flatMap(v => s.set(v * 3)))
 ```
 
 The guard and the `Shift` machine appear only when the row has `Shift`.
@@ -285,7 +285,7 @@ bytes, where `tail` costs 1.65x.
 
 ```scala
 def done[A, G[+_]](p: A ! SI + G): A ! G = Instances.exhausted[State % Int, A, G](p)
-assertEquals(!.run(done(Lexical.State.walk[Int, Int, Pure](5)(s => s.get.flatMap(v => s.set(v * 3))))), (15, 15))
+assertEquals(!.run(done(LexicalState.walk[Int, Int, Pure](5)(s => s.get.flatMap(v => s.set(v * 3))))), (15, 15))
 ```
 
 A walk sees the program's spine. An instance operation performed inside
@@ -297,7 +297,7 @@ the default because of that rule and because `Instances.Of[F]` has to
 appear in the row.
 
 `Lexical.handle` picks by what the clauses are: `TailClauses` run tail,
-`Clauses` run deep. `Lexical.State(s0)`
+`Clauses` run deep. `LexicalState(s0)`
 is tail. `Lexical.Stacked` has deep and tail instances whose use
 outside their installation does not compile. Details and numbers are
 in specs/lexical-instances.md. A row handler stays the right choice for
@@ -315,7 +315,7 @@ lexically. The row handler is what you use when there is one of a kind.
 | named when you write the type, or an ALREADY WRITTEN program must run twice | any | `Tag` | a compile-time key | `Tag.Of[K, F]` each | a wrapper per operation, no cast |
 | made at run time, as cells | state | `Refs` | the cell | `Refs` | a heap and one cast |
 | made at run time from data, one handler choosing by handle | any | `Instances` | the handle | `Instances.Of[F]` | a wrapper per operation, no cast |
-| installed where they are used, nested, or reached past a handler of the same effect | any | `Lexical.State(s0)` / `Lexical.handle` (tail) | the installation | nothing | 1.65x |
+| installed where they are used, nested, or reached past a handler of the same effect | any | `LexicalState(s0)` / `Lexical.handle` (tail) | the installation | nothing | 1.65x |
 | the same, cheapest, on the spine only | tail-resumptive | `Lexical.walk` (by name) | a fresh `Instances` handle | `Instances.Of[F]` | 1.29x |
 | the same, with multi-shot, dropped or stored `k` | any | `Lexical.deep` (by name) | a prompt | nothing (needs `Shift`) | ~7x bytes, ~4x time |
 | any of those, and use outside the installation must not compile | deep or tail | `Lexical.Stacked` | a prompt keyed in the row | `Shift % i.p.type` | as unstacked |
@@ -373,7 +373,7 @@ two writers collect the right elements — but only under
 `Typeable[W]` rather than testing the class, and is an OPT-IN:
 
 ```scala
-import okay.freer.Writer.byValue.given
+import okay.std.Writer.byValue.given
 given writerK[W](using t: Typeable[W]): TypeableK.ByValue[Writer % W]
 ```
 

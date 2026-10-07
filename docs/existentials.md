@@ -25,7 +25,7 @@ the argument is about the existential, not the spelling.)
 ```scala
 case Bind(Effect(e), k) => <|>[Take % I, Writer % M](e) match
   case Left(Take.Await())  => effect(Take.Await()).flatMap(oi => pull(k(oi))(cont))   // no cast
-  case Right(w)            => cont(Some(okay.freer.out(w)), k(Erased.resumeWith(w)))        // cast
+  case Right(w)            => cont(Some(okay.std.out(w)), k(Erased.resumeWith(w)))        // cast
 ```
 
 `Bind` introduces an existential — call it `X`; the compiler prints
@@ -54,7 +54,7 @@ Why an `X` is needed at all: `Bind(Effect(e), k)` means "perform `e`,
 then continue with its result", and a tell's result is *the value
 told* — which is why the signature can be an identity, and why nothing
 has to be allocated to carry the answer. The value is in hand
-(`okay.freer.out(w): M`). Only its type is unavailable. The free `tell` and
+(`okay.std.out(w): M`). Only its type is unavailable. The free `tell` and
 this cast are one design decision seen from two sides.
 
 ## What was tried
@@ -272,7 +272,7 @@ continuation is `k(())` and asserts nothing. It removes:
 - three of the five `Erased.unreachable` uses in `Pipe`, where a bare
   writer `Effect` ends a program and the refinement gives `Unit` there
   too;
-- the `okay.freer.out(w)` calls that went with them, now field reads;
+- the `okay.std.out(w)` calls that went with them, now field reads;
 - and the caveat the identity encoding always carried: *"a told String
   is just a String at run time, so forward only effects whose
   operations are class-distinct from W."* A `Say` is class-distinct

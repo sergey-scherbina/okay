@@ -153,7 +153,7 @@ Two, so nobody copies the example and wonders.
 `spend[Pure](30)` names the row. The doors in `Shift` itself do
 better — `!Shift.exit(value)` needs no type argument at all — by
 taking the direct block's own colouring as evidence
-(`DirectCtx[F]` and `Reader.RowOf[F]`, both visible in `Shift.exit`'s
+(`DirectCtx[F]` and `RowOf[F]`, both visible in `Shift.exit`'s
 signature). It costs an inline definition and some plumbing, and it is
 what you do when an operation graduates from useful to used
 constantly.

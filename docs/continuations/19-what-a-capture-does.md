@@ -103,7 +103,7 @@ line survives nothing.
 Two shapes that would be wrong are not available:
 
 ```scala
-okay.freer.bracket[Int, Int, okay.freer.Shift % ? + okay.Pure](1)(_ => ())(r => okay.freer.pure(r))
+okay.std.bracket[Int, Int, okay.freer.Shift % ? + okay.Pure](1)(_ => ())(r => okay.freer.pure(r))
 // error, mentioning: Handler
 ```
 

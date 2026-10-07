@@ -148,7 +148,7 @@ index above lists them all with one-line summaries.
   specs/staged-effects.md) — and only when the program is static at
   the call site: on a loop-shaped program the fused `Free` walk wins
   (specs/handler-fusion.md, stage B). The same rule reaches a `direct`
-  block: `Direct.staged(Stager.All[E, S, W, Err, A]()) { … }` compiles
+  block: `Direct.staged(Stagers.All[E, S, W, Err, A]()) { … }` compiles
   each operation of Reader/State/Writer/Throws to its handler's arm at
   compile time — 2.24x–2.56x over the same block as a Free program,
   parity with the hand-written `Func` program

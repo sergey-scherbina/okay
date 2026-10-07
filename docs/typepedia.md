@@ -169,7 +169,7 @@ same material with the measurements attached.
   answer type `R`, with the row in the type so `Direct.staged` can read
   it. A `Stager` is the row's interpreter as an `inline match` over its
   constructors, applied by the macro to each operation as written, so
-  the compiler picks the arm — no `split`. `Stager.All[E, S, W, Err, A]`
+  the compiler picks the arm — no `split`. `Stagers.All[E, S, W, Err, A]`
   stages `Reader % E + State % S + Writer % W + Throws % Err` in one
   layout (`E => (S, Vector[W]) => ((S, Vector[W]), Either[Err, A])`);
   a subrow puts `Unit`/`Nothing` in the slots it does not use. The
@@ -244,7 +244,7 @@ same material with the measurements attached.
 - **`Choose`** — nondeterminism; the handler is genuinely multi-shot;
   the canonical `MonadPlus`. A `LazyList` of alternatives is an
   INFINITE choice point (Seq is the parameter, laziness crosses).
-- **`Once`** — call-by-need for programs: `!.once(p)` runs `p` at
+- **`Once`** — call-by-need for programs: `Once.once(p)` runs `p` at
   the first demand and answers from a cell after, `Once.run` holds the
   cells as threaded state. `lazy val x = !p` in a `direct` block is
   this word. Multi-shot is handler order: `runChoice(Once.run(p))`
@@ -650,7 +650,7 @@ same material with the measurements attached.
   `Table[A]` — an opaque slot on the handler's heap (`Refs.Ref`).
   `Tables.via(B)` translates into `State % Heap[D]` through any
   `Bulk[D]`; `Tables.run(B)(prog)` runs a plan on a platform. A plan is a
-  value: `!.tracing` prints it. **`Sort`** — an operation `Bulk` does not
+  value: `Writer.tracing` prints it. **`Sort`** — an operation `Bulk` does not
   have, added as a signature in the row: `Sort.viaTables` (through the
   primitives, any platform) or `SparkBulk.sort` (native). Direct style
   binds handles with a mark: `val deps = !departures.cache`.
@@ -909,14 +909,14 @@ across twenty call sites is a claim nobody can audit. So each family
 has ONE named function, in the file that owns the equation it asserts,
 and nothing else in the library casts for that reason:
 
-- **`okay.freer.out` / `okay.answer`** (Writer) — `opaque type Writer[W, +A]
+- **`okay.std.out` / `okay.answer`** (Writer) — `opaque type Writer[W, +A]
   = W`, and `Writer(w): Writer[W, W]` is the only injector, so an
   operation IS its element and its answer type equals it. `out` needs
   no cast at all (inside the file the opaque type is transparent);
   `answer` asserts the phantom equation once. Making `Writer` a GADT
   would let the compiler check it and cost an allocation per `tell` —
   which is the whole of why it is 286ns against cats' 1127.
-- **`okay.freer.produced`** (Produce) — the same equation for the identity
+- **`okay.std.produced`** (Produce) — the same equation for the identity
   signature the streams are built on.
 - **`Chunks.bound`** — the element under a `Bind`, which is the BIND's
   intermediate and genuinely existential. `case Inject(c)` needs
@@ -973,7 +973,7 @@ and nothing else in the library casts for that reason:
     measurement.** Splitting the clauses puts a `using` between them,
     and that clause is resolved BEFORE any value argument is typed —
     so the first clause's parameters stop being inferable and become
-    mandatory. `!.tracing(prog)(show)` turns into "Ambiguous given
+    mandatory. `Writer.tracing(prog)(show)` turns into "Ambiguous given
     instances ... TypeableK[F]", because F is still a variable when
     the context bound is searched. The rule that follows: **the
     reorder is a win only where EVERY call site already writes those

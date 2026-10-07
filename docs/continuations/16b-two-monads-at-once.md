@@ -510,11 +510,11 @@ and is used, unchanged, in the basket's row, in a bigger row with a
 configuration, and under either handler order:
 
 ```scala
-type Taxed = okay.freer.Reader % Int + Basket
+type Taxed = okay.std.Reader % Int + Basket
 
 def taxed(items: List[String]): Int ! Taxed =
   for
-    vat   <- okay.freer.Reader.ask[Int].at[Taxed]
+    vat   <- okay.std.Reader.ask[Int].at[Taxed]
     total <- basket(items).at[Taxed]
     _     <- audit(s"vat $vat%").at[Taxed]
   yield total * (100 + vat) / 100

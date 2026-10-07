@@ -1,4 +1,6 @@
 package okay.freer
+
+import okay.std.*
 import scala.compiletime.testing.typeChecks
 
 /**

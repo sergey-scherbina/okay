@@ -285,7 +285,7 @@ Logic.fairBind(nats)(x => if x*x == 16 then pure(x) else fail)
 Logic.cut(m)                             // the cut: first answer only
 ```
 
-`!.once(p)` is call-by-need: `p` runs at its
+`Once.once(p)` is call-by-need: `p` runs at its
 first demand and answers from a cell after, under `Once.run`. In a
 `direct` block it is `lazy val`:
 
@@ -332,7 +332,7 @@ compiles to a function of its continuation with each operation
 already replaced by its handler's arm — no dispatch, no tree:
 
 ```scala
-val sw = Stager.StateWriter[Int, String, Int]()      // the row's staged interpreter
+val sw = Stagers.StateWriter[Int, String, Int]()      // the row's staged interpreter
 
 def step(i: Int, acc: Int): Handled[sw.Row, sw.R, Int] =
   if i >= 100 then Handled.pure(acc)
@@ -356,10 +356,10 @@ operation as written, pays. The price is stated where it is paid: a
 `Stager` object per row and answer layout, and a staged block is
 `Func` — fast, and not stack-safe on a left-nested chain of
 millions. The stager for the rows you actually write is
-`Stager.All[E, S, W, Err, A]` — Reader, State, Writer and Throws in
+`Stagers.All[E, S, W, Err, A]` — Reader, State, Writer and Throws in
 one layout, `Unit`/`Nothing` in the slots a block does not use — so a
 block that reads a configuration and may fail is
-`Direct.staged(Stager.All[Cfg, Unit, Nothing, String, Int]()) { … }`,
+`Direct.staged(Stagers.All[Cfg, Unit, Nothing, String, Int]()) { … }`,
 run as `.run(cfg, ())` to `((state, log), Either[String, Int])`; a
 `raise` inside ends the block with the `Left`
 ([direct style](direct-style.md#layer-2½--the-staged-block-the-handler-known-at-the-call-site)). The lineage is Xie & Leijen's evidence passing and Schuster

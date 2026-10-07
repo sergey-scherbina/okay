@@ -12,7 +12,7 @@ So "the same classes on both sides" means two directions:
   `whenS` and a `direct` block run over a cats `IO`, a `ZStream`, a kyo
   `A < S`;
 - **outward**: cats' classes answer for OUR types, so cats' `traverse`,
-  `mapN` and `parTraverse` run over `okay.freer.Validated`, `Static` and `Par`
+  `mapN` and `parTraverse` run over `okay.std.Validated`, `Static` and `Par`
   and keep what makes each of them worth having.
 
 Outward stops at cats, because only cats has classes.
