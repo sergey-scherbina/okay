@@ -1,6 +1,4 @@
 package okay.freer
-
-
 /**
  * specs/shift0-dollar.md, STAGE 0: what today's `Shift` already says
  * about shift0 and λ$'s dollar, before anything is built.

@@ -3,9 +3,11 @@ package okay.clojure
 import okay.{Async, Chunks, Stage, through}
 
 import okay.freer.{%, +}
-import okay.freer.{!, Choose, Reader, State, Throws, Writer, effect, pure, runChoice, runEither}
+import okay.freer.{!, effect, pure}
+import okay.std.{Choose, Reader, State, Throws, Writer, runChoice, runEither}
 import okay.given
 import okay.freer.given
+import okay.std.given
 import java.util.concurrent.atomic.AtomicInteger
 
 /**

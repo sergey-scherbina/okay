@@ -3,6 +3,10 @@ package okay.clojure
 
 
 import okay.freer.*
+
+
+
+import okay.std.*
 import okay.{Async, Scheduler, Schedulers, given}
 
 /**

@@ -4,6 +4,7 @@ package okay.chatweb
 
 import okay.{Async, Channel, async}
 import okay.freer.*
+import okay.std.*
 import okay.given
 import okay.ui.{Event, React, ReactJs, Ui}
 import scala.scalajs.js

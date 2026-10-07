@@ -4,6 +4,7 @@ import okay.{Bulk, Chunks, Source, localBulk, runCollect}
 import okay.Chunks.elements
 import okay.given
 import okay.freer.given
+import okay.std.given
 import okay.testkit.Munit.Diagnosed
 
 /** a sealed domain, two levels deep, and a desk's table over it */

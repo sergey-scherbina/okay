@@ -4,6 +4,7 @@ import okay.{Async, async, asOkay, >=>}
 import okay.freer.{!}
 import okay.given
 import okay.freer.given
+import okay.std.given
 import okay.Direct.*
 import okay.cats.asIO
 import okay.cats.given

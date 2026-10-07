@@ -2,7 +2,11 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import okay.freer.given
+import okay.std.given
 import !.*
 import Row.plus
 
@@ -53,7 +57,7 @@ class TestGenerate extends munit.FunSuite {
     var seen = 0
     Stream.fold(silent)(using Fold[Int, Unit](())((_, _) => seen += 1))
     assertEquals(seen, 0)
-    assert(compileErrors("val p: okay.freer.Producer[Int] = okay.freer.pure(5)").isEmpty)
+    assert(compileErrors("val p: okay.std.Producer[Int] = okay.freer.pure(5)").isEmpty)
 
     // Feed: the answer is always Unit, so `pure(5)` needs Scala's own
     // value-discard adaptation to compile at all — this ALSO produces
@@ -69,7 +73,7 @@ class TestGenerate extends munit.FunSuite {
     // trap is not closed by a TYPE the compiler enforces here — it is
     // made INSPECTABLE at the point Producer's identical-looking
     // `pure(a)` gives the reviewer nothing to see at all.
-    assert(compileErrors("val f: okay.freer.Feed[Int] = okay.freer.pure(5)").isEmpty)
+    assert(compileErrors("val f: okay.std.Feed[Int] = okay.freer.pure(5)").isEmpty)
 
     // the honest way to end an empty Feed still compiles clean, no
     // adaptation needed since the value already IS Unit

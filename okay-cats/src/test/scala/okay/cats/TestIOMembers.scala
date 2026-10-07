@@ -5,10 +5,12 @@ import _root_.cats.effect.unsafe.implicits.global
 import okay.{Async, asOkay, async, via}
 import okay.freer.{%, +}
 import okay.freer.perform
-import okay.freer.{!, Handler, State}
+import okay.freer.{!, Handler}
+import okay.std.{State}
 import okay.freer.Row.bind
 import okay.given
 import okay.freer.given
+import okay.std.given
 import java.util.concurrent.atomic.AtomicInteger
 
 /**

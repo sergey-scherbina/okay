@@ -3,6 +3,7 @@ package okay.cluster.foreign
 import okay.freer.{+}
 import okay.freer.{!, pure}
 import okay.freer.given
+import okay.std.given
 import okay.freer.Row.plus
 import okay.codec.Schema
 import okay.frege.Prog.TProg

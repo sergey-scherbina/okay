@@ -3,7 +3,8 @@ package okay.docs.cassandra
 import okay.{Async, async, ChunkBuf, Source}
 
 import okay.freer.{+, %}
-import okay.freer.{!, Chunk, effect, Writer}
+import okay.freer.{!, effect}
+import okay.std.{Chunk, Writer}
 import okay.codec.{Codecs, Schema}
 import okay.docs.{Cond, Consistency, Docs, PutResult}
 import com.datastax.oss.driver.api.core.{ConsistencyLevel, CqlSession}

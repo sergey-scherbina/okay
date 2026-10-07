@@ -1,9 +1,11 @@
 package okay.jdbc
 
 import okay.{Async, Source}
-import okay.freer.{!, Chunk, Resource}
+import okay.freer.{!}
+import okay.std.{Chunk, Resource}
 import okay.given
 import okay.freer.given
+import okay.std.given
 import okay.sql.{Isolation, Pool, Sql, SqlValue}
 import java.sql.DriverManager
 import java.util.concurrent.atomic.AtomicInteger

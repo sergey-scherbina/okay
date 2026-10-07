@@ -3,7 +3,8 @@ package okay.ts
 import scala.scalajs.js
 import okay.{Async}
 import okay.freer.{%}
-import okay.freer.{!, Choose, Reader, effect, runChoice, given}
+import okay.freer.{!, effect, given}
+import okay.std.{Choose, Reader, runChoice}
 import okay.codec.Schema
 
 object TestTs:

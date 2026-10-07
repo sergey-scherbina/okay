@@ -1,9 +1,10 @@
 package okay.x402.mcp
 import okay.freer.*
-
+import okay.std.*
 import okay.{Answers, ==>, Async, CanBlock}
 import okay.given
 import okay.freer.given
+import okay.std.given
 import okay.agent.{Tool, ToolCall}
 import okay.codec.Json
 import okay.codec.Json.*

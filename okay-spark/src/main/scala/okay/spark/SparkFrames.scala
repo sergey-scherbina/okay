@@ -3,8 +3,9 @@ package okay.spark
 
 import okay.{Tables}
 import okay.freer.*
+import okay.std.*
 import okay.freer.given
-
+import okay.std.given
 import okay.Tables.{Heap, Table}
 import okay.codec.Schema
 import okay.sql.{Query, SqlValue, Structured}

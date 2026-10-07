@@ -1,7 +1,7 @@
 package okay.cluster
 
 import okay.{Channel, Scheduler}
-import okay.freer.Chunk
+import okay.std.Chunk
 import okay.given
 import okay.codec.{Cbor, Schema}
 import okay.arrow.{OkayArrow, Rows}

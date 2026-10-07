@@ -2,6 +2,9 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import org.scalacheck.{Gen as G}
 import org.scalacheck.Prop.forAll
 

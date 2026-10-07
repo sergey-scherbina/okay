@@ -1,6 +1,6 @@
 package okay.staging
 
-import okay.freer.State
+import okay.std.State
 import scala.quoted.*
 import scala.quoted.staging.{Compiler, run}
 import scala.util.Try

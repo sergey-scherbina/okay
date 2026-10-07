@@ -3,9 +3,10 @@ package okay.http
 
 import okay.{Async}
 import okay.freer.*
-
+import okay.std.*
 import okay.given
 import okay.freer.given
+import okay.std.given
 import java.nio.charset.StandardCharsets.UTF_8
 
 /**

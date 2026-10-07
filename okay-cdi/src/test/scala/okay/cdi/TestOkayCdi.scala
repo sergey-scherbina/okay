@@ -2,7 +2,9 @@ package okay.cdi
 
 import okay.freer.*
 
+import okay.std.*
 import okay.freer.given
+import okay.std.given
 import jakarta.enterprise.inject.literal.NamedLiteral
 import jakarta.enterprise.inject.se.SeContainerInitializer
 

@@ -2,14 +2,18 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import okay.freer.given
+import okay.std.given
 import okay.freer.Row.*
 import okay.Direct.*
 import scala.language.implicitConversions
 
 /**
  * Call-by-need for programs (direct-once, specs/direct-macro.md):
- * `Once` is the effect, `!.once(p)` the word, `Once.run` the handler
+ * `Once` is the effect, `Once.once(p)` the word, `Once.run` the handler
  * whose state is the cells. `Delay` is by-name (forced every time the
  * loop reaches it); a once'd program runs at the first demand and
  * answers from its cell after. In a `direct` block `lazy val x = !p`
@@ -101,44 +105,44 @@ class TestDirectOnce extends munit.FunSuite {
 
   // ---- the effect, without direct
 
-  test("!.once: three demands, one run, one value") {
+  test("Once.once: three demands, one run, one value") {
     var hits = 0
-    val q: Int ! R = !.once(Free.delay(() => { hits += 1; pure(hits * 10) }))
+    val q: Int ! R = Once.once(Free.delay(() => { hits += 1; pure(hits * 10) }))
     val prog: Int ! R = q.flatMap(a => q.flatMap(b => q.map(c => a + b + c)))
     assertEquals(logged(prog), (Seq(), 30))
     assertEquals(hits, 1)
   }
 
-  test("!.once: never demanded, never run — construction does no work") {
+  test("Once.once: never demanded, never run — construction does no work") {
     var hits = 0
-    val q: Int ! R = !.once(Free.delay(() => { hits += 1; pure(1) }))
+    val q: Int ! R = Once.once(Free.delay(() => { hits += 1; pure(1) }))
     assertEquals(logged(pure[R, Int](7).map(_ + 1)), (Seq(), 8))
     assertEquals(hits, 0)
     val _ = q
   }
 
-  test("!.once: what is in it is exactly what was passed — a bare p beside it runs every time") {
+  test("Once.once: what is in it is exactly what was passed — a bare p beside it runs every time") {
     val p: Int ! R = direct { Writer("p").reflect; 1 }
-    val q: Int ! R = !.once(p)
+    val q: Int ! R = Once.once(p)
     val r: Int ! R = direct { !q + !p + !q + !p }
     assertEquals(logged(r), (Seq("p", "p", "p"), 4))
   }
 
-  test("!.once: two calls are two handles") {
+  test("Once.once: two calls are two handles") {
     val p: Int ! R = direct { Writer("p").reflect; 1 }
-    val r: Int ! R = direct { !(!.once(p)) + !(!.once(p)) }
+    val r: Int ! R = direct { !(Once.once(p)) + !(Once.once(p)) }
     assertEquals(logged(r), (Seq("p", "p"), 2))
   }
 
-  test("!.once: a knot is a loud error, not a hang") {
-    lazy val h: Int ! R = !.once(h.map(_ + 1))
+  test("Once.once: a knot is a loud error, not a hang") {
+    lazy val h: Int ! R = Once.once(h.map(_ + 1))
     val e = intercept[IllegalStateException](logged(h))
     assert(e.getMessage.contains("Once"), e.getMessage)
   }
 
-  test("!.once: the same program run twice replays the same trace — the tree holds no cell") {
+  test("Once.once: the same program run twice replays the same trace — the tree holds no cell") {
     var hits = 0
-    val q: Int ! R = !.once(Free.delay(() => { hits += 1; pure(hits) }))
+    val q: Int ! R = Once.once(Free.delay(() => { hits += 1; pure(hits) }))
     val prog: Int ! R = direct { !q + !q }
     assertEquals(logged(prog), (Seq(), 2))
     assertEquals(logged(prog), (Seq(), 4))

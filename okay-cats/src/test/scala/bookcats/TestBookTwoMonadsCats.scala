@@ -161,9 +161,10 @@ object LayeredBasket:
 
 /** III. algebraic effects: operations in a row, their meaning given by handlers where the program runs */
 object EffectsBasket:
-  import okay.freer.{Choose, Throws, Writer, choose, raise, runChoice, runEither}
+  import okay.std.{Choose, Throws, Writer, choose, raise, runChoice, runEither}
   import okay.freer.Row.at
   import okay.freer.given
+  import okay.std.given
   import Shops.prices
 
   type Basket = Choose + Writer % String + Throws % String
@@ -213,11 +214,11 @@ object EffectsBasket:
     Writer.tell(msg)
 
   /** the same helper in a program with MORE effects (a configuration) */
-  type Taxed = okay.freer.Reader % Int + Basket
+  type Taxed = okay.std.Reader % Int + Basket
 
   def taxed(items: List[String]): Int ! Taxed =
     for
-      vat   <- okay.freer.Reader.ask[Int].at[Taxed]
+      vat   <- okay.std.Reader.ask[Int].at[Taxed]
       total <- basket(items).at[Taxed]
       _     <- audit(s"vat $vat%").at[Taxed]
     yield total * (100 + vat) / 100
@@ -330,9 +331,10 @@ object LayeredTrips:
     !.run(Shift.run[List[Out], Pure](trip(from))).map(o => (o.log, o.value))
 
 object EffectsTrips:
-  import okay.freer.{Choose, Throws, Writer, choose, raise, runChoice, runEither}
+  import okay.std.{Choose, Throws, Writer, choose, raise, runChoice, runEither}
   import okay.freer.Row.at
   import okay.freer.given
+  import okay.std.given
   import Trips.{routes, soldOut}
 
   /** team A's helper: only the effects IT uses */
@@ -422,8 +424,9 @@ class TestBookTwoMonadsCats extends munit.FunSuite:
   }
 
   test("effects: the two teams' helpers, each on its own row, widen into the union row with no conversion") {
-    import okay.freer.{Choose, Writer, runChoice, runEither}
+    import okay.std.{Choose, Writer, runChoice, runEither}
     import okay.freer.given
+    import okay.std.given
     val checked = runEither[Int, Choose + Writer % String, String](EffectsBasket.teams(List("tea", "cake")))
     val logged  = Writer.collect[String, Either[String, Int], Choose](checked)
     assertEquals(!.run(runChoice[(Vector[String], Either[String, Int]), Pure](logged)).toList, expected)
@@ -462,9 +465,10 @@ class TestBookTwoMonadsCats extends munit.FunSuite:
   }
 
   test("effects: the helper written once works in a bigger row and under either handler order") {
-    import okay.freer.{Choose, Throws, Writer, runChoice, runEither}
+    import okay.std.{Choose, Throws, Writer, runChoice, runEither}
     import okay.freer.given
-    val withVat = okay.freer.Reader.run[Int, Int, EffectsBasket.Basket](20)(EffectsBasket.taxed(List("tea")))
+    import okay.std.given
+    val withVat = okay.std.Reader.run[Int, Int, EffectsBasket.Basket](20)(EffectsBasket.taxed(List("tea")))
     val checked = runEither[Int, Choose + Writer % String, String](withVat)
     val logged  = Writer.collect[String, Either[String, Int], Choose](checked)
     assertEquals(!.run(runChoice[(Vector[String], Either[String, Int]), Pure](logged)).toList, List(

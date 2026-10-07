@@ -2,7 +2,11 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import okay.freer.given
+import okay.std.given
 /**
  * Probe: can the row be attached AFTER the fact, leaving every
  * constructor exactly as it ships today?

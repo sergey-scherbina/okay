@@ -3,7 +3,12 @@ package okay
 
 
 import okay.freer.*
+
+
+
+import okay.std.*
 import okay.freer.given
+import okay.std.given
 /**
  * chunk-stack-safety: a stage that accumulates without emitting takes
  * `through`'s producer/stage handshake once per element, and only an

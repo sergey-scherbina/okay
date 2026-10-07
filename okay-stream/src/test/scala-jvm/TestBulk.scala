@@ -2,7 +2,11 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import okay.freer.given
+import okay.std.given
 import okay.Chunks.elements
 import java.nio.file.Files
 import scala.jdk.CollectionConverters.*
@@ -88,7 +92,7 @@ class TestTables extends munit.FunSuite {
   }
 
   test("a plan is data: tracing prints it before anything runs") {
-    val traced = !.tracing(revenue(sales, cities).plus[okay.freer.Pure])([X] => (e: Tables[X]) => e.productPrefix)
+    val traced = Writer.tracing(revenue(sales, cities).plus[okay.freer.Pure])([X] => (e: Tables[X]) => e.productPrefix)
     val handled = State.handle(Tables.Heap.empty[Chunks])(Tables.via(localBulk)(traced))
     val (plan, (_, got)) = !.run(Writer.run(handled))
     assertEquals(plan, Seq("Of", "Select", "Of", "Join", "Select", "Aggregate"))

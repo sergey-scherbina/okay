@@ -2,6 +2,9 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import okay.freer.Free.{Bind, Inject, Return}
 import scala.annotation.tailrec
 import scala.reflect.ClassTag

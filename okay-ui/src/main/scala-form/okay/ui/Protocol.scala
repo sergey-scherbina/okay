@@ -198,8 +198,10 @@ ${describe(Vector(summon[Schema[Msg]], summon[Schema[Ui]], summon[Schema[Event]]
    * `out` speaks the protocol. */
   def conformance: Vector[String] =
     import okay.through
-    import okay.freer.{!, Writer}
+    import okay.freer.{!}
+    import okay.std.{Writer}
     import okay.freer.given
+    import okay.std.given
     def view(n: Int): Ui = Ui.Box(Vector(
       Ui.Text(s"count: $n", Style(tone = Tone.Emphasis)),
       Ui.Form(Vector(Ui.Input("", "name", "Name"), Ui.Check(n % 2 == 0, "even", "Even")), "Save", "f"),

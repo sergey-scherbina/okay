@@ -2,9 +2,11 @@ package okay.r
 
 import okay.freer.{%, +}
 import okay.freer.*
+import okay.std.*
+import okay.freer.{!, given}
 
 
-import okay.freer.{!, Writer, given}
+import okay.std.{Writer}
 import okay.freer.Row.plus
 
 object TestRStream:

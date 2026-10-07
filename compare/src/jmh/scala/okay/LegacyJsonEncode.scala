@@ -3,7 +3,11 @@ import okay.freer.{Cps, />>}
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import okay.freer.given
+import okay.std.given
 import okay.freer.{/>>}
 import okay.freer.Cps
 import okay.codec.{Base64, Codecs, Json, Schema}

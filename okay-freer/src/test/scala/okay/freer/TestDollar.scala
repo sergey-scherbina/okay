@@ -1,6 +1,4 @@
 package okay.freer
-
-
 /**
  * specs/shift0-dollar.md STAGE 1: `Shift.dollar`, λ$'s primitive
  * delimiter, in the machine. Every expected value below was worked by

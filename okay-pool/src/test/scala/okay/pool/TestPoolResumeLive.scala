@@ -5,6 +5,7 @@ package okay.pool
 import okay.{Async}
 import okay.given
 import okay.freer.given
+import okay.std.given
 import okay.cluster.Folded
 import okay.codec.{Codecs, Json}
 import okay.resilience.Discovery

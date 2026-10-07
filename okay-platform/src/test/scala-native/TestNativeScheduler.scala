@@ -2,7 +2,11 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import okay.freer.given
+import okay.std.given
 /**
  * specs/cross-platform-async.md, native-scheduler-pool — Native
  * only (CanBlock-based; the cross suite deliberately never blocks).

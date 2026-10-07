@@ -1,7 +1,8 @@
 package okay.scala2
 
 import okay.freer.{%, +}
-import okay.freer.{!, Writer}
+import okay.freer.{!}
+import okay.std.{Writer}
 import okay.given
 import okay.codec.Schema
 import okay.llm.{Anthropic, OpenAi, Structured, Transport, Transports}

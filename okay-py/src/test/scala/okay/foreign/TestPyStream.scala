@@ -4,7 +4,8 @@ package okay.foreign
 
 
 import okay.freer.{%, +}
-import okay.freer.{!, Writer, given}
+import okay.freer.{!, given}
+import okay.std.{Writer}
 import okay.freer.Row.plus
 
 object TestPyStream:

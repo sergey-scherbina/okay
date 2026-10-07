@@ -3,9 +3,11 @@ package okay.docs.dynamo
 import okay.{Async, async, ChunkBuf, Source}
 
 import okay.freer.{+, %}
-import okay.freer.{!, Chunk, effect, Writer}
+import okay.freer.{!, effect}
+import okay.std.{Chunk, Writer}
 import okay.given
 import okay.freer.given
+import okay.std.given
 import okay.codec.{Codecs, Json, Schema}
 import okay.docs.{Cond, Consistency, Docs, PutResult}
 import okay.blob.SigV4

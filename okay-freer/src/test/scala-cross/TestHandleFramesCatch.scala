@@ -1,7 +1,4 @@
 package okay.freer
-
-
-
 /**
  * CATCH FRAMES (handle-frames-catch, specs/handle-frames.md): a `try` over a program as DATA on the machine's
  * stack, so a `try` nested a hundred thousand deep holds no host `try` per level; and the frame catches what the

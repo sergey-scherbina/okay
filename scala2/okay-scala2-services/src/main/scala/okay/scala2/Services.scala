@@ -1,7 +1,8 @@
 package okay.scala2
 
 import okay.{Timer}
-import okay.freer.{!, Chunk}
+import okay.freer.{!}
+import okay.std.{Chunk}
 import okay.given
 import okay.actor.{Actor, ActorRef, Reply, Supervise}
 import okay.http.Request
@@ -98,7 +99,7 @@ object Logs {
               (e: Eff[Writer[Log.Line] & R, A]): Eff[R, A] = {
     val sink: okay.freer.Fold[Log.Line, Unit] = okay.freer.Fold(())((_, l) =>
       if (l.level.atLeast(min)) write(if (l.at == 0L) l.copy(at = clock()) else l))
-    Eff.of(Rows.coerce(okay.freer.Writer.fold[Log.Line, Unit, A, Rows.Top](Rows.coerce(e.program))(using summon)(using summon, sink).map(_._2)))
+    Eff.of(Rows.coerce(okay.std.Writer.fold[Log.Line, Unit, A, Rows.Top](Rows.coerce(e.program))(using summon)(using summon, sink).map(_._2)))
   }
 
   private def at(level: Log.Level, message: String, fields: Seq[(String, String)]): Eff[Writer[Log.Line], Unit] =
@@ -145,7 +146,7 @@ object Operations {
 object Kafkas {
   /** the consumer's records as they are polled */
   def source[K, V](consumer: Consumer[K, V], pollMillis: Long = 1000): Source[ConsumerRecord[K, V]] =
-    Source.of(okay.freer.Writer.expand[Chunk[ConsumerRecord[K, V]], ConsumerRecord[K, V], Unit, okay.Async](
+    Source.of(okay.std.Writer.expand[Chunk[ConsumerRecord[K, V]], ConsumerRecord[K, V], Unit, okay.Async](
       KafkaInterop.source(consumer, pollMillis))(c => c))
 
   def commit[K, V](consumer: Consumer[K, V]): Eff[Async, Unit] = Async.lift(KafkaInterop.commit(consumer))

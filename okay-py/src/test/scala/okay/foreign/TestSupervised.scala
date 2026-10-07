@@ -1,7 +1,10 @@
 package okay.foreign
 
 
-import okay.freer.{Choose, effect, runChoice, given}
+import okay.freer.{effect, given}
+
+
+import okay.std.{Choose, runChoice}
 import scala.concurrent.duration.*
 
 object Reliable:

@@ -57,7 +57,7 @@ class TestRemote extends munit.FunSuite {
   }
 
   /** every format and compression one listener takes, records intact */
-  private def drain(received: okay.Channel[okay.freer.Chunk[Trade]]): List[Trade] =
+  private def drain(received: okay.Channel[okay.std.Chunk[Trade]]): List[Trade] =
     var all = List.empty[Trade]
     var c = received.receiveBlocking()
     while c.isDefined do { all = all ++ c.get; c = received.receiveBlocking() }

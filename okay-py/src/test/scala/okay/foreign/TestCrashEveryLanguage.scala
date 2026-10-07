@@ -1,7 +1,10 @@
 package okay.foreign
 
 
-import okay.freer.{Choose, Reader, effect, runChoice, given}
+import okay.freer.{effect, given}
+
+
+import okay.std.{Choose, Reader, runChoice}
 /**
  * ONE crash suite over every stdio worker (supervised-crash-every-language):
  * the far side's PROCESS is killed (SIGKILL, by the pid this suite started)

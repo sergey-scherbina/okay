@@ -3,8 +3,10 @@ package okay.refine
 import okay.{Optic, through}
 
 import okay.freer.{%}
-import okay.freer.{!, Writer, pure, runEither, runChoice}
+import okay.freer.{!, pure}
+import okay.std.{Writer, runEither, runChoice}
 import okay.freer.given
+import okay.std.given
 import okay.codec.Json
 import okay.testkit.Munit.Diagnosed
 

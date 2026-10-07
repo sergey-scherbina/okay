@@ -3,7 +3,7 @@ package okay.cluster
 import okay.codec.{Codecs, Digest, Schema}
 import okay.given
 import okay.freer.given
-
+import okay.std.given
 /**
  * SCHEMA AT THE DOOR (specs/federation.md, stage 3).
  *

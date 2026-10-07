@@ -3,6 +3,7 @@ package okay.scala2
 import okay.freer.{!, Free}
 import okay.given
 import okay.freer.given
+import okay.std.given
 import scala.util.control.NonFatal
 
 /**
@@ -86,18 +87,18 @@ object State {
   // compiles against okay2 with the same lines.
 
   /** read the current state */
-  def get[S]: Eff[State[S], S] = Eff.of(coerce(okay.freer.State.get[S]))
+  def get[S]: Eff[State[S], S] = Eff.of(coerce(okay.std.State.get[S]))
 
   /** replace the state, answering the new one */
-  def set[S](s: S): Eff[State[S], S] = Eff.of(coerce(okay.freer.State.set(s)))
+  def set[S](s: S): Eff[State[S], S] = Eff.of(coerce(okay.std.State.set(s)))
 
   /** apply `f` to the state, answering the new one */
-  def modify[S](f: S => S): Eff[State[S], S] = Eff.of(coerce(okay.freer.State.modify(f)))
+  def modify[S](f: S => S): Eff[State[S], S] = Eff.of(coerce(okay.std.State.modify(f)))
 
   /** handle it from `s`, the rest of the row forwarded: the final state
    * beside the answer */
   def handle[S, A, R](s: S)(e: Eff[State[S] & R, A]): Eff[R, (S, A)] =
-    Eff.of(coerce(okay.freer.State.handle(s)[A, Top](coerce(e.program))))
+    Eff.of(coerce(okay.std.State.handle(s)[A, Top](coerce(e.program))))
 
   /** run a program whose only capability is `State[S]` to its final
    * state and answer */
@@ -108,22 +109,22 @@ object State {
 sealed trait Reader[E]
 
 object Reader {
-  def ask[E]: Eff[Reader[E], E] = Eff.of(coerce(okay.freer.Reader.ask[E]))
+  def ask[E]: Eff[Reader[E], E] = Eff.of(coerce(okay.std.Reader.ask[E]))
 
   /** answer every `ask` with `env`, the rest of the row forwarded */
   def run[E, A, R](env: E)(e: Eff[Reader[E] & R, A]): Eff[R, A] =
-    Eff.of(coerce(okay.freer.Reader.run[E, A, Top](env)(coerce(e.program))))
+    Eff.of(coerce(okay.std.Reader.run[E, A, Top](env)(coerce(e.program))))
 }
 
 /** the capability: an output log of `W` */
 sealed trait Writer[W]
 
 object Writer {
-  def tell[W](w: W): Eff[Writer[W], Unit] = Eff.of(coerce(okay.freer.Writer.tell(w)))
+  def tell[W](w: W): Eff[Writer[W], Unit] = Eff.of(coerce(okay.std.Writer.tell(w)))
 
   /** everything told, in order, beside the answer, as a Vector */
   def collect[W, A, R](e: Eff[Writer[W] & R, A]): Eff[R, (Vector[W], A)] =
-    Eff.of(coerce(okay.freer.Writer.collect[W, A, Top](coerce(e.program))))
+    Eff.of(coerce(okay.std.Writer.collect[W, A, Top](coerce(e.program))))
 
   /** everything told, in order, beside the answer (a `Seq`, as okay's
    * `run` answers — here the Vector `collect` builds, by covariance) */
@@ -134,11 +135,11 @@ object Writer {
 sealed trait Throws[E]
 
 object Throws {
-  def raise[E, A](e: E): Eff[Throws[E], A] = Eff.of(coerce(okay.freer.raise[E, A](e)))
+  def raise[E, A](e: E): Eff[Throws[E], A] = Eff.of(coerce(okay.std.raise[E, A](e)))
 
   /** a failure as a `Left`, the rest of the row forwarded */
   def runEither[A, E, R](e: Eff[Throws[E] & R, A]): Eff[R, Either[E, A]] =
-    Eff.of(coerce(okay.freer.runEither[A, Top, E](coerce(e.program))))
+    Eff.of(coerce(okay.std.runEither[A, Top, E](coerce(e.program))))
 }
 
 /** the capability: suspended (possibly blocking) computation */

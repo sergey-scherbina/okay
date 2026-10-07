@@ -3,7 +3,8 @@ package okay.frege
 import okay.{ChunkBuf, Chunks, Foreign, Stage, Take}
 
 import okay.freer.{%, +, Pure}
-import okay.freer.{!, Chunk, Free, Member, Writer, pure}
+import okay.freer.{!, Free, Member, pure}
+import okay.std.{Chunk, Writer}
 import okay.frege.Prog.TProg
 import frege.prelude.PreludeBase.{TList, TMaybe}
 import frege.prelude.PreludeBase.TST

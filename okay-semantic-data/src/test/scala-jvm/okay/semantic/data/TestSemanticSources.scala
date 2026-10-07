@@ -3,9 +3,10 @@ package okay.semantic.data
 
 import okay.{Source, Async}
 import okay.freer.*
-
+import okay.std.*
 import okay.given
 import okay.freer.given
+import okay.std.given
 import okay.codec.Json
 import okay.semantic.*
 import java.time.Instant

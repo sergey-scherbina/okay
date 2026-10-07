@@ -1,9 +1,11 @@
 package okay.spark
 
 import okay.{Bulk, Chunks, localBulk}
-import okay.freer.{Aggregator, Monoid, sliding}
+import okay.freer.{Aggregator, Monoid}
+import okay.std.{sliding}
 import okay.Chunks.elements
 import okay.freer.given
+import okay.std.given
 import okay.codec.Schema
 import okay.parquet.ParquetFile
 import org.apache.spark.sql.SparkSession
@@ -189,7 +191,7 @@ class TestTaxiAlgebra extends munit.FunSuite:
   }
 
   test("no inverse, no window — the compile error is the point") {
-    val err = compileErrors("okay.freer.sliding(LazyList(Peak(1.0), Peak(2.0)))(2)")
+    val err = compileErrors("okay.std.sliding(LazyList(Peak(1.0), Peak(2.0)))(2)")
     assert(err.contains("Group[Peak]") || err.contains("okay.freer.Group"), err)
     println(s"  refused, as it should be: ${err.linesIterator.find(_.contains("Group")).getOrElse(err)}")
   }

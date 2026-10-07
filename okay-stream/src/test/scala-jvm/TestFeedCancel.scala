@@ -2,7 +2,11 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import okay.freer.given
+import okay.std.given
 /**
  * WHEN A FEED STOPS — pinned down, because a reader who closes a
  * channel needs to know when the producer behind it actually gives up,

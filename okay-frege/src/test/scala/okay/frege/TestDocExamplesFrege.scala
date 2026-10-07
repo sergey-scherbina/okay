@@ -3,7 +3,8 @@ package okay.frege
 import okay.{Chunks, through}
 
 import okay.freer.{%, +}
-import okay.freer.{!, Choose, Reader, State, Writer, effect, pure, runChoice}
+import okay.freer.{!, effect, pure}
+import okay.std.{Choose, Reader, State, Writer, runChoice}
 import okay.frege.{Programs as P}
 import frege.run8.Thunk
 import java.util.concurrent.atomic.AtomicInteger

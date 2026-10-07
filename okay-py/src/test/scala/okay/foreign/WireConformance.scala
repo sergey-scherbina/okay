@@ -9,7 +9,8 @@ import okay.{Take}
 
 
 import okay.freer.{%, +}
-import okay.freer.{!, Choose, Reader, Writer, effect, pure, runChoice, given}
+import okay.freer.{!, effect, pure, given}
+import okay.std.{Choose, Reader, Writer, runChoice}
 import okay.freer.Row.plus
 
 /**

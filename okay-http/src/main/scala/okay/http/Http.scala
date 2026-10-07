@@ -2,7 +2,7 @@ package okay.http
 
 import okay.{Async, Lines, Source, Stage, Take}
 import okay.freer.*
-
+import okay.std.*
 import okay.codec.Schema
 import java.nio.charset.StandardCharsets.UTF_8
 

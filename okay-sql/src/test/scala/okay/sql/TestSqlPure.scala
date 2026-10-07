@@ -3,7 +3,8 @@ package okay.sql
 import okay.{Async, Source}
 
 import okay.freer.{+, %}
-import okay.freer.{!, Chunk, effect, Writer}
+import okay.freer.{!, effect}
+import okay.std.{Chunk, Writer}
 import okay.codec.Schema
 
 /** the platform-free half: name mapping, parameter binding, the

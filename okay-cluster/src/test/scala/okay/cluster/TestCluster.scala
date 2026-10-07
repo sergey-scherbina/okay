@@ -1,7 +1,8 @@
 package okay.cluster
 
 import okay.Chunks
-import okay.freer.{Aggregator, Chunk}
+import okay.freer.{Aggregator}
+import okay.std.{Chunk}
 import okay.codec.Json
 import java.io.{BufferedReader, InputStreamReader, PrintWriter}
 import java.net.{ServerSocket, Socket}

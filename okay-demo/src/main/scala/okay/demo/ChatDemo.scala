@@ -1,9 +1,10 @@
 package okay.demo
 import okay.freer.*
-
+import okay.std.*
 import okay.{Async, Channel, Source, Timer}
 import okay.given
 import okay.freer.given
+import okay.std.given
 import okay.http.{Http, McpHttp, Request, Response}
 import okay.mcp.{Mcp, Server as McpServer}
 import okay.jetty.Jetty

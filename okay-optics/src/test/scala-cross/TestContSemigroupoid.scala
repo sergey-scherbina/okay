@@ -2,10 +2,14 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import okay.freer.given
+import okay.std.given
 import okay.given
 import okay.freer.given
-
+import okay.std.given
 /**
  * A TYPESTATE PROGRAM IS A SEMIGROUPOID, NOT A CATEGORY — and the
  * reason is the same one that refuses it a `Choice` (cont-category,
@@ -71,11 +75,11 @@ class TestContSemigroupoid extends munit.FunSuite {
   test("NO Category and NO Choice for this carrier — one cause, two refusals") {
     import scala.compiletime.testing.typeCheckErrors
     // a Category would need `id` with no X to make it from
-    val cat = typeCheckErrors("summon[okay.Optic.Category[okay.freer.PState.Zooming[Int, Int]]]")
+    val cat = typeCheckErrors("summon[okay.Optic.Category[okay.std.PState.Zooming[Int, Int]]]")
     assert(cat.nonEmpty, "a Category resolved — the refutation is stale")
-    val choice = typeCheckErrors("summon[okay.Optic.Choice[okay.freer.PState.Zooming[Int, Int]]]")
+    val choice = typeCheckErrors("summon[okay.Optic.Choice[okay.std.PState.Zooming[Int, Int]]]")
     assert(choice.nonEmpty, "a Choice resolved — the refutation is stale")
     // and the control: Strong DOES resolve, in the same scope
-    assertEquals(typeCheckErrors("summon[okay.Optic.Strong[okay.freer.PState.Zooming[Int, Int]]]"), Nil)
+    assertEquals(typeCheckErrors("summon[okay.Optic.Strong[okay.std.PState.Zooming[Int, Int]]]"), Nil)
   }
 }

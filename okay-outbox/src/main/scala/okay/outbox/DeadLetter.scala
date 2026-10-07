@@ -2,7 +2,7 @@ package okay.outbox
 
 import okay.{Async, Scheduler}
 import okay.freer.*
-
+import okay.std.*
 import okay.codec.Schema
 import okay.persist.{Ack, Offsets, Record, Store, Topic, Typed}
 

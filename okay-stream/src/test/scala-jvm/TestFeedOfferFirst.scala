@@ -2,7 +2,11 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import okay.freer.given
+import okay.std.given
 /**
  * feed-offer-first: the feed offers in a loop and parks only on the
  * element the ring refused. The laws are about the refusal — the one

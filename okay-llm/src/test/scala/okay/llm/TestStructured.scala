@@ -3,7 +3,8 @@ package okay.llm
 import okay.{Async}
 
 import okay.freer.{%, +}
-import okay.freer.{!, Writer, effect, pure}
+import okay.freer.{!, effect, pure}
+import okay.std.{Writer}
 import okay.given
 import okay.codec.Schema
 

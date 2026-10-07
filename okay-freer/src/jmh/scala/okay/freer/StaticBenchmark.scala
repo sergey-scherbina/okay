@@ -1,5 +1,4 @@
 package okay.freer
-
 import okay.{Answers, traverse}
 import okay.given
 

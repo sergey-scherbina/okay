@@ -3,10 +3,12 @@ package okay.blob
 import okay.{Async, Source}
 
 import okay.freer.{+, %}
-import okay.freer.{!, Chunk, Fold, Writer}
+import okay.freer.{!, Fold}
+import okay.std.{Chunk, Writer}
 import okay.freer.Row.plus
 import okay.given
 import okay.freer.given
+import okay.std.given
 import scala.collection.immutable.ArraySeq
 
 /**

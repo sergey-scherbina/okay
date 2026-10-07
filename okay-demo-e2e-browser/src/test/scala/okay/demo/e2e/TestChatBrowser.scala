@@ -2,8 +2,12 @@ package okay.demo.e2e
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import okay.given
 import okay.freer.given
+import okay.std.given
 import okay.jetty.Jetty
 import okay.demo.ChatDemo
 import com.microsoft.playwright.{Browser, Playwright}

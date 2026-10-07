@@ -5,6 +5,7 @@ package okay.semantic.data
 import okay.{Source}
 import okay.given
 import okay.freer.given
+import okay.std.given
 import okay.semantic.*
 import okay.semantic.ossie.{Bindings, Document, Execution, FieldKey}
 

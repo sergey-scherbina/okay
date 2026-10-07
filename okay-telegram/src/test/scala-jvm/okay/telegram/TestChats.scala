@@ -2,10 +2,10 @@ package okay.telegram
 
 import okay.{Async, async}
 import okay.freer.*
-
-
+import okay.std.*
 import okay.given
 import okay.freer.given
+import okay.std.given
 import okay.codec.Json
 import okay.ui.{Event, Telegram, Ui}
 import okay.ui.Telegram.{Act, Message}

@@ -2,6 +2,9 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import okay.given
 
 /** The cross-platform channel bridge: the one test that left

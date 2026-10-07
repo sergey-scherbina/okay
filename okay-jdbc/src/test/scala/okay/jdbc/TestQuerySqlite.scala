@@ -3,9 +3,11 @@ package okay.jdbc
 import okay.{Async}
 
 import okay.freer.{+, %}
-import okay.freer.{!, Stream, Writer}
+import okay.freer.{!}
+import okay.std.{Stream, Writer}
 import okay.given
 import okay.freer.given
+import okay.std.given
 import okay.codec.Schema
 import okay.sql.{Query, Sql, SqlValue, Typed}
 import java.nio.file.Files

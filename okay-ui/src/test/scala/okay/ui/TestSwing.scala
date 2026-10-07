@@ -2,10 +2,10 @@ package okay.ui
 
 import okay.{Async, Source}
 import okay.freer.*
-
-
+import okay.std.*
 import okay.given
 import okay.freer.given
+import okay.std.given
 import java.awt.{Component, Container}
 import javax.swing.*
 

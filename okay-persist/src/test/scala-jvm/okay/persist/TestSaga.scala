@@ -4,6 +4,7 @@ import okay.Async
 import okay.freer.{!}
 import okay.given
 import okay.freer.given
+import okay.std.given
 import okay.codec.Schema
 
 /** specs/persist.md "The saga": intent-first steps with compensations

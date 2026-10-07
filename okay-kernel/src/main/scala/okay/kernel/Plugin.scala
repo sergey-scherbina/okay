@@ -1,6 +1,8 @@
 package okay.kernel
 
-import okay.freer.{!, Resource}
+import okay.freer.{!}
+
+import okay.std.{Resource}
 /** how many providers a port takes: exactly one, or every one there is */
 enum Arity:
   case One, Many

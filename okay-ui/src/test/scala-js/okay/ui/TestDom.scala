@@ -4,6 +4,7 @@ package okay.ui
 
 import okay.{Async, Source}
 import okay.freer.*
+import okay.std.*
 import scala.scalajs.js
 
 /**

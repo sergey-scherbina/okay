@@ -2,6 +2,9 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 /**
  * specs/direct-loops.md v3 — `Take.each[I]`: the consumer side of an
  * iteratee as a source. Its `foreach` is the consumer loop as a

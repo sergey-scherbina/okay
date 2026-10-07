@@ -44,6 +44,6 @@ object Persist {
   def tail(topic: Topic, partition: Int, from: Long, chunk: Int = 256, pollMillis: Long = 25): Source[Record] =
     Source.of(unchunk(Streams.tail(topic, partition, from, chunk, pollMillis)))
 
-  private def unchunk(s: okay.Source[okay.freer.Chunk[Record]]): okay.Source[Record] =
-    okay.freer.Writer.expand[okay.freer.Chunk[Record], Record, Unit, okay.Async](s)(c => c)
+  private def unchunk(s: okay.Source[okay.std.Chunk[Record]]): okay.Source[Record] =
+    okay.std.Writer.expand[okay.std.Chunk[Record], Record, Unit, okay.Async](s)(c => c)
 }

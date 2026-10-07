@@ -3,7 +3,8 @@ package okay.zio
 import okay.{Async}
 
 import okay.freer.{%, +}
-import okay.freer.{!, Throws, raise}
+import okay.freer.{!}
+import okay.std.{Throws, raise}
 import _root_.zio.{Task, ZIO}
 
 /**

@@ -503,22 +503,3 @@ object Aggregator {
     }(_.view.mapValues(agg.present).toMap)
 }
 
-/**
- * The sliding window, on a Group: each emitted value is the combine
- * of the last (up to) n elements — aging data is SUBTRACTED by the
- * inverse, never recomputed. A Monoid-only element type (a running
- * max, a String) is rejected at compile time: there is no un-seeing
- * without an inverse.
- */
-def sliding[S[_], F[+_], A](s: S[A])(n: Int)
-                           (using G: Group[A], St: Stream[S, F], H: Answers[F]): LazyList[A] =
-  def go(q: Vector[A], acc: A, rest: LazyList[A]): LazyList[A] = rest match
-    case a #:: t =>
-      val grown = G.combine(acc, a)
-      if q.length >= n then
-        val aged = G.combine(grown, G.inverse(q.head))
-        aged #:: go(q.tail :+ a, aged, t)
-      else grown #:: go(q :+ a, grown, t)
-    case _ => LazyList.empty
-
-  go(Vector.empty, G.empty, s.toLazyList)

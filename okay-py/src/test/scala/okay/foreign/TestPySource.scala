@@ -9,7 +9,8 @@ import okay.{Take}
 
 
 import okay.freer.{%, +}
-import okay.freer.{!, Writer, effect, pure, given}
+import okay.freer.{!, effect, pure, given}
+import okay.std.{Writer}
 import okay.freer.Row.plus
 
 object TestPySource:

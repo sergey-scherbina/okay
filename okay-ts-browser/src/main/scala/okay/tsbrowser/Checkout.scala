@@ -2,6 +2,9 @@ package okay.tsbrowser
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import scala.scalajs.js
 import scala.scalajs.concurrent.JSExecutionContext.Implicits.queue
 import okay.tsbrowser.facades.okayPricing.mod as pricing

@@ -3,7 +3,8 @@ package okay.sql
 import okay.{Async, Scheduler, Source, Timer}
 
 import okay.freer.{+, %}
-import okay.freer.{!, Chunk, effect, pure, Resource, Writer}
+import okay.freer.{!, effect, pure}
+import okay.std.{Chunk, Resource, Writer}
 import okay.codec.Schema
 import scala.collection.immutable.ArraySeq
 

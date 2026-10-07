@@ -2,7 +2,11 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import okay.freer.given
+import okay.std.given
 import scala.jdk.CollectionConverters.*
 
 /** Channels: the concurrency primitive of streams — merge and buffer. */

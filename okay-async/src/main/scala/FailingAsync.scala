@@ -2,6 +2,9 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 /**
  * How a FORWARDED operation reports its failure to the scope that
  * forwarded it (resource-guard, 2026-09-09).
@@ -60,7 +63,7 @@ trait FailingLow:
    * no Async operation in it never reaches it: the test fails and the
    * operation is returned untouched.
    */
-  given anyRow[F[+_]]: okay.freer.Failing[F] = new:
+  given anyRow[F[+_]]: okay.std.Failing[F] = new:
     def guard[X](e: F[X], onFailure: () => Unit): F[X] =
       over[Async, F](e)(AsyncFailing.async.guard(_, onFailure))
 
@@ -69,7 +72,7 @@ object AsyncFailing extends FailingLow:
    * one effect is a shape the compiler pins, so the operation is
    * rebuilt under a GADT match and no cast is needed. Higher priority
    * than `anyRow`, which would answer the same way through the cast. */
-  given async: okay.freer.Failing[Async] = new:
+  given async: okay.std.Failing[Async] = new:
     def guard[X](e: Async[X], onFailure: () => Unit): Async[X] =
       val release = Release(onFailure)
       e match

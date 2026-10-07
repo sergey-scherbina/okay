@@ -3,9 +3,9 @@ package okay.http
 
 import okay.{Async, CanBlock, async}
 import okay.freer.*
-
+import okay.std.*
 import okay.freer.given
-
+import okay.std.given
 import com.sun.net.httpserver.{HttpExchange, HttpServer as JdkServer}
 import java.net.InetSocketAddress
 import scala.jdk.CollectionConverters.*

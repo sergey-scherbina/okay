@@ -2,8 +2,7 @@ package okay.ui
 
 import okay.{Async, Source, async}
 import okay.freer.*
-
-
+import okay.std.*
 /**
  * The terminal as a Host, and it is thin because everything that can
  * be a value already is (Frame): this file owns the tty — stty raw

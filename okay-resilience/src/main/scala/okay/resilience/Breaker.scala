@@ -2,7 +2,7 @@ package okay.resilience
 
 import okay.{Async}
 import okay.freer.*
-
+import okay.std.*
 import okay.codec.Schema
 
 object Breaker:

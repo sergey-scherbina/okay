@@ -46,8 +46,8 @@ object Validate:
    * `Either` inside (it is the schema hot path, and `gather` below is
    * `Validated.app` written on it by hand).
    */
-  def validated[A](s: Schema[A])(j: Json): okay.freer.Validated[Errors, A] =
-    okay.freer.Validated.fromEither(decode(s)(j))
+  def validated[A](s: Schema[A])(j: Json): okay.std.Validated[Errors, A] =
+    okay.std.Validated.fromEither(decode(s)(j))
 
   private type Out = Either[Errors, Any]
   private type Acc = Either[Errors, Vector[Any]]

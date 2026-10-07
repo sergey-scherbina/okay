@@ -3,7 +3,8 @@ package okay.refine
 import okay.{Async, Bulk, Channel, Chunks, Scheduler, Source, drained, runForeach}
 
 import okay.freer.{%}
-import okay.freer.{!, Writer, effect, pure}
+import okay.freer.{!, effect, pure}
+import okay.std.{Writer}
 import okay.Bulk.{aggregate, cache, flatMap, map}
 
 /**

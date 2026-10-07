@@ -5,7 +5,8 @@ import com.mongodb.client.{MongoClient, MongoClients, MongoCollection}
 import com.mongodb.client.model.{Filters, FindOneAndUpdateOptions, IndexOptions, Indexes, ReturnDocument, Updates}
 import okay.{Async, async, ChunkBuf, Source}
 import okay.freer.{+, %}
-import okay.freer.{!, Chunk, effect, Writer}
+import okay.freer.{!, effect}
+import okay.std.{Chunk, Writer}
 import okay.codec.Schema
 import okay.docs.{Cond, Consistency, Docs, PutResult}
 import org.bson.Document

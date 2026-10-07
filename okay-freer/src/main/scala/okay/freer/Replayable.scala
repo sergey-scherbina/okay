@@ -57,8 +57,9 @@ sealed trait Replayable[F[+_]]
 
 object Replayable:
 
-  /** the operations a replay may re-run without anybody noticing */
-  type Safe = Shift[?, Any] | State[?, Any] | Reader[?, Any] | Throws[?, Any]
+  /** the operations a replay may re-run without anybody noticing: an effect's operations extend it where the
+   * effect is defined (`Shift` here; State, Reader, Throws in okay-std) */
+  trait Safe
 
   private val ev: Replayable[Nothing] = new Replayable[Nothing] {}
   private def of[F[+_]]: Replayable[F] = ev.asInstanceOf[Replayable[F]]

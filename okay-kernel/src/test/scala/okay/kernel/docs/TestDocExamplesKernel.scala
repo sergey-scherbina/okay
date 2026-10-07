@@ -23,7 +23,7 @@ class TestDocExamplesKernel extends munit.FunSuite:
   test("the page's two plugins plan in the order it says, and start") {
     val plan = Kernel.plan(Seq(SystemClock(), Stamper())).toOption.get
     assertEquals(plan.order.map(_.id), Vector("system-clock", "stamper"))
-    val (r, close) = okay.freer.Resource.open(Kernel.assemble(Seq(SystemClock(), Stamper())))
+    val (r, close) = okay.std.Resource.open(Kernel.assemble(Seq(SystemClock(), Stamper())))
     assert(r.one(clock).now > 0)
     close()
   }

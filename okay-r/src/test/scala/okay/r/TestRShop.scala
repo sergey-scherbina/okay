@@ -1,7 +1,10 @@
 package okay.r
 
 
-import okay.freer.{Reader, given}
+import okay.freer.{given}
+
+
+import okay.std.{Reader}
 import okay.codec.Schema
 
 object TestRShop:

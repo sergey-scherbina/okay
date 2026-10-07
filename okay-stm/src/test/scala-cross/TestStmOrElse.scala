@@ -2,6 +2,9 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import okay.given
 
 /** `Tx.orElse` (specs/stm.md, stm-orelse): the classic STM

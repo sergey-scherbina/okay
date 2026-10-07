@@ -3,7 +3,8 @@ package okay.bayes
 import scala.util.Random
 import okay.{Bulk, Chunks, through}
 import okay.freer.{%}
-import okay.freer.{!, Writer}
+import okay.freer.{!}
+import okay.std.{Writer}
 import okay.testkit.Munit.Diagnosed
 import Bayes.*
 import Distribution.*

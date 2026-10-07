@@ -3,7 +3,7 @@ package okay.ui
 
 import okay.{! as _, effect as _, *}
 import okay.freer.*
-
+import okay.std.*
 import okay.given
 
 import java.awt.{Color, Component, Container, Font}

@@ -2,6 +2,7 @@ package okay.foreign
 
 import java.nio.file.{Files, Paths}
 import okay.freer.given
+import okay.std.given
 import okay.foreign.TestTsOneShape.{Order, Totals}
 import okay.foreign.golden.{FacadeTs, Receipt}
 

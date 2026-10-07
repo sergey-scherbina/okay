@@ -74,7 +74,7 @@ private[okay] trait DirectLoops[F[_]] extends DirectVals[F]:
   def tellOf(lbody: Term): Term =
     val w = genW.getOrElse(report.errorAndAbort("a generator block with no Writer in its row (macro bug)"))
     def say(v: Term): Term =
-      Apply(TypeApply(Ref(Symbol.requiredModule("okay.freer.Writer").methodMember("apply").head), List(Inferred(w))), List(v))
+      Apply(TypeApply(Ref(Symbol.requiredModule("okay.std.Writer").methodMember("apply").head), List(Inferred(w))), List(v))
     // a yielded value with marks in it is bound to a val FIRST, and the
     // op is built from the val: a mark hoisted out of the op's argument
     // would leave the op as a bound VALUE, and a bound value is not a
@@ -302,7 +302,7 @@ private[okay] trait DirectLoops[F[_]] extends DirectVals[F]:
   /** the receiver is a `Pull[A, G]` — a source read by a program
    * (specs/direct-loops.md v3), which takes `pullLoop` below */
   def isPull(xs: Term): Boolean =
-    xs.tpe.widen.dealias.derivesFrom(Symbol.requiredClass("okay.freer.Pull"))
+    xs.tpe.widen.dealias.derivesFrom(Symbol.requiredClass("okay.std.Pull"))
 
   /** `src.foreach(x => body)` over a `Pull`, marks or not — the road
    * fires on the receiver's type, because an unmarked source loop is

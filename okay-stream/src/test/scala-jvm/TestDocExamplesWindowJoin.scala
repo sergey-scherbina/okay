@@ -2,6 +2,9 @@ package okay
 
 
 import okay.freer.given
+
+
+import okay.std.given
 /** docs/guide.md §6's `Source.joinWithin` example, line for line
  * (TestDocSnippets pins each line of the page to a line here) */
 class TestDocExamplesWindowJoin extends munit.FunSuite {

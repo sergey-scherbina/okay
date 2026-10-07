@@ -1,7 +1,8 @@
 package okay.delta
 
 import okay.{Async, async}
-import okay.freer.{!, Chunk}
+import okay.freer.{!}
+import okay.std.{Chunk}
 import okay.sql.{Col, SqlType, SqlValue}
 import io.delta.kernel.{Operation, Table, Transaction}
 import io.delta.kernel.data.{ColumnarBatch, ColumnVector, FilteredColumnarBatch}

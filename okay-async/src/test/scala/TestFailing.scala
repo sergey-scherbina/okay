@@ -2,6 +2,9 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 /**
  * Every shape of a row is guarded (row-typeclass-recipe,
  * failing-simplify) — `Async` alone through the typed instance, every

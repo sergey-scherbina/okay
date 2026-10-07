@@ -24,9 +24,9 @@ package okay.demoeff
 
 import okay.{Answers, Effect, tracing}
 import okay.freer.*
-
-
+import okay.std.*
 import okay.freer.given
+import okay.std.given
 import java.sql.{Connection, DriverManager}
 import okay.freer.Row.plus
 import okay.Direct.{direct, given}
@@ -222,7 +222,7 @@ object UsersDemo:
    * does not log, and it could not: it knows nothing about a Writer
    * being in the row.
    *
-   * `!.tracing` records them, and answers nothing: every operation is
+   * `Writer.tracing` records them, and answers nothing: every operation is
    * told to a Writer and then performed exactly as before, so the row
    * keeps `Users` and gains `Writer % String`. It knows nothing about
    * Users beyond `toString`.
@@ -252,7 +252,7 @@ object UsersDemo:
 
   def tracked[A, S : Store, F[+_]](prog: A ! Users + F): A ! Tracked[S] + F =
     stored[A, S, Writer % String + F](
-      !.tracing(prog)([X] => (e: Users[X]) => e.toString))
+      Writer.tracing(prog)([X] => (e: Users[X]) => e.toString))
 
   private def nameOf(c: Connection, id: Long): String =
     val rs = c.createStatement().executeQuery(s"select name from users where id = $id")

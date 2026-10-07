@@ -47,6 +47,7 @@ object Shop:
 class TestForeignActivity extends munit.FunSuite:
   import Shop.*
   import okay.freer.given
+  import okay.std.given
   override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
   override def munitIgnore: Boolean = TestPy.python.isEmpty
 

@@ -2,6 +2,7 @@ package okay.scala2
 
 import okay.given
 import okay.freer.given
+import okay.std.given
 import okay.ui.{Event, Ui}
 
 /**

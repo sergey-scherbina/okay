@@ -27,7 +27,7 @@ class TestFs extends BlobContract("fs") {
   }
 
   test("fs: a file goes in through putFile a chunk at a time, and comes back whole") {
-    import okay.freer.Writer
+    import okay.std.Writer
     val b = Fs(java.nio.file.Files.createTempDirectory("okay-blob-file"))
     val f = java.nio.file.Files.createTempFile("okay-bytes", ".bin")
     val data = Array.tabulate[Byte](200_001)(i => (i % 251).toByte)   // not a multiple of any chunk

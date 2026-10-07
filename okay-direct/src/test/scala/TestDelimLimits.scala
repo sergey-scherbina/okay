@@ -2,7 +2,11 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import okay.freer.given
+import okay.std.given
 import okay.Direct.*
 import okay.freer.Row.at
 import scala.language.implicitConversions
@@ -91,7 +95,7 @@ class TestDelimLimits extends munit.FunSuite {
     // which is exactly what a capture breaks. It needs an Answers for
     // the row, and Shift has none: the compiler says no.
     val e = compileErrors(
-      "okay.freer.bracketNow[Int, Int, okay.freer.Shift % ? + okay.freer.Pure](1)(_ => ())(r => okay.freer.pure(r))")
+      "okay.std.bracketNow[Int, Int, okay.freer.Shift % ? + okay.freer.Pure](1)(_ => ())(r => okay.freer.pure(r))")
     assert(e.nonEmpty, "bracketNow compiled under Shift")
     assert(e.contains("Answers"), s"refused for the wrong reason: $e")
   }
@@ -104,8 +108,8 @@ class TestDelimLimits extends munit.FunSuite {
     val prog: Int ! T = Shift.delimited[Int, T]:
       direct:
         val x = !Shift.shift[Int, Int, T](k => k(1))
-        if x == 1 then !okay.freer.raise[String, Int]("boom").at[Row] else x
-    assertEquals(!.run(okay.freer.runEither[Int, P, String](prog)), Left("boom"))
+        if x == 1 then !okay.std.raise[String, Int]("boom").at[Row] else x
+    assertEquals(!.run(okay.std.runEither[Int, P, String](prog)), Left("boom"))
   }
 
   test("Throws: a handler that raises instead of resuming leaves the rest unrun") {
@@ -114,10 +118,10 @@ class TestDelimLimits extends munit.FunSuite {
     var ran = false
     val prog: Int ! T = Shift.delimited[Int, T]:
       direct:
-        val x = !Shift.shift[Int, Int, T](_ => okay.freer.raise[String, Int]("cut").at[Row])
+        val x = !Shift.shift[Int, Int, T](_ => okay.std.raise[String, Int]("cut").at[Row])
         ran = true
         x
-    assertEquals(!.run(okay.freer.runEither[Int, P, String](prog)), Left("cut"))
+    assertEquals(!.run(okay.std.runEither[Int, P, String](prog)), Left("cut"))
     assert(!ran, "the abandoned continuation ran")
   }
 

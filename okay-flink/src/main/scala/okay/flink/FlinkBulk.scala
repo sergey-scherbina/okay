@@ -3,7 +3,7 @@ package okay.flink
 
 import okay.{Bulk, Chunks, Csv}
 import okay.freer.*
-
+import okay.std.*
 import org.apache.flink.api.common.RuntimeExecutionMode
 import org.apache.flink.api.common.functions.{AggregateFunction, CoGroupFunction, FilterFunction, FlatMapFunction, MapFunction, OpenContext}
 import org.apache.flink.api.common.state.{ListState, ListStateDescriptor}

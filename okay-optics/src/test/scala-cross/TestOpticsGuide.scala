@@ -2,9 +2,12 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import okay.given
 import okay.freer.given
-
+import okay.std.given
 /**
  * THE PAIRS ON docs/optics.md, RUN.
  *

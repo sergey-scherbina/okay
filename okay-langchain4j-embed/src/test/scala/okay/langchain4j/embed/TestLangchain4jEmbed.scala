@@ -3,6 +3,8 @@ package okay.langchain4j.embed
 import okay.given
 
 import okay.freer.given
+
+import okay.std.given
 import okay.rag.{Embed, Vectors, embed}
 import dev.langchain4j.model.embedding.onnx.allminilml6v2.AllMiniLmL6V2EmbeddingModel
 

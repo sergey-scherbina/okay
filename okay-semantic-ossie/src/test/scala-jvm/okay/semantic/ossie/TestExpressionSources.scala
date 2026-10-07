@@ -3,9 +3,10 @@ package okay.semantic.ossie
 
 import okay.{Source, Async}
 import okay.freer.*
-
+import okay.std.*
 import okay.given
 import okay.freer.given
+import okay.std.given
 import okay.semantic.Request
 
 final case class ExpressionJob[A](plan: ExpressionPlan[A], rows: Vector[A]):

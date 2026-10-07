@@ -1,5 +1,4 @@
 package okay.freer
-
 import scala.compiletime.testing.typeChecks
 
 /**

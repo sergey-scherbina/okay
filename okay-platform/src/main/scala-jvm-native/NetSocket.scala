@@ -2,6 +2,9 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import java.io.{BufferedInputStream, BufferedOutputStream}
 import java.net.Socket
 

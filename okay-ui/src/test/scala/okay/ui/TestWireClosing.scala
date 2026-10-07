@@ -2,10 +2,9 @@ package okay.ui
 
 import okay.{through}
 import okay.freer.*
-
-
+import okay.std.*
 import okay.freer.given
-
+import okay.std.given
 /**
  * `Wire.serveClosing` (specs/wire-server-close.md): the server's own
  * half of what only a client's `Closed` could do before. Pure — over

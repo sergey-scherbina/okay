@@ -2,7 +2,11 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import okay.freer.given
+import okay.std.given
 import okay.Direct.*
 
 /**
@@ -37,7 +41,7 @@ class TestDocExamplesTutorialMarks extends munit.FunSuite:
   }
 
   test("tutorial: a staged block, compound programs walked too") {
-    val sw = Stager.StateWriter[Int, String, Int]()      // the row's staged interpreter
+    val sw = Stagers.StateWriter[Int, String, Int]()      // the row's staged interpreter
 
     def step(i: Int, acc: Int): Handled[sw.Row, sw.R, Int] =
       if i >= 100 then Handled.pure(acc)

@@ -2,7 +2,11 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import okay.freer.given
+import okay.std.given
 /**
  * specs/zipper.md, stage 2 — the typed zipper: frames are optics, the
  * parent's type comes back from `up`, and a program written against

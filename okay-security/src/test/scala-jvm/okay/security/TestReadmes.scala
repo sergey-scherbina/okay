@@ -2,10 +2,10 @@ package okay.security
 
 import okay.{Async}
 import okay.freer.*
-
-
+import okay.std.*
 import okay.given
 import okay.freer.given
+import okay.std.given
 import okay.agent.{Agent, Compact, Context, Handlers, Model, Reply, Tool, ToolCall, ToolSpec}
 import okay.codec.{Json, Schema}
 import okay.http.{Http, Request, Response, Server, Transports}
@@ -103,7 +103,7 @@ class TestReadmes extends munit.FunSuite {
     }
     val client = Transports.http()
 
-    val answer = okay.freer.Resource.run[String, Pure](Server.serve(0)(route).map { s =>
+    val answer = okay.std.Resource.run[String, Pure](Server.serve(0)(route).map { s =>
       Async.run[String, Pure](
         client.send(Request.get(s"http://127.0.0.1:${Server.port(s)}/hello"))
           .flatMap(Http.text)).runWith

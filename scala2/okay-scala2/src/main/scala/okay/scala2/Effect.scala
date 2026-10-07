@@ -3,6 +3,7 @@ package okay.scala2
 import okay.{TypeableK}
 import okay.freer.{Free, Classic}
 import okay.freer.given
+import okay.std.given
 import scala.reflect.ClassTag
 import Rows.Top
 

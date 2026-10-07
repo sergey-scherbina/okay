@@ -1,5 +1,4 @@
 package okay.freer
-
 import okay.{Answers, Effect}
 
 import okay.freer.Row.at

@@ -1,9 +1,11 @@
 package okay.jdbc
 
 import okay.{Async, Source}
-import okay.freer.{!, Chunk, Resource}
+import okay.freer.{!}
+import okay.std.{Chunk, Resource}
 import okay.given
 import okay.freer.given
+import okay.std.given
 import okay.codec.Schema
 import okay.sql.{Granted, Isolation, Sql, SqlType, SqlValue, Typed}
 import okay.sql.given

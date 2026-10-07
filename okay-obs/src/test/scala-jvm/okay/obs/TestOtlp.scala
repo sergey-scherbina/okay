@@ -3,9 +3,11 @@ package okay.obs
 import okay.{Async}
 
 import okay.freer.{Pure}
-import okay.freer.{!, Resource, pure}
+import okay.freer.{!, pure}
+import okay.std.{Resource}
 import okay.given
 import okay.freer.given
+import okay.std.given
 import okay.codec.Json
 import okay.http.{Http, Request, Response, Server, Transports}
 import okay.persist.{MemoryStore, Policy}

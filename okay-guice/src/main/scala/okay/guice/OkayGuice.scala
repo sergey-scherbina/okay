@@ -2,6 +2,7 @@ package okay.guice
 
 import okay.freer.*
 
+import okay.std.*
 import com.google.inject.{AbstractModule, Injector, Module as GModule}
 import com.google.inject.name.Names
 import scala.reflect.ClassTag

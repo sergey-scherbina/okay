@@ -2,6 +2,9 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import scala.collection.immutable.ArraySeq
 import scala.compiletime.summonFrom
 import scala.reflect.ClassTag

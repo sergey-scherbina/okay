@@ -2,11 +2,10 @@ package okay.ui
 
 import okay.{Async, Channel, Source, async, through}
 import okay.freer.*
-
-
+import okay.std.*
 import okay.given
 import okay.freer.given
-
+import okay.std.given
 /**
  * Server-driven UI over no transport at all — the stage tested pure —
  * and then over a pair of channels, end to end, with the security

@@ -2,6 +2,9 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 /**
  * The core effects' operations as VALUES, for another language to hand
  * back to okay to perform (interop-shared): okay-clojure's `Ops` and

@@ -1,6 +1,6 @@
 package okay.zio
 
-import okay.freer.{Module, Providing, Resource, module, providing, wire}
+import okay.std.{Module, Providing, Resource, module, providing, wire}
 import _root_.zio.{Exit, Runtime, Scope, Tag, Unsafe, ZEnvironment, ZIO, ZLayer}
 
 /**

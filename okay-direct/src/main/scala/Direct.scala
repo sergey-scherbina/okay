@@ -2,6 +2,9 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import scala.quoted.*
 import scala.language.implicitConversions
 

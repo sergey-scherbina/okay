@@ -2,11 +2,10 @@ package okay.actor
 
 import okay.{Async, Channel}
 import okay.freer.*
-
-
+import okay.std.*
 import okay.given
 import okay.freer.given
-
+import okay.std.given
 /**
  * The laws a poisonous message must keep, whatever the loop does to
  * read the mailbox: every message once, in order; supervision knows

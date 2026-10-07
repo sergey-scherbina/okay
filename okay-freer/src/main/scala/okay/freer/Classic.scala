@@ -299,10 +299,6 @@ object Classic {
   def each[X, F[+_]](xs: Iterable[X])(f: X => Unit ! F): Unit ! F =
     foldM[X, Unit, F](xs)(())((_, x) => f(x))
 
-  /** run p at most once under `Once.run`: the by-need word, an effect —
-   * `Once.once`, here because `!.tailcall` (by-name) is its sibling */
-  inline def once[A, F[+_]](p: => A ! Once + F): A ! Once + F = Once.once(p)
-
   /**
    * The same program in a wider row: effect subsumption, as a COERCION. `Free` is invariant in its row by a
    * measured choice, so the type system cannot see that a program at `F` is one at `F + G`; `Row.into` says it
@@ -339,23 +335,6 @@ object Classic {
                                                    (h: F ==> ([X] =>> X ! G + H))
   : A ! G + H =
     translate[A, F, G + H](prog.plus[G])(h)
-
-  /**
-   * RECORD what a program asks for without answering any of it: each operation of `F` is told to a `Writer`
-   * and then performed as before, so the row keeps `F` and gains `Writer % W`.
-   *
-   *     !.tracing(prog)([X] => (e: Users[X]) => e.toString)   // A ! Users + Writer % String + G
-   *
-   * It records before anything is interpreted, so it sees the program's own asks whatever answers them.
-   * Re-emitting `e` does not loop: `translate` walks the SOURCE program only.
-   */
-  def tracing[A, F[+_] : TypeableK, W, G[+_]](prog: A ! F + G)
-                                             (show: [X] => F[X] => W)
-  : A ! F + Writer % W + G =
-    type R = F + Writer % W + G
-    interpret[A, F, Writer % W, F + G](prog):
-      [X] => (e: F[X]) =>
-        Writer.tell(show(e)).at[R].flatMap(_ => effect[R, X](e))
 
   /**
    * Interpret `F` into ANOTHER ROW rather than into a value: a handler valued in a program,

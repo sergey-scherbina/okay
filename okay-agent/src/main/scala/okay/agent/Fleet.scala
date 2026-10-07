@@ -2,7 +2,7 @@ package okay.agent
 
 import okay.{! as _, + as _, % as _, pure as _, effect as _, *}
 import okay.freer.*
-
+import okay.std.*
 import okay.given
 
 import okay.actor.{Actor, ActorRef, Behavior}

@@ -3,7 +3,8 @@ package okay.jdbc
 import okay.{Async, async, Source}
 
 import okay.freer.{+, %}
-import okay.freer.{!, Chunk, effect, Writer}
+import okay.freer.{!, effect}
+import okay.std.{Chunk, Writer}
 import java.sql.{Connection, DriverManager, PreparedStatement, ResultSet}
 
 /**
@@ -17,8 +18,8 @@ object JdbcInterop {
 
   /** a connection under the Resource region */
   def connection(url: String, user: String = "", password: String = "")
-  : Connection ! okay.freer.Resource =
-    okay.freer.Resource.acquire(DriverManager.getConnection(url, user, password))(_.close())
+  : Connection ! okay.std.Resource =
+    okay.std.Resource.acquire(DriverManager.getConnection(url, user, password))(_.close())
 
   /**
    * A query as a chunked async stream: the statement opens at the

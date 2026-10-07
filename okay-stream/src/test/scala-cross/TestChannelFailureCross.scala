@@ -2,9 +2,12 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import okay.given
 import okay.freer.given
-
+import okay.std.given
 /**
  * A producer's failure must reach the consumer — on both platforms,
  * from one source. The JVM channel parks and the JS channel leaves a

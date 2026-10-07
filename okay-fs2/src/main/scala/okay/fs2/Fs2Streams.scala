@@ -3,7 +3,8 @@ package okay.fs2
 import okay.{Async, Source, Stage, Take}
 
 import okay.freer.{%, +}
-import okay.freer.{!, Writer}
+import okay.freer.{!}
+import okay.std.{Writer}
 import okay.freer.!.*
 import _root_.cats.effect.IO
 import _root_.cats.effect.std.Queue

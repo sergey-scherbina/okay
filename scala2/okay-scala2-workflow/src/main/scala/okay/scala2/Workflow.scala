@@ -5,6 +5,7 @@ import okay.{Wf}
 import okay.freer.{%, +}
 import okay.freer.{!, At, Shift}
 import okay.freer.given
+import okay.std.given
 import Rows.coerce
 
 /*

@@ -6,7 +6,7 @@ import okay.freer.Aggregator
 import okay.cluster.{Flow, Flows, Scope}
 import okay.given
 import okay.freer.given
-
+import okay.std.given
 /**
  * A stateful stage gives back what holds a partition's state on EVERY path
  * (foreign-one-pool). Found on feature/foreign-streams-holds: a step that

@@ -1,9 +1,11 @@
 package okay.obs
 
 import okay.Async
-import okay.freer.{!, provide, providing, wire}
+import okay.freer.{!}
+import okay.std.{provide, providing, wire}
 import okay.given
 import okay.freer.given
+import okay.std.given
 import okay.codec.Json
 import okay.http.{Http, Method, Request, Response}
 import okay.persist.{MemoryStore, Policy as TopicPolicy}

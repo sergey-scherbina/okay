@@ -3,9 +3,11 @@ package okay.fs2
 import okay.{Async, Source, Stage}
 
 import okay.freer.{%, +}
-import okay.freer.{!, Writer}
+import okay.freer.{!}
+import okay.std.{Writer}
 import okay.given
 import okay.freer.given
+import okay.std.given
 import okay.cats.CatsEffect
 import okay.cats.CatsEffect.Program
 import _root_.cats.effect.IO

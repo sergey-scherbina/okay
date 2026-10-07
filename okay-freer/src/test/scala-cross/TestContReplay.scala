@@ -1,6 +1,4 @@
 package okay.freer
-
-
 /**
  * THE STRICT `k` BY RE-EXECUTION (cont-js-depth stage 4, specs/cont-js-depth.md): a body that uses its `k`'s answer
  * nests the host stack; at the end of the room the run unwinds to its driver and runs the bodies on the way again,

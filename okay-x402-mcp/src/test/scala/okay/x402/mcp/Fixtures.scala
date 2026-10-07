@@ -2,8 +2,7 @@ package okay.x402.mcp
 
 import okay.{Async}
 import okay.freer.*
-
-
+import okay.std.*
 import okay.agent.{ToolCall, ToolSpec}
 import okay.chain.Network
 import okay.codec.Json.*

@@ -2,7 +2,9 @@ package okay.deploy
 
 import okay.freer.*
 
+import okay.std.*
 import okay.freer.given
+import okay.std.given
 import Needs.needs
 
 /**
@@ -69,7 +71,7 @@ class TestDiDocs extends munit.FunSuite:
     import DocRoles.*
     assertEquals(!.run(Resource.run[String, Pure]((prim and repl) {
       wire[DocRoles.Primary].db.q + wire[DocRoles.Replica].rdb.q })), "pr")
-    assert(compileErrors("import okay.*; okay.freer.Module.value[okay.deploy.DocRoles.Primary](null) { wire[okay.deploy.DocRoles.Replica] }").nonEmpty)
+    assert(compileErrors("import okay.*; okay.std.Module.value[okay.deploy.DocRoles.Primary](null) { wire[okay.deploy.DocRoles.Replica] }").nonEmpty)
   }
 
   test("plan and exports read a module without building it") {

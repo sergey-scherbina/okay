@@ -2,7 +2,11 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import okay.freer.given
+import okay.std.given
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 import okay.Direct.*
@@ -29,7 +33,7 @@ class StagedBenchmark {
 
   type Row = State % Int + Writer % String
   type R = Stager.Answer[Int, String, Int]
-  val sw = Stager.StateWriter[Int, String, Int]()
+  val sw = Stagers.StateWriter[Int, String, Int]()
 
   def freeBlock(i: Int, acc: Int): Int ! Row =
     if i >= Iters then pure(acc)
@@ -231,10 +235,10 @@ class StagedBenchmark {
       o.set(7); o.tell("w")
       if o.get() != 7 || o.s != 7 || o.log.toVector != Vector("w") then throw new IllegalStateException(s"${o.getClass} differs")
 
-  // ---- specs/direct-stagers.md: (1) the SAME block through Stager.All
+  // ---- specs/direct-stagers.md: (1) the SAME block through Stagers.All
   // with two unused slots — the price of the layout
 
-  val aw = Stager.All[Unit, Int, String, Nothing, Int]()
+  val aw = Stagers.All[Unit, Int, String, Nothing, Int]()
 
   def allBlock(i: Int, acc: Int): Handled[aw.Row, aw.R, Int] =
     if i >= Iters then Handled.pure(acc)
@@ -263,7 +267,7 @@ class StagedBenchmark {
 
   case class Cfg(k: Int, limit: Int)
   type RowRT = Reader % Cfg + Throws % String
-  val rt = Stager.All[Cfg, Unit, Nothing, String, Int]()
+  val rt = Stagers.All[Cfg, Unit, Nothing, String, Int]()
   val cfg = Cfg(3, Int.MaxValue)
 
   def freeRT(i: Int, acc: Int): Int ! RowRT =

@@ -1,7 +1,8 @@
 package okay.sql
 
 import okay.Async
-import okay.freer.{!, Chunk, Freer, Indexed, TypeableI, Unary, +~, splitI}
+import okay.freer.{!, Freer, Indexed, TypeableI, Unary, +~, splitI}
+import okay.std.{Chunk}
 import scala.annotation.tailrec
 
 /**

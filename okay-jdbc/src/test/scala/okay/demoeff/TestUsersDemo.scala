@@ -3,8 +3,9 @@ package okay.demoeff
 
 import okay.{tracing}
 import okay.freer.*
-
+import okay.std.*
 import okay.freer.given
+import okay.std.given
 import UsersDemo.{Store, InMemory, rename, tracked}
 
 /**

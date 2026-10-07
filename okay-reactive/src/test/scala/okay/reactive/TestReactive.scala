@@ -4,6 +4,7 @@ package okay.reactive
 import okay.{Scheduler, Schedulers, Source}
 import java.util.concurrent.Flow
 import okay.freer.*
+import okay.std.*
 import okay.given
 
 /**

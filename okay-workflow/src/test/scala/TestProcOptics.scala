@@ -1,5 +1,6 @@
 import okay.{Lens, Optic, Prism, Proc, Wf}
 import okay.freer.*
+import okay.std.*
 import okay.Proc.given
 import scala.language.implicitConversions
 

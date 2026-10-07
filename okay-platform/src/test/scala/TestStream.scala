@@ -2,8 +2,11 @@ package okay
 
 
 import okay.freer.*
-import okay.freer.given
 
+
+import okay.std.*
+import okay.freer.given
+import okay.std.given
 /** The stream combinators, uniformly over the carriers — a Producer,
  * a writer program (via toLazyList), a LazyList — all lazy. */
 class TestStream extends munit.FunSuite {

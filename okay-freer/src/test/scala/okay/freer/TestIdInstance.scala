@@ -1,5 +1,4 @@
 package okay.freer
-
 import okay.{Answers, Comonad, ComonadAnswers, Id}
 import okay.given
 

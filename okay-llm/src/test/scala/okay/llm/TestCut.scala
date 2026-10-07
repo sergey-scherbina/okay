@@ -2,9 +2,10 @@ package okay.llm
 
 import okay.{Async, async}
 import okay.freer.*
-
+import okay.std.*
 import okay.given
 import okay.freer.given
+import okay.std.given
 import Cut.*
 
 /** specs/llm-agentic.md, llm-streaming-cut — one test per box

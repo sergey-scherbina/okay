@@ -2,7 +2,11 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import okay.freer.given
+import okay.std.given
 /** The stream combinators that are about a SOURCE — merge, chunked
  * merge and its flush — which left `TestStream` in the core with the
  * `Source` machinery (core-modules stage 1). What stayed there is the

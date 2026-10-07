@@ -1,9 +1,11 @@
 package okay.blob
 
 import okay.Async
-import okay.freer.{!, Writer}
+import okay.freer.{!}
+import okay.std.{Writer}
 import okay.given
 import okay.freer.given
+import okay.std.given
 import okay.persist.{Ack, FileStore, Policy, Segments}
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
@@ -101,7 +103,7 @@ class TestOffload extends munit.FunSuite:
     seeded(root, n = 10)
     run(Backup.copy(root, bl)): Unit
     val key = run {
-      Writer.uncons[okay.freer.Chunk[Meta], Unit, Async](bl.list("persist/")).map {
+      Writer.uncons[okay.std.Chunk[Meta], Unit, Async](bl.list("persist/")).map {
         case Left(_) => None
         case Right((c, _)) => c.headOption
       }

@@ -2,7 +2,11 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import okay.freer.given
+import okay.std.given
 import okay.Tables.{Plan, read}
 import okay.Chunks.elements
 import java.nio.file.Files

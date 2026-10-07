@@ -12,7 +12,7 @@ import scala.annotation.implicitNotFound
  * `reset` of answer `R`, and `reset` is its handler. Its operations are Shift's and run on Shift's machine;
  * no value of this type is made.
  */
-sealed trait Shift[R, +A]
+sealed trait Shift[R, +A] extends Replayable.Safe
 
 /** Danvy-Filinski's capture: the body runs under its `reset`, so it may capture to it again; `k` re-installs it */
 def shift[R, A, F[+_]](f: (A => R ! Shift % R + F) => R ! Shift % R + F)(using k: Shift.Key[R], at: At): A ! Shift % R + F =
@@ -279,7 +279,7 @@ object Shift {
 
   /** `shift` in a direct block, one type argument; the answer type and row come from the evidence and the block */
   inline def shift[A](using in: Prompted[?])[F[_]]
-                         (using inline ctx: DirectCtx[F])(using rw: Reader.RowOf[F], at: At)
+                         (using inline ctx: DirectCtx[F])(using rw: RowOf[F], at: At)
                          (f: (A => in.Res ! rw.R) => in.Res ! rw.R): A ! rw.R =
     Shift.shift[in.Res, A, Pure](in.prompt)(f.asInstanceOf[(A => in.Res ! Shift % ? + Pure) => in.Res ! Shift % ? + Pure])
       .asInstanceOf[A ! rw.R]
@@ -291,7 +291,7 @@ object Shift {
 
   /** the 0-variant in a direct block */
   inline def shift0[A](using in: Prompted[?])[F[_]]
-                          (using inline ctx: DirectCtx[F])(using rw: Reader.RowOf[F], at: At)
+                          (using inline ctx: DirectCtx[F])(using rw: RowOf[F], at: At)
                           (f: (A => in.Res ! rw.R) => in.Res ! rw.R): A ! rw.R =
     Shift.shift0[in.Res, A, Pure](in.prompt)(f.asInstanceOf[(A => in.Res ! Shift % ? + Pure) => in.Res ! Shift % ? + Pure])
       .asInstanceOf[A ! rw.R]
@@ -316,7 +316,7 @@ object Shift {
     type Aux[P <: Prompted[?], R0[+_]] = RowFor[P] { type R[+X] = R0[X] }
     // INLINE, with an inline `ctx`: the block's evidence exists only while `direct` expands, and a reference to
     // it surviving into the program is refused by the macro (measured)
-    inline given direct[P <: Prompted[?], F[_]](using inline ctx: DirectCtx[F], rw: Reader.RowOf[F]): Aux[P, rw.R] =
+    inline given direct[P <: Prompted[?], F[_]](using inline ctx: DirectCtx[F], rw: RowOf[F]): Aux[P, rw.R] =
       at[P, rw.R]
     /** one class for every row, not one per inline site */
     def at[P <: Prompted[?], R0[+_]]: Aux[P, R0] = new RowFor[P] { type R[+X] = R0[X] }
@@ -477,7 +477,7 @@ object Shift {
 
   /** ask and wait for the answer, in a direct block */
   inline def pause(using s: Asking[?, ?, ?, ?])[F[_]]
-                  (using inline ctx: DirectCtx[F])(using rw: Reader.RowOf[F], at: At)
+                  (using inline ctx: DirectCtx[F])(using rw: RowOf[F], at: At)
                   (q: s.Qst): s.Ans ! rw.R =
     shift[s.Ans](using s.in)(k => okay.freer.pure(Paused.Ask(q,
       // THE ONE CAST: only `resumable` makes an `Asking`, so the block's row is its row
@@ -523,7 +523,7 @@ object Shift {
 
   /** 4 · do something on the way back: the rest of the block, then `f` on its answer */
   inline def onReturn(using in: Prompted[?])[F[_]]
-                     (using inline ctx: DirectCtx[F])(using rw: Reader.RowOf[F], at: At)
+                     (using inline ctx: DirectCtx[F])(using rw: RowOf[F], at: At)
                      (f: in.Res => in.Res): Unit ! rw.R =
     shift0[Unit](using in)(k => k(()).map(f))
 

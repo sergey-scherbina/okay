@@ -1,6 +1,6 @@
 package okay.intent
 import okay.freer.given
-
+import okay.std.given
 import okay.given
 
 import okay.codec.{Json, Schema}

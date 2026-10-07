@@ -3,7 +3,7 @@ package okay.resilience
 
 import okay.{Async, Timer}
 import okay.freer.*
-
+import okay.std.*
 import okay.http.{Http, Request, Response}
 import java.util.concurrent.atomic.{AtomicLong, AtomicReference}
 

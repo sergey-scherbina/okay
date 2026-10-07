@@ -1,0 +1,250 @@
+package okay.freer
+
+
+import okay.std.*
+import okay.std.given
+import okay.{Monad, ParaMonad}
+
+import okay.freer.Freer.{Return, Inject, Bind}
+
+/**
+ * `Freer` as Atkey's parameterised monad (freer-paramonad, 2026-09-30),
+ * and the operator's question beside it, answered by compiling: an
+ * EFFECT whose signature carries the indexes — typestate as DATA, a
+ * `Get`/`Put` enum indexed by the state's type, not `PState`'s shift
+ * bodies — under which reading of `S`/`R` does a handler for it type
+ * on this base?
+ *
+ * Two readings of `Freer[G, S, R, A]`, and the base admits BOTH since
+ * its indexes are invariant:
+ *
+ *  - ANSWER TYPES (Cps's, PState's): a leaf is `(X => S) => R`, `R`
+ *    is what the handler PRODUCES. A handler for an indexed signature
+ *    is an indexed natural transformation `G ~> Shift` — it chooses
+ *    the shift body, which is the one sentence specs/freer-base.md
+ *    carries ("Free is Cps whose shift body the handler chooses") —
+ *    and the runner is Cps's, typed by the GADT. `PSt` below is
+ *    `PState` as data, run exactly so.
+ *  - BEFORE/AFTER STATE (McBride's `IxFree`): `R` is the state the
+ *    program CONSUMES, `S` the one it leaves. A handler threading a
+ *    value of `R` — `State.handle`'s loop with the type moving — types
+ *    since the indexes are INVARIANT (freer-consumed-index, 2026-09-30):
+ *    `Return` gives `S = R`, `Get` gives its state's type to the
+ *    continuation. On the `+R` base before it, both arms were refused
+ *    (`S <: R` where an `S` was owed; a supertype where `R` was), and
+ *    that refusal was pinned here until the decision flipped it.
+ */
+class TestFreerPara extends munit.FunSuite:
+
+  // ------------------------------------------------ the instance itself
+
+  /** a program against an ABSTRACT paramonad: the indexes compose end
+   * to end and `pure` sits on the diagonal */
+  def chain[M[_, _, _]](using P: ParaMonad[M])[A, B, C, S, T, R]
+                       (m: M[A, S, R])(f: A => M[B, T, S])(g: B => M[C, T, T]): M[C, T, R] =
+    P.flatMap(m)(a => P.flatMap(f(a))(b => P.flatMap(g(b))(c => P.pure(c))))
+
+  test("Freer.Para[G] is a ParaMonad for any G: found, and its nodes are the tree's") {
+    val P = summon[ParaMonad[Freer.Para[Unary[Pure]]]]
+    val p: Freer[Unary[Pure], Unit, Unit, Int] = P.flatMap(P.pure[Int, Unit](1))(x => P.pure(x + 1))
+    p match
+      case Bind(Return(1), _) => ()
+      case other => fail(s"expected Bind(Return(1), _), got $other")
+    assertEquals(!.run(p.map(_ * 10)), 20)
+    // map leaves the readable node, not a flatMap into a pure
+    P.map(P.pure[Int, Unit](1))(_ + 1) match
+      case Bind(_, f) => assert(f.isInstanceOf[Freer.Mapped[?, ?, ?, ?]])
+      case other => fail(s"expected a Mapped bind, got $other")
+  }
+
+  test("the diagonal at Lift is Free's own Monad — no ambiguity with the bridge") {
+    // both instances exist; the effect row's Monad still resolves and runs
+    def sum[F[_] : Monad](a: F[Int], b: F[Int]): F[Int] = a.flatMap(x => b.map(x + _))
+    assertEquals(!.run(sum[[A] =>> A ! Pure](pure(1), pure(2))), 3)
+  }
+
+  // --------------------------- reading 1: the index is an ANSWER TYPE
+
+  /**
+   * `PState` AS DATA: the same signatures `PState.get`/`set` have
+   * (State.scala), on an enum a handler can look at. `Get` keeps the
+   * state's type, `Put` moves it from `S` to `T`; `Z` is the final
+   * answer, threaded as `PState` threads it.
+   */
+  enum PSt[S, R, +X]:
+    case Get[S, Z]() extends PSt[S => Z, S => Z, S]
+    case Put[S, T, Z](t: T) extends PSt[T => Z, S => Z, S]
+
+  def get[S, Z]: Freer[PSt, S => Z, S => Z, S] = Inject(PSt.Get())
+  def put[S, T, Z](t: T): Freer[PSt, T => Z, S => Z, S] = Inject(PSt.Put(t))
+
+  /** an indexed natural transformation: every operation becomes the
+   * shift body it means — `PState.getAt`/`setAt`, chosen by the
+   * handler rather than written into the program */
+  val toShift: [S, R, X] => PSt[S, R, X] => (X => S) => R =
+    [S, R, X] => (op: PSt[S, R, X]) => (k: X => S) => op match
+      // type-test patterns, so the case's own `s0`/`z` are in scope: the
+      // body is written at ITS type and is an `R` by the GADT bound —
+      // `R` alone, a bare type parameter, cannot be the expected type of
+      // a lambda
+      // `k(s)(s)` cannot be written: Generate.scala's seed-side `apply`
+      // is in lexical scope for package okay and takes the second call
+      // (`Cps`'s "NO `apply` extension" comment) — the continuation's
+      // answer is named at its own type first
+      case _: PSt.Get[s0, z] => val f: s0 => z = s => { val g: s0 => z = k(s); g(s) }; f
+      case p: PSt.Put[s0, t, z] => val f: s0 => z = s => { val g: t => z = k(s); g(p.t) }; f
+
+  /**
+   * Cps's runner at ANY signature, the handler supplying the leaf's
+   * body: `ProbeFreerStep.Cps.run` with `h` where the leaf was the
+   * function. Typed by the GADT end to end — `Return` gives `S <: R`,
+   * so `k(a): S` IS the `R`. The re-entry is direct style's own frame,
+   * as in the library's runner; a probe, not a production loop.
+   */
+  def run[G[_, _, +_], S, R, A](p: Freer[G, S, R, A])
+                                 (h: [s, r, x] => G[s, r, x] => (x => s) => r)
+                                 (k: A => S): R =
+    (p.resume: @unchecked) match
+      case Return(a) => k(a)
+      case Inject(g) => h(g)(k)
+      case Bind(Inject(g), f) => h(g)(x => run(f(x))(h)(k))
+
+  test("typestate as an indexed effect: Int -> String -> List[String], the type moving on the tree") {
+    val p: Freer[PSt, List[String] => (List[String], Int), Int => (List[String], Int), Int] =
+      for
+        n <- get[Int, (List[String], Int)]
+        _ <- put[Int, String, (List[String], Int)]((n * 2).toString)
+        s <- get[String, (List[String], Int)]
+        _ <- put[String, List[String], (List[String], Int)](List(s, s))
+      yield n + s.length
+    val (state, value) = run(p)(toShift)(a => s => (s, a))(21)
+    assertEquals(state, List("42", "42"))
+    assertEquals(value, 23)
+  }
+
+  test("the same program through the abstract ParaMonad, at Freer.Para[PSt]") {
+    type Z = (String, String)
+    val p = chain[Freer.Para[PSt]](get[Int, Z])(n => put[Int, String, Z](n.toString))(_ => get[String, Z])
+    assertEquals(run(p)(toShift)(a => s => (s, a))(7), ("7", "7"))
+  }
+
+  test("an operation whose index does not meet the continuation's is refused") {
+    val errors = compileErrors("""
+      val bad = get[Int, Unit].flatMap(n => put[String, Int, Unit](n))
+    """)
+    assert(errors.nonEmpty, "a Put from String after a Get of Int must not type")
+  }
+
+  // ------------------ reading 1 INSIDE THE EFFECT SYSTEM: a row, a handler
+
+  /**
+   * The row: the indexed effect beside an ordinary `State % Int`, the
+   * unary member through `Unary` (Indexed.scala): on the diagonal it IS
+   * `State[Int, X]`, off it a stuck match type no operation conforms
+   * to — so `Indexed.unary` takes a `State` operation and
+   * `Indexed.effect` at a moving index refuses it, both by the
+   * compiler. The handler is the library's `State.handleIndexed`,
+   * the row probe this file carried until indexed-effects stage 3.
+   */
+  type Row = PSt +~ Unary[State[Int, *]]
+  given TypeableI[PSt] = TypeableI.derived
+
+  def rget[S, Z]: Freer[Row, S => Z, S => Z, S] = Indexed.effect[Row, S => Z, S => Z, S](PSt.Get())
+  def rput[S, T, Z](t: T): Freer[Row, T => Z, S => Z, S] = Indexed.effect[Row, T => Z, S => Z, S](PSt.Put(t))
+  def tick[R]: Freer[Row, R, R, Int] = Indexed.unary[Row, R, Int](State.Update[Int, Int](n => (n + 1, n + 1)))
+
+  test("an indexed effect in a ROW beside State: State.handleIndexed forwards the index it does not own") {
+    type Z = (List[String], (Int, Int))
+    val p: Freer[Row, List[String] => Z, Int => Z, Int] =
+      for
+        _ <- tick[Int => Z]
+        n <- rget[Int, Z]
+        _ <- tick[Int => Z]
+        _ <- rput[Int, List[String], Z](List.fill(n)("x"))
+        c <- tick[List[String] => Z]
+      yield c
+    val (state, (counter, value)) = run(State.handleIndexed(0)(p))(toShift)(a => s => (s, a))(2)
+    assertEquals(state, List("x", "x"))
+    assertEquals(counter, 3)
+    assertEquals(value, 3)
+  }
+
+  test("a lone diagonal operation, and one under a Bind, both continue at R") {
+    type Z = (Int, (Int, Int))
+    val lone: Freer[Row, Int => Z, Int => Z, Int] = tick
+    assertEquals(run(State.handleIndexed(4)(lone))(toShift)(a => s => (s, a))(9), (9, (5, 5)))
+  }
+
+  test("one system for two arities: Unary distributes over the unary sum, on the diagonal and off it") {
+    type One = Int => Unit
+    // on the diagonal both spellings reduce to the union of the two effects' operations
+    summon[Unary[State[Int, *] + Reader[Int, *]][One, One, Long] =:= (State[Int, Long] | Reader[Int, Long])]
+    summon[(Unary[State[Int, *]] +~ Unary[Reader[Int, *]])[One, One, Long] =:= (State[Int, Long] | Reader[Int, Long])]
+    // off it, neither accepts an operation of either
+    assert(compileErrors("val x: Unary[State[Int, *] + Reader[Int, *]][One, String => Unit, Long] = State.Get[Int, Long]()").nonEmpty)
+    assert(compileErrors("val x: (Unary[State[Int, *]] +~ Unary[Reader[Int, *]])[One, String => Unit, Long] = State.Get[Int, Long]()").nonEmpty)
+  }
+
+  test("Unary's extractor reads a diagonal node at its operation's own type, at any diagonal index") {
+    // the field is typed by the bridge, a match type a nested pattern would not reduce; `Unary(...)` answers the
+    // node at `F[A]`, so the constructor pattern refines the answer type
+    val node: Freer[Unary[State[Int, *]], String, String, Int] = Indexed.unary(State.Update[Int, Int](n => (n + 1, n)))
+    val bumped = node match
+      case Unary(State.Update(f)) => f(41)._1
+      case _ => -1
+    assertEquals(bumped, 42)
+  }
+
+  test("the door refuses a unary operation off the diagonal: the Unary member is stuck there") {
+    val errors = compileErrors("Indexed.effect[Row, Int => Unit, String => Unit, Int](State.Update[Int, Int](n => (n + 1, n + 1)))")
+    assert(errors.nonEmpty, "a State operation at a moving index must not type")
+    // and on the diagonal the same operation is accepted, through either door
+    val ok: Freer[Row, Int => Unit, Int => Unit, Int] = Indexed.unary[Row, Int => Unit, Int](State.Update[Int, Int](n => (n + 1, n + 1)))
+    assert(ok.isInstanceOf[Freer.Inject[?, ?, ?, ?]])
+  }
+
+  // ---------- reading 2: the index is a CONSUMED state — on the library's base
+
+  /** McBride's shape: `R` the state before, `S` the state after; the
+   * signature INVARIANT in its indexes, as the base is now */
+  enum St[S, R, +X]:
+    case Get[S]() extends St[S, S, S]
+    case Put[S, T](t: T) extends St[T, S, Unit]
+
+  def sget[S]: Freer[St, S, S, S] = Inject[St, S, S, S](St.Get())
+  def sput[S, T](t: T): Freer[St, T, S, Unit] = Inject[St, T, S, Unit](St.Put(t))
+
+  /**
+   * The handler that CONSUMES its index: `State.handle`'s loop with the
+   * type moving, no continuation object, `@tailrec` with the type
+   * arguments changing per call. Until freer-consumed-index (2026-09-30)
+   * this did not type on the library's base — `+R` gave `S <: R` at
+   * `Return` where an `S` was owed, and bound `Get`'s continuation
+   * argument as a supertype of the state — and the refusal was pinned
+   * here; with the indexes invariant the GADT gives equalities and the
+   * loop is what ProbeMcBride showed on the invariant copy.
+   */
+  @scala.annotation.tailrec
+  private def runSt[S, R, A](p: Freer[St, S, R, A])(r: R): (S, A) =
+    (p.resume: @unchecked) match
+      case Return(a) => (r, a)
+      case Inject(St.Get()) => (r, r)
+      case Inject(St.Put(t)) => (t, ())
+      case Bind(Inject(St.Get()), k) => runSt(k(r))(r)
+      case Bind(Inject(St.Put(t)), k) => runSt(k(()))(t)
+
+  test("a handler that CONSUMES the index types on the invariant base: the state threaded, the type moving") {
+    val p: Freer[St, List[String], Int, Int] =
+      for
+        n <- sget[Int]
+        _ <- sput[Int, String]((n * 2).toString)
+        s <- sget[String]
+        _ <- sput[String, List[String]](List(s, s))
+      yield n + s.length
+    assertEquals(runSt(p)(21), (List("42", "42"), 23))
+  }
+
+  test("the consumed index still refuses a Put from the wrong state and a run from the wrong state") {
+    assert(compileErrors("sget[Int].flatMap(n => sput[String, Int](n))").nonEmpty)
+    assert(compileErrors("runSt(sget[Int])(\"not an Int\")").nonEmpty)
+  }

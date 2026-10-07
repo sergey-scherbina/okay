@@ -2,8 +2,7 @@ package okay.ui
 
 import okay.{Async, CanBlock, Scheduler, Source}
 import okay.freer.*
-
-
+import okay.std.*
 import scala.annotation.tailrec
 
 /**
@@ -42,7 +41,7 @@ object Nav {
   /** a boundary's identity AND its answer type (the Prompt shape) */
   final class Key[A]
   /** a key is its own typed token: the same key names the same A */
-  given okay.freer.Same[Key] = okay.freer.Same.byIdentity
+  given okay.std.Same[Key] = okay.std.Same.byIdentity
   def key[A]: Key[A] = new Key[A]
 
   /**

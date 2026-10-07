@@ -3,9 +3,11 @@ package okay.refine
 import okay.{Async, Channel, Source, drained, runCollect, through}
 
 import okay.freer.{%}
-import okay.freer.{!, Writer, pure}
+import okay.freer.{!, pure}
+import okay.std.{Writer}
 import okay.given
 import okay.freer.given
+import okay.std.given
 import okay.testkit.Munit.Diagnosed
 import scala.util.chaining.*
 

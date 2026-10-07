@@ -3,9 +3,11 @@ package okay.pg
 import okay.{Async, Source}
 
 import okay.freer.{+, %}
-import okay.freer.{!, Chunk, Stream, Writer}
+import okay.freer.{!}
+import okay.std.{Chunk, Stream, Writer}
 import okay.given
 import okay.freer.given
+import okay.std.given
 import okay.crypto.given
 import okay.sql.SqlValue
 import okay.tls.{TlsConfig, SslMode}

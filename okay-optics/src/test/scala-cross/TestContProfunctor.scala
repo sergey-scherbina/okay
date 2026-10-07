@@ -2,9 +2,14 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import okay.freer.given
+import okay.std.given
 import okay.given
 import okay.freer.given
+import okay.std.given
 import scala.compiletime.testing.typeCheckErrors
 
 /**
@@ -136,19 +141,19 @@ class TestContProfunctor extends munit.FunSuite {
     // is universally quantified — there is no `X` to make and no
     // continuation to get one from. So the summon must fail, and a
     // test that only accepted things could never show it.
-    val e = typeCheckErrors("summon[okay.Optic.Choice[okay.freer.PState.Zooming[Int, Int]]]")
+    val e = typeCheckErrors("summon[okay.Optic.Choice[okay.std.PState.Zooming[Int, Int]]]")
     assert(e.nonEmpty, "a Choice for the zooming carrier resolved — the refutation is stale")
 
     // and therefore a prism cannot be run at the carrier the way a
     // lens can: this is the same refusal one level up, where a user
     // would meet it
     val p = typeCheckErrors(
-      "okay.Prism.some[Int, String].apply[okay.freer.PState.Zooming[Int, Int]](???)")
+      "okay.Prism.some[Int, String].apply[okay.std.PState.Zooming[Int, Int]](???)")
     assert(p.nonEmpty, "a prism ran at the zooming carrier — the refutation is stale")
   }
 
   test("a LENS does resolve at the same carrier — the refusal above is about `Choice`, not about the carrier") {
-    val e = typeCheckErrors("summon[okay.Optic.Strong[okay.freer.PState.Zooming[Int, Int]]]")
+    val e = typeCheckErrors("summon[okay.Optic.Strong[okay.std.PState.Zooming[Int, Int]]]")
     assertEquals(e, Nil, "the Strong instance stopped resolving")
   }
 }

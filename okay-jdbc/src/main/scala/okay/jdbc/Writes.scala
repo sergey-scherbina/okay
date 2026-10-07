@@ -1,7 +1,8 @@
 package okay.jdbc
 
 import okay.{Async, async}
-import okay.freer.{!, Chunk}
+import okay.freer.{!}
+import okay.std.{Chunk}
 import okay.codec.Schema
 import okay.persist.{Ack, Topic, Typed}
 import okay.sql.{Sql, SqlValue}
@@ -106,7 +107,7 @@ final class Writes(db: Sql, topic: Topic, run: String):
 
   private def countRows(p: okay.Source[Chunk[Vector[SqlValue]]]): Long ! Async =
     given okay.freer.Fold[Chunk[Vector[SqlValue]], Long] = okay.freer.Fold(0L)((n, c) => n + c.length)
-    okay.freer.Writer.fold[Chunk[Vector[SqlValue]], Long, Unit, Async](p).map(_._1)
+    okay.std.Writer.fold[Chunk[Vector[SqlValue]], Long, Unit, Async](p).map(_._1)
 
 object Writes:
 

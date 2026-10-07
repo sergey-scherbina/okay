@@ -3,9 +3,10 @@ package okay.cluster
 
 import okay.{Pane, Streamed, Tables, Bulk}
 import okay.freer.*
-
+import okay.std.*
 import okay.given
 import okay.freer.given
+import okay.std.given
 import okay.Chunks.elements
 import okay.freer.Row.plus
 import okay.Streamed.{joinSorted, joinWithin, windowed, zip}

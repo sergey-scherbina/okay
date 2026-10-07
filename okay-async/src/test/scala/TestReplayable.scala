@@ -2,6 +2,9 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 /**
  * THE DISCIPLINE AS A CONSTRAINT (dialogue-replay-discipline,
  * 2026-09-17). Replay is exact only while everything the outside
@@ -33,7 +36,7 @@ class TestReplayable extends munit.FunSuite {
     // TestDelimPersist watches exactly that happen, and now has to say
     // `Replayable.unchecked` to be allowed to
     val e = compileErrors(
-      "summon[okay.freer.Replayable[okay.freer.Shift % ? + (okay.freer.Writer % String + okay.freer.Pure)]]")
+      "summon[okay.freer.Replayable[okay.freer.Shift % ? + (okay.std.Writer % String + okay.freer.Pure)]]")
     assert(e.nonEmpty, "a Writer row was accepted as replayable")
   }
 
@@ -42,7 +45,7 @@ class TestReplayable extends munit.FunSuite {
   // (core-modules stage 3). The Uid half is a real question and is now
   // asked where Uid lives, in okay-data's TestUidReplayable.
   test("Resource is refused: acquiring twice is not a replay") {
-    assert(compileErrors("summon[okay.freer.Replayable[okay.freer.Shift % ? + okay.freer.Resource]]").nonEmpty)
+    assert(compileErrors("summon[okay.freer.Replayable[okay.freer.Shift % ? + okay.std.Resource]]").nonEmpty)
   }
 
   test("an abstract row PROPAGATES the obligation instead of crashing the compiler") {

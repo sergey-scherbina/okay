@@ -3,8 +3,9 @@ package okay.acme
 
 import okay.{Async, CanBlock}
 import okay.freer.*
-
+import okay.std.*
 import okay.freer.given
+import okay.std.given
 import okay.codec.Json
 import okay.http.{Http, Method, Request, Response}
 

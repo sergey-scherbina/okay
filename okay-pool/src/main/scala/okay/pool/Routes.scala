@@ -3,7 +3,7 @@ package okay.pool
 
 import okay.{Async, Scheduler}
 import okay.freer.*
-
+import okay.std.*
 import okay.cluster.{Checkpoint, Jobs, Lease}
 import okay.codec.{Codecs, Json}
 import okay.conf.Schemes

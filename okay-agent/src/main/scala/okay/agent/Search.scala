@@ -3,9 +3,10 @@ package okay.agent
 import okay.{guard}
 
 import okay.freer.{+}
-import okay.freer.{!, Choose, Logic, effect, runChoice}
+import okay.freer.{!, effect}
+import okay.std.{Choose, Logic, runChoice}
 import okay.freer.given
-
+import okay.std.given
 /**
  * Search over what the model says (specs/llm-agentic.md). Sampling
  * IS nondeterminism, so the strategies every agent framework

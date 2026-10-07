@@ -2,12 +2,16 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import okay.given
 import okay.freer.given
+import okay.std.given
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * once-across-fibres: one `!.once` value demanded from two fibres.
+ * once-across-fibres: one `Once.once` value demanded from two fibres.
  * Under `Once.run` each fibre has its own cells and the program runs
  * twice; under one `SharedOnce` it runs once and the second fibre
  * waits for the first's answer. JVM: `par` needs a Scheduler and the
@@ -18,7 +22,7 @@ class TestSharedOnce extends munit.FunSuite:
   /** counts its runs, and takes long enough for the second demand to
    * arrive while the first is in flight */
   def slow(runs: AtomicInteger): Int ! Once + Async =
-    !.once[Int, Async](effect[Once + Async, Unit](Async.Run(() => { runs.incrementAndGet(); Thread.sleep(30) })).map(_ => 42))
+    Once.once[Int, Async](effect[Once + Async, Unit](Async.Run(() => { runs.incrementAndGet(); Thread.sleep(30) })).map(_ => 42))
 
   test("one handle, two fibres, one store: the program runs once and the second fibre waits for its answer") {
     val runs = AtomicInteger(0)
@@ -50,7 +54,7 @@ class TestSharedOnce extends munit.FunSuite:
     val runs = AtomicInteger(0)
     val store = SharedOnce()
     val p: Int ! (Once + (Async + Writer % String)) =
-      !.once[Int, Async + Writer % String](
+      Once.once[Int, Async + Writer % String](
         effect[Once + (Async + Writer % String), Unit](Async.Run(() => { runs.incrementAndGet(); () }))
           .flatMap(_ => effect[Once + (Async + Writer % String), Unit](Writer("ran"))).map(_ => 7))
     val twice = p.flatMap(x => p.map(y => x + y))

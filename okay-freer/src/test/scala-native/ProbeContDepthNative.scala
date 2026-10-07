@@ -1,6 +1,4 @@
 package okay.freer
-
-
 /**
  * cont-leaf-by-platform on Native: contAnswer's body `k(x + 1) + 1` at depth, the macro's lazy leaf against
  * the strict one (`Cps.shiftLeaf`), timed by hand (no JMH on Native). Runs only with OKAY_PROBE_CONT_DEPTH

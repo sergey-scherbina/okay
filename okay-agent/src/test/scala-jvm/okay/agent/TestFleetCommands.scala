@@ -1,9 +1,10 @@
 package okay.agent
 import okay.freer.*
-
+import okay.std.*
 import okay.{! as _, + as _, % as _, Pure as _, *}
 import okay.given
 import okay.freer.given
+import okay.std.given
 import okay.codec.Json
 import okay.persist.{Ack, MemoryStore}
 import Fleet.{Command, Control, Event}

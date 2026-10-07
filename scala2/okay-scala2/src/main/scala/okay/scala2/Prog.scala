@@ -3,10 +3,12 @@ package okay.scala2
 import okay.{Async, async}
 
 import okay.freer.{%, +}
-import okay.freer.{!, Throws, raise}
+import okay.freer.{!}
+import okay.std.{Throws, raise}
 import okay.freer.Row.at
 import okay.given
 import okay.freer.given
+import okay.std.given
 import scala.util.control.NonFatal
 
 /**
@@ -38,7 +40,7 @@ final class Prog[A] private[scala2] (private val body: ProgBody[A]) {
 
   /** the failure as a value; the result never fails */
   def attempt: Prog[Either[Throwable, A]] =
-    Prog.of(okay.freer.runEither[A, Async, Throwable](program).at[Prog.Row])
+    Prog.of(okay.std.runEither[A, Async, Throwable](program).at[Prog.Row])
 
   /** on failure, continue with `h` */
   def recover(h: Throwable => Prog[A]): Prog[A] =
@@ -51,7 +53,7 @@ final class Prog[A] private[scala2] (private val body: ProgBody[A]) {
   def run(): A = runEither().fold(e => throw e, identity)
 
   /** run to the answer on this thread, a failure as a value (JVM) */
-  def runEither(): Either[Throwable, A] = okay.freer.runEither[A, Async, Throwable](program).runWith
+  def runEither(): Either[Throwable, A] = okay.std.runEither[A, Async, Throwable](program).runWith
 }
 
 /**

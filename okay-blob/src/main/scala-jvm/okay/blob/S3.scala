@@ -3,7 +3,8 @@ package okay.blob
 import okay.{Async, Source}
 
 import okay.freer.{+, %}
-import okay.freer.{!, Chunk, Writer, pure}
+import okay.freer.{!, pure}
+import okay.std.{Chunk, Writer}
 import okay.freer.Row.plus
 import okay.http.{Body, Http, Method, Request, Response}
 import scala.collection.immutable.ArraySeq

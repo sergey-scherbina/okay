@@ -1,8 +1,6 @@
 package okay.ui
 import okay.freer.*
-
-
-
+import okay.std.*
 /**
  * The capability door on Scope (ctx-prompts): exit reaches the
  * NEAREST scope by nesting, a bound prompt still crosses, and the
@@ -44,6 +42,7 @@ class TestScopeCtx extends munit.FunSuite {
   test("an exit with a forged prompt does not compile — and a real scope still does") {
     val forged = compileErrors("""
       import okay.freer.*
+      import okay.std.*
       import okay.ui.*
       given okay.freer.Prompt[String] = okay.freer.Shift.prompt[String]
       val p: String ! Scope.Row = Scope.exit[String, String]("nowhere")
@@ -51,6 +50,7 @@ class TestScopeCtx extends munit.FunSuite {
     assert(forged.nonEmpty, "a forged prompt still compiles")
     assertEquals(compileErrors("""
       import okay.freer.*
+      import okay.std.*
       import okay.ui.*
       val p: String ! Dialog = Scope.bounded[String](Scope.exit[String, String]("ok"))
     """), "")

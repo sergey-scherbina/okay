@@ -1,7 +1,8 @@
 package okay.docs
 
 import okay.{Async, Source}
-import okay.freer.{!, Chunk}
+import okay.freer.{!}
+import okay.std.{Chunk}
 import okay.codec.Schema
 import munit.FunSuite
 

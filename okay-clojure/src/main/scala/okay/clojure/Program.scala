@@ -3,7 +3,8 @@ package okay.clojure
 import okay.{ChunkBuf, Chunks, Foreign, Stage, Take}
 
 import okay.freer.{%, +, Pure}
-import okay.freer.{!, Chunk, Free, Member, Writer, pure}
+import okay.freer.{!, Free, Member, pure}
+import okay.std.{Chunk, Writer}
 import clojure.lang.{AFn, Cons, IFn, ILookup, ISeq, Keyword, LazySeq, RT}
 import scala.reflect.ClassTag
 

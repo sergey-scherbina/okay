@@ -2,7 +2,11 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import okay.freer.given
+import okay.std.given
 /**
  * channel-drain: the batched receive takes what is already buffered
  * under ONE transaction. The elements and their order must be the

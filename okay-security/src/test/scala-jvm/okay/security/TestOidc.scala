@@ -2,10 +2,10 @@ package okay.security
 
 import okay.{Async}
 import okay.freer.*
-
-
+import okay.std.*
 import okay.given
 import okay.freer.given
+import okay.std.given
 import okay.codec.Json
 import okay.http.{Http, Method, Request, Response, Server, Transports}
 
@@ -69,7 +69,7 @@ class TestOidc extends munit.FunSuite {
         json(s"""{"access_token":"$access","id_token":"${
           idToken(base, "app", lastNonce, access)}"}""")
     }
-    okay.freer.Resource.run[A, Pure](Server.serve(0)(route).map { s =>
+    okay.std.Resource.run[A, Pure](Server.serve(0)(route).map { s =>
       base = s"http://127.0.0.1:${Server.port(s)}"
       body(base, () => lastNonce)
     }).runWith

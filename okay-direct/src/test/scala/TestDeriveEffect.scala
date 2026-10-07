@@ -2,7 +2,11 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import okay.freer.given
+import okay.std.given
 import okay.freer.Row.{at, plus}
 import okay.Direct.{direct, given}
 import scala.language.implicitConversions
@@ -60,7 +64,7 @@ class TestDeriveEffect extends munit.FunSuite {
     // side, so a composite instance is never needed. It is also not
     // available, deliberately:
     assert(!scala.compiletime.testing.typeChecks(
-      "summon[okay.TypeableK[TestDeriveEffect.this.Db + okay.freer.Writer % String]]"))
+      "summon[okay.TypeableK[TestDeriveEffect.this.Db + okay.std.Writer % String]]"))
     // what IS available is each part, found with no import at all
     assertEquals(summon[TypeableK[Db]].test(Db.Get("a")), true)
     assertEquals(summon[TypeableK[Writer % String]].test(Writer("x")), true)
@@ -157,7 +161,7 @@ class TestDeriveEffect extends munit.FunSuite {
     // each, composed
     val both: Option[Int] ! State % Store + Writer % String =
       stored[Option[Int], Writer % String](
-        !.tracing(prog)([X] => (e: Db[X]) => e.toString))
+        Writer.tracing(prog)([X] => (e: Db[X]) => e.toString))
     val (store, (told, answer)) =
       State.run[Store, (Seq[String], Option[Int])](Map.empty)(
         Writer.run[String, Option[Int], State % Store](both))
@@ -166,7 +170,7 @@ class TestDeriveEffect extends munit.FunSuite {
     assertEquals(store, Map("b" -> 2))
 
     // tracing alone answers nothing: the same program, still asking
-    val traced: Option[Int] ! R = !.tracing(prog)([X] => (e: Db[X]) => e.toString)
+    val traced: Option[Int] ! R = Writer.tracing(prog)([X] => (e: Db[X]) => e.toString)
     val (log, plain) =
       !.run(Writer.run[String, Option[Int], Pure](
         !.translate[Option[Int], Db, Writer % String](traced):

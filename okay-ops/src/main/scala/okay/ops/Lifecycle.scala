@@ -2,7 +2,7 @@ package okay.ops
 
 import okay.{Async, Timer}
 import okay.freer.*
-
+import okay.std.*
 import okay.codec.Schema
 import okay.http.{Http, Request, Response}
 import okay.resilience.Attempt

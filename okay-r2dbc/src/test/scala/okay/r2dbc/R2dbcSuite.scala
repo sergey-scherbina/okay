@@ -3,9 +3,11 @@ package okay.r2dbc
 import okay.{Async, Source}
 
 import okay.freer.{+, %}
-import okay.freer.{!, Chunk, Stream, Writer}
+import okay.freer.{!}
+import okay.std.{Chunk, Stream, Writer}
 import okay.given
 import okay.freer.given
+import okay.std.given
 import okay.sql.{Isolation, SqlType, SqlValue, Typed}
 import okay.sql.given
 import io.r2dbc.spi.Connection

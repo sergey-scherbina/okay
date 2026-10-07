@@ -2,6 +2,9 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 /**
  * actor-receive-fused: `receiveBlocking` through a `Handoff`. The laws
  * are that every answer `receive`'s program gives arrives through the

@@ -1,7 +1,10 @@
 package okay.foreign.workflow
 
 
-import okay.freer.{Choose, effect, runChoice, given}
+import okay.freer.{effect, given}
+
+
+import okay.std.{Choose, runChoice}
 import okay.durable.Durable
 import okay.foreign.{Foreign, ForeignEval, ForeignWorker, Reliable, TestPy}
 

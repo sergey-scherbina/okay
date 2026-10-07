@@ -2,8 +2,7 @@ package okay.wroclaw
 
 import okay.{Tables}
 import okay.freer.*
-
-
+import okay.std.*
 import okay.Tables.{read, join, select}
 
 /**

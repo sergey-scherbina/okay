@@ -1,6 +1,4 @@
 package okay.freer
-
-
 import scala.collection.mutable.ArrayBuffer
 
 /** bodies compiled in a SAFE scope: transformed (k is data), or they would not compile */

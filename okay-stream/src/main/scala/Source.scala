@@ -2,7 +2,11 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import okay.freer.given
+import okay.std.given
 /**
  * An asynchronous SOURCE: a program that tells its elements as it
  * goes, performing Async between them. The shape every streaming seam
@@ -137,7 +141,7 @@ object Source {
     type R = Writer % W + G
     // the walk as a frame of the machine (handle-frames-loops): each production told
     def frame(x: B ! Produce + G): okay.freer.Shift.U[R, B] =
-      okay.freer.HandleFrames.statefulOver[Produce, Unit, B, B, R, Produce + G](okay.freer.producing[G], (_, b) => okay.freer.pure(b))(
+      okay.freer.HandleFrames.statefulOver[Produce, Unit, B, B, R, Produce + G](okay.std.producing[G], (_, b) => okay.freer.pure(b))(
         (_, w, resume) => okay.freer.effect[R, Unit](Writer(produced[W](w))).flatMap(_ => resume((), w)))((), x)
     def go(d: Int)(p: B ! Produce + G): B ! R = (p.resumeRun: @unchecked) match
       case Free.Return(b) => okay.freer.pure(b)

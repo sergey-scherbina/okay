@@ -2,7 +2,11 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import okay.freer.given
+import okay.std.given
 import okay.freer.Row.{In, at, plus}
 import Chunks.elements
 
@@ -21,7 +25,7 @@ import Chunks.elements
  * `sortBy`, in okay-spark). Nothing in `Bulk` changes, no platform's
  * build breaks, and a program that needs the new operation SAYS so in
  * its type: `Table[Dep] ! Tables + Sort`. And the program is a value:
- * `!.tracing` prints the plan, and a rewrite before the run — project
+ * `Writer.tracing` prints the plan, and a rewrite before the run — project
  * before the join — is a walk over data rather than a new API.
  *
  * The combinators are row-polymorphic through membership (`In`), so

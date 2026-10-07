@@ -3,7 +3,8 @@ package okay.persist
 import okay.{Async, ChunkBuf, Chunks, Source, Timer}
 
 import okay.freer.{+, %}
-import okay.freer.{!, Chunk, Writer, effect}
+import okay.freer.{!, effect}
+import okay.std.{Chunk, Writer}
 /**
  * Streaming reads over a topic (specs/persist.md, Interface): a
  * `Source[Chunk[Record]]` — each chunk is one told value, each read

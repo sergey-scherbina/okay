@@ -1,7 +1,10 @@
 package okay.foreign
 
 
-import okay.freer.{Choose, Reader, effect, runChoice, given}
+import okay.freer.{effect, given}
+
+
+import okay.std.{Choose, Reader, runChoice}
 import okay.durable.Durable
 
 object TestPyProgram:

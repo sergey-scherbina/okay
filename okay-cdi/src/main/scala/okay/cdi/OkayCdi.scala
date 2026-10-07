@@ -2,6 +2,7 @@ package okay.cdi
 
 import okay.freer.*
 
+import okay.std.*
 import jakarta.inject.Singleton
 import jakarta.enterprise.event.Observes
 import jakarta.enterprise.inject.Instance

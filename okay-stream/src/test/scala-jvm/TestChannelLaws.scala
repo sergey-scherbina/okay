@@ -2,6 +2,9 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import org.scalacheck.Prop.forAll
 import scala.jdk.CollectionConverters.*
 

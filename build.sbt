@@ -473,6 +473,44 @@ lazy val okayFreer = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
   )
 
+/** The classic's standard effects (okay-std, the operator, 2026-10-08): State, Reader, Writer, Throws, Choice,
+ * Resource, Random, Clock and the rest, package `okay.std`, over okay-freer's core — the tree, its handlers,
+ * Shift and its machine stay there. */
+lazy val okayStd = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-std"))
+  // `test->test`: the moved suites share okay-freer's test helpers (ContProgramAnswer, the probes)
+  .dependsOn(okayFreer % "compile->compile;test->test")
+  .settings(
+    name := "okay-std",
+  )
+  .jvmConfigure(_.enablePlugins(JmhPlugin))
+  .jvmSettings(
+    // the effects' lanes, as okay-freer's (its comment on the COUNT and EXACT roads of a benchmark)
+    Jmh / sourceDirectory := baseDirectory.value.getParentFile / "src" / "jmh",
+    Jmh / javaOptions := (Test / javaOptions).value.filterNot(_.startsWith("--enable-native-access")),
+    // forked as okay-freer's suite, for the same reasons (its comment)
+    Test / javaOptions += "--enable-native-access=ALL-UNNAMED",
+    Test / javaOptions += "-Dokay.cont.room=64",
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-cross",
+    Test / fork := true,
+    Test / javaOptions += "-Xmx1g",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+    libraryDependencies += "org.scalameta" %% "munit-scalacheck" % "1.1.0" % Test,
+  )
+  .jsSettings(
+    Test / unmanagedSourceDirectories :=
+      Seq(baseDirectory.value.getParentFile / "src" / "test" / "scala-cross"),
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+  .nativeSettings(
+    Test / unmanagedSourceDirectories :=
+      Seq(baseDirectory.value.getParentFile / "src" / "test" / "scala-cross",
+        baseDirectory.value.getParentFile / "src" / "test" / "scala-native"),
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+
 lazy val okay = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("."))
@@ -506,7 +544,7 @@ lazy val okayJdk22 = versioned("okayJdk22", "jdk22", 22, "okayFreerJVM")
 lazy val okayAsync = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-async"))
-  .dependsOn(okayFreer)
+  .dependsOn(okayStd)
   .settings(
     name := "okay-async",
   )
@@ -790,7 +828,7 @@ lazy val okayData = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 lazy val okayOptics = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-optics"))
-  .dependsOn(okayFreer % "compile->compile;test->test", okayDirect % "test->compile", okayPlatform % "test->compile")
+  .dependsOn(okayStd % "compile->compile;test->test", okayDirect % "test->compile", okayPlatform % "test->compile")
   .settings(
     name := "okay-optics",
   )
@@ -2279,7 +2317,9 @@ _root_.okay.deploy.sbt.OkayModules.settings(
     "the core depends on the machine only, no library (specs/modules-infra.md)"),
   _root_.okay.deploy.sbt.OkayModules.forbid("okayFreer(JVM|JS|Native)", "(?!okay(Cont)?(JVM|JS|Native)$).*",
     "the classic depends on the core only: it knows nothing of the machine but through the core (specs/modules-infra.md)"),
-  _root_.okay.deploy.sbt.OkayModules.forbid("okayKernel(JVM|JS|Native)", "(?!okay(Freer|Cont)?(JVM|JS|Native)$).*",
+  _root_.okay.deploy.sbt.OkayModules.forbid("okayStd(JVM|JS|Native)", "(?!okay(Cont|Freer)?(JVM|JS|Native)$).*",
+    "the classic's effects depend on the classic's core only (okay-std)"),
+  _root_.okay.deploy.sbt.OkayModules.forbid("okayKernel(JVM|JS|Native)", "(?!okay(Freer|Std|Cont)?(JVM|JS|Native)$).*",
     "the kernel depends on the core only: every plugin carries what it does"),
 )
 
@@ -2292,7 +2332,7 @@ _root_.okay.deploy.sbt.OkayModules.settings(
 lazy val okayKernel = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-kernel"))
-  .dependsOn(okayFreer)
+  .dependsOn(okayStd)
   .settings(
     name := "okay-kernel",
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
@@ -3843,7 +3883,7 @@ lazy val platformMembers: Seq[ProjectReference] = gtkProjects ++ Seq[ProjectRefe
     okayDocs.jvm, okayDocs.js, okayDocs.native,
     okayConf.jvm, okayConf.js, okayConf.native,
     okayObs.jvm, okayObs.js, okayObs.native,
-    okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy, okayArrow.jvm, okayArrow.js, okayArrow.native, okayParquet.jvm, okayParquet.js, okayParquet.native, okayLake, okayCompress.jvm, okayCompress.js, okayCompress.native, okayDiagnose.jvm, okayDiagnose.js, okayDiagnose.native, okayCont.jvm, okayCont.js, okayCont.native, okayFreer.jvm, okayFreer.js, okayFreer.native, okayTest.jvm, okayTest.js, okayTest.native, okayForeignWorkflow, okayR, okayForeignCluster,
+    okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy, okayArrow.jvm, okayArrow.js, okayArrow.native, okayParquet.jvm, okayParquet.js, okayParquet.native, okayLake, okayCompress.jvm, okayCompress.js, okayCompress.native, okayDiagnose.jvm, okayDiagnose.js, okayDiagnose.native, okayCont.jvm, okayCont.js, okayCont.native, okayFreer.jvm, okayFreer.js, okayFreer.native, okayStd.jvm, okayStd.js, okayStd.native, okayTest.jvm, okayTest.js, okayTest.native, okayForeignWorkflow, okayR, okayForeignCluster,
     okayTelegram.jvm, okayTelegram.js,
     okaySecurity.jvm, okaySecurity.js, okaySecurityArgon2, okayRust.jvm,
     okayFrame.jvm, okayFrame.js,
@@ -4101,7 +4141,7 @@ lazy val okaySpring = (project in file("okay-spring"))
  * scope's closer as a bound instance, and an injector's instance as
  * a module. JVM; Guice 7 (jakarta.inject). */
 lazy val okayGuice = (project in file("okay-guice"))
-  .dependsOn(okayFreer.jvm)
+  .dependsOn(okayStd.jvm)
   .settings(
     name := "okay-guice",
     libraryDependencies ++= Seq(
@@ -4116,7 +4156,7 @@ lazy val okayGuice = (project in file("okay-guice"))
  * destroyed with the container; a container's instance as a module.
  * The API only at compile time; Weld SE is the test container. */
 lazy val okayCdi = (project in file("okay-cdi"))
-  .dependsOn(okayFreer.jvm)
+  .dependsOn(okayStd.jvm)
   .settings(
     name := "okay-cdi",
     libraryDependencies ++= Seq(

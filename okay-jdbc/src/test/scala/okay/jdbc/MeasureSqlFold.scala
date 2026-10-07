@@ -3,9 +3,11 @@ package okay.jdbc
 import okay.{Async, Source}
 
 import okay.freer.{+, %}
-import okay.freer.{!, Chunk, effect, Stream, Writer}
+import okay.freer.{!, effect}
+import okay.std.{Chunk, Stream, Writer}
 import okay.given
 import okay.freer.given
+import okay.std.given
 import okay.codec.Schema
 import okay.sql.{Bad, Col, Granted, Isolation, Sql, SqlValue, Typed}
 

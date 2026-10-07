@@ -2,8 +2,12 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import okay.freer.given
-import org.openjdk.jmh.annotations.*
+import okay.std.given
+import org.openjdk.jmh.annotations.{State, *}
 import java.util.concurrent.TimeUnit
 
 /**
@@ -45,7 +49,7 @@ class FoldConsumersBenchmark {
   def producer: Producer[Long] =
     def go(i: Long): Producer[Long] =
       if i >= n then okay.freer.pure(0L)
-      else okay.freer.produce(i).flatMap(_ => go(i + 1L))
+      else okay.std.produce(i).flatMap(_ => go(i + 1L))
     go(0L)
 
   // ---- Writer.fold

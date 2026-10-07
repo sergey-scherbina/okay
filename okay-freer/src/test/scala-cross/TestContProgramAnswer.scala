@@ -1,6 +1,4 @@
 package okay.freer
-
-
 import scala.collection.mutable.ListBuffer
 
 /** cont-program-answer's programs, shared by the cross suite and the 128 KB one */

@@ -1,8 +1,6 @@
 package okay.r
 import okay.freer.given
-
-
-
+import okay.std.given
 object TestRFacade:
   val demo = R.module("rfacadedemo", """
     trimmed <- function(xs, trim = 0.25) mean(xs, trim = trim)

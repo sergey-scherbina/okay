@@ -3,8 +3,7 @@ package okay.http
 
 import okay.{Async, Source, Stage, Take, through}
 import okay.freer.*
-
-
+import okay.std.*
 /**
  * A WebSocket frame.
  *

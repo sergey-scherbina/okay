@@ -3,9 +3,11 @@ package okay.pg
 import okay.{Async, Source}
 
 import okay.freer.{+, %}
-import okay.freer.{!, Chunk, effect, Resource, Stream, Throws, Writer}
+import okay.freer.{!, effect}
+import okay.std.{Chunk, Resource, Stream, Throws, Writer}
 import okay.given
 import okay.freer.given
+import okay.std.given
 import okay.crypto.given
 import okay.codec.Schema
 import okay.sql.{Granted, Isolation, Sql, SqlType, SqlValue, Typed}
@@ -140,7 +142,7 @@ class TestPg extends munit.FunSuite {
       }
       val out = !.run(Async.run[Either[String, Long], Nothing](
         Resource.run[Either[String, Long], Async](
-          okay.freer.runEither[Long, Resource + Async, String](prog))))
+          okay.std.runEither[Long, Resource + Async, String](prog))))
       assertEquals(out, Left("no"))
       val n = collectChunks(db.query("select count(*) from customer where id = 30")).flatten
       assertEquals(n.head.head, SqlValue.I64(0), "the insert survived the abort")

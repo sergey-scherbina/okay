@@ -86,7 +86,7 @@ object McpLink {
 
   private def end(out: Channel[String], in: Channel[String]): Link = new Link {
     def send(line: String): Unit ! okay.Async = out.send(line).map(_ => ())
-    def lines: okay.Source[String] = okay.freer.Writer.of(in)
+    def lines: okay.Source[String] = okay.std.Writer.of(in)
   }
 
   /** a link over a process's stdin and stdout, or any pair of streams */

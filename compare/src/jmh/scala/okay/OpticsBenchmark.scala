@@ -2,12 +2,16 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import okay.freer.given
+import okay.std.given
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 import okay.given
 import okay.freer.given
-
+import okay.std.given
 /**
  * optics-core: THE GATE (specs/optics.md stage 0). An optic's `set`
  * pays for a tuple per `first` and a closure per composition; the bar

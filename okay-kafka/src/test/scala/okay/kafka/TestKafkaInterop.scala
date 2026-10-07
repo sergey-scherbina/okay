@@ -3,6 +3,7 @@ package okay.kafka
 import okay.freer.!
 import okay.given
 import okay.freer.given
+import okay.std.given
 import KafkaInterop.*
 import org.apache.kafka.clients.consumer.{ConsumerRecord, MockConsumer, OffsetResetStrategy}
 import org.apache.kafka.clients.producer.{MockProducer, ProducerRecord}
@@ -30,12 +31,12 @@ class TestKafkaInterop extends munit.FunSuite {
     assertEquals(first.map(_.value).toList, (0 until 10).map(i => s"v$i").toList)
   }
 
-  type Chunk1 = okay.freer.Chunk[ConsumerRecord[String, String]]
+  type Chunk1 = okay.std.Chunk[ConsumerRecord[String, String]]
 
   /** pull exactly one told chunk out of the async source (the source
    * never ends, so `uncons`, not a collect) */
   def firstChunk(s: KafkaChunks[String, String]): Chunk1 ! okay.Async =
-    okay.freer.Writer.uncons[Chunk1, Unit, okay.Async](s).map {
+    okay.std.Writer.uncons[Chunk1, Unit, okay.Async](s).map {
       case Right((c, _)) => c
       case Left(_) => fail("no chunk")
     }
@@ -57,8 +58,8 @@ class TestKafkaInterop extends munit.FunSuite {
 
   test("managed consumer closes with its Resource scope") {
     val c = MockConsumer[String, String](OffsetResetStrategy.EARLIEST)
-    val prog = okay.freer.Resource.acquire(c)(_.close()).map(_ => ())
-    !.run(okay.freer.Resource.run[Unit, okay.freer.Pure](prog))
+    val prog = okay.std.Resource.acquire(c)(_.close()).map(_ => ())
+    !.run(okay.std.Resource.run[Unit, okay.freer.Pure](prog))
     assert(c.closed())
   }
 }

@@ -3,7 +3,8 @@ package okay.clojure
 import okay.{Stage, through}
 
 import okay.freer.{%}
-import okay.freer.{!, Writer, pure}
+import okay.freer.{!, pure}
+import okay.std.{Writer}
 import clojure.lang.{IFn, PersistentVector}
 import java.util.concurrent.atomic.AtomicInteger
 import scala.jdk.CollectionConverters.*

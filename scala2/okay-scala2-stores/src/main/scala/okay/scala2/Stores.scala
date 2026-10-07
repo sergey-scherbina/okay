@@ -1,7 +1,7 @@
 package okay.scala2
 
 import java.nio.file.Path
-import okay.freer.Chunk
+import okay.std.Chunk
 import okay.blob.{Backup, Blob, Bytes, Etag, Meta}
 import okay.cache.{Cache, Invalidations, View, WriteThrough}
 import okay.codec.Schema
@@ -77,7 +77,7 @@ object Blobs {
 
   /** every key under the prefix, once, in key order */
   def list(b: Blob, prefix: String): Source[Meta] =
-    Source.of(okay.freer.Writer.expand[Chunk[Meta], Meta, Unit, okay.Async](b.list(prefix))(c => c))
+    Source.of(okay.std.Writer.expand[Chunk[Meta], Meta, Unit, okay.Async](b.list(prefix))(c => c))
 
   /** idempotent: deleting an absent key does nothing */
   def delete(b: Blob, key: String): Eff[Async, Unit] = Async.lift(b.delete(key))
@@ -113,5 +113,5 @@ object Documents {
 
   /** every document whose indexed `field` equals `equals`, with its id */
   def query[A](d: Docs[A], field: String, equals: String, max: Int = 256): Source[(String, A)] =
-    Source.of(okay.freer.Writer.expand[Chunk[(String, A)], (String, A), Unit, okay.Async](d.query(field, equals, max))(c => c))
+    Source.of(okay.std.Writer.expand[Chunk[(String, A)], (String, A), Unit, okay.Async](d.query(field, equals, max))(c => c))
 }

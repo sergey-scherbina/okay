@@ -35,7 +35,7 @@ class TestPackageAlias extends munit.FunSuite:
   test("Py is Foreign (foreign-api-name): the same object, and a type through one is the other's") {
     assert(Py eq Foreign)
     given Shape = Shape.python
-    val cb: Foreign.Callback[okay.freer.Reader[Long, *]] = Py.callback[Long, Long]("inc")(n => okay.freer.Reader.ask[Long].map(_ + n))
-    val asPy: Py.Callback[okay.freer.Reader[Long, *]] = cb
+    val cb: Foreign.Callback[okay.std.Reader[Long, *]] = Py.callback[Long, Long]("inc")(n => okay.std.Reader.ask[Long].map(_ + n))
+    val asPy: Py.Callback[okay.std.Reader[Long, *]] = cb
     assertEquals(asPy.name, "inc")
   }

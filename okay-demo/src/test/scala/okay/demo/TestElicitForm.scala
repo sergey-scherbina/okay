@@ -2,10 +2,10 @@ package okay.demo
 
 import okay.{Async, Channel, Source, async}
 import okay.freer.*
-
-
+import okay.std.*
 import okay.given
 import okay.freer.given
+import okay.std.given
 import okay.codec.Json
 import okay.mcp.{Client, Duplex, Link, Mcp, Rpc, Server}
 import okay.ui.{Dialog, Event, Form, Host, Ui}

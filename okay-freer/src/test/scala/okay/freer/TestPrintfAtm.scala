@@ -1,6 +1,4 @@
 package okay.freer
-
-
 /**
  * specs/atm-beyond-state-docs.md: answer-type modification (ATM)
  * beyond `PState` — Asai's typed printf (Asai, "On typing delimited

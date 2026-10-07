@@ -1,7 +1,8 @@
 package okay.foreign
 
 import java.nio.file.{Files, Path}
-import okay.freer.{Choose, Reader, effect, runChoice, given}
+import okay.freer.{effect, given}
+import okay.std.{Choose, Reader, runChoice}
 object TestGoProgram:
   val priceOf = Foreign.callback[String, Double]("price_of")(sku => Reader.ask[Map[String, Double]].map(_(sku)))
   val discount = Foreign.callback[Double, Double]("discount")(amount => Reader.ask[Map[String, Double]].map(m => amount * m("rate")))

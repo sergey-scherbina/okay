@@ -38,7 +38,7 @@ object Fs2Interop {
       q.take.unsafeRunSync() match
         case None => Chunks.end
         case Some(ch) =>
-          okay.freer.Writer.tell(okay.ChunkBuf.of(ch.iterator))
+          okay.std.Writer.tell(okay.ChunkBuf.of(ch.iterator))
             .flatMap(_ => go())
     go()
 }

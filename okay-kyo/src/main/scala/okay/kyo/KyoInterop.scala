@@ -6,6 +6,7 @@ import okay.freer.{Pure}
 import okay.freer.{!}
 import okay.given
 import okay.freer.given
+import okay.std.given
 import _root_.kyo.{<, Abort, AllowUnsafe, Duration, Flat, KyoApp}
 
 /**
@@ -46,7 +47,8 @@ object KyoInterop {
   // and runs theirs with the constant environment — semantically exact.
 
   import okay.freer.{%}
-  import okay.freer.{Reader, Writer, Throws, Choose, effect}
+  import okay.freer.{effect}
+  import okay.std.{Reader, Writer, Throws, Choose}
   import okay.freer.!.*
   import _root_.kyo.{Tag, Frame, Env, Emit, Choice, Abort}
   import _root_.kyo.kernel.ArrowEffect
@@ -96,7 +98,7 @@ object KyoInterop {
   /** Abort → Throws */
   def fromKyoAbort[E, A: Flat](v: A < Abort[E])(using _root_.kyo.SafeClassTag[E], Tag[E], Frame): A ! Throws % E =
     import _root_.kyo.Result
-    Abort.run[E](v).eval.foldFailureOrThrow(e => okay.freer.raise(e))(a => okay.freer.pure(a))
+    Abort.run[E](v).eval.foldFailureOrThrow(e => okay.std.raise(e))(a => okay.freer.pure(a))
 
   /** Choose → Choice — the same arrow, Seq ~> Id, on both sides */
   def toKyoChoice[A](p: A ! Choose)(using Frame): A < Choice =

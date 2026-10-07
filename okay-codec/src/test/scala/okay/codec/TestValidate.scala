@@ -93,7 +93,7 @@ class TestValidate extends munit.FunSuite:
   }
 
   test("the bridge: a walk read as a Validated equals decode, and two walks combined keep both sides' paths") {
-    import okay.freer.Validated
+    import okay.std.Validated
     val bad = Json.parse("""{"id":"x","tags":[],"colour":"Red","amounts":[],"address":{"city":"K"}}""")
     val addr = Json.parse("""{"city": 5}""")
     val o: Validated[Validate.Errors, Order] = Validate.validated(summon[Schema[Order]])(bad)

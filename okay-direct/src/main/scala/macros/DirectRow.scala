@@ -3,6 +3,9 @@ package macros
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import scala.quoted.*
 
 /**
@@ -79,11 +82,11 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
       case m => List(m)
     rowOf.flatMap { r =>
       members(r.appliedTo(TypeRepr.of[Any])).collectFirst {
-        case AppliedType(w, List(wt, _)) if w.typeSymbol == Symbol.requiredClass("okay.freer.Writer") => wt
+        case AppliedType(w, List(wt, _)) if w.typeSymbol == Symbol.requiredClass("okay.std.Writer") => wt
       }
     }
 
-  lazy val genType: Symbol = Symbol.requiredClass("okay.freer.Gen")
+  lazy val genType: Symbol = Symbol.requiredClass("okay.std.Gen")
 
   /** `Gen[W]`'s W, when the type is the generator (a value class over the program) */
   def genOf(tpe: TypeRepr): Option[TypeRepr] = tpe.widen.dealias match
@@ -120,8 +123,8 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
     // inliner keeps for its effects, so the stage's inline match left a
     // live `Get$.apply()` per block — 1 600 B a run on StagedBenchmark,
     // read in its bytecode; a constructor it drops when nothing uses it
-    "okay.freer.SharedOps.getNode" -> { case '[e] => '{ new okay.freer.State.Get[e, e]() }.asTerm },
-    "okay.freer.SharedOps.askNode" -> { case '[e] => '{ new okay.freer.Reader.Ask[e, e]() }.asTerm })
+    "okay.std.SharedOps.getNode" -> { case '[e] => '{ new okay.std.State.Get[e, e]() }.asTerm },
+    "okay.std.SharedOps.askNode" -> { case '[e] => '{ new okay.std.Reader.Ask[e, e]() }.asTerm })
 
   /** a symbol's key in that table: its full name, the module's `$` off
    * (a reference from inside the object and one from outside name the

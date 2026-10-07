@@ -134,7 +134,8 @@ class TestGoTcpAuth extends WireConformance:
  * middle of a multi-shot program and started again on the same port; the
  * supervisor reconnects and replays, and every branch comes back */
 class TestGoTcpSupervised extends munit.FunSuite:
-  import okay.freer.{Choose, effect, runChoice, given}
+  import okay.freer.{effect, given}
+  import okay.std.{Choose, runChoice}
   override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
   override def munitIgnore: Boolean = !GoWorkerBinary.available
 

@@ -1,7 +1,8 @@
 package okay.blob
 
 import okay.{Async, Source, async}
-import okay.freer.{!, Chunk, Writer, pure}
+import okay.freer.{!, pure}
+import okay.std.{Chunk, Writer}
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
 

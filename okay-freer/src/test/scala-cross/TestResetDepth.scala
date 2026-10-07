@@ -1,6 +1,4 @@
 package okay.freer
-
-
 import okay.freer.Row.plus
 
 /**

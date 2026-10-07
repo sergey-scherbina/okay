@@ -7,6 +7,7 @@ import okay.freer.{+}
 import okay.freer.{!, Free, Member, effect}
 import okay.given
 import okay.freer.given
+import okay.std.given
 import java.util.function.{BiFunction, Function as JFunction, Supplier, UnaryOperator}
 
 /**
@@ -91,7 +92,7 @@ final class Eff[A] private[java] (private[java] val program: Free[Top, A]) {
 
   /** the core `Throws`: a `raise` answered by `f` of what was raised */
   def recover(f: JFunction[Any, ? <: A]): Eff[A] =
-    new Eff(coerce(okay.freer.runEither[A, Top, Any](coerce(program))(using Rows.distinct)).map(_.fold(e => f.apply(e), a => a)))
+    new Eff(coerce(okay.std.runEither[A, Top, Any](coerce(program))(using Rows.distinct)).map(_.fold(e => f.apply(e), a => a)))
 
   /** every operation handled: the answer. One left is refused by name */
   def run(): A = program.runWith(using Eff.unhandled)
@@ -132,19 +133,19 @@ object Eff {
   // ------------------------------------------------- the core effects
 
   /** `Reader`: the environment, which `Handler.reader(env)` supplies */
-  def ask[E](): Eff[E] = from(okay.freer.Reader.ask[E])
+  def ask[E](): Eff[E] = from(okay.std.Reader.ask[E])
 
   /** `State`: the state, which `StateHandler.state(s0)` threads */
-  def get[S](): Eff[S] = from(okay.freer.State.get[S])
+  def get[S](): Eff[S] = from(okay.std.State.get[S])
 
   /** `State`: replace it, answering the new state */
-  def put[S](s: S): Eff[S] = from(okay.freer.State.set(s))
+  def put[S](s: S): Eff[S] = from(okay.std.State.set(s))
 
   /** `State`: apply `f` to it, answering the new state */
-  def modify[S](f: UnaryOperator[S]): Eff[S] = from(okay.freer.State.modify[S](s => f.apply(s)))
+  def modify[S](f: UnaryOperator[S]): Eff[S] = from(okay.std.State.modify[S](s => f.apply(s)))
 
   /** `Throws`: stop with `e`, which `recover` answers */
-  def raise[A](e: Any): Eff[A] = from(okay.freer.raise[Any, A](e))
+  def raise[A](e: Any): Eff[A] = from(okay.std.raise[Any, A](e))
 
   /** `Async`: `a.get()` when the program runs, possibly blocking */
   def async[A](a: Supplier[? <: A]): Eff[A] = from(okay.async[A](a.get()))
@@ -202,7 +203,7 @@ object Handler {
 
   /** the core `Reader`: every `Eff.ask()` answered with `env` */
   def reader[E](env: E): Handler =
-    new Handler([A] => (p: Free[Top, A]) => coerce[Top, Top, A](okay.freer.Reader.run[E, A, Top](env)(coerce(p))(using Rows.distinct)))
+    new Handler([A] => (p: Free[Top, A]) => coerce[Top, Top, A](okay.std.Reader.run[E, A, Top](env)(coerce(p))(using Rows.distinct)))
 }
 
 /** a handler threading a state `S`: the program's answer arrives beside the last state */
@@ -225,7 +226,7 @@ object StateHandler {
 
   /** the core `State`, from `init`: `Eff.get()`, `put`, `modify` */
   def state[S](init: S): StateHandler[S] =
-    new StateHandler([A] => (p: Free[Top, A]) => okay.freer.State.handle(init)[A, Top](coerce(p))(using Rows.distinct))
+    new StateHandler([A] => (p: Free[Top, A]) => okay.std.State.handle(init)[A, Top](coerce(p))(using Rows.distinct))
 }
 
 /** the rest of the program after an operation, as a `Control` clause holds it */

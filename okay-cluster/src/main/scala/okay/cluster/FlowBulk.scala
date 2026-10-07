@@ -2,8 +2,9 @@ package okay.cluster
 
 import okay.{Answers, Chunks, Async, Bulk, Csv, Scheduler, Streamed, Tables}
 import okay.freer.*
-
+import okay.std.*
 import okay.freer.given
+import okay.std.given
 import okay.Chunks.elements
 
 /**

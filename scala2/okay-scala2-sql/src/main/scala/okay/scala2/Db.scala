@@ -61,8 +61,8 @@ final class Db private (sql: okay.sql.Sql) {
    */
   def transaction[A](isolation: Isolation = Isolation.ReadCommitted, readOnly: Boolean = false)
                     (body: Db => Eff[Async, A]): Eff[Async, A] =
-    Async.lift(okay.freer.Resource.run[A, okay.Async](
-      Typed.transact[A, okay.Async](sql, isolation, readOnly)(_ => Async.core(body(this)).plus[okay.freer.Resource])))
+    Async.lift(okay.std.Resource.run[A, okay.Async](
+      Typed.transact[A, okay.Async](sql, isolation, readOnly)(_ => Async.core(body(this)).plus[okay.std.Resource])))
 }
 
 object Db {
@@ -75,8 +75,8 @@ object Db {
   def jdbc(connection: java.sql.Connection, fetchSize: Int = 64): Db =
     new Db(new okay.jdbc.JdbcSql(connection, fetchSize))
 
-  private def flat[A](s: okay.Source[okay.freer.Chunk[Either[Bad, A]]]): Source[Either[Bad, A]] =
-    Source.of(okay.freer.Writer.expand[okay.freer.Chunk[Either[Bad, A]], Either[Bad, A], Unit, okay.Async](s)(c => c))
+  private def flat[A](s: okay.Source[okay.std.Chunk[Either[Bad, A]]]): Source[Either[Bad, A]] =
+    Source.of(okay.std.Writer.expand[okay.std.Chunk[Either[Bad, A]], Either[Bad, A], Unit, okay.Async](s)(c => c))
 
   private def firstBad[A](s: Source[Either[Bad, A]]): Eff[Async & Throws[Bad], Vector[A]] =
     s.runCollect.flatMap { rows =>

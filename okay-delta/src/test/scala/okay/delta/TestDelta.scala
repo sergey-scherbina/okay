@@ -3,9 +3,11 @@ package okay.delta
 import okay.{Async, ChunkBuf, Source}
 
 import okay.freer.{+, %}
-import okay.freer.{!, Chunk, Stream, Writer}
+import okay.freer.{!}
+import okay.std.{Chunk, Stream, Writer}
 import okay.given
 import okay.freer.given
+import okay.std.given
 import okay.sql.{SqlType, SqlValue, Typed}
 import okay.sql.given
 import okay.jdbc.JdbcSql

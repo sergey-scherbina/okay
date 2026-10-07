@@ -4,6 +4,7 @@ import okay.{Async, Answers, given}
 
 import okay.freer.{+}
 import okay.freer.given
+import okay.std.given
 import okay.agent.*
 import okay.codec.Schema
 import okay.llm.Transports

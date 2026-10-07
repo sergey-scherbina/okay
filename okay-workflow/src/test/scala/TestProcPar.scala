@@ -1,6 +1,6 @@
 import okay.{Proc, Wf}
 import okay.freer.*
-
+import okay.std.*
 /**
  * TWO INDEPENDENT BRANCHES, AND WHAT IS ACTUALLY PARALLEL ABOUT THEM
  * (specs/static-workflow.md, stage 5 — `static-workflow-par`).

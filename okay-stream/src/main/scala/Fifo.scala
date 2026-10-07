@@ -2,6 +2,9 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 /**
  * The persistent FIFO a `StmChannel` keeps its buffer in — a seam,
  * with two implementations, for the same reason `Buffer` is one: two

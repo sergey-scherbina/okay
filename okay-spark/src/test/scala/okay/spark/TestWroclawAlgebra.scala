@@ -2,7 +2,9 @@ package okay.spark
 
 import okay.{Bulk, Chunks, Sort, Tables}
 import okay.freer.*
+import okay.std.*
 import okay.freer.given
+import okay.std.given
 import okay.Tables.{Table, read, of}
 import okay.Chunks.elements
 import okay.Sort.sortBy
@@ -51,7 +53,7 @@ final case class Service(from: Long, to: Long, days: Vector[Boolean]):
  *
  * THE ETL, SAID ONCE — AS A VALUE. `departures` is a program of the
  * `Tables` effect (specs/bulk.md, the effect layer): it names no
- * platform, it can be printed before it runs (`!.tracing`), and the
+ * platform, it can be printed before it runs (`Writer.tracing`), and the
  * test runs the SAME value on Spark and on the local `Chunks` platform
  * and asserts the two agree. A timetable is a PLAN, not events — one
  * stop_times row is a departure on every date its service pattern runs
@@ -211,9 +213,9 @@ class TestWroclawAlgebra extends munit.FunSuite:
     r
 
   test("the plan, printed before anything runs") {
-    val traced = okay.freer.!.tracing(Gtfs.departures(file).plus[okay.freer.Pure])([X] => (e: Tables[X]) => e.productPrefix)
+    val traced = okay.std.Writer.tracing(Gtfs.departures(file).plus[okay.freer.Pure])([X] => (e: Tables[X]) => e.productPrefix)
     val handled = State.handle(Tables.Heap.empty[Chunks])(Tables.via(localBulk)(traced))
-    val (plan, _) = okay.freer.!.run(okay.freer.Writer.run(handled))
+    val (plan, _) = okay.freer.!.run(okay.std.Writer.run(handled))
     println(s"  plan: ${plan.mkString(" ")}")
     assertEquals(plan.count(_ == "Join"), 3)
   }
@@ -301,7 +303,7 @@ class TestWroclawAlgebra extends munit.FunSuite:
   }
 
   test("no inverse, no window — the compile error is the point") {
-    val err = compileErrors("okay.freer.sliding(LazyList(Busiest(1.0), Busiest(2.0)))(2)")
+    val err = compileErrors("okay.std.sliding(LazyList(Busiest(1.0), Busiest(2.0)))(2)")
     assert(err.contains("Group[Busiest]") || err.contains("okay.freer.Group"), err)
     println(s"  refused, as it should be: ${err.linesIterator.find(_.contains("Group")).getOrElse(err)}")
   }

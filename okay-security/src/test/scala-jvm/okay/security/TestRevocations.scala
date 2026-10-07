@@ -2,11 +2,10 @@ package okay.security
 
 import okay.{Async}
 import okay.freer.*
-
-
+import okay.std.*
 import okay.given
 import okay.freer.given
-
+import okay.std.given
 /**
  * The list is somebody else's, which changes nothing about the check
  * and everything about what can go wrong. So the tests that matter

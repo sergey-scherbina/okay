@@ -6,7 +6,7 @@ import okay.cluster.Flow
 import okay.freer.{+}
 import okay.freer.{!}
 import okay.freer.given
-
+import okay.std.given
 /**
  * THE FACADE OVER EVERY FOREIGN LANGUAGE (specs/foreign-facade.md): one
  * typeclass per CAPABILITY, by the module's type — the shape

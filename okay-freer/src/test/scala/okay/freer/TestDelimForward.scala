@@ -1,6 +1,4 @@
 package okay.freer
-
-
 /**
  * THE SPIKE (delim-forward-not-throw, specs/delim-safety.md stage 1):
  * a machine that meets a capture for a prompt it does not hold can

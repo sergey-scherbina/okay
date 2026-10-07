@@ -1,8 +1,10 @@
 package okay.cats
 
 import okay.{Async, Par, Scheduler}
-import okay.freer.{!, Choose, Static, Validated}
+import okay.freer.{!, Static}
+import okay.std.{Choose, Validated}
 import okay.freer.given
+import okay.std.given
 import _root_.cats.{~>, Eval}
 import _root_.cats.effect.IO
 
@@ -29,7 +31,7 @@ import _root_.cats.effect.IO
  */
 
 /** okay's accumulating `Validated` under cats' Applicative: `ap` keeps
- * EVERY error (`okay.freer.Validated.selective`), so `List(...).traverse`
+ * EVERY error (`okay.std.Validated.selective`), so `List(...).traverse`
  * from cats reports all of them — combined by okay's semigroup or
  * cats-kernel's ([[Combine]]) */
 given catsValidated[E](using C: Combine[E]): _root_.cats.Applicative[[A] =>> Validated[E, A]] with

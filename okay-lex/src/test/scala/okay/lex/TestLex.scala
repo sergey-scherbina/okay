@@ -3,8 +3,9 @@ package okay.lex
 import okay.{Chunks, through}
 
 import okay.freer.{%}
-import okay.freer.{!, Writer, pure}
-import okay.freer.toLazyList
+import okay.freer.{!, pure}
+import okay.std.{Writer}
+import okay.std.toLazyList
 import Json.K
 
 /** The total streaming scanner: lossless, exact spans, incremental. */

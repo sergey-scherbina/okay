@@ -74,7 +74,7 @@ private[okay] trait DirectMarks[F[_]] extends DirectPhase[F]:
    * How a local of the block's PROGRAM type is read in what follows:
    * COLOURED (the conversion applied to the bare reference — read as a
    * value, `x + 1`) or BARE (read as a program — marked, passed on,
-   * `!.once(p)`).
+   * `Once.once(p)`).
    */
   def useKinds(stats: List[Statement], expr: Term, sym: Symbol): (Int, Int) =
     var coloured = 0

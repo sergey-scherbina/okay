@@ -2,7 +2,11 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import okay.freer.given
+import okay.std.given
 import okay.Direct.*
 
 /**
@@ -16,7 +20,7 @@ import okay.Direct.*
 class TestStaged extends munit.FunSuite:
 
   test("docs/direct-style.md: a recursive staged block over State + Writer") {
-    val sw = Stager.StateWriter[Int, String, Int]()   // the row's staged interpreter
+    val sw = Stagers.StateWriter[Int, String, Int]()   // the row's staged interpreter
 
     def step(i: Int, acc: Int): Handled[sw.Row, sw.R, Int] =
       if i >= 100 then Handled.pure(acc)
@@ -37,7 +41,7 @@ class TestStaged extends munit.FunSuite:
 
   type Row = State % Int + Writer % String
   type R = Stager.Answer[Int, String, Int]
-  val sw = Stager.StateWriter[Int, String, Int]()
+  val sw = Stagers.StateWriter[Int, String, Int]()
 
   /** the block, as a Free program: what every direct block is today */
   def free(xs: List[Int], k: Int): Int ! Row = direct[[A] =>> A ! Row] {
@@ -149,7 +153,7 @@ class TestStaged extends munit.FunSuite:
 
   test("v2: a program built at run time under a mark is refused, naming the shape") {
     val e = compileErrors("""
-      val sw = Stager.StateWriter[Int, String, Int]()
+      val sw = Stagers.StateWriter[Int, String, Int]()
       def opaque: Int ! State % Int + Writer % String = State.get[Int].at[State % Int + Writer % String]
       Direct.staged(sw) { opaque.? }
     """)
@@ -158,7 +162,7 @@ class TestStaged extends munit.FunSuite:
 
   test("a foreign monad under a mark is refused as in a Free block") {
     val e = compileErrors("""
-      val sw = Stager.StateWriter[Int, String, Int]()
+      val sw = Stagers.StateWriter[Int, String, Int]()
       Direct.staged(sw) { Option(1).? }
     """)
     assert(e.contains("neither"), e)

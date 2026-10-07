@@ -2,10 +2,10 @@ package okay.script
 
 import okay.{Async, Stage}
 import okay.freer.*
-
-
+import okay.std.*
 import okay.given
 import okay.freer.given
+import okay.std.given
 import okay.http.{Frame, Transports, Ws}
 import okay.jetty.Jetty
 import okay.ui.{Event, Patch, Protocol}

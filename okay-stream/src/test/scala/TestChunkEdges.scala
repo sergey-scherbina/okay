@@ -2,7 +2,11 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import okay.freer.given
+import okay.std.given
 /**
  * The edges of chunked merging and of `Flush` — the sizes and shapes
  * where an off-by-one in the buffer, a missed final flush or a lost

@@ -2,10 +2,10 @@ package okay.ui
 
 import okay.{Async, Source, async}
 import okay.freer.*
-
-
+import okay.std.*
 import okay.given
 import okay.freer.given
+import okay.std.given
 import PWizard.*
 
 /** specs/ui-toolkit.md, "The typed wizard" — one test per box */

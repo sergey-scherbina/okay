@@ -2,7 +2,7 @@ package okay.http
 
 import okay.{Async, Prism, Source}
 import okay.freer.*
-
+import okay.std.*
 import scala.deriving.Mirror
 import scala.compiletime.constValueTuple
 import java.nio.charset.StandardCharsets.UTF_8

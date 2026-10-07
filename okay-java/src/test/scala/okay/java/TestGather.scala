@@ -3,7 +3,8 @@ package okay.java
 import okay.{Pane, Stage, through}
 
 import okay.freer.{%}
-import okay.freer.{!, Aggregator, Writer, pure}
+import okay.freer.{!, Aggregator, pure}
+import okay.std.{Writer}
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.stream.{Gatherer, Gatherers, Stream}
 import scala.jdk.CollectionConverters.*

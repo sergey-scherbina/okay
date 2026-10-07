@@ -3,6 +3,8 @@ package okay.cluster
 import okay.{Chunks, given}
 
 import okay.freer.given
+
+import okay.std.given
 import okay.codec.Schema
 
 /** a job whose partitions spend real time in a "foreign function": a

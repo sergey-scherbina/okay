@@ -3,14 +3,14 @@ package okay.openapi
 
 import okay.{Async}
 import okay.freer.*
-
+import okay.std.*
 import okay.codec.{Json, Schema}
 import okay.codec.Json.*
 import okay.http.{Method, Response, Route, Router, Request}
 import okay.http.syntax.*
 import okay.given
 import okay.freer.given
-
+import okay.std.given
 /**
  * The document is a rendering of the router (specs/openapi.md stage 0).
  *

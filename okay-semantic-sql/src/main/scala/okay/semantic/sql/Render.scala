@@ -1,7 +1,8 @@
 package okay.semantic.sql
 
 import okay.Async
-import okay.freer.{!, Chunk, Writer}
+import okay.freer.{!}
+import okay.std.{Chunk, Writer}
 import okay.sql.{Sql, SqlValue}
 import okay.semantic.*
 

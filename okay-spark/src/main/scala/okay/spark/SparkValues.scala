@@ -1,8 +1,10 @@
 package okay.spark
 
 import okay.freer.*
-import okay.freer.given
 
+import okay.std.*
+import okay.freer.given
+import okay.std.given
 import okay.codec.{Cbor, Columns, Schema}
 import org.apache.spark.sql.Row as SRow
 import org.apache.spark.sql.types.*

@@ -3,9 +3,11 @@ package okay.jdbc
 import okay.{Async, Source}
 
 import okay.freer.{+, %}
-import okay.freer.{!, Chunk, effect, Stream, Throws, Writer}
+import okay.freer.{!, effect}
+import okay.std.{Chunk, Stream, Throws, Writer}
 import okay.given
 import okay.freer.given
+import okay.std.given
 import JdbcInterop.*
 import java.sql.DriverManager
 
@@ -37,15 +39,15 @@ class TestJdbcInterop extends munit.FunSuite {
     summon[Stream[[W] =>> Unit ! Writer % W + Async, Async]].iterator(s).toList
 
   test("the Resource region closes the connection on a handled abort") {
-    type F = Throws % String + okay.freer.Resource
+    type F = Throws % String + okay.std.Resource
     var conn: java.sql.Connection = null
-    val prog2 = okay.freer.!.widen[java.sql.Connection, okay.freer.Resource, Throws % String](
+    val prog2 = okay.freer.!.widen[java.sql.Connection, okay.std.Resource, Throws % String](
       connection("jdbc:h2:mem:r2")).flatMap { c =>
       conn = c
       effect[F, Int](Throws("boom"))
     }
-    val out = !.run(okay.freer.Resource.run[Either[String, Int], okay.freer.Pure](
-      okay.freer.runEither[Int, okay.freer.Resource, String](prog2)))
+    val out = !.run(okay.std.Resource.run[Either[String, Int], okay.freer.Pure](
+      okay.std.runEither[Int, okay.std.Resource, String](prog2)))
     assertEquals(out, Left("boom"))
     assert(conn.isClosed, "the region must close the connection after the abort")
   }

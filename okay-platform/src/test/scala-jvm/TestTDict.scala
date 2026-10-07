@@ -2,6 +2,9 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 /** specs/stm.md, okay-stm-collections — JVM-only: real concurrent
  * threads racing the same key, not just a single-threaded proof. */
 class TestTDict extends munit.FunSuite {

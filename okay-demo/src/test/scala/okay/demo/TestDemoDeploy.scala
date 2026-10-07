@@ -2,6 +2,9 @@ package okay.demo
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import okay.deploy.{Deployment, Targets}
 
 /** the committed okay-demo/deploy IS the rendered DemoDeploy.system —

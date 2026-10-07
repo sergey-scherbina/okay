@@ -59,7 +59,8 @@ class TestFpmlProver extends Diagnosed:
   }
 
   test("search: the two documents under Logic — if it is a swap then its legs, else the forward's pair") {
-    import okay.freer.{!, Logic, pure, runChoice}
+    import okay.freer.{!, pure}
+    import okay.std.{Logic, runChoice}
     def describe(doc: String): Seq[String] =
       val j = (Format.detect andThen Format.value).run(doc.getBytes(UTF_8)).toOption.get
       !.run(runChoice[String, okay.freer.Pure](

@@ -3,7 +3,12 @@ package okay
 
 
 import okay.freer.*
+
+
+
+import okay.std.*
 import okay.freer.given
+import okay.std.given
 /** The one STM law that is about a CHANNEL: it left `TestStm` in the
  * core with the channels themselves (core-modules stage 1). */
 class TestStmChannel extends munit.FunSuite {

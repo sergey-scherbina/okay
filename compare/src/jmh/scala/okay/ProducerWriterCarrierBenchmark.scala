@@ -2,8 +2,12 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import okay.freer.given
-import org.openjdk.jmh.annotations.*
+import okay.std.given
+import org.openjdk.jmh.annotations.{State, *}
 import java.util.concurrent.TimeUnit
 import scala.collection.immutable.ArraySeq
 import Row.plus
@@ -152,7 +156,7 @@ class ProducerWriterCarrierBenchmark {
   // `CanBlock`, no `TypeableK`. Every earlier writer row in this file
   // walks the G-effectful `writerStreamIn`; these two are the honest
   // pair for `chunksFoldProducer` / `chunksFoldLeftProducerDirect`.
-  private val feedStream = okay.freer.feedStream[Unit]
+  private val feedStream = okay.std.feedStream[Unit]
 
   @Benchmark
   def chunksFoldFeedPure(): Long =
@@ -480,7 +484,7 @@ class ProducerWriterCarrierBenchmark {
  * methods — `Chunks.fold`'s own shape, one compiled unit each; see the
  * `*OwnMethod` rows in the class above for what they answer */
 object Probe {
-  private val feedStream = okay.freer.feedStream[Unit]
+  private val feedStream = okay.std.feedStream[Unit]
   private val producerStream = summon[Stream[Producer, Pure]]
 
   def foldProducer(p: Producer[Chunk[Long]], l: Fold.OfLong[Long]): Long =
@@ -513,7 +517,7 @@ object Probe {
   def foldFeedAbstract[A](p: Unit ! Writer % Chunk[A])(using fo: Fold[A, Long]): Long = fo match
     case l: Fold.OfLong[A @unchecked] =>
       var s = l.initLong
-      val it = okay.freer.feedStream[Unit].iterator(p)
+      val it = okay.std.feedStream[Unit].iterator(p)
       while it.hasNext do
         val c = it.next()
         var i = 0
@@ -547,7 +551,7 @@ object Probe {
 
   def foldFeedSummon(p: Unit ! Writer % Chunk[Long], l: Fold.OfLong[Long]): Long =
     var s = l.initLong
-    val it = okay.freer.feedStream[Unit].iterator(p)
+    val it = okay.std.feedStream[Unit].iterator(p)
     while it.hasNext do
       val c = it.next()
       var i = 0

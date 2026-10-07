@@ -1,8 +1,6 @@
 package okay.r
 import okay.freer.given
-
-
-
+import okay.std.given
 /** foreign-managed-env against a LIVE R with network (specs/foreign-highlevel.md stage 8) */
 class TestREnv extends munit.FunSuite {
 

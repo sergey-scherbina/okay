@@ -2,6 +2,9 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import scala.annotation.implicitNotFound
 import scala.concurrent.Future
 

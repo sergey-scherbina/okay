@@ -3,9 +3,11 @@ package okay.jdbc
 import okay.{Async, Source}
 
 import okay.freer.{+, %}
-import okay.freer.{!, Chunk, effect, Resource, Stream, Throws, Writer}
+import okay.freer.{!, effect}
+import okay.std.{Chunk, Resource, Stream, Throws, Writer}
 import okay.given
 import okay.freer.given
+import okay.std.given
 import okay.codec.Schema
 import okay.persist.{MemoryStore, Typed as PTyped}
 import okay.sql.{Granted, Isolation, Sql, SqlValue, Typed}
@@ -105,7 +107,7 @@ class TestSqlite extends munit.FunSuite {
       }
       val out = !.run(Async.run[Either[String, Long], Nothing](
         Resource.run[Either[String, Long], Async](
-          okay.freer.runEither[Long, Resource + Async, String](prog))))
+          okay.std.runEither[Long, Resource + Async, String](prog))))
       assertEquals(out, Left("no"))
       assert(conn.getAutoCommit)
       val n = collectChunks(db.query("select count(*) c from customer where id = 50")).flatten

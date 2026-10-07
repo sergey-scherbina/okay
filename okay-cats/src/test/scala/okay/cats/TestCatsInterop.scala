@@ -3,9 +3,11 @@ package okay.cats
 import okay.{Async, async}
 
 import okay.freer.{%, +}
-import okay.freer.{!, Produce, Throws, produce, pure}
+import okay.freer.{!, pure}
+import okay.std.{Produce, Throws, produce}
 import okay.given
 import okay.freer.given
+import okay.std.given
 import CatsInterop.*
 import _root_.cats.syntax.all.*
 import _root_.cats.effect.unsafe.implicits.global
@@ -30,9 +32,9 @@ class TestCatsInterop extends munit.FunSuite {
     type P[A] = A ! Throws % String + Produce
     val ME = summon[_root_.cats.MonadError[P, String]]
     val bad: P[Int] = ME.raiseError("boom")
-    assertEquals(okay.freer.runEither[Int, Produce, String](
+    assertEquals(okay.std.runEither[Int, Produce, String](
       ME.handleErrorWith(bad)(e => pure(e.length))).runWith, Right(4))
-    assertEquals(okay.freer.runEither[Int, Produce, String](
+    assertEquals(okay.std.runEither[Int, Produce, String](
       ME.handleErrorWith(pure(7): P[Int])(_ => pure(0))).runWith, Right(7))
   }
 

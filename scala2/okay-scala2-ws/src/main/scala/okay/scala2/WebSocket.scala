@@ -4,6 +4,7 @@ import okay.freer.%
 import okay.freer.Row.plus
 import okay.given
 import okay.freer.given
+import okay.std.given
 import okay.http.{Frame, Request}
 
 /**
@@ -91,10 +92,10 @@ object WsSession {
    * it sends back, in order. A session is a pure program, so this is
    * exactly what a client would receive. */
   def replay(s: WsSession, incoming: Seq[Frame]): Vector[Frame] = {
-    val client: okay.freer.![Unit, okay.freer.Writer % Frame] =
-      incoming.foldLeft(okay.freer.pure(()): okay.freer.![Unit, okay.freer.Writer % Frame])((acc, f) =>
-        acc.flatMap(_ => okay.freer.Writer.tell(f)))
-    okay.freer.!.run(okay.freer.Writer.collect[Frame, Unit, Nothing](okay.through(client)(stage(s))))._1
+    val client: okay.freer.![Unit, okay.std.Writer % Frame] =
+      incoming.foldLeft(okay.freer.pure(()): okay.freer.![Unit, okay.std.Writer % Frame])((acc, f) =>
+        acc.flatMap(_ => okay.std.Writer.tell(f)))
+    okay.freer.!.run(okay.std.Writer.collect[Frame, Unit, Nothing](okay.through(client)(stage(s))))._1
   }
 }
 
@@ -108,8 +109,8 @@ object WsServer {
 
   def use[A](port: Int)(routes: Request => Eff[Async, Response])(sessions: PartialFunction[Request, WsSession])
             (body: Int => Eff[Async, A]): Eff[Async, A] =
-    Async.lift(okay.freer.Resource.run[A, okay.Async](
+    Async.lift(okay.std.Resource.run[A, okay.Async](
       okay.jetty.Jetty.serve(port)({ case r => Async.core(routes(r)).map(_.core) })(sessions.andThen(WsSession.stage))
         .plus[okay.Async]
-        .flatMap(s => Async.core(body(okay.jetty.Jetty.port(s))).plus[okay.freer.Resource])))
+        .flatMap(s => Async.core(body(okay.jetty.Jetty.port(s))).plus[okay.std.Resource])))
 }

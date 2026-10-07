@@ -2,6 +2,9 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import okay.freer.Row.plus
 import scala.collection.mutable
 

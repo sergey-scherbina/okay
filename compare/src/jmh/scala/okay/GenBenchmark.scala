@@ -2,8 +2,12 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import okay.freer.given
-import org.openjdk.jmh.annotations.*
+import okay.std.given
+import org.openjdk.jmh.annotations.{State, *}
 import java.util.concurrent.TimeUnit
 
 /**

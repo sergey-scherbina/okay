@@ -1,7 +1,8 @@
 package okay.frege
 
 import okay.freer.{%}
-import okay.freer.{!, Reader}
+import okay.freer.{!}
+import okay.std.{Reader}
 import okay.foreign.{Foreign, Jvm, Shape}
 
 /** the caller's callbacks, declared once: the same two the wire

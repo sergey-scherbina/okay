@@ -3,9 +3,11 @@ package okay.cats
 import okay.{Async}
 
 import okay.freer.{%, +}
-import okay.freer.{!, Free, Throws, effect, runEither}
+import okay.freer.{!, Free, effect}
+import okay.std.{Throws, runEither}
 import okay.freer.!.*
 import okay.freer.given
+import okay.std.given
 import _root_.cats.effect.IO
 import _root_.cats.effect.unsafe.IORuntime
 
@@ -106,14 +108,14 @@ object CatsInterop {
     }
 
   /** okay's accumulating `Validated` as cats' (specs/interop-classes.md) */
-  def toCatsValidated[E, A](v: okay.freer.Validated[E, A]): _root_.cats.data.Validated[E, A] = v match
-    case okay.freer.Validated.Valid(a) => _root_.cats.data.Validated.Valid(a)
-    case okay.freer.Validated.Invalid(e) => _root_.cats.data.Validated.Invalid(e)
+  def toCatsValidated[E, A](v: okay.std.Validated[E, A]): _root_.cats.data.Validated[E, A] = v match
+    case okay.std.Validated.Valid(a) => _root_.cats.data.Validated.Valid(a)
+    case okay.std.Validated.Invalid(e) => _root_.cats.data.Validated.Invalid(e)
 
   /** cats' `Validated` as okay's */
-  def fromCatsValidated[E, A](v: _root_.cats.data.Validated[E, A]): okay.freer.Validated[E, A] = v match
-    case _root_.cats.data.Validated.Valid(a) => okay.freer.Validated.Valid(a)
-    case _root_.cats.data.Validated.Invalid(e) => okay.freer.Validated.Invalid(e)
+  def fromCatsValidated[E, A](v: _root_.cats.data.Validated[E, A]): okay.std.Validated[E, A] = v match
+    case _root_.cats.data.Validated.Valid(a) => okay.std.Validated.Valid(a)
+    case _root_.cats.data.Validated.Invalid(e) => okay.std.Validated.Invalid(e)
 
   /** an okay Free program as a cats free monad, operation for operation */
   def toCats[F[+_], A](p: A ! F): _root_.cats.free.Free[F, A] =

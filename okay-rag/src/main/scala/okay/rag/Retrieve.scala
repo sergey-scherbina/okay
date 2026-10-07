@@ -3,9 +3,10 @@ package okay.rag
 import okay.{Answers}
 
 import okay.freer.{+}
-import okay.freer.{!, Choose, Logic, effect, pure, runChoice}
+import okay.freer.{!, effect, pure}
+import okay.std.{Choose, Logic, runChoice}
 import okay.freer.given
-
+import okay.std.given
 /**
  * Retrieval pipelines (specs/rag.md, P10c). Every stage that other
  * frameworks ship as a class is a combinator here, because the

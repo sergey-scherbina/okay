@@ -2,6 +2,9 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import okay.Direct.*
 
 /** the generator snippets of docs/guide.md §3 and docs/theory/07-logic-streams.md, verbatim */

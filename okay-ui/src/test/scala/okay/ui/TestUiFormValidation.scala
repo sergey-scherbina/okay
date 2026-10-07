@@ -1,6 +1,6 @@
 package okay.ui
 import okay.freer.*
-
+import okay.std.*
 import okay.{modify, toVector, traverseOf}
 import okay.given
 

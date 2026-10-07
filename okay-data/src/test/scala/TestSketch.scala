@@ -2,6 +2,9 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 /** Approximate aggregators: stated error bounds, associative merges. */
 class TestSketch extends munit.FunSuite {
 

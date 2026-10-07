@@ -1,9 +1,11 @@
 package okay.java
 
 import okay.freer.{%, +, Pure}
-import okay.freer.{!, Reader, State}
+import okay.freer.{!}
+import okay.std.{Reader, State}
 import okay.freer.Row.plus
 import okay.freer.given
+import okay.std.given
 import okay.java.examples.JavaEffects
 import okay.testkit.Munit.Diagnosed
 

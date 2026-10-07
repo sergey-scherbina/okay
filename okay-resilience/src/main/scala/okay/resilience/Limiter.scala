@@ -2,7 +2,7 @@ package okay.resilience
 
 import okay.{Async, Timer}
 import okay.freer.*
-
+import okay.std.*
 import okay.codec.Schema
 
 object Limiter:

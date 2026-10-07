@@ -2,10 +2,10 @@ package okay.http
 
 import okay.{Async}
 import okay.freer.*
-
-
+import okay.std.*
 import okay.given
 import okay.freer.given
+import okay.std.given
 import okay.codec.Schema
 import okay.mcp.{Client, Mcp, Duplex, Server as McpServer}
 import okay.agent.ToolSpec

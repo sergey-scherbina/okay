@@ -3,7 +3,8 @@ package okay.llm
 import okay.{Async}
 
 import okay.freer.{%, +}
-import okay.freer.{!, Writer}
+import okay.freer.{!}
+import okay.std.{Writer}
 import okay.codec.{Json, Schema}
 import okay.lex.Json as JsonLex
 import okay.parse.{Cst, JsonParse, Parse}

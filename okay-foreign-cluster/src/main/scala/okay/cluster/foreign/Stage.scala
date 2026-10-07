@@ -1,7 +1,7 @@
 package okay.cluster.foreign
 
 import okay.Chunks
-import okay.freer.Chunk
+import okay.std.Chunk
 import okay.cluster.{Cluster, Flow}
 import okay.foreign.{Condition, ForeignWorker, Pool, Pools, PyWorkers}
 import scala.annotation.tailrec

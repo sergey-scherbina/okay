@@ -3,7 +3,8 @@ package okay.blob
 import okay.{Async, Source}
 
 import okay.freer.{+, %}
-import okay.freer.{!, Chunk, Writer, effect, pure}
+import okay.freer.{!, effect, pure}
+import okay.std.{Chunk, Writer}
 import okay.freer.Row.plus
 import java.nio.file.{Files, Path}
 import scala.collection.immutable.ArraySeq

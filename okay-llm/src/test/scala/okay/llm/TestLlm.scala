@@ -3,9 +3,11 @@ package okay.llm
 import okay.{Async}
 
 import okay.freer.{%, +}
-import okay.freer.{!, Writer, effect, pure}
+import okay.freer.{!, effect, pure}
+import okay.std.{Writer}
 import okay.given
 import okay.freer.given
+import okay.std.given
 import okay.codec.Json
 
 /** The thin client over a mock transport: tokens stream, lazily. */

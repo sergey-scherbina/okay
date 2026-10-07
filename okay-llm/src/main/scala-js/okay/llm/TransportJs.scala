@@ -3,7 +3,8 @@ package okay.llm
 import okay.{Async, Web}
 
 import okay.freer.{%, +}
-import okay.freer.{!, Writer, effect}
+import okay.freer.{!, effect}
+import okay.std.{Writer}
 import scala.scalajs.js
 
 /**

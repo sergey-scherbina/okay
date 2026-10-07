@@ -30,7 +30,7 @@ class PriceInterop extends munit.FunSuite {
     val countTo = Clj.fn("okay.clojure.programs", "count-to").fold(e => fail(e), identity)
     val p = minMillis(7)(() => {
       val stage = Program.stage[Long, java.lang.Long](countTo.invoke(Long.box(0L), Long.box(200000L)))
-      val _ = okay.freer.!.run(okay.freer.Writer.run(okay.through(okay.freer.pure[okay.freer.%[okay.freer.Writer, Long], Unit](()))(stage)))
+      val _ = okay.freer.!.run(okay.std.Writer.run(okay.through(okay.freer.pure[okay.freer.%[okay.std.Writer, Long], Unit](()))(stage)))
     })
     println(f"PRICE interop clojure program 2e5 steps: $p%.1f ms (min of 7)")
   }

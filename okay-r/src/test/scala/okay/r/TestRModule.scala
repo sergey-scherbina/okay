@@ -1,7 +1,10 @@
 package okay.r
 
 
-import okay.freer.{State, given}
+import okay.freer.{given}
+
+
+import okay.std.{State}
 object TestRModule:
   val scoring = R.module("scoring", """
     trimmed <- function(xs) mean(xs, trim = 0.25)

@@ -1,6 +1,4 @@
 package okay.freer
-
-
 import okay.freer.Shift.Stacked.{dollar, reset, shift, shift0}
 import okay.freer.Row.at
 

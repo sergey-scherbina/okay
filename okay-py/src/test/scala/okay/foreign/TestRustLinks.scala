@@ -1,7 +1,7 @@
 package okay.foreign
 
 import java.nio.file.{Files, Path}
-import okay.freer.Reader
+import okay.std.Reader
 
 object RustWorkerBinary:
   val priceOf = Foreign.callback[String, Double]("price_of")(sku => Reader.ask[Map[String, Double]].map(_(sku)))

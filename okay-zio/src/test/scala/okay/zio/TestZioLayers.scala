@@ -1,7 +1,10 @@
 package okay.zio
 
-import okay.freer.{!, Module, Resource, module, wire}
+import okay.freer.{!}
+
+import okay.std.{Module, Resource, module, wire}
 import okay.freer.given
+import okay.std.given
 import ZioLayers.*
 import _root_.zio.{Runtime, Scope, Unsafe, ZEnvironment, ZIO, ZLayer}
 

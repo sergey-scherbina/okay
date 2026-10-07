@@ -3,6 +3,10 @@ package okay.bayes
 
 
 import okay.freer.given
+
+
+
+import okay.std.given
 import okay.codec.Schema
 import okay.foreign.{Py, PyEnv, PyEval}
 import okay.testkit.Munit.Diagnosed

@@ -3,7 +3,8 @@ package okay.refine
 import scala.reflect.ClassTag
 import okay.{Prism, Stage}
 import okay.freer.{%}
-import okay.freer.{!, Choose, Throws, choose, effect, pure, raise}
+import okay.freer.{!, effect, pure}
+import okay.std.{Choose, Throws, choose, raise}
 import okay.codec.{Json, Schema}
 
 /**

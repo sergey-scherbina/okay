@@ -1,7 +1,7 @@
 package okay.java
 
 import okay.{ChunkBuf, Chunks}
-import okay.freer.Chunk
+import okay.std.Chunk
 import java.util.Spliterator
 import java.util.function.{Consumer, DoubleConsumer, IntConsumer, LongConsumer}
 import java.util.stream.{DoubleStream, IntStream, LongStream, Stream, StreamSupport}
@@ -202,7 +202,7 @@ object Streams {
       val sink: Consumer[A] = a => { buf(n) = a; n += 1 }
       while n < size && sp.tryAdvance(sink) do ()
       if n == 0 then Chunks.end
-      else okay.freer.Writer.tell(buf.take(n)).flatMap(_ => go())
+      else okay.std.Writer.tell(buf.take(n)).flatMap(_ => go())
     go()
 
   /**
@@ -218,7 +218,7 @@ object Streams {
       val sink: LongConsumer = a => { arr(n) = a; n += 1 }
       while n < size && sp.tryAdvance(sink) do ()
       if n == 0 then Chunks.end
-      else okay.freer.Writer.tell(wrapLong(arr, n)).flatMap(_ => go())
+      else okay.std.Writer.tell(wrapLong(arr, n)).flatMap(_ => go())
     go()
 
   def ints(s: IntStream, size: Int = 64): Chunks[Int] =
@@ -229,7 +229,7 @@ object Streams {
       val sink: IntConsumer = a => { arr(n) = a; n += 1 }
       while n < size && sp.tryAdvance(sink) do ()
       if n == 0 then Chunks.end
-      else okay.freer.Writer.tell(wrapInt(arr, n)).flatMap(_ => go())
+      else okay.std.Writer.tell(wrapInt(arr, n)).flatMap(_ => go())
     go()
 
   def doubles(s: DoubleStream, size: Int = 64): Chunks[Double] =
@@ -240,7 +240,7 @@ object Streams {
       val sink: DoubleConsumer = a => { arr(n) = a; n += 1 }
       while n < size && sp.tryAdvance(sink) do ()
       if n == 0 then Chunks.end
-      else okay.freer.Writer.tell(wrapDouble(arr, n)).flatMap(_ => go())
+      else okay.std.Writer.tell(wrapDouble(arr, n)).flatMap(_ => go())
     go()
 
   private def wrapLong(a: Array[Long], n: Int): Chunk[Long] =

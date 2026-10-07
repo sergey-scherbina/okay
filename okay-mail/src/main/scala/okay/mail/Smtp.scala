@@ -3,7 +3,7 @@ package okay.mail
 
 import okay.{Async}
 import okay.freer.*
-
+import okay.std.*
 import okay.conf.{Secret, Secrets}
 import okay.mail.Mail.{Accepted, Rejection}
 import okay.tls.{Tls, TlsConfig}

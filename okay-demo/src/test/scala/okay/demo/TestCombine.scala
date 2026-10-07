@@ -2,10 +2,10 @@ package okay.demo
 
 import okay.{Async, Source, through}
 import okay.freer.*
-
-
+import okay.std.*
 import okay.given
 import okay.freer.given
+import okay.std.given
 import java.time.Instant
 
 /**

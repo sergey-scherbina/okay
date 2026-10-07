@@ -3,7 +3,7 @@ package okay.outbox
 
 import okay.{Async}
 import okay.freer.*
-
+import okay.std.*
 import okay.codec.Schema
 import okay.sql.{Sql, SqlValue, Typed}
 

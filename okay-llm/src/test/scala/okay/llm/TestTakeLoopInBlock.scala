@@ -2,8 +2,9 @@ package okay.llm
 
 import okay.{Stage, Take, pipe, through}
 import okay.freer.*
+import okay.std.*
 import okay.freer.given
-
+import okay.std.given
 import okay.Direct.*
 
 /**

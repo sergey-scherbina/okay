@@ -3,7 +3,8 @@ package okay.docs
 import okay.{Async, async, ChunkBuf, Source}
 
 import okay.freer.{+, %}
-import okay.freer.{!, Chunk, effect, Writer}
+import okay.freer.{!, effect}
+import okay.std.{Chunk, Writer}
 import okay.codec.Schema
 import okay.persist.{Ack, Topic, Typed}
 import scala.collection.mutable

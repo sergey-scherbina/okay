@@ -1,0 +1,135 @@
+package okay.freer
+
+
+import okay.std.*
+import okay.std.given
+import okay.given
+
+
+/** The standard effects (Reader, Writer, Choice), the Fold/Foldable
+ * consumers, the Stream codata, and the streaming bridges. */
+class TestStd extends munit.FunSuite {
+
+  test("Reader: every ask answers the environment, other effects forwarded") {
+    type F = Reader % Int + Produce
+    val prog: Int ! F =
+      effect[F, Int](Reader.Ask()).flatMap: x =>
+        effect[F, Int](10).flatMap: y =>
+          effect[F, Int](Reader.Ask()).map(z => x + y + z)
+    assertEquals(Reader.run[Int, Int, Produce](21)(prog).runWith, 52)
+  }
+
+  test("Writer: run collects everything told, in order, forwarding F") {
+    type F = Writer % String + Produce
+    val prog: Int ! F =
+      effect[F, Unit](Writer("a")).flatMap: _ =>
+        effect[F, Int](1).flatMap: x =>
+          effect[F, Unit](Writer("b")).map(_ => x + 1)
+    val (ws, a) = Writer.run[String, Int, Produce](prog).runWith
+    assertEquals(ws, Seq("a", "b"))
+    assertEquals(a, 2)
+  }
+
+  test("Writer: fold into a custom Fold (a sum instead of a Seq)") {
+    given Fold[Int, Long] = new:
+      def init: Long = 0L
+      def add(s: Long, w: Int): Long = s + w
+    val w: String ! Writer % Int =
+      Writer.tell(1).flatMap(_ => Writer.tell(2)).flatMap(_ => Writer.tell(3)).map(_ => "done")
+    val (sum, a) = !.run(Writer.fold[Int, Long, String, Pure](w))
+    assertEquals(sum, 6L)
+    assertEquals(a, "done")
+  }
+
+  test("Writer: a program ENDING in a tell answers NOTHING") {
+    // the bare-Effect branch of the fold loop: no continuation, so the
+    // operation's answer IS the program's answer — and a tell's answer
+    // is unit, which the type says out loud. Every other test ends in a
+    // map or flatMap, which is the Bind branch, so this is the one
+    // place where a wrong answer here would go unnoticed.
+    val w: Unit ! Writer % Int = Writer.tell(5)
+    val (ws, a) = !.run(Writer.run[Int, Unit, Pure](w))
+    assertEquals(ws, Seq(5))
+    assertEquals(a, (), "a tell emits; it does not produce")
+
+    // getting the value back is the CALLER's business, said explicitly
+    val kept: Int ! Writer % Int = Writer.tell(5).map(_ => 5)
+    assertEquals(!.run(Writer.run[Int, Int, Pure](kept)), (Seq(5), 5))
+
+    // and through a custom Fold, so the specialized dispatch sees it too
+    val (n, a2) = !.run(Writer.fold[Int, Long, Unit, Pure](w)(using summon)(using summon, Fold.count))
+    assertEquals(n, 1L)
+    assertEquals(a2, ())
+  }
+
+  test("Writer: uncons observes the told values one by one, the answer last") {
+    val w: Int ! Writer % String =
+      Writer.tell("a").flatMap(_ => Writer.tell("b")).map(_ => "b".length)
+    val Right(("a", r1)) = Writer.uncons(w): @unchecked
+    val Right(("b", r2)) = Writer.uncons(r1): @unchecked
+    assertEquals(Writer.uncons(r2), Left(1))
+  }
+
+  test("Writer is a stream too: an infinite teller unfolds on demand") {
+    def count(n: Int): Nothing ! Writer % Int =
+      Writer.tell(n).flatMap(_ => count(n + 1))
+    assertEquals(count(0).toLazyList.take(5).toList, List(0, 1, 2, 3, 4))
+    assertEquals(count(0).uncons.map(_._1), Some(0))
+  }
+
+  test("Reader and Writer compose") {
+    type F = Reader % Int + Writer % String
+    val prog: Int ! F =
+      effect[F, Int](Reader.Ask()).flatMap: x =>
+        effect[F, Unit](Writer(s"got $x")).map(_ => x * 2)
+    val (ws, a) = !.run(Writer.run[String, Int, Pure](
+      Reader.run[Int, Int, Writer % String](7)(prog)))
+    assertEquals(ws, Seq("got 7"))
+    assertEquals(a, 14)
+  }
+
+  test("Foldable: run one Fold over any container") {
+    assertEquals(List(1, 2, 3).foldTo[Seq[Int]], Seq(1, 2, 3))
+    given Fold[Int, Int] = new:
+      def init: Int = 0
+      def add(s: Int, a: Int): Int = s + a
+    assertEquals(Iterator(1, 2, 3).foldTo[Int], 6)
+  }
+
+  test("Stream is codata: uncons observes, toLazyList is the anamorphism") {
+    val Some((h, t)) = fibs[Long, LazyList].uncons: @unchecked
+    assertEquals(h, 0L)
+    assertEquals(t.uncons.map(_._1), Some(1L))
+    assertEquals(LazyList.empty[Int].uncons, None)
+    assertEquals(fibs[Long, LazyList].toLazyList.take(5).toList,
+      List(0L, 1L, 1L, 2L, 3L))
+  }
+
+  test("Choice: multi-shot handler explores every branch (cartesian)") {
+    val prog: Int ! Choose =
+      choose(1, 2, 3).flatMap(x => choose(10, 20).map(x * _))
+    assertEquals(!.run(runChoice[Int, Pure](prog)),
+      Seq(10, 20, 20, 40, 30, 60))
+  }
+
+  test("Choice: empty choice prunes the branch") {
+    val prog: Int ! Choose =
+      choose(1, 2).flatMap(x => if x == 1 then choose[Int]() else choose(x))
+    assertEquals(!.run(runChoice[Int, Pure](prog)), Seq(2))
+  }
+
+  test("a producer is a stream: uncons steps it, toLazyList unfolds it") {
+    val Some((h, t)) = fibs[Long, Producer].uncons: @unchecked
+    assertEquals(h, 0L)
+    assertEquals(t.uncons.map(_._1), Some(1L))
+    val Some((x, end)) = produce(42).uncons: @unchecked
+    assertEquals(x, 42)
+    assertEquals(end.uncons, None)
+    assertEquals(
+      fibs[Long, Producer].toLazyList.take(10).toList,
+      fibs[Long, LazyList].take(10).toList)
+    assertEquals(
+      nats[Int, Producer].toLazyList.take(5).toList,
+      List(0, 1, 2, 3, 4))
+  }
+}

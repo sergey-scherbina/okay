@@ -3,7 +3,8 @@ package okay.agent
 import okay.{Async}
 
 import okay.freer.{%, +}
-import okay.freer.{!, Writer, effect}
+import okay.freer.{!, effect}
+import okay.std.{Writer}
 import okay.codec.{Json, Schema}
 import okay.llm.Transport
 import scala.collection.mutable

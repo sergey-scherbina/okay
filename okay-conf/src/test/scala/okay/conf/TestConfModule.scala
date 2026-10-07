@@ -2,7 +2,9 @@ package okay.conf
 
 import okay.freer.*
 
+import okay.std.*
 import okay.freer.given
+import okay.std.given
 import okay.codec.Schema
 
 /**

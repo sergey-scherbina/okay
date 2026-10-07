@@ -1,5 +1,4 @@
 package okay.freer
-
 import okay.{Answers, TypeableK, typeableK}
 
 import okay.freer.Eager.given

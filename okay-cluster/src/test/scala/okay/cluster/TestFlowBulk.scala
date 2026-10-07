@@ -3,7 +3,7 @@ package okay.cluster
 
 import okay.{Bulk, Chunks, Tables}
 import okay.freer.*
-
+import okay.std.*
 import okay.given
 
 import okay.Tables.read

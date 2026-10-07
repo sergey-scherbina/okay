@@ -1,7 +1,10 @@
 package okay.r
 
 
-import okay.freer.{Writer, given}
+import okay.freer.{given}
+
+
+import okay.std.{Writer}
 object TestRSource:
   val m = R.module("rsources", """
     rows <- function(n, size) {

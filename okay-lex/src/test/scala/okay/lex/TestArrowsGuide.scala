@@ -3,7 +3,7 @@ package okay.lex
 
 import okay.{`>=>`, Lens, Traversal, foldMap, toVector, traverseOf}
 import okay.freer.*
-
+import okay.std.*
 import okay.given
 
 import okay.Optic.arrows.*

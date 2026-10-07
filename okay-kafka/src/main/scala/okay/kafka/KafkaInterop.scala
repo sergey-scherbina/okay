@@ -3,7 +3,8 @@ package okay.kafka
 import okay.{Async, Source, async}
 
 import okay.freer.{+, %}
-import okay.freer.{!, Chunk, Writer, effect}
+import okay.freer.{!, effect}
+import okay.std.{Chunk, Writer}
 import org.apache.kafka.clients.consumer.{Consumer, ConsumerRecord, KafkaConsumer}
 import org.apache.kafka.clients.producer.{KafkaProducer, Producer as JProducer, ProducerRecord}
 import scala.jdk.CollectionConverters.*
@@ -59,14 +60,14 @@ object KafkaInterop {
 
   /** a consumer as a Resource: subscribed on acquire, closed by the scope */
   def managedConsumer[K, V](props: Map[String, AnyRef], topics: Seq[String])
-  : Consumer[K, V] ! okay.freer.Resource =
-    okay.freer.Resource.acquire {
+  : Consumer[K, V] ! okay.std.Resource =
+    okay.std.Resource.acquire {
       val c = new KafkaConsumer[K, V](props.asJava)
       c.subscribe(topics.asJava)
       c
     }(_.close())
 
   /** a producer as a Resource: closed (flushing) by the scope */
-  def managedProducer[K, V](props: Map[String, AnyRef]): JProducer[K, V] ! okay.freer.Resource =
-    okay.freer.Resource.acquire(new KafkaProducer[K, V](props.asJava))(_.close())
+  def managedProducer[K, V](props: Map[String, AnyRef]): JProducer[K, V] ! okay.std.Resource =
+    okay.std.Resource.acquire(new KafkaProducer[K, V](props.asJava))(_.close())
 }

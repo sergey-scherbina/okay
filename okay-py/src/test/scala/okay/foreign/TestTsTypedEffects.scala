@@ -1,7 +1,8 @@
 package okay.foreign
 
 import java.nio.file.{Files, Path}
-import okay.freer.{Reader, given}
+import okay.freer.{given}
+import okay.std.{Reader}
 import okay.foreign.TestTsOneShape.{Order, Totals}
 
 object TestTsTypedEffects:

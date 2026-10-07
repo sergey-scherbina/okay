@@ -3,7 +3,7 @@ package okay.resilience
 
 import okay.{Async}
 import okay.freer.*
-
+import okay.std.*
 import java.net.{InetAddress, UnknownHostException}
 
 /** the JVM's own sources: the process environment and the resolver */

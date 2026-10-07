@@ -3,9 +3,11 @@ package okay.jdbc
 import okay.{Async, Source}
 
 import okay.freer.{+, %}
-import okay.freer.{!, Chunk, effect, Resource, Stream, Throws, Writer}
+import okay.freer.{!, effect}
+import okay.std.{Chunk, Resource, Stream, Throws, Writer}
 import okay.given
 import okay.freer.given
+import okay.std.given
 import okay.codec.Schema
 import okay.sql.{Bad, Granted, Isolation, Sql, SqlType, SqlValue, Typed}
 import okay.sql.given
@@ -257,7 +259,7 @@ class TestTyped extends munit.FunSuite {
         "val h2: Typed.Db[Typed.Tx.No] = null.asInstanceOf[Typed.Db[Typed.Tx.No]]\n" +
         "Typed.region[Long, okay.Async](h2) { tx =>\n" +
         "  Typed.region[Long, okay.Async](tx)(inner =>\n" +
-        "    okay.freer.!.widen[Long, okay.Async, okay.freer.Resource](tx.update(\"select 1\")))\n" +
+        "    okay.freer.!.widen[Long, okay.Async, okay.std.Resource](tx.update(\"select 1\")))\n" +
         "}")
       assert(errors.contains("Found:") && errors.contains("Tx.Yes"), errors)
     finally conn.close()
@@ -308,7 +310,7 @@ class TestTyped extends munit.FunSuite {
       }
       val out = !.run(Async.run[Either[String, Long], Nothing](
         Resource.run[Either[String, Long], Async](
-          okay.freer.runEither[Long, Resource + Async, String](prog))))
+          okay.std.runEither[Long, Resource + Async, String](prog))))
       assertEquals(out, Left("changed my mind"))
       assert(conn.getAutoCommit, "autocommit not restored after the abort")
       assertEquals(countBy(db, "id = 22"), 0L, "the insert survived the abort")

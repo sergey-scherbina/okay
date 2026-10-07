@@ -2,9 +2,12 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import okay.given
 import okay.freer.given
-
+import okay.std.given
 /**
  * specs/optics.md stage 3: a program over a PART of the state runs
  * over the whole, and the four-parameter lens zooms the parameterised
@@ -111,9 +114,9 @@ class TestZoom extends munit.FunSuite {
       // the inner program leaves an Int; asking for the whole back as
       // Box[String] is the typestate error the lens exists to catch
       def parse[R]: okay.freer.Cps[Int, Int => R, String => R] =
-        okay.freer.PState.get[String, R].flatMap(s => okay.freer.PState.set[String, Int, R](s.length).map(_ => s.length))
-      okay.freer.PState.run[Box[String], Box[String], Int](Box("hello", "t"))(
-        okay.freer.PState.zoom[Box[String], Box[Int], String, Int, Int, (Box[String], Int)](item)(parse))
+        okay.std.PState.get[String, R].flatMap(s => okay.std.PState.set[String, Int, R](s.length).map(_ => s.length))
+      okay.std.PState.run[Box[String], Box[String], Int](Box("hello", "t"))(
+        okay.std.PState.zoom[Box[String], Box[Int], String, Int, Int, (Box[String], Int)](item)(parse))
     """)
     assert(e.nonEmpty, "the misused typestate compiled")
   }

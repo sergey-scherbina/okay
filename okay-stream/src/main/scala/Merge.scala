@@ -2,7 +2,11 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import okay.freer.given
+import okay.std.given
 /**
  * THE MECHANISM `merge` RUNS ON (specs/ready-merge.md, the second
  * stage; specs/own-or-standard.md's shape for a choice between two of

@@ -12,7 +12,7 @@ import okay.{Async, Scheduler, Schedulers, async}
 import okay.freer.{!, pure}
 import okay.given
 import okay.freer.given
-
+import okay.std.given
 object OkayFiveWay:
 
   /** "okay" is what a user gets with no configuration — one Loom

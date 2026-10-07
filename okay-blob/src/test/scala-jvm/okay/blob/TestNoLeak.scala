@@ -4,6 +4,7 @@ import okay.Async
 import okay.freer.{!, pure}
 import okay.given
 import okay.freer.given
+import okay.std.given
 import okay.http.{Http, Request, Response}
 
 /** the conf invariants at this seam: the SECRET key reaches the HMAC

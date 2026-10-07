@@ -3,7 +3,7 @@ package okay.cluster
 
 import okay.{Async, Chunks, Scheduler}
 import okay.freer.*
-
+import okay.std.*
 import okay.codec.{Codecs, Digest, Schema}
 import scala.annotation.tailrec
 

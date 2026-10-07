@@ -1,7 +1,8 @@
 package okay.jdbc
 
 import okay.{Async, async}
-import okay.freer.{!, Chunk}
+import okay.freer.{!}
+import okay.std.{Chunk}
 import okay.codec.Schema
 import okay.persist.{Ack, Offsets}
 import okay.sql.{Bad, Sql, SqlValue, Typed}

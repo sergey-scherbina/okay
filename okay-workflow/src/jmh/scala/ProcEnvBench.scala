@@ -3,6 +3,8 @@ package okay.bench
 import okay.{Id, Monad}
 
 import okay.freer.*
+
+import okay.std.*
 import okay.Direct.*
 import org.openjdk.jmh.annotations.{Benchmark, BenchmarkMode, Fork, Measurement, Mode, OutputTimeUnit, Scope, Warmup}
 import org.openjdk.jmh.annotations.State as JmhState

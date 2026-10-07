@@ -2,6 +2,9 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import okay.Direct.*
 
 /** direct-one-bind-steps (2026-09-27): a direct block's program, as it

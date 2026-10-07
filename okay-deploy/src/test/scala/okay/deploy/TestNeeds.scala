@@ -1,8 +1,10 @@
 package okay.deploy
 
 import okay.Answers
-import okay.freer.{Module, Static, module, moduleAs, wire}
+import okay.freer.{Static}
+import okay.std.{Module, module, moduleAs, wire}
 import okay.freer.given
+import okay.std.given
 import Needs.needs
 
 /** the capabilities an application's root still waits for, each saying what it is to a deployment */
@@ -46,7 +48,7 @@ class TestNeeds extends munit.FunSuite:
   }
 
   test("an input the deployment does not know is a compile error naming it") {
-    val errs = compileErrors("Needs.of[Caps.Unknown ?=> okay.freer.Module[[X] =>> Int ?=> X]]")
+    val errs = compileErrors("Needs.of[Caps.Unknown ?=> okay.std.Module[[X] =>> Int ?=> X]]")
     assert(errs.contains("does not know what that is") && errs.contains("Unknown"), errs)
     // and the message offers both answers, not just the place's one
     assert(errs.contains("Needs.runtime"), errs)
@@ -100,7 +102,7 @@ class TestNeeds extends munit.FunSuite:
     assertEquals(Needs.declared(app), Vector(Need.Volume("/app/data")))
     assertEquals(opened, 0)
     // the default place mounts the volume where it was asked for
-    val got = okay.freer.!.run(okay.freer.Resource.run[String, okay.freer.Pure](app { wire[FileStore].path }))
+    val got = okay.freer.!.run(okay.std.Resource.run[String, okay.freer.Pure](app { wire[FileStore].path }))
     assertEquals(got, "/app/data/board.log")
     assertEquals(opened, 1)
   }
@@ -115,7 +117,7 @@ class TestNeeds extends munit.FunSuite:
           case Provision.Volume(path, _, _) => java.nio.file.Path.of("/tmp/vol-test").resolve(path.stripPrefix("/"))
           case other => Provision.local.handle(other))
     assertEquals(Needs.declared(store), Vector(Need.Volume("/app/data")))   // what the deployment mounts
-    val got = okay.freer.!.run(okay.freer.Resource.run[String, okay.freer.Pure](store { wire[FileStore].path }))
+    val got = okay.freer.!.run(okay.std.Resource.run[String, okay.freer.Pure](store { wire[FileStore].path }))
     assertEquals(got, "/tmp/vol-test/app/data/board.log")                   // where the process wrote
   }
 
@@ -126,7 +128,7 @@ class TestNeeds extends munit.FunSuite:
       S.fmap(Static.op(Provision.Port(8090)), (p: Int) => (d: java.nio.file.Path) => Server(p, d))
         .app(Static.op(Provision.Volume("/app/data"))))(_ => ())
     assertEquals(Needs.declared(srv), Vector(Need.Port(8090), Need.Volume("/app/data")))
-    val got = okay.freer.!.run(okay.freer.Resource.run[(Int, String), okay.freer.Pure](srv { val s = wire[Server]; (s.port, s.dir.toString) }))
+    val got = okay.freer.!.run(okay.std.Resource.run[(Int, String), okay.freer.Pure](srv { val s = wire[Server]; (s.port, s.dir.toString) }))
     assertEquals(got, (8090, "/app/data"))
   }
 

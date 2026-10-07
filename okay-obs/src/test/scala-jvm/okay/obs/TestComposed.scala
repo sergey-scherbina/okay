@@ -4,6 +4,7 @@ import okay.Async
 import okay.freer.{!}
 import okay.given
 import okay.freer.given
+import okay.std.given
 import okay.codec.{Cbor, Json}
 import okay.http.{Http, Method, Request, Response}
 import okay.persist.{MemoryStore, Policy as TopicPolicy, Topic}

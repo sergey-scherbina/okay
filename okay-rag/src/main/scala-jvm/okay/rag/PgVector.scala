@@ -1,7 +1,8 @@
 package okay.rag
 
 import okay.Async
-import okay.freer.{!, Chunk}
+import okay.freer.{!}
+import okay.std.{Chunk}
 import okay.lex.Span
 import okay.sql.{Sql, SqlValue}
 

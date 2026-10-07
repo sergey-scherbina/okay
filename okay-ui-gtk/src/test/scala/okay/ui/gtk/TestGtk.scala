@@ -4,8 +4,10 @@ package okay.ui.gtk
 
 import okay.{Async, Source}
 import okay.freer.*
+import okay.std.*
 import okay.given
 import okay.freer.given
+import okay.std.given
 import okay.ui.*
 import scala.scalanative.unsafe.*
 import scala.scalanative.unsigned.*

@@ -1,8 +1,10 @@
 package okay.deploy
 
 import okay.Answers
-import okay.freer.{Fact, Module, Monoid, Static, moduleAs}
+import okay.freer.{Monoid, Static}
+import okay.std.{Fact, Module, moduleAs}
 import okay.freer.given
+import okay.std.given
 import scala.quoted.*
 import scala.annotation.tailrec
 

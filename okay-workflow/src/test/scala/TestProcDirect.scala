@@ -1,5 +1,6 @@
 import okay.{Wf, Proc}
 import okay.freer.*
+import okay.std.*
 import okay.Direct.*
 import scala.language.implicitConversions
 

@@ -2,9 +2,13 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import okay.freer.given
+import okay.std.given
 import okay.Direct.*
-import Lexical.State.{get, put}
+import LexicalState.{get, put}
 import Layered.{reify, reflect}
 
 /**
@@ -19,7 +23,7 @@ class TestDirectLayersInstances extends munit.FunSuite:
   // ------------------------------------------------ instances
 
   test("a Lexical instance in a direct block: `get.?`, and `put(v).?` as a clean statement") {
-    val r = run(Lexical.State.deep[Int, Int, Shift % ? + Pure](0) { s =>
+    val r = run(LexicalState.deep[Int, Int, Shift % ? + Pure](0) { s =>
       direct {
         val v = s.get.?
         s.put(v + 1).?
@@ -30,8 +34,8 @@ class TestDirectLayersInstances extends munit.FunSuite:
   }
 
   test("two instances of one effect in one block, each answered by its own installation") {
-    val r = run(Lexical.State.deep[Int, Int, Shift % ? + Pure](1) { a =>
-      Lexical.State.deep[Int, Int, Shift % ? + Pure](20) { b =>
+    val r = run(LexicalState.deep[Int, Int, Shift % ? + Pure](1) { a =>
+      LexicalState.deep[Int, Int, Shift % ? + Pure](20) { b =>
         direct {
           val x = a.get.?
           val y = b.get.?
@@ -44,7 +48,7 @@ class TestDirectLayersInstances extends munit.FunSuite:
   }
 
   test("the tail default on the pure row: no Shift, no machine, a plain program") {
-    assertEquals(!.run(Lexical.State[Int, Int, Pure](5) { s =>
+    assertEquals(!.run(LexicalState[Int, Int, Pure](5) { s =>
       direct {
         val v = s.get.?
         s.put(v * 3).?
@@ -94,7 +98,7 @@ class TestDirectLayersInstances extends munit.FunSuite:
   test("a layer in scope but a block row WITHOUT Shift: refused, naming Shift") {
     val e = compileErrors("""
       okay.freer.Layered.reify[List, Int, okay.freer.Pure] {
-        val inner: Int ! okay.freer.Writer % String = okay.Direct.direct {
+        val inner: Int ! okay.std.Writer % String = okay.Direct.direct {
           val x = List(1, 2, 3).?
           x
         }

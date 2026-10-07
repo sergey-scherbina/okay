@@ -1,5 +1,4 @@
 package okay.freer
-
 import okay.{sequence}
 import okay.given
 

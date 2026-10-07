@@ -2,7 +2,11 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import okay.freer.given
+import okay.std.given
 import okay.Direct.{*, given}
 // The colourless-val spelling uses `selfColor`, which is an implicit
 // CONVERSION — so the file needs the language import, and without it

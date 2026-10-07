@@ -3,6 +3,9 @@ package macros
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import scala.quoted.*
 
 /**
@@ -63,9 +66,9 @@ private[okay] trait DirectVals[F[_]] extends DirectMarks[F] with DirectRow[F] wi
     val hSym = Symbol.newVal(Symbol.spliceOwner, s"${vd.name}$$handle", handleT,
       Flags.EmptyFlags, Symbol.noSymbol)
     val hVal = ValDef(hSym, Some(tpe2(elem) { [T] => (tT: Type[T]) ?=> '{ new Once.Handle[T]() }.asTerm }))
-    val forceApply = Symbol.requiredModule("okay.freer.Once.Force").methodMember("apply").head
-    val storeApply = Symbol.requiredModule("okay.freer.Once.Store").methodMember("apply").head
-    val atSym = Symbol.requiredModule("okay.freer.Once").methodMember("at").head
+    val forceApply = Symbol.requiredModule("okay.std.Once.Force").methodMember("apply").head
+    val storeApply = Symbol.requiredModule("okay.std.Once.Store").methodMember("apply").head
+    val atSym = Symbol.requiredModule("okay.std.Once").methodMember("at").head
     def forceOp(h: Term): Term =
       injectTerm(Apply(TypeApply(Ref(forceApply), List(Inferred(elem))), List(h)),
         TypeRepr.of[Option].appliedTo(elem), row)
@@ -104,7 +107,7 @@ private[okay] trait DirectVals[F[_]] extends DirectMarks[F] with DirectRow[F] wi
    * Scala: a val read as a value is a BINDING (by value, run here — the
    * do-notation reading of a bare statement, extended to a val), and a
    * lazy val is the `Once` cell (by need). A val held as a PROGRAM —
-   * marked at its uses, passed to `!.once`, stored — is a value and
+   * marked at its uses, passed to `Once.once`, stored — is a value and
    * stays untouched; nothing colours it. A val read BOTH ways in one
    * block is refused with both readings named, since binding it would
    * leave its program uses holding an answer.

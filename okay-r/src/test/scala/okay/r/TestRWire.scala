@@ -1,7 +1,10 @@
 package okay.r
 
 
-import okay.freer.{Choose, Reader, effect, runChoice, given}
+import okay.freer.{effect, given}
+
+
+import okay.std.{Choose, Reader, runChoice}
 import okay.codec.{WireCompression, WireFormat}
 import RValue.*
 

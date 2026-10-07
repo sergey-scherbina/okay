@@ -2,6 +2,9 @@ package okay
 
 
 import okay.freer.given
+
+
+import okay.std.given
 import Chunks.elements
 
 /** docs/guide.md §6's `Source.joinSorted` example, line for line

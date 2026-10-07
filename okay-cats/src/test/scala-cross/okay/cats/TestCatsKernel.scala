@@ -17,11 +17,11 @@ class TestCombine extends munit.FunSuite with okay.testkit.Munit.Diagnosed {
   given okay.freer.Semigroup[Peak] with
     def combine(x: Peak, y: Peak): Peak = Peak(x.n max y.n)
 
-  test("okay.freer.Validated under cats' traverse, with only a cats Semigroup") {
+  test("okay.std.Validated under cats' traverse, with only a cats Semigroup") {
     val out = List(1, 2, 3).traverse(i =>
-      if i == 2 then okay.freer.Validated.valid[NonEmptyList[String], Int](i)
-      else okay.freer.Validated.invalid[NonEmptyList[String], Int](NonEmptyList.one(s"$i")))
-    assertEquals(out, okay.freer.Validated.invalid(NonEmptyList.of("1", "3")))
+      if i == 2 then okay.std.Validated.valid[NonEmptyList[String], Int](i)
+      else okay.std.Validated.invalid[NonEmptyList[String], Int](NonEmptyList.one(s"$i")))
+    assertEquals(out, okay.std.Validated.invalid(NonEmptyList.of("1", "3")))
   }
 
   test("cats' Validated under okay's Selective, with only an okay Semigroup") {
@@ -33,21 +33,22 @@ class TestCombine extends munit.FunSuite with okay.testkit.Munit.Diagnosed {
 
   test("a type both sides combine (String): okay's first, no ambiguity") {
     import okay.freer.given
-    val out = List(1, 2).traverse(i => okay.freer.Validated.invalid[String, Int](s"<$i>"))
-    assertEquals(out, okay.freer.Validated.invalid("<1><2>"))
+    import okay.std.given
+    val out = List(1, 2).traverse(i => okay.std.Validated.invalid[String, Int](s"<$i>"))
+    assertEquals(out, okay.std.Validated.invalid("<1><2>"))
   }
 }
 
 class TestFromCatsKernel extends munit.FunSuite with okay.testkit.Munit.Diagnosed {
   import FromCatsKernel.given
 
-  test("okay.freer.Validated accumulates with only a cats Semigroup (NonEmptyList)") {
+  test("okay.std.Validated accumulates with only a cats Semigroup (NonEmptyList)") {
     val check = (i: Int) =>
-      if i % 2 == 1 then okay.freer.Validated.invalid[NonEmptyList[String], Int](NonEmptyList.one(s"odd $i"))
-      else okay.freer.Validated.valid[NonEmptyList[String], Int](i)
+      if i % 2 == 1 then okay.std.Validated.invalid[NonEmptyList[String], Int](NonEmptyList.one(s"odd $i"))
+      else okay.std.Validated.valid[NonEmptyList[String], Int](i)
     val out = okay.traverse(Seq(1, 2, 3))(check)
     note(s"traverse answered $out")
-    assertEquals(out, okay.freer.Validated.invalid(NonEmptyList.of("odd 1", "odd 3")))
+    assertEquals(out, okay.std.Validated.invalid(NonEmptyList.of("odd 1", "odd 3")))
   }
 
   test("cats' Group arrives as okay's, inverse kept, for a type okay has none for") {

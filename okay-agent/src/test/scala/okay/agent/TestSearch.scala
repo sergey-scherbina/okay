@@ -3,9 +3,10 @@ package okay.agent
 import okay.{Answers, guard}
 
 import okay.freer.{+}
-import okay.freer.{!, Choose, effect, pure, runChoice}
+import okay.freer.{!, effect, pure}
+import okay.std.{Choose, runChoice}
 import okay.freer.given
-
+import okay.std.given
 /**
  * Search over completions, and the thing that makes it correct: the
  * context handler THREADS its state, so a multi-shot branch cannot

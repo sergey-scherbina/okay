@@ -1,7 +1,8 @@
 package okay.foreign
 
-import okay.freer.State
+import okay.std.State
 import okay.freer.given
+import okay.std.given
 import Value.*
 
 /**

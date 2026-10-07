@@ -1,6 +1,4 @@
 package okay.freer
-
-
 /**
  * specs/cont-stack.md Layer 3, the JVM reader. The core's tests run
  * against the PACKAGED jar with native access enabled (build.sbt), so

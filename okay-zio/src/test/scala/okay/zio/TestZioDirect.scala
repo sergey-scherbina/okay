@@ -5,6 +5,7 @@ import okay.freer.{!}
 import okay.Direct.*
 import okay.given
 import okay.freer.given
+import okay.std.given
 import okay.zio.given
 import ZioInterop.*
 import _root_.zio.{Runtime, Task, Unsafe, ZIO}

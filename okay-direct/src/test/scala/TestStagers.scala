@@ -2,11 +2,15 @@ package okay
 
 
 import okay.freer.*
+
+
+import okay.std.*
 import okay.freer.given
+import okay.std.given
 import okay.Direct.*
 
 /**
- * specs/direct-stagers.md: `Stager.All` over Reader + State + Writer +
+ * specs/direct-stagers.md: `Stagers.All` over Reader + State + Writer +
  * Throws, and the four singles — each staged block agrees with the
  * SAME block text as a Free `direct` block run by the shipping
  * runners, on generated data.
@@ -18,7 +22,7 @@ class TestStagers extends munit.FunSuite:
   // ---- All, on the full row
 
   type Row4 = Reader % Env + State % Int + Writer % String + Throws % String
-  val all = Stager.All[Env, Int, String, String, Int]()
+  val all = Stagers.All[Env, Int, String, String, Int]()
 
   def free4(xs: List[Int]): Int ! Row4 = direct[[A] =>> A ! Row4] {
     val env = Reader.ask[Env].?
@@ -83,7 +87,7 @@ class TestStagers extends munit.FunSuite:
   // ---- All on a subrow: Reader + Throws through Unit/Nothing slots
 
   type RowRT = Reader % Env + Throws % String
-  val rt = Stager.All[Env, Unit, Nothing, String, Int]()
+  val rt = Stagers.All[Env, Unit, Nothing, String, Int]()
 
   def freeRT(xs: List[Int]): Int ! RowRT = direct[[A] =>> A ! RowRT] {
     val env = Reader.ask[Env].?
@@ -114,8 +118,8 @@ class TestStagers extends munit.FunSuite:
   }
 
   test("All on State + Writer agrees with StateWriter on the same block") {
-    val sw = Stager.StateWriter[Int, String, Int]()
-    val aw = Stager.All[Unit, Int, String, Nothing, Int]()
+    val sw = Stagers.StateWriter[Int, String, Int]()
+    val aw = Stagers.All[Unit, Int, String, Nothing, Int]()
     def viaSw(xs: List[Int]) = Direct.staged(sw) {
       for x <- xs do
         val s = State.get[Int].?
@@ -142,7 +146,7 @@ class TestStagers extends munit.FunSuite:
   // ---- the singles
 
   test("Reading: a Reader-only block") {
-    val rd = Stager.Reading[Env, Int]()
+    val rd = Stagers.Reading[Env, Int]()
     def p(k: Int) = Direct.staged(rd) {
       val e = Reader.ask[Env].?
       val e2 = Reader.ask[Env].?
@@ -157,7 +161,7 @@ class TestStagers extends munit.FunSuite:
   }
 
   test("Stateful: a State-only block, on generated data") {
-    val st = Stager.Stateful[Int, Int]()
+    val st = Stagers.Stateful[Int, Int]()
     def p(xs: List[Int]) = Direct.staged(st) {
       for x <- xs do
         val s = State.get[Int].?
@@ -173,7 +177,7 @@ class TestStagers extends munit.FunSuite:
   }
 
   test("Logging: a Writer-only block") {
-    val lg = Stager.Logging[String, Int]()
+    val lg = Stagers.Logging[String, Int]()
     val p = Direct.staged(lg) {
       Writer.tell("a").?
       for x <- List(1, 2) do Writer.tell(s"x$x").?
@@ -184,7 +188,7 @@ class TestStagers extends munit.FunSuite:
   }
 
   test("Failing: a Throws-only block, both roads") {
-    val fl = Stager.Failing[String, Int]()
+    val fl = Stagers.Failing[String, Int]()
     def p(n: Int) = Direct.staged(fl) {
       if n < 0 then raise[String, Unit]("negative").?
       val half = if n % 2 == 0 then n / 2 else raise[String, Int]("odd").?
@@ -197,7 +201,7 @@ class TestStagers extends munit.FunSuite:
 
   test("docs/direct-style.md, Layer 2½ — the Reader + Throws example, verbatim") {
     case class Cfg(k: Int, limit: Int)
-    val rt = Stager.All[Cfg, Unit, Nothing, String, Int]()   // Reader + Throws, nothing else
+    val rt = Stagers.All[Cfg, Unit, Nothing, String, Int]()   // Reader + Throws, nothing else
 
     def total(xs: List[Int]): Handled[rt.Row, rt.R, Int] = Direct.staged(rt) {
       val cfg = Reader.ask[Cfg].?

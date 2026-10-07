@@ -2,6 +2,7 @@ package okay.http
 
 import okay.freer.*
 
+import okay.std.*
 import okay.codec.Schema
 
 /** typescript-types T5, the generated text (default gate, no Node) */

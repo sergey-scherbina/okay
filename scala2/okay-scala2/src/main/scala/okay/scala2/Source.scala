@@ -7,6 +7,7 @@ import okay.freer.{!}
 import okay.freer.Row.plus
 import okay.given
 import okay.freer.given
+import okay.std.given
 import Rows.coerce
 
 /**
@@ -26,14 +27,14 @@ final class Source[A] private (private val body: SourceBody[A]) {
 
   private[scala2] def core: okay.Source[A] = body.s
 
-  def map[B](f: A => B): Source[B] = Source.of(okay.freer.Writer.map[A, B, Unit, okay.Async](core)(f))
+  def map[B](f: A => B): Source[B] = Source.of(okay.std.Writer.map[A, B, Unit, okay.Async](core)(f))
 
   def filter(p: A => Boolean): Source[A] =
-    Source.of(okay.freer.Writer.expand[A, A, Unit, okay.Async](core)(a => if (p(a)) Vector(a) else Vector.empty))
+    Source.of(okay.std.Writer.expand[A, A, Unit, okay.Async](core)(a => if (p(a)) Vector(a) else Vector.empty))
 
   /** each element becomes any number of elements, in order */
   def mapConcat[B](f: A => Iterable[B]): Source[B] =
-    Source.of(okay.freer.Writer.expand[A, B, Unit, okay.Async](core)(a => f(a).toIndexedSeq))
+    Source.of(okay.std.Writer.expand[A, B, Unit, okay.Async](core)(a => f(a).toIndexedSeq))
 
   def take(n: Int): Source[A] = Source.through(core)(Source.taking[A](n))
 
@@ -59,7 +60,7 @@ final class Source[A] private (private val body: SourceBody[A]) {
     Eff.of(coerce(okay.runForeach(core)(a => coerce[Rows.Top, okay.Async, Unit](f(a).program))))
 
   def runFold[S](z: S)(f: (S, A) => S): Eff[Async, S] =
-    Eff.of(coerce(okay.freer.Writer.loopWith[A, S, Unit, S, okay.Async](core)(z)(f)((s, _) => s)))
+    Eff.of(coerce(okay.std.Writer.loopWith[A, S, Unit, S, okay.Async](core)(z)(f)((s, _) => s)))
 
   /** the program this source is */
   def toEff: Eff[Writer[A] & Async, Unit] = Eff.of(coerce(core))
@@ -90,7 +91,7 @@ object Source {
   // ---- stages: the stage's row carries Async too, so `through` can
   // forward the source's own Async operations past it
 
-  private type St[I, O] = Take % I + (okay.freer.Writer % O + okay.Async)
+  private type St[I, O] = Take % I + (okay.std.Writer % O + okay.Async)
 
   private def through[I, O](s: okay.Source[I])(st: Unit ! St[I, O]): Source[O] =
     of(okay.through[I, O, okay.Async, Unit, Unit](s)(st))

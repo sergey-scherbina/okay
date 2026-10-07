@@ -16,7 +16,7 @@ class TestWsFromScala2 extends munit.FunSuite {
   import WsModel._
 
   test("a session is a fold over frames, replayed without a socket") {
-    // okay.freer.Chunk is a Scala 3 top-level alias, invisible from Scala 2;
+    // okay.std.Chunk is a Scala 3 top-level alias, invisible from Scala 2;
     // it IS ArraySeq, so an ArraySeq goes where a Chunk is asked for
     val ping = Frame.Ping(scala.collection.immutable.ArraySeq[Byte](1, 2))
     val out = WsSession.replay(counting, Seq(Frame.Text("a"), ping, WebSocket.binary(Array[Byte](3)), Frame.Text("b")))
