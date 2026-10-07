@@ -6,8 +6,9 @@ package okay.cont
  * a context whose capabilities reach `R`, into `Cont`. `inject` needs its effect in the row (`Member`, a path the
  * compiler builds); `flatMap` joins the rows (`++`, a match type) and `run` splits the capabilities by the first
  * row's shape (`Shape`, a proof the compiler builds); `handle` takes the head effect off the row, giving the body
- * the handler's context and lifting the rest's capabilities one level in; `widen` goes to any row that has every
- * effect of this one (`Sub`). Nominal lists, not unions: a union in a type lambda unifies by subtyping, loosely —
+ * the handler's context and lifting the rest's capabilities one level in — the effect WHEREVER it is in the row
+ * (`Removed`): the order of effects in a type says nothing, the order of handlers everything; `widen` goes to any
+ * row that has every effect of this one (`Sub`). Nominal lists, not unions: a union in a type lambda unifies by subtyping, loosely —
  * `Member[Cnt, Ask + (Say + Cnt)]` came out as `Cnt + Any` — and a list's `Pure` and `+:` are two classes, so
  * every walk here is total for the compiler, no claim, no cast, no runtime test of an operation's class.
  */
@@ -81,6 +82,25 @@ object Shape:
   given nil: Shape[Pure] = SNil()
   given cons[E[+_], T <: Row](using t: Shape[T]): Shape[E +: T] = SCons(t)
 
+/** `E` in the row `R`, BY ITS POSITION: the row without it, `Out`, and the capabilities of `R` from a capability
+ * of `E` put at that position into those of `Out` — so a handler takes its effect off WHEREVER it is in the
+ * row. The order of effects in a type says nothing; the order of handlers says everything. The compiler builds
+ * it: at the head (`here`, first by priority), or through the tail (`there`) */
+trait Removed[E[+_], R <: Row]:
+  type Out <: Row
+  def insert[C <: Ctx](cap: Cap[E, C], rest: Has[Out, C]): Has[R, C]
+object Removed extends RemovedLow:
+  /** the proof with its `Out` named, what a given declares, so a `handle`'s result row is known at its call */
+  type Aux[E[+_], R <: Row, O <: Row] = Removed[E, R] { type Out = O }
+  given here[E[+_], T <: Row]: Aux[E, E +: T, T] = new Removed[E, E +: T]:
+    type Out = T
+    def insert[C <: Ctx](cap: Cap[E, C], rest: Has[T, C]): Has[E +: T, C] = Has.HCons(cap, rest)
+sealed trait RemovedLow:
+  given there[E[+_], H[+_], T <: Row, O <: Row](using r: Removed.Aux[E, T, O]): Removed.Aux[E, H +: T, H +: O] = new Removed[E, H +: T]:
+    type Out = H +: O
+    def insert[C <: Ctx](cap: Cap[E, C], rest: Has[H +: O, C]): Has[H +: T, C] = rest match
+      case Has.HCons(ch, t) => Has.HCons(ch, r.insert(cap, t))
+
 /** every effect of `R1` is in `R2`: the capabilities of `R1` from those of `R2` */
 trait Sub[R1 <: Row, R2 <: Row]:
   def apply[C <: Ctx](h: Has[R2, C]): Has[R1, C]
@@ -110,14 +130,17 @@ object Free:
   def inject[E[+_], X](op: E[X]): Free[E +: Pure, X] = new Free[E +: Pure, X]:
     def run(using c: Ctx, has: Has[E +: Pure, c.type]): Cont[c.Here, c.Here, X] = has match
       case Has.HCons(cap, _) => cap.perform(op, c)
-  /** the head effect handled: the body under the handler's delimiter, the rest's capabilities one level in */
-  def handle[E[+_], A, Ans, R <: Row](h: Handler[E, A, Ans])(p: Free[E +: R, A]): Free[R, Ans] = new Free[R, Ans]:
-    def run(using c: Ctx, has: Has[R, c.type]): Cont[c.Here, c.Here, Ans] =
-      okay.cont.handle(h)(using c): inner ?=>
-        p.run(using inner, Has.HCons(Cap.Reaching(Reaches.here[E, Ans, inner.type]), has.lift[inner.type]))
-  def handle[E[+_], A, Ans, R <: Row](h: Answering[E, A, Ans])(p: Free[E +: R, A]): Free[R, Ans] = new Free[R, Ans]:
-    def run(using c: Ctx, has: Has[R, c.type]): Cont[c.Here, c.Here, Ans] =
-      okay.cont.handle(h)(using c): inner ?=>
-        p.run(using inner, Has.HCons(Cap.Answers(Answered.here[E, inner.type]), has.lift[inner.type]))
+  /** the effect `E` handled, wherever it is in the row: the body under the handler's delimiter, its capability at
+   * `E`'s position, the rest's capabilities one level in; the result over the row without `E` */
+  def handle[E[+_], A, Ans, R <: Row](h: Handler[E, A, Ans])(p: Free[R, A])(using rm: Removed[E, R]): Free[rm.Out, Ans] =
+    new Free[rm.Out, Ans]:
+      def run(using c: Ctx, has: Has[rm.Out, c.type]): Cont[c.Here, c.Here, Ans] =
+        okay.cont.handle(h)(using c): inner ?=>
+          p.run(using inner, rm.insert(Cap.Reaching(Reaches.here[E, Ans, inner.type]), has.lift[inner.type]))
+  def handle[E[+_], A, Ans, R <: Row](h: Answering[E, A, Ans])(p: Free[R, A])(using rm: Removed[E, R]): Free[rm.Out, Ans] =
+    new Free[rm.Out, Ans]:
+      def run(using c: Ctx, has: Has[rm.Out, c.type]): Cont[c.Here, c.Here, Ans] =
+        okay.cont.handle(h)(using c): inner ?=>
+          p.run(using inner, rm.insert(Cap.Answers(Answered.here[E, inner.type]), has.lift[inner.type]))
   /** a program with nothing left to handle, at the top */
   def top[A](p: Free[Pure, A]): Top[A] = p.run(using Root, Has.HNil())

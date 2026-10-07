@@ -37,10 +37,13 @@ class TestFree extends okay.testkit.Munit.Diagnosed:
     val run: Free[Pure, (List[String], Int)] = Free.handle(writer[Int])(Free.handle(reader[Int](41))(prog))
     assertEquals(value(Free.top(run)), (List("41"), 42))
 
-  test("widen: the row reordered, the handlers in the other order"):
-    val wide: Free[Say +: Ask +: Pure, Int] = prog.widen
-    val run: Free[Pure, (List[String], Int)] = Free.handle(reader[(List[String], Int)](41))(Free.handle(writer[Int])(wide))
+  test("the handlers in the other order, the row as it was: a handler takes its effect off wherever it is"):
+    val run: Free[Pure, (List[String], Int)] = Free.handle(reader[(List[String], Int)](41))(Free.handle(writer[Int])(prog))
     assertEquals(value(Free.top(run)), (List("41"), 42))
+
+  test("widen: a row with the same effects in another order, by Sub"):
+    val wide: Free[Say +: Ask +: Pure, Int] = prog.widen
+    assertEquals(value(Free.top(Free.handle(writer[Int])(Free.handle(reader[Int](41))(wide)))), (List("41"), 42))
 
   test("an effect not in the row cannot be injected into it; a row cannot be run with a handler missing"):
     assert(compileErrors("""val p: Free[Ask +: Pure, Unit] = Free.inject(Say.Line("x"))""").nonEmpty)

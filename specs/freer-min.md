@@ -1638,3 +1638,20 @@ Taken instead: `+:` — right-associative by its last character, as a type too (
 `+:[Ask, +:[Say, +:[Cnt, Pure]]]`, checked), a list of proper kind (`Row`), `Pure` its end as the classic's
 empty row is `Pure`; `Member`, `Has`, `Shape` and `Sub` total as they were at `:+:`. A polymorphic rest reads
 `State % S +: F`. The machine's row is the classic's with a colon; `+` stays the classic union.
+
+## Stage 39: THE ORDER OF EFFECTS IN A TYPE SAYS NOTHING (DONE, 2026-10-07)
+
+The operator: "Порядок эффектов в типе по определению не важен — важен только порядок хендлеров." `Free.handle`
+took the HEAD effect off, so the order of handlers followed the row, and `widen` had to reorder. Now
+`handle[E](h)(p: Free[R, A])(using rm: Removed[E, R]): Free[rm.Out, Ans]`: `Removed[E, R]` is `E`'s position in
+`R`, built by the compiler — `here` at the head, first by priority, else `there` through the tail — with the row
+without `E` as `Out` (`Removed.Aux` names it in the given's type, so a call's result row is known) and `insert`,
+the capabilities of `R` from the handler's capability put at that position into the rest's, lifted one level
+in. Handlers apply in any order over a row written once (TestFree: the writer first, then the reader, over
+`Ask +: Say +: Pure`); `widen` stays for a row with fewer effects, or another order, by `Sub`.
+
+What stays true, said to the operator: as TYPES, `A +: B +: Pure` and `B +: A +: Pure` are two, and only a
+union is commutative — and a union cannot be enumerated, which is why the classic dispatches at run time by the
+operation's class. A nominal row is compatible by evidence: `Sub` (`widen`, explicit), or an implicit widening
+in `Free`'s companion if asked for, or signatures polymorphic in the row with `Member` constraints, which is the
+machine's idiom and where the question does not arise.
