@@ -1,0 +1,6 @@
+feature/row-removed 2026-10-07T03:58:58Z
+agent: claude-code
+heartbeat: 2026-10-07T03:58:58Z
+status: in-progress
+done-so-far: claimed
+next: Free.handle takes its effect off wherever it is in the row (Removed[E, R]); the order of effects in a type says nothing
