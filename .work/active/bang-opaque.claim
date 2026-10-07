@@ -1,0 +1,6 @@
+feature/bang-opaque 2026-10-07T02:16:56Z
+agent: claude-code
+heartbeat: 2026-10-07T02:16:56Z
+status: in-progress
+done-so-far: claimed
+next: A ! F an opaque type in the core hiding its encoding; private[okay] views for the repo; the API as extensions in its companion; compiler-driven conversion of the core, then the modules
