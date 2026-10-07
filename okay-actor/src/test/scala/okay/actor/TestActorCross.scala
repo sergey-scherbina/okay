@@ -3,7 +3,6 @@ package okay.actor
 
 import okay.{async, Async, Channel}
 import okay.freer.*
-import okay.std.*
 import okay.given
 
 

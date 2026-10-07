@@ -4,7 +4,6 @@ import okay.{Async, async}
 import okay.freer.{!}
 import okay.given
 import okay.freer.given
-import okay.std.given
 /** the Scala 3 side of the seam: an `A ! Async` crosses into a Prog
  * and the program comes back out, still a program */
 class TestProgBridge extends munit.FunSuite {

@@ -35,7 +35,6 @@ object TestTlsCerts:
 abstract class TlsConformance extends WireConformance:
   import okay.codec.{WireAuth, WireSecurity}
   import okay.freer.given
-  import okay.std.given
   import scala.concurrent.duration.*
 
   /** the binary serving TCP with `env` */

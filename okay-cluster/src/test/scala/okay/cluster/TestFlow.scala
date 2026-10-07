@@ -4,7 +4,6 @@ import okay.Pane
 import okay.freer.{Aggregator, Sequential}
 import okay.given
 import okay.freer.given
-import okay.std.given
 /**
  * Stage 1 of specs/dataflow.md: the plan is a value, the executor
  * runs it on a fibre per partition, and THE ANSWER DOES NOT MOVE.

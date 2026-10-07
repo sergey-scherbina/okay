@@ -1,7 +1,6 @@
 package okay.std
 
 import okay.freer.*
-import okay.freer.given
 
 /** State as `Lexical` instances, every strategy (was `Lexical.State`, moved to okay-std with State) */
 object LexicalState:

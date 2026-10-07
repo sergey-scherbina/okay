@@ -3,7 +3,6 @@ package okay.freer
 
 
 import okay.std.*
-import okay.std.given
 import okay.freer.Row.at
 
 /** handler-single-pass stage 2, the stack's walk in constant host stack: JVM-only (a thread of a chosen size) */

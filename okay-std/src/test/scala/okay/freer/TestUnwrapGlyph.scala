@@ -3,7 +3,6 @@ package okay.freer
 
 
 import okay.std.*
-import okay.std.given
 /**
  * `.?` must mean something (specs/unwrap-glyph.md, stage 1).
  *

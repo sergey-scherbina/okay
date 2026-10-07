@@ -4,7 +4,6 @@ package okay
 import okay.freer.*
 
 
-import okay.std.*
 import scala.concurrent.Promise
 
 /**

@@ -6,7 +6,6 @@ import okay.freer.*
 
 import okay.std.*
 import okay.freer.given
-import okay.std.given
 import okay.Direct.*   // no `Direct.given`: the colouring of a program is Free's own (directColor)
 import scala.language.implicitConversions
 

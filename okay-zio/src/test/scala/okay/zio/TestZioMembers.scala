@@ -8,7 +8,6 @@ import okay.freer.{!}
 import okay.freer.Row.bind
 import okay.given
 import okay.freer.given
-import okay.std.given
 /**
  * ZIO as an effect of the tree (specs/foreign-effects-in-tree.md, stages 1 and 2): one member per step, and the
  * handlers read `R` and `E` off the row the way ZIO's own `flatMap` joins them.

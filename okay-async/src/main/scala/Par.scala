@@ -6,7 +6,6 @@ import okay.freer.*
 
 
 
-import okay.std.*
 /**
  * THE PARALLEL APPLICATIVE (stage 1 of specs/applicative-static.md).
  *

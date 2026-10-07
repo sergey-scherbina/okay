@@ -1,7 +1,6 @@
 package okay.demo
 
 
-import okay.freer.*
 
 
 import okay.std.*

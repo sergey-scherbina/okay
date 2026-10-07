@@ -5,7 +5,6 @@ import okay.{Answers}
 import okay.freer.{+, Row}
 import okay.given
 import okay.freer.given
-import okay.std.given
 import okay.rag.{Embed, Fusion, Ingest, Keyword, MemoryStore, PgVector, Postings, Retrieve, Scored, VectorStore, Vectors}
 
 /**

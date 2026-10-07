@@ -1,7 +1,5 @@
 package okay.freer
 
-import okay.std.*
-import okay.std.given
 /**
  * specs/delimited.md stage 2: a SECOND instance of `Delimited`, the
  * reference — what `Control[Func]` is to `Control[Cps]`. The context is

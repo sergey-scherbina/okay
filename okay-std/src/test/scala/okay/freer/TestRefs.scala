@@ -3,7 +3,6 @@ package okay.freer
 
 
 import okay.std.*
-import okay.std.given
 import okay.freer.Row.plus
 
 /** refs made at run time: one row member, however many there are. */

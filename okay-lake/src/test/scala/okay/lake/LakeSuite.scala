@@ -1,6 +1,5 @@
 package okay.lake
 import okay.freer.given
-import okay.std.given
 import okay.given
 
 import okay.arrow.Rows

@@ -2,7 +2,6 @@ package okay.ops
 
 import okay.{Async, CanBlock, Timer}
 import okay.freer.given
-import okay.std.given
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicBoolean
 

@@ -4,7 +4,6 @@ package okay.ui
 import okay.freer.*
 
 
-import okay.std.*
 /**
  * The TYPED wizard — PState's style as an alternative to the monadic
  * `Dialog`, not a replacement (specs/ui-toolkit.md, "The typed

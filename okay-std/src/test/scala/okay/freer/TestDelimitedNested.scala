@@ -3,7 +3,6 @@ package okay.freer
 
 
 import okay.std.*
-import okay.std.given
 import okay.freer.Freer.{Return, Inject, Bind}
 import Delimited.{Row, Sum}
 

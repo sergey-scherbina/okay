@@ -3,7 +3,6 @@ package okay.x402.mcp
 import okay.{Async, through}
 import okay.freer.*
 import okay.std.*
-import okay.freer.given
 import okay.std.given
 import okay.codec.Json
 import okay.codec.Json.*

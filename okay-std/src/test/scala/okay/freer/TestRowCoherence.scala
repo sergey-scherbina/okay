@@ -2,7 +2,6 @@ package okay.freer
 
 
 import okay.std.*
-import okay.std.given
 import okay.{! as _, pure as _, effect as _, handle as _, + as _, % as _, Pure as _, *}
 import okay.std.Bisim.{Answers, Verdict}
 import okay.freer.Row.{at, plus}

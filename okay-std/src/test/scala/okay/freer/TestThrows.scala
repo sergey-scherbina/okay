@@ -3,7 +3,6 @@ package okay.freer
 
 
 import okay.std.*
-import okay.std.given
 // NO `import scala.language.implicitConversions` here, and that is the
 // point of this file since throws-into: `throws` is declared `into`,
 // so the four absorbing conversions apply without the caller asking

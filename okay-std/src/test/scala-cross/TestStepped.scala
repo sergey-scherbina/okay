@@ -3,7 +3,6 @@ package okay.freer
 
 
 import okay.std.*
-import okay.std.given
 /**
  * handler-single-pass stage 1 (specs/handler-single-pass.md): a `Handler.Stepped` built-in, walked through its
  * step alone (`init`, `step`, `ret`, `halted`), answers what its own `run` answers. That is the contract the

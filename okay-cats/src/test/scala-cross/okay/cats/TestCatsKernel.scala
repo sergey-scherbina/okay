@@ -33,7 +33,6 @@ class TestCombine extends munit.FunSuite with okay.testkit.Munit.Diagnosed {
 
   test("a type both sides combine (String): okay's first, no ambiguity") {
     import okay.freer.given
-    import okay.std.given
     val out = List(1, 2).traverse(i => okay.std.Validated.invalid[String, Int](s"<$i>"))
     assertEquals(out, okay.std.Validated.invalid("<1><2>"))
   }

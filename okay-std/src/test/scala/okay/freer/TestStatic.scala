@@ -1,7 +1,5 @@
 package okay.freer
 
-import okay.std.*
-import okay.std.given
 import okay.{Answers, Selective, traverse, ==>, `*>`}
 /**
  * The free selective (specs/applicative-static.md, stage 2): what a

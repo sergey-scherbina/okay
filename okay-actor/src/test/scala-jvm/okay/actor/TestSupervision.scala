@@ -2,10 +2,8 @@ package okay.actor
 
 import okay.{async, Channel, Scheduler, Schedulers}
 import okay.freer.*
-import okay.std.*
 import okay.given
 import okay.freer.given
-import okay.std.given
 /**
  * The laws of supervision — stage 1, and the part of this module that
  * composition did NOT already give.

@@ -7,7 +7,6 @@ import okay.freer.{*}
 import okay.std.{Feed as _, *}
 import okay.given
 import okay.freer.given
-import okay.std.given
 import scala.collection.mutable
 import scala.annotation.tailrec
 

@@ -6,7 +6,6 @@ import okay.freer.*
 
 import okay.std.*
 import okay.freer.given
-import okay.std.given
 /** Coroutine pipelines: tell meets await, one element at a time. */
 class TestPipe extends munit.FunSuite {
 

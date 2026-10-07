@@ -1,6 +1,5 @@
 package okay.kafka
 import okay.freer.given
-import okay.std.given
 import okay.given
 
 import okay.cluster.{Cluster, Feed, Feeds, Flow, Flows, Job, Jobs, WindowJob, Wire}

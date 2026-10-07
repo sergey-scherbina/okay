@@ -3,7 +3,6 @@ package okay.spring
 
 import okay.{Async}
 import okay.freer.*
-import okay.std.*
 import org.springframework.core.{MethodParameter, Ordered, ResolvableType}
 import org.springframework.web.reactive.{HandlerResult, HandlerResultHandler}
 import org.springframework.web.reactive.result.method.annotation.ResponseBodyResultHandler

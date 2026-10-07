@@ -3,7 +3,6 @@ package okay.freer
 
 
 import okay.std.*
-import okay.std.given
 /** effect-op-cost: EXACT bytes per operation, the operation built fresh
  * (as `State.get` builds it) against a shared node */
 class ProbeOpCost extends munit.FunSuite:

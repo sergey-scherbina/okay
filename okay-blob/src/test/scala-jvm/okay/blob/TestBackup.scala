@@ -4,7 +4,6 @@ import okay.Async
 import okay.freer.{!}
 import okay.given
 import okay.freer.given
-import okay.std.given
 import okay.persist.{Ack, Doctor, FileStore, Policy}
 import java.nio.file.{Files, Path}
 

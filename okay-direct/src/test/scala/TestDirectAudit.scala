@@ -4,9 +4,7 @@ package okay
 import okay.freer.*
 
 
-import okay.std.*
 import okay.freer.given
-import okay.std.given
 import Direct.*
 
 /** the 2026-09-02 audit's macro candidates: a local def after a

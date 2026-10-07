@@ -4,7 +4,6 @@ import okay.Chunks
 import okay.codec.{Codecs, Schema}
 import okay.given
 import okay.freer.given
-import okay.std.given
 import okay.persist.{Ack, MemoryStore, Policy, Streams, Topic}
 
 /**

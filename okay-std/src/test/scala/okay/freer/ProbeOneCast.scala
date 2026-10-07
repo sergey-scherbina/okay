@@ -3,7 +3,6 @@ package okay.freer
 
 
 import okay.std.*
-import okay.std.given
 /**
  * PROBE (rowlift): the one-cast design, exercised.
  *

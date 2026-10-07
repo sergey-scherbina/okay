@@ -6,7 +6,6 @@ import okay.freer.{%}
 import okay.freer.{!, pure}
 import okay.std.{Writer, runEither, runChoice}
 import okay.freer.given
-import okay.std.given
 import okay.codec.Json
 import okay.testkit.Munit.Diagnosed
 

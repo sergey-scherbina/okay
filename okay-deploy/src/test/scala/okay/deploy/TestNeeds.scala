@@ -4,7 +4,6 @@ import okay.Answers
 import okay.freer.{Static}
 import okay.std.{Module, module, moduleAs, wire}
 import okay.freer.given
-import okay.std.given
 import Needs.needs
 
 /** the capabilities an application's root still waits for, each saying what it is to a deployment */

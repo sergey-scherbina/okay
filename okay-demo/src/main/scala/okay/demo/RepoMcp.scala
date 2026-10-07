@@ -1,6 +1,5 @@
 package okay.demo
 import okay.freer.given
-import okay.std.given
 import okay.given
 
 import okay.agent.Turn

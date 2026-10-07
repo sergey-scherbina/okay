@@ -6,7 +6,6 @@ import okay.freer.*
 
 import okay.std.*
 import okay.freer.given
-import okay.std.given
 import okay.Direct.*
 
 /** level 1 through the typeclass in direct style: one program over `Classic[M]`, run in Free and in Eager */

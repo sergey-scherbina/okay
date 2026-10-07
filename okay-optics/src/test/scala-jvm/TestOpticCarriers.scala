@@ -7,7 +7,6 @@ import okay.freer.*
 import okay.std.*
 import okay.given
 import okay.freer.given
-import okay.std.given
 import java.util.concurrent.{CountDownLatch, TimeUnit}
 
 /**

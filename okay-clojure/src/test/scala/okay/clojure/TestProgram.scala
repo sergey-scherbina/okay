@@ -7,7 +7,6 @@ import okay.freer.{!, effect, pure}
 import okay.std.{Choose, Reader, State, Throws, Writer, runChoice, runEither}
 import okay.given
 import okay.freer.given
-import okay.std.given
 import java.util.concurrent.atomic.AtomicInteger
 
 /**

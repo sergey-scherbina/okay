@@ -4,7 +4,6 @@ package okay
 import okay.freer.*
 
 
-import okay.std.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 

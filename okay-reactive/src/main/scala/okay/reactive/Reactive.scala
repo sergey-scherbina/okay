@@ -8,7 +8,6 @@ import okay.freer.*
 import okay.std.*
 import okay.given
 import okay.freer.given
-import okay.std.given
 /**
  * Reactive Streams interop, over `java.util.concurrent.Flow` — the
  * JDK's own copy of the SPI, so this module adds no dependency to the

@@ -4,7 +4,6 @@ import okay.{Async, async}
 import okay.freer.{!}
 import okay.given
 import okay.freer.given
-import okay.std.given
 import okay.http.{Request, Response}
 
 /**

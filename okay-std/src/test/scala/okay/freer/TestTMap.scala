@@ -3,7 +3,6 @@ package okay.freer
 
 
 import okay.std.*
-import okay.std.given
 /** the heterogeneous map with typed keys: the key's type is the
  * value's, keys are identities, iteration is typed */
 class TestTMap extends munit.FunSuite {

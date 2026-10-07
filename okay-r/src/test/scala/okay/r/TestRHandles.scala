@@ -1,6 +1,5 @@
 package okay.r
 import okay.freer.given
-import okay.std.given
 import okay.codec.Schema
 
 object TestRHandles:

@@ -1,7 +1,5 @@
 package okay.std
 
-import okay.freer.*
-import okay.freer.given
 
 
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}

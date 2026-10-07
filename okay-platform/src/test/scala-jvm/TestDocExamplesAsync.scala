@@ -4,9 +4,7 @@ package okay
 import okay.freer.*
 
 
-import okay.std.*
 import okay.freer.given
-import okay.std.given
 /**
  * docs/effects/async.md, VERBATIM (doc-snippet-debt): the page's example
  * lines as it prints them, answer comment included, then asserted. The

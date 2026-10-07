@@ -3,7 +3,6 @@ package okay.http
 
 import okay.{Async}
 import okay.freer.*
-import okay.std.*
 import okay.http.syntax.*
 
 /**

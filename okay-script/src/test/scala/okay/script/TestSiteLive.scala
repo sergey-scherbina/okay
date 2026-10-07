@@ -3,7 +3,6 @@ import okay.freer.*
 import okay.std.*
 import okay.given
 import okay.freer.given
-import okay.std.given
 import okay.jetty.Jetty
 
 import java.net.{HttpURLConnection, URI}

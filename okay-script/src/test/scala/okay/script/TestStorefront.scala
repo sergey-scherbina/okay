@@ -7,7 +7,6 @@ import okay.freer.{Pure}
 import okay.{Async}
 import okay.given
 import okay.freer.given
-import okay.std.given
 import okay.http.{Http, Request}
 
 import java.nio.file.{Files, Path}

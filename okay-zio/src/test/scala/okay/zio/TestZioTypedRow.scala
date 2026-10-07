@@ -8,7 +8,6 @@ import okay.std.{Reader, Throws, raise, runEither}
 import okay.freer.Row.at
 import okay.given
 import okay.freer.given
-import okay.std.given
 import ZioInterop.*
 import _root_.zio.{Exit, Runtime, Unsafe, ZEnvironment, ZIO}
 import java.util.concurrent.{CountDownLatch, TimeUnit}

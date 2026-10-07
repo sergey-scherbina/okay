@@ -1,7 +1,7 @@
 package okay.freer
 
 import okay.{Answers, Control, Monad, TailRecM, TypeableK, ==>}
-import okay.freer.Row.{at, plus}
+import okay.freer.Row.{plus}
 import scala.annotation.tailrec
 import scala.collection.immutable.ArraySeq
 

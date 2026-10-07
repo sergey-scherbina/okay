@@ -5,7 +5,6 @@ import okay.{Async, CanBlock, Scheduler, Source}
 import okay.freer.*
 import okay.std.*
 import okay.freer.given
-import okay.std.given
 import okay.http.{Body, Frame, Http, Method, Request, Response, Socket, Sockets}
 
 import io.netty.bootstrap.{Bootstrap, ServerBootstrap}

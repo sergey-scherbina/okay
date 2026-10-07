@@ -8,7 +8,6 @@ import okay.std.{Throws, raise}
 import okay.freer.Row.at
 import okay.given
 import okay.freer.given
-import okay.std.given
 import scala.util.control.NonFatal
 
 /**

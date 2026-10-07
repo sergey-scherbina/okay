@@ -3,7 +3,6 @@ package okay.freer
 
 
 import okay.std.*
-import okay.std.given
 /**
  * specs/stm.md, okay-stm-collections — cross (JVM/JS/Native), no
  * platform-specific code: TDict/TList are built on TRef alone.

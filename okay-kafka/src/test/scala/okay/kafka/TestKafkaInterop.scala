@@ -3,7 +3,6 @@ package okay.kafka
 import okay.freer.!
 import okay.given
 import okay.freer.given
-import okay.std.given
 import KafkaInterop.*
 import org.apache.kafka.clients.consumer.{ConsumerRecord, MockConsumer, OffsetResetStrategy}
 import org.apache.kafka.clients.producer.{MockProducer, ProducerRecord}

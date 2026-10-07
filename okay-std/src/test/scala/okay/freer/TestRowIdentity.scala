@@ -3,7 +3,6 @@ package okay.freer
 
 
 import okay.std.*
-import okay.std.given
 import okay.std.Writer.byValue.given
 
 /**

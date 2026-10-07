@@ -3,7 +3,6 @@ package okay.freer
 
 
 import okay.std.*
-import okay.std.given
 /** handle-values-rest: every ready effect's handler as a value */
 class TestHandleRest extends munit.FunSuite:
 

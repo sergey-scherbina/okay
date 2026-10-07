@@ -6,7 +6,6 @@ import okay.freer.*
 import okay.std.*
 import okay.given
 import okay.freer.given
-import okay.std.given
 import okay.http.{Body, Http, Method, Request, Response}
 import java.io.{ByteArrayInputStream, InputStream}
 import java.net.{URL, URLConnection, URLStreamHandler}

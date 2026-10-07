@@ -5,7 +5,6 @@ import okay.freer.*
 
 
 import okay.std.*
-import okay.freer.given
 import okay.std.given
 /** `Source.mergeReady` needs no fiber and no blocking, so it runs where
  * only a callback drive exists — JS's event loop included

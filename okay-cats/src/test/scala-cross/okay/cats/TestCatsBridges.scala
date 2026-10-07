@@ -51,7 +51,6 @@ class TestToCats extends munit.FunSuite with okay.testkit.Munit.Diagnosed {
   }
 
   test("cats' Alternative from okay's: LazyList's MonadPlus") {
-    import okay.freer.given
     import okay.std.given
     val A = summon[_root_.cats.Alternative[LazyList]]
     assertEquals(A.combineK(LazyList(1), LazyList(2)).toList, List(1, 2))

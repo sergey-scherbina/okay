@@ -1,10 +1,7 @@
 package okay.freer
 
-import okay.{Effect}
-import scala.reflect.*
 import scala.util.*
 import scala.annotation.implicitNotFound
-import okay.freer.Row.{In, at}
 
 /**
  * The seam direct-try stands on: how a monad CATCHES a JVM throw

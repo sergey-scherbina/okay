@@ -7,7 +7,6 @@ import okay.freer.{!}
 import okay.std.{Resource}
 import okay.given
 import okay.freer.given
-import okay.std.given
 import okay.codec.{Cbor, Schema}
 import okay.http.{Http, Request, Response, Server, Transports}
 import okay.jdbc.JdbcSql

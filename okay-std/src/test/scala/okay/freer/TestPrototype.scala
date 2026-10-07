@@ -2,7 +2,6 @@ package okay.freer
 
 
 import okay.std.*
-import okay.std.given
 /**
  * An instance per CONSUMER (di-prototype): what `New[A]` installs is
  * the ability to make an `A`, and the region a `fresh` runs in

@@ -10,7 +10,6 @@ import okay.freer.{!, Static}
 import okay.std.{Choose, Validated, choose, runChoice}
 import okay.given
 import okay.freer.given
-import okay.std.given
 import okay.==>
 import org.scalacheck.{Arbitrary, Gen}
 import java.util.concurrent.{CountDownLatch, TimeUnit}

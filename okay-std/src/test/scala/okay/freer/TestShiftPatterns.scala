@@ -3,7 +3,6 @@ package okay.freer
 
 
 import okay.std.*
-import okay.std.given
 import okay.freer.Row.*
 import okay.freer.Shift.{collect, emit, exit}
 

@@ -6,7 +6,6 @@ import okay.freer.*
 
 import okay.std.*
 import okay.freer.given
-import okay.std.given
 import scala.util.Random
 import Chunks.elements
 import Tables.{Plan, Table, collect, join, sortByKey, assumeSortedByKey, select, where}

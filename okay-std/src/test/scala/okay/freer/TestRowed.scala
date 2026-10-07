@@ -1,8 +1,6 @@
 package okay.freer
 
 
-import okay.std.*
-import okay.std.given
 import okay.{Effects, Row, Pure, +:, %}
 import okay.cont.{Answering, Handler, Ctx, Cont, StateCell, State}
 

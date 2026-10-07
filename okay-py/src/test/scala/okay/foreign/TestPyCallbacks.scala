@@ -4,7 +4,6 @@ import okay.freer.{!}
 
 import okay.std.{Reader, State}
 import okay.freer.given
-import okay.std.given
 import okay.durable.Durable
 
 object TestPyCallbacks:

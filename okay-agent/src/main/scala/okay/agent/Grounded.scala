@@ -3,7 +3,6 @@ package okay.agent
 import okay.{==>, Answers}
 import okay.freer.{!, Aggregator}
 import okay.freer.given
-import okay.std.given
 import okay.rag.{Retriever, Scored}
 
 /**

@@ -4,7 +4,6 @@ package okay
 import okay.freer.*
 
 
-import okay.std.*
 import scala.concurrent.Future
 import scala.concurrent.ExecutionContext.parasitic
 import okay.freer.Row.plus

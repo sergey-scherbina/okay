@@ -6,7 +6,6 @@ import okay.freer.*
 import okay.std.*
 import okay.given
 import okay.freer.given
-import okay.std.given
 import org.springframework.context.support.GenericApplicationContext
 import org.springframework.core.ReactiveAdapterRegistry
 import org.springframework.boot.autoconfigure.AutoConfigurations

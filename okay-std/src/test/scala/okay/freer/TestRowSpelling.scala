@@ -3,7 +3,6 @@ package okay.freer
 
 
 import okay.std.*
-import okay.std.given
 /**
  * The spelling of a program's type, pinned (bang-row-no-parens,
  * 2026-09-24). Effects.scala:87 says why: an infix type operator's

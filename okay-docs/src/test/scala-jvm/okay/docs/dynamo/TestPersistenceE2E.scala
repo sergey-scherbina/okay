@@ -5,7 +5,6 @@ import okay.freer.{!}
 import okay.std.{Chunk, Resource}
 import okay.given
 import okay.freer.given
-import okay.std.given
 import okay.crypto.given
 import okay.blob.SigV4
 import okay.codec.{Json, Schema}

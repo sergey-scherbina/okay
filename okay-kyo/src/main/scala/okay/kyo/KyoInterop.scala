@@ -6,7 +6,6 @@ import okay.freer.{Pure}
 import okay.freer.{!}
 import okay.given
 import okay.freer.given
-import okay.std.given
 import _root_.kyo.{<, Abort, AllowUnsafe, Duration, Flat, KyoApp}
 
 /**

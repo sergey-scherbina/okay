@@ -4,9 +4,7 @@ package okay
 import okay.freer.*
 
 
-import okay.std.*
 import okay.freer.given
-import okay.std.given
 import java.util.concurrent.{CountDownLatch, TimeUnit}
 import java.util.concurrent.atomic.{AtomicInteger, AtomicReference}
 import scala.jdk.CollectionConverters.*

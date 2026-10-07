@@ -3,7 +3,6 @@ package okay.spring
 
 import okay.{Async, async}
 import okay.freer.*
-import okay.std.*
 import org.springframework.context.annotation.{AnnotationConfigApplicationContext, Configuration}
 import org.springframework.web.bind.annotation.{GetMapping, RestController}
 import org.springframework.web.reactive.config.EnableWebFlux

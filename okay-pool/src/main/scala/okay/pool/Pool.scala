@@ -5,7 +5,6 @@ import okay.freer.*
 import okay.std.*
 import okay.given
 import okay.freer.given
-import okay.std.given
 import okay.cluster.{JobStats, JobTrace, Probe}
 import okay.cluster.{Checkpoint, Cluster, Folded, Job, Jobs, Lease, Req, Resp, Served}
 import okay.codec.{Codecs, Json}

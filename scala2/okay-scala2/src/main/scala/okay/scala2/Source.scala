@@ -6,7 +6,6 @@ import okay.freer.{%, +}
 import okay.freer.{!}
 import okay.freer.Row.plus
 import okay.given
-import okay.freer.given
 import okay.std.given
 import Rows.coerce
 

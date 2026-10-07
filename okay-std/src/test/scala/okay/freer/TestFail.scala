@@ -2,7 +2,6 @@ package okay.freer
 
 
 import okay.std.*
-import okay.std.given
 import okay.{Answers}
 
 import okay.freer.Row.{at, plus}

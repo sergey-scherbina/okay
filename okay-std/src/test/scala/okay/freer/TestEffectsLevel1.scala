@@ -3,7 +3,6 @@ package okay.freer
 
 
 import okay.std.*
-import okay.std.given
 /** level 1 through the typeclass: one program, written once over `Classic[M]`, in Free and in Eager */
 class TestEffectsLevel1 extends munit.FunSuite:
 

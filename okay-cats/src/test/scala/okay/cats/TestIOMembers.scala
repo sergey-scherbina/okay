@@ -10,7 +10,6 @@ import okay.std.{State}
 import okay.freer.Row.bind
 import okay.given
 import okay.freer.given
-import okay.std.given
 import java.util.concurrent.atomic.AtomicInteger
 
 /**

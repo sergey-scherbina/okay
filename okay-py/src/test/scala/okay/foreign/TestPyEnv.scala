@@ -8,7 +8,6 @@ import okay.freer.given
 
 
 
-import okay.std.given
 /** foreign-managed-env against a LIVE uv (specs/foreign-highlevel.md stage 8) */
 class TestPyEnv extends munit.FunSuite {
 

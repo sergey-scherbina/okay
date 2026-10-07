@@ -1,7 +1,5 @@
 package okay.freer
 
-import okay.std.*
-import okay.std.given
 /**
  * specs/stack-safety.md stage 1c: direct-style Cps past the stack.
  * A shift whose body calls its continuation runs the REST of the

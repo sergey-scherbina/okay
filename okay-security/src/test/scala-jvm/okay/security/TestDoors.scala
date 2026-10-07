@@ -5,7 +5,6 @@ import okay.freer.{!, pure}
 import okay.std.{provide}
 import okay.given
 import okay.freer.given
-import okay.std.given
 import okay.http.{Http, Request, Response}
 
 /** each door delegates to its explicit form — one assertion per

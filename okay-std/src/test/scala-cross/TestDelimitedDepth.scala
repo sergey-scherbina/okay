@@ -2,8 +2,6 @@ package okay.freer
 
 
 
-import okay.std.*
-import okay.std.given
 /**
  * The machine's depth, through `Delimited` ALONE, on every platform
  * (specs/cont-js-depth.md, stage 2). A continuation here is DATA — `k(a)`

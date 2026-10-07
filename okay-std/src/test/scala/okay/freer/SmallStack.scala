@@ -2,8 +2,6 @@ package okay.freer
 
 
 
-import okay.std.*
-import okay.std.given
 /**
  * Run a body on a thread with a SMALL stack (specs/stack-safety.md):
  * a recursion that uses the stack overflows here at a few thousand

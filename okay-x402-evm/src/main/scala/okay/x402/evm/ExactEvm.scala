@@ -4,7 +4,6 @@ package okay.x402.evm
 import okay.{Async}
 import java.nio.charset.StandardCharsets.UTF_8
 import okay.freer.*
-import okay.std.*
 import okay.codec.Json
 import okay.codec.Json.*
 import okay.x402.*

@@ -4,9 +4,7 @@ package okay.cluster
 import okay.freer.{*}
 
 
-import okay.std.{Feed as _, *}   // `Feed` is TestJobs's here
 import okay.freer.given
-import okay.std.given
 import okay.given
 
 import java.util.concurrent.ConcurrentLinkedQueue

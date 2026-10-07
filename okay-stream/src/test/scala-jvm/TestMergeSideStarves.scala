@@ -4,8 +4,6 @@ package okay
 import okay.freer.*
 
 
-import okay.std.*
-import okay.freer.given
 import okay.std.given
 /**
  * ready-merge-side-starves (okay-stream/BUGS.md): a ready merge of two

@@ -5,7 +5,6 @@ import okay.freer.{+}
 import okay.freer.{!}
 import okay.given
 import okay.freer.given
-import okay.std.given
 import okay.rag.*
 import java.util.concurrent.atomic.AtomicInteger
 

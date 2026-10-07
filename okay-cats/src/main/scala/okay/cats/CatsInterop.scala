@@ -7,7 +7,6 @@ import okay.freer.{!, Free, effect}
 import okay.std.{Throws, runEither}
 import okay.freer.!.*
 import okay.freer.given
-import okay.std.given
 import _root_.cats.effect.IO
 import _root_.cats.effect.unsafe.IORuntime
 

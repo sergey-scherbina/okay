@@ -1,7 +1,5 @@
 package okay.freer
 
-import okay.std.*
-import okay.std.given
 /**
  * specs/delimited.md: the machine through its interface. Every program
  * here is written against `LambdaDollar[M]` ALONE, and runs on two

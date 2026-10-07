@@ -3,7 +3,6 @@ package okay.freer
 
 
 import okay.std.*
-import okay.std.given
 /** Probe: can ONE row-polymorphic constructor replace the narrow one? */
 object ProbeRowCtor:
   type Store = Map[Long, String]

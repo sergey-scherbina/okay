@@ -3,7 +3,6 @@ package okay.sql
 
 import okay.{Bulk, Chunks, Tables}
 import okay.freer.*
-import okay.std.*
 import okay.codec.Schema
 import okay.freer.Row.plus
 import okay.Chunks.elements

@@ -3,7 +3,6 @@ package okay.scala2
 import okay.freer.{!, Free}
 import okay.given
 import okay.freer.given
-import okay.std.given
 import scala.util.control.NonFatal
 
 /**

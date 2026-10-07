@@ -7,7 +7,6 @@ import okay.freer.{!, effect, pure}
 import okay.std.{Reader, Writer}
 import okay.given
 import okay.freer.given
-import okay.std.given
 import okay.frege.{Programs as P}
 import java.util.concurrent.atomic.AtomicInteger
 

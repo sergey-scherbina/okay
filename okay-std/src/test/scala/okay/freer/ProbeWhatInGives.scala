@@ -3,7 +3,6 @@ package okay.freer
 
 
 import okay.std.*
-import okay.std.given
 import ProbeVariance.{In, tell as inTell, get as inGet}
 
 /** What the evidence buys over a plain free row parameter: the

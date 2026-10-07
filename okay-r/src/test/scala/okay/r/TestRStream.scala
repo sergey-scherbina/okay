@@ -2,7 +2,6 @@ package okay.r
 
 import okay.freer.{%, +}
 import okay.freer.*
-import okay.std.*
 import okay.freer.{!, given}
 
 

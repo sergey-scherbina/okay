@@ -4,7 +4,6 @@ import okay.Async
 import okay.freer.{!}
 import okay.given
 import okay.freer.given
-import okay.std.given
 import okay.http.{Http, Method, Request, Response}
 import okay.security.{Claims, Jwt, Verified}
 import okay.security.given

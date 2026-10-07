@@ -2,7 +2,6 @@ package okay.live
 
 
 import okay.{Affine, Channel, preview, set}
-import okay.freer.*
 import okay.std.*
 import okay.given
 

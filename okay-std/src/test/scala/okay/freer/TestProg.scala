@@ -3,7 +3,6 @@ package okay.freer
 
 
 import okay.std.*
-import okay.std.given
 import okay.freer.Shift.Stacked.{abort, reset, shift}
 import okay.freer.Row.at
 

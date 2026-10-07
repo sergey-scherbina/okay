@@ -1,7 +1,5 @@
 package okay.freer
 
-import okay.std.*
-import okay.std.given
 /** stage 2's depth programs on a 128 KB JVM thread: a machine that held a
  * host frame per level would overflow here at a few thousand */
 class TestDelimitedDepthSmallStack extends munit.FunSuite:

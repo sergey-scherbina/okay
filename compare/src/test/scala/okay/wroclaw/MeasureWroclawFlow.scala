@@ -3,7 +3,6 @@ package okay.wroclaw
 import okay.cluster.Flows
 import okay.given
 import okay.freer.given
-import okay.std.given
 /**
  * WHAT THE ENGINE COSTS AGAINST THE HAND-WRITTEN LANE (specs/
  * dataflow.md, stage 3).

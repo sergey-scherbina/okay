@@ -7,7 +7,6 @@ import okay.freer.{!, effect}
 import okay.std.{Writer}
 import okay.given
 import okay.freer.given
-import okay.std.given
 import okay.codec.{Json, Schema}
 import okay.llm.Transport
 import scala.collection.mutable

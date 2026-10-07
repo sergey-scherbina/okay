@@ -3,7 +3,6 @@ package okay.freer
 
 
 import okay.std.*
-import okay.std.given
 /** stage 3a on a 128 KB thread: the shift road's zoom held a host frame
  * per nesting; the threaded one holds none */
 class TestThreadedZoomSmallStack extends munit.FunSuite:

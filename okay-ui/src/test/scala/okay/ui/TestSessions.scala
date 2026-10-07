@@ -2,7 +2,6 @@ package okay.ui
 
 import okay.{async}
 import okay.freer.*
-import okay.std.*
 import okay.given
 import okay.freer.given
 import okay.std.given

@@ -7,7 +7,6 @@ import okay.freer.{+}
 import okay.freer.{!, Free, Member, effect}
 import okay.given
 import okay.freer.given
-import okay.std.given
 import java.util.function.{BiFunction, Function as JFunction, Supplier, UnaryOperator}
 
 /**

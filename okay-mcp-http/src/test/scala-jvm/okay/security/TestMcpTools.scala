@@ -2,10 +2,8 @@ package okay.security
 
 import okay.{Async}
 import okay.freer.*
-import okay.std.*
 import okay.given
 import okay.freer.given
-import okay.std.given
 import okay.codec.{Json, Schema}
 import okay.http.{Body, Http, McpHttp, Request, Response}
 import okay.mcp.{Mcp, Rpc, Server as McpServer}

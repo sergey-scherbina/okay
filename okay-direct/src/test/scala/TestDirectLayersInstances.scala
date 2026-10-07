@@ -6,7 +6,6 @@ import okay.freer.*
 
 import okay.std.*
 import okay.freer.given
-import okay.std.given
 import okay.Direct.*
 import LexicalState.{get, put}
 import Layered.{reify, reflect}

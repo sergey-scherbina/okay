@@ -4,7 +4,6 @@ package okay.x402.cdp
 import okay.{Async}
 import java.security.PrivateKey
 import okay.freer.*
-import okay.std.*
 import okay.codec.{Json, Schema}
 import okay.codec.Json.*
 import okay.conf.{Secret, Secrets}

@@ -2,7 +2,6 @@ package okay
 package macros
 
 
-import okay.freer.*
 
 
 import okay.std.*

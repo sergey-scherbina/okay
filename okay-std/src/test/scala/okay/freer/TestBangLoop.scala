@@ -3,7 +3,6 @@ package okay.freer
 
 
 import okay.std.*
-import okay.std.given
 /**
  * specs/fold-until.md, stage 2 — `!.loop(s)(f)`: continue on Left,
  * answer on Right, stack-safe by flatMap's laziness, every

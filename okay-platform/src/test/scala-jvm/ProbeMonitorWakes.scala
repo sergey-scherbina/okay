@@ -4,7 +4,6 @@ package okay
 import okay.freer.*
 
 
-import okay.std.*
 /** DEBUG-PROBE (own-scheduler-monitor): how many wakes does the monitor
  * issue on sequential spawn/join, where no task is ever long? Every
  * one is a child stolen to another core for nothing. */

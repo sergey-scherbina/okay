@@ -4,7 +4,6 @@ package okay
 import okay.freer.*
 
 
-import okay.std.*
 /** Verifies that the A/B switches scripts/ab-defaults.sh drives actually
  * reach the running JVM. The channel class is SentinelChannel in BOTH
  * arms — `.each(n)` returns a Strong whose build wraps the buffer — so

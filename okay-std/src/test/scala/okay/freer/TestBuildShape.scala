@@ -4,7 +4,6 @@ package okay.freer
 
 
 import okay.std.*
-import okay.std.given
 /** specs/left-nested-build-cost.md: the right-nested builders */
 class TestBuildShape extends munit.FunSuite {
   type W = Writer % String

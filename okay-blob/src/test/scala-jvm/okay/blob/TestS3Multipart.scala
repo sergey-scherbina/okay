@@ -5,7 +5,6 @@ import okay.freer.{!}
 import okay.std.{Chunk, Writer}
 import okay.given
 import okay.freer.given
-import okay.std.given
 import okay.http.{Method, Request, Transports}
 import scala.collection.immutable.ArraySeq
 

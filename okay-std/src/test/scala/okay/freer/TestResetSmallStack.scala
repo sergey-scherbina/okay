@@ -1,7 +1,5 @@
 package okay.freer
 
-import okay.std.*
-import okay.std.given
 import okay.freer.Row.plus
 
 /** the keyed `reset` nested a hundred thousand deep on a 128 KB stack, and no stack switch taken for it */

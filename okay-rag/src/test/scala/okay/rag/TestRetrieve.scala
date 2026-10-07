@@ -5,7 +5,6 @@ import okay.{Answers}
 import okay.freer.{+}
 import okay.freer.{!}
 import okay.freer.given
-import okay.std.given
 /** The retrieval layer: store, keyword, fusion, ingestion, and the
  * re-index that costs the edit. */
 class TestRetrieve extends munit.FunSuite {

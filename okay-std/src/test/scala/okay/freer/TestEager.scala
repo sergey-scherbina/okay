@@ -2,7 +2,6 @@ package okay.freer
 
 
 import okay.std.*
-import okay.std.given
 import okay.given
 
 /** The opt-in eager encoding: kyo-class speed, kyo's stated hazards. */

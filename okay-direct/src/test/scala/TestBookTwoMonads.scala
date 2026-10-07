@@ -4,9 +4,7 @@ package okay
 import okay.freer.*
 
 
-import okay.std.*
 import okay.freer.given
-import okay.std.given
 /**
  * THE BOOK'S CHAPTER 16b, COMPILED
  * (docs/continuations/16b-two-monads-at-once.md).

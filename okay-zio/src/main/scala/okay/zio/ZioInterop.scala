@@ -7,7 +7,6 @@ import okay.freer.{!}
 import okay.std.{Reader, Throws, raise, runEither}
 import okay.given
 import okay.freer.given
-import okay.std.given
 import _root_.zio.{Exit, Runtime, Scope, Task, Unsafe, ZEnvironment, ZIO}
 import _root_.zio.stream.ZStream
 import scala.concurrent.ExecutionContext.parasitic

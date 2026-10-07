@@ -4,7 +4,6 @@ package okay
 import okay.freer.*
 
 
-import okay.std.*
 /**
  * Retry policies ARE streams of delays (milliseconds): the stream
  * algebra is the policy algebra — take limits the attempts, map

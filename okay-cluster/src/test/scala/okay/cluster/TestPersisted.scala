@@ -3,7 +3,6 @@ package okay.cluster
 import okay.codec.Schema
 import okay.given
 import okay.freer.given
-import okay.std.given
 import okay.persist.{Ack, Configs, Election, MemoryStore, Policy}
 import okay.Pane
 import okay.freer.Aggregator

@@ -4,7 +4,6 @@ package okay.freer
 
 
 import okay.std.*
-import okay.std.given
 /**
  * specs/writer-covariance.md, free-answer-variance: `Free[F, +A]`. The
  * row stays invariant (a measured decision, free-row-variance); the

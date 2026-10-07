@@ -1,6 +1,5 @@
 import okay.{Optic, Proc, Wf}
 import okay.freer.*
-import okay.std.*
 import okay.Optic.arrows.*
 
 /**

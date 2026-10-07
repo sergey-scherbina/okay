@@ -1,7 +1,5 @@
 package okay.freer
 
-import okay.std.*
-import okay.std.given
 /**
  * docs/cont-stack.md's examples, VERBATIM (doc-snippet-debt): each
  * line as the page prints it, answer comment included, then asserted.

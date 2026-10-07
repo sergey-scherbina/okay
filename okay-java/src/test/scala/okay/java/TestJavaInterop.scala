@@ -5,7 +5,6 @@ import okay.freer.{Aggregator}
 import okay.std.{Chunk}
 import okay.given
 import okay.freer.given
-import okay.std.given
 import scala.collection.immutable.ArraySeq
 import scala.jdk.CollectionConverters.*
 import java.util.stream.{Collectors, LongStream, Stream}

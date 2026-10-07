@@ -3,7 +3,6 @@ package okay.freer
 
 
 import okay.std.*
-import okay.std.given
 /**
  * specs/generators.md — a generator is a program that tells; the laws
  * are Python's: the body runs as far as it is read and no further,

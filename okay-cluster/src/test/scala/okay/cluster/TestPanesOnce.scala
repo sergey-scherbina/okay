@@ -4,7 +4,6 @@ import okay.Pane
 import okay.freer.Aggregator
 import okay.given
 import okay.freer.given
-import okay.std.given
 /**
  * NO WINDOW IS PRESENTED TWICE (specs/dataflow.md, stage 6a).
  *

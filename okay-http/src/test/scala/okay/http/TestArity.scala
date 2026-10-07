@@ -3,7 +3,6 @@ package okay.http
 
 import okay.{Async}
 import okay.freer.*
-import okay.std.*
 /**
  * ARITY 1 COLLAPSES AT THE HANDLER, and nowhere else
  * (route-arity-one-tuple).

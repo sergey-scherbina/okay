@@ -7,7 +7,6 @@ import okay.freer.{!, effect, pure}
 import okay.std.{Writer}
 import okay.given
 import okay.freer.given
-import okay.std.given
 import okay.llm.Models.*
 
 /** a transport that records what it was asked and answers by the path —

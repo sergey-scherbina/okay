@@ -3,7 +3,6 @@ package okay.freer
 
 
 import okay.std.*
-import okay.std.given
 class TestClockRandom extends munit.FunSuite:
 
   test("Clock.fixed answers every now with the same reading; ticking moves by step and answers the next reading"):

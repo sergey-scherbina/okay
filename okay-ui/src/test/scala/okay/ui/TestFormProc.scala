@@ -4,7 +4,6 @@ package okay.ui
 import okay.{Proc, Wf}
 import scala.annotation.unused
 import okay.freer.*
-import okay.std.*
 import okay.Proc.given
 import scala.language.implicitConversions
 

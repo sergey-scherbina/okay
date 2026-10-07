@@ -1,6 +1,5 @@
 package okay.telegram
 import okay.freer.*
-import okay.std.*
 import okay.{Async, Timer}
 import okay.codec.Json
 import okay.codec.Json.*

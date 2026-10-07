@@ -7,7 +7,6 @@ import okay.freer.{!, effect, pure}
 import okay.std.{Throws, runEither}
 import okay.given
 import okay.freer.given
-import okay.std.given
 import org.scalacheck.{Arbitrary, Gen}
 
 /**

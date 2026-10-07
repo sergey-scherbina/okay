@@ -3,7 +3,6 @@ package okay.freer
 
 
 import okay.std.*
-import okay.std.given
 /**
  * widen-split (specs/widen-split.md): `!.widen` is a coercion and
  * `!.normalize` the walk; they agree on every tree shape, and the

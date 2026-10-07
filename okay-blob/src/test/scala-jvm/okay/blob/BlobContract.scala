@@ -8,7 +8,6 @@ import okay.std.{Chunk, Writer}
 import okay.freer.Row.plus
 import okay.given
 import okay.freer.given
-import okay.std.given
 import scala.collection.immutable.ArraySeq
 
 /**

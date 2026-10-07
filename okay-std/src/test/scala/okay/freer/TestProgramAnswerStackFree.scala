@@ -3,7 +3,6 @@ package okay.freer
 
 
 import okay.std.*
-import okay.std.given
 /**
  * A strict `k` whose body answers a PROGRAM holds no host stack (cont-program-leaf-always, answered
  * 2026-10-04). `k(x)` runs the rest only to the next capture, whose body answers its program at once, so the

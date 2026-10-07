@@ -2,7 +2,6 @@ package okay.sql
 
 import okay.{Effect, Tables}
 import okay.freer.*
-import okay.std.*
 import okay.freer.Row.{In, at, plus}
 import okay.codec.Schema
 import okay.Tables.{Table, select, join, where}

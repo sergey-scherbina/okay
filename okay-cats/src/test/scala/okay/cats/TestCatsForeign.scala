@@ -5,7 +5,6 @@ import okay.freer.{!}
 import okay.Direct.*
 import okay.given
 import okay.freer.given
-import okay.std.given
 import okay.cats.given
 import _root_.cats.effect.IO
 import _root_.cats.effect.unsafe.implicits.global

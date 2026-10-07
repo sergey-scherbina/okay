@@ -6,7 +6,6 @@ import okay.{Bulk, Channel, Chunks, Source, drained, localBulk, runCollect}
 import okay.Chunks.elements
 import okay.{Async, given}
 import okay.freer.given
-import okay.std.given
 import okay.testkit.Munit.Diagnosed
 
 /** the fixtures and the table live at the top level: a table is an

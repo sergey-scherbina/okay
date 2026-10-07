@@ -3,7 +3,6 @@ package okay.x402.signers
 
 import okay.{Async}
 import okay.freer.*
-import okay.std.*
 import okay.chain.Network
 import okay.conf.Secret
 import okay.http.{Http, Request, Response}

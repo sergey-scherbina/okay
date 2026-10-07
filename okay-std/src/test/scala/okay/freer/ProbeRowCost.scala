@@ -3,7 +3,6 @@ package okay.freer
 
 
 import okay.std.*
-import okay.std.given
 import okay.freer.Row.at
 
 /** effect-row-recursion-cost: EXACT bytes per level of the mutual

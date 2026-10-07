@@ -3,7 +3,6 @@ package okay.freer
 
 
 import okay.std.*
-import okay.std.given
 import okay.freer.Row.*
 
 /** level 1: one `handle` for every ready effect, its handler a value */

@@ -3,7 +3,6 @@ package okay.freer
 
 
 import okay.std.*
-import okay.std.given
 /**
  * specs/strymonas-zip-fusion.md: `Gen.zip`, and strymonas's hard case
  * (Kiselyov, Biboudis, Palladinos & Smaragdakis, "Stream fusion, to

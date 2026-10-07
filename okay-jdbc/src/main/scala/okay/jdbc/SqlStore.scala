@@ -5,7 +5,6 @@ import okay.freer.{!}
 import okay.std.{Chunk}
 import okay.given
 import okay.freer.given
-import okay.std.given
 import okay.persist.{Ack, Policy, Record, Store, Topic}
 import okay.sql.{Sql, SqlValue}
 

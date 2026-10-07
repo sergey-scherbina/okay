@@ -6,7 +6,6 @@ package okay.acme
 import okay.freer.{Pure}
 import okay.{Async, CanBlock}
 import okay.freer.given
-import okay.std.given
 import okay.codec.Json
 import okay.conf.{Schemes, Secret, Secrets}
 import okay.http.{Body, Http, Method, Request, Response}

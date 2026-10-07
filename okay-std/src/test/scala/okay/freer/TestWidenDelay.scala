@@ -3,7 +3,6 @@ package okay.freer
 
 
 import okay.std.*
-import okay.std.given
 /**
  * windows-stage-rerun-loses-pane, the sixth door: `!.widen` and
  * `Writer.widen` walk from the head, and to see the head they RESUME

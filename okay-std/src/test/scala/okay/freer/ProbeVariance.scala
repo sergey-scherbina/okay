@@ -3,7 +3,6 @@ package okay.freer
 
 
 import okay.std.*
-import okay.std.given
 /** Probe: constrain the row with evidence instead of leaving F free. */
 object ProbeVariance:
 

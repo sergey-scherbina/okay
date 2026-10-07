@@ -6,7 +6,6 @@ import okay.freer.Pure
 import okay.freer.{/>>}
 import okay.freer.{!, Cps}
 import okay.freer.given
-import okay.std.given
 import okay.codec.{Codecs, Json, Schema}
 import scala.annotation.tailrec
 

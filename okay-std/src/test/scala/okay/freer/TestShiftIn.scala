@@ -3,7 +3,6 @@ package okay.freer
 
 
 import okay.std.*
-import okay.std.given
 import okay.freer.Row.*
 
 /** shift-in-scope: inside a `reset` block a `shift` names only its value type */

@@ -2,7 +2,6 @@ import okay.{Stage, through}
 import okay.freer.*
 import okay.std.*
 import okay.freer.given
-import okay.std.given
 /**
  * Typestate on the stream (specs/stage-pipeline.md, stage-phased):
  * the CSV shape end to end, the switch's output ordering, both

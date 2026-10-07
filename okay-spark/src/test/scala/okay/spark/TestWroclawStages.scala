@@ -6,7 +6,6 @@ import okay.{Bulk, Csv, Tables}
 import okay.freer.*
 import okay.std.*
 import okay.freer.given
-import okay.std.given
 import okay.Tables.read
 import okay.freer.Row.plus
 import okay.Direct.{direct, unary_!}

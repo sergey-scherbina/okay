@@ -4,7 +4,6 @@ package okay.freer
 
 
 import okay.std.*
-import okay.std.given
 /**
  * the pages under docs/effects/, VERBATIM (doc-snippet-debt): every example line of
  * the per-effect pages as the page prints it, answer comment included,

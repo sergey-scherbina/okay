@@ -6,9 +6,7 @@ import okay.freer.*
 
 
 
-import okay.std.*
 import okay.freer.given
-import okay.std.given
 /** Fibers per program, retries per policy. The CHUNKED half — a
  * fiber per chunk and lineage recompute per chunk — went to
  * okay-stream with `parMap` and `retryChunks` themselves

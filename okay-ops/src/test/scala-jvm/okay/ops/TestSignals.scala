@@ -1,6 +1,5 @@
 package okay.ops
 import okay.freer.*
-import okay.std.*
 import okay.{Async}
 import okay.given
 import okay.http.{Http, Request, Response}

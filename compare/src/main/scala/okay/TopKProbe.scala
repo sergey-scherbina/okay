@@ -4,7 +4,6 @@ package okay
 import okay.freer.*
 
 
-import okay.std.*
 /**
  * What the top-k selection ALLOCATES, exactly.
  *

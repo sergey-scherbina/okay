@@ -3,7 +3,6 @@ package okay.freer
 
 
 import okay.std.*
-import okay.std.given
 import okay.freer.Row.{at, plus}
 
 /** specs/core-gaps.md, Maybe: an absence of its own, not a Throws */

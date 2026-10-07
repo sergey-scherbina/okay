@@ -1,6 +1,5 @@
 import okay.{Monad, ==>, Optic, Proc, Wf}
 import okay.freer.*
-import okay.std.*
 import okay.Direct.*
 import okay.laws.{ArrowLaws, ArrowLawsSuite}
 import scala.language.implicitConversions

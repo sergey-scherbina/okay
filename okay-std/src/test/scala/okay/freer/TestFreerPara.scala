@@ -2,7 +2,6 @@ package okay.freer
 
 
 import okay.std.*
-import okay.std.given
 import okay.{Monad, ParaMonad}
 
 import okay.freer.Freer.{Return, Inject, Bind}

@@ -7,7 +7,6 @@ import okay.freer.{!}
 import okay.std.{Chunk, Resource}
 import okay.given
 import okay.freer.given
-import okay.std.given
 import okay.sql.{Granted, Isolation, Sql, SqlValue, Typed}
 import java.sql.{DriverManager, SQLException}
 

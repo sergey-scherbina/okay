@@ -6,7 +6,6 @@ import okay.arrow.Rows
 import okay.cluster.{Flow, Flows}
 import okay.given
 import okay.freer.given
-import okay.std.given
 import okay.freer.{%}
 import okay.freer.{!, effect}
 import okay.std.{Choose, Reader, runChoice}

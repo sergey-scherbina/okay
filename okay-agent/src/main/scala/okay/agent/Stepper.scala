@@ -3,7 +3,6 @@ package okay.agent
 
 import okay.{Async}
 import okay.freer.*
-import okay.std.*
 /**
  * The stepper (specs/llm-agentic.md, "The stepper"): run an agent
  * program under a debugger's hand — it PAUSES at every tool call,

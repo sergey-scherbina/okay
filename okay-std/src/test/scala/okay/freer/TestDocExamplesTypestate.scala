@@ -3,7 +3,6 @@ package okay.freer
 
 
 import okay.std.*
-import okay.std.given
 /**
  * docs/typestate.md's core examples, VERBATIM (doc-snippet-debt): each
  * line as the page prints it, answer comment included, then asserted.

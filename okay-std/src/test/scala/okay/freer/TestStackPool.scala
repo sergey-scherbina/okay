@@ -2,8 +2,6 @@ package okay.freer
 
 
 
-import okay.std.*
-import okay.std.given
 /**
  * specs/cont-stack.md plan stage D3, moved up by the stage-A A/B: on
  * the count road statePara's ~2 000 levels outrun the first room and

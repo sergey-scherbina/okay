@@ -3,7 +3,6 @@ package okay.freer
 
 
 import okay.std.*
-import okay.std.given
 import okay.freer.Row.at
 
 /** specs/core-gaps.md stage 2: Writer.listen and Writer.censor */

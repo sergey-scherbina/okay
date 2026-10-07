@@ -5,7 +5,6 @@ import okay.freer.*
 
 
 import okay.std.*
-import okay.freer.given
 import okay.std.given
 import scala.collection.mutable.ArrayBuffer
 import scala.compiletime.uninitialized

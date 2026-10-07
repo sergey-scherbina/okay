@@ -82,7 +82,6 @@ func main() {
 class TestForeignActivityGo extends munit.FunSuite:
   import GoShop.*
   import okay.freer.given
-  import okay.std.given
   override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
   override def munitIgnore: Boolean = !GoWorkerBinary.available
 

@@ -1,7 +1,6 @@
 package okay.std
 
 import okay.freer.*
-import okay.freer.given
 
 import okay.{TypeableK, typeableK}
 

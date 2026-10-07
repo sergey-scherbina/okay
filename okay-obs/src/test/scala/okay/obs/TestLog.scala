@@ -5,7 +5,6 @@ import okay.{Answers}
 
 import okay.freer.given
 
-import okay.std.given
 import okay.codec.{Cbor, Json}
 import okay.persist.{MemoryStore, Topic}
 

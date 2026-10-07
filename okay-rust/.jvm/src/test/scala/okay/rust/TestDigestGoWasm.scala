@@ -18,7 +18,6 @@ import okay.freer.*
 
 
 
-import okay.std.*
 import java.nio.file.{Files, Path}
 import okay.Answers
 import okay.freer.{!, given}

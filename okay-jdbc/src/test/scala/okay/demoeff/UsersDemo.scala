@@ -26,7 +26,6 @@ import okay.{Answers, Effect, tracing}
 import okay.freer.*
 import okay.std.*
 import okay.freer.given
-import okay.std.given
 import java.sql.{Connection, DriverManager}
 import okay.freer.Row.plus
 import okay.Direct.{direct, given}

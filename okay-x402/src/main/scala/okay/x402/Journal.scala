@@ -3,7 +3,6 @@ package okay.x402
 
 import okay.{Async}
 import okay.freer.*
-import okay.std.*
 import okay.chain.Network
 import okay.codec.Schema
 import okay.persist.{Ack, Topic, Typed, of}

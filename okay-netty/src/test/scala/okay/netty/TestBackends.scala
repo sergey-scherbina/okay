@@ -5,7 +5,6 @@ import okay.freer.*
 import okay.std.*
 import okay.given
 import okay.freer.given
-import okay.std.given
 import okay.codec.Schema
 import okay.http.{Acceptance, Frame, Http, Request, Server as OkayServer, Sockets, Transports, Ws}
 import okay.jetty.Jetty

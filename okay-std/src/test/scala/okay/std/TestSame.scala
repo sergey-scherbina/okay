@@ -1,9 +1,7 @@
-package okay.freer
+package okay.std
 
 
 
-import okay.std.*
-import okay.std.given
 /** the sameness typeclass: a witness when the tokens are one, and
  * strict equality that follows from it */
 class TestSame extends munit.FunSuite {

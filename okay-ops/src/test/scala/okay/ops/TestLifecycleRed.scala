@@ -3,7 +3,6 @@ package okay.ops
 
 import okay.{Async}
 import okay.freer.*
-import okay.std.*
 import okay.given
 
 import okay.http.{Http, Method, Request, Response}

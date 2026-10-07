@@ -3,7 +3,6 @@ package okay.cats
 import okay.{Async, Par, Scheduler}
 import okay.freer.{!, Static}
 import okay.std.{Choose, Validated}
-import okay.freer.given
 import okay.std.given
 import _root_.cats.{~>, Eval}
 import _root_.cats.effect.IO

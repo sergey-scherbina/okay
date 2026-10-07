@@ -4,9 +4,7 @@ package okay
 import okay.freer.*
 
 
-import okay.std.*
 import okay.freer.given
-import okay.std.given
 /**
  * The two scheduler laws whose blocking device is a CHANNEL, so they
  * moved here with the channels (core-modules stage 1). They are the

@@ -1,6 +1,5 @@
 package okay.ui
 import okay.freer.*
-import okay.std.*
 /**
  * The capability door on Scope (ctx-prompts): exit reaches the
  * NEAREST scope by nesting, a bound prompt still crosses, and the

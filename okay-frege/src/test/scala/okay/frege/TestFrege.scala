@@ -6,7 +6,6 @@ import okay.freer.{%, +}
 import okay.freer.{!, pure}
 import okay.std.{Choose, Reader, State, Throws, Writer, runChoice, runEither}
 import okay.freer.given
-import okay.std.given
 import frege.run8.Thunk
 import java.util.concurrent.atomic.AtomicInteger
 import okay.frege.{Programs as P}

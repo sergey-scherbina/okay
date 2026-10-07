@@ -2,8 +2,6 @@ package okay.freer
 
 
 
-import okay.std.*
-import okay.std.given
 /**
  * The count road's first room in a COLD JVM (cont-stack-cold-bytes-per-level), run as its own process by
  * TestColdRoom: a thread of the VM's default size, its caller `depth` frames deep already, then `levels` opaque

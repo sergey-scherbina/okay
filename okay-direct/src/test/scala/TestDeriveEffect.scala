@@ -6,7 +6,6 @@ import okay.freer.*
 
 import okay.std.*
 import okay.freer.given
-import okay.std.given
 import okay.freer.Row.{at, plus}
 import okay.Direct.{direct, given}
 import scala.language.implicitConversions

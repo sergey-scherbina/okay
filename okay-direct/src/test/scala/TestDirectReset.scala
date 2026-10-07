@@ -6,7 +6,6 @@ import okay.freer.*
 
 import okay.std.*
 import okay.freer.given
-import okay.std.given
 import okay.Direct.*
 // the direct-style `shift`, by name: a named import outranks the classic's wildcard
 import okay.Direct.shift

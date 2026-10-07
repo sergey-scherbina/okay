@@ -3,7 +3,6 @@ package okay.freer
 
 
 import okay.std.*
-import okay.std.given
 import okay.freer.Row.*
 
 /** specs/shift-effect.md, specs/shift-merge.md: `Shift % R`, the continuation as an effect, on the one machine */

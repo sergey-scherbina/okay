@@ -2,8 +2,6 @@ package okay.freer
 
 
 
-import okay.std.*
-import okay.std.given
 import scala.annotation.tailrec
 import ProbeFreerStep.Freer
 import ProbeFreerStep.Freer.{Return, Op, Bind}

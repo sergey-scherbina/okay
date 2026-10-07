@@ -5,7 +5,6 @@ import okay.freer.{!}
 import okay.std.{Writer}
 import okay.given
 import okay.freer.given
-import okay.std.given
 import okay.persist.{Ack, FileStore, Policy, Segments}
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*

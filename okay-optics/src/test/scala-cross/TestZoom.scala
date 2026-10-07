@@ -7,7 +7,6 @@ import okay.freer.*
 import okay.std.*
 import okay.given
 import okay.freer.given
-import okay.std.given
 /**
  * specs/optics.md stage 3: a program over a PART of the state runs
  * over the whole, and the four-parameter lens zooms the parameterised

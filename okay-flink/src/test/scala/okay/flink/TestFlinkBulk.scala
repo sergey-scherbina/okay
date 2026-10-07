@@ -2,7 +2,6 @@ package okay.flink
 
 import okay.{Bulk, Chunks, Tables}
 import okay.freer.*
-import okay.std.*
 import okay.Chunks.elements
 import okay.Tables.{collect, join, select}
 import scala.util.Random
