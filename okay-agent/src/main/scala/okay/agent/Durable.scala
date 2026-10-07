@@ -6,7 +6,7 @@ import okay.Answers
  * Recompile clients when upgrading: aliases do not preserve JVM class names.
  */
 type OpTrace = okay.durable.OpTrace
-type Journalled[Op[_]] = okay.codec.Journalled[Op]
+type Journalled[O[_]] = okay.codec.Journalled[O]
 
 object Durable:
   // Explicit aliases keep class/enum types readable by Scala 2's TASTy reader.

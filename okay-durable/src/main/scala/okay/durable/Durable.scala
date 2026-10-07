@@ -150,13 +150,13 @@ object Durable {
     journal.all.sortBy(_.seq).find(_.answer.isEmpty)
 
   /** Legacy unscoped identity, retained for archived entries and source compatibility. */
-  def keyFor[Op[_], A](seq: Int, op: Op[A])(using J: Journalled[Op]): String =
+  def keyFor[O[_], A](seq: Int, op: O[A])(using J: Journalled[O]): String =
     keyOf(J.name(op), seq, J.fingerprint(op))
 
   /** Identity for a new step. Persist the run identity across restarts.
    * Unscoped journals retain the legacy helper; fresh WithKey requires runId. */
-  def keyFor[Op[_], A](journal: Journal, seq: Int, op: Op[A])
-                      (using J: Journalled[Op]): String =
+  def keyFor[O[_], A](journal: Journal, seq: Int, op: O[A])
+                     (using J: Journalled[O]): String =
     journal.runId match
       case Some(run) => scopedKey(run, seq)
       case None => keyOf(J.name(op), seq, J.fingerprint(op))
@@ -200,32 +200,32 @@ object Durable {
    * both answer in the journal's own written form, which is what the
    * far end can be asked for and what the journal must record.
    */
-  def over[Op[_]](inner: Answers[Op], journal: Journal)
-                 (policy: String => OnRepeat = _ => OnRepeat.Fail,
-                  // POLYMORPHIC, not `Op[?]`: an abstract type
-                  // constructor cannot be applied to a wildcard, and
-                  // the honest reading is that these answer for an
-                  // operation of ANY answer type
-                  reconcile: [X] => (Op[X], String) => Option[String] =
-                    [X] => (_: Op[X], _: String) => None,
-                  escalate: [X] => (Op[X], String) => Option[String] =
-                    [X] => (_: Op[X], _: String) => None,
-                  trace: Option[OpTrace] = None,
-                  /** told of each operation answered FROM THE JOURNAL, and
-                   * its answer: a handler that keeps state across its
-                   * operations (a supervised foreign worker's continuation
-                   * table) rebuilds it from what it did not see happen
-                   * (foreign-workflow stage 3). Nothing by default. */
-                  replayed: [X] => (Op[X], X) => Unit =
-                    [X] => (_: Op[X], _: X) => ())
-                 (using J: Journalled[Op])
-  : Answers[Op] = new Answers[Op]:
+  def over[O[_]](inner: Answers[O], journal: Journal)
+                (policy: String => OnRepeat = _ => OnRepeat.Fail,
+                 // POLYMORPHIC, not `O[?]`: an abstract type
+                 // constructor cannot be applied to a wildcard, and
+                 // the honest reading is that these answer for an
+                 // operation of ANY answer type
+                 reconcile: [X] => (O[X], String) => Option[String] =
+                   [X] => (_: O[X], _: String) => None,
+                 escalate: [X] => (O[X], String) => Option[String] =
+                   [X] => (_: O[X], _: String) => None,
+                 trace: Option[OpTrace] = None,
+                 /** told of each operation answered FROM THE JOURNAL, and
+                  * its answer: a handler that keeps state across its
+                  * operations (a supervised foreign worker's continuation
+                  * table) rebuilds it from what it did not see happen
+                  * (foreign-workflow stage 3). Nothing by default. */
+                 replayed: [X] => (O[X], X) => Unit =
+                   [X] => (_: O[X], _: X) => ())
+                (using J: Journalled[O])
+  : Answers[O] = new Answers[O]:
 
     private var seq = 0
     private val recorded = journal.all
     private val scope = journal.runId
 
-    def handle[A](op: Op[A]): A =
+    def handle[A](op: O[A]): A =
       val n = seq
       seq += 1
       val name = J.name(op)
@@ -283,7 +283,7 @@ object Durable {
 
     /** the question, recorded, and control handed back. The inner
      * handler is never reached: asking a person touches no world. */
-    private def park[A](n: Int, op: Op[A], name: String, fp: String, key: String): Nothing =
+    private def park[A](n: Int, op: O[A], name: String, fp: String, key: String): Nothing =
       if !recorded.exists(_.seq == n) then
         journal.append(Entry(n, name, fp, key, None))
       throw Awaiting(name, n, key, J.asked(op))
@@ -292,7 +292,7 @@ object Durable {
      * the whole point: a crash between the second and third steps is
      * exactly what the policies above are for */
     private def execute[A](n: Int, name: String, fp: String,
-                           key: String, toRun: Op[A]): A =
+                           key: String, toRun: O[A]): A =
       if !recorded.exists(_.seq == n) then
         journal.append(Entry(n, name, fp, key, None))
       // performed by the instance, which is the only place the answer
@@ -307,11 +307,11 @@ object Durable {
    * again, offline, with no model and no side effects. The half of
    * durability that is worth as much as the recovery.
    */
-  def replayingOver[Op[_]](journal: Journal, trace: Option[OpTrace] = None)
-                          (using J: Journalled[Op]): Answers[Op] = new Answers[Op]:
+  def replayingOver[O[_]](journal: Journal, trace: Option[OpTrace] = None)
+                         (using J: Journalled[O]): Answers[O] = new Answers[O]:
     private var seq = 0
     private val recorded = journal.all
-    def handle[A](op: Op[A]): A =
+    def handle[A](op: O[A]): A =
       val n = seq
       seq += 1
       val name = J.name(op)

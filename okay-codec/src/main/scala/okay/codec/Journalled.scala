@@ -34,20 +34,20 @@ import okay.Answers
  * The `Tool` instance is the identity on all of it, which is why
  * `Durable.tools` behaves exactly as it did.
  */
-trait Journalled[Op[_]]:
+trait Journalled[O[_]]:
   /** the journal's `op` column, and the span's name */
-  def name[A](op: Op[A]): String
+  def name[A](op: O[A]): String
 
   /** what the program ASKED FOR, compared on replay to catch drift.
    * Whatever identifies the request — an R instance fingerprints the
    * script and a hash of its inputs, not the frame it will return. */
-  def fingerprint[A](op: Op[A]): String
+  def fingerprint[A](op: O[A]): String
 
   /** the retry that carries the first attempt's key, so the far end
    * recognises it as the same request (`OnRepeat.WithKey`). An
    * operation with nowhere to put a key returns itself — and should
    * not be declared `WithKey`. */
-  def withKey[A](op: Op[A], key: String): Op[A]
+  def withKey[A](op: O[A], key: String): O[A]
 
   /**
    * Run the operation and say how its answer is written down — both
@@ -56,7 +56,7 @@ trait Journalled[Op[_]]:
    * `Tool[+A]` is COVARIANT, so matching `Tool.Call` refines `A` only
    * to `A >: String`: enough to hand a `String` back as an `A`
    * (decode), not enough to turn an `A` into a `String` (encode). An
-   * `encode[A](op: Op[A], answer: A): String` therefore cannot be
+   * `encode[A](op: O[A], answer: A): String` therefore cannot be
    * written for it without a runtime type test, and this repository
    * does not take a cast while a typed road exists.
    *
@@ -72,13 +72,13 @@ trait Journalled[Op[_]]:
    * row needs it, and `effect(Tool.Call(c)): String ! Agent` stops
    * type-checking without it.)
    */
-  def perform[A](op: Op[A], inner: Answers[Op]): (A, String)
+  def perform[A](op: O[A], inner: Answers[O]): (A, String)
 
   /** the answer, back out of the journal. Given the operation, so a
    * GADT can refine `A` — and String <: A is the easy direction. */
-  def decode[A](op: Op[A], written: String): A
+  def decode[A](op: O[A], written: String): A
 
   /** what to show whoever must answer a parked question. Defaults to
    * the fingerprint, which is always available and always cheap. */
-  def asked[A](op: Op[A]): Json = Json.JStr(fingerprint(op))
+  def asked[A](op: O[A]): Json = Json.JStr(fingerprint(op))
 
