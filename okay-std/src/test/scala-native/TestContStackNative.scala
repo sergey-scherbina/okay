@@ -2,8 +2,6 @@ package okay.freer
 
 
 
-import okay.std.*
-import okay.std.given
 /**
  * specs/cont-stack.md, the Native row: the room is READ from the
  * runtime's own `ThreadInfo`, and the switch is a 1 GB platform thread.

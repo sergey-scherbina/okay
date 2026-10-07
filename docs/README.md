@@ -295,7 +295,8 @@ API reference, gotchas.
 | module | what it is |
 |---|---|
 | `okay` (core) | the interface over rows (`Effects[M]`), its words members of the instance (`A ! R`, `pure`, `effect`, `handle`, `value`; `import okay.*` is the machine's), the type classes; the guide/tutorial/typepedia above are the classic's |
-| [`okay-freer`](modules/okay-freer.md) | the classic: the effect library over the freer tree — `A ! F`, handlers, rows, the effects, `Cps` and its machine — package `okay.freer`, above the core as one `Effects` instance; `import okay.freer.*` beside `import okay.*` |
+| [`okay-freer`](modules/okay-freer.md) | the classic: the effect library over the freer tree — `A ! F`, handlers, rows, `Shift`, `Cps` and its machine — package `okay.freer`, above the core as one `Effects` instance; `import okay.freer.*` beside `import okay.*` |
+| [`okay-std`](modules/okay-std.md) | the classic's effects — State, Reader, Writer, Throws, Choose, Resource, Stream and the rest — package `okay.std`, over okay-freer; `import okay.std.*` beside `import okay.freer.*` |
 | [`okay-cont`](modules/okay-cont.md) | delimited continuations typed by two stacks of answer types, handlers as delimiters, and the machine that runs them; `Effects[Prog]` beside `Effects[Free]` |
 | [`okay-async`](modules/okay-async.md) | the portable `Async` effect and its callback-based runtime semantics, with no platform default instances of its own |
 | [`okay-direct`](modules/okay-direct.md) | the optional direct syntax (`direct { ... }`) and its compile-time macro implementation |

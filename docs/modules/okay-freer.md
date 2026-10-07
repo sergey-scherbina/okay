@@ -4,7 +4,8 @@ THE CLASSIC: the effect library over the freer tree as it was in the core, now a
 `okay.freer`, ABOVE the core — one `Effects` instance of the core's interface, chosen at compile time by the
 given in scope, knowing nothing of the machine (okay-cont) but through that interface. It depends on the core
 and on nothing else; it runs on the JVM, Scala.js and Scala Native (specs/freer-min.md, stage 45;
-specs/modules-infra.md).
+specs/modules-infra.md). Its EFFECTS are a module of their own since okay-std (2026-10-08): State, Reader,
+Writer, Throws, Choose, Resource and the rest are `okay.std`, `import okay.std.*` beside `import okay.freer.*`.
 
 | | |
 |---|---|
@@ -14,9 +15,9 @@ specs/modules-infra.md).
 | `Classic`, `!` for short | the classic as a toolkit: `!.run`, `!.relay`, `!.translate`, `!.interpret`, `!.foldM`, `!.loop`, and the tree's constructors |
 | `given_Classic_Free`, `FreeEffects`, `cps` | the tree's `Classic` instance with the machine as its carrier; `import okay.freer.cps.{given_Classic_Free, *}` chooses the CPS `Cps` as it was |
 | `Handler`, `Answers`-handlers, `Row`, `Member`, `Distinct`, `Row.union`, `Row.flat` | handlers as values, rows as unions, their evidence; `split` and `TypeableK[Pure]`, the class test a union handler dispatches by |
-| `State`, `Reader`, `Writer`, `Throws`, `Choose`, `Shift`, `Resource`, `Once`, `Supply`, `Random`, `Clock`, … | the effects and their handlers |
+| `Shift`, `CanTry`, `RowOf`, `Replayable` | the one effect the core is built on (dynamic prompts, `HandleFrames`), and the evidence the direct block and replay need; every other effect is okay-std's (`okay.std`) |
 | `Cps[A, S, R]` (`A />> R` its diagonal; `A /> R` is the machine's, `Carrier[A, R, R]`), `Delimited`, `StackRoom`, `StackPool` | the CPS tree at the shift signature, and the classic's machine of delimited continuations (the JDK 22 StackRoom variant is in this module's multi-release jar) |
-| `Stream`, `Gen`, `Producer`, `Aggregator`, `Fold`, `Chunk` | the streams and folds written over the tree |
+| `Aggregator`, `Fold` | the folds written over the tree (`Stream`, `Gen`, `Producer`, `Chunk` are okay-std's) |
 | `DirectCtx`, `Diagonal`, the macros | what `okay-direct`'s `direct` block and the handler macros need, under `okay.freer.macros` |
 
 What stays in the core (`okay`): `Effects` over rows and the machine's instance of it, the program `A ! R`
