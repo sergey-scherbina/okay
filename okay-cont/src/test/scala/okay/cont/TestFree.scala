@@ -75,3 +75,14 @@ class TestFree extends okay.testkit.Munit.Diagnosed:
     def loop(n: Int, acc: Int): Free[Ask +: Pure, Int] =
       if n == 0 then Free.pure(acc).widen else Free.inject(Ask.Number).flatMap(x => loop(n - 1, acc + x)).widen
     assertEquals(value(Free.top(Free.handle(reader[Int](1))(loop(100000, 0)))), 100000)
+
+  test("the classic spelling: A ! R over the machine's row, % for a parameterised effect, run at the end"):
+    val counting: Int ! (State % Int +: Say +: Pure) =
+      for
+        n <- effect(State.Get[Int]())
+        _ <- effect(State.Put(n + 1))
+        _ <- effect(Say.Line(s"$n"))
+        m <- effect(State.Get[Int]())
+      yield m
+    val run: (List[String], (Int, Int)) ! Pure = Free.handle(writer[(Int, Int)])(Free.handle(StateCell[Int, Int](41))(counting))
+    assertEquals(run.value, (List("41"), (42, 42)))

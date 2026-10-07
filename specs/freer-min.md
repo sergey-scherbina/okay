@@ -1671,3 +1671,14 @@ the work: the capabilities re-laid by position. So a program over `Ask +: Say +:
 Ask +: Pure` is expected with nothing written (TestFree), and handled in either order; a row with FEWER effects
 is not widened silently — that stays `widen`, written, so a row never grows unseen. No feature warning: a `given
 Conversion` found in the companion is the library's own.
+
+## Stage 41: `A ! R` FOR THE MACHINE (DONE, 2026-10-07)
+
+Before the classic layer moves out of package `okay` (the measurement: all but five data files of the core
+depend on the tree, so "the classic" is the core as it stands, and two `!` cannot share one package), the
+machine's program gets the classic's spelling in its own package: `okay.cont.!` is `Free[R, A]`, `%` fixes a
+binary signature's parameter, `effect(op)` is an operation's program, `p.value` a closed program's value (`run`
+is the trait's own, at a context — an extension of that name would never be selected, E194). So `Int ! (State %
+Int +: Say +: Pure)` is written, handled in any order (stage 39), reordered by the compiler where another order
+is expected (stage 40), and run (TestFree). What is left for the move is the package of the classic and the
+artifact's name, the operator's decision.
