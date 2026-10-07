@@ -1604,3 +1604,21 @@ program is a value.
 | handlePrebuiltAnswering | 133.5 | 128.5 ± 0.8 | handlePrebuilt (CPS) 130.4 |
 
 Eight nodes, 48 tests in okay-cont, no cast, no warning.
+
+## Stage 37: `A ! F` OPAQUE — TRIED, NOT TAKEN (2026-10-07)
+
+The operator: `A ! F` in the core as an opaque abstraction hiding its encoding. Tried on a lane (bang-opaque,
+not landed): `Program.Of[F, A]` opaque, `!` its alias, the interface in its companion (`pure`, `effect`,
+`flatMap`, `map`, `Monad`, `TailRecM`, `Effects.Aux[Of, Carrier]`), the repo's views `tree`/`of` and two
+conversions between a program and its tree as `private[okay]` — every module is a subpackage of `okay`, so the
+repo sees the encoding and a user does not. The conversions took the core from ~250 errors to ~100, and the
+hundred are the interpreters: `Writer`, `Effects`, `HandleFrames`, `Gen`, `Throws`, `Generate`, `Resource`,
+`State`, `Handler`, `Eager` match `A ! F` on the tree's nodes (`p.resume match { case Bind(Inject(e), k) => … }`)
+with GADT refinements through `Unary.Op[F]`, and a conversion in between loses them: the expected type stops
+reaching the node, rows come out fresh, `e` and `k` lose their types. The only cure is each interpreter's loops
+written on `Free[F, A]` by name with `Program.of` at the door — hundreds of inference-sensitive edits, two or
+three sessions with nothing compiling in between.
+
+Not taken, by the operator's choice: `!` stays the transparent alias. The opacity comes for free later: when
+`A ! F` is the machine's program, the alias names a trait with one abstract method (`run`), an interface by
+construction, and the machine's library is written on handlers and contexts, never on nodes.
