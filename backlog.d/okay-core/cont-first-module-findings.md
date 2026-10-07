@@ -25,17 +25,13 @@
       `AsyncCont.fromClassic`, one Await per classic program, driven by
       the classic drive; the Scala 2 facade crosses the other way by
       `toClassic`, one classic operation per machine stop. Unmeasured.
-      (5) THE DRIVE STOPS AT EVERY OPERATION — 2.38x. `AsyncCont.runAsync`'s
-      clause is at the top, so a `Run` stops the machine too (its
-      continuation captured, `Machine.value` re-entered): 562 us per 10k
-      Runs against the classic drive's 236 (AsyncDriveBenchmark,
-      2026-10-07); the answering `AsyncCont.run` is 263 against the
-      classic `runWith`'s 241 (1.09x). The lead is a machine feature: a
-      handler that answers IN PLACE when it can (a Run; an Await whose
-      callback fired during the registration) and CAPTURES only when it
-      must (a pending Await) — `inPlace` decided per operation, not per
-      handler. Until then a Run-heavy program on the callback drive pays
-      a capture per operation.
+      (5) DONE (drive-in-place, 2026-10-08): the callback drive was
+      2.38x the classic (a capture per Run); now 1.15x (273 us per 10k
+      Runs against 236) — a Run on the answering road by `Cap.Split`,
+      an Await answered during its registration by the clause's tail
+      `k(x)`, only a pending Await captured. What is left is the
+      machine's per-operation cost (the answering `AsyncCont.run`,
+      1.09x), not the drive's.
       (6) WHAT ASYNC LACKS ON THE MACHINE before okay-stream can move:
       `attempt` (Retry), cancel scopes and `runAsyncCancellable`,
       fibers/`Scheduler.fork`, the drive's poll-then-park. okay-cache

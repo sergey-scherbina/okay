@@ -1,0 +1,2 @@
+2026-10-08	cb619fcd3	quiet	AsyncDriveBenchmark.contRunAsync10k us/op (10k ops)	328.835	237.101	1.39	drive-in-place step 1: the clause returns k(x) for a Run and a synchronous Await (the machine answers a tail k(x) where the operation was); was 562 (2.38x)
+2026-10-08	cb619fcd3	quiet	AsyncDriveBenchmark.contRunAsync10k us/op (10k ops)	273.304	237.101	1.15	drive-in-place step 2: Cap.Split, a Run on the answering road (no walk to the clause, no capture); the answering AsyncCont.run is 263 (1.09x)

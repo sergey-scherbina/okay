@@ -27,8 +27,9 @@ need to run one.
 `import okay.*`): the same `Async.Run`/`Async.Await` operations,
 `async`/`await`/`awaitEither` as `Op`s, `blocking` (an `Answering`
 handler: each operation in place, no capture) with `run`, the callback
-drive `runAsync` (every operation stops the machine; the rest is a
-program at the top the drive or the callback continues), and the two
+drive `runAsync` (a Run and an Await answered during its registration
+in place, only a pending Await stops the machine — 1.15x the classic
+drive), and the two
 bridges to the classic tree, `toClassic` and `fromClassic`, one crossing
 per program. Not yet there: `attempt`, cancel scopes, fibers, the
 poll-then-park drive (backlog: cont-first-module-findings).

@@ -1943,3 +1943,18 @@ per Run. What the module found — rows in every multi-step signature, the facad
 sites, no row inferred through an overload, per-program bridges, the per-operation capture, and what Async
 still lacks (attempt, cancel scopes, fibers, poll-then-park) — is backlog.d/okay-core/cont-first-module-findings.md.
 
+## Stage 50: THE DRIVE ANSWERS IN PLACE WHAT IT CAN (DONE, 2026-10-08)
+
+Stage 49's callback drive stopped the machine at every operation: 562 us per 10k Runs against the classic
+drive's 236 (2.38x). The operator: fix that before the rename. Two steps, measured each. (1) The machine already
+answers a clause that returns the last `k(x)` as its whole body WHERE THE OPERATION WAS (`Captured.tail`); the
+drive's clause now does that for a Run and for an Await whose callback fired during the registration (the flag
+of stage 49 decides who comes second, moved into the clause), and only a pending Await answers `Parked` with `k`
+kept for the callback: 329 us, 1.39x — a Run still walked to the clause and made a `Captured`. (2) `Cap.Split`
+(okay-cont), a capability that chooses its road PER OPERATION: an operation its `Partly` half answers
+(`answers(op)`) goes to the answering road, `Cont.Answer`, no walk, no capture; any other reaches the handler by a
+capture, as `Reaching`. The drive's Runs take the first road: 273 us, 1.15x — level with the answering
+`AsyncCont.run` (263, 1.09x), so what is left is the machine's per-operation cost, not the drive's. The Answering
+road needs no delimiter (`Cont.Answer` carries its handler), which is what makes a split capability one case and
+no machine node. `toClassic` keeps the stopping clause: there the classic handler answers every operation.
+
