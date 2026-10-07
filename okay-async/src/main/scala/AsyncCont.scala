@@ -46,7 +46,8 @@ object AsyncCont:
    * the first throw, failed Await or failed step */
   def runAsync[A](p: A ! (Async +: Pure)): Future[A] =
     val promise = Promise[A]()
-    Drive(promise).loop(top(p))
+    val d = Drive(promise)
+    d.loop(top(p, d.clause, Driven.Done(_)))
     promise.future
 
   /** A MACHINE PROGRAM AS A CLASSIC ONE, for code still on the tree (the Scala 2 facade, a classic caller): each
@@ -54,7 +55,7 @@ object AsyncCont:
    * its continuation — so the classic handler in force (blocking, a drive, a fiber's) answers it, and nothing
    * runs before the classic program is run */
   def toClassic[A](p: A ! (Async +: Pure)): okay.freer.![A, Async] =
-    okay.freer.Free.delay(() => classic(top(p)))
+    okay.freer.Free.delay(() => classic(top(p, stops[A], Step.Done(_))))
 
   private def classic[A](t: Top[Step[A]]): okay.freer.![A, Async] = Machine.value(t) match
     case Step.Done(a) => okay.freer.pure(a)
@@ -74,39 +75,55 @@ object AsyncCont:
     case Done(a: A)
     case At[X, A](op: Async[X], k: X => Top[Step[A]]) extends Step[A]
 
-  /** the clause, at the top: every operation stops the machine with its continuation; who answers it is the
-   * caller's (the drive below, or the classic program `toClassic` builds) */
-  private def clause[A]: Clause[Async, EmptyTuple, Step[A]] = new Clause[Async, EmptyTuple, Step[A]]:
+  /** `toClassic`'s clause, at the top: every operation stops the machine with its continuation, for the classic
+   * handler in force to answer */
+  private def stops[A]: Clause[Async, EmptyTuple, Step[A]] = new Clause[Async, EmptyTuple, Step[A]]:
     def apply[X](op: Async[X], k: X => Top[Step[A]]): Top[Step[A]] = Cont.Return(Step.At(op, k))
 
-  private def top[A](p: A ! (Async +: Pure)): Top[Step[A]] =
-    okay.cont.handle[Async, A, Step[A]](Step.Done(_))(clause[A])(using Root): inner ?=>
-      p.run(using inner, Has.HCons(Cap.Reaching(Reaches.here[Async, Step[A], inner.type]), Has.HNil[inner.type]()))
+  private def top[A, Ans](p: A ! (Async +: Pure), clause: Clause[Async, EmptyTuple, Ans], done: A => Ans): Top[Ans] =
+    okay.cont.handle[Async, A, Ans](done)(clause)(using Root): inner ?=>
+      p.run(using inner, Has.HCons(Cap.Reaching(Reaches.here[Async, Ans, inner.type]), Has.HNil[inner.type]()))
 
-  /** the callback may fire during the registration, on this thread or another: whoever comes SECOND to the
-   * flag continues the drive — a loop while answers come synchronously, a re-entry from the callback when not.
-   * The answer is written before the callback's turn at the flag, so the drive that comes second reads it */
+  /** where the drive stands when the machine stops: the program's answer, or parked at an Await whose callback
+   * will continue it */
+  private enum Driven[+A]:
+    case Done(a: A)
+    case Parked
+
+  /**
+   * THE DRIVE ANSWERS IN PLACE WHAT IT CAN (drive-in-place). Its clause returns `k(x)` as its whole body for a Run
+   * (`x` its value) and for an Await whose callback fired during the registration — and a clause that returns the
+   * last `k(x)` is answered WHERE THE OPERATION WAS, the stack as it stands, nothing captured (the machine's own
+   * tail-resumption, `Captured.tail`). Only an Await still pending stops the machine: the clause keeps `k` for the
+   * callback and answers `Parked`. The callback may fire during the registration, on this thread or another:
+   * whoever comes SECOND to the flag continues — the clause in place, or the callback by re-entering `loop` with
+   * `k(x)`, a program at the top. The answer is written before the callback's turn at the flag, so the clause
+   * that comes second reads it.
+   */
   private final class Drive[A](promise: Promise[A]):
-    def loop(t0: Top[Step[A]]): Unit =
-      var t: Top[Step[A]] | Null = t0
-      while t != null do
-        t = try
-          Machine.value(t) match
-            case Step.Done(a) => promise.trySuccess(a): Unit; null
-            case Step.At(Async.Run(f), k) => k(f())
-            case Step.At(Async.Await(reg, _), k) => park(reg, k)
-        catch case NonFatal(e) => { promise.tryFailure(e): Unit; null }
+    val clause: Clause[Async, EmptyTuple, Driven[A]] = new Clause[Async, EmptyTuple, Driven[A]]:
+      def apply[X](op: Async[X], k: X => Top[Driven[A]]): Top[Driven[A]] = op match
+        case Async.Run(f) => k(f())
+        case Async.Await(reg, _) =>
+          val got = AtomicReference[Either[Throwable, X] | Null](null)
+          val second = AtomicBoolean(false)
+          reg { r =>
+            got.set(r)
+            if second.getAndSet(true) then resume(r, k)
+          }: Unit
+          if !second.getAndSet(true) then Cont.Return(Driven.Parked)
+          else got.get.nn match
+            case Right(x) => k(x)
+            case Left(e) => throw e
 
-    /** the rest, when the answer is already here; null when the callback will continue the drive */
-    private def park[X](reg: (Either[Throwable, X] => Unit) => (() => Unit), k: X => Top[Step[A]]): Top[Step[A]] | Null =
-      val got = AtomicReference[Either[Throwable, X] | Null](null)
-      val second = AtomicBoolean(false)
-      reg { r =>
-        got.set(r)
-        if second.getAndSet(true) then resume(r, k).foreach(loop)
-      }: Unit
-      if second.getAndSet(true) then resume(got.get.nn, k).orNull else null
+    def loop(t: Top[Driven[A]]): Unit =
+      try
+        Machine.value(t) match
+          case Driven.Done(a) => promise.trySuccess(a): Unit
+          case Driven.Parked => ()
+      catch case NonFatal(e) => promise.tryFailure(e): Unit
 
-    private def resume[X](r: Either[Throwable, X], k: X => Top[Step[A]]): Option[Top[Step[A]]] = r match
-      case Right(x) => Some(k(x))
-      case Left(e) => promise.tryFailure(e): Unit; None
+    /** a late answer: the rest run from the callback's frame — itself a loop until the next pending Await */
+    private def resume[X](r: Either[Throwable, X], k: X => Top[Driven[A]]): Unit = r match
+      case Right(x) => loop(k(x))
+      case Left(e) => promise.tryFailure(e): Unit
