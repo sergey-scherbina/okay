@@ -1884,3 +1884,40 @@ classic (`Bisim.Answers`) hides the facade and takes the wildcard: `import okay.
 in package `okay` itself (okay-async, okay-stream, okay-direct, …) sees the core's facade as package members
 and the classic's by `import okay.freer.*`, which wins. `okay.Pure` written in full in a module is the classic's
 now, `okay.freer.Pure`.
+
+## Stage 48: THE FACADE DEFINED ONCE, OVER THE TYPECLASS (DONE, 2026-10-07)
+
+The operator, after stage 47: "предлагаю !, +, %, Pure, pure и т.д. определить один раз в одном месте так
+чтобы это были алиасы над тайпклассом который зависит от контекста и указывал на реальные типы из конкретного
+пакета и мог переопределяться — фасад со статической диспетчеризацией". A type cannot be found by a given, but
+it can be a member of an object the import chooses — so the facade IS THE INSTANCE: the words are members of
+`Effects[M]` itself (the operator: "почему фасадом не может быть сам тип Effects?" — it can), each an alias over
+the primitives — `infix type ![A, R <: Row] = M[R, A]`, `effect` and `op.perform` (an `Op`, the row from the
+expected type where it is bound, stage 46 — now GENERIC, `perform(op).flatMap(f)` with the `Member` the bind
+finds), `p.handle(h)`, `p.value`. `Effects.machine` is the machine's given and `export Effects.machine.{given,
+*}` at the core's door makes `import okay.*` its words; `okay.freer.tree` is the tree's given (TestRowed
+writes the same program with `import okay.freer.tree.*`); a third encoding's facade is its given. The choice
+is the import, resolved at compile time; the rows (`+`, `%`, `Pure`, `+:`) are one vocabulary, not the
+facade's. (The first cut was a separate `trait Facade[M](using Effects[M])`; one trait is one fewer thing. The
+tree's given was `classic` first — and `classic$` is `Classic$`, the typeclass's companion, on a case-insensitive
+file system: Scala.js refused to move `classic.sjsir` onto `Classic.sjsir`, the JVM had silently let one class
+file overwrite the other. A given and a type that differ by case alone are one file on macOS; `tree`.)
+
+DOTTY, LEARNED, TWICE. (1) Two top-level `export`s in one package that reach each other — the rows exported from
+`okay.cont` in Effects.scala, the facade exported from `machine` in Facade.scala, `machine` needing `Effects`
+whose signature needs `Row` — resolve against each other and the compiler drops BOTH, reporting `Row` not found
+with no word about the exports. The rows are plain aliases now (`type Row = okay.cont.Row`, a `val Tagged` for
+the constructors), and the one export is the facade's. (2) In the first cut, the facade trait's `(using val E:
+Effects[M])` was a GIVEN member, and `export machine.given` exported it to package `okay` — where the very
+summon that built `machine` found it first: `machine.E` during `machine`'s own construction, a
+`NullPointerException` at the first `perform`. A `using val` in a trait that is exported is a given of the
+package; the merged design has no such parameter.
+
+The loose ends of stages 45–47 in the same lane: `okay.cont.Bang` stays the machine's own spelling for its own
+tests (a dependency-free module cannot take the core's facade) and the core's `+`/`%` are its aliases; the
+Native stage of the gate runs sbt at 14g (its NIR optimiser ran out of the 6g heap with three modules at once);
+a compiler crash in `ImportSuggestions` is named by the gate with the flag that shows the error under it;
+`okay.freer.Effects.scala` is Bang.scala (the classic's words) and Classic.scala (its typeclass and toolkit);
+the compile-and-apply-the-compiler's-suggestions loop that carried the import migration is
+`scripts/import-suggestions.py`; the runner's whole build found 169 unused imports the affected-scoped gates had
+never recompiled (zinc reports a warning only for a file it compiles), fixed from the runner's own log.

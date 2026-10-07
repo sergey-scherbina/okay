@@ -12,7 +12,7 @@ the measurement and the rule it produced.
 
 ## Nothing changed in your imports
 
-The package is still `okay`. `import okay.*` and `import okay.given`
+The package is still `okay`. `import okay.freer.*` and `import okay.freer.given` (the classic's words), the core's names by name
 reach across the artifact boundary in both directions, so code that
 used `Channel`, `Source`, `Chunks`, `Queues` or `Pipe` needs no edit.
 What changed is the build: a module that uses any of them declares

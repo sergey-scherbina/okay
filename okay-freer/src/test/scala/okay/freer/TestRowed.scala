@@ -1,6 +1,6 @@
 package okay.freer
 
-import okay.{Effects, Row, Pure, +:}
+import okay.{Effects, Row, Pure, +:, %}
 import okay.cont.{Answering, Handler, Ctx, Cont, StateCell, State}
 
 /** specs/freer-min.md, stage 47: the classic tree under the facade — the same program as the core's TestEffectsRows,
@@ -64,3 +64,15 @@ class TestRowed extends munit.FunSuite:
     def loop(n: Int, acc: Int): Rowed[Ask +: Pure, Int] =
       if n == 0 then E.pure(acc) else E.perform[Ask, Ask +: Pure, Int](Ask.Number).flatMap(x => E.tailcall(loop(n - 1, acc + x)))
     assertEquals(E.run(E.handle(reader[Int](1))(loop(100000, 0))), 100000)
+
+  test("the facade's words over the tree, chosen by the import: the same program as the core's TestEffectsRows"):
+    import okay.freer.tree.*
+    val counting: Int ! (State % Int +: Say +: Pure) =
+      for
+        n <- effect(State.Get[Int]())
+        _ <- effect(State.Put(n + 1))
+        _ <- effect(Say.Line(s"$n"))
+        m <- effect(State.Get[Int]())
+      yield m
+    assertEquals(counting.handle(StateCell[Int, Int](41)).handle(writer[(Int, Int)]).value, (List("41"), (42, 42)))
+    assertEquals(counting.handle(writer[Int]).handle(StateCell[Int, (List[String], Int)](41)).value, (42, (List("41"), 42)))

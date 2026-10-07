@@ -4,7 +4,6 @@ package okay.pg
 import okay.{Async, Source}
 import okay.freer.{!, Chunk}
 import okay.given
-import okay.freer.given
 import okay.crypto.given
 import okay.sql.SqlValue
 

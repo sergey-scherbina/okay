@@ -1,6 +1,6 @@
 # Tutorial: from a pure program to a streaming pipeline
 
-Everything below is `import okay.*` and `import okay.freer.*` away (tests in the repo run every
+Everything below is `import okay.freer.*` away (the classic's words; `import okay.*` is the machine's facade, the same words over the new program) (tests in the repo run every
 snippet's shape).
 
 ## 1. A program is a value

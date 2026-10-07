@@ -381,7 +381,10 @@ else
       echo "gate: platform stage $stage: $c (fresh sbt process)" | tee -a "$log"
       case "$c" in
         "family native"|"family native "*|"affected "*" test native"|"affected "*" test native staged")
-          sbt_run "$phase_log" "set Global / concurrentRestrictions := Seq(Tags.limitAll(1))" "$c" ;;
+          # the Native stage links every native module in ONE sbt: at .jvmopts' 6g the optimiser's NIR runs out
+          # of heap (effects-rows, 2026-10-07: OOM in BinarySerializer with three modules optimising at once);
+          # 14g on this 36 GB box, for this stage alone
+          sbt_run "$phase_log" "-J-Xmx14g" "set Global / concurrentRestrictions := Seq(Tags.limitAll(1))" "$c" ;;
         *) sbt_run "$phase_log" "$c" ;;
       esac
       status=$?
@@ -600,6 +603,13 @@ unknown=$(comm -23 "$failed_f" "$lost_f")
 rm -f "$failed_f" "$lost_f"
 if [ -z "$lost" ] || [ -n "$unknown" ]; then
   echo "gate: RED — a failure this script does not recognise; read $log"
+  # THE COMPILER CRASHED LOOKING FOR AN IMPORT TO SUGGEST (effects-rows, 2026-10-07): a name not found makes
+  # dotty's ImportSuggestions walk every root, and the JDK 25 rt-ext jar's javax.swing fails its classfile
+  # parser — an AssertionError in place of the error. The error is still there: say how to see it.
+  if grep -q "ImportSuggestions" "$clean" && grep -q "AssertionError: assertion failed: failure to resolve inner class" "$clean"; then
+    echo "gate: the compiler crashed in ImportSuggestions (a JDK rt-ext classfile) while reporting a NOT-FOUND name;"
+    echo "gate: to see the error itself, compile that module once with scalacOptions ++= Seq(\"-Ximport-suggestion-timeout\", \"0\")"
+  fi
   [ -n "$unknown" ] && { echo "gate: these failed in no known shape:"; echo "$unknown" | sed 's/^/  /'; }
   grep -E "^\[error\]" "$clean" | head -20
   exit $status

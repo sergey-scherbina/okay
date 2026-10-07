@@ -10,7 +10,7 @@ specs/modules-infra.md).
 |---|---|
 | `A ! F`, `pure`, `effect`, `op.perform` | a program of the tree: `Free[F, A]`, the effect tree at the unary signature over `Freer[G, S, R, A]`, the indexed tree (Kiselyov–Ishii, with Atkey's indexes) |
 | `Classic[M]` | the classic as a typeclass, over its union rows: level 0 — `pure`, `perform`, `flatMap`, `foldCont` into the carrier, `handle` by a clause — and level 1 — `shift`, `shift0`, `reset`, `handle(m, h)`, `run`, `foldMap` — for a program written once over any encoding of the tree; `Free` and `Eager` are its instances |
-| `Rowed[R, A]` | the tree under the core's facade: its instance of `Effects[M]`, the interface over nominal rows — operations tagged with their path, the machine's handlers run on the machine and reified back into the tree |
+| `Rowed[R, A]`, `classic` | the tree under the core's facade: its instance of `Effects[M]`, the interface over nominal rows — operations tagged with their path, the machine's handlers run on the machine and reified back into the tree; `import okay.freer.tree.*` gives it the facade's words (`A ! R`, `effect`, `handle`, `value`) |
 | `Classic`, `!` for short | the classic as a toolkit: `!.run`, `!.relay`, `!.translate`, `!.interpret`, `!.foldM`, `!.loop`, and the tree's constructors |
 | `given_Classic_Free`, `FreeEffects`, `cps` | the tree's `Classic` instance with the machine as its carrier; `import okay.freer.cps.{given_Classic_Free, *}` chooses the CPS `Cont` as it was |
 | `Handler`, `Answers`-handlers, `Row`, `Member`, `Distinct`, `Row.union`, `Row.flat` | handlers as values, rows as unions, their evidence; `split` and `TypeableK[Pure]`, the class test a union handler dispatches by |

@@ -343,7 +343,7 @@ okay-freer/src/main/scala/okay/freer/macros/ContMacro.scala	251	traversal	direct
 okay-freer/src/main/scala/okay/freer/macros/DistinctMacros.scala	66	leaves	direct		BOUNDED: per member of a row TYPE — its width, written in the program's types — during derivation, never per value
 okay-freer/src/main/scala/okay/freer/macros/DistinctMacros.scala	97	identityOf	mutual		BOUNDED: per member of a row TYPE — its width, written in the program's types — during derivation, never per value
 okay-freer/src/main/scala/okay/freer/macros/DistinctMacros.scala	119	under	mutual		BOUNDED: per member of a row TYPE — its width, written in the program's types — during derivation, never per value
-okay-freer/src/main/scala/okay/freer/Effects.scala	192	reflect	lambda	?,Effects.flatMap,Free.fold	TRAMPOLINED: the call is inside the target M's flatMap; 20 000 ops into Eager on a 128 KB stack (TestStackSafetyCore)
+okay-freer/src/main/scala/okay/freer/Classic.scala	193	reflect	lambda	?,Effects.flatMap,Free.fold	TRAMPOLINED: the call is inside the target M's flatMap; 20 000 ops into Eager on a 128 KB stack (TestStackSafetyCore)
 okay-freer/src/main/scala/okay/freer/macros/FlatMacros.scala	15	members	direct		BOUNDED: per member of a row TYPE — its width, written in the program's types — during derivation, never per value
 okay-freer/src/main/scala/okay/freer/macros/FlatMacros.scala	50	chain	lambda	QuoteUnpickler.unpickleExprV2	BOUNDED: per member of a row TYPE — its width, written in the program's types — during derivation, never per value
 okay-freer/src/main/scala/okay/freer/macros/FlatMacros.scala	61	build	lambda	Function1.apply,QuoteUnpickler.unpickleExprV2	BOUNDED: per member of a row TYPE — its width, written in the program's types — during derivation, never per value

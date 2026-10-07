@@ -32,7 +32,8 @@ def reader[A](n: Int): Handler[Ask, A, A] = new Handler[Ask, A, A]:
 ```
 
 The same program over any `Effects` encoding — the core's interface over rows, the machine its instance found
-with no import (the core's `TestEffectsRows`):
+with no import; the facade's words (`A ! R`, `effect`, `p.handle(h)`, `p.value`, `import okay.*`) are
+`Effects.machine`'s, this program's words (the core's `TestEffectsRows`):
 
 ```scala
 def prog[M[_ <: Row, _]](using E: Effects[M]): M[Ask +: Say +: Pure, Int] =

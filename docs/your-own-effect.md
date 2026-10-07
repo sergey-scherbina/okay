@@ -7,7 +7,7 @@ worked effect from that declaration to four interpretations of the
 same program — a real SQLite file, a Map, a trace of either, and pure
 `State` + `Writer` with no mutation anywhere.
 
-Everything here is `import okay.*` and `import okay.freer.*` away, and the file it is drawn from
+Everything here is `import okay.freer.*` away, and the file it is drawn from
 runs:
 
 ```

@@ -1,6 +1,7 @@
 package okay.freer
 
-import okay.{Effects, Row, Member, Removed, Members, Tagged, Pure}
+import okay.{Effects, Row, Removed, Pure}
+import okay.cont.{Member, Members, Tagged}
 
 import okay.cont.{Clause, Cont, Ctx, Handler, Has, Cap, In, Machine, Reach, Reaches, Root, Target, Top}
 
@@ -18,7 +19,7 @@ import okay.cont.{Clause, Cont, Ctx, Handler, Has, Cap, In, Machine, Reach, Reac
  */
 type Rowed[R <: Row, +A] = Free[[X] =>> Tagged[R, X], A]
 
-given given_Effects_Rowed: Effects[Rowed] with
+given tree: Effects[Rowed] with
   def pure[R <: Row, A](a: A): Rowed[R, A] = Free.Return(a)
   def perform[E[+_], R <: Row, X](op: E[X])(using m: Member[E, R]): Rowed[R, X] = Free.Inject(Tagged.At(op, m))
   def defer[R <: Row, A, B](thunk: () => Rowed[R, A])(f: A => Rowed[R, B]): Rowed[R, B] = Free.defer(thunk)(f)

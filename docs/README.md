@@ -294,7 +294,7 @@ API reference, gotchas.
 
 | module | what it is |
 |---|---|
-| `okay` (core) | effects, continuations, the algebra — covered by the guide/tutorial/typepedia above |
+| `okay` (core) | the interface over rows (`Effects[M]`), its words members of the instance (`A ! R`, `pure`, `effect`, `handle`, `value`; `import okay.*` is the machine's), the type classes; the guide/tutorial/typepedia above are the classic's |
 | [`okay-freer`](modules/okay-freer.md) | the classic: the effect library over the freer tree — `A ! F`, handlers, rows, the effects, `Cont` and its machine — package `okay.freer`, above the core as one `Effects` instance; `import okay.freer.*` beside `import okay.*` |
 | [`okay-cont`](modules/okay-cont.md) | delimited continuations typed by two stacks of answer types, handlers as delimiters, and the machine that runs them; `Effects[Prog]` beside `Effects[Free]` |
 | [`okay-async`](modules/okay-async.md) | the portable `Async` effect and its callback-based runtime semantics, with no platform default instances of its own |
