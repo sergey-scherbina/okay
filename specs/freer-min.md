@@ -1969,3 +1969,17 @@ machine's (`okay.freer.cps.!>` stays the CPS one, one import away); `Cont` is th
 `ShiftMachine` and `HandleFrames` stay with the classic — dynamic prompts have no place on the machine by design
 (stage 12; the level-2 finding of 2026-10-06).
 
+## Stage 52: STREAMS, ONE FRONT, TWO BACKENDS (DONE, 2026-10-08)
+
+The operator: "если имплементация стримов очень зависит от бекенда то нужно сделать две имплементации и
+соответствующий прозрачный фронтенд". It does: the classic's stream is a PUSH (`Source[W] = Unit ! Writer % W +
+Async`, a transformation a handler that tells again), and on the machine a handler's clause has no capability for
+the rest of the row, so the machine's stream is a PULL — `StreamCont.Src[W]`, an Async program that answers the
+next element and the rest, its transformations plain functions over that answer. The front is `Streaming[S]`,
+its words members of the instance as `Effects`'s are (`map`, `filter`, `take`, `++`, `flatMap`, `evalMap`,
+`foldLeft`, `toVector`, `merge`; `P[A]` the backend's Async program), the backend the import's choice:
+`okay.streams.machine` or `okay.streams.classic` (an opaque `Flow` over `Source`, so that its words are the
+stream's and not the program's). ONE suite, written once over `Streaming[S]`, runs on both. Measured
+(StreamContBenchmark, 100k): range collected 2786 us against the classic's 1323, mapped 4578 against 3842 — a few
+objects per element; the lead is a chunked pull. Findings: backlog.d/okay-core/stream-twin-findings.md.
+

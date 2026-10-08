@@ -1,0 +1,2 @@
+2026-10-08	f063b9043	quiet	StreamContBenchmark.contRange us/op (100k elements)	2786.180	1323.358	2.11	stream-twin: the machine pull (a Step, a Src, a delay, a bind per element) beside the classic Source.range runCollect (the base)
+2026-10-08	f063b9043	quiet	StreamContBenchmark.contRangeMap us/op (100k elements)	4577.648	3841.614	1.19	stream-twin: the same range mapped; the classic Writer.map walk is the base (re-run at -wi 5: the first round was 5003 +- 1840)
