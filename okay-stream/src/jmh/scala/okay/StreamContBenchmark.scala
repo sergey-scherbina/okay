@@ -30,4 +30,15 @@ class StreamContBenchmark {
 
   @Benchmark
   def contRangeMap(): Int = AsyncCont.runAsync(StreamCont.range(0, N).map(_ * 2).toVector).value.get.get.size
+
+  // the FAIR rival (stream-fair): the classic's own chunked form, chunks of the same 256, collected the same way
+
+  @Benchmark
+  def classicChunksRange(): Int =
+    Chunks.foldLeft(Chunks.range(0, N, 256))(Vector.newBuilder[Long])((b, x) => b += x).result().size
+
+  @Benchmark
+  def classicChunksRangeMap(): Int =
+    Chunks.foldLeft(Chunks.map(Chunks.range(0, N, 256))(_ * 2))(Vector.newBuilder[Long])((b, x) => b += x).result().size
 }
+
