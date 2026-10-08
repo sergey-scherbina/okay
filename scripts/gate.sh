@@ -610,6 +610,18 @@ if [ -z "$lost" ] || [ -n "$unknown" ]; then
     echo "gate: the compiler crashed in ImportSuggestions (a JDK rt-ext classfile) while reporting a NOT-FOUND name;"
     echo "gate: to see the error itself, compile that module once with scalacOptions ++= Seq(\"-Ximport-suggestion-timeout\", \"0\")"
   fi
+  # A LINK THAT FAILED ON STALE BUILD OUTPUT (stale-link, 2026-10-08): a test or source that MOVED to another
+  # module or package, or was deleted, leaves its .nir/.sjsir in target/, and the next Native or JS link takes
+  # them in — "Unreachable symbols", `Unknown method okay.Effects$.relay(okay.Freer …)` for classes no source has
+  # any more. Two whole builds on master were filed as noise for it (2026-10-07). Named here with the modules;
+  # `link-clean:` is what scripts/ci-runner.sh reads to clean them and gate once more
+  linked=$(grep -E "^\[error\] \([^ ]+ / Test / (nativeLink|fastLinkJS|fullLinkJS)\)" "$clean" \
+    | sed -E 's/^\[error\] \(([^ ]+) \/ Test.*/\1/' | sort -u | tr '\n' ' ')
+  if [ -n "$linked" ]; then
+    echo "gate: the LINK failed in: ${linked}— most often stale build output (a moved or deleted file's old .nir/.sjsir"
+    echo "gate: still in target/); clean those modules and gate again; a link that fails after a clean is a real one"
+    echo "gate: link-clean: $linked"
+  fi
   [ -n "$unknown" ] && { echo "gate: these failed in no known shape:"; echo "$unknown" | sed 's/^/  /'; }
   grep -E "^\[error\]" "$clean" | head -20
   exit $status

@@ -384,6 +384,20 @@ run_once() {
   phase="family all over $from..$to"
   sh scripts/gate-retry.sh "$root" "$log" 6 "family all"
   rc=$?
+  # STALE BUILD OUTPUT AT THE LINK (stale-link, 2026-10-08): gate.sh names the modules whose Native/JS link failed
+  # (`gate: link-clean:`); a moved or deleted file's old .nir/.sjsir is the usual cause, so they are cleaned and
+  # the whole build gated ONCE more. A link that fails again after the clean is a real one (below, not noise)
+  stale=$(sed -n 's/^gate: link-clean: //p' "$log" | tail -1)
+  if [ "$rc" -ne 0 ] && [ -n "$stale" ]; then
+    cleans=""
+    for m in $stale; do cleans="${cleans:+$cleans; }$m/clean"; done
+    echo "ci-runner: the link failed in ${stale}— cleaning their build output ($cleans) and gating once more" | tee -a "$log"
+    sh scripts/gate.sh "$cleans" >>"$log" 2>&1
+    echo "ci-runner: after the clean:" >>"$log"
+    sh scripts/gate-retry.sh "$root" "$log" 6 "family all"
+    rc=$?
+    relinked=1
+  fi
   touches_okay2=0
   git diff --name-only "$from..$to" -- okay2 2>/dev/null | grep -q . && touches_okay2=1
   if [ "$rc" -eq 0 ] && [ "$touches_okay2" -eq 1 ]; then
@@ -421,6 +435,11 @@ run_once() {
       # the exact same test gate.sh itself uses to detect a real failure
       # (its own grep -q "==> X") — one vocabulary, not a stricter copy
       # that could quietly stop matching what gate.sh actually prints
+      if [ "${relinked:-0}" -eq 1 ] && [ "$(sed -n 's/^gate: link-clean: //p' "$log" | wc -l)" -ge 2 ]; then
+        echo "ci-runner: RED — the link failed again after cleaning ($stale): a real link error, not stale output; not pushing, alerting the room" | tee -a "$log"
+        release_lock; trap - EXIT HUP INT TERM
+        return 1
+      fi
       if ! grep -q "==> X" "$log"; then
         echo "ci-runner: RED (exit $rc) with no test named in the log — infrastructure noise, not a verdict; not bisecting, will retry on the next kick" | tee -a "$log"
         release_lock; trap - EXIT HUP INT TERM
