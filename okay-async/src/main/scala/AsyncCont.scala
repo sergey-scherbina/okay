@@ -44,11 +44,31 @@ object AsyncCont:
 
   /** the callback terminal: never parks a thread; the future completes when the program answers, or fails at
    * the first throw, failed Await or failed step */
-  def runAsync[A](p: A ! (Async +: Pure)): Future[A] =
+  def runAsync[A](p: A ! (Async +: Pure)): Future[A] = runAsyncCancellable(p).future
+
+  /** the callback terminal with its cancellation door (async-cancel), as the classic's: `cancel` stops the drive
+   * at its next operation, unregisters a pending Await, releases the open cancel scopes and fails the future
+   * with a `CancellationException`; idempotent */
+  def runAsyncCancellable[A](p: A ! (Async +: Pure)): Async.Running[A] =
     val promise = Promise[A]()
     val d = Drive(promise)
-    d.loop(top(p, d.clause, Driven.Done(_), Runs))
-    promise.future
+    d.loop(top(p, d.clause, Driven.Done(_), d.runs))
+    Async.Running(promise.future, () => d.cancel())
+
+  /** the program run as a unit of its own, its failure a value: `Left` for a throw, a failed Await or a cancel
+   * of its own; cancelling the program this is part of cancels it too (the Await's canceller) */
+  def attempt[A](p: A ! (Async +: Pure)): Op[Async, Either[Throwable, A]] =
+    awaitEither[Either[Throwable, A]] { k =>
+      val running = runAsyncCancellable(p)
+      running.future.onComplete(t => k(Right(t.toEither)))(using scala.concurrent.ExecutionContext.parasitic)
+      () => running.cancel()
+    }
+
+  /** the operations that open and close a cancel scope (`Async.CancelScope`): the drive keeps the scope while it
+   * is open and releases it if the program is cancelled, fails, or ends with it still open; on the blocking
+   * handler they are empty Runs, as on the classic's */
+  def enter(scope: Async.CancelScope): Op[Async, Unit] = effect(Async.Run(Async.Enter(scope)))
+  def exit(scope: Async.CancelScope): Op[Async, Unit] = effect(Async.Run(Async.Exit(scope)))
 
   /** A MACHINE PROGRAM AS A CLASSIC ONE, for code still on the tree (the Scala 2 facade, a classic caller): each
    * operation the machine stops at becomes the same operation in the classic program, the rest of the machine
@@ -88,16 +108,6 @@ object AsyncCont:
       val cap = if runs == null then Cap.Reaching(reach) else Cap.Split(runs, reach)
       p.run(using inner, Has.HCons(cap, Has.HNil[inner.type]()))
 
-  /** a Run answered where it is performed, on the answering road: no walk to the clause, no capture */
-  private object Runs extends Partly[Async]:
-    def answers[X](op: Async[X]): Boolean = op match
-      case Async.Run(_) => true
-      case _ => false
-    def value[X](op: Async[X]): X = op match
-      case Async.Run(f) => f()
-      // `answers` sends an Await to the clause; this is never reached
-      case Async.Await(_, _) => throw IllegalStateException("an Await is answered by the drive's clause, not in place")
-
   /** where the drive stands when the machine stops: the program's answer, or parked at an Await whose callback
    * will continue it */
   private enum Driven[+A]:
@@ -106,7 +116,7 @@ object AsyncCont:
 
   /**
    * THE DRIVE ANSWERS IN PLACE WHAT IT CAN (drive-in-place). A Run never reaches the clause: the capability
-   * splits per operation (`Cap.Split`), a Run answered on the answering road where it is performed (`Runs`). The
+   * splits per operation (`Cap.Split`), a Run answered on the answering road where it is performed (`runs`). The
    * clause returns `k(x)` as its whole body for an Await whose callback fired during the registration — and a
    * clause that returns the last `k(x)` is answered WHERE THE OPERATION WAS, the stack as it stands, nothing
    * captured (the machine's own tail-resumption, `Captured.tail`). Only an Await still pending stops the machine: the clause keeps `k` for the
@@ -116,29 +126,74 @@ object AsyncCont:
    * that comes second reads it.
    */
   private final class Drive[A](promise: Promise[A]):
+    @volatile private var stopped = false
+    /** the pending Await's canceller */
+    @volatile private var unregister: () => Unit = () => ()
+    /** the open cancel scopes, newest first; changed under the drive's monitor */
+    @volatile private var scopes: List[Async.CancelScope] = Nil
+
+    private def marked(m: Async.ScopeMark): Unit = synchronized {
+      scopes = if m.entering then m.scope :: scopes else scopes.filterNot(_ eq m.scope)
+    }
+    private def releaseScopes(): Unit = scopes.foreach(s => try s.released() catch case NonFatal(_) => ())
+
+    def cancel(): Unit =
+      val now = synchronized { val was = stopped; stopped = true; !was }
+      if now then
+        unregister()
+        releaseScopes()
+        promise.tryFailure(java.util.concurrent.CancellationException("cancelled")): Unit
+
+    /** a Run answered where it is performed, on the answering road (`Cap.Split`): no walk to the clause, no
+     * capture — and the drive's own: a cancelled drive stops at it, a scope mark is kept */
+    val runs: Partly[Async] = new Partly[Async]:
+      def answers[X](op: Async[X]): Boolean = op match
+        case Async.Run(_) => true
+        case _ => false
+      def value[X](op: Async[X]): X = op match
+        case Async.Run(f) =>
+          if stopped then throw java.util.concurrent.CancellationException("cancelled")
+          f match
+            case m: Async.ScopeMark => marked(m)
+            case _ => ()
+          f()
+        // `answers` sends an Await to the clause; this is never reached
+        case Async.Await(_, _) => throw IllegalStateException("an Await is answered by the drive's clause, not in place")
+
     val clause: Clause[Async, EmptyTuple, Driven[A]] = new Clause[Async, EmptyTuple, Driven[A]]:
       def apply[X](op: Async[X], k: X => Top[Driven[A]]): Top[Driven[A]] = op match
         case Async.Run(f) => k(f())   // only through `toClassic`'s road; the drive's Runs are answered in place
-        case Async.Await(reg, _) =>
-          val got = AtomicReference[Either[Throwable, X] | Null](null)
-          val second = AtomicBoolean(false)
-          reg { r =>
-            got.set(r)
-            if second.getAndSet(true) then resume(r, k)
-          }: Unit
-          if !second.getAndSet(true) then Cont.Return(Driven.Parked)
-          else got.get.nn match
+        case Async.Await(reg, poll) =>
+          if stopped then throw java.util.concurrent.CancellationException("cancelled")
+          // ONE poll, no wait (drive-poll-then-park, as the classic's drive)
+          val now = if poll == null then null else poll()
+          if now != null then now match
             case Right(x) => k(x)
             case Left(e) => throw e
+          else
+            val got = AtomicReference[Either[Throwable, X] | Null](null)
+            val second = AtomicBoolean(false)
+            val cancelReg = reg { r =>
+              got.set(r)
+              if second.getAndSet(true) && !stopped then resume(r, k)
+            }
+            if !second.getAndSet(true) then
+              unregister = cancelReg
+              if stopped then cancelReg()
+              Cont.Return(Driven.Parked)
+            else got.get.nn match
+              case Right(x) => k(x)
+              case Left(e) => throw e
 
     def loop(t: Top[Driven[A]]): Unit =
       try
         Machine.value(t) match
-          case Driven.Done(a) => promise.trySuccess(a): Unit
+          // a scope still open at the end was never exited: its program stopped early — released
+          case Driven.Done(a) => { releaseScopes(); promise.trySuccess(a): Unit }
           case Driven.Parked => ()
-      catch case NonFatal(e) => promise.tryFailure(e): Unit
+      catch case NonFatal(e) => { releaseScopes(); promise.tryFailure(e): Unit }
 
     /** a late answer: the rest run from the callback's frame — itself a loop until the next pending Await */
     private def resume[X](r: Either[Throwable, X], k: X => Top[Driven[A]]): Unit = r match
       case Right(x) => loop(k(x))
-      case Left(e) => promise.tryFailure(e): Unit
+      case Left(e) => { releaseScopes(); promise.tryFailure(e): Unit }

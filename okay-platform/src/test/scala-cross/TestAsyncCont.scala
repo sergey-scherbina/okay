@@ -1,6 +1,6 @@
 package okay
 
-import okay.AsyncCont.{async, await, awaitEither}
+import okay.AsyncCont.{async, attempt, await, awaitEither, enter, exit}
 
 /** Async on the machine (cont-first-module): the callback drive, one source for the JVM, JS and Native suites */
 class TestAsyncCont extends munit.FunSuite {
@@ -54,4 +54,64 @@ class TestAsyncCont extends munit.FunSuite {
     val f = AsyncCont.runAsync[Int](async[Int](throw boom).at[Async +: Pure])
     assertEquals(f.value.flatMap(_.failed.toOption), Some(boom))
   }
+
+  // ---- cancellation, cancel scopes, attempt (async-cancel)
+
+  test("cancel while parked: the Await is unregistered, the future fails, a late answer resumes nothing") {
+    var unregistered = 0
+    var k0: Int => Unit = _ => ()
+    var after = false
+    val prog: P[Int] = awaitEither[Int](k => { k0 = x => k(Right(x)); () => unregistered += 1 })
+      .flatMap(x => async { after = true; x }.at)
+    val r = AsyncCont.runAsyncCancellable(prog)
+    r.cancel()
+    r.cancel()   // idempotent
+    assertEquals(unregistered, 1)
+    assert(r.future.value.flatMap(_.failed.toOption).exists(_.isInstanceOf[java.util.concurrent.CancellationException]))
+    k0(1)
+    assert(!after, "a cancelled drive resumed")
+  }
+
+  test("a scope open when the drive is cancelled is released, once") {
+    var released = 0
+    val scope = Async.CancelScope(() => released += 1)
+    val prog: P[Unit] = enter(scope).flatMap(_ => await[Unit](_ => ()).at)
+    val r = AsyncCont.runAsyncCancellable(prog)
+    assertEquals(released, 0)
+    r.cancel()
+    assertEquals(released, 1)
+  }
+
+  test("a scope exited is not released; one still open at the end is") {
+    var a = 0
+    var b = 0
+    val sa = Async.CancelScope(() => a += 1)
+    val sb = Async.CancelScope(() => b += 1)
+    val prog: P[Unit] = for
+      _ <- enter(sa)
+      _ <- exit(sa)
+      _ <- enter(sb)
+    yield ()
+    val f = AsyncCont.runAsync(prog)
+    assertEquals(f.value.flatMap(_.toOption), Some(()))
+    assertEquals((a, b), (0, 1))
+  }
+
+  test("attempt: a failure is a value and the program goes on; a success is Right") {
+    val boom = RuntimeException("inner")
+    val prog: P[(Either[Throwable, Int], Either[Throwable, Int])] = for
+      bad <- attempt[Int](async[Int](throw boom).at)
+      good <- attempt[Int](async(41).at)
+    yield (bad, good)
+    assertEquals(AsyncCont.runAsync(prog).value.flatMap(_.toOption), Some((Left(boom), Right(41))))
+  }
+
+  test("attempt under a cancel: the inner program is cancelled with the outer") {
+    var innerUnregistered = 0
+    val inner: P[Int] = awaitEither[Int](_ => () => innerUnregistered += 1).at
+    val r = AsyncCont.runAsyncCancellable(attempt(inner).at[Async +: Pure])
+    r.cancel()
+    assertEquals(innerUnregistered, 1)
+  }
 }
+
