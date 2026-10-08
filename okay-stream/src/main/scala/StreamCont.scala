@@ -16,67 +16,84 @@ import java.util.concurrent.atomic.AtomicBoolean
  * answers its first element and the rest, or that it ended (`Step`). Its transformations are functions over that
  * answer — no handler at all — and its effects are Async's alone. A stream is re-runnable when what it was built
  * from is (a `List`, a `range`; an `Iterator` is read once).
+ *
+ * A PULL ANSWERS A CHUNK (stream-chunks): a step is a run of elements, a lazy VIEW, and the rest — so the program's
+ * nodes (a Step, a Src, a delay, a bind) are paid per chunk, not per element, while `map` and `filter` stay lazy
+ * per element (a view): `take(3)` of a range computes three elements of its first chunk, not `ChunkSize`.
  */
 object StreamCont:
   type R = Async +: Pure
 
-  /** where a stream stands when pulled */
+  /** how many elements a range or a list answers per pull */
+  final val ChunkSize = 256
+
+  /** where a stream stands when pulled: ended, or a run of elements (a lazy view, never empty) and the rest */
   enum Step[+W]:
     case Done
-    case Next(w: W, rest: Src[W])
+    case Chunk(ws: scala.collection.View[W], rest: Src[W])
 
   /** a stream: the program that pulls it */
   final class Src[+W](val pull: Free[R, Step[W]]):
     def map[V](f: W => V): Src[V] = Src(pull.map {
       case Step.Done => Step.Done
-      case Step.Next(w, r) => Step.Next(f(w), r.map(f))
+      case Step.Chunk(ws, r) => Step.Chunk(ws.map(f), r.map(f))
     })
 
     def filter(p: W => Boolean): Src[W] = Src(pull.flatMap {
       case Step.Done => Free.pure(Step.Done)
-      case Step.Next(w, r) => if p(w) then Free.pure(Step.Next(w, r.filter(p))) else r.filter(p).pull
+      case Step.Chunk(ws, r) =>
+        // forced here, once: an empty chunk is not a step (a consumer would pull it for nothing)
+        val kept = ws.filter(p).toVector
+        if kept.nonEmpty then Free.pure(Step.Chunk(kept.view, r.filter(p))) else r.filter(p).pull
     })
 
-    /** the first `n` elements; the producer is not pulled past them */
+    /** the first `n` elements; the producer is not pulled past them, nor a chunk computed past them */
     def take(n: Int): Src[W] =
       if n <= 0 then StreamCont.empty
       else Src(pull.map {
         case Step.Done => Step.Done
-        case Step.Next(w, r) => Step.Next(w, r.take(n - 1))
+        case Step.Chunk(ws, r) =>
+          val got = ws.iterator.take(n).toVector
+          if got.size >= n then Step.Chunk(got.view, StreamCont.empty) else Step.Chunk(got.view, r.take(n - got.size))
       })
 
     /** this, then `that` */
     def ++[V >: W](that: => Src[V]): Src[V] = Src(pull.flatMap {
       case Step.Done => that.pull
-      case Step.Next(w, r) => Free.pure(Step.Next(w, r ++ that))
+      case Step.Chunk(ws, r) => Free.pure(Step.Chunk(ws, r ++ that))
     })
 
     /** each element's stream, in order */
     def flatMap[V](f: W => Src[V]): Src[V] = Src(pull.flatMap {
       case Step.Done => Free.pure(Step.Done)
-      case Step.Next(w, r) => (f(w) ++ r.flatMap(f)).pull
+      case Step.Chunk(ws, r) => (ws.foldRight(StreamCont.defer(r.flatMap(f)))((w, acc) => f(w) ++ acc)).pull
     })
 
-    /** an Async step per element */
+    /** an Async step per element, in order */
     def evalMap[V](f: W => V ! R): Src[V] = Src(pull.flatMap {
       case Step.Done => Free.pure(Step.Done)
-      case Step.Next(w, r) => f(w).map(v => Step.Next(v, r.evalMap(f)))
+      case Step.Chunk(ws, r) =>
+        def each(it: Iterator[W], acc: Vector[V]): Free[R, Vector[V]] =
+          if !it.hasNext then Free.pure(acc) else f(it.next()).flatMap(v => each(it, acc :+ v))
+        each(ws.iterator, Vector.empty).map(vs => Step.Chunk(vs.view, r.evalMap(f)))
     })
 
     def foldLeft[B](z: B)(f: (B, W) => B): B ! R = pull.flatMap {
       case Step.Done => Free.pure(z)
-      case Step.Next(w, r) => r.foldLeft(f(z, w))(f)
+      case Step.Chunk(ws, r) => r.foldLeft(ws.foldLeft(z)(f))(f)
     }
 
     def toVector: Vector[W] ! R = foldLeft(Vector.newBuilder[W])((b, w) => b += w).map(_.result())
 
     def runForeach(f: W => Unit ! R): Unit ! R = pull.flatMap {
       case Step.Done => Free.pure(())
-      case Step.Next(w, r) => f(w).flatMap(_ => r.runForeach(f))
+      case Step.Chunk(ws, r) =>
+        def each(it: Iterator[W]): Unit ! R = if !it.hasNext then r.runForeach(f) else f(it.next()).flatMap(_ => each(it))
+        each(ws.iterator)
     }
 
     /**
-     * both streams at once, each element as it comes: each side's next pull on its own fiber, the first answer
+     * both streams at once, each chunk as it comes: each side's next pull on its own fiber, the first answer
      * taken and its side pulled again, the other side's fiber kept. Not yet: a consumer that stops early leaves
      * the pending pulls running (the classic's merge closes them by a cancel scope)
      */
@@ -86,8 +103,8 @@ object StreamCont:
   private def merging[W](fa: Fiber[Step[W]], fb: Fiber[Step[W]])(using Scheduler): Src[W] =
     Src(first(fa, fb).flatMap {
       case (Step.Done, other) => join(other).map(s => s)
-      case (Step.Next(w, r), other) =>
-        Free.pure(Step.Next(w, Src(fork(r.pull).flatMap(again => merging(again, other).pull))))
+      case (Step.Chunk(ws, r), other) =>
+        Free.pure(Step.Chunk(ws, Src(fork(r.pull).flatMap(again => merging(again, other).pull))))
     })
 
   /** which of two fibers answers first: its answer, and the other fiber */
@@ -104,24 +121,31 @@ object StreamCont:
   /** pulled again only when its rest is pulled: a tail call between mutually recursive streams costs no frame */
   def defer[W](s: => Src[W]): Src[W] = Src(Free.delay(() => s.pull))
 
-  def emit[W](w: W): Src[W] = Src(Free.pure(Step.Next(w, empty)))
+  def emit[W](w: W): Src[W] = Src(Free.pure(Step.Chunk(scala.collection.View.Single(w), empty)))
 
   def apply[W](ws: W*): Src[W] = fromList(ws.toList)
 
-  def fromList[W](ws: List[W]): Src[W] = ws match
-    case Nil => empty
-    case w :: more => Src(Free.pure(Step.Next(w, defer(fromList(more)))))
+  def fromList[W](ws: List[W]): Src[W] =
+    if ws.isEmpty then empty
+    else
+      val (now, later) = ws.splitAt(ChunkSize)
+      Src(Free.pure(Step.Chunk(now.view, defer(fromList(later)))))
 
-  /** read once: the iterator is made when the stream is first pulled */
+  /** read once, one element a pull: the iterator is made when the stream is first pulled, and nothing is read
+   * ahead of what is pulled (its elements may be effects of their own) */
   def fromIterator[W](it: => Iterator[W]): Src[W] = Src(Free.delay(() => reading(it).pull))
   private def reading[W](it: Iterator[W]): Src[W] =
-    Src(Free.delay(() => if it.hasNext then Free.pure(Step.Next(it.next(), reading(it))) else Free.pure(Step.Done)))
+    Src(Free.delay(() =>
+      if it.hasNext then Free.pure(Step.Chunk(scala.collection.View.Single(it.next()), reading(it))) else Free.pure(Step.Done)))
 
   def range(from: Long, until: Long): Src[Long] =
-    if from >= until then empty else Src(Free.pure(Step.Next(from, defer(range(from + 1, until)))))
+    if from >= until then empty
+    else
+      val to = math.min(until, from + ChunkSize)
+      Src(Free.pure(Step.Chunk((from until to).view, defer(range(to, until)))))
 
   /** one Async step as a stream of its answer */
-  def eval[W](op: W ! R): Src[W] = Src(op.map(w => Step.Next(w, empty)))
+  def eval[W](op: W ! R): Src[W] = Src(op.map(w => Step.Chunk(scala.collection.View.Single(w), empty)))
 
   // ---- bridges to the classic Source, per element
 
@@ -129,12 +153,15 @@ object StreamCont:
   def fromSource[W](s: Source[W]): Src[W] =
     Src(AsyncCont.fromClassic(Writer.uncons[W, Unit, Async](s)).at[R].map {
       case Left(()) => Step.Done
-      case Right((w, rest)) => Step.Next(w, fromSource(rest))
+      case Right((w, rest)) => Step.Chunk(scala.collection.View.Single(w), fromSource(rest))
     })
 
   /** the machine's stream as a classic one: each pull a classic program (`toClassic`), each element told */
   def toSource[W](s: Src[W]): Source[W] =
     AsyncCont.toClassic(s.pull).plus[okay.freer.%[Writer, W]].flatMap {
       case Step.Done => okay.freer.pure(())
-      case Step.Next(w, r) => Writer.tell(w).plus[Async].flatMap(_ => toSource(r))
+      case Step.Chunk(ws, r) =>
+        def tells(it: Iterator[W]): Source[W] =
+          if !it.hasNext then toSource(r) else Writer.tell(it.next()).plus[Async].flatMap(_ => tells(it))
+        tells(ws.iterator)
     }
