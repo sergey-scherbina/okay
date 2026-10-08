@@ -16,12 +16,15 @@
       mapped 659 against 3842 (0.17x). AGAINST THE FAIR RIVAL
       (stream-fair, 2026-10-08), the classic's own chunked form (`Chunks`,
       256 per chunk, inline `map`/`foldLeft`), the machine is 2.0x: 296
-      against 593 collected, 325 against 659 mapped. Leads: a STRICT chunk
-      (`ArraySeq`, as `Chunks`) where nothing needs the view's laziness
-      (a range, a list, a map), keeping the view only where `take` and a
-      side-effecting producer need it; specialised (unboxed) chunks for
-      primitives; and the per-chunk program nodes (a Step, a Src, a delay,
-      a bind) measured alone.
+      against 593 collected, 325 against 659 mapped. A STRICT chunk
+      (stream-strict, 2026-10-08: `ArraySeq`, as `Chunks`; `map` computes
+      its chunk at once, `take` still never pulls the producer past the
+      chunk it needs, `fromIterator` still one element a pull): 469
+      collected (1.58x `Chunks`), 635 mapped (1.95x). What is left is the
+      `map` itself — `Chunks.map` is `inline` and specialised, the
+      machine's an `ArraySeq.map` over boxed elements — and the per-chunk
+      program nodes; leads: an inline map/fold over the chunk, measured
+      alone.
       (3) `merge` on the pull leaves the pending pulls running when the
       consumer stops early; the classic closes them by a cancel scope —
       the machine's drive has scopes now (async-cancel), not yet used here.

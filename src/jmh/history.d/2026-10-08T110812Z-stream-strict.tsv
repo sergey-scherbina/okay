@@ -1,0 +1,2 @@
+2026-10-08	92e1b2e05	quiet	StreamContBenchmark.contRange us/op (100k elements)	468.618	592.954	0.79	stream-strict: the chunk a strict ArraySeq (range unboxed) against the lazy view (the base); classic Chunks 296
+2026-10-08	92e1b2e05	quiet	StreamContBenchmark.contRangeMap us/op (100k elements)	634.869	658.870	0.96	stream-strict: mapped, within noise of the view; classic Chunks 325
