@@ -23,8 +23,13 @@
       collected (1.58x `Chunks`), 635 mapped (1.95x). What is left is the
       `map` itself — `Chunks.map` is `inline` and specialised, the
       machine's an `ArraySeq.map` over boxed elements — and the per-chunk
-      program nodes; leads: an inline map/fold over the chunk, measured
-      alone.
+      program nodes. INLINE (stream-inline, 2026-10-08: `map`/`filter`/
+      `foldLeft` build their chunk loop once at the call site, the
+      classic's `ChunkBuf.mapper`/`filterer`, and recurse on it as a
+      value): 450 collected (1.52x `Chunks`), 474 mapped (1.46x) — `map`
+      now costs what the classic's does; what is left, ~0.4 us a chunk,
+      is the pull itself (a Step, a Src, a delay, a bind, run through the
+      machine), the next thing to measure alone.
       (3) `merge` on the pull leaves the pending pulls running when the
       consumer stops early; the classic closes them by a cancel scope —
       the machine's drive has scopes now (async-cancel), not yet used here.

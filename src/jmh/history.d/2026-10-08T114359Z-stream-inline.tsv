@@ -1,0 +1,2 @@
+2026-10-08	fdc362a86	quiet	StreamContBenchmark.contRange us/op (100k elements)	449.688	468.618	0.96	stream-inline: inline specialised foldLeft over the chunk (base: strict chunk); classic Chunks 296
+2026-10-08	fdc362a86	quiet	StreamContBenchmark.contRangeMap us/op (100k elements)	473.868	634.869	0.75	stream-inline: inline specialised map (ChunkBuf.mapper) and fold; classic Chunks 325

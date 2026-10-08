@@ -1994,4 +1994,6 @@ effects). Measured (StreamContBenchmark, 100k): range collected 593 us (was 2786
 Source 1323), mapped 659 (was 4578; the classic 3842). The classic's own chunked form is the fair rival, not yet
 measured beside it. The chunk is STRICT since stream-strict (an `ArraySeq`, as the classic's `Chunks`): 469 us collected, 635
 mapped, against `Chunks`' 296 and 325 (stream-fair) — `map` computes its chunk at once (a pure function may run
-ahead within a chunk, as `Chunks.map` does); `take` never pulls the producer past the chunk it needs.
+ahead within a chunk, as `Chunks.map` does); `take` never pulls the producer past the chunk it needs. `map`, `filter` and `foldLeft` are `inline` since stream-inline (the chunk loop built once at the call site,
+`ChunkBuf.mapper`/`filterer`, the recursion handed it as a value): 450 us collected, 474 mapped — 1.5x `Chunks`,
+the rest the pull's own nodes per chunk.
