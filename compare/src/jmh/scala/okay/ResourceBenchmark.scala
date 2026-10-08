@@ -6,11 +6,9 @@ import okay.freer.*
 
 import okay.std.*
 import okay.freer.given
-import okay.std.given
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 
-import !.*
 import okay.freer.Row.at
 // AsyncFailing.anyRow no longer lives in Failing's own companion after
 // the async split, so it needs an explicit import (was automatic at HEAD).

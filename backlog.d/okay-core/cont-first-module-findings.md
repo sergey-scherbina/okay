@@ -34,6 +34,7 @@
       machine's per-operation cost (the answering `AsyncCont.run`,
       1.09x), not the drive's.
       (6) WHAT ASYNC LACKS ON THE MACHINE before okay-stream can move:
-      `attempt` (Retry), cancel scopes and `runAsyncCancellable`,
-      fibers/`Scheduler.fork`, the drive's poll-then-park. okay-cache
-      needed none of them.
+      fibers/`Scheduler.fork`. DONE (async-cancel, 2026-10-08): `attempt`,
+      the cancellable drive (`runAsyncCancellable`), cancel scopes
+      (`enter`/`exit`), the drive's one poll before registering; the drive
+      measured unchanged (278 us against 273).

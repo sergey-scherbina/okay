@@ -1,0 +1,1 @@
+2026-10-08	a34a4abb0	quiet	AsyncDriveBenchmark.contRunAsync10k us/op (10k ops)	278.101	273.304	1.02	async-cancel: the drive checks its stop flag at each Run and keeps scope marks; within the noise of 273 (drive-in-place)

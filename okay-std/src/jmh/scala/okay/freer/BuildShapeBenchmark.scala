@@ -2,8 +2,6 @@ package okay.freer
 
 
 import okay.std.*
-import okay.std.given
-import okay.given
 
 import java.util.concurrent.TimeUnit
 import org.openjdk.jmh.annotations.{State as JmhState, *}

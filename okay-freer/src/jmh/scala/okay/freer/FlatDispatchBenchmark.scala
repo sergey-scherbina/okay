@@ -1,11 +1,9 @@
 package okay.freer
 import okay.{Answers, Effect}
-import okay.given
 
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 
-import !.*
 
 case class E1[+A](a: A) derives Effect
 case class E2[+A](a: A) derives Effect

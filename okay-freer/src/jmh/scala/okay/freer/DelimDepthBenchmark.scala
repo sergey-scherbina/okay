@@ -1,6 +1,4 @@
 package okay.freer
-import okay.{sequence}
-import okay.given
 
 import org.openjdk.jmh.annotations.*
 import java.util.concurrent.TimeUnit

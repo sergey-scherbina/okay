@@ -1,12 +1,8 @@
 package okay
 
 
-import okay.freer.*
 
 
-import okay.std.*
-import okay.freer.given
-import okay.std.given
 import org.openjdk.jmh.annotations.{State, *}
 import java.util.concurrent.TimeUnit
 import okay.codec.{Cbor, Json, Schema}

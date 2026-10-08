@@ -31,6 +31,10 @@ drive `runAsync` (a Run and an Await answered during its registration
 in place, only a pending Await stops the machine — 1.15x the classic
 drive), and the two
 bridges to the classic tree, `toClassic` and `fromClassic`, one crossing
-per program. Not yet there: `attempt`, cancel scopes, fibers, the
-poll-then-park drive (backlog: cont-first-module-findings).
+per program. `runAsyncCancellable` is the drive with its cancellation door
+(the classic's semantics: stop at the next operation, unregister the pending
+Await, release the open scopes); `enter`/`exit` open and close an
+`Async.CancelScope`; `attempt` runs a program as a unit of its own, its
+failure a `Left`. Not yet there: fibers (backlog:
+cont-first-module-findings).
 

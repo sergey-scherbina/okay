@@ -1,6 +1,5 @@
 package okay.freer
 import okay.{Answers, traverse}
-import okay.given
 
 import org.openjdk.jmh.annotations.*
 import java.util.concurrent.TimeUnit
