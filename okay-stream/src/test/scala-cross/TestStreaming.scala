@@ -12,12 +12,14 @@ abstract class StreamingSuite[S[_]](backend: String)(using St: Streaming[S]) ext
       .map(v => assertEquals(v, Vector(0L, 6L, 12L, 18L)))
   }
 
-  test(s"$backend: take does not resume the producer past what it keeps") {
+  test(s"$backend: take does not run the producer to its end") {
+    // a pure `map` may compute ahead within a chunk (a chunked backend computes its chunk at once); what `take`
+    // guarantees is that the producer is not run past what it needed
     var made = 0
-    val s = range(0, 1000).map { i => made += 1; i }
+    val s = range(0, 100000).map { i => made += 1; i }
     runAsync(s.take(3).toVector).map { v =>
       assertEquals(v, Vector(0L, 1L, 2L))
-      assert(made <= 4, s"made $made")
+      assert(made <= 1000, s"made $made")
     }
   }
 

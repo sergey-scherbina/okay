@@ -5,6 +5,7 @@ import okay.cont.Free
 import okay.std.Writer
 import okay.freer.Row.plus
 import java.util.concurrent.atomic.AtomicBoolean
+import scala.collection.immutable.ArraySeq
 
 /**
  * THE STREAM ON THE MACHINE, A TWIN (stream-twin): beside the classic `Source[W] = Unit ! Writer % W + Async`, a
@@ -17,9 +18,10 @@ import java.util.concurrent.atomic.AtomicBoolean
  * answer — no handler at all — and its effects are Async's alone. A stream is re-runnable when what it was built
  * from is (a `List`, a `range`; an `Iterator` is read once).
  *
- * A PULL ANSWERS A CHUNK (stream-chunks): a step is a run of elements, a lazy VIEW, and the rest — so the program's
- * nodes (a Step, a Src, a delay, a bind) are paid per chunk, not per element, while `map` and `filter` stay lazy
- * per element (a view): `take(3)` of a range computes three elements of its first chunk, not `ChunkSize`.
+ * A PULL ANSWERS A CHUNK (stream-chunks): a step is a run of elements and the rest — so the program's nodes (a
+ * Step, a Src, a delay, a bind) are paid per chunk, not per element. The chunk is STRICT (stream-strict), an
+ * `ArraySeq` as the classic's `Chunks`: `map` computes its chunk at once, and `take` never pulls the producer past
+ * the chunk it needs; a producer whose elements are effects reads one per pull (`fromIterator`).
  */
 object StreamCont:
   type R = Async +: Pure
@@ -30,7 +32,7 @@ object StreamCont:
   /** where a stream stands when pulled: ended, or a run of elements (a lazy view, never empty) and the rest */
   enum Step[+W]:
     case Done
-    case Chunk(ws: scala.collection.View[W], rest: Src[W])
+    case Chunk(ws: ArraySeq[W], rest: Src[W])
 
   /** a stream: the program that pulls it */
   final class Src[+W](val pull: Free[R, Step[W]]):
@@ -42,19 +44,18 @@ object StreamCont:
     def filter(p: W => Boolean): Src[W] = Src(pull.flatMap {
       case Step.Done => Free.pure(Step.Done)
       case Step.Chunk(ws, r) =>
-        // forced here, once: an empty chunk is not a step (a consumer would pull it for nothing)
-        val kept = ws.filter(p).toVector
-        if kept.nonEmpty then Free.pure(Step.Chunk(kept.view, r.filter(p))) else r.filter(p).pull
+        // an empty chunk is not a step (a consumer would pull it for nothing)
+        val kept = ws.filter(p)
+        if kept.nonEmpty then Free.pure(Step.Chunk(kept, r.filter(p))) else r.filter(p).pull
     })
 
-    /** the first `n` elements; the producer is not pulled past them, nor a chunk computed past them */
+    /** the first `n` elements; the producer is not pulled past the chunk that holds the last of them */
     def take(n: Int): Src[W] =
       if n <= 0 then StreamCont.empty
       else Src(pull.map {
         case Step.Done => Step.Done
         case Step.Chunk(ws, r) =>
-          val got = ws.iterator.take(n).toVector
-          if got.size >= n then Step.Chunk(got.view, StreamCont.empty) else Step.Chunk(got.view, r.take(n - got.size))
+          if ws.length >= n then Step.Chunk(ws.take(n), StreamCont.empty) else Step.Chunk(ws, r.take(n - ws.length))
       })
 
     /** this, then `that` */
@@ -75,7 +76,7 @@ object StreamCont:
       case Step.Chunk(ws, r) =>
         def each(it: Iterator[W], acc: Vector[V]): Free[R, Vector[V]] =
           if !it.hasNext then Free.pure(acc) else f(it.next()).flatMap(v => each(it, acc :+ v))
-        each(ws.iterator, Vector.empty).map(vs => Step.Chunk(vs.view, r.evalMap(f)))
+        each(ws.iterator, Vector.empty).map(vs => Step.Chunk(ArraySeq.untagged.from(vs), r.evalMap(f)))
     })
 
     def foldLeft[B](z: B)(f: (B, W) => B): B ! R = pull.flatMap {
@@ -121,7 +122,7 @@ object StreamCont:
   /** pulled again only when its rest is pulled: a tail call between mutually recursive streams costs no frame */
   def defer[W](s: => Src[W]): Src[W] = Src(Free.delay(() => s.pull))
 
-  def emit[W](w: W): Src[W] = Src(Free.pure(Step.Chunk(scala.collection.View.Single(w), empty)))
+  def emit[W](w: W): Src[W] = Src(Free.pure(Step.Chunk(ArraySeq.untagged(w), empty)))
 
   def apply[W](ws: W*): Src[W] = fromList(ws.toList)
 
@@ -129,23 +130,23 @@ object StreamCont:
     if ws.isEmpty then empty
     else
       val (now, later) = ws.splitAt(ChunkSize)
-      Src(Free.pure(Step.Chunk(now.view, defer(fromList(later)))))
+      Src(Free.pure(Step.Chunk(ArraySeq.untagged.from(now), defer(fromList(later)))))
 
   /** read once, one element a pull: the iterator is made when the stream is first pulled, and nothing is read
    * ahead of what is pulled (its elements may be effects of their own) */
   def fromIterator[W](it: => Iterator[W]): Src[W] = Src(Free.delay(() => reading(it).pull))
   private def reading[W](it: Iterator[W]): Src[W] =
     Src(Free.delay(() =>
-      if it.hasNext then Free.pure(Step.Chunk(scala.collection.View.Single(it.next()), reading(it))) else Free.pure(Step.Done)))
+      if it.hasNext then Free.pure(Step.Chunk(ArraySeq.untagged(it.next()), reading(it))) else Free.pure(Step.Done)))
 
   def range(from: Long, until: Long): Src[Long] =
     if from >= until then empty
     else
       val to = math.min(until, from + ChunkSize)
-      Src(Free.pure(Step.Chunk((from until to).view, defer(range(to, until)))))
+      Src(Free.pure(Step.Chunk(ArraySeq.range(from, to), defer(range(to, until)))))
 
   /** one Async step as a stream of its answer */
-  def eval[W](op: W ! R): Src[W] = Src(op.map(w => Step.Chunk(scala.collection.View.Single(w), empty)))
+  def eval[W](op: W ! R): Src[W] = Src(op.map(w => Step.Chunk(ArraySeq.untagged(w), empty)))
 
   // ---- bridges to the classic Source, per element
 
@@ -153,7 +154,7 @@ object StreamCont:
   def fromSource[W](s: Source[W]): Src[W] =
     Src(AsyncCont.fromClassic(Writer.uncons[W, Unit, Async](s)).at[R].map {
       case Left(()) => Step.Done
-      case Right((w, rest)) => Step.Chunk(scala.collection.View.Single(w), fromSource(rest))
+      case Right((w, rest)) => Step.Chunk(ArraySeq.untagged(w), fromSource(rest))
     })
 
   /** the machine's stream as a classic one: each pull a classic program (`toClassic`), each element told */
