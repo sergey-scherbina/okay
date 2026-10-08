@@ -198,9 +198,9 @@ object Free:
 /**
  * AN OPERATION AS A PROGRAM OVER ANY ROW THAT HAS ITS EFFECT: the row is not the operation's to say — it is the
  * program's it is bound into, so `flatMap` and `map` take it from the expected type (`Member`, the path the
- * compiler builds), and a bare operation becomes a `Free[R, X]` by the same path where one is expected (`at`,
- * or the conversion). Bound, it performs through the one `Has` of the run, at its path: no program built around
- * it, no row joined.
+ * compiler builds), and a bare operation becomes a `Free[R, X]` by the same path where one is expected: `at`, its
+ * row inferred from the expected type (no conversion — one warns at every use site, op-at). Bound, it performs
+ * through the one `Has` of the run, at its path: no program built around it, no row joined.
  */
 final class Op[E[+_], X](val op: E[X]):
   def flatMap[R <: Row, B](f: X => Free[R, B])(using m: Member[E, R]): Free[R, B] = new Free[R, B]:
@@ -211,6 +211,3 @@ final class Op[E[+_], X](val op: E[X]):
   /** the operation as a program at a row, written */
   def at[R <: Row](using m: Member[E, R]): Free[R, X] = new Free[R, X]:
     def run(using c: Ctx, has: Has[R, c.type]): Cont[c.Here, c.Here, X] = has.at(m).perform(op, c)
-object Op:
-  /** a bare operation where a program over `R` is expected */
-  given toFree[E[+_], X, R <: Row](using m: Member[E, R]): Conversion[Op[E, X], Free[R, X]] = _.at[R]

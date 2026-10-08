@@ -43,7 +43,7 @@ class TestAsyncCont extends munit.FunSuite {
   test("a failed Await fails the future at that operation; the rest does not run") {
     var after = false
     val boom = RuntimeException("boom")
-    val prog: P[Int] = awaitEither[Int](k => { k(Left(boom)); () => () }).flatMap(x => async { after = true; x })
+    val prog: P[Int] = awaitEither[Int](k => { k(Left(boom)); () => () }).flatMap(x => async { after = true; x }.at)
     val f = AsyncCont.runAsync(prog)
     assertEquals(f.value.flatMap(_.failed.toOption), Some(boom))
     assert(!after)

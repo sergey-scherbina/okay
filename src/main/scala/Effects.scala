@@ -2,7 +2,6 @@ package okay
 
 import okay.cont.Handler
 import scala.annotation.implicitNotFound
-import scala.language.implicitConversions
 import scala.quoted.*
 
 /**
@@ -83,7 +82,8 @@ trait Effects[M[_ <: Row, _]]:
    * AN OPERATION AS A PROGRAM OVER ANY ROW THAT HAS ITS EFFECT: the row is not the operation's to say — it is the
    * program's it is bound into, so `flatMap` and `map` take it from the expected type (`Member`, the path the
    * compiler builds), as the classic's `effect` took its signature from the context; a bare operation becomes a
-   * program by the same path where one is expected (`at`, or the conversion). A `for` over mixed effects declares
+   * program by the same path where one is expected (`at`, its row inferred from the expected type — no
+   * conversion: one warns at every use site, op-at). A `for` over mixed effects declares
    * the program's row and nothing else.
    */
   final class Op[F[+_], X](val op: F[X]):
@@ -92,8 +92,6 @@ trait Effects[M[_ <: Row, _]]:
     /** the operation as a program at a row, written */
     def at[R <: Row](using m: Member[F, R]): M[R, X] = perform[F, R, X](op)
 
-  /** a bare operation where a program over `R` is expected */
-  given opToProgram[F[+_], X, R <: Row](using m: Member[F, R]): Conversion[Op[F, X], M[R, X]] = _.at[R]
 
 object Effects:
   /** THE DEFAULT: the machine's program itself — the instance found with no import, as a companion's given is,

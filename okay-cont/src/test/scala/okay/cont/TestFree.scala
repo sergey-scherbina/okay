@@ -1,6 +1,8 @@
 package okay.cont
 
 import Machine.value
+// `reordered` (stage 44) is a conversion: a row in another order where one is expected, opted into here
+import scala.language.implicitConversions
 
 /** specs/freer-min.md, stage 27: `Free[R, A]` with rows, over `Cont` */
 class TestFree extends okay.testkit.Munit.Diagnosed:
@@ -95,6 +97,6 @@ class TestFree extends okay.testkit.Munit.Diagnosed:
       effect(State.Get[Int]()).flatMap(n => effect(Say.Line(s"$n")).map(_ => n + 1))
     val run: (List[String], (Int, Int)) ! Pure = Free.handle(writer[(Int, Int)])(Free.handle(StateCell[Int, Int](41))(counting))
     assertEquals(run.value, (List("41"), (41, 42)))
-    val one: Int ! (Pure + Ask) = effect(Ask.Number)   // a bare operation, at the row expected
+    val one: Int ! (Pure + Ask) = effect(Ask.Number).at   // a bare operation, at the row expected
     val same: Int ! (Ask +: Pure) = rest[Pure](one)
     assertEquals(value(Free.top(Free.handle(reader[Int](7))(same))), 7)

@@ -10,12 +10,13 @@
       `using`. A facade word for "a program over any row with E" would
       take that back (a type lambda over `R` cannot be a return type; a
       `Prog[E, A]` class with the row from the bind, as `Op` does, can).
-      (2) THE CONVERSION WARNS. `opToProgram` (stage 48) needs
-      `scala.language.implicitConversions` at every USE site: 14 feature
-      warnings in okay-cache's tests. The tests write `.at` instead (the
-      row inferred from the expected type), which needs no conversion;
-      either the conversion goes, or the facade finds a form that does
-      not warn.
+      (2) DONE (op-at, 2026-10-08): the `Op` → program conversions are
+      gone, the facade's (`opToProgram`) and okay-cont's (`Op.toFree`):
+      each warned at every use site. A bare operation where a program is
+      expected is written `.at`, its row inferred from the expected type;
+      bound by `flatMap`/`map` it needs nothing. `Free.reordered` (stage
+      44, a row in another order) stays a conversion, opted into where it
+      is used.
       (3) NO EXPECTED TYPE, NO ROW. An overloaded `run(p)` / `run(op)`
       leaves `getOrLoad[R]`'s row undetermined (inferred `Async +: Row`);
       the tests split it into `run` and `runOp`. Any API that takes a
