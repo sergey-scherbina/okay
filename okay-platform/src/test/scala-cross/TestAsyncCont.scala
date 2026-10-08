@@ -1,6 +1,6 @@
 package okay
 
-import okay.AsyncCont.{async, attempt, await, awaitEither, enter, exit}
+import okay.AsyncCont.{async, attempt, await, awaitEither, enter, exit, fork, join, sleep}
 
 /** Async on the machine (cont-first-module): the callback drive, one source for the JVM, JS and Native suites */
 class TestAsyncCont extends munit.FunSuite {
@@ -112,6 +112,45 @@ class TestAsyncCont extends munit.FunSuite {
     val r = AsyncCont.runAsyncCancellable(attempt(inner).at[Async +: Pure])
     r.cancel()
     assertEquals(innerUnregistered, 1)
+  }
+
+  // ---- fibers (async-fibers)
+
+  test("par pairs two answers by completion callbacks, no parking") {
+    val prog = AsyncCont.par(sleep(20).map(_ => 1), sleep(10).map(_ => 2))
+    AsyncCont.runAsync(prog.at[Async +: Pure]).map(v => assertEquals(v, (1, 2)))
+  }
+
+  test("a child failure fails par and cancels the sibling") {
+    val boom = RuntimeException("boom")
+    val prog = AsyncCont.par(async[Int](throw boom).at[Async +: Pure], sleep(500).map(_ => 2))
+    AsyncCont.runAsync(prog.at[Async +: Pure]).failed.map(e => assertEquals(e.getMessage, "boom"))
+  }
+
+  test("race: the first to succeed wins") {
+    val never: P[String] = await[String](_ => ()).at
+    val prog = AsyncCont.race(never, sleep(1).map(_ => "fast"))
+    AsyncCont.runAsync(prog.at[Async +: Pure]).map(v => assertEquals(v, "fast"))
+  }
+
+  test("fork and join: a fiber joined as an operation") {
+    val prog: P[Int] = for
+      f <- fork(sleep(10).map(_ => 21))
+      x <- join(f)
+    yield x * 2
+    AsyncCont.runAsync(prog).map(v => assertEquals(v, 42))
+  }
+
+  test("timeout: None when the program is slower; its own failure comes through at once") {
+    val boom = RuntimeException("now")
+    val slow = AsyncCont.timeout(10)(sleep(1000).map(_ => 1))
+    val failing = AsyncCont.timeout(1000)(async[Int](throw boom).at[Async +: Pure])
+    for
+      a <- AsyncCont.runAsync(slow.at[Async +: Pure])
+      b <- AsyncCont.runAsync(failing.at[Async +: Pure]).failed
+    yield
+      assertEquals(a, None)
+      assertEquals(b.getMessage, "now")
   }
 }
 

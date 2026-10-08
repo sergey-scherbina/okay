@@ -64,6 +64,74 @@ object AsyncCont:
       () => running.cancel()
     }
 
+  // ---- fibers (async-fibers): the platform's own schedulers, the machine's drive on each
+
+  /** a program on its own fiber, by the platform's `Scheduler` (a virtual thread on the JVM, the event loop on
+   * JS, a thread on Native): the fiber runs ONE operation of the classic's, an Await whose registration starts the
+   * machine's cancellable drive — so the program's synchronous part runs on the fiber's own thread of control,
+   * and cancelling the fiber unregisters the Await, which cancels the drive */
+  def spawn[A](p: A ! (Async +: Pure))(using S: Scheduler): Fiber[A] =
+    S.fork(() => Async.await[A] { k =>
+      val running = runAsyncCancellable(p)
+      running.future.onComplete(t => k(t.toEither))(using scala.concurrent.ExecutionContext.parasitic)
+      () => running.cancel()
+    })
+
+  /** `spawn` as an operation: the fiber starts when the program gets here */
+  def fork[A](p: A ! (Async +: Pure))(using Scheduler): Op[Async, Fiber[A]] = async(spawn(p))
+
+  /** join a fiber as an operation: its answer, or its failure at this operation */
+  def join[A](f: Fiber[A]): Op[Async, A] = awaitEither[A](k => { f.onComplete(k); () => () })
+
+  /** park for the duration on the platform's timer; the timer's canceller serves cancellation */
+  def sleep(millis: Long)(using T: Timer): Op[Async, Unit] = awaitEither[Unit](k => T.after(millis)(() => k(Right(()))))
+
+  /** both, each on its own fiber, paired; the first failure fails the pair and cancels the other (the classic's
+   * `par`, supervised) */
+  def par[A, B](a: A ! (Async +: Pure), b: B ! (Async +: Pure))(using Scheduler): Op[Async, (A, B)] =
+    awaitEither[(A, B)] { k =>
+      val (fa, fb) = (spawn(a), spawn(b))
+      val done = AtomicBoolean(false)
+      def fail(other: Fiber[?])(e: Throwable): Unit =
+        if !done.getAndSet(true) then { other.cancel(); k(Left(e)) }
+      fb.onComplete:
+        case Left(e) => fail(fa)(e)
+        case Right(_) => ()
+      fa.onComplete:
+        case Right(x) => fb.onComplete:
+          case Right(y) => if !done.getAndSet(true) then k(Right((x, y)))
+          case Left(e) => fail(fa)(e)
+        case Left(e) => fail(fb)(e)
+      () => { fa.cancel(); fb.cancel() }
+    }
+
+  /** the first of the two to SUCCEED, the loser cancelled; if both fail, the later failure (the classic's) */
+  def race[A](a: A ! (Async +: Pure), b: A ! (Async +: Pure))(using Scheduler): Op[Async, A] =
+    awaitEither[A] { k =>
+      val (fa, fb) = (spawn(a), spawn(b))
+      val won = AtomicBoolean(false)
+      val alive = java.util.concurrent.atomic.AtomicInteger(2)
+      def finish(r: Either[Throwable, A]): Unit = r match
+        case Right(v) => if !won.getAndSet(true) then { fa.cancel(); fb.cancel(); k(Right(v)) }
+        case Left(e) => if alive.decrementAndGet() == 0 && !won.getAndSet(true) then k(Left(e))
+      fa.onComplete(finish)
+      fb.onComplete(finish)
+      () => { fa.cancel(); fb.cancel() }
+    }
+
+  /** the answer within the duration, or None, the program cancelled; its own failure comes through at once
+   * (the classic's `timeout`, timeout-masks-failure) */
+  def timeout[A](millis: Long)(p: A ! (Async +: Pure))(using Scheduler, Timer): Op[Async, Option[A]] =
+    awaitEither[Option[A]] { k =>
+      val f = spawn(p)
+      val done = AtomicBoolean(false)
+      val timer = summon[Timer].after(millis): () =>
+        if !done.getAndSet(true) then { f.cancel(); k(Right(None)) }
+      f.onComplete: r =>
+        if !done.getAndSet(true) then { timer(); k(r.map(Some(_))) }
+      () => { if !done.getAndSet(true) then { timer(); f.cancel() } }
+    }
+
   /** the operations that open and close a cancel scope (`Async.CancelScope`): the drive keeps the scope while it
    * is open and releases it if the program is cancelled, fails, or ends with it still open; on the blocking
    * handler they are empty Runs, as on the classic's */

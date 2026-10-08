@@ -17,7 +17,10 @@
       bound by `flatMap`/`map` it needs nothing. `Free.reordered` (stage
       44, a row in another order) stays a conversion, opted into where it
       is used.
-      (3) NO EXPECTED TYPE, NO ROW. An overloaded `run(p)` / `run(op)`
+      (3) NO EXPECTED TYPE, NO ROW. (Seen again in async-fibers:
+      `op.map(f).at[R]` does not compile — `op.map(f)` already chose its
+      row, from no expected type; written `op.map(f)` where a program over
+      `R` is expected, it is right.) An overloaded `run(p)` / `run(op)`
       leaves `getOrLoad[R]`'s row undetermined (inferred `Async +: Row`);
       the tests split it into `run` and `runOp`. Any API that takes a
       program through an overload meets this.
@@ -34,7 +37,12 @@
       machine's per-operation cost (the answering `AsyncCont.run`,
       1.09x), not the drive's.
       (6) WHAT ASYNC LACKS ON THE MACHINE before okay-stream can move:
-      fibers/`Scheduler.fork`. DONE (async-cancel, 2026-10-08): `attempt`,
+      nothing now. Fibers DONE (async-fibers, 2026-10-08): `spawn`/`fork`/
+      `join`, `par`, `race`, `timeout`, `sleep` on the platform's
+      `Scheduler` — a fiber runs one classic Await that starts the
+      machine's drive (unmeasured: spawn/join's cost against the classic's;
+      a late answer resumes on the answerer's thread, not sent home as the
+      JVM's `own`/`adaptive` schedulers do for the classic). Earlier DONE (async-cancel, 2026-10-08): `attempt`,
       the cancellable drive (`runAsyncCancellable`), cancel scopes
       (`enter`/`exit`), the drive's one poll before registering; the drive
       measured unchanged (278 us against 273).

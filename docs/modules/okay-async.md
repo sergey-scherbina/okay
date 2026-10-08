@@ -35,6 +35,9 @@ per program. `runAsyncCancellable` is the drive with its cancellation door
 (the classic's semantics: stop at the next operation, unregister the pending
 Await, release the open scopes); `enter`/`exit` open and close an
 `Async.CancelScope`; `attempt` runs a program as a unit of its own, its
-failure a `Left`. Not yet there: fibers (backlog:
-cont-first-module-findings).
+failure a `Left`. Fibers are the platform's own (`Scheduler`): `spawn`,
+`fork`, `join`, `par` (supervised), `race`, `timeout`, `sleep` — a fiber runs
+one classic Await whose registration starts the machine's cancellable drive,
+so the program's synchronous part runs on the fiber's thread and cancelling
+the fiber cancels the drive.
 
