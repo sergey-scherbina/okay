@@ -13,8 +13,15 @@
       delay and a bind each). A pull now answers a CHUNK of 256, a lazy
       view, `map`/`filter` still per element inside it: range collected
       593 us against the classic per-element Source's 1323 (0.45x),
-      mapped 659 against 3842 (0.17x). The fair rival is the classic's
-      own chunked form (`Chunks`, `.chunked`), not yet measured beside it.
+      mapped 659 against 3842 (0.17x). AGAINST THE FAIR RIVAL
+      (stream-fair, 2026-10-08), the classic's own chunked form (`Chunks`,
+      256 per chunk, inline `map`/`foldLeft`), the machine is 2.0x: 296
+      against 593 collected, 325 against 659 mapped. Leads: a STRICT chunk
+      (`ArraySeq`, as `Chunks`) where nothing needs the view's laziness
+      (a range, a list, a map), keeping the view only where `take` and a
+      side-effecting producer need it; specialised (unboxed) chunks for
+      primitives; and the per-chunk program nodes (a Step, a Src, a delay,
+      a bind) measured alone.
       (3) `merge` on the pull leaves the pending pulls running when the
       consumer stops early; the classic closes them by a cancel scope —
       the machine's drive has scopes now (async-cancel), not yet used here.

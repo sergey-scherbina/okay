@@ -1,0 +1,2 @@
+2026-10-08	450c27d9a	quiet	StreamContBenchmark.classicChunksRange us/op (100k elements)	296.109	592.954	0.50	stream-fair: the classic Chunks (256, inline foldLeft) against the machine chunked pull (the base, 593): the classic chunked form is 2.0x faster
+2026-10-08	450c27d9a	quiet	StreamContBenchmark.classicChunksRangeMap us/op (100k elements)	324.526	658.870	0.49	stream-fair: the same mapped (inline Chunks.map) against the machine 659
