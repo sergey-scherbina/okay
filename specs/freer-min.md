@@ -1983,3 +1983,14 @@ stream's and not the program's). ONE suite, written once over `Streaming[S]`, ru
 (StreamContBenchmark, 100k): range collected 2786 us against the classic's 1323, mapped 4578 against 3842 — a few
 objects per element; the lead is a chunked pull. Findings: backlog.d/okay-core/stream-twin-findings.md.
 
+## Stage 53: THE PULL ANSWERS A CHUNK (DONE, 2026-10-08)
+
+Stage 52's pull paid a Step, a Src, a delay and a bind per element: 2.1x the classic's per-element Source on a
+bare range. A step is now `Step.Chunk(ws, rest)`, `ws` a lazy VIEW of up to 256 elements, never empty: the
+program's nodes are paid per chunk, while `map` and `filter` stay lazy per element inside it — `take(3)` of a
+range computes three elements of its first chunk, and the suites that check that the producer is not pulled or
+computed past what `take` keeps pass unchanged; `fromIterator` still reads one element a pull (its elements may be
+effects). Measured (StreamContBenchmark, 100k): range collected 593 us (was 2786; the classic's per-element
+Source 1323), mapped 659 (was 4578; the classic 3842). The classic's own chunked form is the fair rival, not yet
+measured beside it.
+

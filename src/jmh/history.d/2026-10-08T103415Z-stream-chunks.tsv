@@ -1,0 +1,2 @@
+2026-10-08	1d9626874	quiet	StreamContBenchmark.contRange us/op (100k elements)	592.954	1323.358	0.45	stream-chunks: a pull answers a chunk of 256 (a lazy view); was 2786 per element. Base: the classic per-element Source.range runCollect (its chunked form, Chunks, not measured here)
+2026-10-08	1d9626874	quiet	StreamContBenchmark.contRangeMap us/op (100k elements)	658.870	3841.614	0.17	stream-chunks: the same range mapped (map a view per chunk); was 4578. Base: the classic per-element Writer.map walk
