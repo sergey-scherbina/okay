@@ -36,17 +36,25 @@ object StreamCont:
 
   /** a stream: the program that pulls it */
   final class Src[+W](val pull: Free[R, Step[W]]):
-    def map[V](f: W => V): Src[V] = Src(pull.map {
+    /** `inline`, as the classic `Chunks.map`: the chunk mapper is built ONCE where `V` may still be concrete
+     * (`ChunkBuf.mapper`, a loop over the chunk, unboxed when a `ClassTag` is there) and handed to the recursion
+     * as a value — so every chunk is mapped by it, not only the first */
+    inline def map[V](inline f: W => V): Src[V] = mapWith(ChunkBuf.mapper[W, V](f))
+
+    /** the recursion behind the inline `map`: public, as an inline method may reach no less accessible member */
+    def mapWith[V](g: ArraySeq[W] => ArraySeq[V]): Src[V] = Src(pull.map {
       case Step.Done => Step.Done
-      case Step.Chunk(ws, r) => Step.Chunk(ws.map(f), r.map(f))
+      case Step.Chunk(ws, r) => Step.Chunk(g(ws), r.mapWith(g))
     })
 
-    def filter(p: W => Boolean): Src[W] = Src(pull.flatMap {
+    inline def filter(inline p: W => Boolean): Src[W] = filterWith[W](ChunkBuf.filterer[W](p))
+
+    /** the recursion behind the inline `filter`; an empty chunk is not a step (a consumer would pull it for nothing) */
+    def filterWith[V >: W](g: ArraySeq[V] => ArraySeq[V]): Src[V] = Src(pull.flatMap {
       case Step.Done => Free.pure(Step.Done)
       case Step.Chunk(ws, r) =>
-        // an empty chunk is not a step (a consumer would pull it for nothing)
-        val kept = ws.filter(p)
-        if kept.nonEmpty then Free.pure(Step.Chunk(kept, r.filter(p))) else r.filter(p).pull
+        val kept = g(ws)
+        if kept.nonEmpty then Free.pure(Step.Chunk(kept, r.filterWith(g))) else r.filterWith(g).pull
     })
 
     /** the first `n` elements; the producer is not pulled past the chunk that holds the last of them */
@@ -79,9 +87,21 @@ object StreamCont:
         each(ws.iterator, Vector.empty).map(vs => Step.Chunk(ArraySeq.untagged.from(vs), r.evalMap(f)))
     })
 
-    def foldLeft[B](z: B)(f: (B, W) => B): B ! R = pull.flatMap {
+    /** `inline`: the fold of a chunk is a loop at the call site, handed to the recursion as a value */
+    inline def foldLeft[B](z: B)(inline f: (B, W) => B): B ! R =
+      foldWith(z)((acc, c) =>
+        var a = acc
+        var i = 0
+        val n = c.length
+        while i < n do
+          a = f(a, c(i))
+          i += 1
+        a)
+
+    /** the recursion behind the inline `foldLeft` */
+    def foldWith[B](z: B)(g: (B, ArraySeq[W]) => B): B ! R = pull.flatMap {
       case Step.Done => Free.pure(z)
-      case Step.Chunk(ws, r) => r.foldLeft(ws.foldLeft(z)(f))(f)
+      case Step.Chunk(ws, r) => r.foldWith(g(z, ws))(g)
     }
 
     def toVector: Vector[W] ! R = foldLeft(Vector.newBuilder[W])((b, w) => b += w).map(_.result())
