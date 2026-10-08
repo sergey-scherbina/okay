@@ -162,8 +162,15 @@ object StreamCont:
   def range(from: Long, until: Long): Src[Long] =
     if from >= until then empty
     else
-      val to = math.min(until, from + ChunkSize)
-      Src(Free.pure(Step.Chunk(ArraySeq.range(from, to), defer(range(to, until)))))
+      val n = math.min(ChunkSize.toLong, until - from).toInt
+      // a long[] filled by a loop, as `Chunks.range`: `ArraySeq.range` is generic over `Integral` and boxed every
+      // element it built (stream-range: 25 B an element more than the classic's, measured by -prof gc)
+      val arr = new Array[Long](n)
+      var i = 0
+      while i < n do
+        arr(i) = from + i
+        i += 1
+      Src(Free.pure(Step.Chunk(ArraySeq.unsafeWrapArray(arr), defer(range(from + n, until)))))
 
   /** one Async step as a stream of its answer */
   def eval[W](op: W ! R): Src[W] = Src(op.map(w => Step.Chunk(ArraySeq.untagged(w), empty)))
