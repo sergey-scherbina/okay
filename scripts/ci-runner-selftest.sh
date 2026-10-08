@@ -197,10 +197,14 @@ while [ -z "$rpid" ] && [ "$w" -lt 20 ]; do
 done
 if [ -z "$rpid" ]; then bad "no detached runner took the lock"
 else
-  rsid=$(ps -o sess= -p "$rpid" | tr -d ' '); mysid=$(ps -o sess= -p $$ | tr -d ' ')
-  if [ "$rsid" != "$mysid" ]; then ok "runner session $rsid is not the kicker's $mysid"
+  # THE GROUP, not the session number (runner-session, 2026-10-08): macOS `ps -o sess` answers 0 for every
+  # process, so two sessions read as one and this check failed on the Mac whatever the runner did. A process
+  # that called setsid leads its own session AND its own process group: its pgid is its pid, and not the
+  # kicker's group — which is what a signal to the kicker's group must not reach
+  rpgid=$(ps -o pgid= -p "$rpid" | tr -d ' '); mypgid=$(ps -o pgid= -p $$ | tr -d ' ')
+  if [ "$rpgid" = "$rpid" ] && [ "$rpgid" != "$mypgid" ]; then ok "runner leads its own group $rpgid, not the kicker's $mypgid"
   elif ! command -v setsid >/dev/null 2>&1 && ! command -v perl >/dev/null 2>&1; then ok "(no setsid and no perl here: same session, as documented)"
-  else bad "runner shares the kicker's session $mysid"; fi
+  else bad "runner is in group $rpgid (pid $rpid), the kicker's is $mypgid"; fi
   w=0; until grep -q "gating" "$work"/.work/ci/log/*.log 2>/dev/null || [ "$w" -ge 20 ]; do sleep 0.25; w=$((w + 1)); done
   rpg=$(ps -o pgid= -p "$rpid" | tr -d ' ')
   kill -s TERM -- "-$rpg" 2>/dev/null   # -s: dash reads "-TERM --" as an illegal number
