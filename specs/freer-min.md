@@ -1996,4 +1996,7 @@ measured beside it. The chunk is STRICT since stream-strict (an `ArraySeq`, as t
 mapped, against `Chunks`' 296 and 325 (stream-fair) — `map` computes its chunk at once (a pure function may run
 ahead within a chunk, as `Chunks.map` does); `take` never pulls the producer past the chunk it needs. `map`, `filter` and `foldLeft` are `inline` since stream-inline (the chunk loop built once at the call site,
 `ChunkBuf.mapper`/`filterer`, the recursion handed it as a value): 450 us collected, 474 mapped — 1.5x `Chunks`,
-the rest the pull's own nodes per chunk.
+the rest the pull's own nodes per chunk. And measured rather than guessed (stream-range, `-prof gc`): the gap left was 25 B an ELEMENT, `ArraySeq.range`
+boxing every element it built; a long[] filled by a loop, as `Chunks.range`: 227 us collected, 256 mapped — 0.77x
+and 0.79x the classic `Chunks`, at its allocation (3.79 MB/op against 3.74). The pull's per-chunk nodes were never
+the cost.

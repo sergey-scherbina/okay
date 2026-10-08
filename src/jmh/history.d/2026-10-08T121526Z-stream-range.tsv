@@ -1,0 +1,2 @@
+2026-10-08	614a848fa	quiet	StreamContBenchmark.contRange us/op (100k elements)	226.518	449.688	0.50	stream-range: the range chunk a long[] filled by a loop (ArraySeq.range boxed each element: 6.25 MB/op, now 3.79; the classic Chunks 3.74 MB, 296 us) — the machine 0.77x Chunks
+2026-10-08	614a848fa	quiet	StreamContBenchmark.contRangeMap us/op (100k elements)	256.248	473.868	0.54	stream-range: mapped, 4.67 MB/op; the classic Chunks 325 us — the machine 0.79x

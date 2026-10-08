@@ -27,9 +27,14 @@
       `foldLeft` build their chunk loop once at the call site, the
       classic's `ChunkBuf.mapper`/`filterer`, and recurse on it as a
       value): 450 collected (1.52x `Chunks`), 474 mapped (1.46x) — `map`
-      now costs what the classic's does; what is left, ~0.4 us a chunk,
-      is the pull itself (a Step, a Src, a delay, a bind, run through the
-      machine), the next thing to measure alone.
+      now costs what the classic's does. MEASURED, NOT GUESSED
+      (stream-range, 2026-10-08, -prof gc): the "per-chunk" rest was 25 B
+      an ELEMENT — `ArraySeq.range`, generic over `Integral`, boxed every
+      element it built (6.25 MB/op against `Chunks`' 3.74). A long[] filled
+      by a loop, as `Chunks.range` does: 227 us collected (0.77x
+      `Chunks`), 256 mapped (0.79x), 3.79 MB/op. The pull's own nodes per
+      chunk were never the cost. (2) is closed: the machine's chunked
+      pull is FASTER than the classic's chunked form on these lanes.
       (3) `merge` on the pull leaves the pending pulls running when the
       consumer stops early; the classic closes them by a cancel scope —
       the machine's drive has scopes now (async-cancel), not yet used here.
