@@ -55,13 +55,12 @@ class TestStreamCont extends munit.FunSuite {
   }
 
   test("a consumer that stops first: merge cancels the pull still pending on the other side") {
-    var cancelled = false
-    val never: Src[Int] = StreamCont.eval(AsyncCont.awaitEither[Int](_ => () => cancelled = true).at)
+    // a fiber's cancel reaches it on its own thread of control (Native: an OS thread), so the cancellation is
+    // AWAITED, not read the moment the consumer's program ends; never cancelled is munit's timeout
+    val cancelled = scala.concurrent.Promise[Unit]()
+    val never: Src[Int] = StreamCont.eval(AsyncCont.awaitEither[Int](_ => () => cancelled.trySuccess(()): Unit).at)
     val prog = StreamCont(1, 2, 3).merge(never).take(2).toVector
-    AsyncCont.runAsync(prog).map { v =>
-      assertEquals(v.size, 2)
-      assert(cancelled, "the pending pull was left running")
-    }
+    AsyncCont.runAsync(prog).flatMap(v => cancelled.future.map(_ => assertEquals(v.size, 2)))
   }
 }
 
