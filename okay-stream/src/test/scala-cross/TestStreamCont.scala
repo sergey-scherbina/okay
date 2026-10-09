@@ -53,4 +53,15 @@ class TestStreamCont extends munit.FunSuite {
     val back: Source[Long] = StreamCont.toSource(range(0, 5).map(_ * 2))
     Async.runAsync(back.runCollect).map(v => assertEquals(v, Vector(0L, 2L, 4L, 6L, 8L)))
   }
+
+  test("a consumer that stops first: merge cancels the pull still pending on the other side") {
+    var cancelled = false
+    val never: Src[Int] = StreamCont.eval(AsyncCont.awaitEither[Int](_ => () => cancelled = true).at)
+    val prog = StreamCont(1, 2, 3).merge(never).take(2).toVector
+    AsyncCont.runAsync(prog).map { v =>
+      assertEquals(v.size, 2)
+      assert(cancelled, "the pending pull was left running")
+    }
+  }
 }
+

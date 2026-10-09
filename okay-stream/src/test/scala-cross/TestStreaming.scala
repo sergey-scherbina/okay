@@ -44,5 +44,5 @@ abstract class StreamingSuite[S[_]](backend: String)(using St: Streaming[S]) ext
   }
 }
 
-class TestStreamingMachine extends StreamingSuite[streams.machine.Flow]("machine")(using streams.machine.instance)
-class TestStreamingClassic extends StreamingSuite[streams.classic.Flow]("classic")(using streams.classic.instance)
+class TestStreamingMachine extends StreamingSuite[streams.machine.Flow]("machine")
+class TestStreamingClassic extends StreamingSuite[streams.classic.Flow]("classic")

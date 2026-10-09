@@ -35,9 +35,9 @@
       `Chunks`), 256 mapped (0.79x), 3.79 MB/op. The pull's own nodes per
       chunk were never the cost. (2) is closed: the machine's chunked
       pull is FASTER than the classic's chunked form on these lanes.
-      (3) `merge` on the pull leaves the pending pulls running when the
-      consumer stops early; the classic closes them by a cancel scope —
-      the machine's drive has scopes now (async-cancel), not yet used here.
-      (4) The machine's front type is an alias of `StreamCont.Src`, so its
-      instance is found by the import only; the classic's is opaque and
-      found by its companion. Opaque for both would make them symmetric.
+      (3) DONE (stream-merge-scope, 2026-10-09): `merge` opens a cancel
+      scope over its pending pulls and exits it when both sides end; a
+      consumer that stops first ends with it open and the drive cancels
+      them (tested: `take(2)` over a side that never answers).
+      (4) DONE (stream-merge-scope): the machine's `Flow` is opaque too;
+      both instances are found where their type is, no import needed.

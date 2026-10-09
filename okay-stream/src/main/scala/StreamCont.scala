@@ -113,27 +113,62 @@ object StreamCont:
         each(ws.iterator)
     }
 
-    /**
-     * both streams at once, each chunk as it comes: each side's next pull on its own fiber, the first answer
-     * taken and its side pulled again, the other side's fiber kept. Not yet: a consumer that stops early leaves
-     * the pending pulls running (the classic's merge closes them by a cancel scope)
-     */
-    def merge[V >: W](that: Src[V])(using Scheduler): Src[V] =
-      Src(fork[Step[V]](this.pull).flatMap(fa => fork[Step[V]](that.pull).flatMap(fb => StreamCont.merging[V](fa, fb).pull)))
-
-  private def merging[W](fa: Fiber[Step[W]], fb: Fiber[Step[W]])(using Scheduler): Src[W] =
-    Src(first(fa, fb).flatMap {
-      case (Step.Done, other) => join(other).map(s => s)
-      case (Step.Chunk(ws, r), other) =>
-        Free.pure(Step.Chunk(ws, Src(fork(r.pull).flatMap(again => merging(again, other).pull))))
+    /** `eff` once the stream has ended (not if its consumer stopped before) */
+    def onDone(eff: Unit ! R): Src[W] = Src(pull.flatMap {
+      case Step.Done => eff.map(_ => Step.Done)
+      case Step.Chunk(ws, r) => Free.pure(Step.Chunk(ws, r.onDone(eff)))
     })
 
-  /** which of two fibers answers first: its answer, and the other fiber */
-  private def first[W](fa: Fiber[Step[W]], fb: Fiber[Step[W]]): (Step[W], Fiber[Step[W]]) ! R =
-    awaitEither[(Step[W], Fiber[Step[W]])] { k =>
+    /**
+     * both streams at once, each chunk as it comes: each side's next pull on its own fiber, the first answer
+     * taken and its side pulled again, the other side's fiber kept. A CANCEL SCOPE holds the pulls still pending
+     * (stream-merge-scope): it is exited when both sides have ended, and a consumer that stops first (`take`)
+     * ends its program with the scope open — the drive releases it, and the pending pulls are cancelled
+     * (`AsyncCont.runAsync`'s scopes; under the blocking handler, as on the classic's, the marks are empty)
+     */
+    def merge[V >: W](that: Src[V])(using Scheduler): Src[V] = Src(Free.delay { () =>
+      val live = Live()
+      val scope = Async.CancelScope(() => live.cancelAll())
+      AsyncCont.enter(scope).flatMap(_ =>
+        fork[Step[V]](this.pull).flatMap(fa =>
+          fork[Step[V]](that.pull).flatMap { fb =>
+            live.add(fa); live.add(fb)
+            StreamCont.merging[V](fa, fb, live, scope).pull
+          }))
+    })
+
+  /** the pulls a merge still has running: one per run of the merged stream */
+  private final class Live:
+    private var fibers: List[Fiber[?]] = Nil
+    def add(f: Fiber[?]): Unit = synchronized { fibers = f :: fibers }
+    def remove(f: Fiber[?]): Unit = synchronized { fibers = fibers.filterNot(_ eq f) }
+    def cancelAll(): Unit = synchronized { fibers }.foreach(_.cancel())
+
+  private def merging[W](fa: Fiber[Step[W]], fb: Fiber[Step[W]], live: Live, scope: Async.CancelScope)
+                        (using Scheduler): Src[W] =
+    Src(first(fa, fb).flatMap { (step, won, other) =>
+      live.remove(won)
+      step match
+        // one side has ended: the other goes on alone, joined, and the scope is exited when it ends too
+        case Step.Done => join(other).flatMap { s =>
+          live.remove(other)
+          s match
+            case Step.Done => AsyncCont.exit(scope).map(_ => Step.Done)
+            case Step.Chunk(ws, r) => Free.pure(Step.Chunk(ws, r.onDone(AsyncCont.exit(scope).at)))
+        }
+        case Step.Chunk(ws, r) =>
+          Free.pure(Step.Chunk(ws, Src(fork(r.pull).flatMap { again =>
+            live.add(again)
+            merging(again, other, live, scope).pull
+          })))
+    })
+
+  /** which of two fibers answers first: its answer, the winner, and the other fiber */
+  private def first[W](fa: Fiber[Step[W]], fb: Fiber[Step[W]]): (Step[W], Fiber[Step[W]], Fiber[Step[W]]) ! R =
+    awaitEither[(Step[W], Fiber[Step[W]], Fiber[Step[W]])] { k =>
       val won = AtomicBoolean(false)
-      fa.onComplete(r => if !won.getAndSet(true) then k(r.map(s => (s, fb))))
-      fb.onComplete(r => if !won.getAndSet(true) then k(r.map(s => (s, fa))))
+      fa.onComplete(r => if !won.getAndSet(true) then k(r.map(s => (s, fa, fb))))
+      fb.onComplete(r => if !won.getAndSet(true) then k(r.map(s => (s, fb, fa))))
       () => ()
     }.at
 

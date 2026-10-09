@@ -44,9 +44,10 @@ trait Streaming[S[_]]:
 
 object streams:
 
-  /** the machine's: a pull over the machine's Async (`StreamCont`) */
+  /** the machine's: a pull over the machine's Async (`StreamCont`), behind a type of its own so that its instance
+   * is found where the type is, as the classic's (stream-merge-scope) */
   object machine:
-    type Flow[W] = StreamCont.Src[W]
+    opaque type Flow[W] = StreamCont.Src[W]
     given instance: Streaming[Flow] with
       type P[A] = A ! StreamCont.R
       def empty[W]: Flow[W] = StreamCont.empty
@@ -67,7 +68,10 @@ object streams:
         def toVector: P[Vector[W]] = s.toVector
         def merge(t: Flow[W])(using Scheduler): Flow[W] = s.merge(t)
     def fromSource[W](s: Source[W]): Flow[W] = StreamCont.fromSource(s)
-    extension [W](f: Flow[W]) def toSource: Source[W] = StreamCont.toSource(f)
+    def fromSrc[W](s: StreamCont.Src[W]): Flow[W] = s
+    extension [W](f: Flow[W])
+      def toSource: Source[W] = StreamCont.toSource(f)
+      def toSrc: StreamCont.Src[W] = f
 
   /** the classic's: a Writer program, `Source[W]`, behind a type of its own so that its words are the stream's
    * and not the program's (`Source` is a program: its own `map` maps the program's answer) */
