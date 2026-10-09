@@ -50,4 +50,14 @@
       front for both backends. Not yet: `fromChannel`'s pending receive
       has no canceller (`receiveManyAsync` offers none), and the
       buffered pipeline is unmeasured beside the classic's.
+      (6) ZIP, JOINS, WINDOWS, WRITTEN ONCE (stream-joins, 2026-10-09):
+      the front gained primitives — `unconsChunk`, an effectful `unfoldP`,
+      `pureP`/`flatMapP` — and `zip`, `zipWith`, `joinSorted`/`left`/
+      `full` and `windowed` are written once over them (`StreamingOps`),
+      driving the backend-neutral engines `SortMerge` and `Windows` with a
+      chunk cursor; one suite runs them on both backends, JVM/JS/Native.
+      The classic's own `Source.zip`/`joinSorted` need `CanBlock` (they
+      buffer through channels); these pull, and run on JS too. Not yet:
+      measured beside the classic's; a backend may override a word for
+      speed (the machine's `zip` could pair chunks).
 

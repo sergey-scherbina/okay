@@ -40,6 +40,29 @@ abstract class StreamingSuite[S[_]](backend: String)(using St: Streaming[S]) ext
     runAsync(range(0, 1000).map(_ * 2).buffer(16).toVector).map(v => assertEquals(v, (0L until 1000L).map(_ * 2).toVector))
   }
 
+  test(s"$backend: zip pairs in lockstep, as long as the shorter; zipWith") {
+    runAsync(range(0, 5).zipWith(fromList(List("a", "b", "c")))((i, s) => s"$s$i").toVector)
+      .map(v => assertEquals(v, Vector("a0", "b1", "c2")))
+  }
+
+  test(s"$backend: the sorted joins, duplicate keys and unmatched rows") {
+    val l = fromList(List(1 -> "a", 2 -> "b", 2 -> "c", 4 -> "d"))
+    val r = fromList(List(2 -> 20, 2 -> 21, 3 -> 30, 4 -> 40))
+    for
+      inner <- runAsync(l.joinSorted(r).toVector)
+      left <- runAsync(l.leftJoinSorted(r).toVector)
+      full <- runAsync(l.fullJoinSorted(r).toVector)
+    yield
+      assertEquals(inner, Vector(2 -> ("b", 20), 2 -> ("b", 21), 2 -> ("c", 20), 2 -> ("c", 21), 4 -> ("d", 40)))
+      assertEquals(left.count(_._2._2.isEmpty), 1)
+      assertEquals(full.size, 7)
+  }
+
+  test(s"$backend: tumbling windows count their elements") {
+    val panes = range(0, 25).windowed(Windows.tumbling(10, 0)((_: Long) => "k")(identity)(okay.freer.Aggregator.count[Long]))
+    runAsync(panes.toVector).map(v => assertEquals(v.map(_.value), Vector(10L, 10L, 5L)))
+  }
+
   test(s"$backend: merge keeps every element of both and each side's order") {
     runAsync(range(0, 50).merge(range(100, 150)).toVector).map { v =>
       assertEquals(v.sorted, (0L until 50L).toVector ++ (100L until 150L).toVector)

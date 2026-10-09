@@ -217,6 +217,14 @@ object StreamCont:
     Src(Free.delay(() =>
       if it.hasNext then Free.pure(Step.Chunk(ArraySeq.untagged(it.next()), reading(it))) else Free.pure(Step.Done)))
 
+  /** a stream unfolded from `z` by an effectful step: each step a batch of elements (a chunk; an empty one is no
+   * step) and the next state, or the end */
+  def unfold[Z, W](z: Z)(f: Z => Free[R, Option[(Seq[W], Z)]]): Src[W] = Src(Free.delay(() => f(z).flatMap {
+    case None => Free.pure(Step.Done)
+    case Some((ws, z2)) =>
+      if ws.isEmpty then unfold(z2)(f).pull else Free.pure(Step.Chunk(ArraySeq.untagged.from(ws), unfold(z2)(f)))
+  }))
+
   def range(from: Long, until: Long): Src[Long] =
     if from >= until then empty
     else

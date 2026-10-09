@@ -29,6 +29,32 @@ trait Streaming[S[_]]:
   def async[A](a: => A): P[A]
   def runAsync[A](p: P[A]): Future[A]
 
+  // the primitives the words below are written in, once for every backend (stream-joins)
+  def pureP[A](a: A): P[A]
+  extension [A](p: P[A])
+    def flatMapP[B](f: A => P[B]): P[B]
+    def mapP[B](f: A => B): P[B] = p.flatMapP(a => pureP(f(a)))
+  /** the next chunk (never empty) and the rest, or the end */
+  def unconsChunk[W](s: S[W]): P[Option[(IndexedSeq[W], S[W])]]
+  /** a stream unfolded from `z` by an effectful step: each step tells a batch (maybe empty) and the next state */
+  def unfoldP[Z, W](z: Z)(f: Z => P[Option[(Seq[W], Z)]]): S[W]
+
+  extension [W](s: S[W])
+    /** pairs, in lockstep; as long as the shorter */
+    def zip[V](t: S[V]): S[(W, V)] = StreamingOps.zip(this)(s, t)
+    def zipWith[V, U](t: S[V])(f: (W, V) => U): S[U] = s.zip(t).map(f.tupled)
+    /** event-time windows (`Windows`, its panes), one engine per run of the stream */
+    def windowed[K, Acc, O](w: => Windows[K, W, Acc, O]): S[Pane[K, O]] = StreamingOps.windowed(this)(s, () => w)
+
+  extension [K, A](l: S[(K, A)])
+    /** the sort-merge joins (`SortMerge`): both sides non-decreasing in key, checked */
+    def joinSorted[B](r: S[(K, B)])(using Ordering[K]): S[(K, (A, B))] =
+      StreamingOps.join(this)(l, r, () => SortMerge.inner[K, A, B])
+    def leftJoinSorted[B](r: S[(K, B)])(using Ordering[K]): S[(K, (A, Option[B]))] =
+      StreamingOps.join(this)(l, r, () => SortMerge.left[K, A, B])
+    def fullJoinSorted[B](r: S[(K, B)])(using Ordering[K]): S[(K, (Option[A], Option[B]))] =
+      StreamingOps.join(this)(l, r, () => SortMerge.full[K, A, B])
+
   extension [W](s: S[W])
     def map[V](f: W => V): S[V]
     def filter(p: W => Boolean): S[W]
@@ -59,6 +85,13 @@ object streams:
       def eval[W](p: P[W]): Flow[W] = StreamCont.eval(p)
       def async[A](a: => A): P[A] = AsyncCont.async(a).at
       def runAsync[A](p: P[A]): Future[A] = AsyncCont.runAsync(p)
+      def pureP[A](a: A): P[A] = okay.cont.Free.pure(a)
+      extension [A](p: P[A]) def flatMapP[B](f: A => P[B]): P[B] = p.flatMap(f)
+      def unconsChunk[W](s: Flow[W]): P[Option[(IndexedSeq[W], Flow[W])]] = s.pull.map {
+        case StreamCont.Step.Done => None
+        case StreamCont.Step.Chunk(ws, r) => Some((ws, r))
+      }
+      def unfoldP[Z, W](z: Z)(f: Z => P[Option[(Seq[W], Z)]]): Flow[W] = StreamCont.unfold(z)(f)
       extension [W](s: Flow[W])
         def map[V](f: W => V): Flow[V] = s.map(f)
         def filter(p: W => Boolean): Flow[W] = s.filter(p)
@@ -102,6 +135,23 @@ object streams:
       def eval[W](p: P[W]): Flow[W] = p.plus[okay.freer.%[Writer, W]].flatMap(w => tell(w))
       def async[A](a: => A): P[A] = okay.async(a)
       def runAsync[A](p: P[A]): Future[A] = Async.runAsync(p)
+      def pureP[A](a: A): P[A] = okay.freer.pure(a)
+      extension [A](p: P[A]) def flatMapP[B](f: A => P[B]): P[B] = p.flatMap(f)
+      def unconsChunk[W](s: Flow[W]): P[Option[(IndexedSeq[W], Flow[W])]] = unconsed(s).map {
+        case Left(()) => None
+        case Right((w, rest)) => Some((Vector(w), rest))
+      }
+      def unfoldP[Z, W](z: Z)(f: Z => P[Option[(Seq[W], Z)]]): Flow[W] =
+        def tells(ws: List[W], next: => Source[W]): Source[W] = ws match
+          case Nil => next
+          case w :: more => tell(w).flatMap(_ => tells(more, next))
+        def go(z: Z): Source[W] = okay.freer.Free.delay { () =>
+          f(z).plus[okay.freer.%[Writer, W]].flatMap {
+            case None => done[W]
+            case Some((ws, z2)) => tells(ws.toList, go(z2))
+          }
+        }
+        go(z)
       extension [W](s: Flow[W])
         def map[V](f: W => V): Flow[V] = Writer.map[W, V, Unit, Async](s)(f)
         def filter(p: W => Boolean): Flow[W] = walk(s)((w, rest) =>
@@ -126,3 +176,66 @@ object streams:
           }
           c.drained
         }
+
+/** the words of `Streaming` written once, over its primitives: a chunk walked by a cursor (O(1) an element), the
+ * engines (`SortMerge`, `Windows`) made fresh for each run of the stream */
+object StreamingOps:
+  import scala.collection.mutable.ArrayBuffer
+
+  final class Cursor[S[_], W](val chunk: IndexedSeq[W], val i: Int, val rest: S[W])
+  private def start[S[_], W](s: S[W]): Cursor[S, W] = Cursor(IndexedSeq.empty, 0, s)
+
+  /** the next element and the cursor after it, or the end */
+  def next[S[_], W](St: Streaming[S])(c: Cursor[S, W]): St.P[Option[(W, Cursor[S, W])]] =
+    import St.*
+    if c.i < c.chunk.length then pureP(Some((c.chunk(c.i), Cursor(c.chunk, c.i + 1, c.rest))))
+    else unconsChunk(c.rest).flatMapP {
+      case None => pureP(None)
+      case Some((ch, r)) => next(St)(Cursor(ch, 0, r))
+    }
+
+  def zip[S[_], W, V](St: Streaming[S])(s: S[W], t: S[V]): S[(W, V)] =
+    import St.*
+    unfoldP[(Cursor[S, W], Cursor[S, V]), (W, V)]((start(s), start(t))) { (a, b) =>
+      next(St)(a).flatMapP {
+        case None => pureP(None)
+        case Some((w, a2)) => next(St)(b).mapP {
+          case None => None
+          case Some((v, b2)) => Some((List((w, v)), (a2, b2)))
+        }
+      }
+    }
+
+  def join[S[_], K, A, B, O](St: Streaming[S])(l: S[(K, A)], r: S[(K, B)], make: () => SortMerge[K, A, B, O]): S[O] =
+    import St.*
+    final case class J(l: Cursor[S, (K, A)], r: Cursor[S, (K, B)], m: SortMerge[K, A, B, O] | Null, done: Boolean)
+    unfoldP[J, O](J(start(l), start(r), null, false)) { j =>
+      if j.done then pureP(None)
+      else
+        val m = if j.m == null then make() else j.m.nn
+        val out = ArrayBuffer.empty[O]
+        m.step(out += _) match
+          case SortMerge.Need.Done => pureP(Some((out.toList, j.copy(m = m, done = true))))
+          case SortMerge.Need.Left => next(St)(j.l).mapP {
+            case None => m.leftEnd(); Some((out.toList, j.copy(m = m)))
+            case Some(((k, a), l2)) => m.left(k, a); Some((out.toList, j.copy(l = l2, m = m)))
+          }
+          case SortMerge.Need.Right => next(St)(j.r).mapP {
+            case None => m.rightEnd(); Some((out.toList, j.copy(m = m)))
+            case Some(((k, b), r2)) => m.right(k, b); Some((out.toList, j.copy(r = r2, m = m)))
+          }
+    }
+
+  def windowed[S[_], A, K, Acc, O](St: Streaming[S])(s: S[A], make: () => Windows[K, A, Acc, O]): S[Pane[K, O]] =
+    import St.*
+    final case class W(c: Cursor[S, A], w: Windows[K, A, Acc, O] | Null, done: Boolean)
+    unfoldP[W, Pane[K, O]](W(start(s), null, false)) { st =>
+      if st.done then pureP(None)
+      else
+        val w = if st.w == null then make() else st.w.nn
+        val out = ArrayBuffer.empty[Pane[K, O]]
+        next(St)(st.c).mapP {
+          case None => w.close()(out += _); Some((out.toList, st.copy(w = w, done = true)))
+          case Some((a, c2)) => w.add(a)(out += _); Some((out.toList, W(c2, w, false)))
+        }
+    }
