@@ -36,6 +36,10 @@ abstract class StreamingSuite[S[_]](backend: String)(using St: Streaming[S]) ext
     runAsync(range(0, 100000).filter(_ % 10000 == 0).toVector).map(v => assertEquals(v.size, 10))
   }
 
+  test(s"$backend: buffer keeps every element, in order, past a channel smaller than the stream") {
+    runAsync(range(0, 1000).map(_ * 2).buffer(16).toVector).map(v => assertEquals(v, (0L until 1000L).map(_ * 2).toVector))
+  }
+
   test(s"$backend: merge keeps every element of both and each side's order") {
     runAsync(range(0, 50).merge(range(100, 150)).toVector).map { v =>
       assertEquals(v.sorted, (0L until 50L).toVector ++ (100L until 150L).toVector)

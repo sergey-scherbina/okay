@@ -41,6 +41,8 @@ trait Streaming[S[_]]:
     def toVector: P[Vector[W]]
     /** both at once, each element as it comes; each side keeps its own order */
     def merge(t: S[W])(using Scheduler): S[W]
+    /** read through a channel of `capacity`, filled by a producer fiber: the producer runs ahead by up to it */
+    def buffer(capacity: Int)(using Scheduler): S[W]
 
 object streams:
 
@@ -67,6 +69,7 @@ object streams:
         def foldLeft[B](z: B)(f: (B, W) => B): P[B] = s.foldLeft(z)(f)
         def toVector: P[Vector[W]] = s.toVector
         def merge(t: Flow[W])(using Scheduler): Flow[W] = s.merge(t)
+        def buffer(capacity: Int)(using Scheduler): Flow[W] = s.buffer(capacity)
     def fromSource[W](s: Source[W]): Flow[W] = StreamCont.fromSource(s)
     def fromSrc[W](s: StreamCont.Src[W]): Flow[W] = s
     extension [W](f: Flow[W])
@@ -115,3 +118,11 @@ object streams:
         }
         def toVector: P[Vector[W]] = (s: Source[W]).runCollect
         def merge(t: Flow[W])(using Scheduler): Flow[W] = (s: Source[W]).mergeReady(t)
+        def buffer(capacity: Int)(using sch: Scheduler): Flow[W] = okay.freer.Free.delay { () =>
+          val c = Channel[W](capacity)
+          sch.fork(() => (s: Source[W]).runForeach(w => c.send(w).map(_ => ()))).onComplete { r =>
+            r.left.foreach(c.fail)
+            c.close()
+          }
+          c.drained
+        }

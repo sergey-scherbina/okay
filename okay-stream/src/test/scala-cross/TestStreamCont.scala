@@ -62,5 +62,28 @@ class TestStreamCont extends munit.FunSuite {
     val prog = StreamCont(1, 2, 3).merge(never).take(2).toVector
     AsyncCont.runAsync(prog).flatMap(v => cancelled.future.map(_ => assertEquals(v.size, 2)))
   }
+
+  test("channels: send and receive as operations; a channel read as a stream; a stream pumped into a channel") {
+    val c = Channel[Int](4)
+    val prog: Vector[Int] ! StreamCont.R = for
+      _ <- StreamCont.send(c, 1)
+      _ <- StreamCont.send(c, 2)
+      x <- StreamCont.receive(c)
+      _ <- AsyncCont.async(c.close())
+      rest <- StreamCont.fromChannel(c).toVector
+    yield x.toVector ++ rest
+    assertEquals(now(prog), Vector(1, 2))
+    val d = Channel[Long](8)
+    assertEquals(now(StreamCont.range(0, 5).toChannel(d).flatMap(_ => StreamCont.fromChannel(d).toVector)), Vector(0L, 1L, 2L, 3L, 4L))
+  }
+
+  test("buffer: a consumer that stops first cancels the pump") {
+    // the producer gives three elements, then parks on an Await whose canceller says so: a cancelled pump
+    // unregisters it (awaited — a fiber's cancel reaches it on its own thread of control)
+    val cancelled = scala.concurrent.Promise[Unit]()
+    val parked: Src[Long] = StreamCont.eval(AsyncCont.awaitEither[Long](_ => () => cancelled.trySuccess(()): Unit).at)
+    val prog = (StreamCont(0L, 1L, 2L) ++ parked).buffer(8).take(3).toVector
+    AsyncCont.runAsync(prog).flatMap(v => cancelled.future.map(_ => assertEquals(v, Vector(0L, 1L, 2L))))
+  }
 }
 

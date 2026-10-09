@@ -137,6 +137,29 @@ object StreamCont:
           }))
     })
 
+    /** pumped into `c`, an element a send (waiting while `c` is full); `c` closed at the end, failed by a failure */
+    def toChannel[V >: W](c: Channel[V]): Unit ! R =
+      AsyncCont.attempt(runForeach(w => StreamCont.send(c, w).at[R].map(_ => ()))).flatMap {
+        case Right(()) => AsyncCont.async(c.close()).at
+        case Left(e) => AsyncCont.async(c.fail(e)).at
+      }
+
+    /**
+     * read through a channel of `capacity`: a producer fiber pumps this stream into it while the consumer reads
+     * chunks out (`receiveManyAsync`). A consumer that stops first leaves a cancel scope open, and the drive
+     * cancels the pump and closes the channel, as `merge`'s pending pulls are
+     */
+    def buffer(capacity: Int)(using Scheduler): Src[W] = Src(Free.delay { () =>
+      val c = Channel[W](capacity)
+      val live = Live()
+      val scope = Async.CancelScope(() => { live.cancelAll(); c.close() })
+      AsyncCont.enter(scope).flatMap(_ =>
+        fork(toChannel(c)).flatMap { pump =>
+          live.add(pump)
+          StreamCont.fromChannel(c).onDone(AsyncCont.exit(scope).at).pull
+        })
+    })
+
   /** the pulls a merge still has running: one per run of the merged stream */
   private final class Live:
     private var fibers: List[Fiber[?]] = Nil
@@ -209,6 +232,29 @@ object StreamCont:
 
   /** one Async step as a stream of its answer */
   def eval[W](op: W ! R): Src[W] = Src(op.map(w => Step.Chunk(ArraySeq.untagged(w), empty)))
+
+  // ---- channels (stream-channels): the classic Channel is backend-neutral at its callbacks
+
+  /** send as an operation of the machine: waits while the channel is full; false if it is closed */
+  def send[A](c: Channel[A], a: A): Op[Async, Boolean] = awaitEither[Boolean] { k =>
+    val cb: Accepted = b => k(Right(b))
+    c.sendAsync(a)(cb)
+    () => c.cancelSend(cb)
+  }
+
+  /** receive as an operation of the machine: None once the channel is closed and drained */
+  def receive[A](c: Channel[A]): Op[Async, Option[A]] = awaitEither[Option[A]] { k =>
+    val cb: Either[Throwable, Option[A]] => Unit = k
+    c.receiveAsync(cb)
+    () => c.cancelReceive(cb)
+  }
+
+  /** a channel read as a stream: a chunk of what is buffered per pull (up to `ChunkSize`), ended when the channel
+   * is closed and drained, failed by its failure */
+  def fromChannel[A](c: Channel[A]): Src[A] =
+    Src(awaitEither[ArraySeq[A]] { k => c.receiveManyAsync(ChunkSize)(k); () => () }.at[R].map { ch =>
+      if ch.isEmpty then Step.Done else Step.Chunk(ch, fromChannel(c))
+    })
 
   // ---- bridges to the classic Source, per element
 

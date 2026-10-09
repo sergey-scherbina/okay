@@ -41,3 +41,13 @@
       them (tested: `take(2)` over a side that never answers).
       (4) DONE (stream-merge-scope): the machine's `Flow` is opaque too;
       both instances are found where their type is, no import needed.
+      (5) CHANNELS (stream-channels, 2026-10-09): the classic `Channel` is
+      backend-neutral at its callbacks, so the machine needed only words:
+      `StreamCont.send`/`receive` (an Await over `sendAsync`/
+      `receiveAsync`, cancelled by `cancelSend`/`cancelReceive`),
+      `fromChannel` (a chunk per `receiveManyAsync`), `Src.toChannel`, and
+      `buffer` (a pump fiber under a cancel scope, as `merge`), in the
+      front for both backends. Not yet: `fromChannel`'s pending receive
+      has no canceller (`receiveManyAsync` offers none), and the
+      buffered pipeline is unmeasured beside the classic's.
+
