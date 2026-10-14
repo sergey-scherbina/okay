@@ -22,21 +22,22 @@ of `R`. `R` is a ROW: a nominal list of effects, `State % Int +: Throws %
 String +: Pure`, written either way (`Pure + State % Int + Throws %
 String`); the order of effects in a row says nothing, the order of
 handlers everything. A program with nothing left in its row is `A ! Pure`.
-The operations on such programs form one interface, over rows
-(`src/main/scala/Effects.scala`):
+The operations on such programs form one interface, over rows — okay-core's
+`RowEffects[M]`, `okay.Effects[M]` its name here (`src/main/scala/Effects.scala`):
 
+<!-- not-a-test: the interface's shape, okay-core's RowEffects as it is -->
 ```scala
-trait Effects[M[_ <: Row, _]]:
+trait RowEffects[M[_ <: Row, _]]:
   def pure[R <: Row, A](a: A): M[R, A]
-  def perform[E[+_], R <: Row, X](op: E[X])(using Member[E, R]): M[R, X]
+  def perform[E[_], R <: Row, X](op: E[X])(using In[E, R]): M[R, X]
   ...
   extension [R <: Row, A](m: M[R, A])
     def flatMap[B](f: A => M[R, B]): M[R, B]
-  def handle[E[+_], A, Ans, R <: Row](h: Handler[E, A, Ans])(m: M[R, A])(using rm: Removed[E, R]): M[rm.Out, Ans]
+  def handle[E[_], A, Ans, R <: Row, O <: Row](h: Handler[E, A, Ans])(m: M[R, A])(using rm: Removed[E, R, O]): M[O, Ans]
   def run[A](m: M[Pure, A]): A
 ```
 
-An operation is performed by its PATH in the row (`Member`, the compiler
+An operation is performed by its PATH in the row (`In`, the compiler
 builds it); a handler takes its effect off the row wherever it is
 (`Removed`). The words a program is written in — `A ! R`, `pure`, `effect`,
 `op.perform`, `p.handle(h)`, `p.value` — are members of `Effects[M]` itself,

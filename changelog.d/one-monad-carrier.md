@@ -1,4 +1,4 @@
-# one-monad-carrier (2026-10-14)
+## one-monad-carrier (2026-10-14)
 
 THE PLATFORM ON OKAY-CORE'S ONE MONAD, at its seam: the classic tree (okay-freer) interprets a program over a
 `Control[M[_, _, _]]` carrier — `F !> S` a handler as a program of the carrier, `A /> R` its diagonal — and the

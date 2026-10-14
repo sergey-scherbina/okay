@@ -259,6 +259,7 @@ The five above all tried to keep the identity representation and
 recover the answer type anyway. The sixth gave up the representation
 instead, and that is the one that worked.
 
+<!-- not-a-test: the shape of an effect as a covariant enum — okay-cont's Writer, the module gone (2026-10-14) -->
 ```scala
 enum Writer[W, +A]:
   case Say(w: W) extends Writer[W, Unit]
