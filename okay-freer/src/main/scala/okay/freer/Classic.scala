@@ -14,7 +14,7 @@ import scala.collection.immutable.ArraySeq
  * typeclass — by default through the tree, `reify` and `reflect`; `Classic[Free]` overrides them with the
  * functions themselves. A program written once over `Classic[M]` runs in `Free` and in `Eager` alike
  * (TestEffectsLevel1). The core's `Effects` is the interface over ROWS, every encoding's — the machine's and
- * this tree's under it (`Rowed`); this is the classic's own, over its union signatures (stage 47).
+ * the facade is okay-core's own (`RowEffects`); this is the classic's own, over its union signatures (stage 47).
  */
 trait Classic[M[_[+_], _]]:
   /** the continuation carrier `foldCont` folds into: `(A => S) => R` as the encoding has it */

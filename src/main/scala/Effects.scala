@@ -83,6 +83,33 @@ transparent inline def Control[M[_, _, _]]: Control[M] =
 /** closures: the reference instance, fast, not stack-safe */
 type Func[A, S, R] = (A => S) => R
 
+/** THE ONE MONAD AS A CONTROL CARRIER (okay-core): a program of control under one `$` over no effects, its answer
+ * moved from `S` to `R` — Danvy–Filinski's `(A => S) => R`; the answers of the kernel's `$` are programs over the
+ * row outside, `S ! Pure`, run to their values at the edge. The carrier the classic tree runs on (okay-freer's
+ * `F !> S`, `A /> R`), in place of the machine of okay-cont (2026-10-14) */
+type Carrier[A, S, R] = okay.one.Cont[okay.one.Reset, okay.one.![S, okay.one.row.Pure], okay.one.![R, okay.one.row.Pure], A]
+object Carrier:
+  /** a value, at any answer */
+  def pure[A, S](a: A): Carrier[A, S, S] = okay.one.Cont.Return(a)
+/** okay-core's control monad as a Control: `shift` a shift0 to the one `$`, `/` the `$` around the program with
+ * `k` as its return, run; `flatMap` a `Bind`. The `k` a body is given is STRICT — a run of its own, on the host
+ * stack (as `Func`'s is; the kernel's own `k` is a program, `rows[R].shift0`) */
+given Control[Carrier] with
+  def pure[A, R](a: A): Carrier[A, R, R] = okay.one.Cont.Return(a)
+  def shift[A, S, R](f: (A => S) => R): Carrier[A, S, R] =
+    okay.one.Cont.Shift0[okay.one.Reset, okay.one.row.Pure, Nothing, Nothing, S, okay.one.![R, okay.one.row.Pure], A](
+      okay.one.row.Nearest.Here(), k => okay.one.Cont.Return(f(a => k(a).run)))
+  extension [A, S, R](m: Carrier[A, S, R])
+    infix def /(k: A => S): R = m.run(a => okay.one.Cont.Return[okay.one.row.Pure, Nothing, S](k(a))).run
+    def flatMap[B, S2](f: A => Carrier[B, S2, S]): Carrier[B, S2, R] = okay.one.Cont.Bind(m, f)
+    override def map[B](f: A => B): Carrier[B, S, R] = okay.one.Cont.Bind(m, (a: A) => okay.one.Cont.Return(f(a)))
+  override def isAnswer[A, S](m: Carrier[A, S, S]): Boolean = m match
+    case okay.one.Cont.Return(_) => true
+    case _ => false
+  override def answerOf[A, S](m: Carrier[A, S, S]): A = m match
+    case okay.one.Cont.Return(a) => a
+    case _ => throw IllegalStateException("not an answer")
+
 given Control[Func] with
   override inline def pure[A, R](a: A): Func[A, R, R] = _(a)
   override inline def shift[A, S, R](f: (A => S) => R): Func[A, S, R] = f

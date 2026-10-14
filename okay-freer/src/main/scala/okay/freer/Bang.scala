@@ -41,10 +41,10 @@ inline def effect[F[+_], A](a: F[A]): A ! F = Free.inject(a)
 extension [F[+_], A](op: F[A])
   inline def perform: A ! F = effect(op)
 
-/** THE DEFAULT: the tree with THE MACHINE (okay-cont) as its carrier — a handler `F !> S` is a program of the
- * machine. The CPS `Cps` is one import away, `import okay.freer.cps.*` (stage 33) */
-given given_Classic_Free: FreeEffectsAt[okay.cont.Carrier] = FreeEffects
-val FreeEffects: FreeEffectsAt[okay.cont.Carrier] = FreeEffectsAt(summon[Control[okay.cont.Carrier]])
+/** THE DEFAULT: the tree with THE ONE MONAD (okay-core) as its carrier — a handler `F !> S` is a program of
+ * control there. The CPS `Cps` is one import away, `import okay.freer.cps.*` (stage 33) */
+given given_Classic_Free: FreeEffectsAt[okay.Carrier] = FreeEffects
+val FreeEffects: FreeEffectsAt[okay.Carrier] = FreeEffectsAt(summon[Control[okay.Carrier]])
 
 /** the tree at the CPS carrier, `Cps`, as it was: `import okay.freer.cps.{given_Classic_Free, *}` chooses it, with its `!>` and `handler` */
 object cps:

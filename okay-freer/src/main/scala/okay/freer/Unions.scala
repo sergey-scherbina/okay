@@ -85,16 +85,16 @@ type Interpr[F[_], C[_, _, _], S] = F ==> C[*, S, S]
  *
  * That is, handlers are continuations.
  */
-infix type !>[F[_], S] = Interpr[F, okay.cont.Carrier, S]
+infix type !>[F[_], S] = Interpr[F, okay.Carrier, S]
 
 /** `A /> R`: the machine as a control carrier at its diagonal, an ordinary monad — the bare name is the machine's
  * (cont-classic-rename); the CPS paramonad's is `A />> R`, over `Cps` */
-infix type />[A, R] = okay.cont.Carrier[A, R, R]
+infix type />[A, R] = okay.Carrier[A, R, R]
 
 /** A comonadic handler interprets each operation by its own value */
 /** A comonadic (per-operation) Answers at every answer type. */
 inline def handler[F[_] : Answers as H, S]: F !> S =
-  [X] => e => okay.cont.Cont.Return(H.handle(e))
+  [X] => e => okay.Carrier.pure(H.handle(e))
 
 /** the same, at any Control carrier */
 inline def interpr[C[_, _, _] : Control as C, F[_] : Answers as H, S]: Interpr[F, C, S] =
