@@ -11,7 +11,8 @@ data — and the facade over it (`okay.core`, `okay.core.std`; `okay.one` the ke
 | `okay.Effects[M]`, `A ! R`, `effect`, `handle`, `value` | okay-core's `RowEffects[M]` and its instance on the kernel's program, `Eff[R, A]` — the interface over rows every encoding implements, the default found with no import (`src/main/scala/Effects.scala`) |
 | `okay.Carrier[A, S, R]`, `Control[Carrier]` | the classic tree's control carrier (okay-freer: a handler `F !> S`, a program `A /> R`) — a program of control under one `$` over no effects, `shift` a shift0 to it, `/` the `$` with `k` as its return, run; what the machine of okay-cont (stages 26–48) was, since 2026-10-14 (changelog.d/one-monad-carrier.md) |
 
-Checked out with `git submodule update --init okay-core` — in a fresh clone and in every worktree, since the
-build needs it where it builds. The pin moves by committing the submodule's commit here; okay-core is pushed before
-okay, so the pin resolves. Its own suites run in its own repository (`sbt test` there); its account is its
+Two ways to have it, one build: checked out (`git submodule update --init okay-core`, in a worktree too), its
+projects are built from source; not checked out, the published artifact `okay-core::okay-core` is used
+(`publishLocal` in the okay-core repository) — `-Dokay.core=source|artifact` chooses by hand. The pin moves by
+committing the submodule's commit here; okay-core is pushed before okay, so the pin resolves. Its own suites run in its own repository (`sbt test` there); its account is its
 README and docs (`okay-core/docs`).

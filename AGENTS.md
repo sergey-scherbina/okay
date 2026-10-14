@@ -6,11 +6,12 @@ BACKLOG: backlog.d/ (one file per item, by section; `scripts/board.sh backlog`)
 CHANGELOG: changelog.d/ (one file per landed lane; CHANGELOG.md is the archive)
 
 ## okay-core, the kernel: a submodule
-- `okay-core/` is the okay-core repository as a git submodule, built from source with this build (`build.sbt`:
-  `okayCoreJVM/JS/Native` are `ProjectRef`s into it; the root `okay` depends on them, nothing else does directly).
-  Fresh clone and every worktree: `git submodule update --init okay-core` — unlike `.agents/plugins`, the build
-  needs it checked out where it builds. Move the pin by committing the submodule's new commit here; push okay-core
-  before pushing okay, so the pin resolves.
+- `okay-core/` is the okay-core repository as a git submodule. Two ways to have the kernel, one build: checked
+  out (`git submodule update --init okay-core`, in a worktree too), its projects are built from source with this
+  build (`build.sbt`: `okayCoreJVM/JS/Native`, `ProjectRef`s into it; the root `okay` depends on them, nothing
+  else does directly); not checked out, the published artifact `okay-core::okay-core` is used (`publishLocal` in
+  the okay-core repository). `-Dokay.core=source|artifact` chooses by hand. Move the pin by committing the
+  submodule's new commit here; push okay-core before pushing okay, so the pin resolves.
 
 ## Skills
 - Skills live in the `.agents/plugins` submodule (fresh clone:

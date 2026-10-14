@@ -512,8 +512,16 @@ lazy val okayStd = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   )
 
 /** THE ONE MONAD: okay-core's kernel and facade, the encoding of `A ! R` (okay-cont, the machine of stages 26–48,
- * is gone — 2026-10-14) — the okay-core repository a SUBMODULE here (`okay-core/`, `git submodule update --init
- * okay-core`), its projects built from source with this build, one per platform */
+ * is gone — 2026-10-14). Two ways to have it, one build: the okay-core repository is a SUBMODULE here
+ * (`okay-core/`, `git submodule update --init okay-core`) and its projects are built from source with this build
+ * when it is checked out; else the published artifact (`okay-core::okay-core`, `publishLocal` in its repository).
+ * `-Dokay.core=source|artifact` says so by hand */
+val okayCoreVersion = "0.1.0-SNAPSHOT"
+val okayCoreFromSource: Boolean = sys.props.get("okay.core") match {
+  case Some("source") => true
+  case Some("artifact") => false
+  case _ => file("okay-core/build.sbt").exists
+}
 lazy val okayCoreJVM = ProjectRef(file("okay-core"), "coreJVM")
 lazy val okayCoreJS = ProjectRef(file("okay-core"), "coreJS")
 lazy val okayCoreNative = ProjectRef(file("okay-core"), "coreNative")
@@ -523,10 +531,11 @@ lazy val okay = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .in(file("."))
   .settings(
     name := "okay",
+    libraryDependencies ++= (if (okayCoreFromSource) Nil else Seq("okay-core" %%% "okay-core" % okayCoreVersion)),
   )
-  .jvmConfigure(_.dependsOn(okayCoreJVM))
-  .jsConfigure(_.dependsOn(okayCoreJS))
-  .nativeConfigure(_.dependsOn(okayCoreNative))
+  .jvmConfigure(p => if (okayCoreFromSource) p.dependsOn(okayCoreJVM) else p)
+  .jsConfigure(p => if (okayCoreFromSource) p.dependsOn(okayCoreJS) else p)
+  .nativeConfigure(p => if (okayCoreFromSource) p.dependsOn(okayCoreNative) else p)
   .jvmSettings(
     // the core's own suite is small (Prog's Effects instance); forked all the same, as every suite here is — see
     // okay-freer's comment on why a suite must not share sbt's JVM
