@@ -41,13 +41,15 @@ builds it); a handler takes its effect off the row wherever it is
 (`Removed`). The words a program is written in — `A ! R`, `pure`, `effect`,
 `op.perform`, `p.handle(h)`, `p.value` — are members of `Effects[M]` itself,
 each an alias over the primitives; which encoding they name is the
-import's choice: `import okay.*` is the machine's (`Effects.machine`),
-`import okay.freer.tree.*` the tree's. Handlers are the machine's (okay-cont): `Answering` answers
-in place — state, reader, writer — and `Handler` has the continuation —
-choose, dialogue. `A ! R` itself is the machine's program, `okay.cont.Free[R,
-A]`, and the machine is the interface's default instance, found with no
-import; the classic tree is its other instance (`okay.freer.Rowed`), its
-operations tagged with their path and its handlers run on the machine.
+import's choice: `import okay.*` is the one monad's (`Effects.machine`,
+okay-core's `RowEffects.eff` — since 2026-10-14; the machine of okay-cont,
+stages 26–48, is gone). Handlers are okay-core's: `Answering` answers in
+place — state, reader, writer — and `Handler` has the continuation —
+choose, dialogue — `k` data. `A ! R` itself is the kernel's program,
+`okay.core.Eff[R, A]`, and the one monad is the interface's default
+instance, found with no import. The classic tree (okay-freer, `A ! F` over a
+union) runs on the same monad as its control carrier (`okay.Carrier`,
+`Control[Carrier]`): a handler `F !> S` is a program of control there.
 
 The classic's own kernel is `okay.freer.Classic[M]`: the same words over
 the classic's UNION rows (`State % Int + Throws % String`), with the
