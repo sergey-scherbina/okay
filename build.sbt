@@ -511,15 +511,22 @@ lazy val okayStd = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
   )
 
+/** THE ONE MONAD: okay-core's kernel and facade, the encoding of `A ! R` (okay-cont, the machine of stages 26–48,
+ * is gone — 2026-10-14) — the okay-core repository a SUBMODULE here (`okay-core/`, `git submodule update --init
+ * okay-core`), its projects built from source with this build, one per platform */
+lazy val okayCoreJVM = ProjectRef(file("okay-core"), "coreJVM")
+lazy val okayCoreJS = ProjectRef(file("okay-core"), "coreJS")
+lazy val okayCoreNative = ProjectRef(file("okay-core"), "coreNative")
+
 lazy val okay = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("."))
   .settings(
     name := "okay",
-    // THE ONE MONAD: okay-core's kernel and facade, the encoding of `A ! R` (okay-cont, the machine of stages
-    // 26–48, is gone — 2026-10-14); published locally from the okay-core repository
-    libraryDependencies += "okay-core" %%% "okay-core" % "0.1.0-SNAPSHOT",
   )
+  .jvmConfigure(_.dependsOn(okayCoreJVM))
+  .jsConfigure(_.dependsOn(okayCoreJS))
+  .nativeConfigure(_.dependsOn(okayCoreNative))
   .jvmSettings(
     // the core's own suite is small (Prog's Effects instance); forked all the same, as every suite here is — see
     // okay-freer's comment on why a suite must not share sbt's JVM
@@ -2313,13 +2320,13 @@ _root_.okay.deploy.sbt.OkayModules.settings(
     "okay-http is a wire; an agent, an LLM client and RAG are not (http-mcp-agent-edge)"),
   _root_.okay.deploy.sbt.OkayModules.forbid("okayOps(JVM|JS)", "okayDocs(JVM|JS|Native)",
     "okay-ops renders what it is handed; okay-docs brings two database drivers (ops-docs-edge)"),
-  _root_.okay.deploy.sbt.OkayModules.forbid("okay(JVM|JS|Native)", ".*",
-    "the core depends on no module of its own: its kernel is okay-core's, a library (specs/modules-infra.md)"),
-  _root_.okay.deploy.sbt.OkayModules.forbid("okayFreer(JVM|JS|Native)", "(?!okay(JVM|JS|Native)$).*",
+  _root_.okay.deploy.sbt.OkayModules.forbid("okay(JVM|JS|Native)", "(?!core(JVM|JS|Native)$).*",
+    "the core depends on okay-core alone — the submodule's projects — no module of its own (specs/modules-infra.md)"),
+  _root_.okay.deploy.sbt.OkayModules.forbid("okayFreer(JVM|JS|Native)", "(?!(core|okay)(JVM|JS|Native)$).*",
     "the classic depends on the core only: it knows nothing of the machine but through the core (specs/modules-infra.md)"),
-  _root_.okay.deploy.sbt.OkayModules.forbid("okayStd(JVM|JS|Native)", "(?!okay(Cont|Freer)?(JVM|JS|Native)$).*",
+  _root_.okay.deploy.sbt.OkayModules.forbid("okayStd(JVM|JS|Native)", "(?!(core|okay(Freer)?)(JVM|JS|Native)$).*",
     "the classic's effects depend on the classic's core only (okay-std)"),
-  _root_.okay.deploy.sbt.OkayModules.forbid("okayKernel(JVM|JS|Native)", "(?!okay(Freer|Std|Cont)?(JVM|JS|Native)$).*",
+  _root_.okay.deploy.sbt.OkayModules.forbid("okayKernel(JVM|JS|Native)", "(?!(core|okay(Freer|Std)?)(JVM|JS|Native)$).*",
     "the kernel depends on the core only: every plugin carries what it does"),
 )
 

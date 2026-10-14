@@ -5,6 +5,13 @@ BACKLOG: backlog.d/ (one file per item, by section; `scripts/board.sh backlog`)
   okay2 keeps its own: okay2/backlog.d/ (`scripts/board.sh backlog okay2`)
 CHANGELOG: changelog.d/ (one file per landed lane; CHANGELOG.md is the archive)
 
+## okay-core, the kernel: a submodule
+- `okay-core/` is the okay-core repository as a git submodule, built from source with this build (`build.sbt`:
+  `okayCoreJVM/JS/Native` are `ProjectRef`s into it; the root `okay` depends on them, nothing else does directly).
+  Fresh clone and every worktree: `git submodule update --init okay-core` — unlike `.agents/plugins`, the build
+  needs it checked out where it builds. Move the pin by committing the submodule's new commit here; push okay-core
+  before pushing okay, so the pin resolves.
+
 ## Skills
 - Skills live in the `.agents/plugins` submodule (fresh clone:
   `git submodule update --init`). Read `.agents/plugins/AGENTS.md` — it

@@ -1,3 +1,6 @@
 [submodule "agent-plugins"]
 	path = .agents/plugins
 	url = ../agent-plugins
+[submodule "okay-core"]
+	path = okay-core
+	url = https://github.com/sergey-scherbina/okay-core.git
