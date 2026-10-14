@@ -514,9 +514,11 @@ lazy val okayStd = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 lazy val okay = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("."))
-  .dependsOn(okayCont)
   .settings(
     name := "okay",
+    // THE ONE MONAD: okay-core's kernel and facade, the encoding of `A ! R` (okay-cont, the machine of stages
+    // 26–48, is gone — 2026-10-14); published locally from the okay-core repository
+    libraryDependencies += "okay-core" %%% "okay-core" % "0.1.0-SNAPSHOT",
   )
   .jvmSettings(
     // the core's own suite is small (Prog's Effects instance); forked all the same, as every suite here is — see
@@ -2311,11 +2313,9 @@ _root_.okay.deploy.sbt.OkayModules.settings(
     "okay-http is a wire; an agent, an LLM client and RAG are not (http-mcp-agent-edge)"),
   _root_.okay.deploy.sbt.OkayModules.forbid("okayOps(JVM|JS)", "okayDocs(JVM|JS|Native)",
     "okay-ops renders what it is handed; okay-docs brings two database drivers (ops-docs-edge)"),
-  _root_.okay.deploy.sbt.OkayModules.forbid("okayCont(JVM|JS|Native)", ".*",
-    "the continuation machine is dependency-free (specs/modules-infra.md)"),
-  _root_.okay.deploy.sbt.OkayModules.forbid("okay(JVM|JS|Native)", "(?!okayCont(JVM|JS|Native)$).*",
-    "the core depends on the machine only, no library (specs/modules-infra.md)"),
-  _root_.okay.deploy.sbt.OkayModules.forbid("okayFreer(JVM|JS|Native)", "(?!okay(Cont)?(JVM|JS|Native)$).*",
+  _root_.okay.deploy.sbt.OkayModules.forbid("okay(JVM|JS|Native)", ".*",
+    "the core depends on no module of its own: its kernel is okay-core's, a library (specs/modules-infra.md)"),
+  _root_.okay.deploy.sbt.OkayModules.forbid("okayFreer(JVM|JS|Native)", "(?!okay(JVM|JS|Native)$).*",
     "the classic depends on the core only: it knows nothing of the machine but through the core (specs/modules-infra.md)"),
   _root_.okay.deploy.sbt.OkayModules.forbid("okayStd(JVM|JS|Native)", "(?!okay(Cont|Freer)?(JVM|JS|Native)$).*",
     "the classic's effects depend on the classic's core only (okay-std)"),
@@ -2980,26 +2980,6 @@ lazy val okayDiagnose = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
     Test / unmanagedSourceDirectories +=
       baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
-  )
-
-/**
- * okay-freer (specs/freer-min.md): the core cut to its minimum — a four-node
- * indexed Freer (`Return | Inject | Perform | Bind`) with answer-type
- * modification, rows built by `flatMap`, and the control signature
- * (`Prompt`, `Control`). No dependency: a kernel that depended on anything
- * would make every effect carry it. A hypothesis lane: nothing depends on it.
- */
-lazy val okayCont = crossProject(JVMPlatform, JSPlatform, NativePlatform)
-  .crossType(CrossType.Pure)
-  .in(file("okay-cont"))
-  .dependsOn(okayTest % "test->compile")
-  .settings(
-    name := "okay-cont",
-    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
-  )
-  .jvmConfigure(_.enablePlugins(JmhPlugin))
-  .jvmSettings(
-    Jmh / sourceDirectory := baseDirectory.value.getParentFile / "src" / "jmh",
   )
 
 /**
@@ -3883,7 +3863,7 @@ lazy val platformMembers: Seq[ProjectReference] = gtkProjects ++ Seq[ProjectRefe
     okayDocs.jvm, okayDocs.js, okayDocs.native,
     okayConf.jvm, okayConf.js, okayConf.native,
     okayObs.jvm, okayObs.js, okayObs.native,
-    okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy, okayArrow.jvm, okayArrow.js, okayArrow.native, okayParquet.jvm, okayParquet.js, okayParquet.native, okayLake, okayCompress.jvm, okayCompress.js, okayCompress.native, okayDiagnose.jvm, okayDiagnose.js, okayDiagnose.native, okayCont.jvm, okayCont.js, okayCont.native, okayFreer.jvm, okayFreer.js, okayFreer.native, okayStd.jvm, okayStd.js, okayStd.native, okayTest.jvm, okayTest.js, okayTest.native, okayForeignWorkflow, okayR, okayForeignCluster,
+    okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy, okayArrow.jvm, okayArrow.js, okayArrow.native, okayParquet.jvm, okayParquet.js, okayParquet.native, okayLake, okayCompress.jvm, okayCompress.js, okayCompress.native, okayDiagnose.jvm, okayDiagnose.js, okayDiagnose.native, okayFreer.jvm, okayFreer.js, okayFreer.native, okayStd.jvm, okayStd.js, okayStd.native, okayTest.jvm, okayTest.js, okayTest.native, okayForeignWorkflow, okayR, okayForeignCluster,
     okayTelegram.jvm, okayTelegram.js,
     okaySecurity.jvm, okaySecurity.js, okaySecurityArgon2, okayRust.jvm,
     okayFrame.jvm, okayFrame.js,
