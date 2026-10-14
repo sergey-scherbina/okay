@@ -56,6 +56,9 @@ object Effects:
 
 /** `import okay.*` is the one monad's facade: `A ! R`, `effect`, `op.perform`, `p.handle(h)`, `p.value` */
 export Effects.machine.{given, *}
+/** an operation not yet at a row: `effect(op)`, `op.perform` — its path found where it is bound (`flatMap`, `map`),
+ * or given, `at[R]` */
+type Op[E[_], X] = Effects.machine.Operation[E, X]
 
 // ── control: the interface of delimited continuations (was Control.scala) ─────────────────────────────────────
 

@@ -1,20 +1,23 @@
 package okay
 
-import okay.cont.{Answering, Cap, Clause, Cont, Has, Machine, Partly, Reaches, Root, Top}
+import okay.core.Eff
+import okay.one.Cont
+import okay.one.step.Step as OStep
+import okay.one.step.Step.step
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
 import scala.concurrent.{Future, Promise}
 import scala.util.control.NonFatal
 
 /**
- * ASYNC ON THE MACHINE (cont-first-module): the same two operations, `Async.Run` and `Async.Await`, performed
- * in a program of the machine's `A ! R` (`import okay.*`) instead of the classic tree. The effect is not
+ * ASYNC ON THE ONE MONAD (cont-first-module; okay-core's since 2026-10-14): the same two operations, `Async.Run` and
+ * `Async.Await`, performed in a program of `A ! R` (`import okay.*`) instead of the classic tree. The effect is not
  * redefined — an operation is a value of `Async[X]` on both encodings — only its words and its two handlers:
  *
  *  - `blocking`, an `Answering` handler: each operation answered IN PLACE, no capture — a Run executed, an Await
  *    parked (hence the evidence, as the classic's `Async.run`);
- *  - `runAsync`, the callback drive: Async is the OUTERMOST handler, a clause at the top level (`Root`), so every
- *    operation stops the machine with the rest as a program at the top — the `generate` pattern. The drive
- *    executes a Run and runs the rest at once; an Await keeps the rest until the callback re-enters it.
+ *  - `runAsync`, the callback drive: the program STEPPED (okay-core's `Step`) — Async the one effect left, every
+ *    operation comes to the top with the rest as data (`Resume`, multi-shot, from any thread). The drive executes a
+ *    Run and runs the rest at once; an Await keeps the rest until the callback re-enters it.
  *
  * And the two bridges to the classic, per program: `toClassic` (each stop of the machine an operation of a
  * classic program) and `fromClassic` (a classic program as one Await of the machine).
@@ -52,7 +55,7 @@ object AsyncCont:
   def runAsyncCancellable[A](p: A ! (Async +: Pure)): Async.Running[A] =
     val promise = Promise[A]()
     val d = Drive(promise)
-    d.loop(top(p, d.clause, Driven.Done(_), d.runs))
+    try d.loop(p.step) catch case NonFatal(e) => promise.tryFailure(e)
     Async.Running(promise.future, () => d.cancel())
 
   /** the program run as a unit of its own, its failure a value: `Left` for a throw, a failed Await or a cancel
@@ -143,11 +146,7 @@ object AsyncCont:
    * its continuation — so the classic handler in force (blocking, a drive, a fiber's) answers it, and nothing
    * runs before the classic program is run */
   def toClassic[A](p: A ! (Async +: Pure)): okay.freer.![A, Async] =
-    okay.freer.Free.delay(() => classic(top(p, stops[A], Step.Done(_))))
-
-  private def classic[A](t: Top[Step[A]]): okay.freer.![A, Async] = Machine.value(t) match
-    case Step.Done(a) => okay.freer.pure(a)
-    case Step.At(op, k) => okay.freer.effect(op).flatMap(x => okay.freer.Free.delay(() => classic(k(x))))
+    okay.freer.Free.delay(() => classic(p.step))
 
   /** A CLASSIC PROGRAM AS ONE OPERATION OF THE MACHINE: driven by the classic callback drive, its answer the
    * Await's — so it never parks a thread the machine's handler did not choose to park */
@@ -158,40 +157,26 @@ object AsyncCont:
       () => running.cancel()
     }
 
-  /** where the program stands: its answer, or stopped at an operation with the rest as a program at the top */
-  private enum Step[+A]:
-    case Done(a: A)
-    case At[X, A](op: Async[X], k: X => Top[Step[A]]) extends Step[A]
+  /** the row of a program of the machine's Async: the one effect left */
+  type R = Async +: Pure
 
-  /** `toClassic`'s clause, at the top: every operation stops the machine with its continuation, for the classic
-   * handler in force to answer */
-  private def stops[A]: Clause[Async, EmptyTuple, Step[A]] = new Clause[Async, EmptyTuple, Step[A]]:
-    def apply[X](op: Async[X], k: X => Top[Step[A]]): Top[Step[A]] = Cont.Return(Step.At(op, k))
-
-  /** the program under the clause at the top; with `runs`, a Run never reaches the clause (`Cap.Split`) */
-  private def top[A, Ans](p: A ! (Async +: Pure), clause: Clause[Async, EmptyTuple, Ans], done: A => Ans,
-                          runs: Partly[Async] | Null = null): Top[Ans] =
-    okay.cont.handle[Async, A, Ans](done)(clause)(using Root): inner ?=>
-      val reach = Reaches.here[Async, Ans, inner.type]
-      val cap = if runs == null then Cap.Reaching(reach) else Cap.Split(runs, reach)
-      p.run(using inner, Has.HCons(cap, Has.HNil[inner.type]()))
-
-  /** where the drive stands when the machine stops: the program's answer, or parked at an Await whose callback
-   * will continue it */
-  private enum Driven[+A]:
-    case Done(a: A)
-    case Parked
+  /** `toClassic`'s road: the program stepped, each operation an operation of the classic program, the rest its
+   * continuation — so the classic handler in force (blocking, a drive, a fiber's) answers it */
+  private def classic[A](s: OStep[R, A]): okay.freer.![A, Async] = s match
+    case OStep.Done(a) => okay.freer.pure(a)
+    case OStep.Failed(e) => throw e
+    case y: OStep.Yield[R, A, e, x] => y.in match
+      case _: okay.one.row.In.Here[f, t] =>
+        okay.freer.effect(y.op).flatMap(v => okay.freer.Free.delay(() => classic(y.resume(v))))
+      case th: okay.one.row.In.There[f, g, t] => okay.one.row.In.absurd(th.in)
 
   /**
-   * THE DRIVE ANSWERS IN PLACE WHAT IT CAN (drive-in-place). A Run never reaches the clause: the capability
-   * splits per operation (`Cap.Split`), a Run answered on the answering road where it is performed (`runs`). The
-   * clause returns `k(x)` as its whole body for an Await whose callback fired during the registration — and a
-   * clause that returns the last `k(x)` is answered WHERE THE OPERATION WAS, the stack as it stands, nothing
-   * captured (the machine's own tail-resumption, `Captured.tail`). Only an Await still pending stops the machine: the clause keeps `k` for the
-   * callback and answers `Parked`. The callback may fire during the registration, on this thread or another:
-   * whoever comes SECOND to the flag continues — the clause in place, or the callback by re-entering `loop` with
-   * `k(x)`, a program at the top. The answer is written before the callback's turn at the flag, so the clause
-   * that comes second reads it.
+   * THE DRIVE ANSWERS IN PLACE WHAT IT CAN (drive-in-place): a Run is executed where the program stops at it and
+   * the rest run at once, in this loop. Only an Await still pending stops the loop: the drive keeps the rest for
+   * the callback and parks. The callback may fire during the registration, on this thread or another: whoever
+   * comes SECOND to the flag continues — the loop in place, or the callback by re-entering `loop` with the rest
+   * resumed, a run of the machine of its own. The answer is written before the callback's turn at the flag, so
+   * the one that comes second reads it.
    */
   private final class Drive[A](promise: Promise[A]):
     @volatile private var stopped = false
@@ -212,56 +197,52 @@ object AsyncCont:
         releaseScopes()
         promise.tryFailure(java.util.concurrent.CancellationException("cancelled")): Unit
 
-    /** a Run answered where it is performed, on the answering road (`Cap.Split`): no walk to the clause, no
-     * capture — and the drive's own: a cancelled drive stops at it, a scope mark is kept */
-    val runs: Partly[Async] = new Partly[Async]:
-      def answers[X](op: Async[X]): Boolean = op match
-        case Async.Run(_) => true
-        case _ => false
-      def value[X](op: Async[X]): X = op match
-        case Async.Run(f) =>
-          if stopped then throw java.util.concurrent.CancellationException("cancelled")
-          f match
-            case m: Async.ScopeMark => marked(m)
-            case _ => ()
-          f()
-        // `answers` sends an Await to the clause; this is never reached
-        case Async.Await(_, _) => throw IllegalStateException("an Await is answered by the drive's clause, not in place")
+    private def cancelled: Throwable = java.util.concurrent.CancellationException("cancelled")
 
-    val clause: Clause[Async, EmptyTuple, Driven[A]] = new Clause[Async, EmptyTuple, Driven[A]]:
-      def apply[X](op: Async[X], k: X => Top[Driven[A]]): Top[Driven[A]] = op match
-        case Async.Run(f) => k(f())   // only through `toClassic`'s road; the drive's Runs are answered in place
-        case Async.Await(reg, poll) =>
-          if stopped then throw java.util.concurrent.CancellationException("cancelled")
-          // ONE poll, no wait (drive-poll-then-park, as the classic's drive)
-          val now = if poll == null then null else poll()
-          if now != null then now match
-            case Right(x) => k(x)
-            case Left(e) => throw e
-          else
-            val got = AtomicReference[Either[Throwable, X] | Null](null)
-            val second = AtomicBoolean(false)
-            val cancelReg = reg { r =>
-              got.set(r)
-              if second.getAndSet(true) && !stopped then resume(r, k)
-            }
-            if !second.getAndSet(true) then
-              unregister = cancelReg
-              if stopped then cancelReg()
-              Cont.Return(Driven.Parked)
-            else got.get.nn match
-              case Right(x) => k(x)
-              case Left(e) => throw e
+    /** the loop: the program stepped to its next Await still pending, or to its end — a loop, not a frame */
+    def loop(s0: OStep[R, A]): Unit =
+      var s: OStep[R, A] | Null = s0
+      while s != null do s = next(s)
 
-    def loop(t: Top[Driven[A]]): Unit =
-      try
-        Machine.value(t) match
-          // a scope still open at the end was never exited: its program stopped early — released
-          case Driven.Done(a) => { releaseScopes(); promise.trySuccess(a): Unit }
-          case Driven.Parked => ()
-      catch case NonFatal(e) => { releaseScopes(); promise.tryFailure(e): Unit }
+    /** one stop of the program: the step after it, or `null` — the end, or an Await parked */
+    private def next(s: OStep[R, A]): OStep[R, A] | Null = s match
+      case OStep.Done(a) =>
+        // a scope still open at the end was never exited: its program stopped early — released
+        releaseScopes(); promise.trySuccess(a); null
+      case OStep.Failed(e) =>
+        releaseScopes(); promise.tryFailure(e); null
+      case y: OStep.Yield[R, A, e, x] => y.in match
+        case th: okay.one.row.In.There[f, g, t] => okay.one.row.In.absurd(th.in)
+        case _: okay.one.row.In.Here[f, t] =>
+          val op: Async[x] = y.op
+          op match
+            case Async.Run(f) =>
+              if stopped then y.resume.fail(cancelled)
+              else
+                f match
+                  case m: Async.ScopeMark => marked(m)
+                  case _ => ()
+                try y.resume(f()) catch case NonFatal(err) => y.resume.fail(err)
+            case Async.Await(reg, poll) =>
+              if stopped then y.resume.fail(cancelled)
+              else
+                // ONE poll, no wait (drive-poll-then-park, as the classic's drive)
+                val now = if poll == null then null else poll()
+                if now != null then answered[x](now, y.resume)
+                else
+                  val got = AtomicReference[Either[Throwable, x] | Null](null)
+                  val second = AtomicBoolean(false)
+                  val cancelReg = reg { r =>
+                    got.set(r)
+                    if second.getAndSet(true) && !stopped then loop(answered[x](r, y.resume))
+                  }
+                  if !second.getAndSet(true) then
+                    unregister = cancelReg
+                    if stopped then cancelReg()
+                    null
+                  else answered[x](got.get.nn, y.resume)
 
-    /** a late answer: the rest run from the callback's frame — itself a loop until the next pending Await */
-    private def resume[X](r: Either[Throwable, X], k: X => Top[Driven[A]]): Unit = r match
-      case Right(x) => loop(k(x))
-      case Left(e) => { releaseScopes(); promise.tryFailure(e): Unit }
+    /** the rest resumed with the callback's answer: its value, or its failure raised where the Await was */
+    private def answered[X](r: Either[Throwable, X], k: OStep.Resume[X, R, A]): OStep[R, A] = r match
+      case Right(x) => k(x)
+      case Left(e) => k.fail(e)

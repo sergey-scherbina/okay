@@ -85,7 +85,7 @@ object streams:
       def eval[W](p: P[W]): Flow[W] = StreamCont.eval(p)
       def async[A](a: => A): P[A] = AsyncCont.async(a).at
       def runAsync[A](p: P[A]): Future[A] = AsyncCont.runAsync(p)
-      def pureP[A](a: A): P[A] = okay.cont.Free.pure(a)
+      def pureP[A](a: A): P[A] = pure(a)
       extension [A](p: P[A]) def flatMapP[B](f: A => P[B]): P[B] = p.flatMap(f)
       def unconsChunk[W](s: Flow[W]): P[Option[(IndexedSeq[W], Flow[W])]] = s.pull.map {
         case StreamCont.Step.Done => None

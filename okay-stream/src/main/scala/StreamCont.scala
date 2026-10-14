@@ -1,7 +1,7 @@
 package okay
 
 import okay.AsyncCont.{awaitEither, fork, join}
-import okay.cont.Free
+import okay.core.Eff
 import okay.std.Writer
 import okay.freer.Row.plus
 import java.util.concurrent.atomic.AtomicBoolean
@@ -35,7 +35,7 @@ object StreamCont:
     case Chunk(ws: ArraySeq[W], rest: Src[W])
 
   /** a stream: the program that pulls it */
-  final class Src[+W](val pull: Free[R, Step[W]]):
+  final class Src[+W](val pull: Eff[R, Step[W]]):
     /** `inline`, as the classic `Chunks.map`: the chunk mapper is built ONCE where `V` may still be concrete
      * (`ChunkBuf.mapper`, a loop over the chunk, unboxed when a `ClassTag` is there) and handed to the recursion
      * as a value — so every chunk is mapped by it, not only the first */
@@ -51,10 +51,10 @@ object StreamCont:
 
     /** the recursion behind the inline `filter`; an empty chunk is not a step (a consumer would pull it for nothing) */
     def filterWith[V >: W](g: ArraySeq[V] => ArraySeq[V]): Src[V] = Src(pull.flatMap {
-      case Step.Done => Free.pure(Step.Done)
+      case Step.Done => pure(Step.Done)
       case Step.Chunk(ws, r) =>
         val kept = g(ws)
-        if kept.nonEmpty then Free.pure(Step.Chunk(kept, r.filterWith(g))) else r.filterWith(g).pull
+        if kept.nonEmpty then pure(Step.Chunk(kept, r.filterWith(g))) else r.filterWith(g).pull
     })
 
     /** the first `n` elements; the producer is not pulled past the chunk that holds the last of them */
@@ -69,21 +69,21 @@ object StreamCont:
     /** this, then `that` */
     def ++[V >: W](that: => Src[V]): Src[V] = Src(pull.flatMap {
       case Step.Done => that.pull
-      case Step.Chunk(ws, r) => Free.pure(Step.Chunk(ws, r ++ that))
+      case Step.Chunk(ws, r) => pure(Step.Chunk(ws, r ++ that))
     })
 
     /** each element's stream, in order */
     def flatMap[V](f: W => Src[V]): Src[V] = Src(pull.flatMap {
-      case Step.Done => Free.pure(Step.Done)
+      case Step.Done => pure(Step.Done)
       case Step.Chunk(ws, r) => (ws.foldRight(StreamCont.defer(r.flatMap(f)))((w, acc) => f(w) ++ acc)).pull
     })
 
     /** an Async step per element, in order */
     def evalMap[V](f: W => V ! R): Src[V] = Src(pull.flatMap {
-      case Step.Done => Free.pure(Step.Done)
+      case Step.Done => pure(Step.Done)
       case Step.Chunk(ws, r) =>
-        def each(it: Iterator[W], acc: Vector[V]): Free[R, Vector[V]] =
-          if !it.hasNext then Free.pure(acc) else f(it.next()).flatMap(v => each(it, acc :+ v))
+        def each(it: Iterator[W], acc: Vector[V]): Eff[R, Vector[V]] =
+          if !it.hasNext then pure(acc) else f(it.next()).flatMap(v => each(it, acc :+ v))
         each(ws.iterator, Vector.empty).map(vs => Step.Chunk(ArraySeq.untagged.from(vs), r.evalMap(f)))
     })
 
@@ -100,14 +100,14 @@ object StreamCont:
 
     /** the recursion behind the inline `foldLeft` */
     def foldWith[B](z: B)(g: (B, ArraySeq[W]) => B): B ! R = pull.flatMap {
-      case Step.Done => Free.pure(z)
+      case Step.Done => pure(z)
       case Step.Chunk(ws, r) => r.foldWith(g(z, ws))(g)
     }
 
     def toVector: Vector[W] ! R = foldLeft(Vector.newBuilder[W])((b, w) => b += w).map(_.result())
 
     def runForeach(f: W => Unit ! R): Unit ! R = pull.flatMap {
-      case Step.Done => Free.pure(())
+      case Step.Done => pure(())
       case Step.Chunk(ws, r) =>
         def each(it: Iterator[W]): Unit ! R = if !it.hasNext then r.runForeach(f) else f(it.next()).flatMap(_ => each(it))
         each(ws.iterator)
@@ -116,7 +116,7 @@ object StreamCont:
     /** `eff` once the stream has ended (not if its consumer stopped before) */
     def onDone(eff: Unit ! R): Src[W] = Src(pull.flatMap {
       case Step.Done => eff.map(_ => Step.Done)
-      case Step.Chunk(ws, r) => Free.pure(Step.Chunk(ws, r.onDone(eff)))
+      case Step.Chunk(ws, r) => pure(Step.Chunk(ws, r.onDone(eff)))
     })
 
     /**
@@ -126,7 +126,7 @@ object StreamCont:
      * ends its program with the scope open — the drive releases it, and the pending pulls are cancelled
      * (`AsyncCont.runAsync`'s scopes; under the blocking handler, as on the classic's, the marks are empty)
      */
-    def merge[V >: W](that: Src[V])(using Scheduler): Src[V] = Src(Free.delay { () =>
+    def merge[V >: W](that: Src[V])(using Scheduler): Src[V] = Src(okay.core.defer {
       val live = Live()
       val scope = Async.CancelScope(() => live.cancelAll())
       AsyncCont.enter(scope).flatMap(_ =>
@@ -149,7 +149,7 @@ object StreamCont:
      * chunks out (`receiveManyAsync`). A consumer that stops first leaves a cancel scope open, and the drive
      * cancels the pump and closes the channel, as `merge`'s pending pulls are
      */
-    def buffer(capacity: Int)(using Scheduler): Src[W] = Src(Free.delay { () =>
+    def buffer(capacity: Int)(using Scheduler): Src[W] = Src(okay.core.defer {
       val c = Channel[W](capacity)
       val live = Live()
       val scope = Async.CancelScope(() => { live.cancelAll(); c.close() })
@@ -177,10 +177,10 @@ object StreamCont:
           live.remove(other)
           s match
             case Step.Done => AsyncCont.exit(scope).map(_ => Step.Done)
-            case Step.Chunk(ws, r) => Free.pure(Step.Chunk(ws, r.onDone(AsyncCont.exit(scope).at)))
+            case Step.Chunk(ws, r) => pure(Step.Chunk(ws, r.onDone(AsyncCont.exit(scope).at)))
         }
         case Step.Chunk(ws, r) =>
-          Free.pure(Step.Chunk(ws, Src(fork(r.pull).flatMap { again =>
+          pure(Step.Chunk(ws, Src(fork(r.pull).flatMap { again =>
             live.add(again)
             merging(again, other, live, scope).pull
           })))
@@ -195,12 +195,12 @@ object StreamCont:
       () => ()
     }.at
 
-  def empty[W]: Src[W] = Src(Free.pure(Step.Done))
+  def empty[W]: Src[W] = Src(pure(Step.Done))
 
   /** pulled again only when its rest is pulled: a tail call between mutually recursive streams costs no frame */
-  def defer[W](s: => Src[W]): Src[W] = Src(Free.delay(() => s.pull))
+  def defer[W](s: => Src[W]): Src[W] = Src(okay.core.defer(s.pull))
 
-  def emit[W](w: W): Src[W] = Src(Free.pure(Step.Chunk(ArraySeq.untagged(w), empty)))
+  def emit[W](w: W): Src[W] = Src(pure(Step.Chunk(ArraySeq.untagged(w), empty)))
 
   def apply[W](ws: W*): Src[W] = fromList(ws.toList)
 
@@ -208,21 +208,21 @@ object StreamCont:
     if ws.isEmpty then empty
     else
       val (now, later) = ws.splitAt(ChunkSize)
-      Src(Free.pure(Step.Chunk(ArraySeq.untagged.from(now), defer(fromList(later)))))
+      Src(pure(Step.Chunk(ArraySeq.untagged.from(now), defer(fromList(later)))))
 
   /** read once, one element a pull: the iterator is made when the stream is first pulled, and nothing is read
    * ahead of what is pulled (its elements may be effects of their own) */
-  def fromIterator[W](it: => Iterator[W]): Src[W] = Src(Free.delay(() => reading(it).pull))
+  def fromIterator[W](it: => Iterator[W]): Src[W] = Src(okay.core.defer(reading(it).pull))
   private def reading[W](it: Iterator[W]): Src[W] =
-    Src(Free.delay(() =>
-      if it.hasNext then Free.pure(Step.Chunk(ArraySeq.untagged(it.next()), reading(it))) else Free.pure(Step.Done)))
+    Src(okay.core.defer(
+      if it.hasNext then pure(Step.Chunk(ArraySeq.untagged(it.next()), reading(it))) else pure(Step.Done)))
 
   /** a stream unfolded from `z` by an effectful step: each step a batch of elements (a chunk; an empty one is no
    * step) and the next state, or the end */
-  def unfold[Z, W](z: Z)(f: Z => Free[R, Option[(Seq[W], Z)]]): Src[W] = Src(Free.delay(() => f(z).flatMap {
-    case None => Free.pure(Step.Done)
+  def unfold[Z, W](z: Z)(f: Z => Eff[R, Option[(Seq[W], Z)]]): Src[W] = Src(okay.core.defer(f(z).flatMap {
+    case None => pure(Step.Done)
     case Some((ws, z2)) =>
-      if ws.isEmpty then unfold(z2)(f).pull else Free.pure(Step.Chunk(ArraySeq.untagged.from(ws), unfold(z2)(f)))
+      if ws.isEmpty then unfold(z2)(f).pull else pure(Step.Chunk(ArraySeq.untagged.from(ws), unfold(z2)(f)))
   }))
 
   def range(from: Long, until: Long): Src[Long] =
@@ -236,7 +236,7 @@ object StreamCont:
       while i < n do
         arr(i) = from + i
         i += 1
-      Src(Free.pure(Step.Chunk(ArraySeq.unsafeWrapArray(arr), defer(range(from + n, until)))))
+      Src(pure(Step.Chunk(ArraySeq.unsafeWrapArray(arr), defer(range(from + n, until)))))
 
   /** one Async step as a stream of its answer */
   def eval[W](op: W ! R): Src[W] = Src(op.map(w => Step.Chunk(ArraySeq.untagged(w), empty)))
