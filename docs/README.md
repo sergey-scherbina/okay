@@ -295,6 +295,7 @@ API reference, gotchas.
 | module | what it is |
 |---|---|
 | `okay` (core) | the interface over rows (`Effects[M]`), its words members of the instance (`A ! R`, `pure`, `effect`, `handle`, `value`; `import okay.*` is the machine's), the type classes; the guide/tutorial/typepedia above are the classic's |
+| [`okay-core`](modules/okay-core.md) | THE KERNEL, a submodule: the one monad — `Cont[R, I, O, A]`, a CEK machine with `k` as data — and its facade; `okay.Effects[M]` is its `RowEffects`, the classic tree's control carrier its control monad; packages `okay.core`, `okay.one` |
 | [`okay-freer`](modules/okay-freer.md) | the classic: the effect library over the freer tree — `A ! F`, handlers, rows, `Shift`, `Cps` and its machine — package `okay.freer`, above the core as one `Effects` instance; `import okay.freer.*` beside `import okay.*` |
 | [`okay-std`](modules/okay-std.md) | the classic's effects — State, Reader, Writer, Throws, Choose, Resource, Stream and the rest — package `okay.std`, over okay-freer; `import okay.std.*` beside `import okay.freer.*` |
 | [`okay-async`](modules/okay-async.md) | the portable `Async` effect and its callback-based runtime semantics, with no platform default instances of its own |
