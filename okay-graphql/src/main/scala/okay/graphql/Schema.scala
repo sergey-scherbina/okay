@@ -4,6 +4,7 @@ import okay.codec.Json
 import okay.codec.Json.*
 import okay.one.*
 import okay.one.Cont.pure
+import okay.StreamCont
 import scala.collection.mutable
 
 /** AN OUTPUT TYPE for values of the Scala type `A`: non-null unless `Nullable` — a Scala value is there */
@@ -23,12 +24,18 @@ object OutType:
     case Fetched(of) => nullable(of)
     case _ => false
 
-/** a type with a name: a scalar, an enum, an object */
+/** a type with a name: a scalar, an enum, an object, an interface, a union */
 sealed trait Named:
   def name: String
+  def description: Option[String]
+
+/** a type with fields to select: an object, an interface, a union (`__typename` only, and fragments) */
+sealed trait Composite extends Named:
+  def fieldDefs: List[Field[?, ?]]
 
 /** a scalar: its value as JSON */
-final case class Scalar[A](name: String, encode: A => Json) extends OutType[A] with Named
+final case class Scalar[A](name: String, encode: A => Json, description: Option[String] = None)
+    extends OutType[A] with Named
 
 object Scalar:
   val int: Scalar[Int] = Scalar("Int", i => JNum(i.toDouble))
@@ -36,9 +43,11 @@ object Scalar:
   val string: Scalar[String] = Scalar("String", JStr(_))
   val boolean: Scalar[Boolean] = Scalar("Boolean", JBool(_))
   val id: Scalar[String] = Scalar("ID", JStr(_))
+  val builtin: Set[String] = Set("Int", "Float", "String", "Boolean", "ID")
 
-/** an enum: each value of `A` by its name */
-final case class EnumType[A](name: String, values: List[(String, A)]) extends OutType[A] with Named:
+/** an enum: each value of `A` by its name; a value deprecated by its name, with the reason */
+final case class EnumType[A](name: String, values: List[(String, A)], description: Option[String] = None,
+    deprecated: Map[String, String] = Map.empty) extends OutType[A] with Named:
   def nameOf(a: A): Option[String] = values.collectFirst { case (n, v) if v == a => n }
 
 /** a list: its items each of `of` */
@@ -53,16 +62,43 @@ final case class Nullable[A](of: OutType[A]) extends OutType[Option[A]]
 final case class Fetched[A](of: OutType[A]) extends OutType[A ! Fetches]
 
 /** AN OBJECT TYPE: fields of a parent `A`, each resolved by a program. Its fields are lazy, so types may refer to
- * each other (a user's orders, an order's user) */
+ * each other (a user's orders, an order's user). The interfaces it implements are the schema's to know: those that
+ * name it a member */
 final class ObjectType[A](val name: String, val description: Option[String] = None)(fs: => List[Field[A, ?]])
-    extends OutType[A] with Named:
+    extends OutType[A] with Composite:
   lazy val fields: List[Field[A, ?]] = fs
   lazy val field: Map[String, Field[A, ?]] = fields.map(f => f.name -> f).toMap
+  def fieldDefs: List[Field[?, ?]] = fields
   override def toString: String = s"ObjectType($name)"
+
+/** AN OBJECT TYPE A VALUE OF `A` MAY BE: `pick` says whether it is, and gives it as the object's — typed, no test of
+ * a class */
+final case class Member[A, B](tpe: ObjectType[B], pick: A => Option[B])
+
+object Member:
+  /** a member by a partial function: `Member(userT) { case u: User => u }` */
+  def apply[A, B](tpe: ObjectType[B])(pick: PartialFunction[A, B]): Member[A, B] = Member(tpe, pick.lift)
+
+/** AN INTERFACE: fields every member declares too (`Schema.check`), its members the object types a value may be */
+final class InterfaceType[A](val name: String, val description: Option[String] = None)(fs: => List[Field[A, ?]],
+    ms: => List[Member[A, ?]]) extends OutType[A] with Composite:
+  lazy val fields: List[Field[A, ?]] = fs
+  lazy val members: List[Member[A, ?]] = ms
+  def fieldDefs: List[Field[?, ?]] = fields
+  override def toString: String = s"InterfaceType($name)"
+
+/** A UNION: one of its members, no field in common */
+final class UnionType[A](val name: String, val description: Option[String] = None)(ms: => List[Member[A, ?]])
+    extends OutType[A] with Composite:
+  lazy val members: List[Member[A, ?]] = ms
+  def fieldDefs: List[Field[?, ?]] = Nil
+  override def toString: String = s"UnionType($name)"
 
 /** A FIELD of a parent `A`, of the type `tpe`: its arguments, and the program that resolves it */
 final class Field[A, B](val name: String, val tpe: OutType[B], val args: List[Arg[?]],
-    val resolve: (A, Args) => B ! Fetches, val description: Option[String])
+    val resolve: (A, Args) => B ! Fetches, val description: Option[String], val deprecated: Option[String] = None):
+  def describe(d: String): Field[A, B] = new Field(name, tpe, args, resolve, Some(d), deprecated)
+  def deprecate(reason: String): Field[A, B] = new Field(name, tpe, args, resolve, description, Some(reason))
 
 object Field:
   /** a field read off its parent: no data to fetch */
@@ -79,6 +115,9 @@ sealed trait InType[A]:
   def literal(a: A): String
   /** what an absent value is: a nullable input's `None`, nothing for another */
   def absent: Option[A] = None
+  def nullable: Boolean = this match
+    case Optional(_) => true
+    case _ => false
   def ref: String = this match
     case Optional(of) => of.ref.stripSuffix("!")
     case InList(of) => s"[${of.ref}]!"
@@ -86,9 +125,10 @@ sealed trait InType[A]:
 
 sealed trait InNamed:
   def name: String
+  def description: Option[String]
 
-final case class InScalar[A](name: String, read: Json => Either[String, A], show: A => String)
-    extends InType[A] with InNamed:
+final case class InScalar[A](name: String, read: Json => Either[String, A], show: A => String,
+    description: Option[String] = None) extends InType[A] with InNamed:
   def decode(j: Json): Either[String, A] = read(j)
   def literal(a: A): String = show(a)
 
@@ -116,7 +156,8 @@ object InScalar:
     case j => Left(s"ID cannot represent ${Json.print(j)}")
   }, quote)
 
-final case class InEnum[A](name: String, values: List[(String, A)]) extends InType[A] with InNamed:
+final case class InEnum[A](name: String, values: List[(String, A)], description: Option[String] = None)
+    extends InType[A] with InNamed:
   def decode(j: Json): Either[String, A] = j match
     case JStr(s) => values.collectFirst { case (`s`, a) => a }.toRight(s"$name has no value $s")
     case other => Left(s"$name cannot represent ${Json.print(other)}")
@@ -145,9 +186,10 @@ final case class Optional[A](of: InType[A]) extends InType[Option[A]]:
   def literal(a: Option[A]): String = a.fold("null")(of.literal)
   override def absent: Option[Option[A]] = Some(None)
 
-/** an input object: its fields read as arguments are, then built */
-final class InObject[A](val name: String, val fields: List[Arg[?]])(build: Args => A, show: A => String = (a: A) => a.toString)
-    extends InType[A] with InNamed:
+/** an input object: its fields read as arguments are, then built. Its fields are lazy: an input may hold itself */
+final class InObject[A](val name: String, val description: Option[String] = None)(fs: => List[Arg[?]],
+    build: Args => A, show: A => String = (a: A) => a.toString) extends InType[A] with InNamed:
+  lazy val fields: List[Arg[?]] = fs
   def decode(j: Json): Either[String, A] = j match
     case JObj(fs) =>
       val unknown = fs.map(_._1).filterNot(n => fields.exists(_.name == n))
@@ -157,7 +199,7 @@ final class InObject[A](val name: String, val fields: List[Arg[?]])(build: Args 
   def literal(a: A): String = show(a)
 
 /** AN ARGUMENT: its name, its input type, a default */
-final case class Arg[A](name: String, tpe: InType[A], default: Option[A] = None):
+final case class Arg[A](name: String, tpe: InType[A], default: Option[A] = None, description: Option[String] = None):
   private[graphql] def read(provided: Option[Json]): Either[String, A] = provided match
     case Some(j) => tpe.decode(j).left.map(e => s"argument $name: $e")
     case None => default.orElse(tpe.absent).toRight(s"argument $name of type ${tpe.ref} is required")
@@ -176,54 +218,170 @@ object Args:
       case Some(e) => Left(e)
       case None => Right(Args(provided))
 
-/** A SCHEMA: the root types, a query's and a mutation's */
-final case class Schema(query: ObjectType[Unit], mutation: Option[ObjectType[Unit]] = None):
-  /** the schema in SDL: every type reached from the roots, in the order met */
+/** A SUBSCRIPTION FIELD: a stream of values of `tpe`, from its arguments — each value executed as the selection */
+final class Subscription[B](val name: String, val tpe: OutType[B], val args: List[Arg[?]],
+    val source: Args => StreamCont.Src[B], val description: Option[String] = None)
+
+object Subscription:
+  def apply[B](name: String, tpe: OutType[B], args: Arg[?]*)(source: Args => StreamCont.Src[B]): Subscription[B] =
+    new Subscription(name, tpe, args.toList, source)
+
+/** THE SUBSCRIPTION ROOT: its fields streams */
+final class SubscriptionType(val name: String, val description: Option[String] = None)(fs: => List[Subscription[?]]):
+  lazy val fields: List[Subscription[?]] = fs
+  lazy val field: Map[String, Subscription[?]] = fields.map(f => f.name -> f).toMap
+  /** the root as an object type, for validation, introspection and the SDL: its fields' types and arguments, no
+   * resolver of its own — a subscription runs by `Executor.subscribe` */
+  lazy val asObject: ObjectType[Unit] = ObjectType[Unit](name, description)(fields.map { case s: Subscription[b] =>
+    new Field[Unit, b](s.name, s.tpe, s.args,
+      (_, _) => okay.one.Cont.defer(throw IllegalStateException(s"${s.name} is a subscription: Executor.subscribe")),
+      s.description)
+  })
+
+/** A SCHEMA: the root types, a query's, a mutation's, a subscription's */
+final case class Schema(query: ObjectType[Unit], mutation: Option[ObjectType[Unit]] = None,
+    subscription: Option[SubscriptionType] = None, description: Option[String] = None):
+  /** the query root as executed: its fields and introspection's, `__schema` and `__type` */
+  lazy val executableQuery: ObjectType[Unit] =
+    ObjectType[Unit](query.name, query.description)(query.fields ++ Introspection.rootFields(this))
+
+  /** every named type reached from the roots, introspection's own included */
+  lazy val index: Schema.Index = Schema.Index(this)
+
+  /** the schema's own errors: an object missing a field of an interface it is a member of, a field of another type
+   * than the interface's, two types of one name */
+  def check: List[String] = index.problems
+
+  /** the schema in SDL: every type reached from the roots, in the order met; introspection's and the built-in
+   * scalars are not printed */
   def sdl: String =
-    val seen = mutable.LinkedHashMap.empty[String, String]
-    val work = mutable.Queue.empty[OutType[?] | InType[?]]
-    work ++= (query :: mutation.toList)
+    def str(d: String) = Json.print(JStr(d))
+    def doc(d: Option[String], indent: String) = d.fold("")(x => s"$indent${str(x)}\n")
+    def dep(d: Option[String]) = d.fold("")(r => s" @deprecated(reason: ${str(r)})")
     def args(as: List[Arg[?]]): String =
       if as.isEmpty then ""
-      else as.map { a =>
-        work += a.tpe
-        a match
-          case a: Arg[t] => s"${a.name}: ${a.tpe.ref}" + a.default.fold("")(d => s" = ${a.tpe.literal(d)}")
+      else as.map { case a: Arg[t] =>
+        s"${a.name}: ${a.tpe.ref}" + a.default.fold("")(d => s" = ${a.tpe.literal(d)}")
       }.mkString("(", ", ", ")")
-    while work.nonEmpty do
-      work.dequeue() match
-        case Nullable(of) => work += of
-        case ListOf(of) => work += of
-        case Fetched(of) => work += of
-        case Optional(of) => work += of
-        case InList(of) => work += of
-        case s: Scalar[?] => if !builtin(s.name) && !seen.contains(s.name) then seen(s.name) = s"scalar ${s.name}"
-        case s: InScalar[?] => if !builtin(s.name) && !seen.contains(s.name) then seen(s.name) = s"scalar ${s.name}"
-        case e: EnumType[?] => if !seen.contains(e.name) then
-          seen(e.name) = e.values.map("  " + _._1).mkString(s"enum ${e.name} {\n", "\n", "\n}")
-        case e: InEnum[?] => if !seen.contains(e.name) then
-          seen(e.name) = e.values.map("  " + _._1).mkString(s"enum ${e.name} {\n", "\n", "\n}")
-        case o: ObjectType[?] => if !seen.contains(o.name) then
-          seen(o.name) = ""
-          val body = o.fields.map { f =>
-            work += f.tpe
-            val doc = f.description.fold("")(d => s"  ${Json.print(JStr(d))}\n")
-            s"$doc  ${f.name}${args(f.args)}: ${f.tpe.ref}"
-          }
-          val doc = o.description.fold("")(d => s"${Json.print(JStr(d))}\n")
-          seen(o.name) = body.mkString(s"${doc}type ${o.name} {\n", "\n", "\n}")
-        case i: InObject[?] => if !seen.contains(i.name) then
-          seen(i.name) = ""
-          val body = i.fields.map { a =>
-            work += a.tpe
-            a match
-              case a: Arg[t] => s"  ${a.name}: ${a.tpe.ref}" + a.default.fold("")(d => s" = ${a.tpe.literal(d)}")
-          }
-          seen(i.name) = body.mkString(s"input ${i.name} {\n", "\n", "\n}")
+    def fields(fs: List[Field[?, ?]]) = fs.map(f =>
+      s"${doc(f.description, "  ")}  ${f.name}${args(f.args)}: ${f.tpe.ref}${dep(f.deprecated)}").mkString("\n")
+    def enumValues(vs: List[String], deprecated: Map[String, String]) =
+      vs.map(v => s"  $v${dep(deprecated.get(v))}").mkString("\n")
     val roots =
-      if query.name == "Query" && mutation.forall(_.name == "Mutation") then Nil
-      else List((("  query: " + query.name) :: mutation.toList.map("  mutation: " + _.name))
-        .mkString("schema {\n", "\n", "\n}"))
-    (roots ++ seen.values).mkString("", "\n\n", "\n")
+      val defaults = query.name == "Query" && mutation.forall(_.name == "Mutation") &&
+        subscription.forall(_.name == "Subscription")
+      if defaults then Nil
+      else List((List("  query: " + query.name) ++ mutation.map("  mutation: " + _.name) ++
+        subscription.map("  subscription: " + _.name)).mkString("schema {\n", "\n", "\n}"))
+    val printed = mutable.LinkedHashSet.empty[String]
+    val out = mutable.ArrayBuffer.empty[String]
+    def emit(name: String, text: String): Unit = if printed.add(name) then out += text
+    for n <- index.names if !n.startsWith("__") && !Scalar.builtin(n) do
+      (index.outputs.get(n), index.inputs.get(n)) match
+        case (Some(o: ObjectType[?]), _) =>
+          val is = index.interfacesOf(o.name)
+          val impl = if is.isEmpty then "" else is.map(_.name).mkString(" implements ", " & ", "")
+          val fs = fields(o.fields.filterNot(_.name.startsWith("__")))
+          emit(n, s"${doc(o.description, "")}type ${o.name}$impl {\n$fs\n}")
+        case (Some(i: InterfaceType[?]), _) =>
+          emit(n, s"${doc(i.description, "")}interface ${i.name} {\n${fields(i.fields)}\n}")
+        case (Some(u: UnionType[?]), _) =>
+          emit(n, s"${doc(u.description, "")}union ${u.name} = ${u.members.map(_.tpe.name).mkString(" | ")}")
+        case (Some(e: EnumType[?]), _) =>
+          emit(n, s"${doc(e.description, "")}enum ${e.name} {\n${enumValues(e.values.map(_._1), e.deprecated)}\n}")
+        case (Some(s: Scalar[?]), _) => emit(n, s"${doc(s.description, "")}scalar ${s.name}")
+        case (None, Some(e: InEnum[?])) =>
+          emit(n, s"${doc(e.description, "")}enum ${e.name} {\n${enumValues(e.values.map(_._1), Map.empty)}\n}")
+        case (None, Some(s: InScalar[?])) => emit(n, s"${doc(s.description, "")}scalar ${s.name}")
+        case (None, Some(i: InObject[?])) =>
+          val fs = i.fields.map { case a: Arg[t] =>
+            s"${doc(a.description, "  ")}  ${a.name}: ${a.tpe.ref}" + a.default.fold("")(d => s" = ${a.tpe.literal(d)}")
+          }
+          emit(n, s"${doc(i.description, "")}input ${i.name} {\n${fs.mkString("\n")}\n}")
+        case _ => ()
+    (description.map(str).toList ++ roots ++ out).mkString("", "\n\n", "\n")
 
-  private def builtin(name: String) = Set("Int", "Float", "String", "Boolean", "ID")(name)
+object Schema:
+  /** THE TYPES OF A SCHEMA BY NAME, met from its roots (a work list): outputs and inputs apart — an enum or a scalar
+   * may be both, one type to a client */
+  final class Index(schema: Schema):
+    val outputs: mutable.LinkedHashMap[String, Named] = mutable.LinkedHashMap.empty
+    val inputs: mutable.LinkedHashMap[String, InNamed] = mutable.LinkedHashMap.empty
+    private val clashes = mutable.ArrayBuffer.empty[String]
+
+    locally {
+      val work = mutable.Queue.empty[OutType[?] | InType[?]]
+      work += schema.executableQuery
+      work ++= schema.mutation
+      work ++= schema.subscription.map(_.asObject)
+      work += Scalar.string
+      work += Scalar.boolean
+      def out(n: Named & OutType[?]): Boolean = outputs.get(n.name) match
+        case Some(o) =>
+          if o != n then (o, n) match
+            case (_: Scalar[?], _: Scalar[?]) => () // a scalar is its name: two values of one are one type
+            case _ => clashes += s"two types named ${n.name}"
+          false
+        case None => outputs(n.name) = n; true
+      def in(n: InNamed & InType[?]): Boolean = inputs.get(n.name) match
+        case Some(_) => false
+        case None => inputs(n.name) = n; true
+      while work.nonEmpty do
+        work.dequeue() match
+          case Nullable(of) => work += of
+          case ListOf(of) => work += of
+          case Fetched(of) => work += of
+          case Optional(of) => work += of
+          case InList(of) => work += of
+          case s: Scalar[?] => out(s): Unit
+          case e: EnumType[?] => out(e): Unit
+          case o: ObjectType[?] => if out(o) then o.fields.foreach { f => work += f.tpe; work ++= f.args.map(_.tpe) }
+          case i: InterfaceType[?] => if out(i) then
+            i.fields.foreach { f => work += f.tpe; work ++= f.args.map(_.tpe) }
+            work ++= i.members.map(_.tpe)
+          case u: UnionType[?] => if out(u) then work ++= u.members.map(_.tpe)
+          case s: InScalar[?] => in(s): Unit
+          case e: InEnum[?] => in(e): Unit
+          case i: InObject[?] => if in(i) then work ++= i.fields.map(_.tpe)
+    }
+
+    /** every name, outputs first, in the order met */
+    lazy val names: List[String] = (outputs.keys ++ inputs.keys.filterNot(outputs.contains)).toList
+
+    /** the interfaces naming the object `name` a member */
+    def interfacesOf(name: String): List[InterfaceType[?]] =
+      outputs.valuesIterator.collect { case i: InterfaceType[?] if i.members.exists(_.tpe.name == name) => i }.toList
+
+    /** the object types a value of the type `name` may be */
+    def possible(name: String): Set[String] = outputs.get(name) match
+      case Some(o: ObjectType[?]) => Set(o.name)
+      case Some(i: InterfaceType[?]) => i.members.map(_.tpe.name).toSet
+      case Some(u: UnionType[?]) => u.members.map(_.tpe.name).toSet
+      case _ => Set.empty
+
+    /** a fragment on `condition` applies to the object `obj` */
+    def applies(condition: String, obj: String): Boolean = condition == obj || possible(condition).contains(obj)
+
+    /** an input type by name: the built-in scalars, or one the schema reaches */
+    def input(name: String): Option[InNamed] = inputs.get(name).orElse(name match
+      case "Int" => Some(InScalar.int)
+      case "Float" => Some(InScalar.float)
+      case "String" => Some(InScalar.string)
+      case "Boolean" => Some(InScalar.boolean)
+      case "ID" => Some(InScalar.id)
+      case _ => None)
+
+    lazy val problems: List[String] =
+      val memberErrors = outputs.valuesIterator.collect { case i: InterfaceType[?] => i }.flatMap { i =>
+        i.members.flatMap { m =>
+          i.fields.flatMap { f =>
+            m.tpe.field.get(f.name) match
+              case None => List(s"${m.tpe.name} is a member of ${i.name} but has no field ${f.name}")
+              case Some(g) =>
+                val ok = g.tpe.ref == f.tpe.ref || f.tpe.ref == g.tpe.ref.stripSuffix("!") ||
+                  possible(Executor.named(f.tpe).name).contains(Executor.named(g.tpe).name)
+                if ok then Nil else List(s"${m.tpe.name}.${f.name} is ${g.tpe.ref}, ${i.name}.${f.name} is ${f.tpe.ref}")
+          }
+        }
+      }
+      (clashes.toList ++ memberErrors).distinct

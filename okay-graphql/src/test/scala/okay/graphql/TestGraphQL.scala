@@ -85,6 +85,17 @@ class TestGraphQL extends okay.testkit.Munit.Diagnosed:
 
   private def json(s: String): Json = Json.parse(s)
 
+  /** a response, its errors' locations dropped: the suites asserting messages and paths */
+  private def bare(out: Json): Json = out match
+    case JObj(fs) => JObj(fs.map {
+      case ("errors", JArr(es)) => "errors" -> JArr(es.map {
+        case JObj(e) => JObj(e.filterNot(_._1 == "locations"))
+        case other => other
+      })
+      case other => other
+    })
+    case other => other
+
   /** `data.<field>`, a list */
   private def list(out: Json, field: String): Vector[Json] = out match
     case JObj(Vector(("data", JObj(fs)))) => fs.collectFirst { case (`field`, JArr(xs)) => xs }.getOrElse(fail(s"no list $field"))
@@ -144,29 +155,31 @@ class TestGraphQL extends okay.testkit.Munit.Diagnosed:
 
   test("errors with paths; null propagation through non-null fields") {
     given s: Sources = Sources()
-    assertEquals(run("""{ users(first: 1) { id brokenMaybe } }"""), json(
+    assertEquals(bare(run("""{ users(first: 1) { id brokenMaybe } }""")), json(
       """{"data":{"users":[{"id":"u1","brokenMaybe":null}]},
         |"errors":[{"message":"maybe","path":["users",0,"brokenMaybe"]}]}""".stripMargin))
     // users is non-null all the way up: data is null
-    assertEquals(run("""{ users(first: 1) { broken } }"""), json(
+    assertEquals(bare(run("""{ users(first: 1) { broken } }""")), json(
       """{"data":null,"errors":[{"message":"broken","path":["users",0,"broken"]}]}"""))
     // items fetched each as its own program: the missing one is null, its error at its index; one call for all
-    assertEquals(run("""{ byIds(ids: ["u1", "nobody", "u2"]) { id } }"""), json(
+    assertEquals(bare(run("""{ byIds(ids: ["u1", "nobody", "u2"]) { id } }""")), json(
       """{"data":{"byIds":[{"id":"u1"},null,{"id":"u2"}]},
         |"errors":[{"message":"users has no value for nobody","path":["byIds",1]}]}""".stripMargin))
     assertEquals(s.user.calls.toList, List(Seq("u1", "nobody", "u2")))
     // one program traversing them all: its error is the field's — non-null all the way up, data is null
-    assertEquals(run("""{ allByIds(ids: ["u1", "nobody"]) { id } }"""), json(
+    assertEquals(bare(run("""{ allByIds(ids: ["u1", "nobody"]) { id } }""")), json(
       """{"data":null,"errors":[{"message":"users has no value for nobody","path":["allByIds"]}]}"""))
     // a nullable field takes it
-    assertEquals(run("""{ user(id: "u1") { broken } }"""), json(
+    assertEquals(bare(run("""{ user(id: "u1") { broken } }""")), json(
       """{"data":{"user":null},"errors":[{"message":"broken","path":["user","broken"]}]}"""))
   }
 
-  test("an argument of the wrong type is a field error") {
+  test("an argument of the wrong type: a literal refused before running, a variable's value a request error") {
     given s: Sources = Sources()
     assertEquals(run("""{ users(first: "x") { id } }"""), json(
-      """{"data":null,"errors":[{"message":"argument first: Int cannot represent \"x\"","path":["users"]}]}"""))
+      """{"errors":[{"message":"Query.users(first:): Int cannot represent \"x\"","locations":[{"line":1,"column":3}]}]}"""))
+    assertEquals(run("""query($n: Int) { users(first: $n) { id } }""", json("""{"n": "x"}""")), json(
+      """{"errors":[{"message":"variable $n: Int cannot represent \"x\"","locations":[{"line":1,"column":7}]}]}"""))
   }
 
   test("mutations: top-level fields in order") {
@@ -177,12 +190,13 @@ class TestGraphQL extends okay.testkit.Munit.Diagnosed:
 
   test("request errors: a parse error, an unknown field, an unknown argument") {
     given s: Sources = Sources()
-    assertEquals(run("""{ users { id """), json("""{"errors":[{"message":"Syntax error: expected a name, found '<end>' at 1:14"}]}"""))
-    assertEquals(run("""{ users { nope } }"""), json("""{"errors":[{"message":"User has no field nope"}]}"""))
-    assertEquals(run("""{ users(last: 1) { id } }"""), json("""{"errors":[{"message":"Query.users has no argument last"}]}"""))
-    assertEquals(run("""{ users }"""), json("""{"errors":[{"message":"Query.users of type User needs a selection"}]}"""))
-    assertEquals(run("""query($n: Int!) { users(first: $n) { id } }"""),
-      json("""{"errors":[{"message":"variable $n of a non-null type is required"}]}"""))
+    assertEquals(run("""{ users { id """),
+      json("""{"errors":[{"message":"Syntax error: expected a name, found '<end>'","locations":[{"line":1,"column":14}]}]}"""))
+    assertEquals(bare(run("""{ users { nope } }""")), json("""{"errors":[{"message":"User has no field nope"}]}"""))
+    assertEquals(bare(run("""{ users(last: 1) { id } }""")), json("""{"errors":[{"message":"Query.users has no argument last"}]}"""))
+    assertEquals(bare(run("""{ users }""")), json("""{"errors":[{"message":"Query.users of type [User!]! needs a selection"}]}"""))
+    assertEquals(bare(run("""query($n: Int!) { users(first: $n) { id } }""")),
+      json("""{"errors":[{"message":"variable $n of type Int! is required"}]}"""))
   }
 
   test("the depth bound: a deep document and a cycle of fragments are errors, not overflows") {
@@ -191,7 +205,7 @@ class TestGraphQL extends okay.testkit.Munit.Diagnosed:
     val out = run(deep)
     assert(Json.print(out).contains("nesting deeper than 64"), Json.print(out))
     val cycle = run("""{ users { ...A } } fragment A on User { ...B } fragment B on User { ...A }""")
-    assert(Json.print(cycle).contains("fragments nested deeper than 64"), Json.print(cycle))
+    assert(Json.print(cycle).contains("fragment A spreads itself: A -> B -> A"), Json.print(cycle))
   }
 
   test("a list of 100 000 items in constant stack") {

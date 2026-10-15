@@ -4,7 +4,7 @@ import scala.collection.mutable.ArrayBuffer
 
 /** THE BOUNDS of a request: how deep a document may nest — selections, values, types — and how deep the executor
  * follows fragments. A deeper one is an error, never a stack overflow */
-final case class Limits(depth: Int = 64)
+final case class Limits(depth: Int = 64, fields: Int = 10000)
 
 /** a document that does not parse: where, and why */
 final case class ParseError(message: String, line: Int, column: Int):
@@ -171,13 +171,19 @@ object OkayGraphQLParser:
       if ds.isEmpty then error("an empty document")
       Document(ds.toList)
 
+    private def pos: Pos = Pos(peek.line, peek.column)
+
     private def definition(): Definition =
-      if at("{") then Definition.Operation(OperationKind.Query, None, Nil, Nil, selectionSet())
-      else if atName("query") || atName("mutation") then
-        val kind = if advance().text == "query" then OperationKind.Query else OperationKind.Mutation
+      val p = pos
+      if at("{") then Definition.Operation(OperationKind.Query, None, Nil, Nil, selectionSet(), p)
+      else if atName("query") || atName("mutation") || atName("subscription") then
+        val kind = advance().text match
+          case "query" => OperationKind.Query
+          case "mutation" => OperationKind.Mutation
+          case _ => OperationKind.Subscription
         val n = if peek.kind == Kind.Name then Some(name()) else None
         val vs = if at("(") then variableDefinitions() else Nil
-        Definition.Operation(kind, n, vs, directives(), selectionSet())
+        Definition.Operation(kind, n, vs, directives(), selectionSet(), p)
       else if atName("fragment") then
         advance(): Unit
         val n = name()
@@ -185,20 +191,20 @@ object OkayGraphQLParser:
         if !atName("on") then error("expected 'on'")
         advance(): Unit
         val on = name()
-        Definition.Fragment(n, on, directives(), selectionSet())
-      else if atName("subscription") then error("subscriptions are not supported")
+        Definition.Fragment(n, on, directives(), selectionSet(), p)
       else error(s"expected a definition, found '${peek.text}'")
 
     private def variableDefinitions(): List[VariableDefinition] =
       expect("(")
       val vs = ArrayBuffer.empty[VariableDefinition]
       while !at(")") do
+        val p = pos
         expect("$")
         val n = name()
         expect(":")
         val t = typeRef()
         val d = if at("=") then { advance(): Unit; Some(value(const = true)) } else None
-        vs += VariableDefinition(n, t, d)
+        vs += VariableDefinition(n, t, d, p)
       expect(")")
       vs.toList
 
@@ -216,9 +222,10 @@ object OkayGraphQLParser:
     private def directives(): List[Directive] =
       val ds = ArrayBuffer.empty[Directive]
       while at("@") do
+        val p = pos
         advance(): Unit
         val n = name()
-        ds += Directive(n, if at("(") then arguments() else Nil)
+        ds += Directive(n, if at("(") then arguments() else Nil, p)
       ds.toList
 
     private def arguments(): List[(String, Value)] =
@@ -242,18 +249,19 @@ object OkayGraphQLParser:
     }
 
     private def selection(): Selection =
+      val p = pos
       if at("...") then
         advance(): Unit
-        if peek.kind == Kind.Name && peek.text != "on" then Selection.Spread(name(), directives())
+        if peek.kind == Kind.Name && peek.text != "on" then Selection.Spread(name(), directives(), p)
         else
           val on = if atName("on") then { advance(): Unit; Some(name()) } else None
-          Selection.Inline(on, directives(), selectionSet())
+          Selection.Inline(on, directives(), selectionSet(), p)
       else
         val first = name()
         val (alias, n) = if at(":") then { advance(): Unit; (Some(first), name()) } else (None, first)
         val as = if at("(") then arguments() else Nil
         val ds = directives()
-        Selection.Field(alias, n, as, ds, if at("{") then selectionSet() else Nil)
+        Selection.Field(alias, n, as, ds, if at("{") then selectionSet() else Nil, p)
 
     private def value(const: Boolean): Value =
       val t = peek

@@ -5,16 +5,25 @@ final case class Document(definitions: List[Definition]):
   def operations: List[Definition.Operation] = definitions.collect { case o: Definition.Operation => o }
   def fragments: Map[String, Definition.Fragment] =
     definitions.collect { case f: Definition.Fragment => f.name -> f }.toMap
+  /** the document as text, parsed back to itself (`Printer`) */
+  def print: String = Printer.document(this)
+
+/** where in the document: line and column from 1; `Pos.None` for a node made by code */
+final case class Pos(line: Int, column: Int)
+
+object Pos:
+  val None: Pos = Pos(0, 0)
 
 enum OperationKind:
-  case Query, Mutation
+  case Query, Mutation, Subscription
 
 enum Definition:
   case Operation(kind: OperationKind, name: Option[String], variables: List[VariableDefinition],
-      directives: List[Directive], selections: List[Selection])
-  case Fragment(name: String, on: String, directives: List[Directive], selections: List[Selection])
+      directives: List[Directive], selections: List[Selection], at: Pos = Pos.None)
+  case Fragment(name: String, on: String, directives: List[Directive], selections: List[Selection],
+      at: Pos = Pos.None)
 
-final case class VariableDefinition(name: String, tpe: TypeRef, default: Option[Value])
+final case class VariableDefinition(name: String, tpe: TypeRef, default: Option[Value], at: Pos = Pos.None)
 
 /** a type as a document writes it: `Int`, `[Int]`, `Int!` */
 enum TypeRef:
@@ -22,13 +31,18 @@ enum TypeRef:
   case ListOf(of: TypeRef)
   case NonNull(of: TypeRef)
 
-final case class Directive(name: String, arguments: List[(String, Value)])
+  override def toString: String = this match
+    case Named(n) => n
+    case ListOf(of) => s"[$of]"
+    case NonNull(of) => s"$of!"
+
+final case class Directive(name: String, arguments: List[(String, Value)], at: Pos = Pos.None)
 
 enum Selection:
   case Field(alias: Option[String], name: String, arguments: List[(String, Value)], directives: List[Directive],
-      selections: List[Selection])
-  case Spread(name: String, directives: List[Directive])
-  case Inline(on: Option[String], directives: List[Directive], selections: List[Selection])
+      selections: List[Selection], at: Pos = Pos.None)
+  case Spread(name: String, directives: List[Directive], at: Pos = Pos.None)
+  case Inline(on: Option[String], directives: List[Directive], selections: List[Selection], at: Pos = Pos.None)
 
 object Selection:
   extension (f: Selection.Field) def key: String = f.alias.getOrElse(f.name)
