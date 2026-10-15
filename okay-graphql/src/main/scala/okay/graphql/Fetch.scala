@@ -5,21 +5,26 @@ import okay.one.*
 import okay.one.Cont.perform
 import okay.one.row.*
 
-/** A SOURCE OF DATA, told apart by identity: one source object, one batch per round. It answers MANY keys in one
+/** A SOURCE OF DATA, told apart by identity: one source object, one batch per round, one cache per execution. It answers MANY keys in one
  * call — a SQL `IN`, a batch endpoint; a key it leaves out has no value, and the program that asked fails. Two kinds:
  * a plain function (`Source`), or a program of `Async` (`AsyncSource`, `Executor.executeAsync` only) */
 sealed trait DataSource[K, V]:
   def name: String
+  /** whether a key's answer is kept for the rest of the execution (the default), or asked again each round —
+   * data that changes while the request runs */
+  def cached: Boolean = true
 
 /** a source answering at once */
 trait Source[K, V] extends DataSource[K, V]:
   def fetch(keys: Seq[K]): Map[K, V]
 
 object Source:
-  def apply[K, V](name: String)(f: Seq[K] => Map[K, V]): Source[K, V] =
+  def apply[K, V](name: String, cached: Boolean = true)(f: Seq[K] => Map[K, V]): Source[K, V] =
     val n = name
+    val c = cached
     new Source[K, V]:
       def name: String = n
+      override def cached: Boolean = c
       def fetch(keys: Seq[K]): Map[K, V] = f(keys)
       override def toString: String = s"Source($n)"
 
@@ -29,10 +34,12 @@ trait AsyncSource[K, V] extends DataSource[K, V]:
   def fetch(keys: Seq[K]): Map[K, V] ! (Async +: Pure)
 
 object AsyncSource:
-  def apply[K, V](name: String)(f: Seq[K] => Map[K, V] ! (Async +: Pure)): AsyncSource[K, V] =
+  def apply[K, V](name: String, cached: Boolean = true)(f: Seq[K] => Map[K, V] ! (Async +: Pure)): AsyncSource[K, V] =
     val n = name
+    val c = cached
     new AsyncSource[K, V]:
       def name: String = n
+      override def cached: Boolean = c
       def fetch(keys: Seq[K]): Map[K, V] ! (Async +: Pure) = f(keys)
       override def toString: String = s"AsyncSource($n)"
 
