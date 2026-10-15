@@ -2,11 +2,10 @@ package okay.frege
 
 import okay.{Async, Chunks, through}
 
-import okay.freer.{%, +}
-import okay.freer.{!, effect, pure}
+import okay.{%, +}
+import okay.{!, pure}
 import okay.std.{Reader, Writer}
 import okay.given
-import okay.freer.given
 import okay.frege.{Programs as P}
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -19,12 +18,12 @@ import java.util.concurrent.atomic.AtomicInteger
 class TestFregeStage2 extends munit.FunSuite {
 
   def emit[I](xs: Seq[I]): Unit ! Writer % I =
-    xs.foldRight(pure[Writer % I, Unit](()))((x, p) => Writer.tell(x).flatMap(_ => p))
+    xs.foldRight(pure[Unit, Writer % I](()))((x, p) => Writer.tell(x).flatMap(_ => p))
 
   /** a producer already in the stage's extra row, as okay-stream's
    * effectful `through` takes it */
-  def emitIn[I, G[+_]](xs: Seq[I]): Unit ! Writer % I + G =
-    xs.foldRight(pure[Writer % I + G, Unit](()))((x, p) => effect[Writer % I + G, Unit](Writer(x)).flatMap(_ => p))
+  def emitIn[I, G[_]](xs: Seq[I]): Unit ! Writer % I + G =
+    xs.foldRight(pure[Unit, Writer % I + G](()))((x, p) => Writer.tell(x).at[Writer % I + G].flatMap(_ => p))
 
   // --------------------------------------------------- effectful stage
 

@@ -1,7 +1,6 @@
 package okay.clojure
 
 import okay.{Foreign, Push, Stage}
-import okay.freer.Free
 import clojure.lang.{AFn, IFn, RT, Reduced}
 import scala.collection.mutable.ArrayBuffer
 import scala.reflect.ClassTag
@@ -85,7 +84,7 @@ object Transducers {
 
   /**
    * A Clojure transducer as a stage: `xf` is applied to a collecting
-   * reducing function when the stage STARTS (a `Free.delay`), so each
+   * reducing function when the stage STARTS (an `okay.defer`), so each
    * run has its own `volatile!`s. A reduced step ends the stage after
    * the completion arity has flushed — `(take 3)` stops an okay
    * pipeline pulling, `(partition-all 3)` still hands over its tail.
@@ -99,7 +98,7 @@ object Transducers {
    * refused by name, before the spent state is stepped.
    */
   def stage[I, O: ClassTag](xf: IFn): Stage[I, O, Unit] =
-    Free.delay { () =>
+    okay.defer {
       val out = ArrayBuffer.empty[O]
       val collect: IFn = new AFn:
         override def invoke(): AnyRef = scala.runtime.BoxedUnit.UNIT
@@ -120,7 +119,7 @@ object Transducers {
       def flush(): Stage[I, O, Unit] =
         val batch = out.toVector
         out.clear()
-        okay.freer.!.each(batch)(o => Stage.tell[I, O](o))
+        okay.!.each(batch)(o => Stage.tell[I, O](o))
 
       def finish(acc: AnyRef): Stage[I, O, Unit] =
         live()

@@ -2,8 +2,8 @@ package okay.frege
 
 import okay.{Chunks, through}
 
-import okay.freer.{%, +}
-import okay.freer.{!, effect, pure}
+import okay.{%, +}
+import okay.{!, pure}
 import okay.std.{Choose, Reader, State, Writer, runChoice}
 import okay.frege.{Programs as P}
 import frege.run8.Thunk
@@ -17,7 +17,7 @@ import java.util.concurrent.atomic.AtomicInteger
 class TestDocExamplesFrege extends munit.FunSuite:
 
   def numbers(xs: Long*): Unit ! Writer % Long =
-    xs.foldRight(pure[Writer % Long, Unit](()))((x, p) => Writer.tell(x).flatMap(_ => p))
+    xs.foldRight(pure[Unit, Writer % Long](()))((x, p) => Writer.tell(x).flatMap(_ => p))
 
   def told[O](p: Unit ! Writer % O): Seq[O] = !.run(Writer.run(p))._1
 
@@ -39,8 +39,8 @@ class TestDocExamplesFrege extends munit.FunSuite:
     assertEquals(all.map(_.longValue).sorted, Seq(11L, 12L, 21L, 22L))
   }
 
-  def emitIn[I, G[+_]](xs: Seq[I]): Unit ! Writer % I + G =
-    xs.foldRight(pure[Writer % I + G, Unit](()))((x, p) => effect[Writer % I + G, Unit](Writer(x)).flatMap(_ => p))
+  def emitIn[I, G[_]](xs: Seq[I]): Unit ! Writer % I + G =
+    xs.foldRight(pure[Unit, Writer % I + G](()))((x, p) => Writer.tell(x).at[Writer % I + G].flatMap(_ => p))
 
   def countedNats(produced: AtomicInteger, size: Int): Chunks[java.lang.Long] =
     Chunks.map(Chunks.nats[Long](size))(x => { produced.incrementAndGet(): Unit; Long.box(x) })

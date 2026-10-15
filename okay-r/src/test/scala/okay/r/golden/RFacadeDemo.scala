@@ -1,6 +1,6 @@
 package okay.r.golden
 
-import okay.freer.!
+import okay.!
 import okay.codec.Schema
 import okay.r.{Condition, R, REval, ToR}
 

@@ -2,8 +2,8 @@ package okay.frege
 
 import okay.{ChunkBuf, Chunks, Foreign, Stage, Take}
 
-import okay.freer.{%, +, Pure}
-import okay.freer.{!, Free, Member, pure}
+import okay.{%, +, Pure}
+import okay.{!, defer, pure}
 import okay.std.{Chunk, Writer}
 import okay.frege.Prog.TProg
 import frege.prelude.PreludeBase.{TList, TMaybe}
@@ -68,11 +68,11 @@ object Frege {
    * program is built when the stage starts, so one stage value runs
    * afresh each time; a program that returns early ends the stage, so
    * `through` pulls nothing more from upstream. It is `stageWith` at the
-   * empty row: `Pure` is `Nothing`, so `Writer % O + Pure` IS
-   * `Writer % O` and there is one walker, not two.
+   * empty row: `Writer % O + Pure` fits where `Writer % O` is asked
+   * (`.at`), and there is one walker, not two.
    */
   def stage[I, O: ClassTag](prog: => TProg[?], name: String = "a Frege stage"): Stage[I, O, Unit] =
-    stageWith[I, O, Pure](prog, name)
+    stageWith[I, O, Pure](prog, name).at[Take % I + Writer % O]
 
   /**
    * A Frege stage that also PERFORMS: `await` and `tell` are the stage's
@@ -83,19 +83,19 @@ object Frege {
    * written that way. The walk is okay-stream's `Foreign`, shared with
    * okay-clojure's `Program`.
    */
-  def stageWith[I, O: ClassTag, F[+_]](prog: => TProg[?], name: String = "a Frege stage")
-                                     (using Row[F]): Unit ! (Take % I + (Writer % O + F)) =
+  def stageWith[I, O: ClassTag, F[_]](prog: => TProg[?], name: String = "a Frege stage")
+                                    (using Row[F]): Unit ! (Take % I + (Writer % O + F)) =
     Foreign.stageWith[I, O, F, TProg[?]](prog, name)
 
   /**
    * Whether a value from Frege is an operation of the row F: the core's
-   * `okay.freer.Member` (interop-shared) under the name this module's users
+   * `okay.Foreign.Member` (interop-shared) under the name this module's users
    * already bind. A single signature's is FOUND; a union is BUILT with
    * `|` — `Frege.Row.of[Reader % Long] | Frege.Row.of[State % Long]` —
    * because dotty does not infer F and G from a union type lambda.
    */
-  type Row[F[+_]] = Member[F]
-  val Row: Member.type = Member
+  type Row[F[_]] = Foreign.Member[F]
+  val Row: Foreign.Member.type = Foreign.Member
 
   /**
    * A Frege `Prog a` as `A ! F`: each `perform op` is performed as an
@@ -106,8 +106,8 @@ object Frege {
    * a module `okay.foreign.Jvm.frege` generated binds — is answered by `calls`
    * (`Jvm.calls(cbs)`, the callbacks every wire language is offered).
    */
-  def run[F[+_], A: ClassTag](prog: => TProg[?], name: String = "a Frege program",
-                             calls: Foreign.Calls[F] = Foreign.Calls.none[F])(using Row[F]): A ! F =
+  def run[F[_], A: ClassTag](prog: => TProg[?], name: String = "a Frege program",
+                            calls: Foreign.Calls[F] = Foreign.Calls.none[F])(using Row[F]): A ! F =
     Foreign.run[F, A, TProg[?]](prog, name, calls)
 
   // ------------------------------------------------------------ data
@@ -121,7 +121,7 @@ object Frege {
    * second run is the same list, not a spent one).
    */
   def chunks[A: ClassTag](xs: => TList[?], size: Int = 64): Chunks[A] =
-    def go(rest: TList[?]): Chunks[A] = Free.delay { () =>
+    def go(rest: TList[?]): Chunks[A] = defer {
       val buf = ChunkBuf[A](size)
       var cur = rest
       var i = 0
@@ -135,7 +135,7 @@ object Frege {
         val next = cur
         Writer.tell(buf.take(i)).flatMap(_ => go(next))
     }
-    Free.delay(() => go(xs))
+    defer(go(xs))
 
   /**
    * okay `Chunks` as a Frege list, LAZILY: a cell is built when Frege

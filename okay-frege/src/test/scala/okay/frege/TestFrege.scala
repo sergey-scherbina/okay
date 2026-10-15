@@ -2,10 +2,9 @@ package okay.frege
 
 import okay.{Stage, through}
 
-import okay.freer.{%, +}
-import okay.freer.{!, pure}
+import okay.{%, +}
+import okay.{!, pure}
 import okay.std.{Choose, Reader, State, Throws, Writer, runChoice, runEither}
-import okay.freer.given
 import frege.run8.Thunk
 import java.util.concurrent.atomic.AtomicInteger
 import okay.frege.{Programs as P}
@@ -20,7 +19,7 @@ import okay.frege.{Programs as P}
 class TestFrege extends munit.FunSuite {
 
   def emit[I](xs: Seq[I]): Unit ! Writer % I =
-    xs.foldRight(pure[Writer % I, Unit](()))((x, p) => Writer.tell(x).flatMap(_ => p))
+    xs.foldRight(pure[Unit, Writer % I](()))((x, p) => Writer.tell(x).flatMap(_ => p))
 
   def own[I, O, A](src: Unit ! Writer % I, s: Stage[I, O, A]): List[O] =
     !.run(Writer.run(through(src)(s)))._1.toList

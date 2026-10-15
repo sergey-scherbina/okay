@@ -2,8 +2,8 @@ package okay.clojure
 
 import okay.{Chunks, Stage, through}
 
-import okay.freer.{%, +}
-import okay.freer.{!, pure}
+import okay.{%, +}
+import okay.{!, pure}
 import okay.std.{Reader, State, Writer}
 import clojure.lang.{IFn, PersistentVector}
 import scala.jdk.CollectionConverters.*
@@ -20,7 +20,7 @@ class TestDocExamplesClojure extends munit.FunSuite:
     case other => fail(s"expected a Clojure function, got $other")
 
   def lines(xs: String*): Unit ! Writer % String =
-    xs.foldRight(pure[Writer % String, Unit](()))((x, p) => Writer.tell(x).flatMap(_ => p))
+    xs.foldRight(pure[Unit, Writer % String](()))((x, p) => Writer.tell(x).flatMap(_ => p))
 
   def told[O](p: Unit ! Writer % O): Seq[O] = !.run(Writer.run(p))._1
 

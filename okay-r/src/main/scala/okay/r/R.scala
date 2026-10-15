@@ -1,6 +1,6 @@
 package okay.r
 
-import okay.freer.!
+import okay.!
 import okay.codec.Schema
 import okay.foreign.{ForeignEval, Foreign, Frame, PyNode, Handle, PyStream, Value, Shape, ToPy}
 
@@ -72,7 +72,7 @@ object RValue:
 final case class RRef(id: Long, rClass: String):
   private[r] def py: Handle = Handle(id, rClass, R.shape)
   /** drop the object in the R process; idempotent */
-  def release: Unit ! REval = okay.freer.effect[REval, Unit](ForeignEval.Release(py))
+  def release: Unit ! REval = okay.effect(ForeignEval.Release(py))
   /** this held CLOSURE as a stateful stage over chunks (foreign-streaming);
    * `finish`, another held closure, is called with nothing at the end */
   def stage[I: ToR, O: Schema](chunk: Int = 64, finish: Option[RRef] = None): Unit ! RStream.Row[I, O] =
@@ -268,10 +268,10 @@ object R:
 
   type Fn[Out] = Foreign.Fn[Out]
   type ProgramOf[Out] = Foreign.ProgramOf[Out]
-  type RRun[F[+_], Out] = Foreign.PyRun[F, Out]
+  type RRun[F[_], Out] = Foreign.PyRun[F, Out]
   type CallbackOf[Arg, Res] = Foreign.CallbackOf[Arg, Res]
-  type Callback[F[+_]] = Foreign.Callback[F]
-  type Callbacks[F[+_]] = Foreign.Callbacks[F]
+  type Callback[F[_]] = Foreign.Callback[F]
+  type Callbacks[F[_]] = Foreign.Callbacks[F]
 
   def fn[Out](address: String)(using Schema[Out]): Fn[Out] = Foreign.Fn(address)
 
@@ -331,4 +331,4 @@ object R:
    * `Arg` by R's rules, runs `f` under the caller's handlers, and answers */
   def callback[Arg: Schema, Res: Schema](name: String): CallbackOf[Arg, Res] = Foreign.CallbackOf(name)
 
-  def callbacks[F[+_]](cbs: Callback[F]*): Callbacks[F] = Foreign.callbacks(cbs*)
+  def callbacks[F[_]](cbs: Callback[F]*): Callbacks[F] = Foreign.callbacks(cbs*)

@@ -2,8 +2,8 @@ package okay.frege
 
 import okay.{through}
 
-import okay.freer.{%}
-import okay.freer.{!, pure}
+import okay.{%}
+import okay.{!, pure}
 import okay.std.{Writer}
 import okay.frege.{Programs as P}
 
@@ -21,7 +21,7 @@ class PriceInterop extends munit.FunSuite {
   test("PRICE: a Frege program of 2e5 steps through the driver") {
     val ms = minMillis(7)(() => {
       val stage = Frege.stage[Long, java.lang.Long](P.countTo(0L, 200000L).call())
-      val _ = !.run(Writer.run(through(pure[Writer % Long, Unit](()))(stage)))
+      val _ = !.run(Writer.run(through(pure[Unit, Writer % Long](()))(stage)))
     })
     println(f"PRICE interop frege program 2e5 steps: $ms%.1f ms (min of 7)")
   }

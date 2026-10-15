@@ -1,27 +1,8 @@
 package okay.rust
 
-
-
-
-
-
-
-
-
-import okay.freer.*
-
-
-
-
-
-
-
-
-
 import java.nio.file.{Files, Path}
 import java.lang.foreign.{FunctionDescriptor, ValueLayout}
-import okay.Answers
-import okay.freer.{!, given}
+import okay.{!, Answers}
 import org.bouncycastle.crypto.generators.Argon2BytesGenerator
 import org.bouncycastle.crypto.params.Argon2Parameters
 

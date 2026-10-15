@@ -2,8 +2,8 @@ package okay.clojure
 
 import okay.{Stage, through}
 
-import okay.freer.{%}
-import okay.freer.{!, pure}
+import okay.{%}
+import okay.{!, pure}
 import okay.std.{Writer}
 import clojure.lang.{IFn, PersistentVector}
 import java.util.concurrent.atomic.AtomicInteger
@@ -39,7 +39,7 @@ class TestTransducers extends munit.FunSuite {
   def vec(xs: Seq[Long]): AnyRef = PersistentVector.create(xs.map(Long.box).asJava)
 
   def emit[I](xs: Seq[I]): Unit ! Writer % I =
-    xs.foldRight(pure[Writer % I, Unit](()))((x, p) => Writer.tell(x).flatMap(_ => p))
+    xs.foldRight(pure[Unit, Writer % I](()))((x, p) => Writer.tell(x).flatMap(_ => p))
 
   def own[I, O, A](src: Unit ! Writer % I, s: Stage[I, O, A]): List[O] =
     !.run(Writer.run(through(src)(s)))._1.toList

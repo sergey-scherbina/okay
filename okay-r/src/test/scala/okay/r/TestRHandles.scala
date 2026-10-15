@@ -1,5 +1,4 @@
 package okay.r
-import okay.freer.given
 import okay.codec.Schema
 
 object TestRHandles:

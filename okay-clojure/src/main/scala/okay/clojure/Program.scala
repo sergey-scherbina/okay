@@ -2,8 +2,8 @@ package okay.clojure
 
 import okay.{ChunkBuf, Chunks, Foreign, Stage, Take}
 
-import okay.freer.{%, +, Pure}
-import okay.freer.{!, Free, Member, pure}
+import okay.{%, +, Pure}
+import okay.{!, defer, pure}
 import okay.std.{Chunk, Writer}
 import clojure.lang.{AFn, Cons, IFn, ILookup, ISeq, Keyword, LazySeq, RT}
 import scala.reflect.ClassTag
@@ -74,30 +74,30 @@ object Program {
 
   /**
    * Whether a value from Clojure is an operation of the row F: the core's
-   * `okay.freer.Member` (interop-shared), found for one signature, built with
+   * `okay.Foreign.Member` (interop-shared), found for one signature, built with
    * `|` for a union — `Program.Row.of[Reader % Long] | Program.Row.of[State % Long]`.
    */
-  type Row[F[+_]] = Member[F]
-  val Row: Member.type = Member
+  type Row[F[_]] = Foreign.Member[F]
+  val Row: Foreign.Member.type = Foreign.Member
 
   /** a Clojure stage that awaits and tells, as an okay `Stage` */
   def stage[I, O: ClassTag](prog: => AnyRef, name: String = "a Clojure stage"): Stage[I, O, Unit] =
-    stageWith[I, O, Pure](prog, name)
+    stageWith[I, O, Pure](prog, name).at[Take % I + Writer % O]
 
   /**
    * A Clojure stage that also PERFORMS operations of F — okay-stream's
    * effectful stage row, so it composes through `through` like any.
    */
-  def stageWith[I, O: ClassTag, F[+_]](prog: => AnyRef, name: String = "a Clojure stage")
-                                     (using Row[F]): Unit ! (Take % I + (Writer % O + F)) =
+  def stageWith[I, O: ClassTag, F[_]](prog: => AnyRef, name: String = "a Clojure stage")
+                                    (using Row[F]): Unit ! (Take % I + (Writer % O + F)) =
     Foreign.stageWith[I, O, F, AnyRef](prog, name)
 
   /**
    * A Clojure program as `A ! F`: each `perform` an operation of F under
    * whatever handlers run the result; `await`/`tell` belong to a stage.
    */
-  def run[F[+_], A: ClassTag](prog: => AnyRef, name: String = "a Clojure program",
-                             calls: Foreign.Calls[F] = Foreign.Calls.none[F])(using Row[F]): A ! F =
+  def run[F[_], A: ClassTag](prog: => AnyRef, name: String = "a Clojure program",
+                            calls: Foreign.Calls[F] = Foreign.Calls.none[F])(using Row[F]): A ! F =
     Foreign.run[F, A, AnyRef](prog, name, calls)
 
   // ------------------------------------------------------------ data
@@ -110,7 +110,7 @@ object Program {
    * immutable, cached value).
    */
   def chunks[A: ClassTag](coll: => AnyRef, size: Int = 64): Chunks[A] =
-    def go(rest: ISeq | Null): Chunks[A] = Free.delay { () =>
+    def go(rest: ISeq | Null): Chunks[A] = defer {
       val buf = ChunkBuf[A](size)
       var cur = rest
       var i = 0
@@ -123,7 +123,7 @@ object Program {
         val next = cur
         Writer.tell(buf.take(i)).flatMap(_ => go(next))
     }
-    Free.delay(() => go(RT.seq(coll)))
+    defer(go(RT.seq(coll)))
 
   /**
    * okay `Chunks` as a Clojure LAZY seq: an element is realised when

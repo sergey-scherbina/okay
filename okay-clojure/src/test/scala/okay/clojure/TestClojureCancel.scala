@@ -1,12 +1,6 @@
 package okay.clojure
 
-
-
-import okay.freer.*
-
-
-
-import okay.{Async, Scheduler, Schedulers, given}
+import okay.{Async, Foreign, Scheduler, Schedulers, given}
 
 /**
  * interop-lift-cancellation for Clojure: `(ok/lift f)` is the blocking
@@ -15,7 +9,7 @@ import okay.{Async, Scheduler, Schedulers, given}
 class TestClojureCancel extends munit.FunSuite {
 
   private val markAfter = Clj.fn("okay.clojure.programs", "mark-after").fold(e => throw IllegalStateException(e), identity)
-  private given Member[Async] = Member.of[Async]
+  private given Foreign.Member[Async] = Foreign.Member.of[Async]
   private var n = 0
   private def key(): String = { n += 1; s"okay.clj.lift.test.$n" }
 

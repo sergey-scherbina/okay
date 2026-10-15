@@ -2,11 +2,10 @@ package okay.clojure
 
 import okay.{Async, Chunks, Stage, through}
 
-import okay.freer.{%, +}
-import okay.freer.{!, effect, pure}
+import okay.{%, +}
+import okay.{!, pure}
 import okay.std.{Choose, Reader, State, Throws, Writer, runChoice, runEither}
 import okay.given
-import okay.freer.given
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -23,9 +22,9 @@ class TestProgram extends munit.FunSuite {
   def value(name: String) = Clj.value(ns, name).fold(e => fail(e), identity)
 
   def emit[I](xs: Seq[I]): Unit ! Writer % I =
-    xs.foldRight(pure[Writer % I, Unit](()))((x, p) => Writer.tell(x).flatMap(_ => p))
-  def emitIn[I, G[+_]](xs: Seq[I]): Unit ! Writer % I + G =
-    xs.foldRight(pure[Writer % I + G, Unit](()))((x, p) => effect[Writer % I + G, Unit](Writer(x)).flatMap(_ => p))
+    xs.foldRight(pure[Unit, Writer % I](()))((x, p) => Writer.tell(x).flatMap(_ => p))
+  def emitIn[I, G[_]](xs: Seq[I]): Unit ! Writer % I + G =
+    xs.foldRight(pure[Unit, Writer % I + G](()))((x, p) => Writer.tell(x).at[Writer % I + G].flatMap(_ => p))
   def own[I, O, A](src: Unit ! Writer % I, s: Stage[I, O, A]): List[O] =
     !.run(Writer.run(through(src)(s)))._1.toList
 
