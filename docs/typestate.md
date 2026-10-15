@@ -1,6 +1,6 @@
 # Typestate: effects with the state's type on the tree
 
-> **The classic road.** This page describes okay-freer, the frozen classic road: `Freer[G, S, R, A]` and its indexed row are okay-freer's tree (their tests stay at the tag `classic-freer`; `PState.Threaded` still runs on it). The kernel has no indexed program word yet (specs/freer-on-core-followups.md).
+> **Two roads.** `Freer[G, S, R, A]` and its indexed row (the theory below, the indexed row, the transaction) are okay-freer's tree, the frozen classic road (their tests stay at the tag `classic-freer`). `PState.Threaded` and okay-ui's `PWizard` run on the kernel (2026-10-15): `PState.Indexed[A, S, R, T]`, the kernel's program of `PState.Op` before a row `T`, its indexes phantom and moved by its words, its state answered in place by a `Stateful` handler.
 
 A protocol is an order of operations. `begin` before `commit`, `open`
 before `read`, a state that is an `Int` now and a `String` after the
@@ -37,18 +37,21 @@ profunctor `PState.Zooming` — and the second for a protocol.
 
 ## A typestate as data
 
-`PState.Threaded` is the type-changing state written as an indexed
-signature. Two operations, and the transitions are on the cases:
+`PState.Threaded` is the type-changing state written as data: the
+operations of a program, with the transitions on the words that make
+them. Two of them:
 
 ```scala
-  enum Op[S, R, +X]:
-    case Get[S]() extends Op[S, S, S]
-    case Put[S, T](t: T) extends Op[T, S, S]
+  enum Op[+X]:
+    case Get[S]() extends Op[S]
+    case Put[S, T](t: T) extends Op[S]
 ```
 
 `Get` reads the state and leaves its type; `Put` replaces it, moving
 the type from `S` to `T`, and answers the old state, as `PState.set`
-does. A program threads an `Int` into a `String` into a `Boolean`, and
+does. The program's type, `Threaded[A, S, R]`, carries the state before
+(`R`) and after (`S`), and `get[S]`, `put[S, T]` and `flatMap` move it.
+A program threads an `Int` into a `String` into a `Boolean`, and
 the compiler holds the order — a `put[String, …]` after a `get[Int]`
 does not type:
 
@@ -64,10 +67,16 @@ does not type:
     assertEquals(r, (true, "42!42"))
 ```
 
-`Threaded.run` is the handler: `Return` gives it `S = R`, so the pair it
-answers is the state it holds; `Get` gives its state's type to the
-continuation; `Put` hands the new state on. It is `@tailrec` with the
-type arguments changing per call, which Scala 3 accepts.
+`Threaded.run` is the handler: the kernel's `Stateful`, each operation
+answered in place from the state it holds, the state as the operation
+leaves it kept for the next. Its state is held untyped — its type
+moves, a handler's does not — and given back at the type the operation
+names, which the program's indexes guarantee (one cast, in one
+function, State.scala). Over other effects the same program is
+`PState.Indexed[A, S, R, T]`: `Indexed.perform` is an operation of `T`
+that leaves the state where it is, and `Indexed.handle` answers the
+state alone, the rest a program over `T` (okay-ui's `PWizard`: a `Show`
+of its own, taken by a `Deep` handler as the wizard's `resume`).
 
 ## A protocol beside ordinary effects: the indexed row
 
@@ -87,7 +96,8 @@ through `Indexed.unary`, the door that moves no index, and
   def tick[R]: Freer[Row, R, R, Int] = Indexed.unary[Row, R, Int](State.Update[Int, Int](n => (n + 1, n + 1)))
 ```
 
-`State.handleIndexed` is the reference handler over such a row: its
+okay-freer's `State.handleIndexed` was the reference handler over such a row (on the
+kernel it is `PState.Indexed.handle`): its
 own operations answered from the threaded state, every other
 operation forwarded with the index it came with. A handler for your
 own indexed effect has the same shape, and `splitI` is `split` at
@@ -139,13 +149,12 @@ its caller, as it always was.
 
 - The type never changes: `State % S`, the ordinary effect.
 - The type changes and the program is a protocol: the data road —
-  `PState.Threaded`, or your own `enum Op[S, R, +X]` with the handler
-  in `Threaded.run`'s shape.
+  `PState.Threaded`, or `PState.Indexed` beside the effects of a row.
 - The body needs the continuation as a value — multi-shot, an answer
   computed from `k`, a zoom through a profunctor: the shift road,
   `PState.get`/`set` over `Cps`.
-- The protocol lives beside other effects: the indexed row, `Op +~
-  Unary[F]`, and a handler in `State.handleIndexed`'s shape.
+- The protocol lives beside other effects: `PState.Indexed[A, S, R, T]`
+  over the row `T` (the classic: the indexed row, `Op +~ Unary[F]`).
 
 ## Literature
 

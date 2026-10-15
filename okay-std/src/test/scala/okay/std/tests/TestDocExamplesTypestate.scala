@@ -1,6 +1,5 @@
 package okay.std.tests
 
-import okay.freer.*
 import okay.std.*
 
 /**

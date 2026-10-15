@@ -1,6 +1,5 @@
 package okay.std.tests
 
-import okay.freer.*
 import okay.std.*
 
 /** stage 3a on a 128 KB thread: the shift road's zoom held a host frame

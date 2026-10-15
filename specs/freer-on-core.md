@@ -244,6 +244,15 @@ Recorded as met; behaviour regressions are accepted where the speed is the point
   a row holding a non-replayable effect (okay-freer's `Replayable` read the union); a body with `Async` in its row
   re-performs it on replay.
 - okay-zio: a row of ZIO members has the union of the members' errors (`DbErr | LogErr`), not an inferred parent.
+- The indexed programs (`PState.Threaded`, okay-ui's `PWizard`) are okay-std's `PState.Indexed[A, S, R, T]`: the
+  kernel's program of `PState.Op` before a row `T`, opaque, its indexes phantom and moved by its words; the state
+  answered in place by a kernel `Stateful` handler holding it untyped (one isolated cast, State.scala's `the`). Not
+  `Atm`: the kernel's typestate puts the run's value in every step's type (`Hole[S, F]`), and a `Threaded` is a value
+  of no run. `PState.Op` is `Get`, `Put`, `Focus`, `Restore` (a zoom is two operations, its whole kept in the rest of
+  the program, not a `Zoom` operation holding the inner tree); `State.handleIndexed` is gone (`PState.Indexed.handle`,
+  the other operations of `T` passing by `Indexed.perform`). `PWizard.Op` is `Show(ui)` alone, `Step` is
+  `PState.Indexed[A, S2, S, PWizard.Row]`, and a `Showing`'s `resume` runs the rest (the machine's `k`) on a fresh
+  machine.
 - okay-stream: `Chunks.dropWhile` keeps a chunk whose first element already fails the predicate (it dropped it);
   `Push`'s final await pauses as `Waiting` first and is `Done` at the next call.
 - okay-workflow/okay-persist: a pause carries its source position again (`Wf.At`, as okay-freer's `At`); the plain

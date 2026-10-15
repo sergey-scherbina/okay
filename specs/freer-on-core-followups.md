@@ -10,7 +10,7 @@ Companion of [freer-on-core.md](freer-on-core.md). Every module's main, tests an
 - Perf: re-measure the A/B lanes after the migration (Bound/Mapped nodes, Async drive on Head).
 - Interop consolidation: cats/kyo/zio/fs2 walks → Walk.foldMap where it fits.
 - Live-tagged suites to run (integrationTest).
-- An indexed-program word: okay-ui's PWizard and okay-std's PState.Threaded still on okay.freer.Freer.
+- (done 2026-10-15) An indexed-program word: okay-std's `PState.Indexed` on the kernel; PWizard and PState.Threaded on it.
 - widen conversion does not fire for an abstract rest (Writer % W + Users + F vs Users + (Writer % W + F)) nor for Users vs Users + Pure: explicit .at needed (okay-jdbc).
 - Writer.of returns Writer % A + Pure: every caller writes .at[Writer % A] (okay-http, okay-ui, okay-mcp) — make it Writer % A in okay-std.
 - `X ! E + Pure` should fit `X ! E` without .at (seen with abstract E args): Evidence/Within for a sum with Pure.

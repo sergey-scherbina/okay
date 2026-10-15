@@ -1,8 +1,9 @@
 package okay.std
 
 import okay.{!, +, %, Effect, Handler, effect, pure}
-import okay.core.Split
-import okay.freer.{Freer, TypeableI, Unary, +~, splitI, forwardedI, Indexed, Replayable}
+import okay.core.{+:, Split}
+import okay.one.Cont
+import okay.one.handler.Stateful
 import okay.{Cps}
 import scala.annotation.tailrec
 
@@ -27,7 +28,7 @@ import scala.annotation.tailrec
  * under a key), `Refs` makes them at run time when a type cannot list
  * them, and a fresh `Shift` prompt separates them dynamically.
  */
-enum State[S, +A] extends Replayable.Safe derives Effect {
+enum State[S, +A] derives Effect {
   /** read the current state */
   case Get() extends State[S, S]
 
@@ -95,32 +96,6 @@ object State {
       case Get() => update[S, A](s => (look(s), s))
       case Update(g) => update[S, Y](s => { val (b, a2) = g(look(s)); (b, put(a2)(s)) })): Y ! State % S)
 
-  def handleIndexed[S](s: S)[F[_, _, +_], T, R, A](p: Freer[F +~ Unary[State[S, *]], T, R, A])(using TypeableI[F]): Freer[F, T, R, (S, A)] = {
-    type Row = F +~ Unary[State[S, *]]
-    type Un = Unary[State[S, *]]
-
-    @tailrec def loop(s: S)(x: Freer[Row, T, R, A]): Freer[F, T, R, (S, A)] = (x.resume: @unchecked) match
-      case Freer.Return(a) => Freer.Return((s, a))
-      // a lone operation is a bind with a pure continuation (zoomWith's
-      // reading): one node, and the arm below already knows the case
-      case Freer.Inject(o) => loop(s)(Freer.Inject[Row, T, R, A](o).flatMap(v => Freer.Return(v)))
-      // the bind's middle index `t` and value `x` named, for the equality the unary arm needs
-      case b: Freer.Bind[Row, T, t, R, x, A] => (b.a: @unchecked) match
-        case n @ Freer.Inject(o) => splitI[F, Un](o)
-          // a forwarded operation goes as the NODE it came in, not a rebuilt one (indexed-effects-measure-2: the
-          // rebuild was +24 B and 1.047x per forwarded operation against State.handle's `forwarded`); its
-          // continuation closes `(T, t)`, so the rest is handled through `flatMap` at that index
-          (_ => forwardedI[F, Un](n).flatMap(v => handleIndexed(s)(b.f(v)))) { u =>
-            // a State operation: on the diagonal by its door (`Indexed.onDiagonal`), so the loop goes on at `R`
-            val k = Indexed.onDiagonal(u).substituteCo[[i] =>> x => Freer[Row, T, i, A]](b.f)
-            Indexed.atDiagonal(u) match
-              case Get() => loop(s)(k(s))
-              case Update(f) => { val (y, n) = f(s); loop(n)(k(y)) }
-          }
-
-    loop(s)(p)
-  }
-
   /** number the elements of a sequence, as a State program */
   def index[A](seq: Seq[A], from: Long = 0): (Long, Seq[(Long, A)]) = run(from):
     seq.foldLeft(Seq[(Long, A)]().state[Long]): (c, a) =>
@@ -147,8 +122,10 @@ object State {
  * unshared `Get` node a step. Buy the shift road for what only it can
  * do — a body that uses `k`, the profunctor `Zooming` — and the data
  * road for a protocol. A ZOOM by a lens is on the data road too since
- * 2026-10-02 (`Threaded.zoomWith`, okay-optics' `Threaded.zoom`): one
- * operation of the tree, no nested run (specs/cont-js-depth.md 3a).
+ * 2026-10-02 (`Threaded.zoomWith`, okay-optics' `Threaded.zoom`):
+ * operations of the program, no nested run (specs/cont-js-depth.md 3a).
+ * (The numbers are the classic's, okay-freer's indexed tree; the data
+ * road is the kernel's program since 2026-10-15, not yet measured.)
  */
 object PState {
   /** read the state, leaving its type unchanged */
@@ -229,102 +206,98 @@ object PState {
   type Zooming[X, R] = [A, B] =>> Cps[X, B => R, A => R]
 
   /**
-   * THE THREADED ROAD (pstate-threaded, 2026-09-30): the same typestate
-   * as DATA on the indexed tree, run by `State.handle`'s loop with the
-   * TYPE moving. `get` and `set` above are shift bodies — the state
-   * rides in the answer type (`S => R`), the runner is Cps's, and every
-   * operation is a re-entry through a `Reentry`, which is the 1.79x
-   * against `State.handle` that the header of this object records.
-   * With the base's indexes invariant (freer-consumed-index) the other
-   * reading types: `Op[S, R, X]` is an operation that moves the state
-   * from `R` to `S` and answers `X`, the tree `Freer[Op, S, R, A]` is
-   * the program, and `Threaded.run` holds the state in its hand and
-   * continues at the type the operation gives it — `@tailrec`, no
-   * continuation object, no room, nodes only. The compiler enforces
-   * the protocol order exactly as it does for the shift road: `Put`
-   * from a state the program is not in does not type.
+   * THE THREADED ROAD (pstate-threaded, 2026-09-30; on the kernel 2026-10-15): the same typestate as DATA — the
+   * operations of a program, answered by a handler holding the state with its TYPE moving, `State.handle`'s shape:
+   * the kernel's `Stateful`, a register of the machine, each operation answered in place. `get` and `set` above are
+   * shift bodies (the state rides in the answer type, `S => R`, every operation a re-entry); here nothing is captured.
    *
-   * `Put` answers the OLD state, as `set` above does, so a program is
-   * spelt the same on both roads and the two benchmark lanes fold the
-   * same accumulator (HandlerBenchmark `statePara` / `stateThreaded`).
+   * WHY NOT THE KERNEL'S `Atm`/`PState`: they are that shift road — a step's type names the run's final value
+   * (`Hole[S, F]`, given by `Typestate[F]`), so a step is a program only inside one run. A `Threaded[A, S, R]` is a
+   * value of no run (stored, zoomed into another, `okay-ui`'s wizard stepped by events between runs), and its
+   * operations are data for a handler, not answers to be applied.
    *
-   * MEASURED (history.d 2026-09-30 pstate-threaded, MIN of 3 rounds on
-   * a quiet box): `stateThreaded` 18.07 us / 276 904 B against
-   * `stateEffect` 16.96 / 244 904 and `statePara` 30.39 / 301 407 per
-   * M = 1000 steps — 1.07x the untyped State, 0.59x the shift road.
-   * The 32 B a step over State was `Inject(Get())` allocated per read
-   * where `State.get` shares one node (SharedOps); `get` shares
-   * `SharedOps.getT` the same way since indexed-effects stage 1 — the
-   * byte count after it is a deferred measurement (specs/
-   * indexed-effects.md).
+   * `Indexed[A, S, R, T]` is the program: the kernel's program of `Op` before the row `T`, `A` computed, the state
+   * moved from `R` to `S`. The indexes are the TYPE's alone (opaque, phantom), so every word here says how it moves
+   * them and the compiler enforces the protocol order as the shift road's does: a `put` from a state the program is
+   * not in does not type. The other operations, `T`'s, leave the state where it is (`Indexed.perform`), and
+   * `Indexed.handle` answers `Op` alone — a protocol beside ordinary effects. `Threaded` is it over no other effect.
+   * `Put` answers the OLD state, as `set` above does, so a program is spelt the same on both roads.
    */
-  enum Op[S, R, +X]:
+  enum Op[+X]:
     /** read the state, leaving its type */
-    case Get[S]() extends Op[S, S, S]
-    /** replace the state, moving its type from `S` to `T`; the old state is the answer */
-    case Put[S, T](t: T) extends Op[T, S, S]
-    /** run `inner` over the PART `look` reads, then put the part back:
-     * the whole goes `S1 -> S2` exactly when the part goes `A1 -> A2`
-     * (a four-parameter lens; specs/cont-js-depth.md stage 3a) */
-    case Zoom[S1, S2, A1, A2, X](look: S1 => A1, put: (S1, A2) => S2, inner: Freer[Op, A2, A1, X]) extends Op[S2, S1, X]
+    case Get[S]() extends Op[S]
+    /** replace the state, moving its type from `S` to `T`'s; the old state is the answer */
+    case Put[S, T](t: T) extends Op[S]
+    /** a zoom's entry: the whole, `S1`, the answer; the state the part `look` reads */
+    case Focus[S1, A1](look: S1 => A1) extends Op[S1]
+    /** a zoom's exit: the part put back into the whole as it was at the entry, `s1`; the inner value `x` the answer */
+    case Restore[S1, A2, S2, X](s1: S1, put: (S1, A2) => S2, x: X) extends Op[X]
 
-  /** a typestate program on the threaded road: `A` computed, the state
-   * moved from `R` to `S` */
-  type Threaded[A, S, R] = Freer[Op, S, R, A]
+  /** a typestate program over the row `T`: `A` computed, the state moved from `R` to `S` */
+  opaque type Indexed[+A, S, R, T <: okay.core.Row] <: AnyRef = okay.core.Eff[Op +: T, A]
+
+  object Indexed:
+    extension [A, S, R, T <: okay.core.Row](p: Indexed[A, S, R, T])
+      /** the transitions composed: `R -> S`, then `S -> S2` — inline, the kernel's bind where it is written */
+      inline def flatMap[B, S2](f: A => Indexed[B, S2, S, T]): Indexed[B, S2, R, T] = p.flatMap(f)
+      inline def map[B](f: A => B): Indexed[B, S, R, T] = p.map(f)
+
+    /** read the state, leaving its type: ONE node for every state type and row (`SharedOps.getT`) */
+    def get[S, T <: okay.core.Row]: Indexed[S, S, S, T] = the[Indexed[S, S, S, T]](SharedOps.getT)
+    /** replace the state, moving its type from `S` to `S2`; the old state is the answer */
+    def put[S, S2, T <: okay.core.Row](s2: S2): Indexed[S, S2, S, T] = Cont.perform[Op, Op +: T, S](Op.Put[S, S2](s2))
+    /** an operation of another effect, in `T`: the state where it is */
+    def perform[E[_], S, T <: okay.core.Row, X](op: E[X])(using in: okay.core.In[E, T]): Indexed[X, S, S, T] =
+      okay.core.Ops.perform[E, Op +: T, X](op)(using okay.core.In.There(in))
+
+    /** `inner` over the PART `look` reads, run over the whole: the whole goes `S1 -> S2` exactly when the part goes
+     * `A1 -> A2` (a four-parameter lens). Two operations of the program, no nested run: the inner program runs at the
+     * state the handler holds, the whole kept in the rest of the program */
+    def zoomWith[S1, S2, A1, A2, X, T <: okay.core.Row](look: S1 => A1, put: (S1, A2) => S2)(inner: Indexed[X, A2, A1, T])
+        : Indexed[X, S2, S1, T] =
+      Cont.perform[Op, Op +: T, S1](Op.Focus[S1, A1](look))
+        .flatMap(s1 => inner.flatMap(x => Cont.perform[Op, Op +: T, X](Op.Restore[S1, A2, S2, X](s1, put, x))))
+
+    /** `p`'s state handled from `r`: the last state and the value, a program over the row left, `T` */
+    def handle[A, S, R, T <: okay.core.Row](p: Indexed[A, S, R, T])(r: R): okay.core.Eff[T, (S, A)] =
+      p.handle(Cell[T, S, A](r))
+
+    /** the state held as it was put, of the type the program's indexes say it is at that operation */
+    private final class Cell[T <: okay.core.Row, S, A](r: Any) extends Stateful[Op, T, Any, A, (S, A)]:
+      def initial: Any = r
+      def ret(s: Any, a: A) = Cont.pure((the[S](s), a))
+      def value[X](s: Any, op: Op[X]): X = op match
+        case Op.Restore(_, _, x) => x
+        case _ => the[X](s)   // `Get`, `Put` and `Focus` answer the state as it was
+      def next[X](s: Any, op: Op[X]): Any = op match
+        case _: Op.Get[?] => s
+        case p: Op.Put[?, ?] => p.t
+        case f: Op.Focus[s1, ?] => f.look(the[s1](s))
+        case r: Op.Restore[?, a2, ?, ?] => r.put(r.s1, the[a2](s))
+
+    /** THE CAST, the one of this road: the handler holds the state as `Any`, since its type moves and a `Stateful`'s
+     * does not, and gives it back at the type the operation names. Right by construction: `Indexed` is opaque, and
+     * every word making one moves its indexes as the operation moves the state — at a `Get[S]` the state is an `S`,
+     * at a `Focus[S1, _]` an `S1`, at the end the `S` of the program's type. The shared `Get` node is the same claim
+     * (a fieldless operation, one node for every state type and row: `PerformHere` names no place) */
+    private def the[X](a: Any): X = a.asInstanceOf[X]
+
+  /** a typestate program on the threaded road, over no other effect: `A` computed, the state moved from `R` to `S` */
+  type Threaded[A, S, R] = Indexed[A, S, R, okay.core.Pure]
 
   object Threaded:
-    // THE CAST, the same one `State.get` makes and for the same reason:
-    // `Get` has no fields, so after erasure every `Get[S]` is one object,
-    // and a program node is immutable — sharing it across every S changes
-    // nothing a program can observe (indexed-effects stage 1)
-    inline def get[S]: Threaded[S, S, S] = SharedOps.getT.asInstanceOf[Threaded[S, S, S]]
-    inline def put[S, T](t: T): Threaded[S, T, S] = Freer.Inject[Op, T, S, S](Op.Put(t))
+    inline def get[S]: Threaded[S, S, S] = Indexed.get[S, okay.core.Pure]
+    inline def put[S, T](t: T): Threaded[S, T, S] = Indexed.put[S, T, okay.core.Pure](t)
 
     /**
-     * A program over the PART of the state a lens reads, run over the
-     * whole (specs/cont-js-depth.md stage 3a): the inner program starts
-     * at `look(s1)`, and its final part goes back with `put`. The shift
-     * road's `PState.zoom` runs the inner program as a NESTED run
-     * (`p / …` inside a body); here it is one operation of the tree,
-     * and `run` keeps the outer program on its own stack.
+     * A program over the PART of the state a lens reads, run over the whole (specs/cont-js-depth.md stage 3a): the
+     * inner program starts at `look(s1)`, and its final part goes back with `put`. The shift road's `PState.zoom`
+     * runs the inner program as a NESTED run (`p / …` inside a body); here it is two operations of the program, and
+     * the kernel's machine keeps the outer program on its own (heap) stack.
      */
     def zoomWith[S1, S2, A1, A2, X](look: S1 => A1, put: (S1, A2) => S2)(inner: Threaded[X, A2, A1]): Threaded[X, S2, S1] =
-      Freer.Inject[Op, S2, S1, X](Op.Zoom(look, put, inner))
+      Indexed.zoomWith[S1, S2, A1, A2, X, okay.core.Pure](look, put)(inner)
 
-    /**
-     * What is waiting for an inner program's answer: TYPE-ALIGNED, so no
-     * frame is cast — `Pop` holds the outer continuation, the whole's
-     * state at the zoom, and how to put the part back. `Top` is the
-     * program's own end.
-     */
-    private enum Waiting[X, T, S, A]:
-      case Top[S, A]() extends Waiting[A, S, S, A]
-      case Pop[X, T, S1, S2, Y, U, S, A](k: X => Threaded[Y, U, S2], s1: S1, put: (S1, T) => S2,
-                                         below: Waiting[Y, U, S, A]) extends Waiting[X, T, S, A]
-
-    /** run from an initial state to (final state, value): the loop
-     * threads the state, typed by the GADT at every arm — `Return` gives
-     * `S = R`, `Get` gives its state's type to the continuation, `Put`
-     * hands the new state on, `Zoom` pushes the outer program and runs
-     * the inner one. One loop for any nesting: no host frame per zoom */
-    def run[A, S, R](p: Threaded[A, S, R])(r: R): (S, A) = go(p, r, Waiting.Top[S, A]())
-
-    @tailrec private def go[X, T, R, S, A](p: Threaded[X, T, R], r: R, w: Waiting[X, T, S, A]): (S, A) =
-      (p.resume: @unchecked) match
-        case Freer.Return(x) => finish(x, r, w) match
-          case Left(a) => a
-          case Right(next) => go(next.p, next.r, next.w)
-        case Freer.Inject(op) => go(Freer.Bind(Freer.Inject(op), (x: X) => Freer.Return(x)), r, w)
-        case Freer.Bind(Freer.Inject(Op.Get()), k) => go(k(r), r, w)
-        case Freer.Bind(Freer.Inject(Op.Put(t)), k) => go(k(r), t, w)
-        case Freer.Bind(Freer.Inject(Op.Zoom(look, put, inner)), k) => go(inner, look(r), Waiting.Pop(k, r, put, w))
-
-    /** a running program and what waits for it, under one existential */
-    private final class Next[X, T, R, S, A](val p: Threaded[X, T, R], val r: R, val w: Waiting[X, T, S, A])
-
-    /** an inner program answered `x` at state `t`: the end, or the outer
-     * program resumed with the part put back */
-    private def finish[X, T, S, A](x: X, t: T, w: Waiting[X, T, S, A]): Either[(S, A), Next[?, ?, ?, S, A]] = w match
-      case Waiting.Top() => Left((t, x))
-      case Waiting.Pop(k, s1, put, below) => Right(Next(k(x), put(s1, t), below))
+    /** run from an initial state to (final state, value) */
+    def run[A, S, R](p: Threaded[A, S, R])(r: R): (S, A) = Indexed.handle(p)(r).run
 }
