@@ -3,7 +3,6 @@
 Companion of [freer-on-core.md](freer-on-core.md). Every module's main, tests and JMH sources compile on the root's words (JVM, JS, Native); the items below were met on the way and wait.
 
 - Walk: Op "is last" (no frames after) → cats' onCancel law.
-- Condition 100k nested frames quadratic (kernel level walk).
 - Warnings pass (std Reader/State/Writer unused imports, AsyncCont, root test warnings, feature warnings).
 - Known changes in freer-on-core.md: Wf.replay/persist no compile-time replay refusal; ZIO error union; Chunks.dropWhile; Push Waiting.
 - okay.freer data types still imported: Aggregator, Fold, Monoid, Semigroup, Static, Cps, />> → a home outside okay-freer.
