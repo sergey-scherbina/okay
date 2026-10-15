@@ -1,15 +1,10 @@
 package okay
 
-
-import okay.freer.*
-
-
 import okay.std.*
-import okay.freer.given
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 import okay.Direct.*
-import okay.freer.Row.{at, plus}
+import okay.Row.plus
 
 /**
  * What does attaching a row COST?
@@ -39,6 +34,14 @@ import okay.freer.Row.{at, plus}
  * NORMALISATION, and `Source.merge` runs 5-7% slower without it
  * (specs/writer-covariance.md, free-row-variance). `.at` is for single
  * operations, which are already head-normal.
+ *
+ * ON THE KERNEL (freer-on-core): the table above is okay-freer's. The
+ * lanes now run the root's program: `at`/`plus`/`widen` are one `Run`
+ * wrapper each, `atWalk` walks by `okay.Walk`, `viaEffect` builds at the
+ * operation's own row and places the whole chain once (no constructor
+ * builds AT a wider row any more). `viaLiftAt` is removed: it re-injected
+ * an operation into a union row through a callable witness, and a kernel
+ * row is not a union of operation types — nothing to inject into.
  */
 @JmhState(Scope.Thread)
 @BenchmarkMode(Array(Mode.AverageTime))
@@ -52,65 +55,24 @@ class RowLiftBenchmark {
 
   type R = State % Int + Writer % String
 
-  // ---- the LOSING lanes keep the OLD witness on purpose.
-  //
-  // `Row.In` is an opaque `Unit` and carries no `inj`, because the
-  // shipping route does not need one. `liftAt` and `atWalk` do: they
-  // re-inject the operation, so they need a witness that can be
-  // CALLED. This is that shape, kept here and only here, as the guard
-  // on the table above — the three casts below are what the shipping
-  // design no longer pays.
-  trait In[F[+_], G[+_]]:
-    def inj[A](fa: F[A]): G[A]
+  /** on the PROGRAM, by walking: the postfix done the expensive way —
+   * `Walk.view` to each operation, performed again at `G`. Trampolined:
+   * the recursion is in the bind's continuation */
+  extension [A, F[_]](p: A ! F)
+    def atWalk[G[_]](using w: Within[F, G]): A ! G = Walk.view(p) match
+      case Walk.Done(a) => pure[A, G](a)
+      case o: Walk.Op[F, x, A, F] => effect(o.op).at[G].flatMap((y: x) => o.resume(y).atWalk[G])
 
-  // inj is identity at every instance, so one cached object serves
-  // them all; a parameterised `given` is a METHOD and would allocate a
-  // fresh witness per use site.
-  private object IdIn extends In[[A] =>> Any, [A] =>> Any]:
-    def inj[A](fa: Any): Any = fa
-
-  trait InLow:
-    given self[F[+_]]: In[F, F] = IdIn.asInstanceOf[In[F, F]]
-
-  object In extends InLow:
-    given left[F[+_], G[+_]]: In[F, F + G] = IdIn.asInstanceOf[In[F, F + G]]
-    given deeper[F[+_], G[+_], H[+_]](using @scala.annotation.unused i: In[F, G]): In[F, G + H] =
-      IdIn.asInstanceOf[In[F, G + H]]
-
-  /** on the OPERATION: constructs at R, nothing to rebuild */
-  extension [F[+_], A](fa: F[A])
-    inline def liftAt[G[+_]](using i: In[F, G]): A ! G = effect[G, A](i.inj(fa))
-
-  /** on the PROGRAM, by walking: the postfix done the expensive way */
-  // NOT inline: it recurses over the tree, and an inline recursion
-  // does not terminate at compile time (found by trying)
-  extension [A, F[+_]](p: A ! F)
-    def atWalk[G[+_]](using i: In[F, G]): A ! G =
-      import okay.freer.!.*
-      (p.resume: @unchecked) match
-        case Return(a) => Free.Return(a)
-        case Inject(e) => Free.inject(i.inj(e))
-        case Bind(Inject(e), k) => Free.inject(i.inj(e)).flatMap(x => k(x).atWalk[G])
-
-  /** the floor: construct at R directly */
+  /** the floor: on the kernel no constructor builds at a wider row, so
+   * the chain is built at the operation's own row and placed at R ONCE */
   @Benchmark
   def viaEffect(): Int =
-    var m: Int ! R = effect[R, Int](State.Get())
+    var m: Int ! State % Int = effect[State % Int, Int](State.Get())
     var i = 1
     while i < N do
-      m = m.flatMap(_ => effect[R, Int](State.Get()))
+      m = m.flatMap(_ => effect[State % Int, Int](State.Get()))
       i += 1
-    State.run[Int, Int](0)(Writer.run[String, Int, State % Int](m).map(_._2))._2
-
-  /** the operation-level lift */
-  @Benchmark
-  def viaLiftAt(): Int =
-    var m: Int ! R = (State.Get[Int, Int](): State[Int, Int]).liftAt[R]
-    var i = 1
-    while i < N do
-      m = m.flatMap(_ => (State.Get[Int, Int](): State[Int, Int]).liftAt[R])
-      i += 1
-    State.run[Int, Int](0)(Writer.run[String, Int, State % Int](m).map(_._2))._2
+    State.run[Int, Int](0)(Writer.run(m.at[R]).map(_._2))._2
 
   /** the program-level lift — the ergonomic one under test */
   @Benchmark
@@ -120,7 +82,7 @@ class RowLiftBenchmark {
     while i < N do
       m = m.flatMap(_ => State.get[Int].atWalk[R])
       i += 1
-    State.run[Int, Int](0)(Writer.run[String, Int, State % Int](m).map(_._2))._2
+    State.run[Int, Int](0)(Writer.run(m).map(_._2))._2
 
   /** today's spelling: widen, naming the complement */
   @Benchmark
@@ -131,7 +93,7 @@ class RowLiftBenchmark {
       m = m.flatMap(_ =>
         !.widen[Int, State % Int, Writer % String](State.get[Int]))
       i += 1
-    State.run[Int, Int](0)(Writer.run[String, Int, State % Int](m).map(_._2))._2
+    State.run[Int, Int](0)(Writer.run(m).map(_._2))._2
 
   /** direct style: the macro reads the row off the block's expected
    * type and emits Free.Inject AT it — no widen, no evidence, no
@@ -143,7 +105,7 @@ class RowLiftBenchmark {
     while i < N do
       m = m.flatMap(_ => direct { State.Get[Int, Int]().? })
       i += 1
-    State.run[Int, Int](0)(Writer.run[String, Int, State % Int](m).map(_._2))._2
+    State.run[Int, Int](0)(Writer.run(m).map(_._2))._2
 
   /** the same cast, under a witness that has no runtime existence at
    * all: `In` is an opaque `Unit`, so the givens allocate nothing and
@@ -155,7 +117,7 @@ class RowLiftBenchmark {
     while i < N do
       m = m.flatMap(_ => State.get[Int].at[R])
       i += 1
-    State.run[Int, Int](0)(Writer.run[String, Int, State % Int](m).map(_._2))._2
+    State.run[Int, Int](0)(Writer.run(m).map(_._2))._2
 
   /** the same cast, naming only what is ADDED rather than the whole
    * target row — the spelling a helper wants */
@@ -166,5 +128,5 @@ class RowLiftBenchmark {
     while i < N do
       m = m.flatMap(_ => State.get[Int].plus[Writer % String])
       i += 1
-    State.run[Int, Int](0)(Writer.run[String, Int, State % Int](m).map(_._2))._2
+    State.run[Int, Int](0)(Writer.run(m).map(_._2))._2
 }

@@ -1,13 +1,9 @@
 package okay
 
-
-import okay.freer.*
-
-
-import okay.freer.given
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 import okay.Direct.*
+import okay.std.Writer
 import scala.language.implicitConversions
 
 /**
@@ -15,6 +11,9 @@ import scala.language.implicitConversions
  * library's own generator door (delim-internal-shift0 measured `emit`'s
  * capture as `shift0` here — DelimBenchmark.delimGenerator spells its
  * emit with a raw `Shift.shift` and does not reach this door).
+ * ON THE KERNEL (freer-on-core): okay-freer's capture-based `Shift.emit`
+ * has no counterpart; the door that collects what a direct block emits
+ * is `Writer.collect` over `Writer.tell`, which this lane now measures.
  */
 @JmhState(Scope.Thread)
 @BenchmarkMode(Array(Mode.AverageTime))
@@ -26,13 +25,13 @@ class CollectBenchmark {
 
   final val N = 1000
 
-  type R = Shift % ? + Pure
+  type R = Writer % Int
 
-  def count(i: Int)(using Shift.Emitting[Int]): Unit ! R = direct:
+  def count(i: Int): Unit ! R = direct:
     if i < N then
-      !Shift.emit(i)
-      !count(i + 1)
+      Writer.tell(i).?
+      count(i + 1).?
 
   @Benchmark
-  def collectEmit(): Int = !.run(Shift.collect[Int, Pure](count(0))).length
+  def collectEmit(): Int = Writer.collect(count(0)).run._1.length
 }

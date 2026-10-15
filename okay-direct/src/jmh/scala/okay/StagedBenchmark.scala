@@ -1,15 +1,10 @@
 package okay
 
-
-import okay.freer.*
-
-
 import okay.std.*
-import okay.freer.given
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 import okay.Direct.*
-import okay.freer.Row.at
+import okay.freer.{Handled, Stager}
 
 /**
  * specs/direct-staged.md, the number: the SAME block text three ways
@@ -50,7 +45,7 @@ class StagedBenchmark {
       freeBlock(i + 1, acc + a + b + c + d).?
     }
 
-  def stagedBlock(i: Int, acc: Int): Handled[Row, R, Int] =
+  def stagedBlock(i: Int, acc: Int): Handled[sw.Row, R, Int] =
     if i >= Iters then Handled.pure(acc)
     else Direct.staged(sw) {
       val a = State.get[Int].?
@@ -67,10 +62,10 @@ class StagedBenchmark {
     }
 
   /** the parity target: what the macro should emit, by hand */
-  def handBlock(i: Int, acc: Int): Handled[Row, R, Int] =
+  def handBlock(i: Int, acc: Int): Handled[sw.Row, R, Int] =
     if i >= Iters then Handled.pure(acc)
     else
-      val M = summon[Monad[Handled[Row, R, *]]]
+      val M = summon[Monad[Handled[sw.Row, R, *]]]
       M.flatMap(sw.stage(State.Get()))(a =>
       M.flatMap(sw.stage(State.Update[Int, Int](_ => (i, i))))(_ =>
       M.flatMap(sw.stage(Writer.Say("w")))(_ =>
@@ -102,12 +97,12 @@ class StagedBenchmark {
 
   @Benchmark
   def freeHandNestedRun(): Int =
-    State.run[Int, (Seq[String], Int)](0)(Writer.run[String, Int, State % Int](freeHandNested(0, 0)))._2._2
+    State.run[Int, (Seq[String], Int)](0)(Writer.run(freeHandNested(0, 0)))._2._2
 
   /** the user's baseline: the Free block, built and run by the shipping runners */
   @Benchmark
   def freeDirectNested(): Int =
-    State.run[Int, (Seq[String], Int)](0)(Writer.run[String, Int, State % Int](freeBlock(0, 0)))._2._2
+    State.run[Int, (Seq[String], Int)](0)(Writer.run(freeBlock(0, 0)))._2._2
 
   @Benchmark
   def stagedDirect(): Int = sw.run(0)(stagedBlock(0, 0))._2
@@ -323,7 +318,7 @@ class StagedBenchmark {
 
   @Benchmark
   def freeDirectRT(): Int =
-    !.run(runEither[Int, okay.freer.Pure, String](Reader.run[Cfg, Int, Throws % String](cfg)(freeRT(0, 0)))) match
+    runEither[Int, Throws % String, String](Reader.run(cfg)(freeRT(0, 0))).run match
       case Right(a) => a
       case Left(_) => -1
 

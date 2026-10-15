@@ -1,10 +1,5 @@
 package okay
 
-
-import okay.freer.*
-
-
-import okay.freer.given
 import org.openjdk.jmh.annotations.{State, *}
 import java.util.concurrent.TimeUnit
 import scala.concurrent.Await as ScalaAwait
@@ -18,6 +13,9 @@ import scala.concurrent.duration.Duration
  * `cont` lanes are the same chain on the machine (cont-first-module):
  * answered in place (`AsyncCont.run`, no capture) and driven through
  * callbacks (`AsyncCont.runAsync`, every operation stops the machine).
+ * Since Async moved onto the kernel both chains are kernel programs, so
+ * the four lanes now compare the TERMINALS (Answers / PromiseDrive vs
+ * an Answering handler / the stepped drive), not two encodings.
  */
 @State(Scope.Thread)
 @BenchmarkMode(Array(Mode.AverageTime))
@@ -38,8 +36,8 @@ class AsyncDriveBenchmark {
   def runAsync10k(): Int =
     ScalaAwait.result(Async.runAsync(chain(10000)), Duration.Inf)
 
-  def chainCont(n: Int): okay.![Int, okay.+:[Async, okay.Pure]] =
-    if n == 0 then okay.pure(0)
+  def chainCont(n: Int): okay.core.Eff[Async +: okay.core.Pure, Int] =
+    if n == 0 then okay.core.pure(0)
     else AsyncCont.async(1).flatMap(x => chainCont(n - 1).map(_ + x))
 
   @Benchmark
