@@ -1,10 +1,8 @@
 package okay
 
 
-import okay.freer.*
 
 
-import okay.freer.given
 import okay.std.given
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
@@ -113,7 +111,7 @@ class ActorReactiveBenchmark {
   def channelBuffer(): Long =
     var sum = 0L
     Channel.buffer(256)(list).drained.runForeach(x =>
-      okay.freer.effect[Async, Unit](Async.Run(() => sum += x))).runWith
+      effect[Async, Unit](Async.Run(() => sum += x))).runWith
     sum
 
   /** Asks sequential round trips: a Reply channel, a send, a race with a timer, each */
@@ -142,7 +140,7 @@ class ActorReactiveBenchmark {
   def reactiveRound(): Long =
     var sum = 0L
     Reactive.source(Reactive.publisher(Source.range(0L, N.toLong)), capacity = 256).runForeach(x =>
-      okay.freer.effect[Async, Unit](Async.Run(() => sum += x))).runWith
+      effect[Async, Unit](Async.Run(() => sum += x))).runWith
     sum
 
   /** the control: the same source, no bridge */
@@ -150,6 +148,6 @@ class ActorReactiveBenchmark {
   def plainSource(): Long =
     var sum = 0L
     Source.range(0L, N.toLong).runForeach(x =>
-      okay.freer.effect[Async, Unit](Async.Run(() => sum += x))).runWith
+      effect[Async, Unit](Async.Run(() => sum += x))).runWith
     sum
 }

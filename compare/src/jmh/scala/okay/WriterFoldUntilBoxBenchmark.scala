@@ -1,11 +1,8 @@
 package okay
 
-
-import okay.freer.*
-
+import okay.freer.{Fold, FoldUntil}
 
 import okay.std.*
-import okay.freer.given
 import org.openjdk.jmh.annotations.{State, *}
 import java.util.concurrent.TimeUnit
 import scala.annotation.tailrec
@@ -38,7 +35,7 @@ class WriterFoldUntilBoxBenchmark {
   def prog: Unit ! Writer % Long =
     def go(i: Long): Unit ! Writer % Long =
       if i >= n then pure(()) else Writer.tell(i).flatMap(_ => go(i + 1))
-    pure[Writer % Long, Unit](()).flatMap(_ => go(0L))
+    pure[Unit, Writer % Long](()).flatMap(_ => go(0L))
 
   val boxedUntil: FoldUntil[Long, Long, Long] = FoldUntil[Long, Long, Long](0L)(_ + _)(_ => false)(identity)
   val untilOfLong: FoldUntil.OfLong[Long, Long] = FoldUntil.long[Long, Long](0L)(_ + _)(_ => false)(identity)
@@ -46,38 +43,29 @@ class WriterFoldUntilBoxBenchmark {
   /**
    * `Writer.foldUntil`'s walk, specialised to an `OfLong`: the state a
    * `long` in a register, `addLong`/`doneLong`/`endLong` at the
-   * primitive. Generic in F for the same reason the library walks are
-   * — at `F = Nothing` the inline `split` does not compile.
+   * primitive. On the kernel the walk is `okay.Walk` (okay-freer's tree
+   * walk is gone): each `Say` read off the program's head, the rest
+   * resumed and walked again.
    */
-  def protoWalk[W, A, R, F[+_]](a: A ! Writer % W + F)(K: FoldUntil.OfLong[W, R])
-                                (using TypeableK[Writer % W]): R ! F = {
-    import !.*
-    def _loop(s: Long)(x: A ! Writer % W + F): R ! F = loop(s)(x)
-    @tailrec def loop(s: Long)(x: A ! Writer % W + F): R ! F =
-      if K.doneLong(s) then Return(K.endLong(s))
-      else (x.resume: @unchecked) match
-        case Return(_) => Return(K.endLong(s))
-        case Inject(e) => split[Writer % W, F](e) { w0 =>
-            // `@unchecked` as in the Bind case: Writer.scala says why
-            (w0: @unchecked) match
-              case Writer.Say(v) => Return(K.endLong(K.addLong(s, v))): R ! F
-          } { e => Inject(e).map(_ => K.endLong(s)) }
-        case Bind(Inject(e), k) => split[Writer % W, F](e) { w0 =>
-            (w0: @unchecked) match
-              case Writer.Say(v) => loop(K.addLong(s, v))(k(()))
-          } { e => Inject(e).flatMap(x => _loop(s)(k(x))) }
+  def protoWalk[W, A, R](a: A ! Writer % W)(K: FoldUntil.OfLong[W, R]): R = {
+    @tailrec def loop(s: Long)(x: A ! Writer % W): R =
+      if K.doneLong(s) then K.endLong(s)
+      else Walk.view(x) match
+        case Walk.Done(_) => K.endLong(s)
+        case o: Walk.Op[Writer % W, u, A, Writer % W] => (o.op: @unchecked) match
+          case Writer.Say(v) => loop(K.addLong(s, v))(o.resume(()))
     loop(K.initLong)(a)
   }
 
   @Benchmark
-  def writerFoldUntilBoxed: Long = !.run(Writer.foldUntil[Long, Long, Unit, Long, okay.freer.Pure](prog)(using summon)(using summon, boxedUntil))
+  def writerFoldUntilBoxed: Long = !.run(Writer.foldUntil[Long, Long, Unit, Long, Writer % Long](prog)(using summon, boxedUntil))
 
   @Benchmark
-  def writerFoldUntilOfLong: Long = !.run(Writer.foldUntil[Long, Long, Unit, Long, okay.freer.Pure](prog)(using summon)(using summon, untilOfLong))
+  def writerFoldUntilOfLong: Long = !.run(Writer.foldUntil[Long, Long, Unit, Long, Writer % Long](prog)(using summon, untilOfLong))
 
   @Benchmark
-  def writerFoldUntilProto: Long = !.run(protoWalk[Long, Unit, Long, Nothing](prog)(untilOfLong))
+  def writerFoldUntilProto: Long = protoWalk(prog)(untilOfLong)
 
   @Benchmark
-  def writerFoldSumLong: Long = !.run(Writer.fold[Long, Long, Unit, okay.freer.Pure](prog)(using summon)(using summon, Fold.sumLong))._1
+  def writerFoldSumLong: Long = !.run(Writer.fold[Long, Long, Unit, Writer % Long](prog)(using summon, Fold.sumLong))._1
 }

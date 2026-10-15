@@ -1,11 +1,8 @@
 package okay
 
-
-import okay.freer.*
-
+import okay.freer.{Fold, FoldUntil}
 
 import okay.std.*
-import okay.freer.given
 import org.openjdk.jmh.annotations.{State, *}
 import java.util.concurrent.TimeUnit
 
@@ -69,11 +66,11 @@ class GenBenchmark {
   // does not compile; the plain defs take `Nothing` at their boundary
   @Benchmark
   def writerUnfoldCollect: List[Long] =
-    !.run(Writer.run[Long, Unit, okay.freer.Pure](prog))._1.toList
+    !.run(Writer.run[Long, Unit, Writer % Long](prog))._1.toList
 
   @Benchmark
   def writerUnfoldFoldUntil: List[Long] =
-    !.run(Writer.foldUntil[Long, List[Long], Unit, List[Long], Nothing](prog)(using summon)(using summon, collecting))
+    !.run(Writer.foldUntil[Long, List[Long], Unit, List[Long], Writer % Long](prog)(using summon, collecting))
 
   /** gen-read-stop-residual: the SAME `prog`, widened ONLY by Stop
    * (`.plus[Stop]`, what `Gen.of` does) and read through `Gen.foldUntil`
@@ -97,7 +94,7 @@ class GenBenchmark {
 
   @Benchmark
   def writerUnfoldShapedFoldUntil: List[Long] =
-    !.run(Writer.foldUntil[Long, List[Long], Unit, List[Long], Nothing](progUnfoldShaped)(using summon)(using summon, collecting))
+    !.run(Writer.foldUntil[Long, List[Long], Unit, List[Long], Writer % Long](progUnfoldShaped)(using summon, collecting))
 
   // ---- the pipeline
 
@@ -108,8 +105,8 @@ class GenBenchmark {
 
   @Benchmark
   def writerPipelineCollect: List[Long] =
-    val mapped = Writer.map[Long, Long, Unit, okay.freer.Pure](prog)(_ * 2)
-    !.run(Writer.fold[Long, List[Long], Unit, Nothing](mapped)(using summon)(using summon, filtering))._1.reverse
+    val mapped = Writer.map[Long, Long, Unit, Writer % Long](prog)(_ * 2)
+    !.run(Writer.fold[Long, List[Long], Unit, Writer % Long + Pure](mapped)(using summon, filtering))._1.reverse
 
   // ---- the barriers, fused (gen-flatmap-fusion): flatMap, ++, zipWithIndex
 
@@ -119,8 +116,8 @@ class GenBenchmark {
   /** the hand road for flatMap's shape: a Writer program telling once per element */
   @Benchmark
   def writerFlatMapCollect: List[Long] =
-    val mapped = Writer.map[Long, Long, Unit, okay.freer.Pure](prog)(_ + 1)
-    !.run(Writer.run[Long, Unit, okay.freer.Pure](mapped))._1.toList
+    val mapped = Writer.map[Long, Long, Unit, Writer % Long](prog)(_ + 1)
+    !.run(Writer.run[Long, Unit, Writer % Long + Pure](mapped))._1.toList
 
   @Benchmark
   def genConcatToList: List[Long] = (gen ++ gen).toList

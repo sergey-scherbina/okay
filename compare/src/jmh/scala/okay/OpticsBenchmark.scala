@@ -1,8 +1,6 @@
 package okay
 
-
-import okay.freer.*
-
+import okay.freer.Monoid
 
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit

@@ -1,11 +1,9 @@
 package okay
 
 
-import okay.freer.*
 
 
 import okay.std.*
-import okay.freer.given
 import okay.std.given
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
@@ -120,7 +118,7 @@ class IdiomaticApiBenchmark {
   def okayCollectionForeach_elem_runForeach(): Long =
     var sum = 0L
     Source.of(list).runForeach(x =>
-      okay.freer.effect[Async, Unit](Async.Run(() => sum += x))).runWith
+      effect[Async, Unit](Async.Run(() => sum += x))).runWith
     sum
 
   /**
@@ -165,7 +163,7 @@ class IdiomaticApiBenchmark {
   def okayChannelForeach_elem_runForeach(): Long =
     var sum = 0L
     Channel.buffer(1024)(list).drained.runForeach(x =>
-      okay.freer.effect[Async, Unit](Async.Run(() => sum += x))).runWith
+      effect[Async, Unit](Async.Run(() => sum += x))).runWith
     sum
 
   /**
@@ -184,7 +182,7 @@ class IdiomaticApiBenchmark {
   def okayChannelForeach_chunk_fold(): Long =
     var sum = 0L
     Channel.buffer(1024)(list).drained.chunked().runForeach(ch =>
-      okay.freer.effect[Async, Unit](Async.Run(() =>
+      effect[Async, Unit](Async.Run(() =>
         var i = 0
         while i < ch.length do { sum += ch(i); i += 1 }))).runWith
     sum
@@ -199,7 +197,7 @@ class IdiomaticApiBenchmark {
   def okayChannelForeach_chunkNative_runForeach(): Long =
     var sum = 0L
     Channel.bufferChunked(64, size = 256)(list).drained.runForeach(ch =>
-      okay.freer.effect[Async, Unit](Async.Run(() =>
+      effect[Async, Unit](Async.Run(() =>
         var i = 0
         while i < ch.length do { sum += ch(i); i += 1 }))).runWith
     sum

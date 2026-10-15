@@ -1,10 +1,8 @@
 package okay
 
 
-import okay.freer.*
 
 
-import okay.freer.given
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.{SynchronousQueue, TimeUnit}
 
@@ -78,7 +76,8 @@ object JavaDirectEffectsBenchmark {
   enum Tick[+A] derives Effect:
     case Tock extends Tick[Int]
 
-  val answering: Handler[Tick, [A] =>> A] = Handler[Tick] { case Tick.Tock => 1 }
+  val answering: Handler[Tick, [A] =>> A] = Handler.answering[Tick]([X] => (t: Tick[X]) => t match
+    case Tick.Tock => 1)
 
   /** `n` operations summed; each step deferred under the bind, so the recursion is trampolined */
   def loop(n: Int, acc: Int): Int ! Tick =

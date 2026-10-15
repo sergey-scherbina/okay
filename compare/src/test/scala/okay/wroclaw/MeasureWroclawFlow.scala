@@ -2,7 +2,7 @@ package okay.wroclaw
 
 import okay.cluster.Flows
 import okay.given
-import okay.freer.given
+import okay.freer.Aggregator
 /**
  * WHAT THE ENGINE COSTS AGAINST THE HAND-WRITTEN LANE (specs/
  * dataflow.md, stage 3).
@@ -99,7 +99,7 @@ class MeasureWroclawFlow extends munit.FunSuite:
       f"${whole.merged}%,d (${100.0 * whole.merged / total}%.1f%% of one partition's worth)%n")
     val lanes = Vector(
       part("engine: the source alone (count)", () =>
-        Flows.fold(fixture.rides(Parts), okay.freer.Aggregator.count[Ride]).runWith),
+        Flows.fold(fixture.rides(Parts), Aggregator.count[Ride]).runWith),
       part("engine: route windows only (tumbling, 138 keys)", () =>
         Flows.fan(fixture.rides(Parts), fixture.routeSink).runWith),
       part("engine: stop windows only (sliding, 2482 keys x 3 panes)", () =>

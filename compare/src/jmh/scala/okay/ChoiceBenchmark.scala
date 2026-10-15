@@ -1,11 +1,9 @@
 package okay
 
 
-import okay.freer.*
 
 
 import okay.std.*
-import okay.freer.given
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 
@@ -37,7 +35,7 @@ class ChoiceBenchmark {
   def okayChoice(): Int =
     def go(d: Int): Int ! Choose = choose(0, 1).flatMap: x =>
       if d == 0 then pure(x) else go(d - 1).map(x + _)
-    !.run(runChoice[Int, okay.freer.Pure](go(D))).size
+    !.run(runChoice[Int, Choose](go(D))).size
 
   @Benchmark
   def kyoChoice(): Int =

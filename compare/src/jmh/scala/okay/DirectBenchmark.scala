@@ -2,12 +2,7 @@ package okaybench
 
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
-
-
-import okay.freer.*
-
-
-import okay.freer.given
+import okay.{!, Pure, pure}
 import okay.Direct.{direct, reflect}
 
 /**
@@ -31,18 +26,18 @@ class DirectBenchmark {
 
   // ── okay ──────────────────────────────────────────────────────
 
-  def step(x: Int): Int ! Nothing = pure(x + 1)
+  def step(x: Int): Int ! Pure = pure(x + 1)
 
   @Benchmark
   def okayFlatMap(): Int =
-    val chain = (1 to N).foldLeft(pure[Pure, Int](0))((m, _) => m.flatMap(step))
-    okay.freer.!.run(chain)
+    val chain = (1 to N).foldLeft(pure[Int, Pure](0))((m, _) => m.flatMap(step))
+    !.run(chain)
 
   /** the macro rewrites the block into Monadic's Cps binds — the
    * delta over okayFlatMap is the whole price of direct style */
   @Benchmark
   def okayDirect(): Int =
-    okay.freer.!.run(direct[[A] =>> A ! Nothing] {
+    !.run(direct[[A] =>> A ! Pure] {
       var x = 0
       var i = 0
       while i < N do
@@ -59,7 +54,7 @@ class DirectBenchmark {
   @Benchmark
   def okayDirectEager(): Int =
     import okay.Direct.eagerCalls.given
-    okay.freer.!.run(direct[[A] =>> A ! Nothing] {
+    !.run(direct[[A] =>> A ! Pure] {
       var x = 0
       var i = 0
       while i < N do
@@ -72,13 +67,13 @@ class DirectBenchmark {
    * below (both forbid `var` in their blocks; okay allows either) */
   @Benchmark
   def okayDirectRec(): Int =
-    def loop(n: Int, acc: Int): Int ! Nothing = direct[[A] =>> A ! Nothing] {
+    def loop(n: Int, acc: Int): Int ! Pure = direct[[A] =>> A ! Pure] {
       if n == 0 then acc
       else
         val x = step(acc).reflect
         loop(n - 1, x).reflect
     }
-    okay.freer.!.run(loop(N, 0))
+    !.run(loop(N, 0))
 
   // ── kyo ───────────────────────────────────────────────────────
 

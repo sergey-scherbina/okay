@@ -1,11 +1,8 @@
 package okay
 
-
-import okay.freer.*
-
+import okay.freer.Fold
 
 import okay.std.*
-import okay.freer.given
 import okay.std.given
 import org.openjdk.jmh.annotations.{State, *}
 import java.util.concurrent.TimeUnit
@@ -42,23 +39,23 @@ class FoldConsumersBenchmark {
 
   def teller: Unit ! Writer % Long =
     def go(i: Long): Unit ! Writer % Long =
-      if i >= n then okay.freer.pure(())
+      if i >= n then pure(())
       else Writer.tell(i).flatMap(_ => go(i + 1))
     go(0L)
 
   def producer: Producer[Long] =
     def go(i: Long): Producer[Long] =
-      if i >= n then okay.freer.pure(0L)
+      if i >= n then pure(0L)
       else okay.std.produce(i).flatMap(_ => go(i + 1L))
     go(0L)
 
   // ---- Writer.fold
 
   @Benchmark
-  def writerGeneric: Long = !.run(Writer.fold[Long, Long, Unit, okay.freer.Pure](teller)(using summon)(using summon, generic))._1
+  def writerGeneric: Long = !.run(Writer.fold[Long, Long, Unit, Writer % Long](teller)(using summon, generic))._1
 
   @Benchmark
-  def writerSpecialized: Long = !.run(Writer.fold[Long, Long, Unit, okay.freer.Pure](teller)(using summon)(using summon, specialized))._1
+  def writerSpecialized: Long = !.run(Writer.fold[Long, Long, Unit, Writer % Long](teller)(using summon, specialized))._1
 
   // ---- Stream.fold, through a plain (un-chunked) Producer
 
@@ -73,7 +70,7 @@ class FoldConsumersBenchmark {
   // a tuple and a program built and run each time — written out here
   // verbatim as the control rows, so each pair alternates in one run.
 
-  private def foldControl[S[_], F[+_], A, B](s: S[A])(using f: Fold[A, B])(using St: Stream[S, F], H: Answers[F]): B = {
+  private def foldControl[S[_], F[_], A, B](s: S[A])(using f: Fold[A, B])(using St: Stream[S, F], H: Answers[F]): B = {
     @annotation.tailrec def loop(b: B, x: S[A]): B = St.uncons(x).runWith match
       case None => b
       case Some((a, t)) => loop(f.add(b, a), t)

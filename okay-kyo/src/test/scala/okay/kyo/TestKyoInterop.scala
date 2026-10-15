@@ -1,9 +1,7 @@
 package okay.kyo
 
-import okay.async
-import okay.freer.{!}
+import okay.{!, async}
 import okay.given
-import okay.freer.given
 import KyoInterop.*
 import _root_.kyo.{<, AllowUnsafe, Duration, KyoApp}
 
@@ -20,21 +18,18 @@ class TestKyoInterop extends munit.FunSuite {
   }
 
   test("structural mapping: Reader <-> Env") {
-    import okay.freer.{%}
-    import okay.freer.{effect, pure}
+    import okay.{%, effect, pure}
     import okay.std.{Reader}
     import _root_.kyo.Env
     val ours: Int ! Reader % Int =
       effect[Reader % Int, Int](Reader.Ask()).flatMap(x => pure(x * 2))
     assertEquals(Env.run(21)(toKyoEnv(ours)).eval, 42)
     val theirs: Int < Env[Int] = Env.get[Int].flatMap((x: Int) => x + 1)
-    assertEquals(!.run(okay.std.Reader.run[Int, Int, okay.freer.Pure](41)(
-      okay.freer.!.widen(fromKyoEnv(theirs)))), 42)
+    assertEquals(!.run(okay.std.Reader.run[Int, Int, Reader % Int](41)(fromKyoEnv(theirs))), 42)
   }
 
   test("structural mapping: Writer <-> Emit, tell for tell") {
-    import okay.freer.{%}
-    import okay.freer.{effect}
+    import okay.{%, effect}
     import okay.std.{Writer}
     import _root_.kyo.Emit
     val ours: Int ! Writer % String =
@@ -47,23 +42,22 @@ class TestKyoInterop extends munit.FunSuite {
       Emit.valueWith("x")(Emit.valueWith("y")(5: Int < Emit[String]))
     val back = fromKyoEmit(theirs)
     assertEquals(okay.std.Writer.uncons(back).toOption.map(_._1), Some("x"))
-    val (ws, r) = !.run(okay.std.Writer.run[String, Int, okay.freer.Pure](okay.freer.!.widen(back)))
+    val (ws, r) = !.run(okay.std.Writer.run[String, Int, Writer % String](back))
     assertEquals((ws, r), (Seq("x", "y"), 5))
   }
 
   test("structural mapping: Throws <-> Abort") {
-    import okay.freer.{%}
-    import okay.freer.{effect}
+    import okay.{%, effect}
     import okay.std.{Throws}
     import _root_.kyo.Abort
     val ours: Int ! Throws % String =
       effect[Throws % String, Int](Throws("boom"))
     assertEquals(Abort.run[String](toKyoAbort(ours)).eval.foldFailureOrThrow(e => e)(_.toString), "boom")
     val theirs: Int < Abort[String] = Abort.fail("bad")
-    assertEquals(!.run(okay.std.runEither[Int, Nothing, String](okay.freer.!.widen(fromKyoAbort(theirs)))),
+    assertEquals(!.run(okay.std.runEither[Int, Throws % String, String](fromKyoAbort(theirs))),
       Left("bad"))
-    assertEquals(!.run(okay.std.runEither[Int, Nothing, String](
-      okay.freer.!.widen(fromKyoAbort(7: Int < Abort[String])))), Right(7))
+    assertEquals(!.run(okay.std.runEither[Int, Throws % String, String](
+      fromKyoAbort(7: Int < Abort[String]))), Right(7))
   }
 
   test("structural mapping: Choose <-> Choice — the same arrow") {
@@ -74,7 +68,7 @@ class TestKyoInterop extends munit.FunSuite {
       List(10, 20, 20, 30, 40, 60))
     val theirs: Int < Choice =
       Choice.get(Seq(1, 2)).flatMap((x: Int) => Choice.get(Seq(10, 20)).flatMap((y: Int) => x * y))
-    assertEquals(!.run(okay.std.runChoice[Int, okay.freer.Pure](okay.freer.!.widen(fromKyoChoice(theirs)))).sorted,
+    assertEquals(!.run(okay.std.runChoice[Int, okay.std.Choose](fromKyoChoice(theirs))).sorted,
       Seq(10, 20, 20, 40))
   }
 

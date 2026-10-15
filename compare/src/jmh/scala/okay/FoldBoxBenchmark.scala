@@ -1,11 +1,8 @@
 package okay
 
-
-import okay.freer.*
-
+import okay.freer.Fold
 
 import okay.std.*
-import okay.freer.given
 import org.openjdk.jmh.annotations.{State, *}
 import java.util.concurrent.TimeUnit
 import scala.collection.immutable.ArraySeq

@@ -1,9 +1,5 @@
 package okay
 
-
-import okay.freer.*
-
-
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 
@@ -61,14 +57,14 @@ class OwnBlockingBenchmark {
     given Scheduler = s
     Async.spawn {
       val fs = (0 until 10000).map(i => Async.spawn(async(step(i))))
-      fs.foldLeft(pure[Async, Long](0L))((acc, f) => acc.flatMap(a => f.joinAsync.map(a + _)))
+      fs.foldLeft(pure[Long, Async](0L))((acc, f) => acc.flatMap(a => f.joinAsync.map(a + _)))
     }.join()
 
   @Benchmark
   def spawnJoinSeq(): Long =
     given Scheduler = s
     def loop(i: Int, sum: Long): Long ! Async =
-      if i == 1000 then pure[Async, Long](sum)
+      if i == 1000 then pure[Long, Async](sum)
       else async(Async.spawn(async(i))).flatMap(_.joinAsync).flatMap(v => loop(i + 1, sum + v))
     Async.spawn(loop(0, 0L)).join()
 
@@ -81,7 +77,7 @@ class OwnBlockingBenchmark {
     given Scheduler = s
     Async.spawn {
       async((0 until 64).map(_ => Async.spawn(async { var c = 0; while c < 4 do { blockOneMilli(); c += 1 }; 1L }))).flatMap { fs =>
-        fs.foldLeft(pure[Async, Long](0L))((acc, f) => acc.flatMap(a => f.joinAsync.map(a + _)))
+        fs.foldLeft(pure[Long, Async](0L))((acc, f) => acc.flatMap(a => f.joinAsync.map(a + _)))
       }
     }.join()
 

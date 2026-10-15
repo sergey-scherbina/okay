@@ -8,10 +8,8 @@ package bench.okay
 // `IO(...)`, a fiber per `.start`, a join per `joinWithNever`.
 
 import java.util.concurrent.atomic.AtomicInteger
-import okay.{Async, Scheduler, Schedulers, async}
-import okay.freer.{!, pure}
+import okay.{!, Async, Scheduler, Schedulers, async, pure}
 import okay.given
-import okay.freer.given
 import okay.std.given
 object OkayFiveWay:
 
@@ -46,7 +44,7 @@ object OkayFiveWay:
     }.flatMap { (index, output) =>
       def worker: Unit ! Async =
         async(index.getAndIncrement()).flatMap { i =>
-          if i >= values.size then pure[Async, Unit](())
+          if i >= values.size then pure[Unit, Async](())
           else f(values(i)).flatMap(v => async(output(i) = v)).flatMap(_ => worker)
         }
       async(Vector.fill(math.min(values.size, parallelism))(Async.spawn(worker))).flatMap { fibers =>
@@ -57,7 +55,7 @@ object OkayFiveWay:
   /** PrimitivesBench.ceSpawnJoin: spawn a child, join it, repeat */
   def spawnJoin(ops: Int)(using Scheduler): Long ! Async =
     def loop(i: Int, sum: Long): Long ! Async =
-      if i == ops then pure[Async, Long](sum)
+      if i == ops then pure[Long, Async](sum)
       else async(Async.spawn(async(i))).flatMap(_.joinAsync).flatMap(v => loop(i + 1, sum + v))
     loop(0, 0L)
 
@@ -70,12 +68,12 @@ object OkayFiveWay:
         if blocking then async(io.blocking(lane, index))
         else Async.await[Int](complete => io.async(lane, index)(complete))
       def worker(lane: Int, index: Int): Unit ! Async =
-        if index >= size then pure[Async, Unit](())
+        if index >= size then pure[Unit, Async](())
         else call(lane, index).flatMap(v => async(output(index) = v)).flatMap(_ => worker(lane, index + parallelism))
       // each worker attempted, as ceBatch supervises `.attempt`: every
       // worker is joined before the first failure is raised
       async(Vector.range(0, math.min(size, parallelism)).map(lane => Async.spawn(Async.attempt(worker(lane, lane))))).flatMap { fibers =>
-        fibers.foldLeft(pure[Async, Vector[Either[Throwable, Unit]]](Vector.empty))((acc, f) =>
+        fibers.foldLeft(pure[Vector[Either[Throwable, Unit]], Async](Vector.empty))((acc, f) =>
           acc.flatMap(rs => f.joinAsync.map(rs :+ _))
         ).flatMap(results => async {
           results.foreach(_.fold(e => throw e, identity))
@@ -86,4 +84,4 @@ object OkayFiveWay:
 
   /** join in order, as `traverse_(_.joinWithNever)` does */
   private def joinAll(joins: Vector[Unit ! Async]): Unit ! Async =
-    joins.foldLeft(pure[Async, Unit](()))((acc, j) => acc.flatMap(_ => j))
+    joins.foldLeft(pure[Unit, Async](()))((acc, j) => acc.flatMap(_ => j))

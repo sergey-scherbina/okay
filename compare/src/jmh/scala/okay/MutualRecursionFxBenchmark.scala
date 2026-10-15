@@ -1,14 +1,11 @@
 package okay
 
 
-import okay.freer.*
 
 
 import okay.std.*
-import okay.freer.given
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
-import okay.freer.Row.at
 
 /**
  * stack-safe-mutual-recursion, with effects (2026-09-26): the SAME
@@ -111,7 +108,7 @@ class MutualRecursionFxBenchmark {
   @Benchmark
   def okayRow(): Answer =
     val (count, (log, b)) =
-      State.run[Int, (Seq[String], Boolean)](0)(Writer.run[String, Boolean, State % Int](OkayRow.even(N)))
+      State.run[Int, (Seq[String], Boolean)](0)(Writer.run[String, Boolean, OkayRow.Fx](OkayRow.even(N)))
     Answer(b, count, log.size)
 
   // ---- effect-row-recursion-cost DIAGNOSTICS: okayRow taken apart.
@@ -124,7 +121,7 @@ class MutualRecursionFxBenchmark {
   @Benchmark
   def okayRowSwapped(): Answer =
     val (log, (count, b)) =
-      !.run(Writer.run[String, (Int, Boolean), Pure](State.handle[Int](0)(OkayRow.even(N))))
+      !.run(Writer.run[String, (Int, Boolean), Writer % String](State.handle[Int](0)(OkayRow.even(N))))
     Answer(b, count, log.size)
 
   /** State alone, `modify` (two operations) a level, nothing forwarded */

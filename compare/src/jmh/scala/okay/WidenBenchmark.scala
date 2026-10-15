@@ -1,20 +1,18 @@
 package okay
 
-
-import okay.freer.*
-
+import okay.freer.FoldUntil
 
 import okay.std.*
-import okay.freer.given
 import org.openjdk.jmh.annotations.{State, *}
 import java.util.concurrent.TimeUnit
 
 /**
  * What `!.widen`'s walk cost a stage (widen-split): `through` over a
- * pure doubling stage joined to an `Async` row three ways — the stage
- * at the row directly (the floor), by the coercion `!.widen` is now,
- * and by `!.normalize`, the walk it used to be, which rebuilds one
- * node per operation as the stage runs. 10 000 elements, drained.
+ * pure doubling stage joined to an `Async` row two ways — the stage
+ * at the row directly (the floor), and widened to it (`.at[Row]`, the
+ * kernel's word for what `!.widen` was). 10 000 elements, drained.
+ * (The third lane, okay-freer's `!.normalize` walk, has no
+ * counterpart on the kernel and is gone.)
  */
 @State(Scope.Thread)
 @BenchmarkMode(Array(Mode.AverageTime))
@@ -36,8 +34,8 @@ class WidenBenchmark {
 
   /** the same stage written at the Async row — the floor */
   def doubleAt: Unit ! Row =
-    effect[Row, Option[Long]](Take.Await[Long]()).flatMap {
-      case Some(x) => effect[Row, Unit](Writer(x * 2)).flatMap(_ => doubleAt)
+    Take.await[Long].at[Row].flatMap {
+      case Some(x) => Writer.tell(x * 2).at[Row].flatMap(_ => doubleAt)
       case None => pure(())
     }
 
@@ -45,13 +43,9 @@ class WidenBenchmark {
 
   @Benchmark
   def throughAtRow: Long =
-    Writer.foldUntil[Long, Long, Unit, Long, Async](through(src)(doubleAt))(using summon)(using summon, FoldUntil.long[Long, Long](0L)(_ + _)(_ => false)(identity)).runWith
+    Writer.foldUntil[Long, Long, Unit, Long, Writer % Long + Async](through(src)(doubleAt))(using summon, FoldUntil.long[Long, Long](0L)(_ + _)(_ => false)(identity)).runWith
 
   @Benchmark
   def throughWidened: Long =
-    Writer.foldUntil[Long, Long, Unit, Long, Async](through(src)(!.widen[Unit, Take % Long + Writer % Long, Async](double)))(using summon)(using summon, FoldUntil.long[Long, Long](0L)(_ + _)(_ => false)(identity)).runWith
-
-  @Benchmark
-  def throughNormalized: Long =
-    Writer.foldUntil[Long, Long, Unit, Long, Async](through(src)(!.normalize[Unit, Take % Long + Writer % Long, Async](double)))(using summon)(using summon, FoldUntil.long[Long, Long](0L)(_ + _)(_ => false)(identity)).runWith
+    Writer.foldUntil[Long, Long, Unit, Long, Writer % Long + Async](through(src)(double.at[Row]))(using summon, FoldUntil.long[Long, Long](0L)(_ + _)(_ => false)(identity)).runWith
 }

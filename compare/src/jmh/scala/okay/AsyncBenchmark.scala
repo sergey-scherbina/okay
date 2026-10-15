@@ -1,9 +1,5 @@
 package okay
 
-
-import okay.freer.*
-
-
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 
@@ -57,7 +53,7 @@ class AsyncBenchmark {
   def okaySpawnInside(): Int =
     Async.spawn {
       val fs = (1 to K).map(_ => Async.spawn(async(1)))
-      fs.foldLeft(pure[Async, Int](0))((acc, f) => acc.flatMap(a => f.joinAsync.map(a + _)))
+      fs.foldLeft(pure[Int, Async](0))((acc, f) => acc.flatMap(a => f.joinAsync.map(a + _)))
     }.join()
 
   @Benchmark

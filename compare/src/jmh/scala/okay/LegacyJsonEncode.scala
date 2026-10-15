@@ -1,10 +1,5 @@
 package okay
 
-
-import okay.freer.*
-
-
-import okay.freer.given
 import okay.freer.{/>>}
 import okay.freer.Cps
 import okay.codec.{Base64, Codecs, Json, Schema}

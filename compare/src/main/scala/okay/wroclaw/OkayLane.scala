@@ -1,12 +1,9 @@
 package okay.wroclaw
 
-
-
-import okay.{Async, Chunks, Pane, Windows, through, async}
-import okay.freer.{*}
+import okay.{!, %, Async, Chunks, Pane, Windows, through, async, pure}
+import okay.freer.{Aggregator, Fold}
 import okay.std.{Feed as _, *}
 import okay.given
-import okay.freer.given
 import scala.collection.mutable
 import scala.annotation.tailrec
 

@@ -1,9 +1,5 @@
 package okay
 
-
-import okay.freer.*
-
-
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 
@@ -116,7 +112,7 @@ class AdversarialBenchmark {
     given Scheduler = ownShort
     Async.spawn {
       val fs = (0 until K).map(i => Async.spawn(async(step(i))))
-      fs.foldLeft(pure[Async, Long](0L))((acc, f) => acc.flatMap(a => f.joinAsync.map(a + _)))
+      fs.foldLeft(pure[Long, Async](0L))((acc, f) => acc.flatMap(a => f.joinAsync.map(a + _)))
     }.join()
 
   @Benchmark
@@ -124,7 +120,7 @@ class AdversarialBenchmark {
     given Scheduler = ownLong
     Async.spawn {
       val fs = (0 until K).map(i => Async.spawn(async(step(i))))
-      fs.foldLeft(pure[Async, Long](0L))((acc, f) => acc.flatMap(a => f.joinAsync.map(a + _)))
+      fs.foldLeft(pure[Long, Async](0L))((acc, f) => acc.flatMap(a => f.joinAsync.map(a + _)))
     }.join()
 
   @Benchmark
@@ -132,7 +128,7 @@ class AdversarialBenchmark {
     given Scheduler = own
     Async.spawn {
       val fs = (0 until K).map(i => Async.spawn(async(step(i))))
-      fs.foldLeft(pure[Async, Long](0L))((acc, f) => acc.flatMap(a => f.joinAsync.map(a + _)))
+      fs.foldLeft(pure[Long, Async](0L))((acc, f) => acc.flatMap(a => f.joinAsync.map(a + _)))
     }.join()
 
   /** the same shape on the drive scheduler, for the pair */
@@ -141,7 +137,7 @@ class AdversarialBenchmark {
     given Scheduler = Schedulers.drive()
     Async.spawn {
       val fs = (0 until K).map(i => Async.spawn(async(step(i))))
-      fs.foldLeft(pure[Async, Long](0L))((acc, f) => acc.flatMap(a => f.joinAsync.map(a + _)))
+      fs.foldLeft(pure[Long, Async](0L))((acc, f) => acc.flatMap(a => f.joinAsync.map(a + _)))
     }.join()
 
   /** the inside shape on the DEFAULT given, for the loom-vs-adaptive
@@ -152,7 +148,7 @@ class AdversarialBenchmark {
   def forkJoin10k_okayInside(): Long =
     Async.spawn {
       val fs = (0 until K).map(i => Async.spawn(async(step(i))))
-      fs.foldLeft(pure[Async, Long](0L))((acc, f) => acc.flatMap(a => f.joinAsync.map(a + _)))
+      fs.foldLeft(pure[Long, Async](0L))((acc, f) => acc.flatMap(a => f.joinAsync.map(a + _)))
     }.join()
 
   /** okay's drive scheduler: the JS shape on the JVM, fiber = task =

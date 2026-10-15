@@ -1,18 +1,9 @@
 package okay
 
-
-import okay.freer.*
-
-
 import okay.std.*
-import okay.freer.given
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 
-import okay.freer.Row.at
-// AsyncFailing.anyRow no longer lives in Failing's own companion after
-// the async split, so it needs an explicit import (was automatic at HEAD).
-import okay.AsyncFailing.anyRow
 
 /**
  * Resource safety across the ecosystem: N sequential bracketed
@@ -38,16 +29,16 @@ class ResourceBenchmark {
   @Benchmark
   def okayBracket(): Int =
     var c = 0
-    val r = (1 to N).foldLeft(pure[Produce, Int](0)): (m, _) =>
+    val r = (1 to N).foldLeft(pure[Int, Produce](0)): (m, _) =>
       m.flatMap(x => bracketNow(x)(_ => c += 1)(r => produce(r + 1)))
     r.runWith + c
 
   @Benchmark
   def okayResource(): Int =
     var c = 0
-    val prog = (1 to N).foldLeft(pure[Resource, Int](0)): (m, _) =>
+    val prog = (1 to N).foldLeft(pure[Int, Resource](0)): (m, _) =>
       m.flatMap(x => Resource.acquire(x + 1)(_ => c += 1))
-    !.run(Resource.run[Int, okay.freer.Pure](prog)) + c
+    !.run(Resource.run[Int, Resource](prog)) + c
 
   /**
    * `bracketNow` PAIRED with the region lane above: the same workload —
@@ -61,8 +52,8 @@ class ResourceBenchmark {
   @Benchmark
   def okayBracketPure(): Int =
     var c = 0
-    val r = (1 to N).foldLeft(pure[Produce, Int](0)): (m, _) =>
-      m.flatMap(x => bracketNow(x)(_ => c += 1)(r => pure[Produce, Int](r + 1)))
+    val r = (1 to N).foldLeft(pure[Int, Produce](0)): (m, _) =>
+      m.flatMap(x => bracketNow(x)(_ => c += 1)(r => pure[Int, Produce](r + 1)))
     r.runWith + c
 
   /**
@@ -74,11 +65,11 @@ class ResourceBenchmark {
   @Benchmark
   def okayResourceUse(): Int =
     var c = 0
-    val prog = (1 to N).foldLeft(pure[Resource + Produce, Int](0)): (m, _) =>
+    val prog = (1 to N).foldLeft(pure[Int, Resource + Produce](0)): (m, _) =>
       m.flatMap(x =>
         Resource.acquire(x + 1)(_ => c += 1).at[Resource + Produce]
           .flatMap(r => produce(r).at[Resource + Produce]))
-    Resource.run[Int, Produce](prog).runWith + c
+    Resource.run[Int, Resource + Produce](prog).runWith + c
 
   /** the region form, RIGHT-nested by recursion */
   @Benchmark
@@ -86,7 +77,7 @@ class ResourceBenchmark {
     var c = 0
     def go(i: Int, x: Int): Int ! Resource =
       if i == 0 then pure(x) else Resource.acquire(x + 1)(_ => c += 1).flatMap(y => go(i - 1, y))
-    !.run(Resource.run[Int, okay.freer.Pure](go(N, 0))) + c
+    !.run(Resource.run[Int, Resource](go(N, 0))) + c
 
   @Benchmark
   def catsIOBracket(): Int =

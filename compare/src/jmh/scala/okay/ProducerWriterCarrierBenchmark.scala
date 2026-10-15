@@ -1,11 +1,8 @@
 package okay
 
-
-import okay.freer.*
-
+import okay.freer.Fold
 
 import okay.std.*
-import okay.freer.given
 import okay.std.given
 import org.openjdk.jmh.annotations.{State, *}
 import java.util.concurrent.TimeUnit
@@ -107,19 +104,19 @@ class ProducerWriterCarrierBenchmark {
   // the `Probe` loops below walk it the way `Chunks.fold` used to
   private def producerChunks: Producer[Chunk[Long]] =
     def go(i: Int): Producer[Chunk[Long]] =
-      if i >= chunks.length then okay.freer.pure(Chunks.emptyChunk[Long])
+      if i >= chunks.length then pure(Chunks.emptyChunk[Long])
       else produce(chunks(i)).flatMap(_ => go(i + 1))
     go(0)
 
   private def writerChunks: Unit ! Writer % Chunk[Long] =
     def go(i: Int): Unit ! Writer % Chunk[Long] =
-      if i >= chunks.length then okay.freer.pure(())
+      if i >= chunks.length then pure(())
       else Writer.tell(chunks(i)).flatMap(_ => go(i + 1))
     go(0)
 
   private def writerChunksAsync: Source[Chunk[Long]] =
     def go(i: Int): Source[Chunk[Long]] =
-      if i >= chunks.length then okay.freer.pure(())
+      if i >= chunks.length then pure(())
       else Writer.tell(chunks(i)).plus[Async].flatMap(_ => go(i + 1))
     go(0)
 
@@ -146,7 +143,7 @@ class ProducerWriterCarrierBenchmark {
 
   @Benchmark
   def chunksFoldWriter(): Long =
-    Writer.fold[Chunk[Long], Long, Unit, Pure](writerChunks).runWith._1
+    Writer.fold[Chunk[Long], Long, Unit, Writer % Chunk[Long]](writerChunks).runWith._1
 
   // THE PURE SHAPE (producer-writer-carrier-pure-iterator): `Chunks[A]`
   // is `Producer[Chunk[A]]` — PURE, no G — so what `Chunks.fold` will
@@ -235,7 +232,7 @@ class ProducerWriterCarrierBenchmark {
   @Benchmark
   def chunksFoldWriterAsync(): Long =
     given CanBlock = cb
-    Writer.fold[Chunk[Long], Long, Unit, Async](writerChunksAsync).runWith._1
+    Writer.fold[Chunk[Long], Long, Unit, Writer % Chunk[Long] + Async](writerChunksAsync).runWith._1
 
   // PARITY, MEASURED: foldLeftWriter called DIRECTLY, a literal step,
   // no Fold instance — the shape okay-cluster's own Chunks.foldLeft
@@ -288,7 +285,7 @@ class ProducerWriterCarrierBenchmark {
 
   @Benchmark
   def chunksMapWriter(): Long =
-    Writer.fold[Chunk[Long], Long, Unit, Pure](Writer.map[Chunk[Long], Chunk[Long], Unit, Pure](writerChunks)(doubleChunk)).runWith._1
+    Writer.fold[Chunk[Long], Long, Unit, Writer % Chunk[Long] + Pure](Writer.map[Chunk[Long], Chunk[Long], Unit, Writer % Chunk[Long]](writerChunks)(doubleChunk)).runWith._1
 
   // ---------------------------------------------------------- 3
   // Source.ofProducer / Source.toProducer: the bridge cost, on the
@@ -296,12 +293,12 @@ class ProducerWriterCarrierBenchmark {
 
   private def producerLongs: Long ! Produce + Async =
     def go(i: Long): Long ! Produce + Async =
-      if i >= n then okay.freer.pure(0L) else produce(i).plus[Async].flatMap(_ => go(i + 1))
+      if i >= n then pure(0L) else produce(i).plus[Async].flatMap(_ => go(i + 1))
     go(0L)
 
   private def writerLongs: Unit ! Writer % Long + Async =
     def go(i: Long): Unit ! Writer % Long + Async =
-      if i >= n then okay.freer.pure(()) else Writer.tell(i).plus[Async].flatMap(_ => go(i + 1))
+      if i >= n then pure(()) else Writer.tell(i).plus[Async].flatMap(_ => go(i + 1))
     go(0L)
 
   @Benchmark
@@ -336,12 +333,12 @@ class ProducerWriterCarrierBenchmark {
   def bridgeProducerThroughSource(): Long =
     given CanBlock = cb
     val asSource: Unit ! Writer % Long + Async = Source.ofProducer[Long, Async](producerLongs)
-    Writer.fold[Long, Long, Unit, Async](asSource)(using summon)(using summon, Fold.sumLong).runWith._1
+    Writer.fold[Long, Long, Unit, Writer % Long + Async](asSource)(using summon, Fold.sumLong).runWith._1
 
   @Benchmark
   def bridgeWriterDirect(): Long =
     given CanBlock = cb
-    Writer.fold[Long, Long, Unit, Async](writerLongs)(using summon)(using summon, Fold.sumLong).runWith._1
+    Writer.fold[Long, Long, Unit, Writer % Long + Async](writerLongs)(using summon, Fold.sumLong).runWith._1
 
   @Benchmark
   def bridgeWriterThroughProducer(): Long =
@@ -363,13 +360,13 @@ class ProducerWriterCarrierBenchmark {
 
   private def byteProducer: Chunk[Byte] ! Produce + Async =
     def go(i: Int): Chunk[Byte] ! Produce + Async =
-      if i >= byteChunks.length then okay.freer.pure(Chunks.emptyChunk[Byte])
+      if i >= byteChunks.length then pure(Chunks.emptyChunk[Byte])
       else produce(byteChunks(i)).plus[Async].flatMap(_ => go(i + 1))
     go(0)
 
   private def byteSource: Unit ! Writer % Chunk[Byte] + Async =
     def go(i: Int): Unit ! Writer % Chunk[Byte] + Async =
-      if i >= byteChunks.length then okay.freer.pure(())
+      if i >= byteChunks.length then pure(())
       else Writer.tell(byteChunks(i)).plus[Async].flatMap(_ => go(i + 1))
     go(0)
 
@@ -377,7 +374,7 @@ class ProducerWriterCarrierBenchmark {
   def blobBytesProducer(): Array[Byte] =
     given CanBlock = cb
     val out = new java.io.ByteArrayOutputStream(byteChunks.length * 1024)
-    val _ = Producer.each[Chunk[Byte], Chunk[Byte], Async](byteProducer)(c => out.write(c.toArray)).runWith
+    val _ = Producer.each[Chunk[Byte], Chunk[Byte], Produce + Async](byteProducer)(c => out.write(c.toArray)).runWith
     out.toByteArray
 
   @Benchmark
@@ -385,14 +382,14 @@ class ProducerWriterCarrierBenchmark {
     given CanBlock = cb
     val out = new java.io.ByteArrayOutputStream(byteChunks.length * 1024)
     val sink: Fold[Chunk[Byte], Unit] = Fold(())((_, c) => out.write(c.toArray))
-    val _ = Writer.fold[Chunk[Byte], Unit, Unit, Async](byteSource)(using summon)(using summon, sink).runWith
+    val _ = Writer.fold[Chunk[Byte], Unit, Unit, Writer % Chunk[Byte] + Async](byteSource)(using summon, sink).runWith
     out.toByteArray
 
   // ---------------------------------------------------------- 5
   // writer-collect-loops: the three collect drains as calls to
   // `Writer.loopWith` (cons per element, one reverse, the finisher
   // INSIDE the loop) against the shape they replaced, written out
-  // verbatim as the control rows so each pair alternates in one run:
+  // as the control rows (by okay.Walk on the kernel) so each pair alternates in one run:
   // `Source.concat` was `Writer.collect(s).map(_._1.flatten)` — a
   // `Vector :+` per chunk and a `.map` over a program that still
   // forwards Async — and `runCollect` was its own copy of the loop
@@ -404,49 +401,35 @@ class ProducerWriterCarrierBenchmark {
 
   private def byteSourceAsync: Unit ! Writer % Chunk[Byte] + Async =
     def go(i: Int): Unit ! Writer % Chunk[Byte] + Async =
-      if i >= byteChunks.length then okay.freer.pure(())
+      if i >= byteChunks.length then pure(())
       else async(()).plus[Writer % Chunk[Byte]].flatMap(_ =>
         Writer.tell(byteChunks(i)).plus[Async].flatMap(_ => go(i + 1)))
     go(0)
 
-  /** the old `Writer.collect`, verbatim: its own loop split on G, a
-   * `Vector :+` per told value */
-  private def collectControl[W, A, G[+_] : TypeableK](a: A ! Writer % W + G): (Vector[W], A) ! G =
-    import !.*
-    import scala.annotation.tailrec
-    def again(acc: Vector[W])(x: A ! Writer % W + G): (Vector[W], A) ! G = loop(acc)(x)
-    @tailrec def loop(acc: Vector[W])(x: A ! Writer % W + G): (Vector[W], A) ! G =
-      (x.resume: @unchecked) match
-        case Free.Return(v) => okay.freer.pure((acc, v))
-        case Inject(e) => split[G, Writer % W](e)
-          (g => Inject(g).map(v => (acc, v)): (Vector[W], A) ! G)
-          { w0 => (w0: @unchecked) match
-              case Writer.Say(w) => okay.freer.pure((acc :+ w, ())) }
-        case Bind(Inject(e), k) => split[G, Writer % W](e)
-          (g => Inject(g).flatMap(v => again(acc)(k(v))))
-          { w0 => (w0: @unchecked) match
-              case Writer.Say(w) => loop(acc :+ w)(k(())) }
+  /** the old `Writer.collect`'s shape: its own walk (okay-freer's tree split on G then, `okay.Walk` on the kernel
+   * now), the other effects forwarded where the walk is, a `Vector :+` per told value; the recursion is deferred
+   * into the program's `flatMap` (trampolined) */
+  private def collectControl[W, A](a: A ! Writer % W + Async): (Vector[W], A) ! Async =
+    def loop(acc: Vector[W])(x: A ! Writer % W + Async): (Vector[W], A) ! Async =
+      Walk.next[Writer % W, A, Writer % W + Async](x).flatMap {
+        case Walk.Done(v) => pure((acc, v))
+        case o: Walk.Op[Writer % W, u, A, Writer % W + Async] => (o.op: @unchecked) match
+          case Writer.Say(w) => loop(acc :+ w)(o.resume(()))
+      }
     loop(Vector.empty)(a)
 
-  /** the old `Source.concat`, verbatim */
+  /** the old `Source.concat`'s shape */
   private def concatControl[X](s: Source[Chunk[X]]): Vector[X] ! Async =
-    collectControl[Chunk[X], Unit, Async](s).map(_._1.flatten)
+    collectControl[Chunk[X], Unit](s).map(_._1.flatten)
 
-  /** the old `Source.runCollect`, verbatim */
+  /** the old `Source.runCollect`'s shape: its own walk, a `Vector :+` per element */
   private def runCollectControl[A](s: Source[A]): Vector[A] ! Async =
-    import !.*
-    import scala.annotation.tailrec
-    def again(acc: Vector[A])(x: Source[A]): Vector[A] ! Async = loop(acc)(x)
-    @tailrec def loop(acc: Vector[A])(x: Source[A]): Vector[A] ! Async =
-      (x.resume: @unchecked) match
-        case Free.Return(_) => okay.freer.pure(acc)
-        case Inject(e) => split[Async, Writer % A](e)
-          (g => Inject(g).map(_ => acc): Vector[A] ! Async)
-          { case Writer.Say(a) => okay.freer.pure(acc :+ a) }
-        case Bind(Inject(e), k) => split[Async, Writer % A](e)
-          (g => Inject(g).flatMap(v => again(acc)(k(v))))
-          { w0 => (w0: @unchecked) match
-              case Writer.Say(a) => loop(acc :+ a)(k(())) }
+    def loop(acc: Vector[A])(x: Source[A]): Vector[A] ! Async =
+      Walk.next[Writer % A, Unit, Writer % A + Async](x).flatMap {
+        case Walk.Done(_) => pure(acc)
+        case o: Walk.Op[Writer % A, u, Unit, Writer % A + Async] => (o.op: @unchecked) match
+          case Writer.Say(a) => loop(acc :+ a)(o.resume(()))
+      }
     loop(Vector.empty)(s)
 
   @Benchmark

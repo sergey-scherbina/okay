@@ -1,12 +1,6 @@
 package okay
 
-
-import okay.freer.*
-
-
 import okay.std.*
-import okay.freer.given
-import !.*
 
 class Boom extends Exception("boom")
 
@@ -18,12 +12,17 @@ class Boom extends Exception("boom")
  */
 class TestLaziness extends munit.FunSuite {
 
+  /** `p` walked `n` operations on (okay-freer's `next(n)`): each production answered, the rest walked to the next */
+  @scala.annotation.tailrec private def stepped[A](p: A ! Produce, n: Int): Unit = Walk.view(p) match
+    case Walk.Done(_) => ()
+    case o: Walk.Op[Produce, x, A, Produce] => if n > 0 then stepped(o.resume(o.op), n - 1)
+
   test("an infinite program is a value here; eager construction runs it uninvited") {
     var okaySteps = 0
     def ticks: Unit ! Produce = produce(()).flatMap(_ => { okaySteps += 1; ticks })
     val t = ticks
     assertEquals(okaySteps, 0)             // built: nothing ran
-    t.next(1000): Unit
+    stepped(t, 1000)
     assertEquals(okaySteps, 1000)          // stepped exactly as asked
 
     import _root_.kyo.*
@@ -35,7 +34,7 @@ class TestLaziness extends munit.FunSuite {
   }
 
   test("no exception until run here; eager construction throws at build") {
-    val p = pure[Produce, Int](1).flatMap(x => if x > 0 then throw Boom() else produce(x))
+    val p = pure[Int, Produce](1).flatMap(x => if x > 0 then throw Boom() else produce(x))
     val _ = intercept[Boom](p.runWith)             // built fine, throws only when run
 
     import _root_.kyo.*
@@ -44,7 +43,7 @@ class TestLaziness extends munit.FunSuite {
 
   test("effects happen per run here; eagerly they happen once, at build") {
     var n = 0
-    val p = pure[Produce, Int](1).flatMap(x => { n += 1; produce(x) })
+    val p = pure[Int, Produce](1).flatMap(x => { n += 1; produce(x) })
     assertEquals(n, 0)                     // building ran nothing
     val _ = p.runWith
     val _ = p.runWith

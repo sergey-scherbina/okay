@@ -1,10 +1,5 @@
 package okay
 
-
-import okay.freer.*
-
-
-import okay.freer.given
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 
@@ -41,7 +36,7 @@ class OxBenchmark {
   def okaySpawnInside(): Int =
     Async.spawn {
       val fs = (1 to K).map(_ => Async.spawn(async(1)))
-      fs.foldLeft(pure[Async, Int](0))((acc, f) => acc.flatMap(a => f.joinAsync.map(a + _)))
+      fs.foldLeft(pure[Int, Async](0))((acc, f) => acc.flatMap(a => f.joinAsync.map(a + _)))
     }.join()
 
   /** Ox WITH supervision: a failing fork cancels its siblings and the
@@ -68,10 +63,10 @@ class OxBenchmark {
     // and Platform.scala prices that choice at up to 3.6x on its own.
     // It read as "supervision is FASTER than no supervision", which is
     // the tell.
-    !.run(Async.run[Int, Pure](
+    !.run(Async.run[Int, Async](
       Async.supervised: n ?=>
         val fs = (1 to K).map(_ => n.fork(async(1)))
-        fs.foldLeft(pure[Async, Int](0))((acc, f) => acc.flatMap(a => f.joinAsync.map(a + _)))))
+        fs.foldLeft(pure[Int, Async](0))((acc, f) => acc.flatMap(a => f.joinAsync.map(a + _)))))
 
   /** THE PAIR: no supervision, which is the budget okaySpawnInside
    *  actually spends (rule 4 -- both sides get the same budget). */

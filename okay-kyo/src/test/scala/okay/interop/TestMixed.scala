@@ -1,9 +1,7 @@
 package okay.interop
 
-import okay.{Async, async, asOkay, >=>}
-import okay.freer.{!}
+import okay.{!, Async, async, asOkay, >=>}
 import okay.given
-import okay.freer.given
 import okay.Direct.*
 import okay.cats.asIO
 import okay.cats.given
@@ -40,6 +38,7 @@ class TestMixed extends munit.FunSuite with okay.testkit.Munit.Diagnosed {
     KyoApp.Unsafe.runAndBlock(Duration.Infinity)(k).getOrThrow
 
   test("Kleisli: cats >=> ZIO >=> kyo >=> okay, one chain") {
+    import okay.Programs.given // the program's Monad, for `>=>`
     val all: String => String ! Async = parse.asOkay >=> double.asOkay >=> inc.asOkay >=> show
     assertEquals(all(" 20 ").runWith, "<41>")
   }

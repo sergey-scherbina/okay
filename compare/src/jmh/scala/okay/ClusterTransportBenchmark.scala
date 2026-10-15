@@ -1,11 +1,8 @@
 package okay
 
-
-import okay.freer.*
-
+import okay.freer.Fold
 
 import okay.std.*
-import okay.freer.given
 import org.openjdk.jmh.annotations.{State, *}
 import java.util.concurrent.TimeUnit
 import okay.cluster.Remote
@@ -68,7 +65,7 @@ class ClusterTransportBenchmark {
   /** the same payload and framing over Nio.Conn */
   @Benchmark
   def nio: Long =
-    Resource.run[Long, Pure](
+    Resource.run[Long, Resource](
       Nio.listen(0) { conn =>
         // the serving end: send every frame, close
         def go(i: Int): Unit ! Async =
@@ -76,15 +73,14 @@ class ClusterTransportBenchmark {
           else conn.send(Json.write(chunks(i).toList) + "\n").flatMap(_ => go(i + 1))
         go(0)
       }.map { server =>
-        Async.run[Long, Pure](
+        Async.run[Long, Async](
           Nio.connect("127.0.0.1", Nio.port(server)).flatMap { c =>
             given Fold[String, Long] = Fold.long[String](0L) { (s, line) =>
               Json.read[List[Long]](line).fold(_ => s, xs => s + xs.sum)
             }
-            Writer.fold[String, Long, Unit, Async](
+            Writer.fold[String, Long, Unit, Writer % String + Async](
               through[Chunk[Byte], String, Async, Unit, Unit](c.bytes)(
-                !.widen[Unit, Take % Chunk[Byte] + Writer % String, Async](
-                  okay.http.Http.framing))).map(_._1)
+                okay.http.Http.framing.at[Take % Chunk[Byte] + (Writer % String + Async)])).map(_._1)
           }).runWith
       }).runWith.ensuring(_ == expected)
 
@@ -125,22 +121,21 @@ class ClusterTransportBenchmark {
     // Async.Run instead of Async.Await
     type F = Writer % Chunk[Byte] + Async
     def go: Source[Chunk[Byte]] =
-      effect[F, Chunk[Byte] | Null](Async.Run { () =>
+      effect(Async.Run[Chunk[Byte] | Null] { () =>
         val buf = new Array[Byte](8192)
         val n = in.read(buf)
         if n < 0 then null
         else scala.collection.immutable.ArraySeq.unsafeWrapArray(
           java.util.Arrays.copyOf(buf, n))
-      }).flatMap {
+      }).at[F].flatMap {
         case null => pure(())
         case c: Chunk[Byte] @unchecked =>
-          effect[F, Unit](Writer(c)).flatMap(_ => go)
+          Writer.tell(c).at[F].flatMap(_ => go)
       }
-    val sum = Async.run[Long, Pure](
-      Writer.fold[String, Long, Unit, Async](
+    val sum = Async.run[Long, Async](
+      Writer.fold[String, Long, Unit, Writer % String + Async](
         through[Chunk[Byte], String, Async, Unit, Unit](go)(
-          !.widen[Unit, Take % Chunk[Byte] + Writer % String, Async](
-            okay.http.Http.framing))).map(_._1)).runWith
+          okay.http.Http.framing.at[Take % Chunk[Byte] + (Writer % String + Async)])).map(_._1)).runWith
     done.get(30, TimeUnit.SECONDS)
     sock.close(); server.close()
     assert(sum == expected)
@@ -178,22 +173,21 @@ class ClusterTransportBenchmark {
     }
     type F = Writer % Chunk[Byte] + Async
     def go: Source[Chunk[Byte]] =
-      effect[F, Chunk[Byte] | Null](Async.Run { () =>
+      effect(Async.Run[Chunk[Byte] | Null] { () =>
         val buf = new Array[Byte](8192)
         val n = in.read(buf)
         if n < 0 then null
         else scala.collection.immutable.ArraySeq.unsafeWrapArray(
           java.util.Arrays.copyOf(buf, n))
-      }).flatMap {
+      }).at[F].flatMap {
         case null => pure(())
         case c: Chunk[Byte] @unchecked =>
-          effect[F, Unit](Writer(c)).flatMap(_ => go)
+          Writer.tell(c).at[F].flatMap(_ => go)
       }
-    val sum = Async.run[Long, Pure](
-      Writer.fold[String, Long, Unit, Async](
+    val sum = Async.run[Long, Async](
+      Writer.fold[String, Long, Unit, Writer % String + Async](
         through[Chunk[Byte], String, Async, Unit, Unit](go)(
-          !.widen[Unit, Take % Chunk[Byte] + Writer % String, Async](
-            okay.http.Http.framing))).map(_._1)).runWith
+          okay.http.Http.framing.at[Take % Chunk[Byte] + (Writer % String + Async)])).map(_._1)).runWith
     done.get(30, TimeUnit.SECONDS)
     sock.close(); server.close()
     assert(sum == expected)

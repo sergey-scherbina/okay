@@ -1,11 +1,6 @@
 package okay
 
-
-import okay.freer.*
-
-
 import okay.std.*
-import okay.freer.given
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 
@@ -36,14 +31,14 @@ class WriterBenchmark {
   def okayWriter(): Int =
     val prog = (1 to N).foldLeft(Writer.tell(0)): (m, i) =>
       m.flatMap(_ => Writer.tell(i))
-    !.run(Writer.run[Int, Unit, okay.freer.Pure](prog))._1.length
+    !.run(Writer.run[Int, Unit, Writer % Int](prog))._1.length
 
   /** the same N tells, RIGHT-nested by recursion */
   @Benchmark
   def okayWriterRec(): Int =
     def go(i: Int): Unit ! Writer % Int =
       if i == 0 then Writer.tell(0) else Writer.tell(i).flatMap(_ => go(i - 1))
-    !.run(Writer.run[Int, Unit, okay.freer.Pure](go(N)))._1.length
+    !.run(Writer.run[Int, Unit, Writer % Int](go(N)))._1.length
 
   @Benchmark
   def catsWriterT(): Int =

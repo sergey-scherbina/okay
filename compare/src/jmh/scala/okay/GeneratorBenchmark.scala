@@ -1,16 +1,10 @@
 package okay
 
-
-import okay.freer.*
-
-
 import okay.std.*
-import okay.freer.given
 import okay.std.given
 import org.openjdk.jmh.annotations.{State, *}
 import java.util.concurrent.TimeUnit
 
-import !.*
 
 /**
  * Generators across the ecosystem: the N-th Fibonacci number by
@@ -40,9 +34,14 @@ class GeneratorBenchmark {
   def okayLazyList(): Int =
     fibs[Int, LazyList](N - 1)
 
+  /** the `n`-th production of `p` (okay-freer's `next(n).peek`): each one answered, the rest walked to the next */
+  @scala.annotation.tailrec private def nth[A](p: A ! Produce, n: Int): Any = Walk.view(p) match
+    case Walk.Done(a) => a
+    case o: Walk.Op[Produce, x, A, Produce] => if n == 0 then o.op else nth(o.resume(o.op), n - 1)
+
   @Benchmark
   def okayProducer(): Any =
-    fibs[Int, Producer].next(N - 1).peek
+    nth(fibs[Int, Producer], N - 1)
 
   @Benchmark
   def fs2Stream(): Option[Int] =

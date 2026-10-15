@@ -4,7 +4,6 @@ import okay.Pane
 import okay.freer.Aggregator
 import okay.cluster.{Flows, Sink}
 import okay.given
-import okay.freer.given
 /**
  * WHERE THE THIRD OF A FAN THAT IS IN NONE OF ITS SINKS GOES
  * (BACKLOG: dataflow-fan-overhead).

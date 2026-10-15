@@ -3,7 +3,6 @@ package okay
 
 
 
-import okay.freer.given
 import okay.std.given
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit

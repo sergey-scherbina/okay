@@ -1,9 +1,5 @@
 package okay
 
-
-import okay.freer.*
-
-
 import okay.std.*
 import org.openjdk.jmh.annotations.{State, *}
 import java.util.concurrent.TimeUnit
@@ -29,7 +25,7 @@ class LazinessBenchmark {
 
   @Benchmark
   def okayBuild(): Any =
-    (1 to N).foldLeft(pure[Produce, Int](0))((m, _) => m.flatMap(x => produce(x + 1)))
+    (1 to N).foldLeft(pure[Int, Produce](0))((m, _) => m.flatMap(x => produce(x + 1)))
 
   @Benchmark
   def catsIOBuild(): Any =

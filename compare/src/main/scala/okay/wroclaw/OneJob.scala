@@ -1,7 +1,7 @@
 package okay.wroclaw
 
-import okay.{Tables}
-import okay.freer.*
+import okay.{!, Tables}
+import okay.freer.Aggregator
 import okay.Tables.{read, join, select}
 
 /**

@@ -1,10 +1,6 @@
 package okay
 
-
-import okay.freer.*
-
-
-import okay.freer.given
+import okay.std.*
 import okay.Direct.*
 import scala.language.implicitConversions
 
@@ -14,14 +10,12 @@ import scala.language.implicitConversions
  */
 class TestOxInterop extends munit.FunSuite {
 
-  type R = Shift % ? + Pure
-
   // ── 1. an okay PROGRAM run inside an Ox scope ─────────────────
   test("1. okay program inside an Ox supervised scope") {
     import ox.*
     val out = supervised {
-      val a = !.run(Shift.collect[Int, Pure](direct:
-        !Shift.emit(1); !Shift.emit(2)))
+      val a = Writer.collect(direct[[X] =>> X ! Writer % Int]:
+        !Writer.tell(1); !Writer.tell(2)).run._1.toList
       val b = fork(40).join()
       (a, b)
     }
@@ -36,7 +30,7 @@ class TestOxInterop extends munit.FunSuite {
         supervised { fork(7).join() }
       }
       forked * 6
-    assertEquals(!.run(Async.run[Int, Pure](prog)), 42)
+    assertEquals(Async.run(prog).run, 42)
   }
 
   // ── 3. a ONE-SHOT capture around an Ox fork ───────────────────
@@ -44,10 +38,10 @@ class TestOxInterop extends munit.FunSuite {
     import ox.*
     var forks = 0
     val out = supervised {
-      !.run(Shift.collect[Int, Pure](direct:
-        !Shift.emit(1)
+      Writer.collect(direct[[X] =>> X ! Writer % Int]:
+        !Writer.tell(1)
         val f = fork { forks += 1; 2 }
-        !Shift.emit(f.join())))
+        !Writer.tell(f.join())).run._1.toList
     }
     assertEquals(out, List(1, 2))
     assertEquals(forks, 1, "the fork ran a number of times the test did not expect")
@@ -60,12 +54,12 @@ class TestOxInterop extends munit.FunSuite {
     var joins = 0
     val out = scala.util.Try {
       supervised {
-        !.run(Shift.delimited[Int, Pure]:
-          direct:
-            val x = !Shift.shift[Int, Int, Pure](k => direct { !k(1) + !k(10) })
-            val f = fork { forks += 1; x }
-            joins += 1
-            f.join())
+        // the multi-shot capture: Choice's `all` resumes the rest once per alternative
+        runChoice(direct[[X] =>> X ! Choose]:
+          val x = !choose(1, 10)
+          val f = fork { forks += 1; x }
+          joins += 1
+          f.join()).run.sum
       }
     }
     println(s"[probe] multi-shot over an Ox fork -> $out  (forks=$forks joins=$joins)")

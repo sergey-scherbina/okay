@@ -1,8 +1,6 @@
 package okay
 
-
-import okay.freer.*
-
+import okay.freer.Aggregator
 
 /**
  * What the top-k selection ALLOCATES, exactly.

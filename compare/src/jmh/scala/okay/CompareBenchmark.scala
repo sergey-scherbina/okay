@@ -1,11 +1,8 @@
 package okay
 
-
-import okay.freer.*
-
+import okay.freer.{Cps, />>}
 
 import okay.std.*
-import okay.freer.given
 import org.openjdk.jmh.annotations.{State, *}
 import java.util.concurrent.TimeUnit
 
@@ -32,7 +29,7 @@ class CompareBenchmark {
 
   @Benchmark
   def okayFree(): Int =
-    (1 to N).foldLeft(pure[Produce, Int](0))((m, _) => m.flatMap(x => produce(x + 1))).runWith
+    (1 to N).foldLeft(pure[Int, Produce](0))((m, _) => m.flatMap(x => produce(x + 1))).runWith
 
   @Benchmark
   def catsEval(): Int =
@@ -63,9 +60,13 @@ class CompareBenchmark {
 
   @Benchmark
   def okayEager(): Int =
+    // okay-freer's Eager encoding of its own tree, frozen for comparison: its effect is freer's
+    import okay.freer.{Classic, Eager}
+    import okay.freer.given
     import Eager.given
+    import Eager.EagerEffects.runWith
     val E = Classic[Eager]
-    (1 to N).foldLeft(E.pure[Produce, Int](0))((m, _) => E.flatMap(m)(x => E.pure(x + 1)))
+    (1 to N).foldLeft(E.pure[okay.freer.Pure, Int](0))((m, _) => E.flatMap(m)(x => E.pure(x + 1)))
       .runWith
 
   @Benchmark

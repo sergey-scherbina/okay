@@ -1,10 +1,5 @@
 package okay
 
-
-import okay.freer.*
-
-
-import okay.freer.given
 import scala.language.implicitConversions
 
 /**
@@ -83,7 +78,7 @@ class TestSupervisionShapes extends munit.FunSuite {
   test("par supervises its ONE sibling: cancelled, not waited for") {
     val cancelled = java.util.concurrent.atomic.AtomicInteger(0)
     val registered = java.util.concurrent.CountDownLatch(1)
-    val out = scala.util.Try(!.run(Async.run[(Int, Int), Pure](
+    val out = scala.util.Try(!.run(Async.run[(Int, Int), Async](
       Async.par(neverUnlessCancelled(cancelled, registered), failOnce(registered)))))
     assert(out.isFailure, s"the pair did not fail: $out")
     assertEquals(arrived(cancelled, 1), 1, "the healthy sibling was not cancelled")
@@ -92,13 +87,13 @@ class TestSupervisionShapes extends munit.FunSuite {
   test("supervised supervises a SCOPE: nine siblings cancelled") {
     val cancelled = java.util.concurrent.atomic.AtomicInteger(0)
     val registered = java.util.concurrent.CountDownLatch(9)
-    val out = scala.util.Try(!.run(Async.run[Int, Pure](
+    val out = scala.util.Try(!.run(Async.run[Int, Async](
       Async.supervised: n ?=>
         (0 to 9).foreach: i =>
           val _ =
             if i == 3 then n.fork[Int](failOnce(registered))
             else n.fork(neverUnlessCancelled(cancelled, registered))
-        okay.freer.pure[Async, Int](0))))
+        pure[Int, Async](0))))
     assert(out.isFailure, s"the scope did not fail: $out")
     assertEquals(arrived(cancelled, 9), 9, "the scope did not cancel all nine siblings")
   }
@@ -109,12 +104,12 @@ class TestSupervisionShapes extends munit.FunSuite {
     // joins, or nothing will ever cancel it (supervision-shapes-race)
     val cancelled = java.util.concurrent.atomic.AtomicInteger(0)
     val registered = java.util.concurrent.CountDownLatch(1)
-    val out = scala.util.Try(!.run(Async.run[Int, Pure](
+    val out = scala.util.Try(!.run(Async.run[Int, Async](
       Async.supervised: n ?=>
         val _ = n.fork[Int](async(throw boom))
         Thread.sleep(200)
         val _ = n.fork(neverUnlessCancelled(cancelled, registered))
-        okay.freer.pure[Async, Int](0))))
+        pure[Int, Async](0))))
     assert(out.isFailure, s"the scope did not fail: $out")
     // CANCELLED, OR NEVER STARTED — both mean "not left running for good"
     // (scheduler-default-flip, 2026-09-28). On Loom a cancelled child is
@@ -133,7 +128,7 @@ class TestSupervisionShapes extends munit.FunSuite {
     val cancelled = java.util.concurrent.atomic.AtomicInteger(0)
     // one registered sibling is enough: the claim is ">= 1"
     val registered = java.util.concurrent.CountDownLatch(1)
-    val out = scala.util.Try(!.run(Async.run[Seq[Int], Pure](
+    val out = scala.util.Try(!.run(Async.run[Seq[Int], Async](
       Par.traverse(0 to 9): i =>
         if i == 3 then failOnce(registered)
         else neverUnlessCancelled(cancelled, registered))))
@@ -146,7 +141,7 @@ class TestSupervisionShapes extends munit.FunSuite {
     // that cannot quietly stop being true: if this starts failing
     // because the siblings ARE cancelled, the header needs rewriting.
     val (out, took) = ms:
-      scala.util.Try(!.run(Async.run[Seq[Int], Pure](
+      scala.util.Try(!.run(Async.run[Seq[Int], Async](
         parTraverse(0 to 9): i =>
           if i == 3 then async[Int](throw boom)
           else async { Thread.sleep(sleep); i })))

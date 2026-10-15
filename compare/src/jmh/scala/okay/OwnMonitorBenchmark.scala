@@ -1,9 +1,5 @@
 package okay
 
-
-import okay.freer.*
-
-
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 
@@ -46,7 +42,7 @@ class OwnMonitorBenchmark {
   def spawnJoinSeq(): Long =
     given Scheduler = s
     def loop(i: Int, sum: Long): Long ! Async =
-      if i == 1000 then pure[Async, Long](sum)
+      if i == 1000 then pure[Long, Async](sum)
       else async(Async.spawn(async(i))).flatMap(_.joinAsync).flatMap(v => loop(i + 1, sum + v))
     Async.spawn(loop(0, 0L)).join()
 
@@ -60,7 +56,7 @@ class OwnMonitorBenchmark {
     given Scheduler = s
     Async.spawn {
       async((0 until 8).map(i => Async.spawn(async(spin(i))))).flatMap { fs =>
-        fs.foldLeft(pure[Async, Long](0L))((acc, f) => acc.flatMap(a => f.joinAsync.map(a + _)))
+        fs.foldLeft(pure[Long, Async](0L))((acc, f) => acc.flatMap(a => f.joinAsync.map(a + _)))
       }
     }.join()
 }

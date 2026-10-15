@@ -1,11 +1,6 @@
 package okay
 
-
-import okay.freer.*
-
-
 import okay.std.*
-import okay.freer.given
 import okay.std.given
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
@@ -55,7 +50,7 @@ class PerElementStepBenchmark {
   def elem_effectCallback(): Long =
     var sum = 0L
     Channel.buffer(1024)(list).drained.runForeach(x =>
-      okay.freer.effect[Async, Unit](Async.Run(() => sum += x))).runWith
+      effect[Async, Unit](Async.Run(() => sum += x))).runWith
     sum
 
   /**
@@ -72,7 +67,7 @@ class PerElementStepBenchmark {
   def elem_drainedChunks(): Long =
     var sum = 0L
     Channel.buffer(1024)(list).drainedChunks.runForeach(ch =>
-      okay.freer.effect[Async, Unit](Async.Run(() =>
+      effect[Async, Unit](Async.Run(() =>
         var i = 0
         while i < ch.length do { sum += ch(i); i += 1 }))).runWith
     sum
@@ -85,7 +80,7 @@ class PerElementStepBenchmark {
     def go(rest: Source[Long]): Unit ! Async =
       Writer.uncons[Long, Unit, Async](rest).flatMap:
         case Right((a, more)) => sum += a; go(more)
-        case Left(_) => okay.freer.pure(())
+        case Left(_) => pure(())
     go(Channel.buffer(1024)(list).drained).runWith
     sum
 
@@ -100,7 +95,7 @@ class PerElementStepBenchmark {
    */
   private def bindChain(): Long ! Async =
     def go(i: Long, acc: Long): Long ! Async =
-      if i >= N then okay.freer.pure(acc)
+      if i >= N then pure(acc)
       else async(i).flatMap(x => go(i + 1, acc + x))
     go(0L, 0L)
 
@@ -117,7 +112,7 @@ class PerElementStepBenchmark {
   @Benchmark
   def bind_pureChain(): Long =
     def go(i: Long, acc: Long): Long ! Async =
-      if i >= N then okay.freer.pure(acc)
-      else okay.freer.pure[Async, Long](i).flatMap(x => go(i + 1, acc + x))
+      if i >= N then pure(acc)
+      else pure[Long, Async](i).flatMap(x => go(i + 1, acc + x))
     go(0L, 0L).runWith
 }
