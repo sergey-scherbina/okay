@@ -8,14 +8,20 @@ import scala.collection.mutable
 
 /** AN OUTPUT TYPE for values of the Scala type `A`: non-null unless `Nullable` — a Scala value is there */
 sealed trait OutType[A]:
-  def nullable: Boolean = this match
-    case Nullable(_) => true
-    case _ => false
+  def nullable: Boolean = OutType.nullable(this)
   /** the type as SDL writes it: `[User!]!` */
   def ref: String = this match
     case Nullable(of) => of.ref.stripSuffix("!")
     case ListOf(of) => s"[${of.ref}]!"
+    case Fetched(of) => of.ref
     case n: Named => s"${n.name}!"
+
+object OutType:
+  /** whether a value of `t` may be null: through what is still to be fetched */
+  @scala.annotation.tailrec def nullable(t: OutType[?]): Boolean = t match
+    case Nullable(_) => true
+    case Fetched(of) => nullable(of)
+    case _ => false
 
 /** a type with a name: a scalar, an enum, an object */
 sealed trait Named:
@@ -40,6 +46,11 @@ final case class ListOf[A](of: OutType[A]) extends OutType[Seq[A]]
 
 /** may be null: `None` */
 final case class Nullable[A](of: OutType[A]) extends OutType[Option[A]]
+
+/** A VALUE STILL TO BE FETCHED: a program, run as a task of its own where it stands — so its error is ITS position's
+ * (a list's item: `["byIds", 1]`), not the field's, and its fetches meet its siblings' in the same round. The SDL
+ * does not see it: `Fetched(of)` is `of` to a client */
+final case class Fetched[A](of: OutType[A]) extends OutType[A ! Fetches]
 
 /** AN OBJECT TYPE: fields of a parent `A`, each resolved by a program. Its fields are lazy, so types may refer to
  * each other (a user's orders, an order's user) */
@@ -183,6 +194,7 @@ final case class Schema(query: ObjectType[Unit], mutation: Option[ObjectType[Uni
       work.dequeue() match
         case Nullable(of) => work += of
         case ListOf(of) => work += of
+        case Fetched(of) => work += of
         case Optional(of) => work += of
         case InList(of) => work += of
         case s: Scalar[?] => if !builtin(s.name) && !seen.contains(s.name) then seen(s.name) = s"scalar ${s.name}"

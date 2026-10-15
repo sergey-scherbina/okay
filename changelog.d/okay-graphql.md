@@ -11,7 +11,9 @@
   kernel to its next fetch, each source called once per round with all its
   keys — fields and list items the applicative product. 100 users, their
   orders and the orders' users: two source calls. Errors with paths, null
-  propagation, mutations in order, `Limits.depth` on every nesting, a list of
+  propagation (`Fetched`: a list's items each its own program, a missing
+  one null at its index with its error, the keys still one call),
+  mutations in order, `Limits.depth` on every nesting, a list of
   100 000 items in constant stack.
 - specs/okay-graphql.md, docs/modules/okay-graphql.md, TestGraphQL (14 tests
   on each platform). Deferred: backlog `okay-graphql-next` (introspection,

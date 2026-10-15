@@ -99,6 +99,9 @@ with a program (async data sources): `Source.fetch` is a plain function here.
 - TestGraphQL, 14 tests, the behavior list above. The shop: `{ users(first: 100) { orders { id user { name } } } }`
   is one call to `orders` (100 keys) and one to `users` (each key once) — two source calls where a resolver per
   field fetching row by row makes one per field.
-- `Fetch.traverse` of keys one of which the source left out fails the resolver, so the whole field (the list):
-  the error belongs to the program that asked. Per-item errors are a list of fields, not one field's program —
-  backlog `okay-graphql-next`.
+- An error belongs to the program that failed. `Fetch.traverse` over keys one of which the source left out fails
+  its one program — the whole field. Per-item errors (operator, 2026-10-15: "это нужно исправить"): `Fetched(of)`,
+  an output type whose value is a program, run as a task where it stands — `ListOf(Fetched(Nullable(userT)))`, a
+  resolver returning a list of programs: the items' keys still one call, a missing item null at its index with
+  its error at `["byIds", 1]` (TestGraphQL). Considered: catching per key inside `traverse` — refuted, a program
+  has one outcome, and a partial list is not a value of `List[B]`.

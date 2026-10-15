@@ -59,8 +59,9 @@ object Shop:
       Field.fetch("user", Nullable(userT), Arg("id", InScalar.id))((_, a) => pure(users.get(a(Arg("id", InScalar.id))))),
       Field.fetch("users", ListOf(userT), first, only)((_, a) =>
         pure((1 to a(first)).map(i => users(s"u$i")).filter(u => a(only).forall(_ == u.tier)).toList)),
-      Field.fetch("byIds", ListOf(Nullable(userT)), ids)((_, a) =>
-        Fetch.traverse(a(ids))(id => Fetch.get(s.user, id).map(Some(_)))),
+      Field.fetch("byIds", ListOf(Fetched(Nullable(userT))), ids)((_, a) =>
+        pure(a(ids).map(id => Fetch.get(s.user, id).map(Some(_))))),
+      Field.fetch("allByIds", ListOf(userT), ids)((_, a) => Fetch.traverse(a(ids))(Fetch.get(s.user, _))),
       Field.fetch("pair", ListOf(Scalar.string), Arg("a", InScalar.id), Arg("b", InScalar.id))((_, a) =>
         Fetch.both(Fetch.get(s.user, a(Arg("a", InScalar.id))), Fetch.get(s.user, a(Arg("b", InScalar.id))))
           .map((x, y) => List(x.name, y.name))),
@@ -149,9 +150,14 @@ class TestGraphQL extends okay.testkit.Munit.Diagnosed:
     // users is non-null all the way up: data is null
     assertEquals(run("""{ users(first: 1) { broken } }"""), json(
       """{"data":null,"errors":[{"message":"broken","path":["users",0,"broken"]}]}"""))
-    // a key the source leaves out fails the resolver that asked — the whole list, non-null: data is null
-    assertEquals(run("""{ byIds(ids: ["u1", "nobody"]) { id } }"""), json(
-      """{"data":null,"errors":[{"message":"users has no value for nobody","path":["byIds"]}]}"""))
+    // items fetched each as its own program: the missing one is null, its error at its index; one call for all
+    assertEquals(run("""{ byIds(ids: ["u1", "nobody", "u2"]) { id } }"""), json(
+      """{"data":{"byIds":[{"id":"u1"},null,{"id":"u2"}]},
+        |"errors":[{"message":"users has no value for nobody","path":["byIds",1]}]}""".stripMargin))
+    assertEquals(s.user.calls.toList, List(Seq("u1", "nobody", "u2")))
+    // one program traversing them all: its error is the field's — non-null all the way up, data is null
+    assertEquals(run("""{ allByIds(ids: ["u1", "nobody"]) { id } }"""), json(
+      """{"data":null,"errors":[{"message":"users has no value for nobody","path":["allByIds"]}]}"""))
     // a nullable field takes it
     assertEquals(run("""{ user(id: "u1") { broken } }"""), json(
       """{"data":{"user":null},"errors":[{"message":"broken","path":["user","broken"]}]}"""))
@@ -210,5 +216,5 @@ class TestGraphQL extends okay.testkit.Munit.Diagnosed:
     assert(sdl.contains("type User {\n  id: ID!\n  name: String!\n  email: String\n  tier: Tier!\n  orders: [Order!]!"), sdl)
     assert(sdl.contains("enum Tier {\n  FREE\n  PRO\n}"), sdl)
     assert(sdl.contains("type Mutation {\n  say(word: String!): String!\n}"), sdl)
-    assert(sdl.contains("byIds(ids: [ID!]!): [User]!"), sdl)
+    assert(sdl.contains("byIds(ids: [ID!]!): [User]!\n  allByIds(ids: [ID!]!): [User!]!"), sdl)
   }

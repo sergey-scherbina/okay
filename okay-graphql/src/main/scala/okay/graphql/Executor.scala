@@ -104,6 +104,7 @@ object Executor:
   @tailrec private[graphql] def named(t: OutType[?]): Named = t match
     case Nullable(of) => named(of)
     case ListOf(of) => named(of)
+    case Fetched(of) => named(of)
     case n: Named => n
 
   /** a selection set's fields on an object type, fragments expanded, `@skip`/`@include` applied, merged by response
@@ -259,6 +260,7 @@ object Executor:
       case n: Nullable[x] => b match
         case None => slot.value = Res.Null
         case Some(v) => complete(n.of, v, sels, slot)
+      case f: Fetched[x] => task[x](b, x => again(f.of, x, sels, slot), fieldError(slot, _))
       case l: ListOf[x] =>
         val items = b.toVector
                 val slots = items.indices.map(i => Slot(JNum(i.toDouble) :: slot.path, l.of.nullable)).toVector

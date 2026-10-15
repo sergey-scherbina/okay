@@ -12,8 +12,8 @@ as plain sequential code.
 ## A schema
 
 Types are values: `ObjectType[A]` with its fields, scalars (`Scalar.int`, `float`, `string`, `boolean`, `id`),
-`EnumType`, `ListOf`, `Nullable` (non-null is the default: a Scala value is there). A field reads its parent, or
-resolves it by a program of `Fetch`:
+`EnumType`, `ListOf`, `Nullable` (non-null is the default: a Scala value is there), `Fetched` (below). A field
+reads its parent, or resolves it by a program of `Fetch`:
 
 ```scala
     lazy val userT: ObjectType[User] = ObjectType[User]("User")(List(
@@ -63,6 +63,16 @@ programs, one round. A sequence (`flatMap`) is a dependency and stays one round 
 ```scala
         Fetch.both(Fetch.get(s.user, a(Arg("a", InScalar.id))), Fetch.get(s.user, a(Arg("b", InScalar.id))))
         Fetch.get(s.user, a(Arg("id", InScalar.id))).flatMap(u => Fetch.get(s.ordersOf, u.id)).map(_.size.toString)),
+```
+
+An error belongs to what was computed on its own. One program traversing many keys fails as one: a key left out
+is the whole field's error. To give each item its own error, make each item its own program: `Fetched(of)` is a
+value still to be fetched, run as a task where it stands — the items' fetches still meet in one round (one call),
+and a missing one is null at its index, its error at `["byIds", 1]`:
+
+```scala
+      Field.fetch("byIds", ListOf(Fetched(Nullable(userT))), ids)((_, a) =>
+        pure(a(ids).map(id => Fetch.get(s.user, id).map(Some(_))))),
 ```
 
 ## Errors, nulls, mutations, bounds

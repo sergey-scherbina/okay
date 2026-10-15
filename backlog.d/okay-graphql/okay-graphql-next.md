@@ -12,6 +12,4 @@
       over graphql-java behind `GraphQLParser` (OURS OR THE STANDARD ONE,
       optional dependency, each reading the other's documents); sources
       answering with a program (async data: `Source.fetch` a plain
-      function today, a round blocks on it); per-item errors in a list
-      fetched by `Fetch.traverse` (today the first missing key fails the
-      whole field).
+      function today, a round blocks on it).
