@@ -97,9 +97,9 @@ object Par:
    */
   given parApplicative(using Scheduler): Applicative[Rep] with
     def pure[A](a: A): Rep[A] = okay.pure(a)
-    override def fmap[A, B](a: Rep[A], f: A => B): Rep[B] = a.map(f)
+    override def fmap[A, B](a: Rep[A], f: A => B): Rep[B] = okay.Run.map(a)(f)
     extension [A, B](f: Rep[A => B])
-      def app(a: Rep[A]): Rep[B] = Async.par(f, a).map((g, x) => g(x))
+      def app(a: Rep[A]): Rep[B] = okay.Run.map(Async.par(f, a))((g, x) => g(x))
 
 /**
  * The carrier's name outside its companion, where it is abstract —
