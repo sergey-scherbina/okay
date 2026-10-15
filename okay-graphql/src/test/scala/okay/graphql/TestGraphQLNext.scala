@@ -170,7 +170,7 @@ class TestGraphQLNext extends okay.testkit.Munit.Diagnosed:
     assertEquals(refused("query($x: Book) { media { id } }").head, "variable $x of Book: Book is not an input type")
     assertEquals(refused("mutation { x }"), List("the schema has no mutations"))
     assertEquals(run(schema, "{\n  media {\n    nope\n  }\n}"),
-      json("""{"errors":[{"message":"Medium has no field nope","locations":[{"line":3,"column":5}]}]}"""))
+      json("""{"errors":[{"message":"Medium has no field nope","locations":[{"line":3,"column":5}],"extensions":{"code":"GRAPHQL_VALIDATION_FAILED"}}]}"""))
   }
 
   test("variables coerced to their declared types: a single value to a list, an enum, an input object") {

@@ -61,7 +61,7 @@ class TestTransportWs extends okay.testkit.Munit.Diagnosed:
     val (c2, sent2, closed2) = connection(Ticks())
     c2.receive("""{"type":"connection_init"}""")
     c2.receive("""{"id":"e","type":"subscribe","payload":{"query":"{ nope }"}}""")
-    assertEquals(sent2.last, """{"id":"e","type":"error","payload":[{"message":"Query has no field nope","locations":[{"line":1,"column":3}]}]}""")
+    assertEquals(sent2.last, """{"id":"e","type":"error","payload":[{"message":"Query has no field nope","locations":[{"line":1,"column":3}],"extensions":{"code":"GRAPHQL_VALIDATION_FAILED"}}]}""")
     c2.receive("""{"type":"connection_init"}""")
     assertEquals(closed2(), Some(TransportWs.Close(4429, "Too many initialisation requests")))
     val (c3, _, closed3) = connection(Ticks())

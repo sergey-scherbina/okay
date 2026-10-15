@@ -85,11 +85,11 @@ class TestGraphQL extends okay.testkit.Munit.Diagnosed:
 
   private def json(s: String): Json = Json.parse(s)
 
-  /** a response, its errors' locations dropped: the suites asserting messages and paths */
+  /** a response, its errors' locations and extensions dropped: the suites asserting messages and paths */
   private def bare(out: Json): Json = out match
     case JObj(fs) => JObj(fs.map {
       case ("errors", JArr(es)) => "errors" -> JArr(es.map {
-        case JObj(e) => JObj(e.filterNot(_._1 == "locations"))
+        case JObj(e) => JObj(e.filterNot(f => f._1 == "locations" || f._1 == "extensions"))
         case other => other
       })
       case other => other
@@ -177,9 +177,9 @@ class TestGraphQL extends okay.testkit.Munit.Diagnosed:
   test("an argument of the wrong type: a literal refused before running, a variable's value a request error") {
     given s: Sources = Sources()
     assertEquals(run("""{ users(first: "x") { id } }"""), json(
-      """{"errors":[{"message":"Query.users(first:): Int cannot represent \"x\"","locations":[{"line":1,"column":3}]}]}"""))
+      """{"errors":[{"message":"Query.users(first:): Int cannot represent \"x\"","locations":[{"line":1,"column":3}],"extensions":{"code":"GRAPHQL_VALIDATION_FAILED"}}]}"""))
     assertEquals(run("""query($n: Int) { users(first: $n) { id } }""", json("""{"n": "x"}""")), json(
-      """{"errors":[{"message":"variable $n: Int cannot represent \"x\"","locations":[{"line":1,"column":7}]}]}"""))
+      """{"errors":[{"message":"variable $n: Int cannot represent \"x\"","locations":[{"line":1,"column":7}],"extensions":{"code":"BAD_USER_INPUT"}}]}"""))
   }
 
   test("mutations: top-level fields in order") {
@@ -191,7 +191,7 @@ class TestGraphQL extends okay.testkit.Munit.Diagnosed:
   test("request errors: a parse error, an unknown field, an unknown argument") {
     given s: Sources = Sources()
     assertEquals(run("""{ users { id """),
-      json("""{"errors":[{"message":"Syntax error: expected a name, found '<end>'","locations":[{"line":1,"column":14}]}]}"""))
+      json("""{"errors":[{"message":"Syntax error: expected a name, found '<end>'","locations":[{"line":1,"column":14}],"extensions":{"code":"GRAPHQL_PARSE_FAILED"}}]}"""))
     assertEquals(bare(run("""{ users { nope } }""")), json("""{"errors":[{"message":"User has no field nope"}]}"""))
     assertEquals(bare(run("""{ users(last: 1) { id } }""")), json("""{"errors":[{"message":"Query.users has no argument last"}]}"""))
     assertEquals(bare(run("""{ users }""")), json("""{"errors":[{"message":"Query.users of type [User!]! needs a selection"}]}"""))

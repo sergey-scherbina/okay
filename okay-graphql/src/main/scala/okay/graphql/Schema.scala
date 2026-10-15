@@ -50,6 +50,10 @@ final case class EnumType[A](name: String, values: List[(String, A)], descriptio
     deprecated: Map[String, String] = Map.empty) extends OutType[A] with Named:
   def nameOf(a: A): Option[String] = values.collectFirst { case (n, v) if v == a => n }
 
+object EnumType:
+  /** the enum `E` of singleton cases: each value by its case's name */
+  inline def derive[E]: EnumType[E] = EnumType[E](Derive.name[E], Derive.values[E])
+
 /** a list: its items each of `of` */
 final case class ListOf[A](of: OutType[A]) extends OutType[Seq[A]]
 
@@ -70,6 +74,11 @@ final class ObjectType[A](val name: String, val description: Option[String] = No
   lazy val field: Map[String, Field[A, ?]] = fields.map(f => f.name -> f).toMap
   def fieldDefs: List[Field[?, ?]] = fields
   override def toString: String = s"ObjectType($name)"
+
+object ObjectType:
+  /** the object type of the case class `A`: a field per parameter, of the output type its Scala type has
+   * (`Output`); `extra` — the fetched fields, by hand — added, each replacing a derived one of its name */
+  inline def derive[A](inline extra: Field[A, ?]*): ObjectType[A] = ${ Derive.objectType[A]('extra) }
 
 /** AN OBJECT TYPE A VALUE OF `A` MAY BE: `pick` says whether it is, and gives it as the object's — typed, no test of
  * a class */
@@ -156,6 +165,10 @@ object InScalar:
     case j => Left(s"ID cannot represent ${Json.print(j)}")
   }, quote)
 
+object InEnum:
+  /** the enum `E` of singleton cases, as an input: each value by its case's name */
+  inline def derive[E]: InEnum[E] = InEnum[E](Derive.name[E], Derive.values[E])
+
 final case class InEnum[A](name: String, values: List[(String, A)], description: Option[String] = None)
     extends InType[A] with InNamed:
   def decode(j: Json): Either[String, A] = j match
@@ -197,6 +210,11 @@ final class InObject[A](val name: String, val description: Option[String] = None
       else Args.of(fields, fs.toMap).map(build)
     case other => Left(s"$name cannot represent ${Json.print(other)}")
   def literal(a: A): String = show(a)
+
+object InObject:
+  /** the input object of the case class `A`: an argument per parameter, of the input type its Scala type has
+   * (`Input`), the value built by the class's mirror */
+  inline def derive[A](using m: scala.deriving.Mirror.ProductOf[A]): InObject[A] = ${ Derive.inObject[A]('m) }
 
 /** AN ARGUMENT: its name, its input type, a default */
 final case class Arg[A](name: String, tpe: InType[A], default: Option[A] = None, description: Option[String] = None):

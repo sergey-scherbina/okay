@@ -4,15 +4,39 @@ import okay.codec.Json
 import okay.codec.Json.*
 import scala.collection.mutable
 
-/** AN ERROR OF A RESPONSE: its message, where in the document (`locations`), where in the result (`path`) */
-final case class GraphQLError(message: String, locations: List[Pos] = Nil, path: List[Json] = Nil):
+/** AN ERROR OF A RESPONSE: its message, where in the document (`locations`), where in the result (`path`), and what
+ * a client may read besides (`extensions`: a `code` above all) */
+final case class GraphQLError(message: String, locations: List[Pos] = Nil, path: List[Json] = Nil,
+    extensions: Vector[(String, Json)] = Vector.empty):
   def toJson: Json =
     val locs = locations.filter(_ != Pos.None)
     JObj(Vector("message" -> JStr(message)) ++
       (if locs.isEmpty then Vector.empty
        else Vector("locations" -> JArr(locs.map(p => JObj(Vector("line" -> JNum(p.line.toDouble),
          "column" -> JNum(p.column.toDouble)))).toVector))) ++
-      (if path.isEmpty then Vector.empty else Vector("path" -> JArr(path.toVector))))
+      (if path.isEmpty then Vector.empty else Vector("path" -> JArr(path.toVector))) ++
+      (if extensions.isEmpty then Vector.empty else Vector("extensions" -> JObj(extensions))))
+
+  /** the same error with the code `code`, unless it has one */
+  def coded(code: String): GraphQLError =
+    if extensions.exists(_._1 == "code") then this else copy(extensions = ("code" -> JStr(code)) +: extensions)
+
+object GraphQLError:
+  val ParseFailed = "GRAPHQL_PARSE_FAILED"
+  val ValidationFailed = "GRAPHQL_VALIDATION_FAILED"
+  val BadUserInput = "BAD_USER_INPUT"
+  val OperationResolutionFailure = "OPERATION_RESOLUTION_FAILURE"
+
+/** A RESOLVER'S OWN FAILURE: its message and its extensions, as the response says them —
+ * `FieldError("no such order", "code" -> JStr("NOT_FOUND"))`, thrown or raised (`FieldError.raise`) */
+final class FieldError(message: String, val extensions: Vector[(String, Json)])
+    extends Exception(message, null, false, false)
+
+object FieldError:
+  def apply(message: String, extensions: (String, Json)*): FieldError = new FieldError(message, extensions.toVector)
+  /** a program of `Fetch` failing with it */
+  def raise[A](message: String, extensions: (String, Json)*): okay.one.![A, Fetches] =
+    okay.one.Cont.defer(throw FieldError(message, extensions*))
 
 /** THE DOCUMENT CHECKED AGAINST THE SCHEMA BEFORE IT RUNS (GraphQL §5): every error said, with its locations. Walks
  * are work lists or bounded by the document's nesting (`Limits.depth`, the parser's) */
