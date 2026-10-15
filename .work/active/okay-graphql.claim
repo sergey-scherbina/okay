@@ -1,0 +1,6 @@
+okay-wt-okay-graphql 2026-10-15T14:27:40Z
+agent: claude-fable (session okay-free)
+heartbeat: 2026-10-15T14:27:40Z
+status: in-progress
+done-so-far: claimed
+next: specs/okay-graphql.md, then the module in ../okay-wt-okay-graphql

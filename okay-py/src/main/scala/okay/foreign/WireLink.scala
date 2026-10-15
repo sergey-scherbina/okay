@@ -164,3 +164,24 @@ object WireLink:
           throw IllegalStateException(s"the worker at $host:$port said nothing for ${helloMillis}ms$hint")
         finally if !s.isClosed then s.setSoTimeout(0)
       def close(): Unit = try s.close() catch case _: Exception => ()
+
+  /**
+   * A far side that CONNECTED to this host (foreign-server,
+   * specs/foreign-server.md): the socket a `ForeignServer` accepted. The same
+   * wire as `tcp`, the connection made the other way — its hello first,
+   * within `helloMillis`, else refused by name and the socket closed. PLAIN
+   * TCP, as `tcp` is.
+   */
+  def accepted(s: Socket, helloMillis: Int = 10000): WireLink =
+    s.setTcpNoDelay(true)
+    val who = s"the far side at ${s.getRemoteSocketAddress}"
+    new Streams(s.getOutputStream, s.getInputStream):
+      override def network: Boolean = true
+      override def hello(): Option[String] =
+        s.setSoTimeout(helloMillis)
+        try super.hello()
+        catch case _: java.net.SocketTimeoutException =>
+          close()
+          throw IllegalStateException(s"$who connected and said nothing for ${helloMillis}ms: refused, its connection closed")
+        finally if !s.isClosed then s.setSoTimeout(0)
+      def close(): Unit = try s.close() catch case _: Exception => ()
