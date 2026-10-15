@@ -938,6 +938,23 @@ lazy val okayGraphql = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     libraryDependencies += "com.graphql-java" % "graphql-java" % "22.3" % "optional;test",
   )
 
+/** GRAPHQL OVER HTTP (specs/okay-graphql-next.md): okay-graphql's executor as an okay-http route — POST and GET,
+ * `application/json` and `application/graphql-response+json`. JVM and JS: okay-http's platforms */
+lazy val okayGraphqlHttp = crossProject(JVMPlatform, JSPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-graphql-http"))
+  .dependsOn(okayGraphql, okayHttp, okayTest % "test->compile")
+  .settings(
+    name := "okay-graphql-http",
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+  // scala-jvm tests: the whole road on Jetty (Live: it binds a port)
+  .jvmConfigure(_.dependsOn(okayJetty % "test->compile"))
+  .jvmSettings(
+    Test / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+    Test / fork := true,
+  )
+
 lazy val okayStm = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-stm"))
@@ -3920,7 +3937,7 @@ lazy val okayUiGtk = (project in file("okay-ui-gtk"))
   )
 lazy val gtkProjects: Seq[ProjectReference] = if (gtkAvailable) Seq(okayUiGtk) else Seq.empty
 
-lazy val platformMembers: Seq[ProjectReference] = gtkProjects ++ Seq[ProjectReference](okay.jvm, okay.js, okay.native, okayJdk22, okayAsync.jvm, okayAsync.js, okayAsync.native, okayDirect.jvm, okayDirect.js, okayDirect.native, okayPlatform.jvm, okayPlatform.js, okayPlatform.native, okayPlatformJdk25, okayStream.jvm, okayStream.js, okayStream.native, okayWorkflow.jvm, okayWorkflow.js, okayWorkflow.native, okayData.jvm, okayData.js, okayData.native, okayOptics.jvm, okayOptics.js, okayOptics.native, okayStm.jvm, okayStm.js, okayStm.native, okayTx.jvm, okayTx.js, okayTx.native, okayGraphql.jvm, okayGraphql.js, okayGraphql.native, okayStaging, okayCats.jvm, okayCats.js, okayCats.native, okayZio, okayKyo, okayFs2, okayReactive, okayActor.jvm, okayActor.js, okayActor.native, okayKafka,
+lazy val platformMembers: Seq[ProjectReference] = gtkProjects ++ Seq[ProjectReference](okay.jvm, okay.js, okay.native, okayJdk22, okayAsync.jvm, okayAsync.js, okayAsync.native, okayDirect.jvm, okayDirect.js, okayDirect.native, okayPlatform.jvm, okayPlatform.js, okayPlatform.native, okayPlatformJdk25, okayStream.jvm, okayStream.js, okayStream.native, okayWorkflow.jvm, okayWorkflow.js, okayWorkflow.native, okayData.jvm, okayData.js, okayData.native, okayOptics.jvm, okayOptics.js, okayOptics.native, okayStm.jvm, okayStm.js, okayStm.native, okayTx.jvm, okayTx.js, okayTx.native, okayGraphql.jvm, okayGraphql.js, okayGraphql.native, okayGraphqlHttp.jvm, okayGraphqlHttp.js, okayStaging, okayCats.jvm, okayCats.js, okayCats.native, okayZio, okayKyo, okayFs2, okayReactive, okayActor.jvm, okayActor.js, okayActor.native, okayKafka,
     okayJava, okayAudit, okayClojure, okayFrege, okayScala2, okayScala2Codec, okayScala2Http, okayScala2Sql, okayScala2Agent, okayScala2Ui, okayScala2Ws, okayScala2Resilience, okayScala2Persist, okayScala2Stm, okayScala2Stores, okayScala2Llm, okayScala2Rag, okayScala2Mcp, okayScala2Optics, okayScala2Workflow, okayScala2Services, okayScala2Prelude, okayScala2Probe, okaySpark, okayFlink, okayJdbc, okayR2dbc, okayDelta,
     okayLex.jvm, okayLex.js, okayLex.native, okayCrdt.jvm, okayCrdt.js, okayCrdt.native, okayChain.jvm, okayChain.js, okayChain.native, okayScalus, okayScalusSpark, okayScalusFlink, okayX402.jvm, okayX402.js, okayX402Evm, okayX402Cdp, okayX402Signers, okayX402Mcp.jvm, okayX402Mcp.js,
     okayParse.jvm, okayParse.js, okayParse.native,
