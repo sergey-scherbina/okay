@@ -113,7 +113,7 @@ supervision — everything fiber-shaped — runs on ZIO.
 ## Tutorial
 
 ```scala
-import okay.freer.*
+import okay.*
 import okay.freer.given
 import okay.zio.ZioInterop
 

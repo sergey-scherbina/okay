@@ -178,7 +178,7 @@ okay-jetty brings okay-http and Jetty.
 package example
 
 import okay.Async
-import okay.freer.*
+import okay.*
 import okay.given
 import okay.freer.given
 import okay.chat.Chat
@@ -334,7 +334,7 @@ okay-ui's tree on the CDN React, runs the fold on the event loop
 package example
 
 import okay.Async
-import okay.freer.*
+import okay.*
 import okay.given
 import okay.freer.given
 import okay.ui.{Event, React, ReactJs, Ui}
@@ -465,7 +465,7 @@ trusting that it does not.
 package example
 
 import okay.Async
-import okay.freer.*
+import okay.*
 import okay.given
 import okay.freer.given
 import okay.jetty.Jetty

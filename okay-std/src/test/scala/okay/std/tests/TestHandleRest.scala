@@ -1,7 +1,6 @@
 package okay.std.tests
 
 import okay.*
-import okay.given
 import scala.language.implicitConversions
 import okay.std.*
 /** handle-values-rest: every ready effect's handler as a value */

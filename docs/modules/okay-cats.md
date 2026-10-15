@@ -53,7 +53,7 @@ the laws too.
 ## Tutorial
 
 ```scala
-import okay.freer.*
+import okay.*
 import okay.freer.given
 import okay.cats.given
 import cats.syntax.all.*

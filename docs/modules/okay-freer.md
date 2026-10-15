@@ -31,6 +31,7 @@ the classic's, and a wildcard would make them tie — or, in a file of package `
 
 ## Using it
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 import okay.freer.*
 import okay.freer.given

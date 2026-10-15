@@ -1,7 +1,6 @@
 package okay.std.tests
 
 import okay.*
-import okay.given
 import scala.language.implicitConversions
 import okay.std.*
 

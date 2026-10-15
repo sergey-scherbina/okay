@@ -17,7 +17,7 @@ state in one cell and its clock injected:
 
 ```scala
 import okay.Async
-import okay.freer.*
+import okay.*
 import okay.freer.given
 import okay.resilience.*
 

@@ -1,7 +1,6 @@
 package okay
 
 
-import okay.freer.*
 
 
 /** Approximate aggregators: stated error bounds, associative merges. */

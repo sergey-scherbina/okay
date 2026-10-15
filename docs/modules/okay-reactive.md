@@ -6,7 +6,7 @@ SPI they all speak.
 
 ```scala
 import okay.{Async, Source}
-import okay.freer.*
+import okay.*
 import okay.freer.given
 import okay.reactive.Reactive
 given Scheduler = Schedulers.loom

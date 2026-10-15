@@ -11,7 +11,7 @@ does not — **supervision**.
 
 ```scala
 import okay.{Async, async}
-import okay.freer.*
+import okay.*
 import okay.freer.given
 import okay.actor.*
 given Scheduler = Schedulers.loom

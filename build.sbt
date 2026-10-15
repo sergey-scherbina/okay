@@ -479,8 +479,9 @@ lazy val okayFreer = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 lazy val okayStd = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-std"))
-  // `test->test`: the moved suites share okay-freer's test helpers (ContProgramAnswer, the probes)
-  .dependsOn(okayFreer % "compile->compile;test->test")
+  // the platform's main code needs nothing of okay-freer (the classic road, frozen): only the comparison lanes of
+  // the tests and benchmarks see it
+  .dependsOn(okay, okayFreer % "test->compile")
   .settings(
     name := "okay-std",
   )
@@ -1007,7 +1008,8 @@ lazy val okayCats = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .in(file("okay-cats"))
   // okay-direct for the tests only: an IO marked inside a direct block
   // (specs/direct-foreign-mark.md)
-  .dependsOn(okayAsync, okayPlatform, okayDirect % "test->compile", okayTest % "test->compile")
+  .dependsOn(okayAsync, okayPlatform, okayDirect % "test->compile", okayTest % "test->compile",
+    okayFreer % "test->compile")  // the book's two-monads chapter shows okay-freer's Layered (the classic road)
   .settings(
     name := "okay-cats",
     libraryDependencies ++= Seq(
@@ -4108,7 +4110,8 @@ lazy val compare = (project in file("compare"))
   .dependsOn(okay.jvm, okayLlm.jvm, okayRag.jvm, okayAgent.jvm, okayHttp.jvm, okayCluster.jvm,
     okayActor.jvm, okayReactive,   // actor-reactive-bench: the two modules that had no numbers
     okayStaging,                   // staged-runtime: the run-time staged codec beside the compile-time one
-    okayData.jvm, okayStm.jvm)     // SketchBenchmark, StmBenchmark: core-modularise moved Sketch and
+    okayData.jvm, okayStm.jvm,     // SketchBenchmark, StmBenchmark: core-modularise moved Sketch and
+    okayFreer.jvm % "test->compile")   // the classic road's lanes, for comparison (okay-freer: frozen)
                                     // Stm/Tx/TRef out of `okay` without adding the two modules here
                                     // (compare-jmh-missing-deps, 2026-09-19) — compare/Jmh/compile has
                                     // been broken on master since that migration, unrelated to any one

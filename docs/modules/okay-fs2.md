@@ -24,7 +24,7 @@ capacity is the backpressure window: an infinite fs2 stream under
 ## Tutorial
 
 ```scala
-import okay.freer.*
+import okay.*
 import okay.freer.given
 import okay.fs2.Fs2Interop
 
