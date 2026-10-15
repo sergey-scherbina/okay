@@ -2,7 +2,7 @@ package okay.http
 
 
 import okay.{Async, Source, async, Channel}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
 
@@ -65,16 +65,16 @@ object Transports {
   def ofInputStream(in: java.io.InputStream, size: Int = 8192): Source[Chunk[Byte]] =
     type F = Writer % Chunk[Byte] + Async
     def go: Source[Chunk[Byte]] =
-      effect[F, Chunk[Byte] | Null](Async.Run { () =>
+      effect[Async, Chunk[Byte] | Null](Async.Run[Chunk[Byte] | Null] { () =>
         val buf = new Array[Byte](size)
         val n = in.read(buf)
         if n < 0 then { in.close(); null }
         else scala.collection.immutable.ArraySeq.unsafeWrapArray(
           if n == size then buf else java.util.Arrays.copyOf(buf, n))
-      }).flatMap {
+      }).at[F].flatMap {
         case null => pure(())
         case c =>
-          effect[F, Unit](Writer(c)).flatMap(_ => go)
+          Writer.tell[Chunk[Byte]](c).at[F].flatMap(_ => go)
       }
 
     go

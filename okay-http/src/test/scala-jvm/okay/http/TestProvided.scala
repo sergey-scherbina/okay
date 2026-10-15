@@ -2,10 +2,8 @@ package okay.http
 
 
 import okay.{Async}
-import okay.freer.*
-import okay.std.*
+import okay.*
 import okay.given
-import okay.freer.given
 /**
  * A capability from the request (specs/app-host.md): `Route.provided`
  * for a PartialFunction route, `Router.provided` for one handler of a
@@ -19,7 +17,7 @@ class TestProvided extends munit.FunSuite:
   private def who(r: Request): Who = Who(r.headers.collectFirst { case ("x-who", v) => v }.getOrElse("nobody"))
 
   private def text(res: Response): String =
-    new String(Async.run[Chunk[Byte], Pure](Http.bytes(res)).runWith.toArray, "UTF-8")
+    new String(Async.run(Http.bytes(res)).runWith.toArray, "UTF-8")
 
   private def page(using w: Who): String = s"hello ${w.name}"
 

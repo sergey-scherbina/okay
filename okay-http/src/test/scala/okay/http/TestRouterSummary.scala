@@ -1,6 +1,6 @@
 package okay.http
 
-import okay.freer.*
+import okay.*
 
 /**
  * THE OPERATION SAYS WHAT IT IS FOR (openapi-prose).

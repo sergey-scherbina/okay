@@ -2,9 +2,8 @@ package okay.http
 
 
 import okay.{Async, CanBlock, async}
-import okay.freer.*
+import okay.*
 import okay.std.*
-import okay.freer.given
 import com.sun.net.httpserver.{HttpExchange, HttpServer as JdkServer}
 import java.net.InetSocketAddress
 import scala.jdk.CollectionConverters.*
@@ -70,16 +69,16 @@ object Server {
 
       // the route is a program; running it here parks a virtual thread,
       // which is what the executor above is for
-      val res = Async.run[Response, Pure](route(req)).runWith
+      val res = Async.run(route(req)).runWith
       res.headers.foreach((k, v) => x.getResponseHeaders.add(k, v))
       if Http.streams(res) then
         // length 0 asks the JDK server for chunked transfer encoding —
         // an arbitrary number of writes, delivered as they are made,
         // rather than one length computed up front (http-streaming-responses)
         x.sendResponseHeaders(res.status, 0)
-        Async.run[Unit, Pure](write(res.body, x.getResponseBody)).runWith
+        Async.run(write(res.body, x.getResponseBody)).runWith
       else
-        val bytes = Async.run[Chunk[Byte], Pure](Http.bytes(res)).runWith.toArray
+        val bytes = Async.run(Http.bytes(res)).runWith.toArray
         x.sendResponseHeaders(res.status, if bytes.isEmpty then -1 else bytes.length.toLong)
         if bytes.nonEmpty then x.getResponseBody.write(bytes)
     catch

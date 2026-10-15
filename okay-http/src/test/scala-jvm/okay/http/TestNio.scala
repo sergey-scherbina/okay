@@ -2,13 +2,11 @@ package okay.http
 
 
 import okay.{Async, Take, through}
-import java.nio.channels.ServerSocketChannel
 
-import okay.freer.*
+import okay.*
 
 import okay.std.*
 import okay.given
-import okay.freer.given
 /**
  * Raw NIO: two ends, chunks between them, and nothing parked. (MCP
  * over a bare socket is okay-mcp-http's TestMcpLinks since
@@ -24,7 +22,7 @@ class TestNio extends munit.FunSuite {
     super.munitTests().map(_.tag(new munit.Tag("Live")))
 
   test("two ends exchange bytes") {
-    val got = Resource.run[Seq[String], Pure](
+    val got = Resource.run(
       Nio.listen(0) { conn =>
         // echo every chunk back, upper-cased, then close
         Writer.uncons[Chunk[Byte], Unit, Async](conn.bytes).flatMap {
@@ -35,13 +33,12 @@ class TestNio extends munit.FunSuite {
           case Left(_) => conn.close()
         }
       }.map { server =>
-        Async.run[Seq[String], Pure](
+        Async.run(
           Nio.connect("127.0.0.1", Nio.port(server)).flatMap { c =>
             c.send("hello\n").flatMap(_ =>
-              Writer.run[String, Unit, Async](
+              Writer.run[String, Unit, Writer % String + Async](
                 through[Chunk[Byte], String, Async, Unit, Unit](c.bytes)(
-                  !.widen[Unit, Take % Chunk[Byte] + Writer % String, Async](
-                    Http.framing))).map(_._1))
+                  Http.framing.at[Take % Chunk[Byte] + (Writer % String + Async)])).map(_._1))
           }).runWith
       }).runWith
     assertEquals(got, Seq("HELLO"))
@@ -49,19 +46,18 @@ class TestNio extends munit.FunSuite {
 
   test("a source of many chunks arrives whole and in order") {
     val n = 500
-    val got = Resource.run[Int, Pure](
+    val got = Resource.run(
       Nio.listen(0) { conn =>
         def go(i: Int): Unit ! Async =
           if i >= n then conn.close()
           else conn.send(s"line-$i\n").flatMap(_ => go(i + 1))
         go(0)
       }.map { server =>
-        Async.run[Int, Pure](
+        Async.run(
           Nio.connect("127.0.0.1", Nio.port(server)).flatMap { c =>
-            Writer.run[String, Unit, Async](
+            Writer.run[String, Unit, Writer % String + Async](
               through[Chunk[Byte], String, Async, Unit, Unit](c.bytes)(
-                !.widen[Unit, Take % Chunk[Byte] + Writer % String, Async](
-                  Http.framing))).map { (ls, _) =>
+                Http.framing.at[Take % Chunk[Byte] + (Writer % String + Async)])).map { (ls, _) =>
               assertEquals(ls.head, "line-0")
               assertEquals(ls.last, s"line-${n - 1}")
               ls.length
@@ -75,16 +71,15 @@ class TestNio extends munit.FunSuite {
     // ByteBuffer writes are partial by contract, so `send` loops; this
     // is the test that says the loop is there
     val big = "x" * 300_000
-    val got = Resource.run[Int, Pure](
+    val got = Resource.run(
       Nio.listen(0) { conn =>
         conn.send(big + "\n").flatMap(_ => conn.close())
       }.map { server =>
-        Async.run[Int, Pure](
+        Async.run(
           Nio.connect("127.0.0.1", Nio.port(server)).flatMap { c =>
-            Writer.run[String, Unit, Async](
+            Writer.run[String, Unit, Writer % String + Async](
               through[Chunk[Byte], String, Async, Unit, Unit](c.bytes)(
-                !.widen[Unit, Take % Chunk[Byte] + Writer % String, Async](
-                  Http.framing))).map(_._1.map(_.length).sum)
+                Http.framing.at[Take % Chunk[Byte] + (Writer % String + Async)])).map(_._1.map(_.length).sum)
           }).runWith
       }).runWith
     assertEquals(got, big.length)
@@ -99,7 +94,7 @@ class TestNio extends munit.FunSuite {
     // guarantee is per-connection delivery, and this holds it to that
     // (8000/8000 at fix time; 500 here for suite time).
     val n = 20
-    val got = Resource.run[Int, Pure](
+    val got = Resource.run(
       Nio.listen(0) { conn =>
         def go(i: Int): Unit ! Async =
           if i >= n then conn.close()
@@ -109,12 +104,11 @@ class TestNio extends munit.FunSuite {
         val port = Nio.port(server)
         var ok = 0
         for _ <- 1 to 500 do
-          val lines = Async.run[Int, Pure](
+          val lines = Async.run(
             Nio.connect("127.0.0.1", port).flatMap { c =>
-              Writer.run[String, Unit, Async](
+              Writer.run[String, Unit, Writer % String + Async](
                 through[Chunk[Byte], String, Async, Unit, Unit](c.bytes)(
-                  !.widen[Unit, Take % Chunk[Byte] + Writer % String, Async](
-                    Http.framing))).map(_._1.length)
+                  Http.framing.at[Take % Chunk[Byte] + (Writer % String + Async)])).map(_._1.length)
             }).runWith
           if lines == n then ok += 1
         ok
@@ -135,7 +129,7 @@ class TestNio extends munit.FunSuite {
     // The claim is about the listener, so it is asked of the listener:
     // `Nio.listen`'s resource value IS the ServerSocketChannel, and a
     // closed channel says so. No port, no pool, no neighbours.
-    val server = Resource.run[ServerSocketChannel, Pure](
+    val server = Resource.run(
       Nio.listen(0)(_ => pure(()))).runWith
     assert(!server.isOpen, "the listener outlived its Resource scope")
   }

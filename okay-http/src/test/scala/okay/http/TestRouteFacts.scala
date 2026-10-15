@@ -2,8 +2,10 @@ package okay.http
 
 
 import okay.{Async}
-import okay.freer.*
+import okay.*
 import okay.std.*
+// okay-std's `Fact` still asks for okay-freer's Monoid (no root word for it yet)
+import okay.freer.Monoid
 /**
  * WHY A FACT AND NOT A CAPABILITY, on the case that motivates it
  * (di-facts-examples).
@@ -20,7 +22,7 @@ import okay.std.*
  */
 class TestRouteFacts extends munit.FunSuite {
 
-  type Routes = Request |=> Response ! Async
+  type Routes = PartialFunction[Request, Response ! Async]
 
   /** the kind: routes accumulate, first match wins — `orElse` */
   given Monoid[Routes] = Monoid.of(PartialFunction.empty[Request, Response ! Async])(_ orElse _)

@@ -1,10 +1,9 @@
 package okay.http
 
-import okay.freer.*
+import okay.*
 
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.codec.Schema
 
 object TestTsClient:
@@ -64,7 +63,7 @@ class TestTsClient extends munit.FunSuite {
     val dir = java.nio.file.Files.createTempDirectory("okay-ts-client")
     val r = router(java.util.concurrent.ConcurrentHashMap[Int, Task]())
     files(dir, r)
-    val out = Resource.run[String, Pure](Server.serve(0)(req => r.routes.applyOrElse(req, _ => pure(Response(404, Nil, Http.one(Array.empty[Byte]))))).map { s =>
+    val out = Resource.run(Server.serve(0)(req => r.routes.applyOrElse(req, _ => pure(Response(404, Nil, Http.one(Array.empty[Byte]))))).map { s =>
       val p = ProcessBuilder("node", "usage.ts", s"http://127.0.0.1:${Server.port(s)}")
         .directory(dir.toFile).redirectErrorStream(true).start()
       val text = String(p.getInputStream.readAllBytes())

@@ -2,7 +2,7 @@ package okay.http
 
 
 import okay.{Async, Stage}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.codec.{Json, Schema}
 
@@ -106,7 +106,7 @@ object Acceptance {
     for
       p <- http.send(Request.get(s"$base/person")).flatMap(Http.json[Person])
       ls <- http.send(Request.get(s"$base/lines"))
-        .flatMap(r => Writer.run[String, Unit, Async](Http.lines(r)).map(_._1))
+        .flatMap(r => Writer.run[String, Unit, Writer % String + Async](Http.lines(r)).map(_._1))
       posted <- http.send(Request.post(s"$base/echo", Body.Text(greeting)))
         .flatMap(Http.text)
     yield Seq(

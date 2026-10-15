@@ -1,7 +1,7 @@
 package okay.http
 
 import okay.{Async, Prism, Source}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import scala.deriving.Mirror
 import scala.compiletime.constValueTuple

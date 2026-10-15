@@ -48,6 +48,15 @@ object Walk:
     val template = Paths.One(In.Here[E, okay.core.Pure]())
     viewed(start(p, template), template)
 
+  /**
+   * `p` INTO ANOTHER MONAD, each operation by `nt` (okay-freer's `foldMap`): the one interop word — a program of `E`
+   * as a cats `IO`, a ZIO, a kyo computation, a `Future`. The recursion is in `G`'s `flatMap`: stack-safe where
+   * `G`'s bind is (every effect system's is; a strict `G` such as `Option` is not, for a long program).
+   */
+  def foldMap[E[_], A, G[_]](p: A ! E)(nt: [X] => E[X] => G[X])(using G: Monad[G]): G[A] = view(p) match
+    case Done(a) => G.pure(a)
+    case o: Op[E, x, A, E] => G.flatMap(nt(o.op))((y: x) => foldMap(o.resume(y))(nt))
+
   // ---- the machinery (okay-std's Writer streams walk by it too)
 
   /** a program paused at an operation of `R`, its machine-side types unnamed */

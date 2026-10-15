@@ -2,9 +2,8 @@ package okay.http
 
 
 import okay.{Async}
-import okay.freer.*
+import okay.*
 import okay.given
-import okay.freer.given
 import okay.http.syntax.*
 
 /**

@@ -2,10 +2,9 @@ package okay.http
 
 
 import okay.{Async, async}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.codec.Schema
 
 /**
@@ -32,21 +31,21 @@ class TestHttp extends munit.FunSuite {
 
   /** run a program that needs a running server */
   def serving[A](route: Request => Response ! Async)(use: Int => A): A =
-    Resource.run[A, Pure](
+    Resource.run(
       Server.serve(0)(route).map(s => use(Server.port(s)))).runWith
 
   def get[A](port: Int, path: String)(f: Response => A ! Async): A =
-    Async.run[A, Pure](client.send(Request.get(s"http://127.0.0.1:$port$path"))
+    Async.run(client.send(Request.get(s"http://127.0.0.1:$port$path"))
       .flatMap(f)).runWith
 
   // specs/http.md, http-peer-address
   test("okay-http's own server fills the peer's host") {
     val seen = java.util.concurrent.atomic.AtomicReference[Option[String]](None)
-    Resource.run[Unit, Pure](Server.serve(0) { r =>
+    Resource.run(Server.serve(0) { r =>
       seen.set(r.peer)
       pure(Response(200, Nil, Http.one("ok".getBytes("UTF-8"))))
     }.map { s =>
-      val _ = Async.run[Response, Pure](Transports.http().send(
+      val _ = Async.run(Transports.http().send(
         Request.get(s"http://127.0.0.1:${Server.port(s)}/x"))).runWith
     }).runWith
     assertEquals(seen.get(), Some("127.0.0.1"))
@@ -88,7 +87,7 @@ class TestHttp extends munit.FunSuite {
         case Left(e) => Server.text(400, e)
       }
     } { port =>
-      val got = Async.run[Either[String, Person], Pure](
+      val got = Async.run(
         client.send(Request.json(s"http://127.0.0.1:$port/", Person("bo", 7)))
           .flatMap(Http.json[Person])).runWith
       assertEquals(got, Right(Person("bo", 8)))
@@ -99,10 +98,10 @@ class TestHttp extends munit.FunSuite {
     // 400KB in, counted through the source without a single full copy
     val big = "x" * 400_000
     serving(_ => Server.text(200, big)) { port =>
-      val n = Async.run[Long, Pure](
+      val n = Async.run(
         client.send(Request.get(s"http://127.0.0.1:$port/big")).flatMap { r =>
-          given Fold[Chunk[Byte], Long] = Fold.long[Chunk[Byte]](0L)((n, c) => n + c.length)
-          Writer.fold[Chunk[Byte], Long, Unit, Async](r.body).map(_._1)
+          Writer.foldWith[Chunk[Byte], Long, Unit, Writer % Chunk[Byte] + Async](r.body)(0L)((n, c) => n + c.length)
+            .map(_._1)
         }).runWith
       assertEquals(n, big.length.toLong)
     }
@@ -111,14 +110,14 @@ class TestHttp extends munit.FunSuite {
   test("lines stream out of a body, and SSE events out of those") {
     val body = "data: one\n\ndata: two\n\nignored\n\n"
     serving(_ => Server.text(200, body)) { port =>
-      val ls = Async.run[Seq[String], Pure](
+      val ls = Async.run(
         client.send(Request.get(s"http://127.0.0.1:$port/s"))
-          .flatMap(r => Writer.run[String, Unit, Async](Http.lines(r)).map(_._1))).runWith
+          .flatMap(r => Writer.run[String, Unit, Writer % String + Async](Http.lines(r)).map(_._1))).runWith
       assertEquals(ls, Seq("data: one", "", "data: two", "", "ignored", ""))
 
-      val es = Async.run[Seq[String], Pure](
+      val es = Async.run(
         client.send(Request.get(s"http://127.0.0.1:$port/s"))
-          .flatMap(r => Writer.run[String, Unit, Async](Http.sse(r)).map(_._1))).runWith
+          .flatMap(r => Writer.run[String, Unit, Writer % String + Async](Http.sse(r)).map(_._1))).runWith
       assertEquals(es, Seq("one", "two"))
     }
   }
@@ -133,7 +132,7 @@ class TestHttp extends munit.FunSuite {
   test("every verb reaches the route with its own name") {
     serving(r => Server.text(200, r.method.name)) { port =>
       for m <- Seq(Method.Get, Method.Put, Method.Delete, Method.Patch) do
-        val got = Async.run[String, Pure](
+        val got = Async.run(
           client.send(Request(m, s"http://127.0.0.1:$port/v"))
             .flatMap(Http.text)).runWith
         assertEquals(got, m.name)
@@ -150,7 +149,7 @@ class TestHttp extends munit.FunSuite {
       }
 
     val got = okay.retry(okay.Retry.immediate(2))(
-      okay.async(Async.run[String, Pure](
+      okay.async(Async.run(
         flaky.send(Request.get("http://x/")).flatMap(Http.text)).runWith)).runWith
     assertEquals(got, "second time")
     assertEquals(attempts, 2)   // one failure, one clean pass
@@ -177,7 +176,7 @@ class TestHttp extends munit.FunSuite {
     // the scope ended, so a connect must now fail rather than answer
     val failed =
       try
-        val _ = Async.run[Int, Pure](
+        val _ = Async.run(
           client.send(Request.get(s"http://127.0.0.1:$port/"))
             .map(_.status)).runWith
         false

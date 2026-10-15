@@ -2,9 +2,8 @@ package okay.http
 
 
 import okay.{Stage, through}
-import okay.freer.*
+import okay.*
 import okay.std.*
-import okay.freer.given
 import okay.std.given
 import okay.codec.{Json, Schema}
 import java.nio.charset.StandardCharsets.UTF_8
@@ -24,7 +23,7 @@ class TestFraming extends munit.FunSuite {
 
   /** drive the framer with these chunks, collect the lines */
   def lines(cs: Chunk[Byte]*): Seq[String] =
-    !.run(Writer.run(through(Writer.of(cs.toList))(Http.framing)))._1
+    Writer.run[String, Unit, Writer % String](through(Writer.of(cs.toList).at[Writer % Chunk[Byte]])(Http.framing)).run._1
 
   test("a body frames into lines, whatever the chunk boundaries") {
     assertEquals(lines(chunk("a\nb\nc\n")), Seq("a", "b", "c"))
@@ -64,7 +63,7 @@ class TestFraming extends munit.FunSuite {
 
   /** drive a session stage with these frames, collect what it tells */
   def talk(session: Stage[Frame, Frame, Unit])(fs: Frame*): Seq[Frame] =
-    !.run(Writer.run(through(Writer.of(fs.toList))(session)))._1
+    Writer.run[Frame, Unit, Writer % Frame](through(Writer.of(fs.toList).at[Writer % Frame])(session)).run._1
 
   /** the echo session, written the way a user would write it */
   def echo: Stage[Frame, Frame, Unit] =
@@ -101,9 +100,9 @@ class TestFraming extends munit.FunSuite {
 
   test("texts projects a frame stream to its lines, dropping the rest") {
     val empty = scala.collection.immutable.ArraySeq.empty[Byte]
-    val got = !.run(Writer.run(through(Writer.of(List[Frame](
+    val got = Writer.run[String, Unit, Writer % String](through(Writer.of(List[Frame](
       Frame.Text("one"), Frame.Ping(empty), Frame.Binary(empty),
-      Frame.Text("two"), Frame.Close(1000, "bye"))))(Ws.texts)))._1
+      Frame.Text("two"), Frame.Close(1000, "bye"))).at[Writer % Frame])(Ws.texts)).run._1
     assertEquals(got, Seq("one", "two"))
   }
 

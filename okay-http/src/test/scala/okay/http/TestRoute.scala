@@ -2,7 +2,7 @@ package okay.http
 
 
 import okay.{Async, compiled, preview}
-import okay.freer.*
+import okay.*
 import okay.given
 
 import okay.http.syntax.*

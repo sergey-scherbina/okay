@@ -2,7 +2,7 @@ package okay.http
 
 
 import okay.{Async, Scheduler, Source, async}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import java.net.InetSocketAddress
 import java.nio.ByteBuffer
@@ -59,17 +59,17 @@ object Nio {
     /** the bytes as they arrive; end of stream ends the source */
     def bytes: Source[Chunk[Byte]] =
       def go: Source[Chunk[Byte]] =
-        effect[F, Chunk[Byte] | Null](Async.Run { () =>
+        effect[Async, Chunk[Byte] | Null](Async.Run[Chunk[Byte] | Null] { () =>
           val buf = ByteBuffer.allocate(size)
           if ch.read(buf) < 0 then null
           else
             buf.flip()
             val out = new Array[Byte](buf.remaining()); buf.get(out)
             scala.collection.immutable.ArraySeq.unsafeWrapArray(out)
-        }).flatMap {
+        }).at[F].flatMap {
           case null => pure(())
           case c =>
-            effect[F, Unit](Writer(c)).flatMap(_ => go)
+            Writer.tell[Chunk[Byte]](c).at[F].flatMap(_ => go)
         }
 
       go

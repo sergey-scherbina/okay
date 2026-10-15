@@ -52,3 +52,9 @@ class TestWalk extends munit.FunSuite:
       case o: Walk.Op[W, x, Int, W] =>
         intercept[IllegalStateException](drain(o.fail(IllegalStateException("boom")), Nil))
       case other => fail(s"not an operation: $other")
+
+  test("foldMap: a program into another monad, each operation by a natural transformation"):
+    var told = List.empty[Int]
+    val r: Option[Int] = Walk.foldMap(counting(3))([X] => (op: Writer[Int, X]) => op match
+      case Writer.Say(w) => told ::= w; Option(()))
+    assertEquals((r, told.reverse), (Some(0), List(3, 2, 1)))

@@ -2,10 +2,9 @@ package okay.http
 
 
 import okay.{Async, Stage}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.codec.Schema
 
 /**
@@ -28,7 +27,7 @@ class TestWs extends munit.FunSuite {
 
   /** connect, run a session over the socket, close */
   def session[A](url: String)(s: Stage[Frame, Frame, A]): A =
-    Async.run[A, Pure](
+    Async.run(
       sockets.connect(url).flatMap(sock =>
         Ws.over(sock)(s).flatMap(a => sock.close().map(_ => a)))).runWith
 

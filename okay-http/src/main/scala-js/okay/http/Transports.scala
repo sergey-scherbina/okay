@@ -2,7 +2,7 @@ package okay.http
 
 
 import okay.{Source, async, Async, Channel, Web}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
 
@@ -69,7 +69,7 @@ object Transports {
   def ofReader(reader: Web.Reader): Source[Chunk[Byte]] =
     type F = Writer % Chunk[Byte] + Async
     def go: Source[Chunk[Byte]] =
-      effect[F, Chunk[Byte] | Null](Async.Await[Chunk[Byte] | Null] { k =>
+      effect[Async, Chunk[Byte] | Null](Async.Await[Chunk[Byte] | Null] { k =>
         reader.read().`then`({ (r: Web.ReadResult) =>
           r.value.toOption match
             case Some(v) if !r.done => k(Right(chunkOf(v)))
@@ -77,10 +77,10 @@ object Transports {
           ()
         }: js.Function1[Web.ReadResult, Unit]): Unit
         () => ()
-      }).flatMap {
+      }).at[F].flatMap {
         case null => pure(())
         case c =>
-          effect[F, Unit](Writer(c)).flatMap(_ => go)
+          Writer.tell[Chunk[Byte]](c).at[F].flatMap(_ => go)
       }
 
     go

@@ -2,7 +2,7 @@ package okay.http
 
 
 import okay.{Async}
-import okay.freer.*
+import okay.*
 /**
  * A DECLARED ANSWER THAT IS NOT JSON (openapi-media).
  *

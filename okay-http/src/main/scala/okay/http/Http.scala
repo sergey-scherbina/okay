@@ -1,7 +1,7 @@
 package okay.http
 
 import okay.{Async, Lines, Source, Stage, Take}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.codec.Schema
 import java.nio.charset.StandardCharsets.UTF_8
@@ -117,16 +117,12 @@ object Http {
   /** a body that is already in hand — one chunk, then done */
   def one(bs: Array[Byte]): Source[Chunk[Byte]] =
     if bs.isEmpty then pure(())
-    else effect[Writer % Chunk[Byte] + Async, Unit](
-      Writer(scala.collection.immutable.ArraySeq.unsafeWrapArray(bs)))
+    else Writer.tell[Chunk[Byte]](scala.collection.immutable.ArraySeq.unsafeWrapArray(bs)).at[Writer % Chunk[Byte] + Async]
 
   /** the whole body, drained */
   def bytes(r: Response): Chunk[Byte] ! Async =
-    given Fold[Chunk[Byte], scala.collection.mutable.ArrayBuilder[Byte]] = new:
-      def init = scala.collection.mutable.ArrayBuilder.make[Byte]
-      def add(b: scala.collection.mutable.ArrayBuilder[Byte], c: Chunk[Byte]) =
-        b ++= c.toArray; b
-    Writer.fold[Chunk[Byte], scala.collection.mutable.ArrayBuilder[Byte], Unit, Async](r.body)
+    Writer.foldWith[Chunk[Byte], scala.collection.mutable.ArrayBuilder[Byte], Unit, Writer % Chunk[Byte] + Async](r.body)(
+        scala.collection.mutable.ArrayBuilder.make[Byte])((b, c) => { b ++= c.toArray; b })
       .map((b, _) => scala.collection.immutable.ArraySeq.unsafeWrapArray(b.result()))
 
   /** let a body go unread — the counterpart of draining it */
@@ -149,7 +145,7 @@ object Http {
    */
   def lines(r: Response): Source[String] =
     okay.through[Chunk[Byte], String, Async, Unit, Unit](r.body)(
-      !.widen[Unit, Take % Chunk[Byte] + Writer % String, Async](framing))
+      framing.at[Take % Chunk[Byte] + (Writer % String + Async)])
 
   /** bytes in, lines out — `okay.Lines.stage`, which moved to the core
    * when okay-cluster needed it without this module */
@@ -188,5 +184,5 @@ object Http {
    * stage */
   def sse(r: Response): Source[String] =
     okay.through[String, String, Async, Unit, Unit](lines(r))(
-      !.widen[Unit, Take % String + Writer % String, Async](okay.Sse.events))
+      okay.Sse.events.at[Take % String + (Writer % String + Async)])
 }
