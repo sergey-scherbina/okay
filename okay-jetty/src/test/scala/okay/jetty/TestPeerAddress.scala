@@ -1,10 +1,9 @@
 package okay.jetty
 
 import okay.{Async}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.http.{Http, Request, Response, Transports}
 
 /**
@@ -33,10 +32,10 @@ class TestPeerAddress extends munit.FunSuite {
         seen.set(r.peer)
         pure(Response(200, Nil, Http.one("ok".getBytes("UTF-8"))))
 
-    Resource.run[Unit, Pure](Jetty.serve(0)(routes)().map { server =>
+    Resource.run[Unit, Resource](Jetty.serve(0)(routes)().map { server =>
       val port = Jetty.port(server)
       val t = Transports.http()
-      val _ = Async.run[Response, Pure](t.send(Request.get(s"http://127.0.0.1:$port/x"))).runWith
+      val _ = Async.run[Response, Async](t.send(Request.get(s"http://127.0.0.1:$port/x"))).runWith
 
       // TWO DIFFERENT FAILURES WORE ONE MESSAGE, and the full-matrix
       // flake could not be told apart because of it: the handler may

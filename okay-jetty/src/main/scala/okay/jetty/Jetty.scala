@@ -2,10 +2,9 @@ package okay.jetty
 
 
 import okay.{Async, CanBlock, Channel, Scheduler, Source}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.http.{Body, Frame, Http, Method, Request, Response, Socket, Sockets}
 
 import org.eclipse.jetty.client.{HttpClient as JettyClient, InputStreamResponseListener, Request as JRequest}
@@ -142,11 +141,11 @@ object Jetty {
           if !routes.isDefinedAt(r) then false
           else
             try
-              val out = Async.run[Response, Pure](routes(r)).runWith
+              val out = Async.run[Response, Async](routes(r)).runWith
               res.setStatus(out.status)
               out.headers.foreach((k, v) => res.getHeaders.add(k, v))
               if Http.streams(out) then stream(out, res, cb) else
-                val bytes = Async.run[Chunk[Byte], Pure](Http.bytes(out)).runWith.toArray
+                val bytes = Async.run[Chunk[Byte], Async](Http.bytes(out)).runWith.toArray
                 res.write(true, ByteBuffer.wrap(bytes), cb)
             catch
               case e: Throwable =>
@@ -240,7 +239,7 @@ object Jetty {
                     (using CanBlock): Unit =
     okay.Threads.spawn("okay-jetty-stream"): () =>
       try
-        Async.run[Unit, Pure](write(out.body, res)).runWith
+        Async.run[Unit, Async](write(out.body, res)).runWith
         res.write(true, ByteBuffer.allocate(0), cb)
       catch case _: Throwable => res.write(true, ByteBuffer.allocate(0), cb)
     ()

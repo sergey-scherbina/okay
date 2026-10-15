@@ -1,10 +1,9 @@
 package okay.netty
 
 import okay.{Async, Stage}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.codec.Schema
 import okay.http.{Acceptance, Frame, Http, Request, Server as OkayServer, Sockets, Transports, Ws}
 import okay.jetty.Jetty
@@ -34,7 +33,7 @@ class TestBackends extends munit.FunSuite {
 
   /** the program under test — written once, against the seam only */
   def fetchPerson(http: Http, url: String): Either[String, Person] =
-    Async.run[Either[String, Person], Pure](
+    Async.run[Either[String, Person], Async](
       http.send(Request.get(url)).flatMap(Http.json[Person])).runWith
 
   /** the session under test — likewise */
@@ -48,7 +47,7 @@ class TestBackends extends munit.FunSuite {
     framed
 
   def sayOnce(http: Sockets, url: String): Seq[Frame] =
-    Async.run[Seq[Frame], Pure](
+    Async.run[Seq[Frame], Async](
       http.connect(url).flatMap { sock =>
         val say: Stage[Frame, Frame, Seq[Frame]] =
           Stage.tell[Frame, Frame](Frame.Text("hi")).flatMap(_ =>
@@ -60,7 +59,7 @@ class TestBackends extends munit.FunSuite {
       }).runWith
 
   test("the same REST program answers the same on all three clients") {
-    val got = Resource.run[Seq[Either[String, Person]], Pure](
+    val got = Resource.run[Seq[Either[String, Person]], Resource](
       OkayServer.serve(0)(_ => OkayServer.json(200, ann)).flatMap { server =>
         val url = s"http://127.0.0.1:${OkayServer.port(server)}/p"
         for
@@ -76,15 +75,15 @@ class TestBackends extends munit.FunSuite {
   }
 
   test("the same REST program answers the same from all three servers") {
-    val jdk = Resource.run[Either[String, Person], Pure](
+    val jdk = Resource.run[Either[String, Person], Resource](
       OkayServer.serve(0)(_ => OkayServer.json(200, ann)).map(s =>
         fetchPerson(Transports.http(), s"http://127.0.0.1:${OkayServer.port(s)}/p"))).runWith
 
-    val jetty = Resource.run[Either[String, Person], Pure](
+    val jetty = Resource.run[Either[String, Person], Resource](
       Jetty.serve(0) { case _ => OkayServer.json(200, ann) }().map(s =>
         fetchPerson(Transports.http(), s"http://127.0.0.1:${Jetty.port(s)}/p"))).runWith
 
-    val netty = Resource.run[Either[String, Person], Pure](
+    val netty = Resource.run[Either[String, Person], Resource](
       Netty.serve(0) { case _ => OkayServer.json(200, ann) }().map(s =>
         fetchPerson(Transports.http(), s"http://127.0.0.1:${Netty.port(s)}/p"))).runWith
 
@@ -97,14 +96,14 @@ class TestBackends extends munit.FunSuite {
     // that check is exactly the one Jetty failed in production until
     // mcp-push found it. Here every server answers it.
     def restOn(port: Int): Seq[(String, Boolean)] =
-      Async.run[Seq[(String, Boolean)], Pure](
+      Async.run[Seq[(String, Boolean)], Async](
         Acceptance.rest(Transports.http(), port)).runWith
 
-    val jdk = Resource.run[Seq[(String, Boolean)], Pure](
+    val jdk = Resource.run[Seq[(String, Boolean)], Resource](
       OkayServer.serve(0)(Acceptance.routes).map(s => restOn(OkayServer.port(s)))).runWith
-    val jetty = Resource.run[Seq[(String, Boolean)], Pure](
+    val jetty = Resource.run[Seq[(String, Boolean)], Resource](
       Jetty.serve(0)(Acceptance.routes)().map(s => restOn(Jetty.port(s)))).runWith
-    val netty = Resource.run[Seq[(String, Boolean)], Pure](
+    val netty = Resource.run[Seq[(String, Boolean)], Resource](
       Netty.serve(0)(Acceptance.routes)().map(s => restOn(Netty.port(s)))).runWith
 
     for (name, got) <- Seq("jdk" -> jdk, "jetty" -> jetty, "netty" -> netty) do
@@ -114,11 +113,11 @@ class TestBackends extends munit.FunSuite {
   test("the same session answers the same on both WebSocket servers") {
     // the JDK cannot serve WebSocket at all, which is why there are two
     // here and not three — that gap is what okay-jetty exists for
-    val onJetty = Resource.run[Seq[Frame], Pure](
+    val onJetty = Resource.run[Seq[Frame], Resource](
       Jetty.serve(0)(PartialFunction.empty)({ case _ => echo }).map(s =>
         sayOnce(Transports.sockets(), s"ws://127.0.0.1:${Jetty.port(s)}/ws"))).runWith
 
-    val onNetty = Resource.run[Seq[Frame], Pure](
+    val onNetty = Resource.run[Seq[Frame], Resource](
       Netty.serve(0)(PartialFunction.empty)({ case _ => echo }).map(s =>
         sayOnce(Transports.sockets(), s"ws://127.0.0.1:${Netty.port(s)}/ws"))).runWith
 
@@ -126,7 +125,7 @@ class TestBackends extends munit.FunSuite {
   }
 
   test("every WebSocket client talks to every WebSocket server") {
-    val results = Resource.run[Seq[Seq[Frame]], Pure](
+    val results = Resource.run[Seq[Seq[Frame]], Resource](
       for
         jettyServer <- Jetty.serve(0)(PartialFunction.empty)({ case _ => echo })
         nettyServer <- Netty.serve(0)(PartialFunction.empty)({ case _ => echo })

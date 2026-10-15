@@ -1,10 +1,9 @@
 package okay.jetty
 
 import okay.{Async}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.http.{Acceptance, Transports}
 
 /**
@@ -44,9 +43,9 @@ class TestAcceptance extends munit.FunSuite {
   test("the JVM side runs the acceptance against its own transports") {
     // the control: if this fails, the fixture is wrong rather than the
     // JS transports, and the run below would be blaming the wrong side
-    val results = Resource.run[Seq[(String, Boolean)], Pure](
+    val results = Resource.run[Seq[(String, Boolean)], Resource](
       Jetty.serve(0)(Acceptance.routes)({ case _ => Acceptance.echo }).map { server =>
-        Async.run[Seq[(String, Boolean)], Pure](
+        Async.run[Seq[(String, Boolean)], Async](
           Acceptance.check(Transports.http(), Transports.sockets(),
             Jetty.port(server))).runWith
       }).runWith
@@ -59,7 +58,7 @@ class TestAcceptance extends munit.FunSuite {
     assume(clientJs.isDefined,
       "no linked JS client; run through sbt so Test/compile links it")
 
-    val (code, out) = Resource.run[(Int, String), Pure](
+    val (code, out) = Resource.run[(Int, String), Resource](
       Jetty.serve(0)(Acceptance.routes)({ case _ => Acceptance.echo }).map { server =>
         val pb = ProcessBuilder("node", clientJs.get, Jetty.port(server).toString)
         pb.redirectErrorStream(true)

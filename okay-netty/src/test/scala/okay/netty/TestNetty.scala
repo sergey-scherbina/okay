@@ -1,10 +1,9 @@
 package okay.netty
 
 import okay.{Async, Stage}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.codec.Schema
 import okay.http.{Frame, Http, Request, Response, Server as OkayServer, Transports, Ws}
 
@@ -40,10 +39,10 @@ class TestNetty extends munit.FunSuite {
 
   test("Netty's client behind the Http seam: the same program, different engine") {
     val ann = Person("ann", 41)
-    val got = Resource.run[Either[String, Person], Pure](
+    val got = Resource.run[Either[String, Person], Resource](
       OkayServer.serve(0)(_ => OkayServer.json(200, ann)).flatMap { server =>
         Netty.http().map { netty =>
-          Async.run[Either[String, Person], Pure](
+          Async.run[Either[String, Person], Async](
             netty.send(Request.get(
               s"http://127.0.0.1:${OkayServer.port(server)}/p"))
               .flatMap(Http.json[Person])).runWith
@@ -53,11 +52,11 @@ class TestNetty extends munit.FunSuite {
   }
 
   test("a Netty server answers the JDK client — routes as a partial function") {
-    val got = Resource.run[(Int, String), Pure](
+    val got = Resource.run[(Int, String), Resource](
       Netty.serve(0) {
         case r if r.url == "/hello" => OkayServer.text(200, "hello from netty")
       }().map { server =>
-        Async.run[(Int, String), Pure](
+        Async.run[(Int, String), Async](
           Transports.http().send(
             Request.get(s"http://127.0.0.1:${Netty.port(server)}/hello"))
             .flatMap(r => Http.text(r).map(t => (r.status, t)))).runWith
@@ -69,13 +68,13 @@ class TestNetty extends munit.FunSuite {
   // claim is about what a transport knows
   test("a served request carries the peer's host, without the port") {
     val seen = java.util.concurrent.atomic.AtomicReference[Option[String]](None)
-    Resource.run[Unit, Pure](
+    Resource.run[Unit, Resource](
       Netty.serve(0) {
         case r =>
           seen.set(r.peer)
           OkayServer.text(200, "ok")
       }().map { server =>
-        val _ = Async.run[okay.http.Response, Pure](Transports.http().send(
+        val _ = Async.run[okay.http.Response, Async](Transports.http().send(
           Request.get(s"http://127.0.0.1:${Netty.port(server)}/x"))).runWith
       }).runWith
     assertEquals(seen.get(), Some("127.0.0.1"))
@@ -83,12 +82,12 @@ class TestNetty extends munit.FunSuite {
   }
 
   test("an unrouted path is a 404, and a route that throws is a 500") {
-    val got = Resource.run[(Int, Int, String), Pure](
+    val got = Resource.run[(Int, Int, String), Resource](
       Netty.serve(0) {
         case r if r.url == "/boom" => throw RuntimeException("boom")
       }().map { server =>
         val base = s"http://127.0.0.1:${Netty.port(server)}"
-        Async.run[(Int, Int, String), Pure](
+        Async.run[(Int, Int, String), Async](
           Transports.http().send(Request.get(s"$base/nothing")).flatMap { a =>
             Transports.http().send(Request.get(s"$base/boom")).flatMap { b =>
               Http.text(b).map(t => (a.status, b.status, t))
@@ -100,15 +99,14 @@ class TestNetty extends munit.FunSuite {
 
   test("a body still streams: content arrives chunk by chunk, no aggregator") {
     val big = "x" * 300_000
-    val n = Resource.run[Long, Pure](
+    val n = Resource.run[Long, Resource](
       OkayServer.serve(0)(_ => OkayServer.text(200, big)).flatMap { server =>
         Netty.http().map { netty =>
-          Async.run[Long, Pure](
+          Async.run[Long, Async](
             netty.send(Request.get(
               s"http://127.0.0.1:${OkayServer.port(server)}/big")).flatMap { r =>
-              given Fold[Chunk[Byte], Long] =
-                Fold.long[Chunk[Byte]](0L)((n, c) => n + c.length)
-              Writer.fold[Chunk[Byte], Long, Unit, Async](r.body).map(_._1)
+              Writer.foldWith[Chunk[Byte], Long, Unit, Writer % Chunk[Byte] + Async](r.body)(0L)(
+                (n, c) => n + c.length).map(_._1)
             }).runWith
         }
       }).runWith
@@ -116,14 +114,14 @@ class TestNetty extends munit.FunSuite {
   }
 
   test("a POST body reaches a Netty route and comes back through the schema") {
-    val got = Resource.run[Either[String, Person], Pure](
+    val got = Resource.run[Either[String, Person], Resource](
       Netty.serve(0) { r =>
         Http.json[Person](Response(200, Nil, Http.one(r.body.bytes))).flatMap {
           case Right(p) => OkayServer.json(200, p.copy(age = p.age + 1))
           case Left(e) => OkayServer.text(400, e)
         }
       }().map { server =>
-        Async.run[Either[String, Person], Pure](
+        Async.run[Either[String, Person], Async](
           Transports.http().send(Request.json(
             s"http://127.0.0.1:${Netty.port(server)}/", Person("bo", 7)))
             .flatMap(Http.json[Person])).runWith
@@ -134,9 +132,9 @@ class TestNetty extends munit.FunSuite {
   // ---- WebSocket, both ends
 
   test("a Netty WebSocket server runs the same Stage a client runs") {
-    val got = Resource.run[Seq[Frame], Pure](
+    val got = Resource.run[Seq[Frame], Resource](
       Netty.serve(0)(PartialFunction.empty)({ case _ => echo }).map { server =>
-        Async.run[Seq[Frame], Pure](
+        Async.run[Seq[Frame], Async](
           Transports.sockets().connect(
             s"ws://127.0.0.1:${Netty.port(server)}/ws").flatMap { sock =>
             val say: Stage[Frame, Frame, Seq[Frame]] =
@@ -152,10 +150,10 @@ class TestNetty extends munit.FunSuite {
   }
 
   test("Netty's own WebSocket client talks to Netty's own server") {
-    val got = Resource.run[Seq[Frame], Pure](
+    val got = Resource.run[Seq[Frame], Resource](
       Netty.serve(0)(PartialFunction.empty)({ case _ => echo }).flatMap { server =>
         Netty.sockets().map { sockets =>
-          Async.run[Seq[Frame], Pure](
+          Async.run[Seq[Frame], Async](
             sockets.connect(s"ws://127.0.0.1:${Netty.port(server)}/ws").flatMap { sock =>
               val say: Stage[Frame, Frame, Seq[Frame]] =
                 Stage.tell[Frame, Frame](Frame.Text("both ends")).flatMap(_ =>
@@ -171,11 +169,11 @@ class TestNetty extends munit.FunSuite {
   }
 
   test("everything is a Resource: after the scope the port is free") {
-    val port = Resource.run[Int, Pure](
+    val port = Resource.run[Int, Resource](
       Netty.serve(0) { case _ => OkayServer.text(200, "up") }().map(Netty.port)).runWith
     val failed =
       try
-        val _ = Async.run[Int, Pure](Transports.http()
+        val _ = Async.run[Int, Async](Transports.http()
           .send(Request.get(s"http://127.0.0.1:$port/")).map(_.status)).runWith
         false
       catch case _: Throwable => true

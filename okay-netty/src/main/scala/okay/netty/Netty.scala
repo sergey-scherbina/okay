@@ -2,9 +2,8 @@ package okay.netty
 
 
 import okay.{Async, CanBlock, Scheduler, Source}
-import okay.freer.*
+import okay.*
 import okay.std.*
-import okay.freer.given
 import okay.http.{Body, Frame, Http, Method, Request, Response, Socket, Sockets}
 
 import io.netty.bootstrap.{Bootstrap, ServerBootstrap}
@@ -239,10 +238,10 @@ object Netty {
       full(ctx, 404, Seq.empty, "not found".getBytes(UTF_8))
     else
       try
-        val out = Async.run[Response, Pure](routes(r)).runWith
+        val out = Async.run[Response, Async](routes(r)).runWith
         if Http.streams(out) then stream(ctx, out)
         else full(ctx, out.status, out.headers,
-          Async.run[Chunk[Byte], Pure](Http.bytes(out)).runWith.toArray)
+          Async.run[Chunk[Byte], Async](Http.bytes(out)).runWith.toArray)
       catch
         // damage as data on the wire, as on every other server here
         case e: Throwable =>
@@ -275,7 +274,7 @@ object Netty {
     res.headers.set(HttpHeaderNames.TRANSFER_ENCODING, HttpHeaderValues.CHUNKED)
     ctx.writeAndFlush(res)
     okay.Threads.spawn("okay-netty-stream") { () =>
-      try Async.run[Unit, Pure](writeChunks(out.body, ctx)).runWith
+      try Async.run[Unit, Async](writeChunks(out.body, ctx)).runWith
       catch case _: Throwable => ()
       ctx.writeAndFlush(LastHttpContent.EMPTY_LAST_CONTENT)
         .addListener(ChannelFutureListener.CLOSE): Unit

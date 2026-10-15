@@ -1,10 +1,9 @@
 package okay.jetty
 
 import okay.{Async, Stage}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.codec.Schema
 import okay.http.{Frame, Http, Request, Response, Server as OkayServer, Transports, Ws}
 
@@ -42,10 +41,10 @@ class TestJetty extends munit.FunSuite {
 
   test("Jetty's client behind the Http seam: the same program, different engine") {
     val ann = Person("ann", 41)
-    val got = Resource.run[Either[String, Person], Pure](
+    val got = Resource.run[Either[String, Person], Resource](
       OkayServer.serve(0)(_ => OkayServer.json(200, ann)).flatMap { server =>
         Jetty.http().map { jetty =>
-          Async.run[Either[String, Person], Pure](
+          Async.run[Either[String, Person], Async](
             jetty.send(Request.get(
               s"http://127.0.0.1:${OkayServer.port(server)}/p"))
               .flatMap(Http.json[Person])).runWith
@@ -55,12 +54,12 @@ class TestJetty extends munit.FunSuite {
   }
 
   test("a Jetty server answers the JDK client — routes as a partial function") {
-    val got = Resource.run[(Int, String), Pure](
+    val got = Resource.run[(Int, String), Resource](
       Jetty.serve(0) {
         case r if r.url == "/hello" => OkayServer.text(200, "hello from jetty")
       }().map { server =>
         val c = Transports.http()
-        Async.run[(Int, String), Pure](
+        Async.run[(Int, String), Async](
           c.send(Request.get(s"http://127.0.0.1:${Jetty.port(server)}/hello"))
             .flatMap(r => Http.text(r).map(t => (r.status, t)))).runWith
       }).runWith
@@ -68,12 +67,12 @@ class TestJetty extends munit.FunSuite {
   }
 
   test("a request's query string reaches the route, not just the path (http-request-query)") {
-    val got = Resource.run[(Int, String), Pure](
+    val got = Resource.run[(Int, String), Resource](
       Jetty.serve(0) {
         case r if r.url.startsWith("/search") => OkayServer.text(200, r.url)
       }().map { server =>
         val c = Transports.http()
-        Async.run[(Int, String), Pure](
+        Async.run[(Int, String), Async](
           c.send(Request.get(s"http://127.0.0.1:${Jetty.port(server)}/search?q=okay&limit=5"))
             .flatMap(r => Http.text(r).map(t => (r.status, t)))).runWith
       }).runWith
@@ -81,12 +80,12 @@ class TestJetty extends munit.FunSuite {
   }
 
   test("a route that throws is a 500 with its message, as on the built-in server") {
-    val got = Resource.run[(Int, String), Pure](
+    val got = Resource.run[(Int, String), Resource](
       Jetty.serve(0) {
         case _ => throw RuntimeException("boom")
       }().map { server =>
         val c = Transports.http()
-        Async.run[(Int, String), Pure](
+        Async.run[(Int, String), Async](
           c.send(Request.get(s"http://127.0.0.1:${Jetty.port(server)}/x"))
             .flatMap(r => Http.text(r).map(t => (r.status, t)))).runWith
       }).runWith
@@ -95,14 +94,13 @@ class TestJetty extends munit.FunSuite {
 
   test("a body still streams: a large response is folded chunk by chunk") {
     val big = "x" * 300_000
-    val n = Resource.run[Long, Pure](
+    val n = Resource.run[Long, Resource](
       Jetty.serve(0) { case _ => OkayServer.text(200, big) }().map { server =>
-        Async.run[Long, Pure](
+        Async.run[Long, Async](
           Transports.http().send(Request.get(
             s"http://127.0.0.1:${Jetty.port(server)}/big")).flatMap { r =>
-            given Fold[Chunk[Byte], Long] =
-              Fold.long[Chunk[Byte]](0L)((n, c) => n + c.length)
-            Writer.fold[Chunk[Byte], Long, Unit, Async](r.body).map(_._1)
+            Writer.foldWith[Chunk[Byte], Long, Unit, Writer % Chunk[Byte] + Async](r.body)(0L)(
+              (n, c) => n + c.length).map(_._1)
           }).runWith
       }).runWith
     assertEquals(n, big.length.toLong)
@@ -111,10 +109,10 @@ class TestJetty extends munit.FunSuite {
   // ---- the gap okay-http could not close
 
   test("a WebSocket SERVER runs the same Stage a client runs") {
-    val got = Resource.run[Seq[Frame], Pure](
+    val got = Resource.run[Seq[Frame], Resource](
       Jetty.serve(0)(PartialFunction.empty)({ case _ => echo }).map { server =>
         val sockets = Transports.sockets()
-        Async.run[Seq[Frame], Pure](
+        Async.run[Seq[Frame], Async](
           sockets.connect(s"ws://127.0.0.1:${Jetty.port(server)}/ws").flatMap { sock =>
             // the client side of the very same session type
             val say: Stage[Frame, Frame, Seq[Frame]] =
@@ -130,10 +128,10 @@ class TestJetty extends munit.FunSuite {
   }
 
   test("Jetty's own WebSocket client talks to Jetty's own server") {
-    val got = Resource.run[Seq[Frame], Pure](
+    val got = Resource.run[Seq[Frame], Resource](
       Jetty.serve(0)(PartialFunction.empty)({ case _ => echo }).flatMap { server =>
         Jetty.sockets().map { sockets =>
-          Async.run[Seq[Frame], Pure](
+          Async.run[Seq[Frame], Async](
             sockets.connect(s"ws://127.0.0.1:${Jetty.port(server)}/ws").flatMap { sock =>
               val say: Stage[Frame, Frame, Seq[Frame]] =
                 Stage.tell[Frame, Frame](Frame.Text("both ends")).flatMap(_ =>
@@ -149,11 +147,11 @@ class TestJetty extends munit.FunSuite {
   }
 
   test("everything is a Resource: after the scope the port is free") {
-    val port = Resource.run[Int, Pure](
+    val port = Resource.run[Int, Resource](
       Jetty.serve(0) { case _ => OkayServer.text(200, "up") }().map(Jetty.port)).runWith
     val failed =
       try
-        val _ = Async.run[Int, Pure](Transports.http()
+        val _ = Async.run[Int, Async](Transports.http()
           .send(Request.get(s"http://127.0.0.1:$port/")).map(_.status)).runWith
         false
       catch case _: Throwable => true

@@ -1,10 +1,9 @@
 package okay.jetty
 
 import okay.{Async}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.codec.{Json, Schema}
 import okay.http.{McpHttp, Request, Response, Transports}
 import okay.mcp.{Client, Mcp, Duplex, Server as McpServer}
@@ -46,7 +45,7 @@ class TestMcpPush extends munit.FunSuite {
 
   /** a jetty server on a free port, for the body of the test */
   def served[A](route: Request => Response ! Async)(body: String => A): A =
-    Resource.run[A, Pure](Jetty.serve(0)({ case r if true => route(r) })()
+    Resource.run[A, Resource](Jetty.serve(0)({ case r if true => route(r) })()
       .map(s => body(s"http://127.0.0.1:${Jetty.port(s)}/mcp"))).runWith
 
   test("a subscription over HTTP delivers a push on the GET stream") {
