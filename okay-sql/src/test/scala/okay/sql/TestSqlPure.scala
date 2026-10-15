@@ -2,8 +2,7 @@ package okay.sql
 
 import okay.{Async, Source}
 
-import okay.freer.{+, %}
-import okay.freer.{!, effect}
+import okay.{!, +, %, Walk, pure}
 import okay.std.{Chunk, Writer}
 import okay.codec.Schema
 
@@ -70,14 +69,14 @@ class TestSqlPure extends munit.FunSuite {
   /** a driver made of one described frame: the decode side of the
    * binding is platform-free, so it is proven here on all three */
   final class OneFrame(cols: Vector[Col], rows: Vector[Vector[SqlValue]]) extends Sql:
-    def describe(sql: String): Vector[Col] ! Async = okay.freer.pure(cols)
+    def describe(sql: String): Vector[Col] ! Async = pure(cols)
     def query(sql: String, params: Vector[SqlValue]): Source[Chunk[Vector[SqlValue]]] =
-      effect[Writer % Chunk[Vector[SqlValue]] + Async, Unit](Writer(scala.collection.immutable.ArraySeq.from(rows)))
-    def update(sql: String, params: Vector[SqlValue]): Long ! Async = okay.freer.pure(0L)
-    def batch(sql: String, rows: Chunk[Vector[SqlValue]]): Long ! Async = okay.freer.pure(0L)
-    def begin(isolation: Isolation, readOnly: Boolean): Granted ! Async = okay.freer.pure(Granted(isolation, isolation))
-    def commit(): Unit ! Async = okay.freer.pure(())
-    def rollback(): Unit ! Async = okay.freer.pure(())
+      Writer.tell[Chunk[Vector[SqlValue]]](scala.collection.immutable.ArraySeq.from(rows)).at[Writer % Chunk[Vector[SqlValue]] + Async]
+    def update(sql: String, params: Vector[SqlValue]): Long ! Async = pure(0L)
+    def batch(sql: String, rows: Chunk[Vector[SqlValue]]): Long ! Async = pure(0L)
+    def begin(isolation: Isolation, readOnly: Boolean): Granted ! Async = pure(Granted(isolation, isolation))
+    def commit(): Unit ! Async = pure(())
+    def rollback(): Unit ! Async = pure(())
     def cancel(): Unit = ()
 
   val addrT = SqlType.Row(Vector(SqlType.Text, SqlType.I32, SqlType.Bool))
@@ -91,23 +90,20 @@ class TestSqlPure extends munit.FunSuite {
 
   /** OneFrame never performs an Async operation, so its programs run
    * on JS too: the told chunks are the answer, anything else is a test bug */
-  def pureOf[A, F[+_]](p: A ! F): A =
-    import okay.freer.!.*
-    (p.resume: @unchecked) match
-      case Return(a) => a
+  def pureOf[A](p: A ! Async): A =
+    Walk.view(p) match
+      case Walk.Done(a) => a
       case other => fail(s"an effect where none was expected: $other")
 
-  /** the told chunks, walked purely: `Say` is Writer's only
-   * constructor, so the match refines the chunk — no cast, no
-   * Answers, which is what lets this run on all three platforms */
+  /** the told chunks, walked purely: each `uncons` must answer with no
+   * `Async` operation — no Answers, which is what lets this run on all
+   * three platforms */
   def decoded[A: Schema](db: Sql): Vector[Either[Bad, A]] =
-    import okay.freer.!.*
+    @scala.annotation.tailrec
     def go(rest: Source[Chunk[Either[Bad, A]]], acc: Vector[Either[Bad, A]]): Vector[Either[Bad, A]] =
-      (rest.resume: @unchecked) match
-        case Return(_) => acc
-        case Inject(Writer.Say(c)) => acc ++ c
-        case Bind(Inject(Writer.Say(c)), k) => go(k(()), acc ++ c)
-        case other => fail(s"Async where none was expected: $other")
+      pureOf(Writer.uncons[Chunk[Either[Bad, A]], Unit, Async](rest)) match
+        case Left(_) => acc
+        case Right((c, k)) => go(k, acc ++ c)
     go(Typed.rows[A](db, "q"), Vector.empty)
 
   test("Arr/Row decode into Vector/List/nested case class, recursively — the mirror of bind") {

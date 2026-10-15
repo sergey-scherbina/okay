@@ -1,9 +1,9 @@
 package okay.sql
 
-import okay.{Async, Scheduler, Source, Timer}
+import okay.{Async, Pure, Scheduler, Source, Timer}
 
-import okay.freer.{+, %}
-import okay.freer.{!, effect, pure}
+import okay.{+, %}
+import okay.{!, pure}
 import okay.std.{Chunk, Resource, Writer}
 import okay.codec.Schema
 import scala.collection.immutable.ArraySeq
@@ -349,17 +349,15 @@ object Typed:
   def rows[A](db: Sql, sql: String, params: Vector[SqlValue] = Vector.empty)
              (using s: Schema[A]): Source[Chunk[Either[Bad, A]]] =
     type W = Chunk[Either[Bad, A]]
-    type F = Writer % W + Async
-    !.widen[Vector[Col], Async, Writer % W](db.describe(sql)).flatMap { cols =>
+    db.describe(sql).flatMap[Unit, Writer % W + Async] { cols =>
       planOf(s, cols) match
         case Left(bad) =>
           // the whole statement cannot decode: one chunk of the answer
-          effect[F, Unit](Writer(ArraySeq(Left(bad)): W))
+          Writer.tell[W](ArraySeq(Left(bad))).at[Writer % W + Async]
         case Right(dec) =>
           def go(p: Source[Chunk[Vector[SqlValue]]], row: Long): Source[W] =
-            !.widen[Either[Unit, (Chunk[Vector[SqlValue]], Source[Chunk[Vector[SqlValue]]])], Async, Writer % W](
-              Writer.uncons[Chunk[Vector[SqlValue]], Unit, Async](p)).flatMap {
-              case Left(_) => okay.freer.pure(())
+            Writer.uncons[Chunk[Vector[SqlValue]], Unit, Async](p).flatMap[Unit, Writer % W + Async] {
+              case Left(_) => pure(())
               case Right((c, rest)) =>
                 var r = row
                 val decoded: W = c.map { frame =>
@@ -367,7 +365,7 @@ object Typed:
                   r += 1
                   out
                 }
-                effect[F, Unit](Writer(decoded)).flatMap(_ => go(rest, r))
+                Writer.tell[W](decoded).at[Writer % W + Async].flatMap(_ => go(rest, r))
             }
           go(db.query(sql, params), 0L)
     }
@@ -394,15 +392,14 @@ object Typed:
    * After a commit the brake is a no-op. `G` is whatever else the
    * body performs (Throws for abortable bodies; pass `Async` when
    * nothing extra). A transact program is one-shot. */
-  def transact[A, G[+_]](db: Sql, isolation: Isolation = Isolation.ReadCommitted, readOnly: Boolean = false)
-                        (body: Granted => A ! Resource + Async + G)
+  def transact[A, G[_]](db: Sql, isolation: Isolation = Isolation.ReadCommitted, readOnly: Boolean = false)
+                       (body: Granted => A ! Resource + Async + G)
   : A ! Resource + Async + G =
-    for
-      g <- !.widen[Granted, Async, Resource + G](db.begin(isolation, readOnly))
-      _ <- !.widen[Unit, Resource, Async + G](Resource.acquire(())(_ => db.cancel()))
-      a <- body(g)
-      _ <- !.widen[Unit, Async, Resource + G](db.commit())
-    yield a
+    type Es[x] = (Resource + Async + G)[x]
+    db.begin(isolation, readOnly).at[Es].flatMap[A, Es] { g =>
+      Resource.acquire(())(_ => db.cancel()).at[Es].flatMap[A, Es](_ =>
+        body(g).flatMap[A, Es](a => db.commit().at[Es].map(_ => a)))
+    }
 
   /** how many times a region may run, and the pause between runs */
   final case class Retry(attempts: Int, backoffMillis: Int => Long = _ => 0L):
@@ -435,7 +432,8 @@ object Typed:
                        retry: Retry = Retry.none, readOnly: Boolean = false)
                       (body: Granted => A ! Resource + Async)
                       (using Scheduler, Timer): Retried[A] ! Async =
-    def once: A ! Async = Resource.run[A, Async](transact[A, Async](db, isolation, readOnly)(body))
+    // `G` none: the body's effects are the region's own
+    def once: A ! Async = Resource.run(transact[A, Pure](db, isolation, readOnly)(g => body(g).at[Resource + Async + Pure])).at[Async]
     def go(n: Int): Retried[A] ! Async =
       Async.attempt(once).flatMap {
         case Right(a) => pure(Retried(a, n))
@@ -482,7 +480,7 @@ object Typed:
    * the nested-begin failure specs/jdbc.md documents as a runtime
    * refusal is unrepresentable here. Runtime behavior is EXACTLY
    * `transact` (commit on completion, the cancel brake on abort). */
-  def region[A, G[+_]](db: Db[Tx.No], isolation: Isolation = Isolation.ReadCommitted, readOnly: Boolean = false)
+  def region[A, G[_]](db: Db[Tx.No], isolation: Isolation = Isolation.ReadCommitted, readOnly: Boolean = false)
                       (body: Db[Tx.Yes] => A ! Resource + Async + G)
   : A ! Resource + Async + G =
     transact(db.db, isolation, readOnly)(_ => body(new Db[Tx.Yes](db.db)))

@@ -1,8 +1,6 @@
 package okay.sql
 
-import okay.{Effect, Tables}
-import okay.freer.*
-import okay.freer.Row.{In, at, plus}
+import okay.{!, Effect, Tables, Within, effect}
 import okay.codec.Schema
 import okay.Tables.{Table, select, join, where}
 
@@ -42,7 +40,7 @@ object Structured:
       effect(JoinOn(t, r, lf, rf, sa, sb))
 
   // ------------------------- on a program: any row that has Structured
-  extension [A, F[+_]](p: Table[A] ! F)(using In[Structured, F])
+  extension [A, F[_]](p: Table[A] ! F)(using Within[Structured, F])
     def matching(w: Query.Where[A])(using Schema[A]): Table[A] ! F =
       p.flatMap(t => t.matching(w).at[F])
     def joinOn[B, K](r: Table[B] ! F)(lf: Query.Field[A, K], rf: Query.Field[B, K])
@@ -57,14 +55,15 @@ object Structured:
       case SqlValue.Bytes(_) => throw IllegalArgumentException("joinOn: a binary field is not a join key")
       case v => v
 
-  /** the default: through the opaque primitives, so it runs on any platform */
-  def viaTables[A, G[+_]](p: A ! Structured + G): A ! Tables + G =
-    !.interpret(p):
+  /** the default: through the opaque primitives, so it runs on any platform — into the `Tables` the program has
+   * already (one place, as okay-freer's union made it) */
+  def viaTables[A, Es[_]](p: A ! Es)(using s: okay.core.Split[Es, Structured], w: Within[Tables, s.Rest]): A ! s.Rest =
+    p.translateInto[Structured, Tables]:
       [X] => (e: Structured[X]) => e match
         case Matching(t, w, s) =>
-          t.where(a => w.test(a)(using s)).plus[G].map(t => t: X)
+          t.where(a => w.test(a)(using s)).map(t => t: X)
         case JoinOn(l, r, lf, rf, sa, sb) =>
           val kl = key(sa, lf.idx)
           val kr = key(sb, rf.idx)
-          l.select(a => kl(a) -> a).plus[G].flatMap(lk => r.select(b => kr(b) -> b).plus[G].flatMap(rk =>
-            lk.join(rk).plus[G].flatMap(j => j.select(_._2).plus[G].map(t => t: X))))
+          l.select(a => kl(a) -> a).flatMap(lk => r.select(b => kr(b) -> b).flatMap(rk =>
+            lk.join(rk).flatMap(j => j.select(_._2).map(t => t: X))))

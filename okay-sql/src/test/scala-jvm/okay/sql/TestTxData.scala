@@ -1,22 +1,21 @@
 package okay.sql
 
-import okay.Async
-import okay.freer.{!, Free, pure}
-import okay.std.{Chunk}
+import okay.{!, Answers, Async, pure}
+import okay.core.{+:, Eff}
+import okay.one.Cont
+import okay.one.handler.Answering
+import okay.std.Chunk
 import okay.given
-import okay.freer.given
 import scala.collection.mutable.ArrayBuffer
 
 /**
- * specs/indexed-effects.md, stage 2: the transaction protocol as an
- * indexed DATA signature over the row `TxOp +~ Unary[Async]`, and the
- * handler that threads a connection TYPED by the index. The same
- * recording fake as TestTx's: the protocol is about order, and order
- * is what it logs. JVM: running an `Async` program takes `CanBlock`.
+ * okay-sql's transactions on okay-tx: a transaction is a bracket that holds its body, so the protocol (one begin, its
+ * commit or its rollback) is the program's shape. The recording fake logs the driver's calls: the protocol is about
+ * order, and order is what it logs. JVM: running an `Async` program takes `CanBlock`.
  */
 class TestTxData extends munit.FunSuite:
 
-  final class Recording extends Sql:
+  final class Recording(failCommitsWith: Option[String] = None) extends Sql:
     val log = ArrayBuffer.empty[String]
     def describe(sql: String): Vector[Col] ! Async = { log += s"describe $sql"; pure(Vector.empty) }
     def query(sql: String, params: Vector[SqlValue] = Vector.empty): okay.Source[Chunk[Vector[SqlValue]]] =
@@ -28,54 +27,76 @@ class TestTxData extends munit.FunSuite:
     def commit(): Unit ! Async = { log += "commit"; pure(()) }
     def rollback(): Unit ! Async = { log += "rollback"; pure(()) }
     def cancel(): Unit = ()
+    override def sqlState(t: Throwable): Option[String] = failCommitsWith.filter(_ => t.getMessage == "conflict")
 
-  import Tx.{begin, commit, update, async, interpret}
+  /** the row outside the transactions: `Async` alone */
+  type T = Async +: okay.core.Pure
+  type R = Tx.Txn[T] +: T
+  type B = Tx.Inside[T]
 
-  test("a well-bracketed program runs its steps in the order the type promised, the connection moved by the handler") {
+  /** the `Async` left at the end answered in place */
+  def run[A](e: Eff[T, A]): A =
+    Cont.handle(e)(new Answering[Async, okay.core.Pure, A, A]:
+      def ret(a: A) = Cont.pure(a)
+      def value[X](op: Async[X]): X = summon[Answers[Async]].handle(op)).run
+
+  test("a bracket runs begin, its statements, commit — in that order; the granted isolation read inside") {
     val db = Recording()
-    val n = interpret(
-      begin().flatMap { g =>
-        update[Tx.Open]("insert into t values (1)").flatMap(_ => commit()).map(_ => g.granted)
-      })(db).runWith
-    assertEquals(n, Isolation.ReadCommitted)
+    val p: Eff[R, Isolation] = Tx.atomic[T, Isolation, R](
+      Tx.update[B]("insert into t values (1)").flatMap(_ => Tx.granted[B]).map(_.granted))
+    assertEquals(run(Tx.interpret[Isolation, T](db)(p)), Isolation.ReadCommitted)
     assertEquals(db.log.toList, List("begin ReadCommitted", "update insert into t values (1)", "commit"))
   }
 
-  test("an Async program runs INSIDE the body, on the diagonal, forwarded by the handler") {
+  test("brackets inside brackets: one begin, one commit") {
+    val db = Recording()
+    def inner: Eff[B, Long] = Tx.atomic[T, Long, B](Tx.update[B]("inner"))
+    val p: Eff[R, Long] = Tx.atomic[T, Long, R](Tx.update[B]("outer").flatMap(_ => inner))
+    assertEquals(run(Tx.interpret[Long, T](db)(p)), 1L)
+    assertEquals(db.log.toList, List("begin ReadCommitted", "update outer", "update inner", "commit"))
+  }
+
+  test("an Async program runs INSIDE the body") {
     val db = Recording()
     val seen = ArrayBuffer.empty[String]
-    val body: Unit ! Async = Free.delay(() => { seen += "inside"; pure(()) })
-    val r = interpret(
-      begin().flatMap(_ => async[Tx.Open, Unit](body)).flatMap(_ => update[Tx.Open]("x")).flatMap(_ => commit()))(db).runWith
-    assertEquals(r, ())
+    val body: Unit ! Async = okay.defer { seen += "inside"; pure(()) }
+    val p: Eff[R, Long] = Tx.atomic[T, Long, R](Tx.async[Unit, B](body).flatMap(_ => Tx.update[B]("x")))
+    assertEquals(run(Tx.interpret[Long, T](db)(p)), 1L)
     assertEquals(seen.toList, List("inside"))
     assertEquals(db.log.toList, List("begin ReadCommitted", "update x", "commit"))
   }
 
-  test("a statement outside any transaction is a closed program too") {
+  test("a statement outside any bracket does not type: the connection is read inside one only") {
+    assert(compileErrors("""okay.sql.Tx.update[okay.sql.Tx.Txn[okay.core.+:[okay.Async, okay.core.Pure]] +:
+      okay.core.+:[okay.Async, okay.core.Pure]]("select 1")""").nonEmpty, "a statement outside a bracket compiled")
+  }
+
+  test("a failure inside the body rolls back, and goes on as the failure (the indexed tree's caveat is gone)") {
     val db = Recording()
-    assertEquals(interpret(update[Tx.Idle]("select 1"))(db).runWith, 1L)
-    assertEquals(db.log.toList, List("update select 1"))
+    val p: Eff[R, Long] = Tx.atomic[T, Long, R](
+      Tx.update[B]("a").flatMap(_ => Tx.async[Long, B](okay.defer(throw RuntimeException("boom")))))
+    val e = intercept[RuntimeException](run(Tx.interpret[Long, T](db)(p)))
+    assertEquals(e.getMessage, "boom")
+    assertEquals(db.log.toList, List("begin ReadCommitted", "update a", "rollback"))
   }
 
-  test("the run-time refusals are compile errors on the data road: nested begin, commit with no begin, a program left open") {
-    assert(compileErrors("okay.sql.Tx.begin().flatMap(_ => okay.sql.Tx.begin())").nonEmpty, "a nested begin compiled")
-    assert(compileErrors("okay.sql.Tx.interpret(okay.sql.Tx.commit())(new okay.sql.TestTxData().Recording())").nonEmpty,
-      "a commit with no begin compiled")
-    assert(compileErrors("""okay.sql.Tx.interpret(
-      okay.sql.Tx.begin().flatMap(_ => okay.sql.Tx.update[okay.sql.Tx.Open]("insert")))(new okay.sql.TestTxData().Recording())""").nonEmpty,
-      "a program that ends inside a transaction compiled")
-  }
-
-  test("the connection's type is the index: closing an idle connection, or opening an open one, does not type inside the handler") {
-    assert(compileErrors("(c: okay.sql.Tx.Conn[okay.sql.Tx.Idle]) => c.closed").nonEmpty, "closed on Conn[Idle] compiled")
-    assert(compileErrors("(c: okay.sql.Tx.Conn[okay.sql.Tx.Open]) => c.opened").nonEmpty, "opened on Conn[Open] compiled")
-  }
-
-  test("the caveat: a failure inside the body drops the continuation and the commit with it — the type is not a run-time guarantee") {
+  test("a rollback is a leaf: nothing after it runs; outside, Rolled") {
     val db = Recording()
-    val boom: Unit ! Async = Free.delay(() => throw RuntimeException("boom"))
-    val p = begin().flatMap(_ => async[Tx.Open, Unit](boom)).flatMap(_ => commit())
-    val _ = intercept[RuntimeException](interpret(p)(db).runWith)
-    assertEquals(db.log.toList, List("begin ReadCommitted"), "the commit ran after a failure")
+    val p: Eff[R, Long] = Tx.atomic[T, Long, R](
+      Tx.update[B]("a").flatMap(_ => Tx.rollback[T, B](RuntimeException("no funds"))).flatMap(_ => Tx.update[B]("b")))
+    val e = intercept[okay.tx.Tx.Rolled](run(Tx.interpret[Long, T](db)(p)))
+    assertEquals(e.reason.getMessage, "no funds")
+    assertEquals(db.log.toList, List("begin ReadCommitted", "update a", "rollback"))
+  }
+
+  test("a serialization failure the driver classifies runs the bracket again, within `retries`") {
+    val db = Recording(failCommitsWith = Some("40001"))
+    var calls = 0
+    val p: Eff[R, Long] = Tx.atomic[T, Long, R](Tx.update[B]("x").flatMap { n =>
+      calls += 1
+      if calls < 2 then Tx.async[Long, B](okay.defer(throw RuntimeException("conflict"))) else Cont.pure(n)
+    })
+    assertEquals(run(Tx.interpret[Long, T](db, Isolation.Serializable, retries = 1)(p)), 1L)
+    assertEquals(db.log.toList,
+      List("begin Serializable", "update x", "rollback", "begin Serializable", "update x", "commit"))
   }

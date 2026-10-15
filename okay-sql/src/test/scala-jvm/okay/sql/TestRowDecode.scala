@@ -2,8 +2,7 @@ package okay.sql
 
 import okay.{Async, Source}
 
-import okay.freer.{+, %}
-import okay.freer.{!, effect, pure}
+import okay.{!, +, %, pure}
 import okay.std.{Chunk, Stream, Writer}
 import okay.given
 import okay.std.given
@@ -45,7 +44,7 @@ class TestRowDecode extends munit.FunSuite {
     : Source[Chunk[Vector[SqlValue]]] =
       type F = Writer % Chunk[Vector[SqlValue]] + Async
       if frames.isEmpty then pure(())
-      else effect[F, Unit](Writer(scala.collection.immutable.ArraySeq.from(frames)))
+      else Writer.tell[Chunk[Vector[SqlValue]]](scala.collection.immutable.ArraySeq.from(frames)).at[F]
     def update(sql: String, params: Vector[SqlValue] = Vector.empty): Long ! Async = pure(0L)
     def batch(sql: String, rows: Chunk[Vector[SqlValue]]): Long ! Async = pure(0L)
     def begin(isolation: Isolation, readOnly: Boolean): Granted ! Async = pure(Granted(isolation, isolation))

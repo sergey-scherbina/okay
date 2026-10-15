@@ -2,8 +2,8 @@ package okay.sql
 
 import okay.{Async, Scheduler, Timer}
 
-import okay.freer.{+}
-import okay.freer.{!, pure}
+import okay.+
+import okay.{!, pure}
 import okay.std.{Resource, TRef}
 import java.util.concurrent.atomic.AtomicBoolean
 import scala.annotation.tailrec
@@ -46,7 +46,7 @@ final class Pool[C <: Sql] private (open: () => C ! Async, dispose: C => Unit,
    * value or failure — through the brake */
   def borrow[A](use: C => A ! Resource + Async): A ! Async =
     acquire.flatMap { c =>
-      Async.attempt(Resource.run[A, Async](use(c))).flatMap { r =>
+      Async.attempt(Resource.run(use(c))).flatMap { r =>
         release(c)
         r.fold(t => throw t, pure)
       }

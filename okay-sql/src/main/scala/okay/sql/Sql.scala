@@ -1,7 +1,7 @@
 package okay.sql
 
 import okay.{Async, Source}
-import okay.freer.{!}
+import okay.!
 import okay.std.{Chunk}
 /**
  * The relational driver seam (specs/sql.md): a driver is a way to

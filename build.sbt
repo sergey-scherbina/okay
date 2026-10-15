@@ -2289,7 +2289,8 @@ lazy val okaySemanticSql = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 lazy val okaySql = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-sql"))
-  .dependsOn(okay, okayCodec)
+  // okayTx: `Tx`, transactions as a tree over the driver (okay-tx's brackets)
+  .dependsOn(okay, okayCodec, okayTx)
   .settings(
     name := "okay-sql",
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,

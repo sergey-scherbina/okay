@@ -1,10 +1,8 @@
 package okay.sql
 
-
-import okay.{Bulk, Chunks, Tables}
-import okay.freer.*
+import okay.{!, +, Bulk, Chunks, Tables}
 import okay.codec.Schema
-import okay.freer.Row.plus
+import okay.Row.plus
 import okay.Chunks.elements
 import okay.Tables.{collect, select}
 import okay.sql.Structured.{matching, joinOn}
@@ -59,7 +57,7 @@ class TestStructured extends munit.FunSuite {
     val got = run(
       Tables.of(stops).plus[Structured].matching(seq < 10)
         .joinOn(Tables.of(trips).plus[Structured].matching(tram === true))(stopTrip, tripId)
-        .select((s, t) => (t.route, s.time)).plus[Structured]
+        .select((s, t) => (t.route, s.time)).at[R]
         .collect.map(_.elements.toVector.sorted))
     val expected = (for s <- stops if s.seq < 10; t <- trips if t.tram && s.trip == t.id yield (t.route, s.time)).sorted
     assertEquals(got, expected)

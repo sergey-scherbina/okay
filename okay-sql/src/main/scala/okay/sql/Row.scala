@@ -1,7 +1,5 @@
 package okay.sql
 
-import okay.freer.{HMap}
-
 import okay.std.{Same}
 import okay.codec.Schema
 

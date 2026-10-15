@@ -1,150 +1,74 @@
 package okay.sql
 
 import okay.Async
-import okay.freer.{!, Freer, Indexed, TypeableI, Unary, +~, splitI}
-import okay.std.{Chunk}
-import scala.annotation.tailrec
+import okay.core.{+:, Eff, In, Paths, Row as Rows}
+import okay.one.Cont
+import okay.one.std.{%, Reader}
+import okay.std.Chunk
+import okay.tx.Txs
 
 /**
- * THE TRANSACTION PROTOCOL IN THE TYPES, AS DATA (specs/indexed-effects.md,
- * stages 2 and 8). `Sql.begin`/`commit`/`rollback` are three programs
- * whose ORDER is the protocol; the order used to be checked at run time
- * (`PgSql.begin` inside a transaction throws, a `commit` with no `begin`
- * is a server error, a program that ends inside a transaction leaves the
- * connection for the next caller). Here the transitions are on the
- * signature `TxOp`, the tree carries them along every `flatMap`, and the
- * handler `interpret` holds the connection typed by the index:
+ * TRANSACTIONS AS A TREE, over okay-sql's driver (okay-tx; specs/freer-on-core.md). `Sql.begin`/`commit`/`rollback`
+ * are three programs whose ORDER is the protocol; okay-sql used to check the order in the types, the index of an
+ * indexed tree (`Idle -> Open -> Idle`). On the kernel the protocol is the program's SHAPE instead: a transaction is
+ * a bracket that holds its body (`atomic`), so a begin without its commit, a commit without its begin, a nested
+ * begin cannot be written at all — the closing bracket is the return from the node. A `rollback` is a leaf.
  *
- *     Tx.interpret(
- *       Tx.begin().flatMap { g =>
- *         Tx.update[Tx.Open]("insert into t values (1)")   // Open -> Open
- *           .flatMap(_ => Tx.commit())                     // Open -> Idle
- *           .map(_ => g.granted)
- *       })(db)
+ *     Tx.interpret(db)(
+ *       Tx.atomic[T, Long, Tx.Txn[T] +: T](
+ *         Tx.update[Tx.Inside[T]]("insert into t values (1)")))
  *
- * `begin().flatMap(_ => begin())` does not compile, `interpret(commit())`
- * does not, a program that ends inside a transaction does not. The
- * `Prog` facade that carried this as a phantom claim (`Prog.transition`,
- * freer-base stage 2) is gone: the data road is THE road.
+ * okay-tx's handler does the rest: one `begin` and one `commit` however deep the brackets, a `rollback`, a failure
+ * anywhere inside, an abort or a cancel crossing all roll back (the caveat of the indexed tree — a failure dropped
+ * the commit and left the transaction open — is gone), and a serialization failure or a deadlock (`Sql.retryable`)
+ * runs the bracket again when `retries` allows. Inside a bracket the connection is read (`Reader % Conn`), so a
+ * statement types only there; any `Async` program runs inside too (`async`).
+ *
+ * Kernel words (`Eff[R, A]`, rows `E +: T`), as okay-tx's are: the transaction effect names the row outside, `T`,
+ * which a row-polymorphic `A ! Es` cannot. `T` holds `Async`, where the driver's programs run.
  */
 object Tx:
-  /** outside a transaction */
-  sealed trait Idle
-  /** inside one */
-  sealed trait Open
+  /** THE CONNECTION inside a bracket: the driver, and the isolation the server granted at `begin` */
+  final class Conn private[sql] (val db: Sql, val granted: Granted)
 
-  /**
-   * THE PROTOCOL AS DATA (specs/indexed-effects.md, stage 2): the
-   * transitions said ONCE in a signature the compiler checks along
-   * every `Bind` —
-   * `Begin` moves `Idle` to `Open`, `Commit`/`Rollback` move back, a
-   * statement moves nothing. The tree carries the index, so nothing
-   * is claimed at a call site and nothing is erased.
-   *
-   * WHAT THE DATA ROAD ADDS over the facade is in `interpret`: the
-   * handler holds the CONNECTION typed by the index, `Conn[Idle]` or
-   * `Conn[Open]`, and moves it only in the arm that runs the driver's
-   * `begin`/`commit`/`rollback` — a `commit` from a `Conn[Idle]` does
-   * not type even inside the handler (TestTxData pins it). The facade
-   * keeps its spelling; this is the second door beside it.
-   *
-   * The body is not the protocol alone: the row is `TxOp +~
-   * Unary[Async]`, so a transaction body may run any `Async` program
-   * (a wait, another service, a log) through `Data.async`, on the
-   * diagonal, and `interpret` forwards it into the program it builds.
-   * The reading of the two indexes is McBride's — `R` the state before
-   * the operation, `S` after — on the base made invariant for it.
-   */
-  enum TxOp[S, R, +X]:       // the tree's order: `R` the state before, `S` after
-    case Begin(isolation: Isolation, readOnly: Boolean) extends TxOp[Open, Idle, Granted]
-    case Commit() extends TxOp[Idle, Open, Unit]
-    case Rollback() extends TxOp[Idle, Open, Unit]
-    case Update[S](sql: String, params: Vector[SqlValue]) extends TxOp[S, S, Long]
-    case Batch[S](sql: String, rows: Chunk[Vector[SqlValue]]) extends TxOp[S, S, Long]
-    case Describe[S](sql: String) extends TxOp[S, S, Vector[Col]]
+  /** the transaction effect of okay-sql's driver, the row outside `T` */
+  type Txn[T <: Rows] = Txs[Conn, T]
+  /** the row inside a bracket: brackets again, the connection, the row outside */
+  type Inside[T <: Rows] = Txn[T] +: Reader % Conn +: T
 
-  given TypeableI[TxOp] = TypeableI.derived
+  /** THE OWNER of the brackets: the driver's `begin`, `commit`, `rollback`, run where `Async` is in `T`; a
+   * serialization failure or a deadlock (`Sql.retryable` of the driver's `sqlState`) runs the bracket again, up to
+   * `retries` more times */
+  final class Transactor[T <: Rows](db: Sql, isolation: Isolation = Isolation.ReadCommitted, readOnly: Boolean = false,
+      retries: Int = 0)(using a: In[Async, T]) extends okay.tx.Tx.Transactor[Conn, T]:
+    def begin: Eff[T, Conn] = db.begin(isolation, readOnly).on(Paths.One(a)).map(g => Conn(db, g))
+    def commit(c: Conn): Eff[T, Unit] = c.db.commit().on(Paths.One(a))
+    def rollback(c: Conn): Eff[T, Unit] = c.db.rollback().on(Paths.One(a))
+    override def retry(e: Throwable, attempt: Int): Boolean =
+      attempt <= retries && db.sqlState(e).exists(Sql.retryable)
 
-  /** the transaction row: the protocol, and any `Async` beside it on the diagonal */
-  type Row = TxOp +~ Unary[Async]
+  /** a bracket: `body` atomic — in the transaction open, or in one opened for it */
+  def atomic[T <: Rows, A, R <: Rows](body: Eff[Inside[T], A])(using In[Txn[T], R]): Eff[R, A] =
+    okay.tx.Tx.atomic[Conn, T, A, R](body)
+  /** the transaction rolled back for `reason`: a leaf; outside its bracket, `okay.tx.Tx.Rolled(reason)` */
+  def rollback[T <: Rows, R <: Rows](reason: Throwable)(using In[Txn[T], R]): Eff[R, Nothing] =
+    okay.tx.Tx.rollback[Conn, T, R](reason)
 
-  /** a transaction program on the data road, READ LEFT TO RIGHT: `A`
-   * computed, the connection's state moved from `From` to `To`. The
-   * tree spells the pair the other way round (`Freer[G, after, before,
-   * A]`, Free.scala's header), and this alias is where the two
-   * spellings meet — `Data[Granted, Idle, Open]` is `begin`. */
-  type Data[A, From, To] = Freer[Row, To, From, A]
+  /** the connection of the bracket */
+  def conn[R <: Rows](using In[Reader % Conn, R]): Eff[R, Conn] = Reader.ask[Conn, R]
+  /** the isolation the server granted the bracket */
+  def granted[R <: Rows](using In[Reader % Conn, R]): Eff[R, Granted] = conn[R].map(_.granted)
+  /** a statement on the bracket's connection: the affected-row count */
+  def update[R <: Rows](sql: String, params: Vector[SqlValue] = Vector.empty)(using In[Reader % Conn, R],
+      In[Async, R]): Eff[R, Long] = conn[R].flatMap(c => async[Long, R](c.db.update(sql, params)))
+  def batch[R <: Rows](sql: String, rows: Chunk[Vector[SqlValue]])(using In[Reader % Conn, R],
+      In[Async, R]): Eff[R, Long] = conn[R].flatMap(c => async[Long, R](c.db.batch(sql, rows)))
+  def describe[R <: Rows](sql: String)(using In[Reader % Conn, R], In[Async, R]): Eff[R, Vector[Col]] =
+    conn[R].flatMap(c => async[Vector[Col], R](c.db.describe(sql)))
+  /** any `Async` program where `Async` is in the row: a transaction body is not the protocol alone */
+  def async[A, R <: Rows](p: okay.![A, Async])(using a: In[Async, R]): Eff[R, A] = p.on(Paths.One(a))
 
-  /**
-   * THE CONNECTION, TYPED BY THE INDEX. A phantom on the handle, as
-   * `Typed.region`'s `Db[Tx.Yes]` is — but moved only by the two arms
-   * of `interpret` that run the driver's own transition, so the type
-   * of the value in the handler's hand is the state the program's index
-   * says the connection is in.
-   */
-  final class Conn[S] private[sql] (val db: Sql)
-  object Conn:
-    extension (c: Conn[Idle]) private[sql] def opened: Conn[Open] = new Conn[Open](c.db)
-    extension (c: Conn[Open]) private[sql] def closed: Conn[Idle] = new Conn[Idle](c.db)
-
-  import Conn.{opened, closed}
-
-  /** BEGIN — `Idle -> Open`, with the isolation the server granted */
-  def begin(isolation: Isolation = Isolation.ReadCommitted, readOnly: Boolean = false): Data[Granted, Idle, Open] =
-    Indexed.effect[Row, Open, Idle, Granted](TxOp.Begin(isolation, readOnly))
-  /** COMMIT — `Open -> Idle` */
-  def commit(): Data[Unit, Open, Idle] = Indexed.effect[Row, Idle, Open, Unit](TxOp.Commit())
-  /** ROLLBACK — `Open -> Idle` */
-  def rollback(): Data[Unit, Open, Idle] = Indexed.effect[Row, Idle, Open, Unit](TxOp.Rollback())
-  /** a statement runs in either state and moves nothing: `TxOp[S, S, X]`, on the diagonal by its constructor */
-  def update[S](sql: String, params: Vector[SqlValue] = Vector.empty): Data[Long, S, S] =
-    Indexed.unary[Row, S, Long](TxOp.Update(sql, params))
-  def batch[S](sql: String, rows: Chunk[Vector[SqlValue]]): Data[Long, S, S] =
-    Indexed.unary[Row, S, Long](TxOp.Batch(sql, rows))
-  def describe[S](sql: String): Data[Vector[Col], S, S] =
-    Indexed.unary[Row, S, Vector[Col]](TxOp.Describe(sql))
-  /** any `Async` program inside the body, in either state: the
-   * transaction is not the whole of what a body does */
-  def async[S, A](p: A ! Async): Data[A, S, S] =
-    Indexed.lift[Row, Async, S, A](p)([X] => (e: Async[X]) => e)
-
-  /**
-   * Run a CLOSED program against a driver: the handler threads
-   * `Conn[S]` and every operation is the driver's own program,
-   * unchanged, flatMapped into the answer — `State.handle`'s shape,
-   * the output an `Async` program. The type says `Idle -> Idle`; an
-   * abort inside the body still drops the continuation and the
-   * `commit` with it (TestTxData asserts the caveat), so a body that
-   * may fail is bracketed by its caller as the facade's is.
-   */
-  def interpret[A](p: Data[A, Idle, Idle])(db: Sql): A ! Async = loop(new Conn[Idle](db))(p)
-
-  /** the loop re-entered from under a `flatMap`: a call there is not
-   * a tail call, and `@tailrec` must not see it as one (State.handle's
-   * `_loop`) */
-  private def again[T, R, A](c: Conn[R])(p: Freer[Row, T, R, A]): A ! Async = loop(c)(p)
-
-  /** in the tree's order: `R` the connection's state now, `T` after
-   * the program, `c: Conn[R]` the value of that state */
-  @tailrec private def loop[T, R, A](c: Conn[R])(p: Freer[Row, T, R, A]): A ! Async = (p.resume: @unchecked) match
-    case Freer.Return(a) => okay.freer.pure(a)
-    case Freer.Inject(o) => loop(c)(Freer.Inject[Row, T, R, A](o).flatMap(v => Freer.Return(v)))
-    // the bind's middle index `t` and value `x` named, for the equality an `Async` operation needs
-    case b: Freer.Bind[Row, T, t, R, x, A] => (b.a: @unchecked) match
-      case Freer.Inject(o) => splitI[TxOp, Unary[Async]](o) {
-          // the GADT binds the connection's state to the operation's:
-          // `Begin` is `TxOp[Open, Idle, Granted]`, so here `c: Conn[Idle]`
-          // and `opened` exists; a `Commit` arm from `Conn[Idle]` would not
-          // type (TestTxData pins it). A statement is `TxOp[S, S, X]`: the
-          // same state on both sides, by its constructor.
-          case TxOp.Begin(iso, ro) => c.db.begin(iso, ro).flatMap(g => again(c.opened)(b.f(g)))
-          case TxOp.Commit() => c.db.commit().flatMap(u => again(c.closed)(b.f(u)))
-          case TxOp.Rollback() => c.db.rollback().flatMap(u => again(c.closed)(b.f(u)))
-          case TxOp.Update(sql, params) => c.db.update(sql, params).flatMap(x => again(c)(b.f(x)))
-          case TxOp.Batch(sql, rows) => c.db.batch(sql, rows).flatMap(x => again(c)(b.f(x)))
-          case TxOp.Describe(sql) => c.db.describe(sql).flatMap(x => again(c)(b.f(x)))
-        } { a =>
-          // an `Async` operation: on the diagonal by its door (`Indexed.onDiagonal`), the connection unmoved
-          val k = Indexed.onDiagonal(a).substituteCo[[i] =>> x => Freer[Row, T, i, A]](b.f)
-          okay.freer.Free.inject(Indexed.atDiagonal(a)).flatMap(y => again(c)(k(y)))
-        }
+  /** THE BRACKETS RUN against the driver: `p`'s transactions begun, committed and rolled back by `Transactor` */
+  def interpret[A, T <: Rows](db: Sql, isolation: Isolation = Isolation.ReadCommitted, readOnly: Boolean = false,
+      retries: Int = 0)(p: Eff[Txn[T] +: T, A])(using In[Async, T]): Eff[T, A] =
+    Cont.handle(p)(okay.tx.Tx.closed[Conn, T, A](Transactor[T](db, isolation, readOnly, retries)))
