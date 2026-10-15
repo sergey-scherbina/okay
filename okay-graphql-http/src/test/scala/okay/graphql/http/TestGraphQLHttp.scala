@@ -5,7 +5,6 @@ import okay.codec.Json
 import okay.graphql.*
 import okay.http.{Body, Http, Method, Request}
 import okay.one.Cont.pure
-import okay.one.row.*
 import scala.concurrent.Future
 
 class TestGraphQLHttp extends okay.testkit.Munit.Diagnosed:

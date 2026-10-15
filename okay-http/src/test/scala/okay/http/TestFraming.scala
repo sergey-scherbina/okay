@@ -4,7 +4,6 @@ package okay.http
 import okay.{Stage, through}
 import okay.*
 import okay.std.*
-import okay.std.given
 import okay.codec.{Json, Schema}
 import java.nio.charset.StandardCharsets.UTF_8
 

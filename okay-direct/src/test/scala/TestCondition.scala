@@ -1,6 +1,6 @@
 package okay
 
-
+import scala.language.implicitConversions // `within[A, Pure]`: an `A ! Op` body and answer fit `Op + Pure` by the root's `widen`
 import Condition.*
 import Condition.Decision.*
 

@@ -1,7 +1,7 @@
 package okay
 
 import okay.core.Eff
-import okay.Effects.machine.{effect, handle, value, run as runAt}
+import okay.Effects.machine.{effect, handle}
 
 /** specs/freer-min.md, stage 47: the interface over rows, the one monad its instance, `A ! R` its program */
 class TestEffectsRows extends munit.FunSuite:
@@ -30,7 +30,7 @@ class TestEffectsRows extends munit.FunSuite:
       case State.Put(v) => s = v
 
   /** a program written once over the interface: its row declared, each operation by its path */
-  def prog[M[_ <: Row, _]](using E: Effects[M]): M[Ask +: Say +: okay.core.Pure, Int] =
+  def prog[F[_ <: Row, _]](using E: Effects[F]): F[Ask +: Say +: okay.core.Pure, Int] =
     E.perform[Ask, Ask +: Say +: okay.core.Pure, Int](Ask.Number).flatMap(n =>
       E.perform[Say, Ask +: Say +: okay.core.Pure, Unit](Say.Line(n.toString)).map(_ => n + 1))
 
@@ -52,8 +52,8 @@ class TestEffectsRows extends munit.FunSuite:
     assertEquals(Effects.machine.run(handle(cell[Int, (List[String], Int)](41))(handle(writer[Int])(counting))), (42, (List("41"), 42)))
 
   test("a row named, A +: okay.core.Pure; a tail call costs no frame"):
-    def loop[M[_ <: Row, _]](n: Int, acc: Int)(using E: Effects[M]): M[Ask +: okay.core.Pure, Int] =
+    def loop[F[_ <: Row, _]](n: Int, acc: Int)(using E: Effects[F]): F[Ask +: okay.core.Pure, Int] =
       if n == 0 then E.pure(acc)
-      else E.perform[Ask, Ask +: okay.core.Pure, Int](Ask.Number).flatMap(x => E.tailcall(loop[M](n - 1, acc + x)))
+      else E.perform[Ask, Ask +: okay.core.Pure, Int](Ask.Number).flatMap(x => E.tailcall(loop[F](n - 1, acc + x)))
     val E = Effects[Eff]
     assertEquals(E.run(E.handleAt(reader[Int](1))(loop[Eff](100000, 0))), 100000)

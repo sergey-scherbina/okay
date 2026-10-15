@@ -3,7 +3,6 @@ package okay.mcp
 import okay.{through}
 import okay.*
 import okay.std.*
-import okay.std.given
 import okay.codec.Json
 
 /** The wire: JSON-RPC as data, and decoding that cannot throw. */

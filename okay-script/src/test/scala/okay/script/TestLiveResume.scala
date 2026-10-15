@@ -3,7 +3,6 @@ package okay.script
 import okay.{through}
 import okay.*
 import okay.std.*
-import okay.std.given
 import okay.http.{Frame, Request}
 import okay.ui.{Event, Patch, Ui, Protocol}
 

@@ -1,14 +1,12 @@
 package okay
 
 import okay.core.Eff
-import okay.one.Cont
 import okay.one.step.Step as OStep
 import okay.one.step.Step.step
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
 import scala.concurrent.{Future, Promise}
 import scala.util.control.NonFatal
-import okay.Effects.machine.{effect, handle, value, run as runAt}
-import okay.core.{pure, defer}
+import okay.Effects.machine.{effect, handle, value}
 
 /**
  * ASYNC ON THE ONE MONAD (cont-first-module; okay-core's since 2026-10-14): the same two operations, `Async.Run` and
@@ -187,9 +185,9 @@ object AsyncCont:
       case OStep.Cancelled() =>
         releaseScopes(); promise.tryFailure(cancelled): Unit; null
       case y: OStep.Yield[R, A, e, x] => y.in match
-        case th: okay.one.row.In.There[f, g, t] => okay.one.row.In.absurd(th.in)
-        case at: okay.one.row.In.At[f, r] => okay.one.row.In.unhandled(at)
-        case _: okay.one.row.In.Here[f, t] =>
+        case th: okay.one.row.In.There[f, ?, ?] => okay.one.row.In.absurd(th.in)
+        case at: okay.one.row.In.At[f, ?] => okay.one.row.In.unhandled(at)
+        case _: okay.one.row.In.Here[f, ?] =>
           val op: Async[x] = y.op
           op match
             case Async.Run(f) =>

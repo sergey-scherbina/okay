@@ -141,8 +141,7 @@ class TestTelegram extends munit.FunSuite {
           case Right((l, rest)) => down.send(l).map(_ => ()).flatMap(_ => drain(rest))
         }
       drain(through[String, String, Async, Unit, S](Writer.of(up))(
-        !.widen[S, okay.Take % String + Writer % String, Async](
-          Wire.serveClosing(S())(view)((s, e) => (update(s, e), e == Event.Pressed("quit"))))))
+        Wire.serveClosing(S())(view)((s, e) => (update(s, e), e == Event.Pressed("quit"))).at[okay.Take % String + (Writer % String + Async)]))
     }
 
     // …and the chat: every message the host draws, in order

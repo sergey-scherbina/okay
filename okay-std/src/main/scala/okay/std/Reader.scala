@@ -1,9 +1,9 @@
 package okay.std
 
-import okay.{!, +, %, Effect, Handler, effect, pure}
+import okay.{!, %, Effect, Handler, effect}
 import okay.freer.Replayable
 import okay.core.Split
-import okay.one.handler.{Answering, Deep, Handler as OneHandler}
+import okay.one.handler.{Answering, Handler as OneHandler}
 
 /**
  * The Reader effect: ask for an environment of type R. The handler answers every Ask with the same value, in place —

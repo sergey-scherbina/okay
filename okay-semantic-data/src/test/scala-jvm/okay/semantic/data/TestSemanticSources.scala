@@ -1,7 +1,7 @@
 package okay.semantic.data
 
 
-import okay.{!, %, +, Source, Async, effect}
+import okay.{%, +, Source, Async, effect}
 import okay.freer.Aggregator
 import okay.std.*
 import okay.given
@@ -14,7 +14,7 @@ class TestSemanticSources extends okay.testkit.Munit.Diagnosed:
   import SemanticSamples.*
   test("Source and chunked asynchronous Source agree without collecting input rows") {
     var pulled = 0
-    val rows: Source[Event] = (effect[Async, Unit](Async.Run(() => { pulled += 1 })): Unit ! Writer % Event + Async).flatMap(_ => Source.of(events.toList))
+    val rows: Source[Event] = effect[Async, Unit](Async.Run(() => { pulled += 1 })).at[Writer % Event + Async].flatMap(_ => Source.of(events.toList))
     note(plan.explain)
     assertEquals(Data.source(plan, rows).runWith, plan.run(events))
     assertEquals(pulled, 1)
@@ -23,7 +23,7 @@ class TestSemanticSources extends okay.testkit.Munit.Diagnosed:
     assertEquals(Data.source(plan, Source.of(List.empty[Event])).runWith, plan.run(Vector.empty))
   }
   test("source failure propagates and does not fabricate a partial result") {
-    val rows: Source[Event] = Source(events.head).flatMap(_ => (effect[Async, Unit](Async.Run(() => throw IllegalStateException("source failed"))): Unit ! Writer % Event + Async))
+    val rows: Source[Event] = Source(events.head).flatMap(_ => effect[Async, Unit](Async.Run(() => throw IllegalStateException("source failed"))).at[Writer % Event + Async])
     note("The semantic interpreter retains Source's failure/cancellation contract")
     val failure = intercept[IllegalStateException](Data.source(plan, rows).runWith)
     assertEquals(failure.getMessage, "source failed")

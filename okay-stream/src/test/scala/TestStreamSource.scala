@@ -83,7 +83,7 @@ class TestStreamSource extends munit.FunSuite {
     // ends, so nothing can trigger an emission
     def trickle: Source[Int] =
       Source.of(List(1, 2, 3)).flatMap(_ =>
-        (Async.sleep(60000)).at[Async + Writer % Int])
+        (Async.sleep(60000)).at[Writer % Int + Async])
     val merged = trickle.merge(trickle, chunked = true)
     val f = java.util.concurrent.CompletableFuture.supplyAsync(() =>
       merged.toLazyList.take(3).toList)
@@ -96,7 +96,7 @@ class TestStreamSource extends munit.FunSuite {
   test("merge(chunked, flushAfter) delivers a partial chunk from a source that never ends") {
     def trickle: Source[Int] =
       Source.of(List(1, 2, 3)).flatMap(_ =>
-        (Async.sleep(60000)).at[Async + Writer % Int])
+        (Async.sleep(60000)).at[Writer % Int + Async])
     val merged = trickle.merge(trickle, chunked = true, flushAfter = Some(50))
     val f = java.util.concurrent.CompletableFuture.supplyAsync(() =>
       merged.toLazyList.take(6).toList)

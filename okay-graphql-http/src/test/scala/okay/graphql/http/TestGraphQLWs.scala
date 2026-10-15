@@ -3,7 +3,6 @@ package okay.graphql.http
 import okay.{Stage, through}
 import okay.*
 import okay.std.*
-import okay.std.given
 import okay.graphql.*
 import okay.http.{Frame, Request}
 

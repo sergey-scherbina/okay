@@ -3,7 +3,6 @@ package okay.ui
 import okay.{through}
 import okay.*
 import okay.std.*
-import okay.std.given
 /**
  * Stage 0 of specs/frontend.md: two vocabulary levels in one tree.
  * The laws that make them one — a semantic node's keys equal its

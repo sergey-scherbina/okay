@@ -4,7 +4,6 @@ package okay.ui
 import okay.{Source, through, Async, Take}
 import okay.*
 import okay.std.*
-import okay.std.given
 import okay.codec.{Json, Schema}
 import okay.persist.{Ack, Record, Topic}
 

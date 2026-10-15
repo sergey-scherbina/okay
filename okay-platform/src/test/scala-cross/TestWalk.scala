@@ -38,7 +38,7 @@ class TestWalk extends munit.FunSuite:
     assertEquals(Reader.run(7)(told(p)).run, List(7))
 
   test("the rest run where it was not walked: its operations re-placed"):
-    val p: Int ! W + R = Writer.tell(1).flatMap(_ => Reader.ask[Int].flatMap(i => Writer.tell(i).map(_ => i)))
+    val p: Int ! W + R = Writer.tell(1).flatMap(_ => Reader.ask[Int].flatMap(i => Writer.tell(i).map(_ => i))).at[W + R]
     val first = Reader.run(5)(Walk.next[W, Int, W + R](p)).run
     first match
       case o: Walk.Op[W, x, Int, W + R] =>

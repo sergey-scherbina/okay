@@ -80,7 +80,7 @@ object State {
     def initial: S = s0
     def ret(s: S, a: A) = okay.one.Cont.pure((s, a))
     def value[X](s: S, op: State[S, X]): X = op match
-      case _: Get[s, a] => nextS = s; s.asInstanceOf[X]
+      case _: Get[s, ?] => nextS = s; s.asInstanceOf[X]
       case u: Update[s, b] => val (b, n) = u.f(s); nextS = n; b.asInstanceOf[X]
     def next[X](s: S, op: State[S, X]): S = nextS
 

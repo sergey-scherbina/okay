@@ -4,7 +4,6 @@ import okay.{Async, Channel, Source, async, through}
 import okay.*
 import okay.std.*
 import okay.given
-import okay.std.given
 /**
  * Server-driven UI over no transport at all — the stage tested pure —
  * and then over a pair of channels, end to end, with the security
@@ -101,8 +100,7 @@ class TestWire extends munit.FunSuite {
           case Right((l, rest)) => down.send(l).map(_ => ()).flatMap(_ => drain(rest))
         }
       drain(through[String, String, Async, Unit, Int](src)(
-        !.widen[Int, okay.Take % String + Writer % String, Async](
-          Wire.serve(0)(view)(update))))
+        Wire.serve(0)(view)(update).at[okay.Take % String + (Writer % String + Async)]))
     }: Unit
 
     // the client: a scripted user on a value host
@@ -137,8 +135,7 @@ class TestWire extends munit.FunSuite {
           case Right((l, rest)) => down.send(l).map(_ => ()).flatMap(_ => drain(rest))
         }
       drain(through[String, String, Async, Unit, Int](src)(
-        !.widen[Int, okay.Take % String + Writer % String, Async](
-          Wire.serveClosing(0)(view)(closingUpdate))))
+        Wire.serveClosing(0)(view)(closingUpdate).at[okay.Take % String + (Writer % String + Async)]))
     }: Unit
 
     val frames = scala.collection.mutable.Buffer[Ui]()

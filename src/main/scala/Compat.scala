@@ -6,7 +6,7 @@ package okay
  * over the root's words, so a module moves by its imports (`okay.freer.X` becomes `okay.X`) and keeps its
  * signatures. Nothing here does work of its own: each word is one of the root's.
  */
-object ! :
+object `!`:
   /** a program needing nothing: its value (`p.run`) */
   def run[A](p: A ! Pure): A = p.run
   /** a tail call: built when the run gets to it (`defer`) */

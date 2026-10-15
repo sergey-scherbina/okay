@@ -200,7 +200,6 @@ ${describe(Vector(summon[Schema[Msg]], summon[Schema[Ui]], summon[Schema[Event]]
     import okay.through
     import okay.%
     import okay.std.{Writer}
-    import okay.std.given
     def view(n: Int): Ui = Ui.Box(Vector(
       Ui.Text(s"count: $n", Style(tone = Tone.Emphasis)),
       Ui.Form(Vector(Ui.Input("", "name", "Name"), Ui.Check(n % 2 == 0, "even", "Even")), "Save", "f"),

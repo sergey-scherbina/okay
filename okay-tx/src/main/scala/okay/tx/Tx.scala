@@ -1,7 +1,7 @@
 package okay.tx
 
 import okay.one.*
-import okay.one.Cont.{defer, failed, perform, pure}
+import okay.one.Cont.{failed, perform, pure}
 import okay.one.handler.*
 import okay.one.row.*
 import okay.one.std.{Reader, %}
@@ -52,7 +52,7 @@ object Tx:
   def closed[C, T <: Row, A](tr: Transactor[C, T]): Deep[Txs[C, T], T, A, A] = new Deep[Txs[C, T], T, A, A]:
     def ret(a: A): A ! T = pure(a)
     def apply[X](op: Tx[C, T, X], k: X => A ! T): A ! T = op match
-      case at: Atomic[c, t, a] => bracket(tr, at.body, 1, k)
+      case at: Atomic[c, ?, ?] => bracket(tr, at.body, 1, k)
       case Rollback(reason) => k.failed(Rolled(reason))
 
   /** THE HANDLER, OPEN: inside a bracket. An inner bracket is its body, nothing more; a `Rollback` is a failure
@@ -60,7 +60,7 @@ object Tx:
   def open[C, T <: Row, A]: Deep[Txs[C, T], Reader % C +: T, A, A] = new Deep[Txs[C, T], Reader % C +: T, A, A]:
     def ret(a: A): A ! (Reader % C +: T) = pure(a)
     def apply[X](op: Tx[C, T, X], k: X => A ! (Reader % C +: T)): A ! (Reader % C +: T) = op match
-      case at: Atomic[c, t, a] => at.body.handle(open[C, T, a]).flatMap(k)
+      case at: Atomic[c, ?, a] => at.body.handle(open[C, T, a]).flatMap(k)
       case Rollback(reason) => k.failed(Rolled(reason))
 
   /** the first bracket: begin; the subtree, open, the resource read inside; its value commits, then the rest; a

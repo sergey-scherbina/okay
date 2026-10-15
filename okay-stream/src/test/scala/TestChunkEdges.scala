@@ -61,7 +61,7 @@ class TestChunkEdges extends munit.FunSuite {
     val bad: Source[Int] =
       Source.of(List(1, 2)).flatMap(_ =>
         (
-          effect[Async, Unit](Async.Run(() => throw boom))).at[Async + Writer % Int])
+          effect[Async, Unit](Async.Run(() => throw boom))).at[Writer % Int + Async])
     val out = scala.util.Try(drain(bad.merge(ints(100 to 130), chunked = true)))
     // either it surfaces the failure or it delivers the good side —
     // what it must NOT do is hang or lose the good side silently

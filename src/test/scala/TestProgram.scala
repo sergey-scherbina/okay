@@ -24,7 +24,7 @@ class TestProgram extends munit.FunSuite:
     assertEquals(prog.handle(writer[String]).handle(reader(41)).run, (List("n=41"), 42))
 
   test("held in a val, handled later; the effects written in another order"):
-    val p: Int ! Writer % String + Reader % Int = prog
+    val p: Int ! Writer % String + Reader % Int = prog.at[Writer % String + Reader % Int]
     val q = p.handle(reader(1))
     assertEquals(q.handle(writer[String]).run, (List("n=1"), 2))
 
