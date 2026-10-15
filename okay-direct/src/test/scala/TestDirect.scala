@@ -1,11 +1,7 @@
 package okay
 
 
-import okay.freer.*
-
-
 import okay.std.*
-import okay.freer.given
 import okay.Direct.*
 
 /** The flat block over Monadic: specs/direct-macro.md */
@@ -13,7 +9,7 @@ class TestDirect extends munit.FunSuite {
 
   @scala.annotation.nowarn("msg=unused value|discarded non-Unit value")
   private def docOneMarkEverywhereDemo(prog: Int ! (Reader % Int + Writer % String)): Unit =
-    !.run(Writer.run(Reader.run(41)(prog)))  // (Seq("env=41"), 42)
+    (Writer.run(Reader.run(41)(prog))).run  // (Seq("env=41"), 42)
 
   test("docs/direct-style.md: the direct block removes the for-comprehension") {
     def add(mx: Option[Int], my: Option[Int]): Option[Int] =
@@ -37,14 +33,14 @@ class TestDirect extends munit.FunSuite {
         Writer("recovered").reflect
         7
     }
-    val (ws, a) = !.run(Writer.run[String, Int, okay.freer.Pure](prog))
+    val (ws, a) = (Writer.run(prog)).run
     assertEquals(ws, Seq("before", "recovered"))
     assertEquals(a, 7)
   }
 
   test("direct-try v2: a marked catch GUARD keeps the refusal") {
     val e = compileErrors(
-      "import okay.Direct.*; okay.Direct.direct[Option] { try 1 catch { case _: Exception if Option(true).reflect => 2 } }(using summon[Monad[Option]]) ")
+      "import okay.Direct.*; okay.Direct.direct[Option] { try 1 catch { case _: Exception if Option(true).reflect => 2 } } ")
     assert(e.contains("catch guard"), e)
   }
 
@@ -67,21 +63,21 @@ class TestDirect extends munit.FunSuite {
     type W = [A] =>> A ! Writer % String
     val prog: Int ! Writer % String = direct[W] {
       try
-        val _ = !okay.freer.effect[Writer % String, Unit](Writer("before"))
+        val _ = !effect[Writer % String, Unit](Writer("before"))
         if true then throw new IllegalStateException("mid-stream") else 0
       catch case _: IllegalStateException => 7
     }
-    val (logged, n) = Writer.run[String, Int, Pure](prog).runWith
+    val (logged, n) = Writer.run(prog).runWith
     assertEquals(n, 7)
     assertEquals(logged.toList, List("before"), "the effect before the throw happened")
     // an exception the cases do not match RETHROWS
     val rethrow: Int ! Writer % String = direct[W] {
       try
-        val _ = !okay.freer.effect[Writer % String, Unit](Writer("x"))
+        val _ = !effect[Writer % String, Unit](Writer("x"))
         throw new RuntimeException("unmatched")
       catch case _: IllegalStateException => 0
     }
-    intercept[RuntimeException](Writer.run[String, Int, Pure](rethrow).runWith)
+    intercept[RuntimeException](Writer.run(rethrow).runWith)
   }
 
   test("direct-try edges: the finalizer refusal stands; marked catch bodies GRADUATED") {
@@ -96,14 +92,14 @@ class TestDirect extends munit.FunSuite {
   test("the ! mark: one glyph, prefix, on the rows where ? is ambiguous") {
     // a Free-row program collapses under its own type's symbol
     val prog: Int ! Writer % String = direct[[A] =>> A ! Writer % String] {
-      val _ = !okay.freer.effect[Writer % String, Unit](Writer("hi"))
+      val _ = !effect[Writer % String, Unit](Writer("hi"))
       21 + 21
     }
-    val ((logged, n)) = Writer.run[String, Int, Pure](prog).runWith
+    val ((logged, n)) = Writer.run(prog).runWith
     assertEquals(n, 42)
     assertEquals(logged.toList, List("hi"))
     // outside a block the mark stays a loud failure, like its kin
-    intercept[IllegalStateException](!okay.freer.pure[Pure, Int](1))
+    intercept[IllegalStateException](!pure[Int, Pure](1))
   }
 
 
@@ -232,11 +228,11 @@ class TestDirect extends munit.FunSuite {
     type W = Writer % String
     val prog: Int ! W = direct {
       Writer.tell("a").reflect
-      val x = Free.pure[W, Int](21).reflect
+      val x = pure[Int, W](21).reflect
       Writer.tell("b").reflect
       x * 2
     }
-    val (ws, a) = !.run(Writer.run[String, Int, okay.freer.Pure](prog))
+    val (ws, a) = (Writer.run(prog)).run
     assertEquals(ws, Seq("a", "b"))
     assertEquals(a, 42)
   }
@@ -244,12 +240,12 @@ class TestDirect extends munit.FunSuite {
   test("effects: a two-effect row reflects both operations in one block") {
     type F = Reader % Int + Writer % String
     val prog: Int ! F = direct {
-      val env = effect[F, Int](Reader.Ask()).reflect
-      effect[F, Unit](Writer(s"env=$env")).reflect
+      val env = Reader.ask[Int].reflect
+      Writer.tell(s"env=$env").reflect
       env + 1
     }
-    val (ws, a) = !.run(Writer.run[String, Int, okay.freer.Pure](
-      Reader.run[Int, Int, Writer % String](41)(prog)))
+    val (ws, a) = (Writer.run(
+      Reader.run(41)(prog))).run
     assertEquals(ws, Seq("env=41"))
     assertEquals(a, 42)
   }
@@ -262,7 +258,7 @@ class TestDirect extends munit.FunSuite {
       (s + "!").tell
       3
     }
-    val (ws, a) = !.run(Writer.run[String, Int, okay.freer.Pure](prog("abc")))
+    val (ws, a) = (Writer.run(prog("abc"))).run
     assertEquals(ws, Seq("start", "abc", "abc!"))
     assertEquals(a, 3)
   }
@@ -271,14 +267,14 @@ class TestDirect extends munit.FunSuite {
     type W = Writer % String
     val prog: String ! W = direct {
       val n = 3
-      s"n=$n got ${pure[W, Int](7).reflect} and ${pure[W, String]("x").reflect}!"
+      s"n=$n got ${pure[Int, W](7).reflect} and ${pure[String, W]("x").reflect}!"
     }
-    assertEquals(!.run(Writer.run[String, String, okay.freer.Pure](prog)), (Seq(), "n=3 got 7 and x!"))
+    assertEquals((Writer.run(prog)).run, (Seq(), "n=3 got 7 and x!"))
   }
 
   test("w.tell outside a block is the program Writer.tell(w)") {
     val p: Int ! Writer % String = "outside".tell.flatMap(_ => pure(4))
-    assertEquals(!.run(Writer.run[String, Int, okay.freer.Pure](p)), (Seq("outside"), 4))
+    assertEquals((Writer.run(p)).run, (Seq("outside"), 4))
   }
 
   test("a mark on a program of a NARROWER row is coerced into the block's row") {
@@ -288,8 +284,8 @@ class TestDirect extends munit.FunSuite {
       "seen".tell                          // an operation of the row
       !State.modify[Long](_ + env)         // a program at State % Long
     }
-    val (log, out) = !.run(Reader.run(7)(Writer.run[String, (Long, Long), Reader % Int](
-      State.handle[Long](1L)(prog))))
+    val (log, out) = (Reader.run(7)(Writer.run(
+      State.handle[Long](1L)(prog)))).run
     assertEquals(log, Seq("seen"))
     assertEquals(out, (8L, 8L))
   }
@@ -307,7 +303,7 @@ class TestDirect extends munit.FunSuite {
     // `filter` graduated in direct-loops v2; sortBy has not (its
     // Ordering argument is a second list — not a loop shape)
     val errors = compileErrors(
-      "okay.Direct.direct[List] { List(1).sortBy(i => List(i).reflect) }(using summon[Monad[List]]) ")
+      "okay.Direct.direct[List] { List(1).sortBy(i => List(i).reflect) } ")
     assert(errors.contains("lambda"), errors)
   }
 
@@ -316,7 +312,7 @@ class TestDirect extends munit.FunSuite {
     // direct-try tests above; the finalizer and catch-mark edges
     // remain refused there, named)
     val bn = compileErrors(
-      "okay.Direct.direct[Option] { Option(1).getOrElse(Option(2).reflect) }(using summon[Monad[Option]]) ")
+      "okay.Direct.direct[Option] { Option(1).getOrElse(Option(2).reflect) } ")
     assert(bn.contains("by-name"), bn)
   }
 
@@ -327,8 +323,8 @@ class TestDirect extends munit.FunSuite {
       Writer(s"env=$env").reflect
       env + 1
     }
-    val (ws, a) = !.run(Writer.run[String, Int, okay.freer.Pure](
-      Reader.run[Int, Int, Writer % String](41)(prog)))
+    val (ws, a) = (Writer.run(
+      Reader.run(41)(prog))).run
     assertEquals(ws, Seq("env=41"))
     assertEquals(a, 42)
   }
@@ -342,12 +338,12 @@ class TestDirect extends munit.FunSuite {
     }
     // then the ordinary handlers:
     docOneMarkEverywhereDemo(prog)
-    assertEquals(!.run(Writer.run(Reader.run(41)(prog))), (Seq("env=41"), 42))
+    assertEquals((Writer.run(Reader.run(41)(prog))).run, (Seq("env=41"), 42))
   }
 
   test("a mark that is neither F nor a row operation is refused by type") {
     val e = compileErrors(
-      "okay.Direct.direct[Option] { List(1).reflect }(using summon[Monad[Option]]) ")
+      "okay.Direct.direct[Option] { List(1).reflect } ")
     assert(e.contains("neither"), e)
   }
 
@@ -388,7 +384,7 @@ class TestDirect extends munit.FunSuite {
     val prog: Unit ! W = direct {
       for t <- "a b c".split(' ') do Writer(t + " ").reflect
     }
-    val (ws, _) = !.run(Writer.run[String, Unit, okay.freer.Pure](prog))
+    val (ws, _) = (Writer.run(prog)).run
     assertEquals(ws, Seq("a ", "b ", "c "))
   }
 
@@ -455,7 +451,7 @@ class TestDirect extends munit.FunSuite {
     val prog: Unit ! W = direct {
       for t <- "a b c".split(' ') do Writer(t)   // no mark at all
     }
-    val (ws, _) = !.run(Writer.run[String, Unit, okay.freer.Pure](prog))
+    val (ws, _) = (Writer.run(prog)).run
     assertEquals(ws, Seq("a", "b", "c"))
   }
 
@@ -463,10 +459,10 @@ class TestDirect extends munit.FunSuite {
     type W = Writer % String
     var n = 0
     val prog: Int ! W = direct {
-      while { n += 1; pure[W, Boolean](n < 3).reflect } do Writer(s"tick$n"): Unit
+      while { n += 1; pure[Boolean, W](n < 3).reflect } do Writer(s"tick$n"): Unit
       n
     }
-    val (ws, a) = !.run(Writer.run[String, Int, okay.freer.Pure](prog))
+    val (ws, a) = (Writer.run(prog)).run
     assertEquals(ws, Seq("tick1", "tick2"))
     assertEquals(a, 3)
   }
@@ -474,7 +470,7 @@ class TestDirect extends munit.FunSuite {
   test("a non-whitelisted HOF with a mark keeps the refusal") {
     // `exists` graduated in direct-loops v2; `count` has not
     val e = compileErrors(
-      "okay.Direct.direct[Option] { List(1).count(i => Option(i > 0).reflect) }(using summon[Monad[Option]]) ")
+      "okay.Direct.direct[Option] { List(1).count(i => Option(i > 0).reflect) } ")
     assert(e.contains("lambda"), e)
   }
 

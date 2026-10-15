@@ -1,12 +1,9 @@
 package okay
 
 
-import okay.freer.*
-
-
 import okay.std.*
-import okay.freer.given
 import okay.Direct.*
+import okay.freer.Handled
 
 /**
  * specs/direct-stagers.md: `Stagers.All` over Reader + State + Writer +
@@ -35,7 +32,7 @@ class TestStagers extends munit.FunSuite:
     fin * 2
   }
 
-  def staged4(xs: List[Int]): Handled[Row4, all.R, Int] = Direct.staged(all) {
+  def staged4(xs: List[Int]): Handled[all.Row, all.R, Int] = Direct.staged(all) {
     val env = Reader.ask[Env].?
     Writer.tell(s"bias ${env.bias}").?
     for x <- xs do
@@ -49,9 +46,9 @@ class TestStagers extends munit.FunSuite:
 
   def runFree4(xs: List[Int], env: Env, s0: Int): (Int, Vector[String], Either[String, Int]) =
     val (s, (log, a)) = State.run[Int, (Seq[String], Either[String, Int])](s0)(
-      Writer.run[String, Either[String, Int], State % Int](
-        runEither[Int, State % Int + Writer % String, String](
-          Reader.run[Env, Int, State % Int + Writer % String + Throws % String](env)(free4(xs)))))
+      Writer.run(
+        runEither(
+          Reader.run(env)(free4(xs)))))
     (s, log.toVector, a)
 
   test("All: a four-effect block agrees with the Free block on generated data — state, log, answer or error") {
@@ -111,7 +108,7 @@ class TestStagers extends munit.FunSuite:
     for _ <- 1 to 300 do
       val xs = List.fill(rnd.nextInt(10))(rnd.nextInt(40))
       val env = Env(rnd.nextInt(5), 60 + rnd.nextInt(100))
-      val expected = !.run(runEither[Int, okay.freer.Pure, String](Reader.run[Env, Int, Throws % String](env)(freeRT(xs))))
+      val expected = (runEither(Reader.run(env)(freeRT(xs)))).run
       val (_, a) = rt.run(env, ())(stagedRT(xs))
       assertEquals(a, expected, s"xs=$xs env=$env")
   }
@@ -152,11 +149,11 @@ class TestStagers extends munit.FunSuite:
       e.bias * k + e2.limit
     }
     assertEquals(rd.run(Env(3, 7))(p(10)), 37)
-    assertEquals(rd.run(Env(3, 7))(p(10)), !.run(Reader.run[Env, Int, okay.freer.Pure](Env(3, 7))(direct[[A] =>> A ! Reader % Env] {
+    assertEquals(rd.run(Env(3, 7))(p(10)), (Reader.run(Env(3, 7))(direct[[A] =>> A ! Reader % Env] {
       val e = Reader.ask[Env].?
       val e2 = Reader.ask[Env].?
       e.bias * 10 + e2.limit
-    })))
+    })).run)
   }
 
   test("Stateful: a State-only block, on generated data") {

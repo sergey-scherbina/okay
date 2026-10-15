@@ -1,10 +1,6 @@
 package okay
 
 
-import okay.freer.*
-
-
-import okay.freer.given
 import Condition.*
 import Condition.Decision.*
 import okay.Direct.*
@@ -21,7 +17,7 @@ class TestConditionDirect extends munit.FunSuite {
       steps :+= s"after($v)"
       v + 1
     }
-    val out = !.run(Condition.run[Int, Pure]((_, _) => Resume(41))(prog))
+    val out = (Condition.run((_, _) => Resume(41))(prog)).run
     assertEquals(out, 42)
     assertEquals(steps, Vector("before", "after(41)"))
   }
@@ -38,10 +34,10 @@ class TestConditionDirect extends munit.FunSuite {
       trail :+= "outside"
       a
     }
-    val out = !.run(Condition.run[String, Pure] { (_, menu) =>
+    val out = (Condition.run { (_, menu) =>
       assertEquals(menu, Vector("use-default"))
       Invoke("use-default", "42")
-    }(prog))
+    }(prog)).run
     assertEquals(out, "default:42")
     assertEquals(trail, Vector("inside", "outside"))
   }
@@ -57,7 +53,7 @@ class TestConditionDirect extends munit.FunSuite {
       trail :+= "outside"
       a
     }
-    val out = !.run(Condition.run[String, Pure]((_, _) => Invoke("skip", "x"))(prog))
+    val out = (Condition.run((_, _) => Invoke("skip", "x"))(prog)).run
     assertEquals(out, "skipped:x")
     assertEquals(trail, Vector("inside", "outside"))
   }
@@ -68,7 +64,7 @@ class TestConditionDirect extends munit.FunSuite {
   // (2026-09-25)
   @scala.annotation.nowarn("msg=unused value|discarded non-Unit value")
   private def docConditionDemo(prog: Int ! Op): Unit =
-    !.run(Condition.run[Int, Pure]((_, _) => Resume(41))(prog))   // 42; before, after(41)
+    (Condition.run((_, _) => Resume(41))(prog)).run   // 42; before, after(41)
 
   test("docs/direct-style.md: a condition reads as a call that may return, marked with .?") {
     var steps = Vector.empty[String]
@@ -79,7 +75,7 @@ class TestConditionDirect extends munit.FunSuite {
       v + 1
     }
     docConditionDemo(prog)
-    assertEquals(!.run(Condition.run[Int, Pure]((_, _) => Resume(41))(prog)), 42)
+    assertEquals((Condition.run((_, _) => Resume(41))(prog)).run, 42)
     assertEquals(steps, Vector("before", "after(41)", "after(41)"))
   }
 
@@ -91,7 +87,7 @@ class TestConditionDirect extends munit.FunSuite {
       }(v => s"skipped:$v").?                // ...and the frame answers
       a
     }
-    val out = !.run(Condition.run[String, Pure]((_, _) => Invoke("skip", "x"))(prog))
+    val out = (Condition.run((_, _) => Invoke("skip", "x"))(prog)).run
     assertEquals(out, "skipped:x")
   }
 
@@ -101,10 +97,10 @@ class TestConditionDirect extends munit.FunSuite {
     val seen = collection.mutable.ListBuffer[Int]()
     val prog: Unit ! Op = direct {
       for x <- List(1, -2, 3) do
-        val v = (if x < 0 then signal[Int](s"bad: $x") else pure[Op, Int](x)).reflect
+        val v = (if x < 0 then signal[Int](s"bad: $x") else pure[Int, Op](x)).reflect
         seen += v
     }
-    !.run(Condition.run[Unit, Pure]((_, _) => Resume(0))(prog))
+    (Condition.run((_, _) => Resume(0))(prog)).run
     assertEquals(seen.toList, List(1, 0, 3))
   }
 }

@@ -43,8 +43,11 @@ object DirectProbe:
   /** one compiler over the call site's Monad[F], in the probe's own Quotes */
   @scala.annotation.publicInBinary
   private[okay] def compiler[F[_] : Type](eager: Boolean)(using q: Quotes): DirectCompiler[F] =
-    val M = Expr.summon[Monad[F]].getOrElse(
-      q.reflect.report.errorAndAbort("DirectProbe: no Monad[F] at the call site"))
+    // a program's monad is `Direct.Instance`'s (the root keeps its own out of implicit scope)
+    import q.reflect.*
+    val M = Expr.summon[Direct.Instance[F]].filter(i => i.asTerm.tpe.widen <:< TypeRepr.of[Monad[F]])
+      .map(_.asExprOf[Monad[F]]).orElse(Expr.summon[Monad[F]]).getOrElse(
+      report.errorAndAbort("DirectProbe: no Monad[F] at the call site"))
     new DirectCompiler[F](q, Type.of[F], M, eager, false)
 
   @scala.annotation.publicInBinary

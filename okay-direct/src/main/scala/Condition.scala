@@ -1,10 +1,9 @@
 package okay
 
 
-import okay.freer.*
-
-
-import okay.freer.!.*
+import okay.core.{Row, Split}
+import okay.one.handler.{Stateful, Handler as OneHandler}
+import okay.Direct.DirectCtx
 
 /**
  * Conditions: resumable exceptions (specs/condition.md) — the road
@@ -22,9 +21,9 @@ import okay.freer.!.*
  * never pays. Resumption itself is not new machinery — it is what
  * every effect operation already does (the handler answers, the
  * continuation continues); what this file adds is the RESTART
- * frame, in the Shift discipline: an operation's payload is a
- * program in the same row, erased at the operation and re-typed
- * inside the one machine that owns the frames and the menu.
+ * frame: a region whose escape is an error raised where the
+ * restart was taken and caught by the frame's own guard (the
+ * kernel's `recover`), the menu a state of the one handler.
  */
 object Condition {
 
@@ -40,13 +39,10 @@ object Condition {
      * policy's untyped Resume (a ClassTag test), so the machine hands
      * the continuation an A without claiming anything */
     case Signal[A](condition: Any, accept: Any => A) extends Op[A]
-    /** the payload is a program in the same row — the Shift
-     * discipline: erased here (the row's other half F is not the
-     * operation's to name), re-typed inside the machine, which is
-     * the one claim this file makes. `accept` checks a policy Invoke's
-     * untyped value against V; a lexical invoke's value is a V by
-     * construction and passes through the same door */
-    case Within[A, V](name: String, id: AnyRef, body: Any, recover: V => A, accept: Any => V) extends Op[A]
+    /** a frame entered: on the menu from here, innermost first */
+    case Enter(frame: Condition.Frame) extends Op[Unit]
+    /** a frame left, by any road: it and every frame inside it off the menu */
+    case Exit(id: AnyRef) extends Op[Unit]
     /** the LEXICAL invoke (condition-caps): unwind to the handle's
      * OWN frame — by identity, not by name, so two frames sharing
      * a name cannot alias (a policy Invoke stays by name: innermost
@@ -124,100 +120,70 @@ object Condition {
    * given. (A policy Invoke on the same name still arrives as Any;
    * the frame is one frame either way.)
    */
-  def frame[A, V, F[+_]](name: String)
-                        (body: Restart[V] ?=> A ! Op + F)
-                        (recover: V => A)(using tag: scala.reflect.ClassTag[V]): A ! Op + F =
+  def frame[A, V, F[_]](name: String)
+                       (body: Restart[V] ?=> A ! Op + F)
+                       (recover: V => A)(using tag: scala.reflect.ClassTag[V]): A ! Op + F =
     val handle = Restart[V](name)
-    effect[Op + F, A](Op.Within[A, V](name, handle, body(using handle), recover, checked(name, tag)))
+    region[A, F](Frame(name, handle), body(using handle), x => recover(checked(name, tag)(x)))
 
   /** establish a restart around `body`: if the policy invokes
-   * `name` with v, this whole `within` answers `recover(v)` — the
-   * body's remaining work is abandoned, everything outside
-   * continues; a body that completes normally makes the frame
-   * invisible */
-  def within[A, F[+_]](name: String)(body: A ! Op + F)(recover: Any => A): A ! Op + F =
-    effect[Op + F, A](Op.Within[A, Any](name, new Object, body, recover, identity))
+   * `name` (with a value), the frame's result is `recover(value)`
+   * and execution continues after the frame */
+  def within[A, F[_]](name: String)(body: A ! Op + F)(recover: Any => A): A ! Op + F =
+    region[A, F](Frame(name, new Object), body, recover)
+
+  /** the frame on the menu around `body`; an escape to it (by its name or its identity) its `recover`, any other
+   * error off the menu and on */
+  private def region[A, F[_]](f: Frame, body: A ! Op + F, recover: Any => A): A ! Op + F =
+    val enter: Unit ! Op + F = effect[Op, Unit](Op.Enter(f)).at[Op + F]
+    val exit: Unit ! Op + F = effect[Op, Unit](Op.Exit(f.id)).at[Op + F]
+    val guarded = Direct.tryProgram[A, Op + F](body.flatMap(a => Run.map(exit)(_ => a))(using Join.same)) {
+      case e: Escape if e.target == f.name || (e.target eq f.id) => Run.map(exit)(_ => recover(e.value))
+      case e => exit.flatMap[A, Op + F](_ => throw e)(using Join.same)
+    }
+    enter.flatMap(_ => guarded)(using Join.same)
 
   /** an established frame: its menu name and its identity */
-  private final case class Frame(name: String, id: AnyRef)
+  final case class Frame private[Condition] (name: String, id: AnyRef)
 
-  private enum Out[X]:
-    case Done(x: X)
-    /** target is a name (policy Invoke: innermost of that name) or
-     * a frame identity (lexical invoke: exactly that frame) */
-    case Escape(target: AnyRef, value: Any)
+  /** an unwinding to a frame — its name (a policy's Invoke) or its identity (a Restart) — raised where the restart
+   * was taken, caught by the frame's guard; no stack trace, it is control */
+  private final class Escape(val target: AnyRef, val value: Any) extends RuntimeException(null, null, false, false)
 
   /**
-   * The machine: interprets signals through the policy, owns the
-   * restart frames, forwards every other effect (the Resource.run
-   * shape). The menu accumulates inner-first; an Invoke unwinds to
-   * the INNERMOST frame of that name.
+   * The machine: interprets signals through the policy, keeps the
+   * menu of frames (a `Stateful` handler, wherever `Op` is among the
+   * program's effects). The menu accumulates inner-first; an Invoke
+   * unwinds to the INNERMOST frame of that name.
    */
-  def run[A, F[+_]](policy: (Any, Vector[String]) => Decision)
-                   (prog: A ! Op + F): A ! F = {
-    // the Resume path is a WHILE loop, not a recursion (the
-    // Resource.run shape): a decode loop signalling once per record
-    // resumes a hundred thousand times in a row, and every one of
-    // them would otherwise be a JVM frame. A nested frame's region is
-    // DEFERRED into the program this loop answers (`Free.delay`), not
-    // entered by a direct call: frames do NOT nest by lexical depth
-    // alone — a recursive program opens one per level — and a direct
-    // call was a JVM frame each, 100 000 overflowing
-    // (condition-nested-frames). Forwarded effects suspend under
-    // flatMap, so their recursion lives in closures too.
-    def loop[X](p0: X ! Op + F, menu: List[Frame]): Out[X] ! F =
-      // only a signal or an invoke reads the names: built per frame up
-      // front, n nested frames cost O(n^2) (condition-nested-frames)
-      lazy val names = menu.map(_.name).toVector
+  def run[A, Es[_]](policy: (Any, Vector[String]) => Decision)
+                   (prog: A ! Es)(using s: Split[Es, Op]): A ! s.Rest =
+    prog.handle(handler(policy))
 
-      /** one operation with its continuation, typed by the tree:
-       * Left = the program continues here (the Resume path), Right =
-       * this loop's answer */
-      def step[Y](op: Op[Y], k: Y => X ! Op + F): Either[X ! Op + F, Out[X] ! F] = op match
-        case Op.Leave(handle, v) =>
-          // a handle that leaked out of its frame: the frame is gone
-          if !menu.exists(_.id eq handle) then throw NoSuchRestart(handle.name, names)
-          Right(pure(Out.Escape(handle, v)))
+  /** the menu a state of the machine: a signal answered in place, or an escape raised where it was */
+  private def handler(policy: (Any, Vector[String]) => Decision): Handler[Op, [A] =>> A] = new Handler[Op, [A] =>> A]:
+    def kernel[T <: Row, A]: OneHandler[Op, T, A, A] = new Stateful[Op, T, List[Frame], A, A]:
+      def initial = Nil
+      def ret(menu: List[Frame], a: A) = okay.one.Cont.pure(a)
+      def value[X](menu: List[Frame], op: Op[X]): X = op match
         case Op.Signal(c, accept) =>
+          val names = menu.map(_.name).toVector
           policy(c, names) match
-            case Decision.Resume(v) => Left(k(accept(v)))
+            case Decision.Resume(v) => accept(v)
             case Decision.Invoke(name, v) =>
               if !names.contains(name) then throw NoSuchRestart(name, names)
-              Right(pure(Out.Escape(name, v)))
+              throw Escape(name, v)
             case Decision.Fail => throw Unhandled(c, names)
-        case w: Op.Within[a, ?] =>
-          // THE claim of this file: the payload is a program in this
-          // machine's row — erased at the operation because F is not
-          // the operation's to name, re-typed here where F is known
-          val body = w.body.asInstanceOf[a ! Op + F]
-          Right(Free.delay(() => loop(body, Frame(w.name, w.id) :: menu)).flatMap {
-            case Out.Done(b) => loop(k(b), menu)
-            case Out.Escape(t, x) if t == w.name || (t eq w.id) => loop(k(w.recover(w.accept(x))), menu)
-            case Out.Escape(t, x) => pure(Out.Escape(t, x)) // an outer frame's
-          })
-
-      var p = p0
-      while true do
-        val next: Either[X ! Op + F, Out[X] ! F] = (p.resume: @unchecked) match
-          case Return(x) => Right(pure(Out.Done(x)))
-          case Inject(e) => split[Op, F](e)
-            (op => step(op, (a: X) => Free.Return(a)))
-            (f => Right(Inject(f).map(Out.Done(_))))
-          case Bind(Inject(e), k) => split[Op, F](e)
-            (op => step(op, k))
-            (f => Right(Inject(f).flatMap(x => loop(k(x), menu))))
-        next match
-          case Left(p2) => p = p2
-          case Right(out) => return out
-      throw IllegalStateException("unreachable")
-
-    loop(prog, Nil).map {
-      case Out.Done(a) => a
-      case Out.Escape(t, _) =>
-        // unreachable: both invokes are menu-checked at the operation
-        throw IllegalStateException(s"restart '$t' escaped every frame")
-    }
-  }
+        case Op.Leave(handle, v) =>
+          // a handle that leaked out of its frame: the frame is gone
+          if !menu.exists(_.id eq handle) then throw NoSuchRestart(handle.name, menu.map(_.name).toVector)
+          throw Escape(handle, v)
+        case Op.Enter(_) => ()
+        case Op.Exit(_) => ()
+      def next[X](menu: List[Frame], op: Op[X]): List[Frame] = op match
+        case Op.Enter(f) => f :: menu
+        case Op.Exit(id) => menu.dropWhile(_.id ne id).drop(1)
+        case _ => menu
 
   /**
    * The direct-style door (specs/condition.md, Direct style): the
@@ -225,7 +191,7 @@ object Condition {
    * to `within` over `direct`, per the door recipe of
    * docs/capabilities.md. The explicit `within` stays the floor.
    */
-  inline def frame[A, F[+_]](name: String)
+  inline def frame[A, F[_]](name: String)
     (inline body: DirectCtx[[X] =>> X ! Op + F] ?=> A)
     (recover: Any => A): A ! Op + F =
     within[A, F](name)(Direct.direct[[X] =>> X ! Op + F](body))(recover)

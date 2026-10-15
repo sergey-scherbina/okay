@@ -1,10 +1,6 @@
 package okay
 
 
-import okay.freer.*
-
-
-import okay.freer.given
 import Condition.*
 import Condition.Decision.*
 
@@ -19,12 +15,12 @@ class TestCondition extends munit.FunSuite {
     // it directly — no signal, no policy round-trip
     val prog: String ! Op + Pure =
       frame[String, Int, Pure]("skip") { restart ?=>
-        okay.freer.pure[Op + Pure, Int](1).flatMap { _ =>
+        pure[Int, Op + Pure](1).flatMap { _ =>
           restart.invoke[String](42)   // abandon the rest of the frame
         }.map(_ => "never reached")
       }(v => s"skipped with $v")
-    assertEquals(!.run(Condition.run[String, Pure](
-      (_, _) => throw new AssertionError("the policy must not be consulted"))(prog)),
+    assertEquals((Condition.run(
+      (_, _) => throw new AssertionError("the policy must not be consulted"))(prog)).run,
       "skipped with 42")
     // nesting: the inner handle leaves the inner frame; the outer
     // continues past it
@@ -34,8 +30,8 @@ class TestCondition extends munit.FunSuite {
           inner.invoke[String](7)
         }(v => s"inner=$v").map(x => x + ", outer went on")
       }(v => s"outer=$v")
-    assertEquals(!.run(Condition.run[String, Pure]((_, _) =>
-      Decision.Fail)(nested)), "inner=7, outer went on")
+    assertEquals((Condition.run((_, _) =>
+      Decision.Fail)(nested)).run, "inner=7, outer went on")
     // and the capability route crosses frames too: the OUTER handle
     // invoked from inside the inner frame skips both
     val crossing: String ! Op + Pure =
@@ -44,8 +40,8 @@ class TestCondition extends munit.FunSuite {
           outer.invoke[String]("all the way out")
         }(v => s"inner=$v").map(x => x + ", never appended")
       }(v => s"outer=$v")
-    assertEquals(!.run(Condition.run[String, Pure]((_, _) =>
-      Decision.Fail)(crossing)), "outer=all the way out")
+    assertEquals((Condition.run((_, _) =>
+      Decision.Fail)(crossing)).run, "outer=all the way out")
     // no frame, no handle: a Restart cannot be conjured
     val errors = compileErrors("summon[okay.Condition.Restart[Int]]")
     assert(errors.nonEmpty, "a Restart outside every frame must not summon")
@@ -63,8 +59,8 @@ class TestCondition extends munit.FunSuite {
           outer.invoke[String](3)
         }(s => s"inner got ${s.length}").map(x => x + ", never appended")
       }(n => s"outer got $n")
-    assertEquals(!.run(Condition.run[String, Pure]((_, _) =>
-      Decision.Fail)(aliased)), "outer got 3")
+    assertEquals((Condition.run((_, _) =>
+      Decision.Fail)(aliased)).run, "outer got 3")
     // the policy's Invoke stays BY NAME: innermost wins, as the menu promises
     val byName: String ! Op + Pure =
       frame[String, Int, Pure]("retry") { _ ?=>
@@ -72,8 +68,8 @@ class TestCondition extends munit.FunSuite {
           signal[String]("which?")
         }(s => s"inner got $s")
       }(n => s"outer got $n")
-    assertEquals(!.run(Condition.run[String, Pure]((_, _) =>
-      Decision.Invoke("retry", "x"))(byName)), "inner got x")
+    assertEquals((Condition.run((_, _) =>
+      Decision.Invoke("retry", "x"))(byName)).run, "inner got x")
   }
 
 
@@ -83,20 +79,20 @@ class TestCondition extends munit.FunSuite {
     given Answers[HowMany, Int] = Answers.of[HowMany, Int]
     // the site needs NO annotation: the instance carries the type
     val prog: Int ! Op = raiseC(HowMany("retries")).map(_ * 2)
-    assertEquals(!.run(Condition.run[Int, Pure](
-      (_, _) => Decision.Resume(21))(prog)), 42)
+    assertEquals((Condition.run(
+      (_, _) => Decision.Resume(21))(prog)).run, 42)
     // a policy resuming with the wrong type is refused NAMED at the
     // point where it acts — not a ClassCastException three calls later
-    val bad = intercept[BadResume](!.run(Condition.run[Int, Pure](
-      (_, _) => Decision.Resume("twenty-one"))(prog)))
+    val bad = intercept[BadResume]((Condition.run(
+      (_, _) => Decision.Resume("twenty-one"))(prog)).run)
     assert(bad.getMessage.contains("HowMany"), bad.getMessage)
     assert(bad.getMessage.contains("not a"), bad.getMessage)
     // restarts compose with the typed door exactly as with signal
-    val viaRestart = Condition.run[Int, Pure](
+    val viaRestart = Condition.run(
       (_, _) => Decision.Invoke("default", ()))(
       within[Int, Pure]("default")(
         raiseC(HowMany("retries")))(_ => 7))
-    assertEquals(!.run(viaRestart), 7)
+    assertEquals(viaRestart.run, 7)
   }
 
 
@@ -104,11 +100,11 @@ class TestCondition extends munit.FunSuite {
     var steps = Vector.empty[String]
     val prog: Int ! Op =
       for
-        _ <- pure[Op, Unit] { steps :+= "before"; () }
+        _ <- pure[Unit, Op] { steps :+= "before"; () }
         v <- signal[Int]("how many?")
-        _ <- pure[Op, Unit] { steps :+= s"after($v)"; () }
+        _ <- pure[Unit, Op] { steps :+= s"after($v)"; () }
       yield v + 1
-    val out = !.run(Condition.run[Int, Pure]((_, _) => Resume(41))(prog))
+    val out = (Condition.run((_, _) => Resume(41))(prog)).run
     assertEquals(out, 42)
     assertEquals(steps, Vector("before", "after(41)"))
   }
@@ -119,17 +115,17 @@ class TestCondition extends munit.FunSuite {
       for
         a <- within[String, Pure]("use-default") {
           for
-            _ <- pure[Op, Unit] { trail :+= "inside"; () }
+            _ <- pure[Unit, Op] { trail :+= "inside"; () }
             v <- signal[String]("bad value")
-            _ <- pure[Op, Unit] { trail :+= "never"; () }
+            _ <- pure[Unit, Op] { trail :+= "never"; () }
           yield v
         }(v => s"default:$v")
-        _ <- pure[Op, Unit] { trail :+= "outside"; () }
+        _ <- pure[Unit, Op] { trail :+= "outside"; () }
       yield a
-    val out = !.run(Condition.run[String, Pure] { (_, menu) =>
+    val out = (Condition.run { (_, menu) =>
       assertEquals(menu, Vector("use-default"))
       Invoke("use-default", "42")
-    }(prog))
+    }(prog)).run
     assertEquals(out, "default:42")
     assertEquals(trail, Vector("inside", "outside"))
   }
@@ -143,10 +139,10 @@ class TestCondition extends munit.FunSuite {
           signal[String]("deep")
         } { v => innerRecovered = true; s"inner:$v" }
       }(v => s"outer:$v")
-    val out = !.run(Condition.run[String, Pure] { (_, menu) =>
+    val out = (Condition.run { (_, menu) =>
       menus :+= menu
       Invoke("outer", "x")
-    }(prog))
+    }(prog)).run
     assertEquals(out, "outer:x")
     assertEquals(menus, Vector(Vector("inner", "outer")))
     assert(!innerRecovered, "the inner frame recovered on the way past")
@@ -155,14 +151,14 @@ class TestCondition extends munit.FunSuite {
   test("Fail escalates as Unhandled, naming the condition and the declined menu") {
     val prog: Int ! Op = within[Int, Pure]("skip")(signal[Int]("broken"))(_ => 0)
     val e = intercept[Unhandled](
-      !.run(Condition.run[Int, Pure]((_, _) => Fail)(prog)))
+      (Condition.run((_, _) => Fail)(prog)).run)
     assertEquals(e.condition, "broken")
     assertEquals(e.menu, Vector("skip"))
   }
 
   test("invoking a restart that is not on the menu is the policy's bug, named") {
     val e = intercept[NoSuchRestart](
-      !.run(Condition.run[Int, Pure]((_, _) => Invoke("elsewhere", ()))(signal[Int]("x"))))
+      (Condition.run((_, _) => Invoke("elsewhere", ()))(signal[Int]("x"))).run)
     assertEquals(e.restart, "elsewhere")
   }
 
@@ -171,14 +167,14 @@ class TestCondition extends munit.FunSuite {
     // every frame built the menu's names up front (O(depth) a frame)
     def nest(n: Int): Int ! Op =
       if n == 0 then signal[Int]("bottom")
-      else within[Int, Pure]("level")(!.tailcall(nest(n - 1)).map(_ + 1))(_ => -1)
-    assertEquals(!.run(Condition.run[Int, Pure]((_, _) => Resume(0))(nest(100000))), 100000)
+      else within[Int, Pure]("level")(tailcall(nest(n - 1)).map(_ + 1))(_ => -1)
+    assertEquals((Condition.run((_, _) => Resume(0))(nest(100000))).run, 100000)
   }
 
   test("a frame whose body completes normally is invisible") {
     var recovered = false
-    val out = !.run(Condition.run[Int, Pure]((_, _) => Fail)(
-      within[Int, Pure]("unused")(pure(7)) { _ => recovered = true; 0 }))
+    val out = (Condition.run((_, _) => Fail)(
+      within[Int, Pure]("unused")(pure[Int, Op + Pure](7)) { _ => recovered = true; 0 })).run
     assertEquals(out, 7)
     assert(!recovered)
   }
@@ -186,12 +182,12 @@ class TestCondition extends munit.FunSuite {
   test("other effects forward: signal-and-resume inside an Async row") {
     val prog: Int ! Op + Async =
       for
-        a <- !.widen[Int, Async, Op](async(20))
-        b <- !.widen[Int, Op, Async](signal[Int]("double it"))
-        c <- !.widen[Int, Async, Op](async(2))
+        a <- async(20).at[Op + Async]
+        b <- signal[Int]("double it").at[Op + Async]
+        c <- async(2).at[Op + Async]
       yield a + b + c
-    val out = !.run(Async.run[Int, okay.freer.Pure](
-      Condition.run[Int, Async]((_, _) => Resume(20))(prog)))
+    val out = (Async.run(
+      Condition.run((_, _) => Resume(20))(prog))).run
     assertEquals(out, 42)
   }
 
@@ -220,23 +216,23 @@ class TestCondition extends munit.FunSuite {
     val input = List("1", "x", "3")
 
     // policy 1: patch — the corrected value flows into the decode
-    val patched = !.run(Condition.run[Vector[Int], Pure] {
+    val patched = (Condition.run {
       case (Damaged(_), _) => Resume(2)
       case _ => Fail
-    }(loop(input)))
+    }(loop(input))).run
     assertEquals(patched, Vector(1, 2, 3))
 
     // policy 2: skip — the element vanishes, the loop continues
-    val skipped = !.run(Condition.run[Vector[Int], Pure] {
+    val skipped = (Condition.run {
       case (Damaged(_), _) => Invoke("skip", ())
       case _ => Fail
-    }(loop(input)))
+    }(loop(input))).run
     assertEquals(skipped, Vector(1, 3))
 
     // policy 3: fail — the loop aborts, naming the damage
-    val e = intercept[Unhandled](!.run(Condition.run[Vector[Int], Pure] {
+    val e = intercept[Unhandled]((Condition.run {
       (_, _) => Fail
-    }(loop(input))))
+    }(loop(input))).run)
     assertEquals(e.condition, Damaged("x"))
   }
 }

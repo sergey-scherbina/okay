@@ -1,11 +1,7 @@
 package okay
 
 
-import okay.freer.*
-
-
 import okay.std.*
-import okay.freer.given
 import okay.Direct.*
 import scala.language.implicitConversions
 
@@ -32,42 +28,42 @@ class TestReaderHas extends munit.FunSuite {
       val f = !read[Feeds]
       val c = !read[Clock]
       s"${u.byToken("a")} ${f.byUser(1).size} ${c.nowMs}"
-    assertEquals(!.run(Reader.run(env)(prog)), "Ada 2 7")
+    assertEquals((Reader.run(env)(prog)).run, "Ada 2 7")
   }
 
   test("a component declares only what it reads, and runs in ANY environment holding it") {
     def banner[E](using Reader.Has[E, Users]): String ! Reader % E = direct:
       s"hello ${(!Reader.read[E, Users]).byToken("a")}"
-    assertEquals(!.run(Reader.run(env)(banner[Env])), "hello Ada")
+    assertEquals((Reader.run(env)(banner[Env])).run, "hello Ada")
     // the same component, a smaller environment
     type Small = (Clock, Users)
     val small: Small = (Clock(1L), Users(Map("a" -> "Bob")))
-    assertEquals(!.run(Reader.run(small)(banner[Small])), "hello Bob")
+    assertEquals((Reader.run(small)(banner[Small])).run, "hello Bob")
   }
 
   test("the environment itself, and a product's fields") {
-    assertEquals(!.run(Reader.run(env)(Reader.read[Env, Env])), env)
+    assertEquals((Reader.run(env)(Reader.read[Env, Env])).run, env)
     case class Db(users: Users, clock: Clock)
     val db = Db(Users(Map("a" -> "Cleo")), Clock(3L))
-    assertEquals(!.run(Reader.run(db)(Reader.read[Db, Clock])), Clock(3L))
+    assertEquals((Reader.run(db)(Reader.read[Db, Clock])).run, Clock(3L))
   }
 
   test("ask with no type argument takes the environment from the block's row") {
     type Row = Writer % String + Reader % Env + State % Long
     val prog: String ! Row = direct:
-      val (users, feeds, clock) = !Reader.ask     // the row names Env; nothing else does
+      val (users, feeds, clock) = !Reader.ask[Env]   // the std's ask names its environment (the row no longer infers it)
       "seen".tell
       s"${users.byToken("a")} ${feeds.byUser(1).size} ${clock.nowMs}"
-    val (log, out) = !.run(Reader.run(env)(Writer.run[String, (Long, String), Reader % Env](
-      State.handle[Long](0L)(prog))))
+    val (log, out) = (Reader.run(env)(Writer.run(
+      State.handle[Long](0L)(prog)))).run
     assertEquals(log, Seq("seen"))
     assertEquals(out._2, "Ada 2 7")
   }
 
   test("ask with a type argument still works, in a block and outside one") {
-    assertEquals(!.run(Reader.run(env)(Reader.ask[Env])), env)
+    assertEquals((Reader.run(env)(Reader.ask[Env])).run, env)
     val inBlock: Users ! Reader % Env = direct { (!Reader.ask[Env])._1 }
-    assertEquals(!.run(Reader.run(env)(inBlock)), env._1)
+    assertEquals((Reader.run(env)(inBlock)).run, env._1)
   }
 
   test("a type the environment does not hold does not compile") {
@@ -82,8 +78,8 @@ class TestReaderHas extends munit.FunSuite {
       val u = !read[Users]                     // a program at Reader % Env
       val c: Clock = read[Clock]               // the same, colourless
       !State.modify[Long](_ + u.byToken.size + c.nowMs)
-    val (log, out) = !.run(Reader.run(env)(Writer.run[String, (Long, Long), Reader % Env](
-      State.handle[Long](0L)(prog))))
+    val (log, out) = (Reader.run(env)(Writer.run(
+      State.handle[Long](0L)(prog)))).run
     assertEquals(log, Seq("seen"))
     assertEquals(out, (8L, 8L))
   }

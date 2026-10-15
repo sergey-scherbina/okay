@@ -1,12 +1,9 @@
 package okay
 
 
-import okay.freer.*
-
-
 import okay.std.*
-import okay.freer.given
 import okay.Direct.*
+import okay.freer.Handled
 
 /**
  * The docs/tutorial.md examples that mark with the glyph, verbatim
@@ -24,7 +21,7 @@ class TestDocExamplesTutorialMarks extends munit.FunSuite:
         y <- List(10, 20) if y > 10        // a guard between generators
       yield look(x + y).?                 // List(210, 220); log: look 21, look 22
     }
-    assertEquals(!.run(Writer.run(prog)), (Seq("look 21", "look 22"), List(210, 220)))
+    assertEquals((Writer.run(prog)).run, (Seq("look 21", "look 22"), List(210, 220)))
 
     val m: Option[Map[String, Int]] =
       direct[Option] { for (k, n) <- Map("a" -> 1) yield (k, Some(n * 10).?) }   // Some(Map(a -> 10))
@@ -32,11 +29,11 @@ class TestDocExamplesTutorialMarks extends munit.FunSuite:
 
     val e: Boolean ! (Writer % String) =
       direct { List(1, 2, 3, 4).exists(x => look(x).? > 15) }   // true, and the log stops at "look 2"
-    assertEquals(!.run(Writer.run(e)), (Seq("look 1", "look 2"), true))
+    assertEquals((Writer.run(e)).run, (Seq("look 1", "look 2"), true))
 
     val f: Int ! (Writer % String) =
       direct { List(1, 2, 3).foldLeft(0)((acc, x) => acc + look(x).?) }          // 60
-    assertEquals(!.run(Writer.run(f)), (Seq("look 1", "look 2", "look 3"), 60))
+    assertEquals((Writer.run(f)).run, (Seq("look 1", "look 2", "look 3"), 60))
   }
 
   test("tutorial: a staged block, compound programs walked too") {

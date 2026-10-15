@@ -1,11 +1,7 @@
 package okay
 
 
-import okay.freer.*
-
-
 import okay.std.*
-import okay.freer.given
 import okay.Direct.{*, given}
 import scala.language.implicitConversions   // the language demands consent
 
@@ -74,8 +70,8 @@ class TestDirectAuto extends munit.FunSuite {
                                               // the statement IS the mark
       env + 1
     }
-    val (ws, a) = !.run(Writer.run[String, Int, okay.freer.Pure](
-      Reader.run[Int, Int, Writer % String](41)(prog)))
+    val (ws, a) = (Writer.run(
+      Reader.run(41)(prog))).run
     assertEquals(ws, Seq("env=41"))
     assertEquals(a, 42)
   }
@@ -91,8 +87,8 @@ class TestDirectAuto extends munit.FunSuite {
       Writer(s"env=$env"): Unit  // no mark either — see Layer 4
       env + 1
     }
-    val (ws, a) = !.run(Writer.run[String, Int, okay.freer.Pure](
-      Reader.run[Int, Int, Writer % String](41)(prog)))
+    val (ws, a) = (Writer.run(
+      Reader.run(41)(prog))).run
     assertEquals(ws, Seq("env=41"))
     assertEquals(a, 42)
   }
@@ -125,8 +121,8 @@ class TestDirectAuto extends munit.FunSuite {
       Writer(s"env=$env"): Unit  // a bare statement of a row type: RUNS
       env + 1
     }
-    val (ws, a) = !.run(Writer.run[String, Int, okay.freer.Pure](
-      Reader.run[Int, Int, Writer % String](41)(prog)))
+    val (ws, a) = (Writer.run(
+      Reader.run(41)(prog))).run
     assertEquals(ws, Seq("env=41"))
     assertEquals(a, 42)
   }
@@ -150,7 +146,7 @@ class TestDirectAuto extends munit.FunSuite {
     val e = compileErrors(
       "import okay.Direct.given; import scala.language.implicitConversions; " +
         "given okay.Direct.Effect[List] with {}; " +
-        "okay.Direct.direct[Option] { List(1); 2 }(using summon[Monad[Option]]) ")
+        "okay.Direct.direct[Option] { List(1); 2 } ")
     assert(e.contains("neither"), e)
   }
 
@@ -173,7 +169,7 @@ class TestDirectAuto extends munit.FunSuite {
   test("an unmarked G never colors") {
     val e = compileErrors(
       "import okay.Direct.{*, given}; import scala.language.implicitConversions; " +
-        "okay.Direct.direct[Option] { val x: Int = List(1); x }(using summon[Monad[Option]]) ")
+        "okay.Direct.direct[Option] { val x: Int = List(1); x } ")
     assert(e.nonEmpty)
   }
 

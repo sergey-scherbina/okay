@@ -1,13 +1,7 @@
 package okay
 
 
-import okay.freer.*
-
-
 import okay.std.*
-import okay.freer.given
-import okay.std.given
-import okay.freer.Row.*
 import okay.Direct.*
 import scala.language.implicitConversions
 
@@ -44,9 +38,9 @@ object Fetch:
   /** the constructors carry the row, so a block needs no type argument
    * and no ascription: `effect(User(token))` on its own would infer
    * `Nothing ! Fetch` — no answer type, and no Once beside it */
-  def user(token: String): Api.User ! Row = effect(User(token))
-  def feed(id: Int): List[String] ! Row = effect(Feed(id))
-  def time: Long ! Row = effect(Time())
+  def user(token: String): Api.User ! Row = effect[Fetch, Api.User](User(token)).at[Row]
+  def feed(id: Int): List[String] ! Row = effect[Fetch, List[String]](Feed(id)).at[Row]
+  def time: Long ! Row = effect[Fetch, Long](Time()).at[Row]
 
   extension (e: Fetch[?]) def show: String = e match
     case User(t) => s"GET /user?token=$t"
@@ -89,10 +83,9 @@ def test[X](e: Fetch[X]): X ! Test = direct:
 object Runner:
   /** the calls a program made, and its answer */
   def calls[A](env: (Users, Feeds))(p: A ! Fetch.Row): (Seq[String], A) =
-    val handled = !.translate[A, Fetch, Test + Once](p.at[Fetch + (Test + Once)]):
-      [X] => (e: Fetch[X]) => test(e).plus[Once]
+    val handled = p.translate[Fetch, Test]([X] => (e: Fetch[X]) => test(e))
     State.run[Long, (Seq[String], A)](0L)(
-      Reader.run(env)(Writer.run[String, A, Reader % (Users, Feeds) + State % Long](
+      Reader.run(env)(Writer.run(
         Once.run(handled))))._2
 
 class TestDirectOnce extends munit.FunSuite {
@@ -101,13 +94,13 @@ class TestDirectOnce extends munit.FunSuite {
   type R = Once + W
 
   def logged[A](p: A ! R): (Seq[String], A) =
-    !.run(Writer.run[String, A, okay.freer.Pure](Once.run(p)))
+    (Writer.run(Once.run(p))).run
 
   // ---- the effect, without direct
 
   test("Once.once: three demands, one run, one value") {
     var hits = 0
-    val q: Int ! R = Once.once(Free.delay(() => { hits += 1; pure(hits * 10) }))
+    val q: Int ! R = Once.once(defer({ hits += 1; pure(hits * 10) }))
     val prog: Int ! R = q.flatMap(a => q.flatMap(b => q.map(c => a + b + c)))
     assertEquals(logged(prog), (Seq(), 30))
     assertEquals(hits, 1)
@@ -115,8 +108,8 @@ class TestDirectOnce extends munit.FunSuite {
 
   test("Once.once: never demanded, never run — construction does no work") {
     var hits = 0
-    val q: Int ! R = Once.once(Free.delay(() => { hits += 1; pure(1) }))
-    assertEquals(logged(pure[R, Int](7).map(_ + 1)), (Seq(), 8))
+    val q: Int ! R = Once.once(defer({ hits += 1; pure(1) }))
+    assertEquals(logged(pure[Int, R](7).map(_ + 1)), (Seq(), 8))
     assertEquals(hits, 0)
     val _ = q
   }
@@ -142,7 +135,7 @@ class TestDirectOnce extends munit.FunSuite {
 
   test("Once.once: the same program run twice replays the same trace — the tree holds no cell") {
     var hits = 0
-    val q: Int ! R = Once.once(Free.delay(() => { hits += 1; pure(hits) }))
+    val q: Int ! R = Once.once(defer({ hits += 1; pure(hits) }))
     val prog: Int ! R = direct { !q + !q }
     assertEquals(logged(prog), (Seq(), 2))
     assertEquals(logged(prog), (Seq(), 4))
@@ -253,7 +246,7 @@ class TestDirectOnce extends munit.FunSuite {
 
   test("a val used BOTH as a program and as a value is refused with both readings") {
     val e = compileErrors("""
-      import okay.freer.*, okay.Direct.*
+      import okay.Direct.*
       import scala.language.implicitConversions
       type R = Once + Writer % String
       def told(s: String): Int ! R = direct { s.tell; s.length }
@@ -382,8 +375,8 @@ class TestDirectOnce extends munit.FunSuite {
     b + x
 
   test("Once.run INSIDE the search: the cells backtrack, each branch runs its own once") {
-    val handled: Seq[Int] ! W = runChoice[Int, W](Once.run[Int, Choose + W](insideProg))
-    val (log, out) = !.run(Writer.run[String, Seq[Int], okay.freer.Pure](handled))
+    val handled: Seq[Int] ! W = runChoice(Once.run(insideProg))
+    val (log, out) = (Writer.run(handled)).run
     assertEquals(out, Seq(11, 12))
     assertEquals(hitsInside, 2)
     assertEquals(log, Seq("x", "x"))
@@ -396,8 +389,8 @@ class TestDirectOnce extends munit.FunSuite {
     b + x
 
   test("Once.run OUTSIDE the search: one store, the second branch sees the first's value") {
-    val handled: Seq[Int] ! W = Once.run[Seq[Int], W](runChoice[Int, Once + W](outsideProg))
-    val (log, out) = !.run(Writer.run[String, Seq[Int], okay.freer.Pure](handled))
+    val handled: Seq[Int] ! W = Once.run(runChoice(outsideProg))
+    val (log, out) = (Writer.run(handled)).run
     assertEquals(out, Seq(11, 12))
     assertEquals(hitsOutside, 1)
     assertEquals(log, Seq("x"))

@@ -1,10 +1,6 @@
 package okay
 
 
-import okay.freer.*
-
-
-import okay.freer.given
 import okay.Direct.*
 import scala.language.implicitConversions
 

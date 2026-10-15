@@ -1,8 +1,6 @@
 package okay
 
 
-
-
 import okay.std.*
 import okay.std.given
 import okay.Direct.*

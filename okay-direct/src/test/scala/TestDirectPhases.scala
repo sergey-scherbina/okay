@@ -1,9 +1,6 @@
 package okay
 
 
-import okay.freer.*
-
-
 import okay.std.*
 import okay.Direct.{*, given}
 import scala.language.implicitConversions
@@ -17,7 +14,7 @@ import scala.language.implicitConversions
  */
 class TestDirectPhases extends munit.FunSuite {
 
-  type Prog[A] = A ! okay.freer.Pure
+  type Prog[A] = A ! Pure
   type W[A] = A ! Writer % String
   type Asy[A] = A ! Async
 
@@ -26,7 +23,7 @@ class TestDirectPhases extends munit.FunSuite {
     extension [A](m: Option[A])
       override def flatMap[B](f: A => Option[B]): Option[B] = m.flatMap(f)
 
-  def other(n: Int): Long ! okay.freer.Pure = Free.pure(n.toLong)
+  def other(n: Int): Long ! Pure = pure(n.toLong)
 
   // ---- defer: the pre-pass, before any bind. The pass looks for the
   // def the block is the body of (a self-call is a call to IT), and
@@ -37,25 +34,25 @@ class TestDirectPhases extends munit.FunSuite {
 
   test("defer: a marked call at the program type is deferred by default") {
     def shape = DirectProbe.deferred[Prog, Long] { val x = !other(1); x + 1 }
-    assert(shape.contains("delay"), shape)
+    assert(shape.contains("defer["), shape)
   }
 
   test("defer: not under eagerCalls — unless it is the tail, which is deferred under both") {
     import Direct.eagerCalls.given
     def body = DirectProbe.deferred[Prog, Long] { val x = !other(1); x + 1 }
-    assert(!body.contains("delay"), body)
+    assert(!body.contains("defer["), body)
     def tail = DirectProbe.deferred[Prog, Long] { val x = 1; !other(x) }
-    assert(tail.contains("delay"), tail)
+    assert(tail.contains("defer["), tail)
   }
 
   test("defer: a call already under !.tailcall is wrapped once, not twice") {
-    def shape = DirectProbe.deferred[Prog, Long] { !(!.tailcall(other(1))) }
-    assertEquals(shape.sliding("delay".length).count(_ == "delay"), 1, shape)
+    def shape = DirectProbe.deferred[Prog, Long] { !(tailcall(other(1))) }
+    assertEquals(shape.sliding("defer[".length).count(_ == "defer[") + shape.sliding("tailcall[".length).count(_ == "tailcall["), 1, shape)
   }
 
   test("defer: a block with no enclosing def is left as written") {
     val shape = DirectProbe.deferred[Prog, Long] { val x = !other(1); x + 1 }
-    assert(!shape.contains("delay"), shape)
+    assert(!shape.contains("defer["), shape)
   }
 
   // ---- marks: what the reader wrote

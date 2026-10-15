@@ -1,10 +1,6 @@
 package okay
 
 
-import okay.freer.*
-
-
-import okay.freer.given
 import Condition.*
 import Condition.Decision.*
 
@@ -47,34 +43,34 @@ class TestBookResumable extends munit.FunSuite {
   // ---- the SAME importer, four policies, chosen by the caller
 
   test("a nightly batch skips the bad row and keeps the rest") {
-    val got = !.run(Condition.run[Vector[Int], Pure] {
+    val got = (Condition.run {
       case (Malformed(_, _), _) => Invoke("skip", ())
       case _ => Fail
-    }(load(file)))
+    }(load(file))).run
     assertEquals(got, Vector(10, 20, 40))
   }
 
   test("a migration substitutes a default, IN PLACE, and the row survives") {
-    val got = !.run(Condition.run[Vector[Int], Pure] {
+    val got = (Condition.run {
       case (Malformed(_, _), _) => Resume(0)
       case _ => Fail
-    }(load(file)))
+    }(load(file))).run
     assertEquals(got, Vector(10, 20, 0, 40),
       "the resumed value did not come back at the signal point")
   }
 
   test("a compliance run refuses, and the report names the row") {
-    val e = intercept[Unhandled](!.run(Condition.run[Vector[Int], Pure] {
+    val e = intercept[Unhandled]((Condition.run {
       (_, _) => Fail
-    }(load(file))))
+    }(load(file))).run)
     assertEquals(e.condition, Malformed(3, "oops"))
   }
 
   test("a policy can decide PER ROW, because it sees the condition") {
-    val got = !.run(Condition.run[Vector[Int], Pure] {
+    val got = (Condition.run {
       case (Malformed(line, _), _) => if line > 2 then Resume(-1) else Invoke("skip", ())
       case _ => Fail
-    }(load(file)))
+    }(load(file))).run
     assertEquals(got, Vector(10, 20, -1, 40))
   }
 
@@ -94,10 +90,10 @@ class TestBookResumable extends munit.FunSuite {
           more <- go(i + 1, rest)
         yield head.fold(more)(_ +: more)
 
-    val got = !.run(Condition.run[Vector[Int], Pure] {
+    val got = (Condition.run {
       case (Malformed(_, _), _) => Resume(99)
       case _ => Fail
-    }(go(1, file)))
+    }(go(1, file))).run
     assertEquals(got, Vector(10, 20, 99, 40))
     // the two rows parsed before the bad one were NOT re-parsed, and
     // the one after it was still reached: nothing unwound
@@ -105,9 +101,9 @@ class TestBookResumable extends munit.FunSuite {
   }
 
   test("the menu is part of the report when nobody answers") {
-    val e = intercept[Unhandled](!.run(Condition.run[Vector[Int], Pure] {
+    val e = intercept[Unhandled]((Condition.run {
       (_, _) => Fail
-    }(load(file))))
+    }(load(file))).run)
     assert(e.menu.contains("skip"), s"the report does not offer the menu: ${e.menu}")
   }
 }

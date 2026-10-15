@@ -1,11 +1,7 @@
 package okay
 
 
-import okay.freer.*
-
-
 import okay.std.*
-import okay.freer.given
 import okay.Direct.*
 
 /**
@@ -20,8 +16,8 @@ class TestCtxReaderElim extends munit.FunSuite {
 
   /** the row spelling: the environment is an effect */
   def viaReader: Int ! Reader % Int + W = direct {
-    val env = effect[Reader % Int + W, Int](Reader.Ask()).?
-    effect[Reader % Int + W, Unit](Writer(s"env=$env")).?
+    val env = Reader.ask[Int].?
+    Writer.tell(s"env=$env").?
     env + 1
   }
 
@@ -33,18 +29,18 @@ class TestCtxReaderElim extends munit.FunSuite {
   }
 
   test("the same program, both spellings, the same answers") {
-    val (ws1, a1) = !.run(Writer.run[String, Int, okay.freer.Pure](
-      Reader.run[Int, Int, W](41)(viaReader)))
-    val (ws2, a2) = !.run(Writer.run[String, Int, okay.freer.Pure](
-      provide(41)(viaCtx)))
+    val (ws1, a1) = (Writer.run(
+      Reader.run(41)(viaReader))).run
+    val (ws2, a2) = (Writer.run(
+      provide(41)(viaCtx))).run
     assertEquals((ws1, a1), (Seq("env=41"), 42))
     assertEquals((ws2, a2), (ws1, a1))
   }
 
   test("nearest-wins overriding reaches through the effectful block") {
     def prog: Int ?=> Int ! W = viaCtx
-    val (ws, a) = !.run(Writer.run[String, Int, okay.freer.Pure](
-      provide(1)(provide(100)(prog))))
+    val (ws, a) = (Writer.run(
+      provide(1)(provide(100)(prog)))).run
     assertEquals(ws, Seq("env=100"))
     assertEquals(a, 101)
   }
@@ -52,10 +48,10 @@ class TestCtxReaderElim extends munit.FunSuite {
   test("the one-line bridges — from the library now (ctx-reader-bridge, 2026-09-23), the same two lines") {
     // ctx -> Reader program: a FUNCTION, never a Conversion (E10)
     val fromCtx: Int ! Reader % Int = Reader.lift((e: Int) ?=> e * 2)
-    assertEquals(!.run(Reader.run[Int, Int, okay.freer.Pure](21)(fromCtx)), 42)
+    assertEquals((Reader.run(21)(fromCtx)).run, 42)
 
-    val back: Int ?=> Int ! W = Reader.unlift[Int, Int, W](viaReader)
-    val (ws, a) = !.run(Writer.run[String, Int, okay.freer.Pure](provide(7)(back)))
+    val back: Int ?=> Int ! W = Reader.unlift[Int, Int, Reader % Int + W](viaReader)
+    val (ws, a) = (Writer.run(provide(7)(back))).run
     assertEquals((ws, a), (Seq("env=7"), 8))
   }
 }

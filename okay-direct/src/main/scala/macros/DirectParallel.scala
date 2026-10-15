@@ -2,9 +2,6 @@ package okay
 package macros
 
 
-import okay.freer.*
-
-
 import scala.quoted.*
 import scala.annotation.tailrec
 
@@ -87,7 +84,7 @@ private[okay] trait DirectParallel[F[_]] extends DirectMarks[F] with DirectRow[F
         go(expr).map(m => if stats.isEmpty then m else Block(stats, m))
       case other => asMark(other).map(stripped)
     go(rhs).flatMap { m =>
-      programOf(m.tpe.widen.dealias.baseType(freeClass)) match
+      programOf(m.tpe) match
         case Some((_, e)) => Some((m, e.widen))
         case _ => None
     }

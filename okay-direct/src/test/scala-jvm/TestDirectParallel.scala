@@ -1,11 +1,7 @@
 package okay
 
 
-import okay.freer.*
-
-
 import okay.std.*
-import okay.freer.given
 import Direct.*
 import java.util.concurrent.{CountDownLatch, TimeUnit}
 import java.util.concurrent.atomic.AtomicInteger
@@ -113,7 +109,7 @@ class TestDirectParallel extends munit.FunSuite {
       val b = async(2).reflect
       val e = Reader.ask[Int].reflect
       a + b + e
-    assertEquals(Reader.run[Int, Int, Async](39)(prog).runWith, 42)
+    assertEquals(Reader.run(39)(prog).runWith, 42)
     // the two Async leaves are independent and spawn; the Reader leaf
     // is not an Async program, so it ends the run and stays sequential
     assertEquals(forks.get(), 2)

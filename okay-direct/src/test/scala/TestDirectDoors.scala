@@ -1,11 +1,7 @@
 package okay
 
 
-import okay.freer.*
-
-
 import okay.std.*
-import okay.freer.given
 import okay.Direct.*
 
 /**
@@ -28,14 +24,14 @@ class TestDirectDoors extends munit.FunSuite {
 
   test("door outside, direct inside: three layers, three machines") {
     val (log, uid) = provide(Env("ada", 7)):
-      !.run(Writer.run[String, Int, okay.freer.Pure](told))
+      (Writer.run(told)).run
     assertEquals(log, Vector("hello ada", "bye"))
     assertEquals(uid, 7)
   }
 
   test("the same program, another environment — the DI claim survives the block") {
     val (log, uid) = provide(Env("bob", 1)):
-      !.run(Writer.run[String, Int, okay.freer.Pure](told))
+      (Writer.run(told)).run
     assertEquals(log, Vector("hello bob", "bye"))
     assertEquals(uid, 1)
   }
@@ -46,17 +42,17 @@ class TestDirectDoors extends munit.FunSuite {
       wire[Env].uid
     }
     docCapabilitiesDemo(told)
-    assertEquals(provide(Env("ada", 7)) { !.run(Writer.run(told)) }, (Vector("hello ada"), 7))
+    assertEquals(provide(Env("ada", 7)) { (Writer.run(told)).run }, (Vector("hello ada"), 7))
   }
 
   @scala.annotation.nowarn("msg=unused value|discarded non-Unit value")
   private def docCapabilitiesDemo(told: Env ?=> Int ! Writer % String): Unit =
-    provide(Env("ada", 7)) { !.run(Writer.run(told)) }
+    provide(Env("ada", 7)) { (Writer.run(told)).run }
 
   test("providing composes over the block too") {
     val base = providing[Env](Env("ada", 7))
     val (_, uid) = (base and providing[Env](Env("eve", 9))) {
-      !.run(Writer.run[String, Int, okay.freer.Pure](told))
+      (Writer.run(told)).run
     }
     assertEquals(uid, 9)
   }

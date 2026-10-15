@@ -1,9 +1,7 @@
 package okay
 
 
-import okay.freer.*
-
-
+import okay.freer.{Handled, Stager}
 import okay.std.*
 import scala.quoted.*
 import scala.language.implicitConversions
@@ -31,6 +29,52 @@ object Direct:
    * surface. The DSL itself, including all macros, lives in this
    * optional module. */
   type DirectCtx[F[_]] = okay.freer.DirectCtx[F]
+
+  /**
+   * THE BLOCK'S CARRIER, as `direct` takes it: the monad of programs `A ! Es` (the root's words: a bind is
+   * `Run.flatMap` at `Join.same`, the block's effects), or any other carrier's `Applicative` (a `Monad` among them,
+   * which the macro summons). A type of this module, so that its companion holds the programs' instance and a block
+   * needs no import (the root's `Programs.monad` is by import, kept out of `Run`'s implicit scope).
+   */
+  trait Instance[F[_]]:
+    def applicative: Applicative[F]
+  object Instance extends InstanceOf:
+    given program[Es[_]]: ProgramMonad[Es] = ProgramMonad[Es]()
+  trait InstanceOf:
+    given of[F[_]](using a: Applicative[F]): Instance[F] = new Instance[F]:
+      def applicative: Applicative[F] = a
+
+  /** the monad of programs needing `Es`, as a block emits it: `fmap` the root's `map`, one node where the default is
+   * a bind and a `pure` */
+  final class ProgramMonad[Es[_]] extends Monad[[X] =>> X ! Es], Instance[[X] =>> X ! Es]:
+    def applicative: Applicative[[X] =>> X ! Es] = this
+    def pure[A](a: A): A ! Es = okay.pure[A, Es](a)
+    override def fmap[A, B](a: A ! Es, f: A => B): B ! Es = Run.map(a)(f)
+    extension [A](a: A ! Es)
+      def flatMap[B](f: A => B ! Es): B ! Es = Run.flatMap(a)(f)(using Join.same[Es])
+
+  /** an operation of `E` as a program needing `Es`, `E` among them: one node, its path found where it is fitted
+   * (the macro's lift of an operation marked in a block) */
+  inline def effectIn[E[_], Es[_], X](op: E[X]): X ! Es = effectAt[E, Es, X](op, scala.compiletime.summonInline[Within[E, Es]])
+  def effectAt[E[_], Es[_], X](op: E[X], w: Within[E, Es]): X ! Es = new Run[Es, X]:
+    def on[R <: okay.core.Row](ps: okay.core.Paths[Es, R]): okay.core.Eff[R, X] =
+      okay.one.Cont.perform[E, R, X](op)(using w.paths(ps).find(okay.core.Req.only))
+
+  /** a program needing fewer effects, at the block's (the macro's lift of a narrower program) */
+  inline def lifted[A, E[_], Es[_]](p: A ! E): A ! Es = p.at[Es](using scala.compiletime.summonInline[Within[E, Es]])
+
+  /** `try fa catch h` around a program: a throw while it is built, and one raised in any of its steps, given to
+   * `h` (the kernel's `recover`) — what a `try` in a block over programs is */
+  def tryProgram[A, Es[_]](fa: => A ! Es)(h: Throwable => A ! Es): A ! Es = new Run[Es, A]:
+    def on[R <: okay.core.Row](ps: okay.core.Paths[Es, R]): okay.core.Eff[R, A] =
+      val built = try fa.fit(ps) catch case e: Throwable => h(e).fit(ps)
+      okay.one.Cont.recover(built)(e => h(e).fit(ps))
+
+  /** a program of the block read as its value (auto-colouring): a phantom, the macro rewrites every use. An
+   * `implicit def`, so `import Direct.*` brings it — the colouring okay-freer's tree had in its own companion */
+  implicit def programColor[Es0[_], Es[_], A](using DirectCtx[[X] =>> X ! Es0]): Conversion[A ! Es, A] =
+    _ => throw new IllegalStateException(
+      "Direct auto-coloring escaped macro rewriting — this call belongs inside direct[F] { ... }")
 
   /** Marker used by the optional DSL for auto-colouring operations.
    * It refines the core's lightweight capability so core `Effect`
@@ -160,7 +204,7 @@ object Direct:
    *     import okay.Direct.eagerCalls.given
    *
    * By DEFAULT a `direct` block defers every call at its own program
-   * type — `f(x)` becomes `Free.delay(() => f(x))` — so that recursion
+   * type — `f(x)` becomes `defer(f(x))` — so that recursion
    * of any shape, self or mutual, in any position, trampolines through
    * the tree instead of the JVM stack. That default is safety: without
    * it a recursive block COMPILES, answers at small inputs and
@@ -168,7 +212,7 @@ object Direct:
    * system cannot catch and a small test does not reach.
    *
    * It is not free, and the number is published rather than hidden:
-   * one `Delay` and its thunk, 64 bytes, per call the block marks —
+   * one `Defer` node and its thunk, per call the block marks —
    * `compare/DirectBenchmark`'s `okayDirect` marks ten thousand of
    * them per invocation and pays 106.8 → 167.2 µs and 1 598 113 →
    * 2 238 113 B for a call (`step`) that never recurses. Where a block
@@ -261,36 +305,9 @@ object Direct:
    * the context lambda is stripped by the macro, never called. */
   inline def direct[F[_]]: DirectApply[F] = DirectApply[F]()
 
-  /**
-   * `reset` and `shift` with a body in EITHER style (specs/direct-reset.md): a direct-style block — `.?`, `!`, or
-   * nothing under `implicitConversions` — or a program, as the core's take. Imported with `Direct.*` they stand
-   * for the core's `reset`/`shift` in that file, so they take every form the core's do: the body is expected as
-   * `R | R ! G`, which a value answers in direct style and a program (a `for`, a `direct { … }`) answers as before.
-   * The block's evidence is in scope, so `shift[A]` and `Shift.exit` name only their value type.
-   */
-  inline def reset[R, F[+_]](inline body: Shift.Prompted.Aux[R, Shift % R, F] ?=> DirectCtx[[X] =>> X ! Shift % R + F] ?=> (R | R ! Shift % R + F))
-                            (using Shift.Key[R], Distinct[Shift % R + F], Shift.Machine[F]): R ! F =
-    okay.freer.reset[R, F]((p: Shift.Prompted.Aux[R, Shift % R, F]) ?=> block[R, Shift % R, F](body(using p)))
-
-  /** `shift` inside a block (the block's evidence names the delimiter), its lambda's body in either style */
-  inline def shift[A](using in: Shift.Prompted[?])
-                     (inline f: (A => in.Res ! in.K + in.F) => DirectCtx[[X] =>> X ! in.K + in.F] ?=> (in.Res | in.Res ! in.K + in.F))
-                     (using At): A ! in.K + in.F =
-    okay.freer.shift[A](using in)(k => block[in.Res, in.K, in.F](f(k)))
-
-  /** `shift` to the delimiter of answer type `R` (the key names it), its lambda's body in either style */
-  inline def shift[R, A, F[+_]](inline f: (A => R ! Shift % R + F) => DirectCtx[[X] =>> X ! Shift % R + F] ?=> (R | R ! Shift % R + F))
-                               (using Shift.Key[R], At): A ! Shift % R + F =
-    okay.freer.shift[R, A, F](k => block[R, Shift % R, F](f(k)))
-
-  /** a body in either style, as a program of `K + F` answering `R` (the macro behind the two above) */
-  inline def block[R, K[+_], F[+_]](inline body: DirectCtx[[X] =>> X ! K + F] ?=> Any)
-                                   (using inline d: Deferral, inline b: Binds): R ! K + F =
-    ${ okay.macros.DirectResetMacros.blockImpl[R, K, F]('body, 'd, 'b) }
-
   final class DirectApply[F[_]](private val unit: Unit = ()) extends AnyVal:
     inline def apply[A](inline block: DirectCtx[F] ?=> A)
-                       (using inline M: Applicative[F], inline d: Deferral,
+                       (using inline M: Instance[F], inline d: Deferral,
                         inline b: Binds): F[A] =
       ${ okay.macros.DirectMacros.directImpl[F, A]('block, 'M, 'd, 'b) }
 
@@ -313,7 +330,7 @@ object Direct:
    * is never called: the macro replaces it with the loop as a
    * program. Outside a block write `src.loop(f)`, the program by name.
    */
-  extension [A, G[+_]](src: Pull[A, G])
+  extension [A, G[_]](src: Pull[A, G])
     def foreach[F[_]](f: A => Unit)(using DirectCtx[F]): Unit = throw new IllegalStateException(
       "a source loop is rewritten by the direct macro and never called; outside a block use src.loop(f)")
 
@@ -338,7 +355,7 @@ object Direct:
     // initialises every block-local `var` — once. Python runs nothing
     // before `next()`, and a second read starts fresh; the thunk gives
     // both (a generator is re-runnable BECAUSE its vars are re-made)
-    Gen.fromProgram(Free.delay(() => direct[[A] =>> A ! Gen.Row[W]](block).map(_ => ())))
+    Gen.fromProgram(defer(direct[[A] =>> A ! Gen.Row[W]](block).map(_ => ())))
 
   /**
    * The block with its handler known at the call site

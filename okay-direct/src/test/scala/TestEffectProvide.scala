@@ -1,11 +1,7 @@
 package okay
 
 
-import okay.freer.*
-
-
 import okay.std.*
-import okay.freer.given
 import okay.Direct.{*, given}
 import scala.language.implicitConversions
 
@@ -113,6 +109,6 @@ class TestEffectProvide extends munit.FunSuite {
       val env: Int = rask
       env + 1
     }
-    assertEquals(!.run(Reader.run[Int, Int, okay.freer.Pure](41)(p)), 42)
+    assertEquals((Reader.run(41)(p)).run, 42)
   }
 }

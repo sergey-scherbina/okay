@@ -2,7 +2,7 @@ package okay
 package macros
 
 
-import okay.freer.*
+import okay.freer.CanTry
 
 
 import scala.quoted.*
@@ -337,10 +337,15 @@ private[okay] final class DirectCompiler[F[_]](val q: Quotes, val fT: Type[F],
                :+ CaseDef(Wildcard(), None, '{ throw e }.asTerm)
              ).asExprOf[F[T]] }
         }.asTerm
-        val guarded: Term = '{
-          scala.compiletime.summonInline[CanTry[F]]
-            .tryIn[T](${ subF.asExprOf[F[T]] })(${ handler.asExprOf[Throwable => F[T]] })
-        }.asTerm
+        val guarded: Term = rowOf match
+          // a program: the root's guard, `Direct.tryProgram` (the kernel's `recover`)
+          case Some(row) =>
+            val tryProgram = Symbol.requiredModule("okay.Direct").methodMember("tryProgram").head
+            Apply(Apply(TypeApply(Ref(tryProgram), List(Inferred(TypeRepr.of[T]), Inferred(row))), List(subF)), List(handler))
+          case None => '{
+            scala.compiletime.summonInline[CanTry[F]]
+              .tryIn[T](${ subF.asExprOf[F[T]] })(${ handler.asExprOf[Throwable => F[T]] })
+          }.asTerm
         Out.Eff(guarded, bT)
       }
 

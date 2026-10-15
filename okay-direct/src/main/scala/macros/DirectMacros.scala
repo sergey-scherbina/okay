@@ -2,9 +2,7 @@ package okay
 package macros
 
 
-import okay.freer.*
-
-
+import okay.freer.{Handled, Stager}
 import scala.quoted.*
 import scala.language.implicitConversions
 import scala.annotation.tailrec
@@ -50,20 +48,24 @@ import okay.Direct.*
           "cannot be rewritten by direct's v1", other.pos)
 
   def directImpl[F[_] : Type, A: Type](block: Expr[DirectCtx[F] ?=> A],
-                                               M: Expr[Applicative[F]],
+                                               M: Expr[Instance[F]],
                                                d: Expr[Deferral],
                                                b: Expr[Binds])
                                               (using Quotes): Expr[F[A]] =
     import quotes.reflect.*
     val topBody: Term = blockBody[F, A](block).asTerm
-    Expr.summon[Monad[F]] match
+    // a program's: the instance IS the monad (`Direct.ProgramMonad`); any other carrier's is summoned
+    val monad =
+      if M.asTerm.tpe.widen <:< TypeRepr.of[Monad[F]] then Some(M.asExprOf[Monad[F]])
+      else Expr.summon[Monad[F]]
+    monad match
       // a monad: the road every existing block takes, unchanged
       case Some(m) =>
         DirectCompiler.pipeline[F, A](topBody, m,
           d.asTerm.tpe <:< quotes.reflect.TypeRepr.of[Deferral.Eager.type],
           b.asTerm.tpe <:< quotes.reflect.TypeRepr.of[Binds.Parallel.type])
       // no monad: the idiom bracket, for the carriers that refuse one
-      case None => applicativeOnly[F, A](topBody, M)
+      case None => applicativeOnly[F, A](topBody, '{ $M.applicative })
 
   /**
    * THE IDIOM BRACKET, for a carrier that has no monad
@@ -100,7 +102,7 @@ import okay.Direct.*
       ++ directSym.methodMember("?") ++ directSym.methodMember("unary_!")).toSet
     val colorSyms = (directSym.methodMember("selfColor") ++
       directSym.methodMember("opColor") ++
-      Symbol.requiredModule("okay.freer.Diagonal").methodMember("directColor")).toSet
+      directSym.methodMember("programColor")).toSet
 
     def calleeRoot(t: Term): Symbol = t match
       case Apply(f, _) => calleeRoot(f)
@@ -366,43 +368,3 @@ import okay.Direct.*
   private def tpe2A[F[_], A](using q: Quotes)(tpe: q.reflect.TypeRepr)[R](f: [T] => Type[T] ?=> R): R =
     tpe.asType match
       case '[t] => f[t]
-
-/**
- * `Direct.reset` and `Direct.shift` (specs/direct-reset.md): ONE door for both styles. The body is typed with no
- * expected type, the direct context in scope; the direct compiler runs over it either way. A body answering the
- * answer type is a direct block; a body answering a PROGRAM comes out as a program of a program and is
- * flattened — a plain `for` passes through with one extra bind.
- */
-@scala.annotation.publicInBinary private[okay] object DirectResetMacros:
-  import okay.freer.{+}
-  import okay.freer.{!}
-  def blockImpl[R: Type, K[+_] : Type, F[+_] : Type](block: Expr[DirectCtx[[X] =>> X ! K + F] ?=> Any],
-                                                     d: Expr[Deferral], b: Expr[Binds])
-                                                    (using Quotes): Expr[R ! K + F] =
-    import quotes.reflect.*
-    // the block's carrier AS THE CALL SITE SPELLED IT (`X ! K + F`), read off the block's own type: rebuilt
-    // here it dealiases to `Freer[…]`, and the direct compiler then finds no Monad and cannot widen a mark's row
-    val ctxArg = block.asTerm.tpe.widen.dealias match
-      case AppliedType(_, List(ctx, _)) => ctx.dealias match
-        case AppliedType(_, List(g)) => g
-        case other => report.errorAndAbort(s"Direct.reset/shift: the block's context is ${other.show} (macro bug)")
-      case other => report.errorAndAbort(s"Direct.reset/shift: the block is ${other.show} (macro bug)")
-    ctxArg.asType match
-      case '[type g[X]; g] => run[g, R, K, F](block.asInstanceOf[Expr[DirectCtx[g] ?=> Any]], d, b)
-
-  /** THE CLAIMS in here, each checked where it is made: `g` is the block's carrier, `X ! K + F` */
-  private def run[G[_] : Type, R: Type, K[+_] : Type, F[+_] : Type](block: Expr[DirectCtx[G] ?=> Any], d: Expr[Deferral], b: Expr[Binds])
-                                                                   (using Quotes): Expr[R ! K + F] =
-    import quotes.reflect.*
-    val body = DirectMacros.blockBody[G, Any](block).asTerm
-    val t = body.tpe.widen
-    val m = Expr.summon[Monad[G]].getOrElse(report.errorAndAbort("Direct.reset/shift: no Monad for the block's row"))
-    if t <:< TypeRepr.of[G[R]] then
-      val prog = DirectMacros.directImpl[G, G[R]](block.asInstanceOf[Expr[DirectCtx[G] ?=> G[R]]], m, d, b)
-      '{ $m.flatMap($prog)(x => x) }.asInstanceOf[Expr[R ! K + F]]
-    else if t <:< TypeRepr.of[R] then
-      DirectMacros.directImpl[G, R](block.asInstanceOf[Expr[DirectCtx[G] ?=> R]], m, d, b).asInstanceOf[Expr[R ! K + F]]
-    else report.errorAndAbort(
-      s"this body answers ${t.show}: a value of ${Type.show[R]} (direct style) or a program ${Type.show[G[R]]} (monadic) was expected",
-      body.pos)
-

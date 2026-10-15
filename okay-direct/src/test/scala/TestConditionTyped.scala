@@ -1,10 +1,6 @@
 package okay
 
 
-import okay.freer.*
-
-
-import okay.freer.given
 import Condition.*
 import Condition.Decision.*
 
@@ -21,11 +17,11 @@ class TestConditionTyped extends munit.FunSuite {
         n <- HowMany.signal
         s <- WhichName.signal
       yield n + s.length
-    val out = !.run(Condition.run[Int, Pure] {
+    val out = (Condition.run {
       case (HowMany, _) => resume(HowMany)(40)
       case (WhichName, _) => resume(WhichName)("ab")
       case (_, _) => Fail
-    }(prog))
+    }(prog)).run
     assertEquals(out, 42)
   }
 
@@ -38,13 +34,13 @@ class TestConditionTyped extends munit.FunSuite {
 
   test("Of IS an Answers instance: raiseC takes it without a given, and a bad resume is named") {
     val viaRaise: Int ! Op = raiseC(HowMany).map(_ + 1)
-    val out = !.run(Condition.run[Int, Pure] {
+    val out = (Condition.run {
       case (HowMany, _) => Resume(41)
       case _ => Fail
-    }(viaRaise))
+    }(viaRaise)).run
     assertEquals(out, 42)
     val bad = intercept[BadResume] {
-      !.run(Condition.run[Int, Pure]((_, _) => Resume("not an int"))(HowMany.signal))
+      (Condition.run((_, _) => Resume("not an int"))(HowMany.signal)).run
     }
     assert(bad.getMessage.contains("not an int"), bad.getMessage)
   }
@@ -58,12 +54,12 @@ class TestConditionTyped extends munit.FunSuite {
       })(v => s"fell:$v").reflect
       a
     }
-    val resumed = !.run(Condition.run[String, Pure] {
+    val resumed = (Condition.run {
       case (HowMany, _) => resume(HowMany)(7)
       case _ => Fail
-    }(prog))
+    }(prog)).run
     assertEquals(resumed, "got:7")
-    val invoked = !.run(Condition.run[String, Pure]((_, _) => Invoke("fallback", "x"))(prog))
+    val invoked = (Condition.run((_, _) => Invoke("fallback", "x"))(prog)).run
     assertEquals(invoked, "fell:x")
   }
 }

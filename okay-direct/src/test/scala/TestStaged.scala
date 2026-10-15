@@ -1,12 +1,9 @@
 package okay
 
 
-import okay.freer.*
-
-
 import okay.std.*
-import okay.freer.given
 import okay.Direct.*
+import okay.freer.{Handled, Stager}
 
 /**
  * specs/direct-staged.md: a `direct` block whose operations are
@@ -58,7 +55,7 @@ class TestStaged extends munit.FunSuite:
   }
 
   /** the same text, staged: every mark is one arm of `sw.stage` */
-  def staged(xs: List[Int], k: Int): Handled[Row, R, Int] = Direct.staged(sw) {
+  def staged(xs: List[Int], k: Int): Handled[sw.Row, R, Int] = Direct.staged(sw) {
     val s0 = State.get[Int].?
     Writer.tell(s"start $s0").?
     for x <- xs do
@@ -72,7 +69,7 @@ class TestStaged extends munit.FunSuite:
   }
 
   def runFree(xs: List[Int], k: Int, s0: Int): (Int, Vector[String], Int) =
-    val (s, (log, a)) = State.run[Int, (Seq[String], Int)](s0)(Writer.run[String, Int, State % Int](free(xs, k)))
+    val (s, (log, a)) = State.run[Int, (Seq[String], Int)](s0)(Writer.run(free(xs, k)))
     (s, log.toVector, a)
 
   def runStaged(xs: List[Int], k: Int, s0: Int): (Int, Vector[String], Int) =
@@ -94,7 +91,7 @@ class TestStaged extends munit.FunSuite:
   }
 
   test("a loop of ten thousand operations fits the default stack (Func's contract, stated)") {
-    def loop(i: Int, acc: Int): Handled[Row, R, Int] =
+    def loop(i: Int, acc: Int): Handled[sw.Row, R, Int] =
       if i >= 2500 then Handled.pure(acc)
       else Direct.staged(sw) {
         val a = State.get[Int].?
@@ -111,7 +108,6 @@ class TestStaged extends munit.FunSuite:
 
   // ---- v2: compound programs are walked into binds
 
-  import okay.freer.Row.at
 
   def freeCompound(xs: List[Int], k: Int): Int ! Row = direct[[A] =>> A ! Row] {
     val s1 = State.modify[Int](_ + k).?                                  // an inline combinator
@@ -126,7 +122,7 @@ class TestStaged extends munit.FunSuite:
     s1 + s2 + s3 + s4
   }
 
-  def stagedCompound(xs: List[Int], k: Int): Handled[Row, R, Int] = Direct.staged(sw) {
+  def stagedCompound(xs: List[Int], k: Int): Handled[sw.Row, R, Int] = Direct.staged(sw) {
     val s1 = State.modify[Int](_ + k).?
     val s2 = State.get[Int].flatMap(s => State.set[Int](s * 2)).?
     val s3 = (for
@@ -145,7 +141,7 @@ class TestStaged extends munit.FunSuite:
       val xs = List.fill(rnd.nextInt(8))(rnd.nextInt(50))
       val k = rnd.nextInt(100)
       val s0 = rnd.nextInt(100)
-      val (s, (log, a)) = State.run[Int, (Seq[String], Int)](s0)(Writer.run[String, Int, State % Int](freeCompound(xs, k)))
+      val (s, (log, a)) = State.run[Int, (Seq[String], Int)](s0)(Writer.run(freeCompound(xs, k)))
       val ((s2, log2), a2) = sw.run(s0)(stagedCompound(xs, k))
       assertEquals((s2, log2, a2), (s, log.toVector, a), s"xs=$xs k=$k s0=$s0")
   }

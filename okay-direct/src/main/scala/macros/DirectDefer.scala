@@ -100,25 +100,20 @@ private[okay] trait DirectDefer[F[_]] extends DirectMarks[F] with DirectRow[F]:
           else programOf(app.tpe) match
             case Some((r, elem)) if r =:= row => Some(elem)
             case _ => None
-        lazy val delayApply = Symbol.requiredModule("okay.freer.Free").methodMember("delay").head
+        lazy val deferSym = calleeRoot('{ okay.defer[Int, Pure](okay.pure[Int, Pure](0)) }.asTerm)
         // the `[F, A]` overload, BY SHAPE: `methodMember` answers every
-        // `reflect` (a generator's `[W]` one among them) in an order that
-        // moved under freer-base-step-extractor, and `.head` picked the
-        // wrong one; DirectMarks selects the same way
+        // `reflect` (a generator's `[W]` one among them), and `.head` may
+        // pick the wrong one; DirectMarks selects the same way
         lazy val reflectSym = directSym.methodMember("reflect").find(_.paramSymss.headOption.exists(_.sizeIs == 2)).get
         /**
-         * `Free.delay[row, elem](() => app)`, the thunk built as a term
-         * under the owner it is being placed under — `at`, not
-         * `Symbol.spliceOwner`. The difference is invisible while the
-         * rewrite only fires at the top of a block, and fatal once it
-         * fires inside one: a lambda owned by the splice while it sits
-         * under a local definition pickles to `assertion failed: method
-         * $anonfun`, reproducibly (direct-defer-default, 2026-09-16).
+         * `defer[elem, row](app)` — the root's by-name deferral. The
+         * argument is by-name, so it stays where it is placed, under the
+         * owner `at` it already has (a thunk built for it under the
+         * splice owner while it sits under a local definition pickled to
+         * `assertion failed: method $anonfun`, direct-defer-default).
          */
         def delayed(app: Term, elem: TypeRepr, at: Symbol): Term =
-          val thunk = Lambda(at, MethodType(Nil)(_ => Nil, _ => app.tpe.widen),
-            (owner, _) => app.changeOwner(owner))
-          Apply(TypeApply(Ref(delayApply), List(Inferred(row), Inferred(elem.widen))), List(thunk))
+          Apply(TypeApply(Ref(deferSym), List(Inferred(elem.widen), Inferred(row))), List(app.changeOwner(at)))
         /** Direct.reflect[F, elem](m) — a mark the pipeline recognises */
         def marked(m: Term, elem: TypeRepr): Term =
           Apply(TypeApply(Ref(reflectSym), List(Inferred(TypeRepr.of[F]), Inferred(elem.widen))), List(m))
@@ -221,6 +216,9 @@ private[okay] trait DirectDefer[F[_]] extends DirectMarks[F] with DirectRow[F]:
             // and a thunk the tail rule already built is one, so this is
             // also what stops the two rules deferring the same call twice
             case Lambda(_, _) => tree
+            // a deferral already built (by `tails`, or written): its
+            // by-name argument is not walked again
+            case app: Apply if alreadyDefers(app) => tree
             // already marked: defer the call, keep the one mark
             case Apply(TypeApply(fun, targs), List(m)) if markSyms(fun.symbol) =>
               (if eager then selfProgram(stripped(m)) else anyProgram(stripped(m))) match

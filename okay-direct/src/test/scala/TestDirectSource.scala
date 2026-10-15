@@ -1,11 +1,7 @@
 package okay
 
 
-import okay.freer.*
-
-
 import okay.std.*
-import okay.freer.given
 import okay.std.given
 import okay.Direct.*
 
@@ -18,14 +14,14 @@ import okay.Direct.*
 class TestDirectSource extends munit.FunSuite:
 
   type W = Writer % String
-  def run[A](p: A ! W): (Seq[String], A) = !.run(Writer.run[String, A, okay.freer.Pure](p))
+  def run[A](p: A ! W): (Seq[String], A) = (Writer.run(p)).run
   def say(s: String): Unit ! W = Writer.tell(s)
 
   test("Pull.loop is a program: nothing runs until it is run, then every element in order") {
     val seen = scala.collection.mutable.Buffer[Int]()
     val prog: Unit ! Pure = Pull.of(LazyList(1, 2, 3)).loop(seen += _)
     assertEquals(seen.toList, Nil)
-    !.run(prog)
+    prog.run
     assertEquals(seen.toList, List(1, 2, 3))
   }
 

@@ -1,10 +1,6 @@
 package okay
 
 
-import okay.freer.*
-
-
-import okay.freer.given
 import Direct.*
 
 /** the 2026-09-02 audit's macro candidates: a local def after a
@@ -81,7 +77,7 @@ class TestConditionAudit extends munit.FunSuite {
     def loop(i: Int, acc: Int): Int ! Op =
       if i == 0 then pure(acc)
       else signal[Int](i).flatMap(v => loop(i - 1, acc + v))
-    val out = !.run(Condition.run[Int, Pure]((_, _) => Decision.Resume(1))(loop(100000, 0)))
+    val out = (Condition.run((_, _) => Decision.Resume(1))(loop(100000, 0))).run
     assertEquals(out, 100000)
   }
 }

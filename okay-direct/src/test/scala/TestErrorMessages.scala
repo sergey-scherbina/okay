@@ -51,10 +51,10 @@ class TestErrorMessages extends munit.FunSuite {
 
   test("the direct macro's refusals keep naming the workaround") {
     val lam = compileErrors(
-      "import okay.Direct.*; okay.Direct.direct[List] { List(1).sortBy(i => List(i).reflect) }(using summon[Monad[List]]) ")
+      "import okay.Direct.*; okay.Direct.direct[List] { List(1).sortBy(i => List(i).reflect) } ")
     assert(lam.contains("bind the marked value to a val"), lam)
     val neither = compileErrors(
-      "import okay.Direct.*; okay.Direct.direct[Option] { List(1).reflect }(using summon[Monad[Option]]) ")
+      "import okay.Direct.*; okay.Direct.direct[Option] { List(1).reflect } ")
     assert(neither.contains("neither"), neither)
   }
 
