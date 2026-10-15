@@ -1,7 +1,6 @@
 package okay.intent
 
 import okay.agent.{FileVersions, Rerun}
-import okay.freer.given
 import okay.given
 
 import okay.codec.Schema

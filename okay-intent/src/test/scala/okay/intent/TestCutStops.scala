@@ -3,10 +3,7 @@ package okay.intent
 import okay.given
 
 
-import okay.{Async, Answers}
-
-import okay.freer.{%, +}
-import okay.freer.{!}
+import okay.{!, %, +, Async, Answers}
 import okay.std.{Writer}
 import okay.codec.Schema
 import okay.llm.Structured
@@ -32,8 +29,8 @@ class TestCutStops extends munit.FunSuite {
   private def counted(pieces: List[String], emitted: java.util.concurrent.atomic.AtomicInteger)
   : Unit ! Writer % String + Async =
     type F = Writer % String + Async
-    pieces.foldRight(okay.freer.pure(()): Unit ! F) { (p, rest) =>
-      okay.freer.!.widen[Unit, Writer % String, F](Writer.tell[String](p)).flatMap { _ =>
+    pieces.foldRight(okay.pure(()): Unit ! F) { (p, rest) =>
+      Writer.tell[String](p).at[F].flatMap { _ =>
         emitted.incrementAndGet(): Unit
         rest
       }

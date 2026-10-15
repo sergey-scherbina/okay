@@ -1,8 +1,7 @@
 package okay.intent
-import okay.freer.given
 import okay.given
 
-import okay.{Async, Answers}
+import okay.{%, +, Async, Answers}
 import okay.std.Writer
 import okay.codec.Schema
 import okay.llm.{OpenAi, Structured, Transports}
@@ -53,7 +52,7 @@ class TestClassifyTokens extends munit.FunSuite {
    * already accumulated, the model wrote nothing after the closing
    * brace and there was never anything to save. */
   private def drain(b: String): (Int, Int) =
-    Writer.run[String, Unit, Async](
+    Writer.run[String, Unit, Writer % String + Async](
       OpenAi.stream(Transports.http(), key, b, url))
       .map((toks, _) => (toks.length, toks.mkString.length)).runWith
 

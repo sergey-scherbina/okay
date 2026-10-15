@@ -1,13 +1,10 @@
 package okay.scala2
 
 import okay.{Answers}
-
-import okay.freer.{+, Row}
 import okay.agent.{Agent, Compact, Context, Durable, Handlers, Reply, ToolCall, Toolbox, Turn}
 import okay.agent.{Model as ModelEffect, Tool as ToolEffect}
 import okay.codec.Schema
 import okay.given
-import okay.freer.given
 /**
  * The agent layer for Scala 2.13 (specs/scala2-facade.md, stage 9).
  *
@@ -109,14 +106,11 @@ final class Chat private (model: Model, tools: Tools, policy: Policy, maxSteps: 
 
   /** one user message; the agent's final answer */
   def say(message: String): Eff[Async, String] = Async(synchronized {
-    // one handler per effect, assembled along the row, as okay-agent's
-    // own tests do (TestAgent.run)
+    // one handler per effect; the sum is assembled from its parts, as
+    // okay-agent's own tests do (TestAgent.run)
     given modelH: Answers[ModelEffect] = model.handler
     given toolH: Answers[ToolEffect] = tool
     given contextH: Answers[Context] = context
-    given contextAsyncH: Answers[Context + okay.Async] = Row.union[Context, okay.Async]
-    given modelContextAsyncH: Answers[ModelEffect + (Context + okay.Async)] = Row.union[ModelEffect, Context + okay.Async]
-    given agentH: Answers[Agent] = Row.union[ToolEffect, ModelEffect + (Context + okay.Async)]
     Agent.converse(message, tools.box.specs, maxSteps).runWith
   })
 
