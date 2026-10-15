@@ -1,7 +1,7 @@
 package okay.scala2
 
 import okay.{Channel}
-import okay.freer.{!}
+import okay.{!}
 import okay.given
 import okay.agent.{ToolCall, Turn}
 import okay.codec.Json

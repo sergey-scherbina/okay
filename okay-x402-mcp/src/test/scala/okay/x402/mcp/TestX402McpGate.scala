@@ -1,7 +1,7 @@
 package okay.x402.mcp
 
 import okay.{Async, through}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.std.given
 import okay.codec.Json
@@ -17,7 +17,7 @@ class TestX402McpGate extends munit.FunSuite:
   given scala.concurrent.ExecutionContext = munitExecutionContext
 
   private def drive(t: Tools, around: Server.Around[Async], msgs: Rpc*): Future[Seq[Rpc]] =
-    Async.runAsync(Writer.run[Rpc, Unit, Async](through[Rpc, Rpc, Async, Unit, Unit](
+    Async.runAsync(Writer.run(through[Rpc, Rpc, Async, Unit, Unit](
       okay.Source.of((hello +: msgs).toList))(
       Server.serveIn[Async](t.serving, around)(Server.answering(t.serving)))).map(_._1.drop(1)))
 
