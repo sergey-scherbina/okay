@@ -196,6 +196,13 @@ Recorded as met; behaviour regressions are accepted where the speed is the point
   `TestResourceDropped`). As on okay-freer, a multi-shot handler of another effect is taken as resuming once (released
   at the end of its first resumption), and a handler that drops the rest of an operation that normally resumes does
   not release.
+- An `InterruptedException` (a fiber's cancel on a blocking scheduler: its park, or a blocking call in a `Run`) is
+  RAISED by the kernel like a non-fatal error (okay-core's `Machine.raisable`, 2026-10-15): the guards it passes run —
+  a `bracket`/`Resource` releases, a recovering guard is offered it — and it reaches the top as itself. `NonFatal`
+  counts it fatal, so on the kernel a cancelled Loom fiber parked on an `Await` left its resource held (TestAsync).
+  The callback drive (`Async.Drive`) takes a `Run`'s interrupt the same way, and a drive cancelled while PARKED on
+  an `Await` fails the parked rest with the cancellation at the cancel, on the cancelling thread, so its guards run
+  then (a race's loser, a timeout's fiber); it used to only unregister the Await and drop the rest.
 - `Resource.bracket` acquires when the program runs: a program run twice acquires twice.
 - `Gen`'s `zip` steps both sides when the zipped program runs, not when `zip` is called.
 - `Once.memo` calls its step twice an operation (the kernel's `Stateful` asks `value` and `next` apart): pure, so the

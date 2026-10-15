@@ -229,6 +229,18 @@ object Async {
    * another: whoever loses the atomic exchange continues the drive */
   private final class Got[X](val x: Either[Throwable, X])
   private object Moved
+  /** a parked operation's rest taken — by its callback, to resume it, or by a cancel, to fail it: once */
+  private object Taken
+
+  /**
+   * ONE PARKED AWAIT OF A DRIVE: the cell its callback and the drive meet in — the answer that came during the
+   * registration (`Got`), the drive gone on without one (`Moved`), the rest taken (`Taken`) — with the rest it
+   * resumes and the canceller its registration answered with. A cancel takes the rest from `Moved` as the callback
+   * would, so exactly one of them has it: the callback resumes it, the cancel fails it (`Drive.discontinue`)
+   */
+  private final class Parked[A, X](val k: Machine.Head.Paused[Row, A, ?, X, ?, ?, ?, ?, ?])
+      extends AtomicReference[Got[X] | Moved.type | Taken.type | Null](null):
+    @volatile var unregister: () => Unit = () => ()
 
   /** A callback-driven Async program together with its cancellation door.
    * `cancel` is idempotent: it unregisters a pending Await, releases open
@@ -346,7 +358,8 @@ object Async {
     protected def succeed(a: A): Unit
     protected def fail(e: Throwable): Unit
     @volatile private var stopped = false
-    @volatile private var unregister: () => Unit = () => ()
+    /** the Await this drive is parked on, or was last: a cancel takes its rest */
+    @volatile private var parked: Parked[A, ?] | Null = null
     /** the open cancel scopes (CancelScope), newest first. A volatile
      * field changed under the drive's own monitor, not an
      * AtomicReference: that was 24 B on EVERY fiber's drive for a list
@@ -363,12 +376,27 @@ object Async {
     private def releaseScopes(): Unit =
       scopes.foreach(s => try s.released() catch case _: Throwable => ())
 
-    def cancel(): Unit = synchronized {
-      if !stopped then
+    def cancel(): Unit =
+      val first = synchronized {
+        val was = stopped
         stopped = true
-        unregister()
-        releaseScopes()
-    }
+        if !was then releaseScopes()
+        !was
+      }
+      if first then
+        val p = parked
+        if p != null then cancelParked(p)
+
+    /**
+     * CANCELLED WHILE PARKED: the registration withdrawn and the rest FAILED with the cancellation, so its guards —
+     * a Resource scope's release, an `ensuring` — run now, as they do for a drive cancelled between two operations;
+     * a parked rest no callback will resume would hold them for good. Only if the rest is still the drive's to
+     * take: an answer that came first has it, and its resumption meets `stopped`
+     */
+    private def cancelParked(p: Parked[A, ?]): Unit =
+      if p.compareAndSet(Moved, Taken) then
+        try p.unregister() catch case NonFatal(_) => ()
+        discontinue(p.k)
 
     /** whether this drive was cancelled — for a platform's slice hooks */
     protected final def cancelled: Boolean = stopped
@@ -430,6 +458,8 @@ object Async {
                   cur = next
                   looping = !stopped
                   if !looping then { discontinue(cur); releaseScopes() }
+        // a late answer to a drive cancelled meanwhile: the rest is still this drive's, failed so its guards run
+        else if k != null then discontinue(k)
       catch case e: Throwable => { releaseScopes(); fail(e) }
       finally sliceEnded(slice)
 
@@ -467,7 +497,9 @@ object Async {
           case _ => ()
         var x: X = null.asInstanceOf[X]
         var err: Throwable | Null = null
-        try x = f() catch case NonFatal(t) => err = t
+        // an interrupt too (the cancel of a use blocked here, `DriveTask`): raised where the operation is, so the
+        // rest's guards run — what the kernel raises (`Machine.raisable`)
+        try x = f() catch case t: Throwable if Machine.raisable(t) => err = t
         if err != null then k.fail(err) else k.resume(x)
       case Await(reg, poll) =>
         // ONE poll, no wait (drive-poll-then-park): after its first
@@ -483,15 +515,15 @@ object Async {
             case Right(x) => k.resume(x)
             case Left(err) => k.fail(err)
         else
-          // the cell holds the answer, the "moved on" marker, or nothing:
-          // typed, so what comes out is the operation's Either
-          val cell = AtomicReference[Got[X] | Moved.type | Null](null)
+          // the cell holds the answer, the "moved on" marker, the rest
+          // taken, or nothing: typed, so what comes out is the operation's Either
+          val cell = Parked[A, X](k)
           val cancelReg = reg { r =>
-            if !cell.compareAndSet(null, Got(r)) then
+            if !cell.compareAndSet(null, Got(r)) && cell.compareAndSet(Moved, Taken) then
               // the rest is the FIBER'S code, so it runs inside `apply`'s
               // loop — its try, its slice — never on the way in
               // (drive-resume-throw-lost, 2026-09-28)
-              if !stopped then resumeLate(r, k)
+              if !stopped then resumeLate(r, k) else discontinue(k)
           }
           cell.getAndSet(Moved) match
             case g: Got[X] @unchecked =>
@@ -499,8 +531,10 @@ object Async {
                 case Right(x) => k.resume(x)
                 case Left(err) => k.fail(err)
             case _ =>
-              unregister = cancelReg
-              if stopped then cancelReg()
+              cell.unregister = cancelReg
+              parked = cell
+              // a cancel that read the Await before this one: this rest is its to fail too
+              if stopped then cancelParked(cell)
               null
   }
 
