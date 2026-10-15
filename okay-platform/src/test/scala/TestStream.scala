@@ -1,12 +1,14 @@
 package okay
 
+import scala.language.implicitConversions
 
-import okay.freer.*
+
 
 
 import okay.std.*
-import okay.freer.given
 import okay.std.given
+import okay.freer.{Fold, foldTo}
+import okay.freer.given
 /** The stream combinators, uniformly over the carriers — a Producer,
  * a writer program (via toLazyList), a LazyList — all lazy. */
 class TestStream extends munit.FunSuite {
@@ -46,7 +48,7 @@ class TestStream extends munit.FunSuite {
     given Fold[Int, Int] = new:
       def init: Int = 0
       def add(s: Int, a: Int): Int = s + a
-    assertEquals(Stream.fold[Producer, okay.freer.Pure, Int, Int](p12), 3)
+    assertEquals(Stream.fold[Producer, Pure, Int, Int](p12), 3)
     assertEquals(nats[Int, Producer].take(5).foldLeft(0)(_ + _), 10)
   }
 
@@ -61,9 +63,9 @@ class TestStream extends munit.FunSuite {
     val seen = collection.mutable.ListBuffer.empty[Int]
     p12.foreach(seen += _)
     assertEquals(seen.toList, List(1, 2))
-    assertEquals(Stream.fold[[W] =>> Unit ! Writer % W, okay.freer.Pure, Int, Int](feed)(using Fold.sum[Int]), 6)
-    assertEquals(Stream.fold[[W] =>> Unit ! Writer % W, okay.freer.Pure, Int, Long](feed)(using Fold.count[Int]), 3L)
-    assertEquals(Stream.fold(okay.freer.pure[Produce, Int](0): Producer[Int])(using Fold.count[Int]), 0L)
+    assertEquals(Stream.fold[[W] =>> Unit ! Writer % W, Pure, Int, Int](feed)(using Fold.sum[Int]), 6)
+    assertEquals(Stream.fold[[W] =>> Unit ! Writer % W, Pure, Int, Long](feed)(using Fold.count[Int]), 3L)
+    assertEquals(Stream.fold(okay.pure[Int, Produce](0): Producer[Int])(using Fold.count[Int]), 0L)
   }
 
   test("search stops early, even on an infinite stream") {
@@ -77,17 +79,17 @@ class TestStream extends munit.FunSuite {
     val MP = summon[MonadPlus[LazyList]]
     assertEquals(MP.empty[Int].append(LazyList(1)).append(LazyList(2)).toList, List(1, 2))
     val CP = summon[MonadPlus[[A] =>> A ! Choose]]
-    assertEquals(!.run(runChoice[Int, okay.freer.Pure](
-      CP.append(choose(1, 2))(CP.empty).append(choose(3)))), Seq(1, 2, 3))
+    assertEquals((runChoice(
+      CP.append(choose(1, 2))(CP.empty).append(choose(3)))).run, Seq(1, 2, 3))
   }
 
   test("Monoid: numbers, strings, alternatives — and every Monoid folds") {
     assertEquals(1 |+| 2, 3)
     assertEquals("a" |+| "b", "ab")
     assertEquals((LazyList(1) |+| LazyList(2)).toList, List(1, 2))
-    assertEquals(Stream.fold[Producer, okay.freer.Pure, Int, Int](p12), 3)          // Fold from Monoid[Int]
+    assertEquals(Stream.fold[Producer, Pure, Int, Int](p12), 3)          // Fold from Monoid[Int]
     val words = produce("ab").flatMap(_ => produce("c"))
-    assertEquals(Stream.fold[Producer, okay.freer.Pure, String, String](words), "abc")
+    assertEquals(Stream.fold[Producer, Pure, String, String](words), "abc")
   }
 
   test("instances: Fold primitives and Foldable[Producer]") {
@@ -101,9 +103,9 @@ class TestStream extends munit.FunSuite {
   test("arbitrary effects on a writer stream: async at the pull") {
     type F = Writer % String + Async
     val talk: Int ! F =
-      effect[F, Unit](Writer("a")).flatMap: _ =>
-        effect[F, Unit](Async.Run(() => Thread.sleep(1))).flatMap: _ =>
-          effect[F, Unit](Writer("b")).map(_ => 7)
+      effect(Writer("a")).flatMap: _ =>
+        effect(Async.Run(() => Thread.sleep(1))).flatMap: _ =>
+          effect(Writer("b")).map(_ => 7)
     assertEquals(talk.toLazyList.toList, List("a", "b"))
   }
 
@@ -111,9 +113,9 @@ class TestStream extends munit.FunSuite {
     type F = State % Int + (Writer % String + Async)
     def emits(n: Int): Unit ! F =
       if n == 0 then pure(())
-      else effect[F, Int](State.Get()).flatMap: s =>
-        effect[F, Unit](Writer(s"n$n+$s")).flatMap: _ =>
-          effect[F, Int](State.Update[Int, Int](_ => (s + n, s + n))).flatMap(_ => emits(n - 1))
+      else State.get[Int].flatMap: s =>
+        Writer.tell(s"n$n+$s").flatMap: _ =>
+          State.update[Int, Int](_ => (s + n, s + n)).flatMap(_ => emits(n - 1))
     val residue: (Int, Unit) ! Writer % String + Async =
       State.handle[Int](0)(emits(3))
     assertEquals(residue.toLazyList.toList, List("n3+0", "n2+3", "n1+5"))
@@ -138,10 +140,10 @@ class TestStream extends munit.FunSuite {
     type F = Writer % String + Async
     val ran = collection.mutable.ListBuffer[String]()
     val talk: Int ! F =
-      effect[F, Unit](Writer("a")).flatMap: _ =>
-        effect[F, Unit](Async.Run(() => { ran += "effect"; () })).flatMap: _ =>
-          effect[F, Unit](Writer("b")).map(_ => 7)
-    val loud = Writer.map[String, String, Int, Async](talk)(_.toUpperCase)
+      effect(Writer("a")).flatMap: _ =>
+        effect(Async.Run(() => { ran += "effect"; () })).flatMap: _ =>
+          effect(Writer("b")).map(_ => 7)
+    val loud = Writer.map(talk)(_.toUpperCase)
     assertEquals(loud.toLazyList.toList, List("A", "B"))
     // the forwarded operation ran once, between the two tells
     assertEquals(ran.toList, List("effect"))
@@ -151,21 +153,21 @@ class TestStream extends munit.FunSuite {
     type F = Writer % String + Async
     val ran = collection.mutable.ListBuffer[String]()
     val talk: Int ! F =
-      effect[F, Unit](Writer("ab")).flatMap: _ =>
-        effect[F, Unit](Async.Run(() => { ran += "effect"; () })).flatMap: _ =>
-          effect[F, Unit](Writer("")).flatMap: _ =>
-            effect[F, Unit](Writer("cd")).map(_ => 7)
+      effect(Writer("ab")).flatMap: _ =>
+        effect(Async.Run(() => { ran += "effect"; () })).flatMap: _ =>
+          effect(Writer("")).flatMap: _ =>
+            effect(Writer("cd")).map(_ => 7)
 
     // each told string becomes its characters: "ab" -> a, b; "" -> nothing
-    val split = Writer.expand[String, Char, Int, Async](talk)(_.toVector)
+    val split = Writer.expand(talk)(_.toVector)
     assertEquals(split.toLazyList.toList, List('a', 'b', 'c', 'd'))
     // the forwarded operation ran once, in its own place in the order
     assertEquals(ran.toList, List("effect"))
 
     // one-for-one agrees with `map`, which is expand's degenerate case
-    val loud = Writer.expand[String, String, Int, Async](talk)(w => Vector(w.toUpperCase))
+    val loud = Writer.expand(talk)(w => Vector(w.toUpperCase))
     assertEquals(loud.toLazyList.toList,
-      Writer.map[String, String, Int, Async](talk)(_.toUpperCase).toLazyList.toList)
+      Writer.map(talk)(_.toUpperCase).toLazyList.toList)
   }
 
   test("a writer program joins through toLazyList") {

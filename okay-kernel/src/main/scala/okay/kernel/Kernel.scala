@@ -1,6 +1,6 @@
 package okay.kernel
 
-import okay.freer.{!, pure}
+import okay.{!, pure}
 
 import okay.std.{Resource}
 import scala.collection.mutable

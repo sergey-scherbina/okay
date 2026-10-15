@@ -1,7 +1,6 @@
 package okay
 
 
-import okay.freer.*
 
 
 /** DEBUG-PROBE (own-scheduler-monitor): how many wakes does the monitor
@@ -12,7 +11,7 @@ class ProbeMonitorWakes extends munit.FunSuite {
 
   private def spawnJoin(ops: Int)(using Scheduler): Long =
     def loop(i: Int, sum: Long): Long ! Async =
-      if i == ops then pure[Async, Long](sum)
+      if i == ops then pure[Long, Async](sum)
       else async(Async.spawn(async(i))).flatMap(_.joinAsync).flatMap(v => loop(i + 1, sum + v))
     Async.spawn(loop(0, 0L)).join()
 

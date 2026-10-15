@@ -1,15 +1,13 @@
 package okay
 
+import scala.language.implicitConversions
 
-import okay.freer.*
+
 
 
 import okay.std.*
-import okay.freer.given
 import okay.std.given
-import !.*
-import Row.plus
-
+import okay.freer.Fold
 import scala.util.chaining.*
 
 class TestGenerate extends munit.FunSuite {
@@ -25,22 +23,21 @@ class TestGenerate extends munit.FunSuite {
       List(0, 1, 1, 2, 3, 5, 8, 13, 21, 34))
   }
 
-  test("fibs by effects: Producer, pure and logged") {
-    val p = fibs[BigInt, Producer]
+  test("fibs by effects: Producer agrees with LazyList") {
     val n = 100
-    val x = p.next(n).peek.tap(println)
-    val y = p.next(n)(using Producer.log()).peek.tap(println)
+    val x = fibs[BigInt, Producer].take(n).toList
+    val y = fibs[BigInt, LazyList].take(n).toList
     assertEquals(x, y)
   }
 
   test("stack safety: 1M produced values") {
-    fibs[BigInt, Producer].next(1000000).peek.tap(println)
+    fibs[BigInt, Producer].drop(1000000).headOption.tap(println)
   }
 
   test("fibs by effects: Feed, the fourth carrier") {
     def firstN[W](s: Feed[W], n: Int): Vector[W] =
       if n <= 0 then Vector.empty
-      else Writer.uncons(s) match
+      else Writer.uncons[W, Unit](s) match
         case Left(_) => Vector.empty
         case Right((w, rest)) => w +: firstN(rest, n - 1)
     assertEquals(firstN(nats[Int, Feed], 5), Vector(0, 1, 2, 3, 4))
@@ -57,7 +54,7 @@ class TestGenerate extends munit.FunSuite {
     var seen = 0
     Stream.fold(silent)(using Fold[Int, Unit](())((_, _) => seen += 1))
     assertEquals(seen, 0)
-    assert(compileErrors("val p: okay.std.Producer[Int] = okay.freer.pure(5)").isEmpty)
+    assert(compileErrors("val p: okay.std.Producer[Int] = okay.pure(5)").isEmpty)
 
     // Feed: the answer is always Unit, so `pure(5)` needs Scala's own
     // value-discard adaptation to compile at all — this ALSO produces
@@ -73,7 +70,7 @@ class TestGenerate extends munit.FunSuite {
     // trap is not closed by a TYPE the compiler enforces here — it is
     // made INSPECTABLE at the point Producer's identical-looking
     // `pure(a)` gives the reviewer nothing to see at all.
-    assert(compileErrors("val f: okay.std.Feed[Int] = okay.freer.pure(5)").isEmpty)
+    assert(compileErrors("val f: okay.std.Feed[Int] = okay.pure(5)").isEmpty)
 
     // the honest way to end an empty Feed still compiles clean, no
     // adaptation needed since the value already IS Unit
@@ -91,44 +88,46 @@ class TestGenerate extends munit.FunSuite {
     def walk[A](p: A ! P): Vector[A] = S.iterator(p).toVector
 
     var performed = 0
+    def pr(i: Int): Int ! P = produce(i)
+    def as[A](a: => A): A ! P = async(a)
     val mixed: Int ! P =
-      produce(1).plus[Async].flatMap(_ => async { performed += 1 }.plus[Produce])
-        .flatMap(_ => produce(2).plus[Async]).flatMap(_ => async { performed += 1 }.plus[Produce])
-        .flatMap(_ => produce(3).plus[Async])
+      pr(1).flatMap(_ => as { performed += 1 })
+        .flatMap(_ => pr(2)).flatMap(_ => as { performed += 1 })
+        .flatMap(_ => pr(3))
     assertEquals(walk(mixed), Vector(1, 2, 3))
     val n1 = performed
     assertEquals(oracle(mixed), Vector(1, 2, 3))
     assertEquals(performed - n1, n1, "both walks perform every Async op")
-    // ends in an Async op, not a produce: the terminal Inject(g) arm
-    val tail: Int ! P = produce(7).plus[Async].flatMap(_ => async { 9 }.plus[Produce])
+    // ends in an Async op, not a produce
+    val tail: Int ! P = pr(7).flatMap(_ => as { 9 })
     assertEquals(walk(tail), Vector(7))
     assertEquals(oracle(tail), Vector(7))
     // a bare produce is one element; a bare pure is none
-    assertEquals(walk(produce(5).plus[Async]), Vector(5))
-    assertEquals(walk(pure[P, Int](5)), Vector.empty)
+    assertEquals(walk(pr(5)), Vector(5))
+    assertEquals(walk(pure[Int, P](5)), Vector.empty)
     // lazy: an endless effectful producer yields on demand
-    def endless(i: Int): Int ! P = produce(i).plus[Async].flatMap(_ => endless(i + 1))
+    def endless(i: Int): Int ! P = pr(i).flatMap(_ => endless(i + 1))
     assertEquals(S.iterator(endless(0)).take(4).toVector, Vector(0, 1, 2, 3))
     // stack-safe across a long Async-interleaved walk
     def long(i: Int): Int ! P =
       if i >= 200000 then pure(i)
-      else produce(i).plus[Async].flatMap(_ => async { () }.plus[Produce]).flatMap(_ => long(i + 1))
+      else pr(i).flatMap(_ => as { () }).flatMap(_ => long(i + 1))
     assertEquals(S.iterator(long(0)).drop(199999).next(), 199999)
   }
 
   test("Feed's specialized iterator agrees with Writer.collect on every tree shape") {
     val St = feedStream[Unit]
     def walk[W](f: Feed[W]): Vector[W] = St.iterator(f).toVector
-    def oracle[W](f: Feed[W]): Vector[W] = Writer.collect[W, Unit, okay.freer.Pure](f).runWith._1
+    def oracle[W](f: Feed[W]): Vector[W] = Writer.collect(f).run._1
 
     // empty: Pure only
     assertEquals(walk(pure(()): Feed[Int]), Vector.empty)
-    // a bare tell: the terminal Inject(Say) with no continuation
+    // a bare tell, no continuation
     assertEquals(walk(Writer.tell(7)), Vector(7))
     // right-nested binds, the shape generate/tell.flatMap build
     val right: Feed[Int] = Writer.tell(1).flatMap(_ => Writer.tell(2)).flatMap(_ => Writer.tell(3))
-    // left-nested binds and a leading pure: the `case _ => resume` arm
-    val left: Feed[Int] = pure(()).flatMap(_ => (Writer.tell(1).flatMap(_ => Writer.tell(2))).flatMap(_ => Writer.tell(3)))
+    // left-nested binds and a leading pure
+    val left: Feed[Int] = pure[Unit, Writer % Int](()).flatMap(_ => (Writer.tell(1).flatMap(_ => Writer.tell(2))).flatMap(_ => Writer.tell(3)))
     // a tell followed by a pure that is NOT the end, then more tells
     val mid: Feed[Int] = Writer.tell(1).flatMap(_ => pure(())).flatMap(_ => Writer.tell(2).map(_ => ()))
     for f <- List(right, left, mid) do

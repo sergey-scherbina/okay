@@ -1,12 +1,10 @@
 package okay
 
 
-import okay.freer.*
 
 
 import okay.std.*
 import okay.given
-import okay.freer.given
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -21,7 +19,7 @@ class TestSharedOnce extends munit.FunSuite:
   /** counts its runs, and takes long enough for the second demand to
    * arrive while the first is in flight */
   def slow(runs: AtomicInteger): Int ! Once + Async =
-    Once.once[Int, Async](effect[Once + Async, Unit](Async.Run(() => { runs.incrementAndGet(); Thread.sleep(30) })).map(_ => 42))
+    Once.once[Int, Async](effect(Async.Run(() => { runs.incrementAndGet(); Thread.sleep(30) })).map(_ => 42))
 
   test("one handle, two fibres, one store: the program runs once and the second fibre waits for its answer") {
     val runs = AtomicInteger(0)
@@ -35,7 +33,7 @@ class TestSharedOnce extends munit.FunSuite:
   test("the threaded reading, for contrast: Once.run per fibre runs the same value twice") {
     val runs = AtomicInteger(0)
     val p = slow(runs)
-    val (a, b) = Async.par(Once.run[Int, Async](p), Once.run[Int, Async](p)).runWith
+    val (a, b) = Async.par(Once.run(p), Once.run(p)).runWith
     assertEquals((a, b), (42, 42))
     assertEquals(runs.get, 2, "each fibre's Once.run has its own cells")
   }
@@ -54,10 +52,10 @@ class TestSharedOnce extends munit.FunSuite:
     val store = SharedOnce()
     val p: Int ! (Once + (Async + Writer % String)) =
       Once.once[Int, Async + Writer % String](
-        effect[Once + (Async + Writer % String), Unit](Async.Run(() => { runs.incrementAndGet(); () }))
-          .flatMap(_ => effect[Once + (Async + Writer % String), Unit](Writer("ran"))).map(_ => 7))
+        effect(Async.Run(() => { runs.incrementAndGet(); () }))
+          .flatMap(_ => effect(Writer("ran"))).map(_ => 7))
     val twice = p.flatMap(x => p.map(y => x + y))
-    val (log, n) = Writer.run[String, Int, Async](store.runIn[Int, Writer % String](twice)).runWith
+    val (log, n) = Writer.run(store.runIn(twice)).runWith
     assertEquals(n, 14)
     assertEquals(log, Seq("ran"), "the program's own tell happened once, with its one run")
     assertEquals(runs.get, 1)

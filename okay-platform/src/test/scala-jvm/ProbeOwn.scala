@@ -1,7 +1,6 @@
 package okay
 
 
-import okay.freer.*
 
 
 /** DEBUG-PROBE (schedulers-family): what the owned-worker scheduler
@@ -24,7 +23,7 @@ class ProbeOwn extends munit.FunSuite {
       val t0 = System.nanoTime()
       val sum = Async.spawn {
         val fs = (0 until 10000).map(i => Async.spawn(async(step(i, work))))
-        fs.foldLeft(pure[Async, Long](0L))((acc, f) => acc.flatMap(a => f.joinAsync.map(a + _)))
+        fs.foldLeft(pure[Long, Async](0L))((acc, f) => acc.flatMap(a => f.joinAsync.map(a + _)))
       }.join()
       val ms = (System.nanoTime() - t0) / 1e6
       println(f"[PROBE] work=$work%5d  ${ms}%8.2f ms  sum=$sum  ${own.stats}")

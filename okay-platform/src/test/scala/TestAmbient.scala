@@ -1,18 +1,16 @@
 package okay
 
 
-import okay.freer.*
 
 
 import okay.std.*
-import okay.freer.given
 class TestAmbient extends munit.FunSuite:
 
   test("Ambient.clock answers the wall clock; Ambient.random draws differ"):
     val before = System.currentTimeMillis()
-    val t = !.run(Ambient.clock.run(Clock.now))
+    val t = Clock.now.handle(Ambient.clock).run
     assert(t >= before && t <= System.currentTimeMillis() + 1000)
-    val (a, b) = !.run(Ambient.random.run(for a <- Random.nextLong; b <- Random.nextLong yield (a, b)))
+    val (a, b) = (for a <- Random.nextLong; b <- Random.nextLong yield (a, b)).handle(Ambient.random).run
     assertNotEquals(a, b)
 
   test("Ambient.uid() is unique and sorts by issue time; Ambient.stamp() never goes backwards"):

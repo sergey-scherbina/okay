@@ -1,7 +1,6 @@
 package okay
 
 
-import okay.freer.*
 
 
 import java.util.concurrent.atomic.AtomicInteger
@@ -22,7 +21,7 @@ class ProbeAdaptiveOverflow extends munit.FunSuite {
         while c < 4 do
           val _ = peak.accumulateAndGet(active.incrementAndGet(), math.max)
           Thread.sleep(1); val _ = active.decrementAndGet(); c += 1
-      }))).flatMap(fs => fs.foldLeft(pure[Async, Unit](()))((acc, f) => acc.flatMap(_ => f.joinAsync)))
+      }))).flatMap(fs => fs.foldLeft(pure[Unit, Async](()))((acc, f) => acc.flatMap(_ => f.joinAsync)))
     }.join()
     (peak.get, (System.nanoTime() - t0) / 1e6)
 

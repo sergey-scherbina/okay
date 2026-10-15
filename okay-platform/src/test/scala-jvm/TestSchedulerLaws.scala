@@ -1,10 +1,8 @@
 package okay
 
 
-import okay.freer.*
 
 
-import okay.freer.given
 import java.util.concurrent.{CountDownLatch, TimeUnit}
 import java.util.concurrent.atomic.{AtomicInteger, AtomicReference}
 import scala.jdk.CollectionConverters.*
@@ -163,7 +161,7 @@ class TestSchedulerLaws extends SchedulerFamily {
         th.start(); th
       }
 
-      val pushed = (0 until n).map(_ => Schedulers.DriveTask[Int](() => pure[Async, Int](1)))
+      val pushed = (0 until n).map(_ => Schedulers.DriveTask[Int](() => pure[Int, Async](1)))
       go.countDown()
       var i = 0
       while i < n do { d.push(pushed(i)); i += 1 }
@@ -247,9 +245,9 @@ class TestSchedulerLaws extends SchedulerFamily {
     given Scheduler = Schedulers.own.workers(4).build
     val started = CountDownLatch(1)
     val burst = Async.spawn {
-      pure[Async, Unit](started.countDown()).flatMap { _ =>
+      pure[Unit, Async](started.countDown()).flatMap { _ =>
         val fs = (0 until 2000).map(i => Async.spawn(async { var s = 0; var j = 0; while j < 20000 do { s += (i ^ j); j += 1 }; s }))
-        fs.foldLeft(pure[Async, Long](0L))((acc, f) => acc.flatMap(a => f.joinAsync.map(a + _)))
+        fs.foldLeft(pure[Long, Async](0L))((acc, f) => acc.flatMap(a => f.joinAsync.map(a + _)))
       }
     }
     started.await()

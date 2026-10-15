@@ -2,7 +2,6 @@ package okay
 
 import okay.core.Eff
 import okay.AsyncCont.{async, attempt, await, awaitEither, enter, exit, fork, join, sleep}
-import okay.Effects.machine.{effect, handle, value, run as runAt}
 import okay.core.pure
 
 /** Async on the machine (cont-first-module): the callback drive, one source for the JVM, JS and Native suites */

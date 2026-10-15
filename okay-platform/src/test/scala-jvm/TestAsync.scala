@@ -1,18 +1,16 @@
 package okay
 
 
-import okay.freer.*
 
 
 import okay.std.*
-import okay.freer.given
 import okay.std.given
 /** Loom-style asynchrony: virtual threads, parked blocking, par/race. */
 class TestAsync extends munit.FunSuite {
 
   test("async ops run in place: run is a relay") {
     val prog: Int ! Async = async(20).flatMap(x => async(x + 22))
-    assertEquals(!.run(Async.run[Int, okay.freer.Pure](prog)), 42)
+    assertEquals((Async.run(prog)).run, 42)
     assertEquals(prog.runWith, 42)
   }
 
@@ -68,8 +66,8 @@ class TestAsync extends munit.FunSuite {
     type S = Produce + Async
     def ticks(n: Int): Int ! S =
       if n == 0 then pure(0)
-      else effect[S, Unit](Async.Run(() => Thread.sleep(1))).flatMap: _ =>
-        effect[S, Int](n).flatMap(_ => ticks(n - 1))
+      else effect(Async.Run(() => Thread.sleep(1))).flatMap: _ =>
+        produce(n).flatMap(_ => ticks(n - 1))
     assertEquals(ticks(5).toLazyList.toList, List(5, 4, 3, 2, 1))
     assertEquals(ticks(1000).take(3).toList, List(1000, 999, 998))
   }
@@ -211,9 +209,9 @@ class TestAsync extends munit.FunSuite {
 
   test("mutual tail recursion trampolines through Async's own driver loop") {
     def isEven(n: Int): Boolean ! Async =
-      if n == 0 then pure(true) else !.tailcall(isOdd(n - 1))
+      if n == 0 then pure(true) else tailcall(isOdd(n - 1))
     def isOdd(n: Int): Boolean ! Async =
-      if n == 0 then pure(false) else !.tailcall(isEven(n - 1))
+      if n == 0 then pure(false) else tailcall(isEven(n - 1))
     assertEquals(Async.spawn(isEven(1000000)).join(), true)
     assertEquals(Async.spawn(isOdd(1000000)).join(), false)
   }
@@ -221,11 +219,11 @@ class TestAsync extends munit.FunSuite {
   test("async composes with other effects: telling across suspensions") {
     type F = Async + Writer % String
     val prog: Int ! F =
-      effect[F, Unit](Writer("start")).flatMap: _ =>
-        effect[F, Int](Async.Run(() => 21)).flatMap: x =>
-          effect[F, Unit](Writer("end")).map(_ => x * 2)
-    val (ws, a) = !.run(Writer.run[String, Int, okay.freer.Pure](
-      Async.run[Int, Writer % String](prog)))
+      effect(Writer("start")).flatMap: _ =>
+        effect(Async.Run(() => 21)).flatMap: x =>
+          effect(Writer("end")).map(_ => x * 2)
+    val (ws, a) = (Writer.run(
+      Async.run(prog))).run
     assertEquals(ws, Seq("start", "end"))
     assertEquals(a, 42)
   }

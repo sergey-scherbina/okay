@@ -2,7 +2,6 @@ package okay
 
 import okay.core.Eff
 import okay.AsyncCont.{async, await}
-import okay.Effects.machine.{effect, handle, value, run as runAt}
 import okay.core.pure
 
 /** Async on the machine answered in place (cont-first-module): a Run executed, an Await parked */

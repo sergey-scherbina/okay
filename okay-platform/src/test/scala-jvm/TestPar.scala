@@ -1,10 +1,8 @@
 package okay
 
 
-import okay.freer.*
 
 
-import okay.freer.given
 import java.util.concurrent.{CountDownLatch, TimeUnit}
 
 /**
@@ -19,6 +17,11 @@ import java.util.concurrent.{CountDownLatch, TimeUnit}
  * 0.78 against a 0.75 bound); a handshake cannot.
  */
 class TestPar extends munit.FunSuite {
+
+  /** the sequential spine: each leaf started when the one before it has returned */
+  private def sequence[A](ps: Seq[A ! Async]): Seq[A] ! Async =
+    ps.foldLeft(pure[Vector[A], Async](Vector.empty))((acc, p) => acc.flatMap(v => p.map(v :+ _)))
+  private def traverse[A, B](xs: Seq[A])(f: A => B ! Async): Seq[B] ! Async = sequence(xs.map(f))
 
   /** one leaf: arrive, then wait for everyone else to arrive */
   private def leaf(latch: CountDownLatch, millis: Long): Boolean ! Async =
@@ -70,7 +73,7 @@ class TestPar extends munit.FunSuite {
     // through this instance — the latter would run f on a fiber
     val A = summon[Applicative[Par]]
     val here = Thread.currentThread().getName
-    val prog = A.fmap(Par(Free.pure(1)), (_: Int) => Thread.currentThread().getName)
+    val prog = A.fmap(Par(pure(1)), (_: Int) => Thread.currentThread().getName)
     assertEquals(prog.seq.runWith, here)
   }
 

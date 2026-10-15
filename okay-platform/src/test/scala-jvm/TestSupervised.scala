@@ -1,10 +1,8 @@
 package okay
 
 
-import okay.freer.*
 
 
-import okay.freer.given
 import java.util.concurrent.atomic.AtomicInteger
 import scala.language.implicitConversions
 
@@ -37,13 +35,13 @@ class TestSupervised extends munit.FunSuite {
     given Scheduler = Schedulers.forkJoin(pool)
     val finished = AtomicInteger(0)
     val (out, took) = ms:
-      scala.util.Try(!.run(Async.run[Int, Pure](
+      scala.util.Try((Async.run(
         Async.supervised: n ?=>
           (0 to 9).foreach: i =>
             val _ =
               if i == 3 then n.fork[Int](async(throw boom))
               else n.fork(async { Thread.sleep(3000); finished.incrementAndGet() })
-          okay.freer.pure[Async, Int](0))))
+          okay.pure[Int, Async](0))).run)
     assert(out.isFailure, s"the scope did not fail: $out")
     assertEquals(out.failed.get.getMessage, "boom")
     assert(took < 1500, s"took ${took}ms — the siblings were waited for, not cancelled")
@@ -53,10 +51,10 @@ class TestSupervised extends munit.FunSuite {
   test("no failure: the scope waits for every child and answers the body") {
     given Scheduler = Schedulers.forkJoin(pool)
     val done = AtomicInteger(0)
-    val out = !.run(Async.run[String, Pure](
+    val out = (Async.run(
       Async.supervised: n ?=>
         (1 to 5).foreach(_ => { val _ = n.fork(async { Thread.sleep(50); done.incrementAndGet() }) })
-        okay.freer.pure[Async, String]("body")))
+        okay.pure[String, Async]("body"))).run
     assertEquals(out, "body")
     assertEquals(done.get(), 5, "the scope finished while children were still running")
   }
@@ -65,10 +63,10 @@ class TestSupervised extends munit.FunSuite {
     given Scheduler = Schedulers.forkJoin(pool)
     val finished = AtomicInteger(0)
     val (out, took) = ms:
-      scala.util.Try(!.run(Async.run[Int, Pure](
+      scala.util.Try((Async.run(
         Async.supervised: n ?=>
           val _ = n.fork(async { Thread.sleep(3000); finished.incrementAndGet() })
-          async[Int](throw boom))))
+          async[Int](throw boom))).run)
     assert(out.isFailure, s"the scope did not fail: $out")
     assert(took < 1500, s"took ${took}ms — the child was waited for")
     assertEquals(finished.get(), 0, "the child ran to completion after the body failed")
@@ -76,11 +74,11 @@ class TestSupervised extends munit.FunSuite {
 
   test("a fiber's value is available through joinAsync, as usual") {
     given Scheduler = Schedulers.forkJoin(pool)
-    val out = !.run(Async.run[Int, Pure](
+    val out = (Async.run(
       Async.supervised: n ?=>
         val a = n.fork(async(40))
         val b = n.fork(async(2))
-        a.joinAsync.flatMap(x => b.joinAsync.map(y => x + y))))
+        a.joinAsync.flatMap(x => b.joinAsync.map(y => x + y)))).run
     assertEquals(out, 42)
   }
 

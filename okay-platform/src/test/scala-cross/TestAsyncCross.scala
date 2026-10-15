@@ -1,7 +1,6 @@
 package okay
 
 
-import okay.freer.*
 
 
 import scala.concurrent.Promise
@@ -187,7 +186,7 @@ class TestAsyncCross extends munit.FunSuite {
     val prog = Async.supervised: n ?=>
       kids = (1 to 3).toList.map(_ => n.fork(Async.await[Int](_ => () => ())))
       val _ = n.fork[Int](Async.sleep(10).flatMap(_ => async(throw boom)))
-      okay.freer.pure[Async, Int](0)
+      okay.pure[Int, Async](0)
     Async.runAsync(prog).failed.map { e =>
       assertEquals(e.getMessage, "boom")
       // a completed fiber calls a new onComplete at once, on every platform

@@ -1,7 +1,6 @@
 package okay
 
 
-import okay.freer.*
 
 
 import java.util.concurrent.ConcurrentHashMap
@@ -26,7 +25,7 @@ class TestOwnMonitor extends munit.FunSuite with okay.testkit.Munit.Diagnosed {
   private def burst(n: Int)(body: () => Unit)(using Scheduler): Unit =
     Async.spawn {
       async((0 until n).map(_ => Async.spawn(async(body())))).flatMap { fs =>
-        fs.foldLeft(pure[Async, Unit](()))((acc, f) => acc.flatMap(_ => f.joinAsync))
+        fs.foldLeft(pure[Unit, Async](()))((acc, f) => acc.flatMap(_ => f.joinAsync))
       }
     }.join()
 
