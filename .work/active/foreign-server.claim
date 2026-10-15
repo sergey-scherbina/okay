@@ -1,6 +1,0 @@
-feature/foreign-server 2026-10-15T13:20:25Z
-agent: claude-code (session 04094c70, okay-ts interop)
-heartbeat: 2026-10-15T13:29:41Z
-status: ready-to-land
-done-so-far: d8e35b184 on feature/foreign-server — ForeignServer, WireLink.accepted, TestForeignServer 2/2, TestTsServed = TestTsPipes, TestOkayTsServed, TestOkayTsAudited (LIVE) green
-next: land — waiting for the operator: master is gate-RED on freer-on-core (okay-async warnings, recscan rows), 10 unpushed commits
