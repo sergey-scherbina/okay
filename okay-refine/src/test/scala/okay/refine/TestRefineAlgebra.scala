@@ -2,10 +2,9 @@ package okay.refine
 
 import okay.{Optic, through}
 
-import okay.freer.{%}
-import okay.freer.{!, pure}
-import okay.std.{Writer, runEither, runChoice}
-import okay.freer.given
+import okay.{%}
+import okay.{!, pure}
+import okay.std.{Choose, Throws, Writer, runEither, runChoice}
 import okay.codec.Json
 import okay.testkit.Munit.Diagnosed
 
@@ -120,18 +119,18 @@ class TestRefineAlgebra extends Diagnosed:
   }
 
   test("orRaise: the read as an effect — the value, or the whole verdict raised and handed back by runEither") {
-    assertEquals(!.run(runEither[Int, okay.freer.Pure, Verdict[Int]](int.orRaise("42"))), Right(42))
-    !.run(runEither[Int, okay.freer.Pure, Verdict[Int]](int.orRaise("x"))) match
+    assertEquals(!.run(runEither[Int, Throws % Verdict[Int], Verdict[Int]](int.orRaise("42"))), Right(42))
+    !.run(runEither[Int, Throws % Verdict[Int], Verdict[Int]](int.orRaise("x"))) match
       case Left(Verdict.Declined(rs)) => assertEquals(rs.map(_.reason), Vector("'x' is not an integer"))
       case other => fail(s"expected the verdict raised, got $other")
     // inside a program: two reads, the first failure stops it
     val both = for a <- int.orRaise("4"); b <- int.orRaise("five") yield a + b
-    assert(!.run(runEither[Int, okay.freer.Pure, Verdict[Int]](both)).isLeft)
+    assert(!.run(runEither[Int, Throws % Verdict[Int], Verdict[Int]](both)).isLeft)
   }
 
   test("search: the pattern as a Choose program — Took one answer, Unclear a choice point, Declined none") {
     val choice = int >>> (even or small or big)
-    def readings(s: String): Seq[Int] = !.run(runChoice[Int, okay.freer.Pure](choice.search(s)))
+    def readings(s: String): Seq[Int] = !.run(runChoice[Int, Choose](choice.search(s)))
     assertEquals(readings("7"), Seq(7))
     assertEquals(readings("4"), Seq(4, 4))
     assertEquals(readings("11"), Seq())
@@ -140,7 +139,7 @@ class TestRefineAlgebra extends Diagnosed:
   test("streams: verdicts is one verdict per input; taken emits the values and ANSWERS what it did not take") {
     val choice = int >>> (even or small)
     val inputs: Unit ! Writer % String =
-      Seq("4", "7", "11", "x", "200").foldLeft(pure[Writer % String, Unit](()))((m, s) => m.flatMap(_ => Writer.tell(s)))
+      Seq("4", "7", "11", "x", "200").foldLeft(pure[Unit, Writer % String](()))((m, s) => m.flatMap(_ => Writer.tell(s)))
     val (vs, _) = !.run(Writer.run(through(inputs)(choice.verdicts)))
     assertEquals(vs.map {
       case Verdict.Took(b, _, _) => s"took $b"

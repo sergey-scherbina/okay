@@ -3,7 +3,8 @@ package okay.refine
 import scala.collection.mutable
 import scala.reflect.TypeTest
 import okay.{Async, Channel, Scheduler, Source, runForeach}
-import okay.freer.{!, Aggregator, effect, pure}
+import okay.{!, effect, pure}
+import okay.freer.Aggregator
 /**
  * A ROUTING TABLE AS A VALUE, run anywhere (specs/refine.md,
  * refine-bulk). Where `Router` binds each rule to a channel as it is
@@ -56,7 +57,7 @@ abstract class Routes[A, B](val pattern: Refine[A, B]) extends Serializable:
     def accepts(b: B, by: Path): Boolean = accept(b, by)
     def project(b: B): Option[X] = proj(b)
     /** this lane's values go to `c`, when the table is `run` */
-    def ~>(c: Channel[X]): Binding = Binding.ToLane(index, b => proj(b).fold(pure[Async, Unit](()))(x => c.send(x).map(_ => ())), c)
+    def ~>(c: Channel[X]): Binding = Binding.ToLane(index, b => proj(b).fold(pure[Unit, Async](()))(x => c.send(x).map(_ => ())), c)
     override def toString: String = s"Lane($name)"
 
   private def lane[X](name: String, accept: (B, Path) => Boolean, proj: B => Option[X]): Lane[X] =
@@ -139,7 +140,7 @@ abstract class Routes[A, B](val pattern: Refine[A, B]) extends Serializable:
     var rejected = 0
     def reject(r: Rejected[A, B]): Unit ! Async =
       rejected += 1
-      rejects.fold(pure[Async, Unit](()))(_.send(r).map(_ => ()))
+      rejects.fold(pure[Unit, Async](()))(_.send(r).map(_ => ()))
     def one(a: A): Unit ! Async = tag(a) match
       case Right((i, b)) => sends.get(i) match
         case Some(send) =>

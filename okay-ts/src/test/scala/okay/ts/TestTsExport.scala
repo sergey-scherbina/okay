@@ -2,7 +2,7 @@ package okay.ts
 
 import scala.scalajs.js
 import okay.Async
-import okay.freer.{!, pure}
+import okay.pure
 import okay.codec.Schema
 
 object TestTsExport:
@@ -13,8 +13,8 @@ object TestTsExport:
 
   val shop = Ts.module("shop")(
     Ts.expose[Order, Totals]("total")(o =>
-      pure[Async, Totals](Totals(o.sku, prices.getOrElse(o.sku, 0.0) * o.qty, None))),
-    Ts.expose[Vector[String], Int]("count")(skus => pure[Async, Int](skus.size)),
+      pure[Totals, Async](Totals(o.sku, prices.getOrElse(o.sku, 0.0) * o.qty, None))),
+    Ts.expose[Vector[String], Int]("count")(skus => pure[Int, Async](skus.size)),
   )
 
   /** Node's own modules, where the test runs */

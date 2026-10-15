@@ -2,7 +2,7 @@ package okay.ts
 
 import scala.scalajs.js
 import okay.Async
-import okay.freer.{!, effect, pure}
+import okay.{!, effect, pure}
 import okay.codec.Json
 
 /**

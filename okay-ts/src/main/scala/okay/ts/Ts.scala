@@ -2,7 +2,7 @@ package okay.ts
 
 import scala.scalajs.js
 import okay.Async
-import okay.freer.{!, pure}
+import okay.{!, pure}
 import okay.codec.{Json, Schema, Stubs}
 
 /**
@@ -44,18 +44,18 @@ object Ts:
   /** `types`: the argument's and the answer's Schemas, when the callback
    * was made by `callback[Arg, Res]` — what `Ts.ops` writes a TypeScript
    * signature from (typescript-types T12) */
-  final class Callback[F[+_]](val name: String, val run: Json => Either[Failure, Json] ! F,
+  final class Callback[F[_]](val name: String, val run: Json => Either[Failure, Json] ! F,
                               val types: Option[(Schema[?], Schema[?])] = None)
 
-  final class Callbacks[F[+_]](val all: Vector[Callback[F]]):
+  final class Callbacks[F[_]](val all: Vector[Callback[F]]):
     def get(name: String): Option[Callback[F]] = all.find(_.name == name)
     def names: Vector[String] = all.map(_.name)
 
-  def callbacks[F[+_]](cbs: Callback[F]*): Callbacks[F] = Callbacks(cbs.toVector)
+  def callbacks[F[_]](cbs: Callback[F]*): Callbacks[F] = Callbacks(cbs.toVector)
 
   /** the TypeScript type of these callbacks as a program's operations
    * (typescript-types T12), for `effects<Name>()` */
-  def ops[F[+_]](name: String, cbs: Callbacks[F]): String =
+  def ops[F[_]](name: String, cbs: Callbacks[F]): String =
     Stubs.typescriptOps(name, cbs.all.map(c => (c.name, c.types)))
 
   /** `perform(name, x)` in TypeScript runs `f(x)` in okay; several
@@ -63,12 +63,12 @@ object Ts:
   def callback[Arg: Schema, Res: Schema](name: String): CallbackOf[Arg, Res] = CallbackOf(name)
 
   final class CallbackOf[Arg, Res](name: String)(using arg: Schema[Arg], res: Schema[Res]):
-    def apply[F[+_]](f: Arg => Res ! F): Callback[F] = Callback(name, args =>
+    def apply[F[_]](f: Arg => Res ! F): Callback[F] = Callback(name, args =>
       val in = args match
         case Json.JArr(Vector(one)) => one
         case many => many
       Json.decode(arg)(in) match
-        case Left(why) => pure[F, Either[Failure, Json]](Left(Failure("Decode", s"$name: $why")))
+        case Left(why) => pure[Either[Failure, Json], F](Left(Failure("Decode", s"$name: $why")))
         case Right(a) => f(a).map(r => Right(Json.parse(Json.encode(res)(r)))),
       Some((arg, res)))
 
@@ -81,36 +81,36 @@ object Ts:
    * Walk a TypeScript program to its answer. Each step is one okay
    * program node, so a long program is a loop, not a stack.
    */
-  def run[F[+_], Out](program: js.Any, cbs: Callbacks[F])(using out: Schema[Out]): Either[Failure, Out] ! F =
+  def run[F[_], Out](program: js.Any, cbs: Callbacks[F])(using out: Schema[Out]): Either[Failure, Out] ! F =
     walk(program, cbs, fromJs[Out](_))
 
   /** `run` whose answer is the program's final value as JSON, whatever
    * its shape (okay-ts-npm's `run`, typescript-types T9) */
-  def runJson[F[+_]](program: js.Any, cbs: Callbacks[F]): Either[Failure, Json] ! F =
+  def runJson[F[_]](program: js.Any, cbs: Callbacks[F]): Either[Failure, Json] ! F =
     walk(program, cbs, json)
 
-  private def walk[F[+_], Out](program: js.Any, cbs: Callbacks[F], finish: js.Any => Either[Failure, Out]): Either[Failure, Out] ! F =
+  private def walk[F[_], Out](program: js.Any, cbs: Callbacks[F], finish: js.Any => Either[Failure, Out]): Either[Failure, Out] ! F =
     def go(p: js.Dynamic): Either[Failure, Out] ! F =
       (p.selectDynamic("tag"): Any) match
-        case "done" => pure[F, Either[Failure, Out]](finish(p.selectDynamic("value")))
+        case "done" => pure[Either[Failure, Out], F](finish(p.selectDynamic("value")))
         case "perform" =>
           val name = String.valueOf(p.selectDynamic("name"))
           json(p.selectDynamic("args")) match
-            case Left(f) => pure[F, Either[Failure, Out]](Left(f))
+            case Left(f) => pure[Either[Failure, Out], F](Left(f))
             case Right(args) => cbs.get(name) match
-              case None => pure[F, Either[Failure, Out]](Left(Failure("NoCallback",
+              case None => pure[Either[Failure, Out], F](Left(Failure("NoCallback",
                 s"'$name' is not among this program's callbacks (${cbs.names.mkString(", ")})")))
               case Some(cb) => cb.run(args).flatMap {
-                case Left(f) => pure[F, Either[Failure, Out]](Left(f))
+                case Left(f) => pure[Either[Failure, Out], F](Left(f))
                 case Right(answer) =>
                   val next =
                     try Right(p.applyDynamic("k")(js.JSON.parse(Json.print(answer))))
                     catch case js.JavaScriptException(e) => Left(caught(e))
                   next match
-                    case Left(f) => pure[F, Either[Failure, Out]](Left(f))
+                    case Left(f) => pure[Either[Failure, Out], F](Left(f))
                     case Right(n) => go(n)
               }
-        case other => pure[F, Either[Failure, Out]](Left(Failure("TypeError",
+        case other => pure[Either[Failure, Out], F](Left(Failure("TypeError",
           s"a program answers done(v) or perform(name, ...), got a tag of $other")))
     try go(js.Dynamic.global.Object(program))
     catch case js.JavaScriptException(e) => pure(Left(caught(e)))

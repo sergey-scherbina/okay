@@ -1,7 +1,8 @@
 package okay.semantic.ossie
 
 import okay.{Async, Bulk, Source, Tables}
-import okay.freer.{!, Aggregator}
+import okay.{!, %, +}
+import okay.freer.Aggregator
 import okay.std.{Chunk, Writer}
 import okay.codec.{Json, Schema}
 import okay.semantic.{Calculation, Dimension, Group, Kind, Model, Request, Result, Value}
@@ -262,10 +263,10 @@ final class ExpressionPlan[A] private[ossie] (val model: ExpressionModel[A], val
           }.toVector
           if errors.nonEmpty then Left(errors.toVector.distinct) else Right(shell.result(result))
   def source(rows: Source[A], tables: Map[String,Table] = Map.empty): Either[Vector[String],Result] ! Async =
-    Writer.loopWith[A,Vector[A],Unit,Either[Vector[String],Result],Async](rows)(Vector.empty)(
+    Writer.loopWith[A,Vector[A],Unit,Either[Vector[String],Result],Writer % A + Async](rows)(Vector.empty)(
       (acc,a) => if acc.size <= maxRows then acc :+ a else acc)((acc,_) => run(acc,tables))
   def chunks(rows: Source[Chunk[A]], tables: Map[String,Table] = Map.empty): Either[Vector[String],Result] ! Async =
-    Writer.loopWith[Chunk[A],Vector[A],Unit,Either[Vector[String],Result],Async](rows)(Vector.empty)(
+    Writer.loopWith[Chunk[A],Vector[A],Unit,Either[Vector[String],Result],Writer % Chunk[A] + Async](rows)(Vector.empty)(
       (acc,c) => (acc ++ c.iterator.take((maxRows + 1 - acc.size).max(0))).take(maxRows + 1))((acc,_) => run(acc,tables))
   def bulk[D[_]](rows: D[A], tables: Map[String,Table] = Map.empty)(using backend: Bulk[D]): Either[Vector[String],Result] =
     backend.aggregate(rows)(aggregator(tables))

@@ -59,12 +59,12 @@ class TestFpmlProver extends Diagnosed:
   }
 
   test("search: the two documents under Logic — if it is a swap then its legs, else the forward's pair") {
-    import okay.freer.{!, pure}
-    import okay.std.{Logic, runChoice}
+    import okay.{!, pure}
+    import okay.std.{Choose, Logic, runChoice}
     def describe(doc: String): Seq[String] =
       val j = (Format.detect andThen Format.value).run(doc.getBytes(UTF_8)).toOption.get
-      !.run(runChoice[String, okay.freer.Pure](
-        Logic.ifte[Fpml.Swap, String, okay.freer.Pure](Fpml.swap.search(Fpml.trade.run(j).toOption.get))(
+      !.run(runChoice[String, Choose](
+        Logic.ifte[Fpml.Swap, String, Choose](Fpml.swap.search(Fpml.trade.run(j).toOption.get))(
           s => pure(s"swap ${s.fixedRate} vs ${s.floatingIndex}"))(
           Fpml.fxForward.search(Fpml.trade.run(j).toOption.get).map(f => s"forward ${f.currency1}/${f.currency2}"))))
     assertEquals(describe(Samples.vanillaSwap), Seq("swap 0.06 vs EUR-LIBOR-BBA"))

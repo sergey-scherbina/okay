@@ -1,8 +1,8 @@
 package okay.refine
 
-import okay.freer.{!, pure}
+import okay.{!, pure}
 
-import okay.std.{Logic, runChoice}
+import okay.std.{Choose, Logic, runChoice}
 import okay.codec.{Json, Schema}
 import okay.testkit.Munit.Diagnosed
 import java.nio.charset.StandardCharsets.UTF_8
@@ -65,7 +65,7 @@ class TestSchemaPattern extends Diagnosed:
     val even = Refine.step[Int, Int]("even")(n => if n % 2 == 0 then Right(n) else Left("odd"))(identity)
     val small = Refine.step[Int, Int]("small")(n => if n < 10 then Right(n) else Left("big"))(identity)
     val both = even <|> small
-    def all(n: Int) = !.run(runChoice[Int, okay.freer.Pure](both.search(n)))
+    def all(n: Int) = !.run(runChoice[Int, Choose](both.search(n)))
     assertEquals(all(20), Seq(20))
     assertEquals(all(4), Seq(4, 4))
     assertEquals(all(11), Seq.empty)
@@ -74,8 +74,8 @@ class TestSchemaPattern extends Diagnosed:
   test("search under the soft cut: if this is a swap then …, else …, other readings kept") {
     val j = Json.parse("""{"id": "s1", "notional": 1.0, "fixedRate": 0.03}""")
     def said(j: Json): Seq[String] =
-      !.run(runChoice[String, okay.freer.Pure](
-        Logic.ifte[Swap, String, okay.freer.Pure](swap.search(j))(s => pure(s"swap ${s.id}"))(pure("not a swap"))))
+      !.run(runChoice[String, Choose](
+        Logic.ifte[Swap, String, Choose](swap.search(j))(s => pure(s"swap ${s.id}"))(pure("not a swap"))))
     assertEquals(said(j), Seq("swap s1"))
     assertEquals(said(Json.parse("""{"id": "x"}""")), Seq("not a swap"))
   }

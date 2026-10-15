@@ -2,11 +2,10 @@ package okay.refine
 
 import okay.{Async, Channel, Source, drained, runCollect, through}
 
-import okay.freer.{%}
-import okay.freer.{!, pure}
+import okay.{%, +}
+import okay.{!, pure}
 import okay.std.{Writer}
 import okay.given
-import okay.freer.given
 import okay.std.given
 import okay.testkit.Munit.Diagnosed
 import scala.util.chaining.*
@@ -116,14 +115,14 @@ class TestRouter extends Diagnosed:
     val swaps = Channel[Swap]()
     val boom: Source[String] =
       Source.of(List("swap:s1,EUR")).flatMap(_ =>
-        !.widen[Unit, Async, Writer % String](okay.freer.effect[Async, Unit](Async.Run(() => throw IllegalStateException("disk gone")))))
+        okay.effect[Async, Unit](Async.Run(() => throw IllegalStateException("disk gone"))).at[Writer % String + Async])
     val e = intercept[IllegalStateException](Router(any).route[Swap](swaps).run(boom).runWith)
     assertEquals(e.getMessage, "disk gone")
     assertEquals(swaps.failed.map(_.getMessage), Some("disk gone"))
   }
 
   test("routed: the synchronous twin — one stream, each element tagged with its key, the rest Left with why") {
-    val inputs: Unit ! Writer % String = docs.foldLeft(pure[Writer % String, Unit](()))((m, s) => m.flatMap(_ => Writer.tell(s)))
+    val inputs: Unit ! Writer % String = docs.foldLeft(pure[Unit, Writer % String](()))((m, s) => m.flatMap(_ => Writer.tell(s)))
     val (out, _) = !.run(Writer.run(through(inputs)(any.routed(_.getClass.getSimpleName))))
     assertEquals(out.collect { case Right((k, _)) => k }, Seq("Swap", "Fx", "Cds", "Cds", "Swap", "Fx"))
     assertEquals(out.collect { case Left(r) => r.input }, Seq("letter:hello"))

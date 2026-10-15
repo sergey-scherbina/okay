@@ -2,10 +2,9 @@ package okay.semantic.ossie
 
 
 import okay.{Source, Async}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.std.given
 import okay.semantic.Request
 
@@ -27,7 +26,7 @@ class TestExpressionSources extends okay.testkit.Munit.Diagnosed:
     assert(limited.chunks(Source.of(chunks)).runWith.isLeft)
   }
   test("transport failure propagates without a fabricated semantic result") {
-    val source: Source[Sale] = Source(rows.head).flatMap(_ => effect[Writer % Sale + Async,Unit](Async.Run(() => throw IllegalStateException("source failed"))))
+    val source: Source[Sale] = Source(rows.head).flatMap(_ => effect[Async,Unit](Async.Run(() => throw IllegalStateException("source failed"))).at[Writer % Sale + Async])
     assertEquals(intercept[IllegalStateException](plan.source(source).runWith).getMessage,"source failed")
   }
 

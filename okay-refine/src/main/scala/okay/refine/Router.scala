@@ -2,7 +2,7 @@ package okay.refine
 
 import scala.reflect.TypeTest
 import okay.{Async, Channel, Scheduler, Source, runForeach}
-import okay.freer.{!, effect, pure}
+import okay.{!, effect, pure}
 /**
  * ROUTING: one stream of documents in, one stream per kind of document
  * out (specs/refine.md, refine-route). A `Router` is a VALUE — a
@@ -92,14 +92,14 @@ final class Router[A, B] private (
     var rejected = 0
     def one(a: A): Unit ! Async =
       val taken = pattern.run(a).toOption
-      val tapped = taken.fold(pure[Async, Unit](()))(b => taps.foldLeft(pure[Async, Unit](()))((m, t) => m.flatMap(_ => t.send(b).map(_ => ()))))
+      val tapped = taken.fold(pure[Unit, Async](()))(b => taps.foldLeft(pure[Unit, Async](()))((m, t) => m.flatMap(_ => t.send(b).map(_ => ()))))
       tapped.flatMap(_ => plan(a) match
         case Right((i, send)) =>
           counts(i) += 1
           send
         case Left(r) =>
           rejected += 1
-          rejects.fold(pure[Async, Unit](()))(_.send(r).map(_ => ())))
+          rejects.fold(pure[Unit, Async](()))(_.send(r).map(_ => ())))
     Async.attempt(source.runForeach(one)).flatMap {
       case Right(()) =>
         channels.foreach(_.close())

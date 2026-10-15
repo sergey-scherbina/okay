@@ -2,8 +2,8 @@ package okay.refine
 
 import okay.{Async, Bulk, Channel, Chunks, Scheduler, Source, drained, runForeach}
 
-import okay.freer.{%}
-import okay.freer.{!, effect, pure}
+import okay.{%, +}
+import okay.{!, effect, pure}
 import okay.std.{Writer}
 import okay.Bulk.{aggregate, cache, flatMap, map}
 
@@ -143,7 +143,7 @@ object Routable:
               all.foreach(_.fail(e))
               effect(Async.Await[(Vector[Int], Int)](k => { k(Left(e)); () => () }))
           }
-    def select[T, X](o: Source[T])(f: T => Option[X]): Source[X] = Writer.expand[T, X, Unit, Async](o)(t => f(t).toVector)
+    def select[T, X](o: Source[T])(f: T => Option[X]): Source[X] = Writer.expand[T, X, Unit, Writer % T + Async](o)(t => f(t).toVector)
     def done[X, Y](d: X ! Async)(f: X => Y): Y ! Async = d.map(f)
 
   /** a stream with unbounded lanes: the driver never waits for a reader */
