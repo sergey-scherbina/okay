@@ -1,7 +1,6 @@
 package okay.semantic.data
 
-import okay.{Async, Source}
-import okay.freer.{!}
+import okay.{!, Async, Source, pure}
 import okay.codec.Json
 import okay.semantic.{Model, Plan, Result}
 
@@ -18,10 +17,10 @@ object Api:
       case Left(es) => Wire.failure(es)
       case Right(p) => Json.JObj(Vector("explain" -> Json.JStr(p.explain)))
     def query(request: Json): Json ! Async = plan(request) match
-      case Left(es) => okay.freer.pure(Wire.failure(es))
+      case Left(es) => pure(Wire.failure(es))
       case Right(p) => execute(p).map(Wire.response)
   def local[A](model: Model[A], rows: () => IterableOnce[A]): Endpoint =
-    apply(model)(plan => okay.freer.pure(plan.run(rows())))
+    apply(model)(plan => pure(plan.run(rows())))
   def source[A](model: Model[A], rows: () => Source[A]): Endpoint =
     apply(model)(plan => Data.source(plan, rows()))
 
@@ -33,9 +32,9 @@ object Api:
       case Left(es) => Wire.failure(es)
       case Right(p) => Json.JObj(Vector("explain" -> Json.JStr(p.explain)))
     def query(request: Json): Json ! Async = plan(request) match
-      case Left(es) => okay.freer.pure(Wire.failure(es))
+      case Left(es) => pure(Wire.failure(es))
       case Right(p) => execute(p).map(Wire.response)
   def local[A](model: okay.semantic.ossie.ExpressionModel[A], rows: () => IterableOnce[A]): Endpoint =
-    apply(model)(plan => okay.freer.pure(plan.run(rows())))
+    apply(model)(plan => pure(plan.run(rows())))
   def source[A](model: okay.semantic.ossie.ExpressionModel[A], rows: () => Source[A]): Endpoint =
     apply(model)(plan => plan.source(rows()))

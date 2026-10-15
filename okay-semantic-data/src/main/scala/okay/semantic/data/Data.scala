@@ -1,7 +1,7 @@
 package okay.semantic.data
 
-import okay.{Async, Bulk, Source, Tables}
-import okay.freer.{!, Aggregator}
+import okay.{!, %, +, Async, Bulk, Source, Tables}
+import okay.freer.Aggregator
 import okay.std.{Chunk, Writer}
 import okay.codec.{Json, Schema}
 import okay.semantic.*
@@ -20,10 +20,10 @@ object Data:
       if state.errors.nonEmpty then Left(state.errors) else state.accumulator.result
 
   def source[A](plan: Plan[A], rows: Source[A]): Either[Vector[String], Result] ! Async =
-    Writer.loopWith[A, Accumulator[A], Unit, Either[Vector[String], Result], Async](rows)(plan.accumulator)(
+    Writer.loopWith[A, Accumulator[A], Unit, Either[Vector[String], Result], Writer % A + Async](rows)(plan.accumulator)(
       (acc, row) => { acc.add(row); acc })((acc, _) => acc.result)
   def chunks[A](plan: Plan[A], rows: Source[Chunk[A]]): Either[Vector[String], Result] ! Async =
-    Writer.loopWith[Chunk[A], Accumulator[A], Unit, Either[Vector[String], Result], Async](rows)(plan.accumulator)(
+    Writer.loopWith[Chunk[A], Accumulator[A], Unit, Either[Vector[String], Result], Writer % Chunk[A] + Async](rows)(plan.accumulator)(
       (acc, chunk) => { chunk.foreach(acc.add); acc })((acc, _) => acc.result)
   def bulk[D[_], A](plan: Plan[A], rows: D[A])(using backend: Bulk[D]): Either[Vector[String], Result] =
     backend.aggregate(rows)(aggregator(plan))

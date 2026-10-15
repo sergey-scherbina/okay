@@ -3,8 +3,7 @@ package okay.npm
 import scala.scalajs.js
 import scala.scalajs.js.JSConverters.*
 import scala.scalajs.js.annotation.{JSExport, JSExportTopLevel}
-import okay.{Async, Channel}
-import okay.freer.{!, effect, pure}
+import okay.{!, Async, Channel, effect, pure}
 import okay.codec.{Json, Schema, Stubs}
 import okay.crdt.{GCounter, NodeId, OrSet, PNCounter}
 import okay.crdt.Wire.given
