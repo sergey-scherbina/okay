@@ -66,6 +66,17 @@ object Run:
           okay.one.Cont.handle(p.fit(s.paths(ps)))(new okay.one.handler.Translating[E, R, A, A]:
             def ret(a: A) = okay.one.Cont.pure(a)
             def apply[X](op: E[X]): Eff[R, X] = f(op).fit(fps))
+    /** an error thrown in `p` given to `f`: its program in `p`'s place (the kernel's guard, inside the handlers `p`
+     * is under — a failed operation raised where it was is seen here) */
+    def recover[B >: A](f: Throwable => B ! Es): B ! Es = new Run[Es, B]:
+      def on[R <: okay.core.Row](ps: Paths[Es, R]): Eff[R, B] =
+        okay.one.Cont.recover(p.fit(ps): Eff[R, B])(e => f(e).fit(ps))
+    /** `fin` after `p`, whatever way it is left: an end, an error, an abort, a cancel */
+    def ensure(fin: Unit ! Es): A ! Es = new Run[Es, A]:
+      def on[R <: okay.core.Row](ps: Paths[Es, R]): Eff[R, A] = okay.one.Cont.ensure(p.fit(ps))(fin.fit(ps))
+    /** a cancel at a step of `p` kept for when it is left */
+    def uncancelable: A ! Es = new Run[Es, A]:
+      def on[R <: okay.core.Row](ps: Paths[Es, R]): Eff[R, A] = okay.one.Cont.uncancelable(p.fit(ps))
     /** the facade's form of the same program */
     def ctx: A !! Es = (c: Needs[Es]) ?=> p.fit(c.paths)
     /** RUN with each effect ANSWERED in place by its `Answers` (okay-freer's `runWith`): one place and one

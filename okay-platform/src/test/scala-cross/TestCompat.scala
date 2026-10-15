@@ -26,3 +26,10 @@ class TestCompat extends munit.FunSuite:
       case Reader.Ask() => pure[X, Writer % Int](7.asInstanceOf[X])
       case other => throw MatchError(other))
     assertEquals(!.run(Writer.run(t)), Tuple2(Vector(7), 14))
+
+  test("recover, ensure: the kernel's guards on a program"):
+    var fin = 0
+    val boom: Int ! Writer % Int = Writer.tell(1).map(_ => throw IllegalStateException("boom"))
+    val p = boom.recover(e => Writer.tell(e.getMessage.length).map(_ => -1)).ensure(defer { fin += 1; pure(()) })
+    assertEquals(!.run(Writer.run(p)), Tuple2(Vector(1, 4), -1))
+    assertEquals(fin, 1)
