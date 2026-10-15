@@ -2,12 +2,9 @@ package okay.zio
 
 import okay.{Async}
 
-import okay.freer.{%, +}
-import okay.freer.{!}
+import okay.{!, %, +}
 import okay.std.{Reader, Throws, raise, runEither}
-import okay.freer.Row.at
 import okay.given
-import okay.freer.given
 import ZioInterop.*
 import _root_.zio.{Exit, Runtime, Unsafe, ZEnvironment, ZIO}
 import java.util.concurrent.{CountDownLatch, TimeUnit}
@@ -23,7 +20,7 @@ class TestZioTypedRow extends munit.FunSuite:
 
   /** the okay side's three handlers: Reader, then Throws, then Async */
   private def handled[A](env: ZEnvironment[Greeting], p: A ! Row): Either[String, A] ! Async =
-    runEither[A, Async, String](Reader.run[ZEnvironment[Greeting], A, Throws % String + Async](env)(p))
+    runEither[A, Throws % String + Async, String](Reader.run[ZEnvironment[Greeting], A, Row](env)(p))
 
   private def exit[E, A](z: ZIO[Any, E, A]): Exit[E, A] =
     Unsafe.unsafe(implicit u => Runtime.default.unsafe.run(z))

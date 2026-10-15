@@ -2,12 +2,10 @@ package okay.zio
 
 import okay.{Async}
 
-import okay.freer.{%, +}
-import okay.freer.{!}
+import okay.{!, %, +}
 import okay.std.{Reader, Throws, runEither}
 import okay.Direct.*
 import okay.given
-import okay.freer.given
 import okay.zio.given
 import _root_.zio.{ZEnvironment, ZIO}
 
@@ -33,7 +31,7 @@ class TestZioForeign extends munit.FunSuite:
       val a = nope.?
       a + 1
     }
-    assertEquals(runEither[Int, Async, String](p).runWith, Left("nope"))
+    assertEquals(runEither[Int, Row, String](p).runWith, Left("nope"))
   }
 
   test("a ZIO with an environment reads the Reader") {
@@ -44,8 +42,8 @@ class TestZioForeign extends munit.FunSuite:
       w + "!"
     }
     val env = ZEnvironment(Greeting("hi"))
-    assertEquals(runEither[String, Async, String](
-      Reader.run[ZEnvironment[Greeting], String, Throws % String + Async](env)(p)).runWith, Right("hi!"))
+    assertEquals(runEither[String, Throws % String + Async, String](
+      Reader.run[ZEnvironment[Greeting], String, Row](env)(p)).runWith, Right("hi!"))
   }
 
   test("a typed ZIO in a row without its Throws is refused") {

@@ -1,12 +1,8 @@
 package okay.zio
 
-import okay.{Async, Chunks}
-
-import okay.freer.{%, +}
-import okay.freer.{!}
+import okay.{!, %, +, Async, Chunks}
 import okay.std.{Reader, Throws, raise, runEither}
 import okay.given
-import okay.freer.given
 import _root_.zio.{Exit, Runtime, Scope, Task, Unsafe, ZEnvironment, ZIO}
 import _root_.zio.stream.ZStream
 import scala.concurrent.ExecutionContext.parasitic
@@ -90,17 +86,12 @@ object ZioInterop {
    * cancelling the okay side interrupts the fiber — as [[fromZIO]].
    */
   def fromZIOTyped[R, E, A](z: ZIO[R, E, A], runtime: Runtime[Any] = Runtime.default): A ! ZioRow[R, E] =
-    // widened by name, not `.at`: membership is not searchable at a row
-    // whose arguments are abstract (AGENTS.md, "an obligation over a row
-    // is carried"), and each of the three names its own place
-    !.widen[ZEnvironment[R], Reader % ZEnvironment[R], Throws % E + Async](Reader.ask[ZEnvironment[R]])
-      .flatMap { env =>
-        !.widen[Either[E, A], Async, Reader % ZEnvironment[R] + Throws % E](
-          fromZIO(z.provideEnvironment(env).either, runtime)).flatMap {
-          case Right(a) => okay.freer.pure(a)
-          case Left(e) => !.widen[A, Throws % E, Reader % ZEnvironment[R] + Async](raise[E, A](e))
-        }
+    Reader.ask[ZEnvironment[R]].at[ZioRow[R, E]].flatMap { env =>
+      fromZIO(z.provideEnvironment(env).either, runtime).at[ZioRow[R, E]].flatMap {
+        case Right(a) => okay.pure[A, ZioRow[R, E]](a)
+        case Left(e) => raise[E, A](e).at[ZioRow[R, E]]
       }
+    }
 
   /**
    * An okay program over [[ZioRow]] as the whole `ZIO[R, E, A]`: its
@@ -110,7 +101,7 @@ object ZioInterop {
    */
   def toZIOTyped[R, E, A](p: => A ! ZioRow[R, E]): ZIO[R, E, A] =
     ZIO.environmentWithZIO[R] { env =>
-      toZIO(runEither[A, Async, E](Reader.run[ZEnvironment[R], A, Throws % E + Async](env)(p)))
+      toZIO(runEither[A, Throws % E + Async, E](Reader.run[ZEnvironment[R], A, ZioRow[R, E]](env)(p)))
         .orDie.flatMap(ZIO.fromEither(_))
     }
 

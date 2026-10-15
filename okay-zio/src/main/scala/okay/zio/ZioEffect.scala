@@ -1,57 +1,68 @@
 package okay.zio
 
-import okay.{TypeableK, typeableK}
-import okay.freer.{!, Free, effect}
-import okay.freer.!.*
+import okay.{!, +, Walk, Within, effect}
 import _root_.zio.{ZEnvironment, ZIO}
 
 /**
  * ZIO AS AN EFFECT OF THE TREE (specs/foreign-effects-in-tree.md). The row member is ZIO's own type —
  * `z.perform : Int ! ZIO[Db, DbErr, *]`, or an alias of ZIO's (`UIO`, `Task`) — so a ZIO is kept as one
  * operation and run when the program is handled. A program may hold ZIO steps with DIFFERENT environments and
- * errors, one member each (`ZIO[Db, DbErr, *] + ZIO[Log, LogErr, *]`), and the handlers below read `R` and `E`
- * off the whole row BY SUBTYPING — `R[Any] <:< ZIO[Env, E, Any]` — which is what ZIO's own `flatMap` bounds do:
- * the environments meet (`Db & Log`), the errors join (`AppErr`). `p.toZIO` answers the type ZIO's own `for`
- * would. These handlers take a row of ZIO members only, and walk it without `split`: two ZIO members are one
- * class at run time and no test tells them apart (`Distinct` refuses such a row to every handler that splits).
+ * errors, one member each (`ZIO[Db, DbErr, *] + ZIO[Log, LogErr, *]`), and the handlers below read the row's
+ * `Env` and `E` off its members ([[ZioEffect.Members]]) the way ZIO's own `flatMap` bounds join them: the
+ * environments meet (`Db & Log`), the errors join (`DbErr | LogErr`, an `AppErr` where that is their parent).
+ * `p.toZIO` answers the type ZIO's own `for` would. These handlers take a row of ZIO members only: the whole row
+ * is seen as ONE effect, `ZIO[Env, E, *]`, and walked (okay's `Walk`) or translated as that one.
  */
-given zioTypeable[R, E]: TypeableK[[X] =>> ZIO[R, E, X]] = typeableK[[X] =>> ZIO[R, E, X]](classOf[ZIO[?, ?, ?]])
-
-extension [A, R[+_]](p: A ! R)
+extension [A, R[_]](p: A ! R)
   /** the program's ZIO steps as ONE ZIO */
-  def toZIO[Env, E](using R[Any] <:< ZIO[Env, E, Any]): ZIO[Env, E, A] = ZioEffect.run[A, R, Env, E](p)
+  def toZIO(using m: ZioEffect.Members[R]): ZIO[m.Env, m.E, A] =
+    ZioEffect.run[A, m.Env, m.E](p.at[ZioEffect.Z[m.Env, m.E]](using m.within))
 
   /** every step given the environment: the row's `Env` is gone, as ZIO's `provideEnvironment` takes it */
-  def provideEnvironment[Env, E](env: ZEnvironment[Env])(using R[Any] <:< ZIO[Env, E, Any]): A ! ([X] =>> ZIO[Any, E, X]) =
-    ZioEffect.mapSteps[A, R, Env, E, [X] =>> ZIO[Any, E, X]](p)([X] => (z: ZIO[Env, E, X]) => z.provideEnvironment(env))
+  def provideEnvironment(using m: ZioEffect.Members[R])(env: ZEnvironment[m.Env]): A ! ZioEffect.Z[Any, m.E] =
+    ZioEffect.mapSteps[A, m.Env, m.E, ZioEffect.Z[Any, m.E]](p.at[ZioEffect.Z[m.Env, m.E]](using m.within))(
+      [X] => (z: ZIO[m.Env, m.E, X]) => z.provideEnvironment(env))
 
   /** every step's typed failure mapped, as ZIO's `mapError` */
-  def mapError[Env, E, Err](using R[Any] <:< ZIO[Env, E, Any])(f: E => Err): A ! ([X] =>> ZIO[Env, Err, X]) =
-    ZioEffect.mapSteps[A, R, Env, E, [X] =>> ZIO[Env, Err, X]](p)([X] => (z: ZIO[Env, E, X]) => z.mapError(f))
+  def mapError[Err](using m: ZioEffect.Members[R])(f: m.E => Err): A ! ZioEffect.Z[m.Env, Err] =
+    ZioEffect.mapSteps[A, m.Env, m.E, ZioEffect.Z[m.Env, Err]](p.at[ZioEffect.Z[m.Env, m.E]](using m.within))(
+      [X] => (z: ZIO[m.Env, m.E, X]) => z.mapError(f))
 
 object ZioEffect:
+  /** the one effect a row of ZIO members is seen as */
+  type Z[Env, E] = [X] =>> ZIO[Env, E, X]
+
   /**
-   * THE ONE CLAIM: an operation of the row read as the ZIO the row's evidence names. `R[Any] <:< ZIO[Env, E, Any]`
-   * says it at `Any` (`Row.Sub`'s approximation, said out loud there); every member of the row is a ZIO whose
-   * value type is the operation's answer type, so the operation at `X` is a `ZIO[Env, E, X]`.
+   * A ROW OF ZIO MEMBERS ONLY, and what its steps need and raise: `Env` the members' environments met, `E` their
+   * errors joined. `within` sees the whole row as ONE effect, `Z[Env, E]` — each member's place the one place of
+   * it: a sum's evidence the pair of its sides', a member's the identity (`leaf`, the one claim).
    */
-  private def step[R[+_], Env, E, X](e: R[X]): ZIO[Env, E, X] = e.asInstanceOf[ZIO[Env, E, X]]
+  sealed trait Members[R[_]]:
+    type Env
+    type E
+    def to[One[_]]: Within[R, One]
+    final def within: Within[R, Z[Env, E]] = to[Z[Env, E]]
 
-  /** a walk: one `flatMap` a bind, the recursion inside ZIO's own continuation (stack-safe) */
-  private[zio] def run[A, R[+_], Env, E](p: A ! R): ZIO[Env, E, A] = (p.resume: @unchecked) match
-    case Return(a) => ZIO.succeed(a)
-    case Inject(e) => step[R, Env, E, A](e)
-    case Bind(Inject(e), k) => runBind(e, k)
+  object Members:
+    given leaf[Env0, E0]: (Members[Z[Env0, E0]] { type Env = Env0; type E = E0 }) = new Members[Z[Env0, E0]]:
+      type Env = Env0
+      type E = E0
+      // THE CAST, and why it is sound: a ZIO of `Env0` and `E0` is a ZIO of any `Env` it is part of and any `E`
+      // it is part of (ZIO is contravariant in its environment, covariant in its error) — the one effect `One`
+      // this row is seen as is that ZIO, at the meet and the join of the row's members
+      def to[One[_]]: Within[Z[Env0, E0], One] = Within.same[One].asInstanceOf[Within[Z[Env0, E0], One]]
 
-  private def runBind[A, R[+_], Env, E, X](e: R[X], k: X => A ! R): ZIO[Env, E, A] =
-    step[R, Env, E, X](e).flatMap(x => run[A, R, Env, E](k(x)))
+    given sum[F[_], G[_]](using f: Members[F], g: Members[G]): (Members[F + G] { type Env = f.Env & g.Env; type E = f.E | g.E }) =
+      new Members[F + G]:
+        type Env = f.Env & g.Env
+        type E = f.E | g.E
+        def to[One[_]]: Within[F + G, One] = Within.pair[F, G, One](f.to[One], g.to[One])
 
-  /** each step rebuilt by `f`, lazily: the rest is mapped only when an interpreter reaches it */
-  private[zio] def mapSteps[A, R[+_], Env, E, G[+_]](p: A ! R)(f: [X] => ZIO[Env, E, X] => G[X]): A ! G =
-    (p.resume: @unchecked) match
-      case Return(a) => Return(a)
-      case Inject(e) => effect[G, A](f(step[R, Env, E, A](e)))
-      case Bind(Inject(e), k) => mapBind[A, R, Env, E, G](f)(e, k)
+  /** a walk: one `flatMap` a step, the walk on inside ZIO's own continuation (stack-safe as ZIO's loop is) */
+  private[zio] def run[A, Env, E](p: A ! Z[Env, E]): ZIO[Env, E, A] = Walk.view(p) match
+    case Walk.Done(a) => ZIO.succeed(a)
+    case o: Walk.Op[Z[Env, E], x, A, Z[Env, E]] => o.op.flatMap(x => run[A, Env, E](o.resume(x)))
 
-  private def mapBind[A, R[+_], Env, E, G[+_]](f: [Y] => ZIO[Env, E, Y] => G[Y])[X](e: R[X], k: X => A ! R): A ! G =
-    Free.Bind(effect[G, X](f(step[R, Env, E, X](e))), x => mapSteps[A, R, Env, E, G](k(x))(f))
+  /** each step rebuilt by `f`, in place: the operation translated where it is performed */
+  private[zio] def mapSteps[A, Env, E, G[_]](p: A ! Z[Env, E])(f: [X] => ZIO[Env, E, X] => G[X]): A ! G =
+    p.translate[Z[Env, E], G]([X] => (z: ZIO[Env, E, X]) => effect[G, X](f(z))).at[G]

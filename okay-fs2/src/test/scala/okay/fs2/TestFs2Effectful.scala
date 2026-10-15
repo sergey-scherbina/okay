@@ -2,11 +2,9 @@ package okay.fs2
 
 import okay.{Async, Source, Stage}
 
-import okay.freer.{%, +}
-import okay.freer.{!}
+import okay.{!, %, +}
 import okay.std.{Writer}
 import okay.given
-import okay.freer.given
 import okay.cats.CatsEffect
 import okay.cats.CatsEffect.Program
 import _root_.cats.effect.IO
@@ -23,13 +21,13 @@ class TestFs2Effectful extends munit.FunSuite with okay.testkit.Munit.Diagnosed 
   /** an okay source: async steps between its tells */
   def counted(n: Int): Source[Int] =
     def go(i: Int): Source[Int] =
-      if i > n then okay.freer.pure(())
-      else !.widen[Int, Async, Writer % Int](okay.async(i))
-        .flatMap(x => okay.freer.effect[Writer % Int + Async, Unit](Writer.Say(x)))
+      if i > n then okay.pure(())
+      else okay.async(i).at[Writer % Int + Async]
+        .flatMap(x => Writer.tell(x).at[Writer % Int + Async])
         .flatMap(_ => go(i + 1))
     go(1)
 
-  def collect[A](s: Source[A]): Seq[A] = Writer.run[A, Unit, Async](s).runWith._1
+  def collect[A](s: Source[A]): Seq[A] = Writer.run[A, Unit, Writer % A + Async](s).runWith._1
 
   test("a Source with async steps is an fs2 IO stream, in order") {
     assertEquals(Fs2Streams.toFs2[IO, Int](counted(5)).compile.toList.unsafeRunSync(), List(1, 2, 3, 4, 5))
@@ -38,8 +36,8 @@ class TestFs2Effectful extends munit.FunSuite with okay.testkit.Munit.Diagnosed 
   test("an interrupted fs2 stream cancels the Await its source was parked on") {
     val unregistered = AtomicInteger(0)
     val parked: Source[Int] =
-      okay.freer.effect[Writer % Int + Async, Unit](Writer.Say(1))
-        .flatMap(_ => !.widen[Unit, Async, Writer % Int](Async.await[Unit](_ => () => { unregistered.incrementAndGet(); () })))
+      Writer.tell(1).at[Writer % Int + Async]
+        .flatMap(_ => Async.await[Unit](_ => () => { unregistered.incrementAndGet(); () }).at[Writer % Int + Async])
     val out = Fs2Streams.toFs2[IO, Int](parked).interruptAfter(50.millis).compile.toList.unsafeRunSync()
     note(s"answered $out")
     assertEquals(out, List(1))
@@ -54,7 +52,7 @@ class TestFs2Effectful extends munit.FunSuite with okay.testkit.Munit.Diagnosed 
   test("cancelling the okay side cancels the fs2 fiber behind fromFs2") {
     val finalized = AtomicInteger(0)
     val endless = Stream.iterate(0)(_ + 1).covary[IO].onFinalize(IO { finalized.incrementAndGet(); () })
-    val running = Async.runAsyncCancellable(Writer.run[Int, Unit, Async](Fs2Streams.fromFs2(endless, capacity = 2)))
+    val running = Async.runAsyncCancellable(Writer.run[Int, Unit, Writer % Int + Async](Fs2Streams.fromFs2(endless, capacity = 2)))
     Thread.sleep(50)
     running.cancel()
     val deadline = System.nanoTime() + 5.seconds.toNanos
@@ -66,10 +64,10 @@ class TestFs2Effectful extends munit.FunSuite with okay.testkit.Munit.Diagnosed 
   /** a stage that keeps a running sum and stops after `n` inputs */
   def runningSum(n: Int): Stage[Int, Int, Unit] =
     def go(seen: Int, sum: Int): Stage[Int, Int, Unit] =
-      if seen == n then okay.freer.pure(())
+      if seen == n then okay.pure(())
       else Stage.await[Int, Int].flatMap {
         case Some(i) => Stage.tell[Int, Int](sum + i).flatMap(_ => go(seen + 1, sum + i))
-        case None => okay.freer.pure(())
+        case None => okay.pure(())
       }
     go(0, 0)
 

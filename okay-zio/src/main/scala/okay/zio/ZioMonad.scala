@@ -1,9 +1,6 @@
 package okay.zio
 
-import okay.{Async}
-
-import okay.freer.{%, +}
-import okay.freer.{!}
+import okay.{!, %, +, Async}
 import okay.std.{Throws, raise}
 import _root_.zio.{Task, ZIO}
 
@@ -45,17 +42,17 @@ extension [A, B](f: A => B ! Async)
  * typed error as `Throws % E`; otherwise the whole [[ZioRow]].
  */
 given zioForeignAsync[E <: Throwable]: okay.ForeignEffect[[X] =>> ZIO[Any, E, X]] with
-  type G[+X] = Async[X]
+  type G[X] = Async[X]
   def lift[A](m: ZIO[Any, E, A]): A ! Async = ZioInterop.fromZIO(m)
 
 given zioForeignThrows[E]: okay.ForeignEffect[[X] =>> ZIO[Any, E, X]] with
-  type G[+X] = (Throws % E + Async)[X]
+  type G[X] = (Throws % E + Async)[X]
   def lift[A](m: ZIO[Any, E, A]): A ! G =
-    !.widen[Either[E, A], Async, Throws % E](ZioInterop.fromZIO(m.either)).flatMap {
-      case Right(a) => okay.freer.pure(a)
-      case Left(e) => !.widen[A, Throws % E, Async](raise[E, A](e))
+    ZioInterop.fromZIO(m.either).at[G].flatMap {
+      case Right(a) => okay.pure[A, G](a)
+      case Left(e) => raise[E, A](e).at[G]
     }
 
 given zioForeignRow[R, E]: okay.ForeignEffect[[X] =>> ZIO[R, E, X]] with
-  type G[+X] = ZioRow[R, E][X]
+  type G[X] = ZioRow[R, E][X]
   def lift[A](m: ZIO[R, E, A]): A ! G = ZioInterop.fromZIOTyped(m)
