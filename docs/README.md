@@ -352,6 +352,7 @@ API reference, gotchas.
 | [`okay-cluster`](modules/okay-cluster.md) | the remote channel, distributed chunk work, the JS↔JVM acceptance |
 | [`okay-pool`](modules/okay-pool.md) | the engine on a cluster manager: a pool of identical processes, any of which takes a submission over HTTP and coordinates it, journal-backed so a member's death is a resume by any other one [specs/cluster-pool.md](../specs/cluster-pool.md) |
 | [`okay-http`](modules/okay-http.md) | REST and WebSocket as programs: a body is a `Source`, a socket session is a `Stage[Frame, Frame, A]` |
+| [`okay-graphql`](modules/okay-graphql.md) | GraphQL on the kernel: resolvers as programs of `Fetch`, an executor in rounds — each source called once per round with all its keys (no N+1, no DataLoader); errors with paths, null propagation, mutations in order |
 | [`okay-jetty`](modules/okay-jetty.md) | Jetty behind the same two seams — and the WebSocket SERVER okay-http could not serve |
 | [`okay-kernel`](modules/okay-kernel.md) | a microkernel: versioned contracts (`Port`), plugins that need and provide them, a plan that names every problem before anything runs, a start that releases in reverse; ServiceLoader and a plugins directory on the JVM |
 | [`okay-staging`](modules/okay-staging.md) | the staged codec for a schema that exists only at run time — JVM only, optional by construction, switchable off at launch |

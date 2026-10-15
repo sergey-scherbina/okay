@@ -69,16 +69,16 @@ with a program (async data sources): `Source.fetch` is a plain function here.
 
 ## Behavior
 
-- [ ] a query of scalars, nested objects, lists, nullables
-- [ ] arguments and variables (with defaults), aliases
-- [ ] named and inline fragments, `@skip` / `@include`, `__typename`
-- [ ] batching: N fields fetching one source are one call per round; duplicates once
-- [ ] `Fetch.both` / `Fetch.all`: one round for independent fetches inside a resolver
-- [ ] errors with paths; null propagation through non-null fields
-- [ ] mutations: top-level fields in order
-- [ ] request errors: a parse error, an unknown field
-- [ ] depth bound; a list of 100 000 items in constant stack
-- [ ] `schema.sdl`
+- [x] a query of scalars, nested objects, lists, nullables
+- [x] arguments and variables (with defaults), aliases
+- [x] named and inline fragments, `@skip` / `@include`, `__typename`
+- [x] batching: N fields fetching one source are one call per round; duplicates once
+- [x] `Fetch.both` / `Fetch.all`: one round for independent fetches inside a resolver
+- [x] errors with paths; null propagation through non-null fields
+- [x] mutations: top-level fields in order
+- [x] request errors: a parse error, an unknown field
+- [x] depth bound; a list of 100 000 items in constant stack
+- [x] `schema.sdl`
 
 ## Decisions
 
@@ -87,3 +87,18 @@ with a program (async data sources): `Source.fetch` is a plain function here.
   `Fetch[A]` with `ap` (Done | Blocked); refuted as a second monad beside the kernel's.
 - Parallel fields are the applicative product (operator, 2026-10-15): fields and list items are independent by
   the shape of the query, so the executor treats them as one product; a resolver asks for the same explicitly.
+- The source map of a round is keyed by identity and holds batches of many key and value types: ONE cast,
+  `Run.batchOf`, says why the batch under a source is that source's. Everything else is typed — the operation by
+  `In.same` against `In.Here[Fetch, Pure]` (no type test), `Fetch.Get`/`All`/`Both` by GADT matching.
+- No recursion through continuations: every continuation (a task stepped, a fetch answered, a join met, a field
+  or item completed) is ENQUEUED on the run queue; `rounds` is the one loop. Measured: 100 000 list items and
+  100 000 fetches in one round, constant stack (TestGraphQL).
+
+## Results
+
+- TestGraphQL, 14 tests, the behavior list above. The shop: `{ users(first: 100) { orders { id user { name } } } }`
+  is one call to `orders` (100 keys) and one to `users` (each key once) — two source calls where a resolver per
+  field fetching row by row makes one per field.
+- `Fetch.traverse` of keys one of which the source left out fails the resolver, so the whole field (the list):
+  the error belongs to the program that asked. Per-item errors are a list of fields, not one field's program —
+  backlog `okay-graphql-next`.
