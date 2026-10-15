@@ -397,13 +397,13 @@ private[std] final class Telling[W] extends Stepping.Told[Writer % W, W]:
  * dropped (a guard's finalizer inside it does not run).
  */
 private[std] object Stepping:
-  /** a program paused at an operation of `R`, its machine-side types unnamed */
-  type Paused[R <: Row, A] = Head.Paused[R, A, ?, ?, ?, ?, ?, ?, ?]
-
-  /** `at` resumed with `v`. THE CAST, and why it is sound: `v` is the paused operation's answer, of its type —
-   * the caller read the operation and answered it */
-  def resume[R <: Row, A](at: Paused[R, A], v: Any): Head[R, A] =
-    at.asInstanceOf[Head.Paused[R, A, [X] =>> Any, Any, Any, Any, Any, Any, Any]].resume(v)
+  /** the walking machinery is the root's (`okay.Walk`): one for every walk of the platform */
+  type Paused[R <: Row, A] = okay.Walk.Paused[R, A]
+  type Rest[Es[_], E[_], T <: Row, A] = okay.Walk.Rest[Es, E, T, A]
+  def Rest[Es[_], E[_], T <: Row, A](template: Paths[Es, E +: T], next: () => Head[E +: T, A]): Rest[Es, E, T, A] =
+    okay.Walk.Rest[Es, E, T, A](template, next)
+  export okay.Walk.{own, outside, moved, samePaths, relocate, start}
+  def resume[R <: Row, A](at: Paused[R, A], v: Any): Head[R, A] = okay.Walk.resumeAt(at, v)
 
   /** what an operation of the viewed effect hands over, and what it answers */
   abstract class Told[E[_], W]:
@@ -423,73 +423,6 @@ private[std] object Stepping:
       def apply[F[_], X](op: F[X], in: In[F, G +: okay.core.Pure]): X = In.same(in, In.Here[G, okay.core.Pure]()) match
         case null => In.absurd(outside(in))
         case same: In.Same[F, G] => H.handle(same(op))
-
-  /** the operation at `in` the viewed effect's own — its place the head — or `null` */
-  def own[F[_], E[_], T <: Row](in: In[F, E +: T]): In.Same[F, E] | Null = In.same(in, In.Here[E, T]())
-
-  /** a place past the head, in the row outside it */
-  def outside[F[_], E[_], T <: Row](in: In[F, E +: T]): In[F, T] = in match
-    case In.There(in2) => in2
-    case at: In.At[f, ?] => at.again[T]
-    case _ => throw IllegalStateException("Stepping: an operation of the viewed effect where another was expected")
-
-  def moved(): Nothing = throw IllegalStateException(
-    "Stepping: the rest of a stepped program run where its effects are not as they were where it was stepped — " +
-      "an effect of it not among those of the place; run the rest where the view's answer is used")
-
-  /**
-   * THE REST of a program stepped at the place `template`, past an operation it handed over: a program again —
-   * `next` the paused program resumed with that operation's answer, run when the rest is (as often as it is: a
-   * paused program resumes any number of times). Viewed again at the same paths (`start`), it goes on from where it
-   * was; run anywhere else, its operations are performed at the place's paths, each re-placed by reading the two
-   * side by side (`relocate`).
-   */
-  final class Rest[Es[_], E[_], T <: Row, A](val template: Paths[Es, E +: T], next: () => Head[E +: T, A])
-      extends Run[Es, A]:
-    /** the rest stepped on at a place whose paths are the template's. THE CAST, and why it is sound: the program
-     * reads its row only through its operations' paths, and those are the template's at the new place as well */
-    def resumed[T2 <: Row]: Head[E +: T2, A] = next().asInstanceOf[Head[E +: T2, A]]
-
-    def on[R <: Row](ps: Paths[Es, R]): Eff[R, A] = Cont.defer(replay(next(), ps))
-
-    private def replay[R <: Row](st: Head[E +: T, A], ps: Paths[Es, R]): Eff[R, A] = st match
-      case Head.Done(a) => Cont.pure(a)
-      case p: Head.Paused[?, ?, f, x, ?, ?, ?, ?, ?] =>
-        Cont.perform[f, R, x](p.op)(using relocate(p.in, template, ps)).flatMap(v => replay(p.resume(v), ps))
-
-  /** the same paths, leaf for leaf: a walk as deep as the sum of effects written in the program's type, a bound of
-   * the source text */
-  def samePaths(a: Paths[?, ?], b: Paths[?, ?]): Boolean = (a eq b) || ((a, b) match
-    case (x: Paths.One[?, ?], y: Paths.One[?, ?]) => x.head == y.head
-    case (x: Paths.Both[?, ?, ?], y: Paths.Both[?, ?, ?]) => samePaths(x.left, y.left) && samePaths(x.right, y.right)
-    case (_: Paths.None[?], _: Paths.None[?]) => true
-    case _ => false)
-
-  /**
-   * The place in `now` of the operation at `in` under `template`: the leaf of `template` whose path is `in`, read
-   * at the same leaf of `now`. THE CAST, and why it is sound: the two are the paths of one `Es`, leaf for leaf, so
-   * that leaf of `now` is the place of the same effect, `F`. The walk is as deep as the sum of effects written in
-   * the program's type, a bound of the source text.
-   */
-  def relocate[F[_], Es[_], E[_], T <: Row, R <: Row](in: In[F, E +: T], template: Paths[Es, E +: T],
-      now: Paths[Es, R]): In[F, R] =
-    var found: In[?, ?] | Null = null
-    def walk(t: Paths[?, ?], n: Paths[?, ?]): Unit = (t, n) match
-      case (to: Paths.One[?, ?], no: Paths.One[?, ?]) => if found == null && to.head == in then found = no.head
-      case (tb: Paths.Both[?, ?, ?], nb: Paths.Both[?, ?, ?]) => walk(tb.left, nb.left); walk(tb.right, nb.right)
-      case _ => ()
-    walk(template, now)
-    found match
-      case null => moved()
-      case f => f.asInstanceOf[In[F, R]]
-
-  /** `p` at its head at the place `template`: a rest stepped at the same paths before, on from where it was; any
-   * other program from its start */
-  def start[Es[_], E[_], T <: Row, A](p: A ! Es, template: Paths[Es, E +: T]): Head[E +: T, A] = p match
-    // unchecked: a `Rest` that is this `A ! Es` has its `Es` and `A`; its `E` is the template's head, which the
-    // paths compared say
-    case r: Rest[Es, E, ?, A] @unchecked if samePaths(r.template, template) => r.resumed[T]
-    case _ => Machine.head(p.fit(template))
 
   /** the next element and the rest, of a program with no other effect */
   def nextPure[Es[_], E[_], A, W](st: Head[E +: okay.core.Pure, A], template: Paths[Es, E +: okay.core.Pure],

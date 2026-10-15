@@ -46,17 +46,24 @@ then. What is left is what the wrappers cannot keep:
 - `Async`: `Async.run(p)` is a runner (Split); `CancelScope.enter`/`exit` have no type parameter; a drive's
   rest is `Async.Rest[A]`.
 
-## Walks over the tree
+## Walks over the tree: `okay.Walk`, one way for all
 
-Code that looks at the tree (`resume`, `Free.Bind`/`Return`/`Inject`, `HandleFrames`, `Classic.handle`, `next`,
-`peek`) becomes one of:
+Code that looked at the tree (`p.resume match { case Return(a) …; case Bind(Inject(e), k) … }`, `HandleFrames`,
+`Classic.handle`, `next`, `peek`) walks by the root's `okay.Walk` (src/main/scala/Walk.scala) — okay-freer's
+`resume` on the kernel, the one walking machinery of the platform. Do not write a stepper of your own.
 
-- a kernel handler form (most): the walk's per-operation answer is `Answering`, a state threaded is `Stateful`, a
-  clause with the rest is `Deep`;
-- the program STEPPED: fitted to a concrete row (`p.fit(paths)`, a single effect at the head:
-  `Paths.One(okay.one.row.In.Here[E, okay.core.Pure]())`) and driven by `okay.one.machine.Machine.head`
-  (`Head.Done(a)`, `Head.Paused` with `op`, `resume(y)`, `fail(e)` — one object a step), or by
-  `okay.one.step.Step` where the rest must be handed out as a value. See `Async.Drive`.
+- `Walk.view(p)` — `p` needing `E` alone: `Walk.Done(a)`, or `o: Walk.Op[E, x, A, E]` with `o.op`,
+  `o.resume(x)` (the rest, a program again) and `o.fail(e)` (the rest given a failure raised where the operation
+  was). A driver loops `Walk.view(o.resume(answer))`; walked again at the same place the rest goes on from where it
+  was, nothing re-fitted, one object a step.
+- `Walk.next[E, A, Es](p)` — `E` among other effects: `Step[E, A, Es] ! s.Rest`, the others' operations performed
+  where the walk is (okay-freer's `relay` forwarding).
+- The rest is a value: resumed any number of times, from any thread; run at another place its operations are
+  re-placed by reading the two places' paths.
+
+Before walking at all, ask whether a kernel handler form does it — most walks were interpreters: a per-operation
+answer is `Answering`, a state threaded is `Stateful`, a clause with the rest is `Deep`, an operation to another
+effect is `translate`. Those are faster than any walk: answered in place, nothing captured.
 
 ## Rules
 
