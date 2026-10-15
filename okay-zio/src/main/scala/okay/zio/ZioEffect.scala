@@ -58,10 +58,10 @@ object ZioEffect:
         type E = f.E | g.E
         def to[One[_]]: Within[F + G, One] = Within.pair[F, G, One](f.to[One], g.to[One])
 
-  /** a walk: one `flatMap` a step, the walk on inside ZIO's own continuation (stack-safe as ZIO's loop is) */
-  private[zio] def run[A, Env, E](p: A ! Z[Env, E]): ZIO[Env, E, A] = Walk.view(p) match
-    case Walk.Done(a) => ZIO.succeed(a)
-    case o: Walk.Op[Z[Env, E], x, A, Z[Env, E]] => o.op.flatMap(x => run[A, Env, E](o.resume(x)))
+  /** the program into ZIO, each operation its own ZIO value: the root's `Walk.foldMap` with ZIO's monad (the walk on
+   * inside ZIO's own continuation, stack-safe as ZIO's loop is) */
+  private[zio] def run[A, Env, E](p: A ! Z[Env, E]): ZIO[Env, E, A] =
+    Walk.foldMap[Z[Env, E], A, [X] =>> ZIO[Env, E, X]](p)([X] => (z: ZIO[Env, E, X]) => z)(using zioMonad[Env, E])
 
   /** each step rebuilt by `f`, in place: the operation translated where it is performed */
   private[zio] def mapSteps[A, Env, E, G[_]](p: A ! Z[Env, E])(f: [X] => ZIO[Env, E, X] => G[X]): A ! G =

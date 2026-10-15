@@ -6,7 +6,6 @@ import okay.freer.{Cps, Fold, FoldUntil, />>}
 import okay.one.Cont
 import okay.one.handler.{Stateful, Handler as OneHandler}
 import okay.one.row.In
-import okay.one.machine.Machine
 import okay.one.machine.Machine.Head
 import scala.annotation.tailrec
 
@@ -305,6 +304,18 @@ object Writer {
    * (`defer`); each next one sits inside the previous tell's bind,
    * which is deferral enough.
    */
+  /** a COLLECTION's values told in order: a program needing `Writer % A` alone — a collection has no effect of its
+   * own to carry, so no `+ Pure` for a caller to drop. A linear sequence is walked by its tail (a `LazyList` stays
+   * lazy: forced as it is told, an infinite one too), an indexed one by its index, any other copied once */
+  def of[A](xs: Iterable[A]): Unit ! Writer % A = xs match
+    case ls: collection.LinearSeq[A] @unchecked => okay.defer(tellLinear(ls))
+    case is: IndexedSeq[A] @unchecked => okay.defer(tellAll(is, 0))
+    case other => okay.defer(tellAll(other.toIndexedSeq, 0))
+
+  /** the values of a linear sequence told one by one, from its head */
+  private def tellLinear[W](ws: collection.LinearSeq[W]): Unit ! Writer % W =
+    if ws.isEmpty then pure[Unit, Writer % W](()) else tell(ws.head) >> tellLinear(ws.tail)
+
   def of[S[_], F[_], A](s: S[A])(using St: Stream[S, F]): Unit ! Writer % A + F =
     okay.defer(ofLoop[S, F, A](s))
 
