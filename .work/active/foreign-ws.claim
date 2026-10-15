@@ -1,6 +1,0 @@
-feature/foreign-ws 2026-10-15T16:19:15Z
-agent: claude-code (session 04094c70, okay-ts interop)
-heartbeat: 2026-10-15T16:19:15Z
-status: in-progress
-done-so-far: worktree
-next: spec specs/foreign-ws.md
