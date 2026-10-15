@@ -2,10 +2,9 @@ package okay.cluster
 
 
 import okay.{Async}
-import okay.freer.{*}
+import okay.pure
 
 import okay.given
-import okay.freer.given
 /**
  * PEERS RE-RESOLVED AT EVERY EPOCH BOUNDARY (specs/cluster-pool.md,
  * stage 5) — `Cluster.stream`'s own `resolve`/`onRefusedRescale`
@@ -30,7 +29,7 @@ class TestClusterElastic extends munit.FunSuite {
     var calls = 0
     val resolve = () =>
       calls += 1
-      pure[Async, Vector[Cluster.Serve]](if calls >= 2 then Vector(Cluster.local, Cluster.local) else Vector(Cluster.local))
+      pure[Vector[Cluster.Serve], Async](if calls >= 2 then Vector(Cluster.local, Cluster.local) else Vector(Cluster.local))
     val ex = intercept[Cluster.Rescale](
       Cluster.stream(StripeKeyedJob, feed, 4, Vector(Cluster.local), 200, resolve = Some(resolve)).runWith)
     assertEquals(ex.peers.length, 2)
@@ -41,7 +40,7 @@ class TestClusterElastic extends munit.FunSuite {
     var refusals = Vector.empty[(Int, Int)]
     val resolve = () =>
       calls += 1
-      pure[Async, Vector[Cluster.Serve]](if calls >= 2 then Vector(Cluster.local, Cluster.local) else Vector(Cluster.local))
+      pure[Vector[Cluster.Serve], Async](if calls >= 2 then Vector(Cluster.local, Cluster.local) else Vector(Cluster.local))
     val got = Cluster.stream(WindowJob, feed, 4, Vector(Cluster.local), 200,
       resolve = Some(resolve), onRefusedRescale = (have, want) => refusals :+= (have, want)).runWith
     assert(refusals.nonEmpty, "onRefusedRescale never fired")
@@ -56,7 +55,7 @@ class TestClusterElastic extends munit.FunSuite {
     var calls = 0
     val resolve = () =>
       calls += 1
-      pure[Async, Vector[Cluster.Serve]](if calls >= 2 then Vector(w1) else Vector(w0))
+      pure[Vector[Cluster.Serve], Async](if calls >= 2 then Vector(w1) else Vector(w0))
     val _ = Cluster.stream(StripeKeyedJob, feed, 4, Vector(w0), 200, resolve = Some(resolve)).runWith
     assert(c1() > 0, "the replacement worker (w1, same count as w0) was never dispatched to")
   }

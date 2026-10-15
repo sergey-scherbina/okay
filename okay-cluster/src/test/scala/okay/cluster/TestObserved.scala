@@ -2,7 +2,6 @@ package okay.cluster
 
 import okay.{Chunks, given}
 
-import okay.freer.given
 
 import okay.codec.Schema
 

@@ -2,7 +2,6 @@ package okay.cluster
 
 import okay.codec.Codecs
 import okay.given
-import okay.freer.given
 import scala.collection.mutable.ArrayBuffer
 
 /**

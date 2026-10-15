@@ -1,13 +1,13 @@
 package okay.cluster
 
 import okay.{Streamed, Tables, Bulk}
-import okay.freer.*
+import okay.!
 import okay.given
 
 
 import okay.Tables.read
 import okay.Chunks.elements
-import okay.freer.Row.plus
+import okay.Row.plus
 import okay.Streamed.joinWithin
 import okay.Tables.collect
 

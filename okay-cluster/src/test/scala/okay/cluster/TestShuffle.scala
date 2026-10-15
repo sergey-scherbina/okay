@@ -1,10 +1,9 @@
 package okay.cluster
 
 
-import okay.freer.{*}
+import okay.freer.Aggregator
 
 
-import okay.freer.given
 import okay.given
 
 import java.util.concurrent.ConcurrentLinkedQueue

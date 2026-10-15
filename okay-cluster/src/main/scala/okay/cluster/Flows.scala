@@ -1,7 +1,8 @@
 package okay.cluster
 
 import okay.{Chunks, Pane, Async, Fiber, Scheduler, Streamed, Windows, async}
-import okay.freer.*
+import okay.freer.{Aggregator, Sequential}
+import okay.{!, pure}
 import okay.Chunks.elements
 import scala.collection.mutable
 
@@ -87,7 +88,7 @@ object Flows {
       // says both things at once: nothing to seed the watermark with,
       // and nothing may be finished locally — the same sentinel
       // `Sink.windowed` uses (specs/dataflow.md, stage 6a).
-      if pre == null then pure[Async, Vector[Bounds]](Vector.fill(n)(Bounds(Long.MinValue, Long.MinValue)))
+      if pre == null then pure[Vector[Bounds], Async](Vector.fill(n)(Bounds(Long.MinValue, Long.MinValue)))
       else parallel(n)(i => pre.nn(i)).map(es => edges(es.map(e => Vector(e))).map(_.head))
     bounds.flatMap: bs =>
       parallel(n)(i => job.work(i, bs(i))).flatMap: ps =>
@@ -156,7 +157,7 @@ object Flows {
     val n = sh.parts
     val times = sink.times
     val bounds: Vector[Vector[Bounds]] ! Async =
-      if times.isEmpty then pure[Async, Vector[Vector[Bounds]]](Vector.fill(n)(Vector.empty))
+      if times.isEmpty then pure[Vector[Vector[Bounds]], Async](Vector.fill(n)(Vector.empty))
       else parallel(n)(i => Scope.using(sc => extent(src(i, sc), times))).map(edges)
     bounds.flatMap: bs =>
       parallel(n) { i =>
@@ -759,6 +760,6 @@ object Flows {
   /** join BY INDEX, not by readiness: the partials must reach the
    * coordinator in the input's order (see the class comment) */
   private def gather[P](fs: Vector[Fiber[P]], i: Int, acc: Vector[P]): Vector[P] ! Async =
-    if i >= fs.length then pure[Async, Vector[P]](acc)
+    if i >= fs.length then pure[Vector[P], Async](acc)
     else fs(i).joinAsync.flatMap(p => gather(fs, i + 1, acc :+ p))
 }

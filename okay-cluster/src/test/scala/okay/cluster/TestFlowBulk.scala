@@ -2,7 +2,8 @@ package okay.cluster
 
 
 import okay.{Bulk, Chunks, Tables}
-import okay.freer.*
+import okay.!
+import okay.freer.Aggregator
 import okay.given
 
 import okay.Tables.read

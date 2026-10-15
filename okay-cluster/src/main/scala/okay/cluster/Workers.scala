@@ -2,7 +2,7 @@ package okay.cluster
 
 
 import okay.{Async, Chunks, Scheduler}
-import okay.freer.*
+import okay.{!, pure}
 import okay.std.*
 import okay.codec.{Codecs, Digest, Schema}
 import scala.annotation.tailrec
@@ -325,9 +325,9 @@ object Cluster {
 
     val bounds: Vector[Vector[Bounds]] ! Async = phase(probe, "extent"):
       book.flatMap(_.bounds) match
-        case Some(bs) => pure[Async, Vector[Vector[Bounds]]](bs)
+        case Some(bs) => pure[Vector[Vector[Bounds]], Async](bs)
         case None =>
-          if sink.times.isEmpty then pure[Async, Vector[Vector[Bounds]]](Vector.fill(parts)(Vector.empty))
+          if sink.times.isEmpty then pure[Vector[Vector[Bounds]], Async](Vector.fill(parts)(Vector.empty))
           else
             Flows.spread(parts)(i =>
               ask(workers, living, i, Req.Extent(job.name, encoded, i, parts, digest)) match
@@ -372,7 +372,7 @@ object Cluster {
                        probe: Probe = Probe.none)
                       (using Scheduler): Option[Run[R]] ! Async =
     lease.take() match
-      case None => pure[Async, Option[Run[R]]](None)
+      case None => pure[Option[Run[R]], Async](None)
       case Some(term) =>
         run(job, p, parts, workers, tolerance, Checkpoint.fenced(term, lease, journal), probe)
           .map { r => lease.release(term); Some(r) }
@@ -682,7 +682,7 @@ object Cluster {
                          (using Scheduler): R ! Async =
     if !probe.on then body
     else
-      pure[Async, Unit](()).flatMap { _ =>
+      pure[Unit, Async](()).flatMap { _ =>
         val began = System.nanoTime()
         probe(Seen.Began(job, parts, System.currentTimeMillis(), began))
         // BUILDING the run is a phase too: codecs, the digest, a journal
@@ -700,7 +700,7 @@ object Cluster {
   private def phase[X](probe: Probe, name: String)(prog: => X ! Async): X ! Async =
     if !probe.on then prog
     else
-      pure[Async, Unit](()).flatMap { _ =>
+      pure[Unit, Async](()).flatMap { _ =>
         val t0 = System.nanoTime()
         prog.map { x => probe(Seen.Phase(name, t0, System.nanoTime())); x }
       }
@@ -1222,7 +1222,7 @@ object Cluster {
               // retires the tail panes a second time out of one
               // partition's half. The answer is in the state; take it
               // (dataflow-durable).
-              pure[Async, Run[R]](
+              pure[Run[R], Async](
                 Run(sink.emit(st), f.drops, parts, 1, f.merged, living.retries, living.lost))
             case Right(st) =>
               // everything a previous coordinator did AFTER this
@@ -1357,7 +1357,7 @@ object Cluster {
                     probe: Probe = Probe.none)
                    (using Scheduler): Option[Run[R]] ! Async =
     lease.take() match
-      case None => pure[Async, Option[Run[R]]](None)
+      case None => pure[Option[Run[R]], Async](None)
       case Some(term) =>
         // the term goes two ways: into the FENCE, which refuses a
         // commit once the lease is gone, and into every RECORD, so a

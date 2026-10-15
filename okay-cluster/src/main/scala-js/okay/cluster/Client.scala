@@ -1,8 +1,7 @@
 package okay.cluster
 
 import scala.scalajs.js
-import okay.{Async, async, await}
-import okay.freer.{!}
+import okay.{!, Async, async, await}
 import okay.codec.Json
 
 /**

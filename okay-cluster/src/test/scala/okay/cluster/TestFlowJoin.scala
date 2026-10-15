@@ -2,11 +2,11 @@ package okay.cluster
 
 
 import okay.{Pane, Streamed, Tables, Bulk}
-import okay.freer.*
+import okay.{!, +}
+import okay.freer.Aggregator
 import okay.given
-import okay.freer.given
 import okay.Chunks.elements
-import okay.freer.Row.plus
+import okay.Row.plus
 import okay.Streamed.{joinSorted, joinWithin, windowed, zip}
 import okay.Tables.collect
 import scala.util.Random

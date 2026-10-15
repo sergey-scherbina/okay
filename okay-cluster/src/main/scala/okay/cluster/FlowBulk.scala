@@ -1,9 +1,9 @@
 package okay.cluster
 
 import okay.{Answers, Chunks, Async, Bulk, Csv, Scheduler, Streamed, Tables}
-import okay.freer.*
+import okay.{!, %, +}
+import okay.freer.Aggregator
 import okay.std.*
-import okay.freer.given
 import okay.Chunks.elements
 
 /**
@@ -115,21 +115,21 @@ final class FlowBulk(parts: Int,
    * `FlowBulk(4).streamed(Tables.via(B)(p))` for a program in
    * `Tables + Streamed`, or `run(p)` below.
    */
-  def streamed[A, F[+_]](p: A ! Streamed + F): A ! State % Tables.Heap[Flow] + F =
-    import Row.plus
+  def streamed[A, Es[_]](p: A ! Es)(using s: okay.core.Split[Es, Streamed], w: okay.Within[State % Tables.Heap[Flow], s.Rest])
+  : A ! s.Rest =
     type H = Tables.Heap[Flow]
-    !.interpret(p):
+    p.translateInto[Streamed, State % H]:
       [X] => (e: Streamed[X]) => e match
         case Streamed.JoinSorted(l, r, ord) =>
-          State.update[H, X](h => h.hold(Flow.Join(h.force(l)(this), h.force(r)(this), parts, JoinHow.Sorted(ord)))).plus[F]
+          State.update[H, X](h => h.hold(Flow.Join(h.force(l)(this), h.force(r)(this), parts, JoinHow.Sorted(ord))))
         case Streamed.JoinWithin(l, r, within, lateness, atL, atR) =>
           State.update[H, X](h => h.hold(Flow.Join(h.force(l)(this), h.force(r)(this), parts,
-            JoinHow.Within(within, lateness, atL, atR)))).plus[F]
+            JoinHow.Within(within, lateness, atL, atR))))
         case Streamed.Windowed(t, size, slide, lateness, key, at, agg) =>
           State.update[H, X](h => h.hold(Flow.Windowed(h.force(t)(this), size, slide, lateness, key, at, agg,
-            seeded = true, finish = Finish.Auto))).plus[F]
+            seeded = true, finish = Finish.Auto)))
         case Streamed.Zip(l, r) =>
-          State.update[H, X](h => h.hold(of(Chunks.zip(toChunks(h.force(l)(this)), toChunks(h.force(r)(this))).elements.toVector))).plus[F]
+          State.update[H, X](h => h.hold(of(Chunks.zip(toChunks(h.force(l)(this)), toChunks(h.force(r)(this))).elements.toVector)))
 
   /** a program in `Tables + Streamed`, run on the engine */
   def run[A](p: A ! Tables + Streamed): A =
