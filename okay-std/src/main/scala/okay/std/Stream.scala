@@ -1,9 +1,8 @@
 package okay.std
 
-import okay.freer.*
-import okay.freer.given
-
-import okay.{Answers, MonadPlus, TypeableK}
+import okay.{!, %, +, Answers, Handler, MonadPlus, Pure, pure}
+import okay.core.Split
+import okay.freer.{Fold, FoldUntil, Group}
 
 /**
  * A stream is codata: defined not by its constructors but by the one
@@ -14,8 +13,8 @@ import okay.{Answers, MonadPlus, TypeableK}
  *
  * The observation is EFFECTFUL: uncons answers in the effect F, so a
  * stream may perform work — wait, read, sleep — to produce its next
- * element. A pure stream takes F = Pure (= Nothing, the empty
- * signature), whose Answers is trivial; an asynchronous stream takes
+ * element. A pure stream takes F = Pure (the empty effect), whose
+ * Answers is trivial (`pureAnswers`, below); an asynchronous stream takes
  * F = Async, and on Loom its consumer just blocks a virtual thread
  * per element. Consumption needs an Answers[F] in scope — for Pure it
  * always is.
@@ -30,14 +29,19 @@ import okay.{Answers, MonadPlus, TypeableK}
  * carrier a repeated uncons repeats the step's work (and its
  * effects!) — only the LazyList bridge memoizes.
  */
-trait Stream[S[_], F[+_]]:
+trait Stream[S[_], F[_]]:
   /** the next element and the rest (or None at the end), inside the effect F */
   def uncons[A](s: S[A]): Option[(A, S[A])] ! F
 
   /** the linear view (see the iterator extension); an instance may
    * specialize it to skip the per-element Option and tuple of uncons */
   def iterator[A](s: S[A])(using Answers[F]): Iterator[A] =
-    Iterator.unfold(s)(uncons(_).runWith)
+    Iterator.unfold(s)(x => Stream.runWith(uncons(x)))
+
+/** no effects, so nothing to answer: what a pure stream's consumers ask for (`import okay.std.given` outside this
+ * package) */
+given pureAnswers: Answers[Pure] with
+  def handle[A](a: Pure[A]): A = throw MatchError(a)
 
 /** the final coalgebra observes itself, purely */
 given Stream[LazyList, Pure] with
@@ -73,9 +77,9 @@ given MonadPlus[LazyList] with
     override def flatMap[B](f: A => LazyList[B]): LazyList[B] = x.flatMap(f)
     override def append(y: LazyList[A]): LazyList[A] = x #::: y
 
-extension [S[_], F[+_], A](s: S[A])(using St: Stream[S, F], H: Answers[F])
+extension [S[_], F[_], A](s: S[A])(using St: Stream[S, F], H: Answers[F])
   /** the next element and the rest, or None at the end (F is handled here) */
-  def uncons: Option[(A, S[A])] = St.uncons(s).runWith
+  def uncons: Option[(A, S[A])] = Stream.runWith(St.uncons(s))
 
   /**
    * The anamorphism into the final coalgebra: unfold the stream into
@@ -85,7 +89,7 @@ extension [S[_], F[+_], A](s: S[A])(using St: Stream[S, F], H: Answers[F])
    * the Answers — on an Async stream the pull blocks (a virtual
    * thread, on Loom).
    */
-  def toLazyList: LazyList[A] = LazyList.unfold(s)(St.uncons(_).runWith)
+  def toLazyList: LazyList[A] = LazyList.unfold(s)(x => Stream.runWith(St.uncons(x)))
 
   /**
    * The LINEAR view: walk the stream as an Iterator — no cells, no
@@ -111,13 +115,16 @@ extension [S[_], F[+_], A](s: S[A])(using St: Stream[S, F], H: Answers[F])
  * type lambda that extension inference cannot see through.
  */
 object Stream:
+  /** a program of the one effect `F`, each operation answered by the `Answers` (the kernel's `Answering`): its value */
+  def runWith[X, F[_]](p: X ! F)(using H: Answers[F]): X =
+    p.handle(Handler.answering[F]([Y] => (op: F[Y]) => H.handle(op))).run
 
   /** transform each element (the monad owns the postfix .map) */
-  def map[S[_], F[+_], A, B](s: S[A])(f: A => B)(using Stream[S, F], Answers[F]): LazyList[B] =
+  def map[S[_], F[_], A, B](s: S[A])(f: A => B)(using Stream[S, F], Answers[F]): LazyList[B] =
     s.toLazyList.map(f)
 
   /** a stream for each element, concatenated (any carriers) */
-  def flatMap[S[_], T[_], F[+_], G[+_], A, B](s: S[A])(f: A => T[B])
+  def flatMap[S[_], T[_], F[_], G[_], A, B](s: S[A])(f: A => T[B])
                                     (using Stream[S, F], Answers[F], Stream[T, G], Answers[G]): LazyList[B] =
     s.toLazyList.flatMap(f(_).toLazyList)
 
@@ -144,7 +151,7 @@ object Stream:
    * Results, round 2). Each arm is four lines now, so five copies
    * cost what they weigh.
    */
-  def fold[S[_], F[+_], A, B](s: S[A])(using fo: Fold[A, B])(using St: Stream[S, F], H: Answers[F]): B =
+  def fold[S[_], F[_], A, B](s: S[A])(using fo: Fold[A, B])(using St: Stream[S, F], H: Answers[F]): B =
     // the element type is erased, so these tests see only the shape —
     // the same unavoidable `@unchecked` `Chunks.fold` carries
     fo match
@@ -179,7 +186,7 @@ object Stream:
    * for an element only while the state has not seen enough, so a
    * stream that computes on demand computes nothing past the stop.
    */
-  def foldUntil[S[_], F[+_], A, B, R](s: S[A])(using fo: FoldUntil[A, B, R])(using St: Stream[S, F], H: Answers[F]): R =
+  def foldUntil[S[_], F[_], A, B, R](s: S[A])(using fo: FoldUntil[A, B, R])(using St: Stream[S, F], H: Answers[F]): R =
     val it = St.iterator(s)
     // dispatched on the accumulator as `fold` above is, for the same
     // measured reason (fold-until-unboxed: the box is 25x on the loop)
@@ -205,7 +212,7 @@ object Stream:
         while !fo.done(b) && it.hasNext do b = fo.add(b, it.next())
         fo.end(b)
 
-extension [S[_], F[+_], A](s: S[A])(using St: Stream[S, F], H: Answers[F])
+extension [S[_], F[_], A](s: S[A])(using St: Stream[S, F], H: Answers[F])
   /** keep the elements satisfying p */
   def filter(p: A => Boolean): LazyList[A] = s.toLazyList.filter(p)
 
@@ -222,14 +229,14 @@ extension [S[_], F[+_], A](s: S[A])(using St: Stream[S, F], H: Answers[F])
   def dropWhile(p: A => Boolean): LazyList[A] = s.toLazyList.dropWhile(p)
 
   /** pair up with another stream (any carrier), until either ends */
-  def zip[T[_], G[+_], B](that: T[B])(using Stream[T, G], Answers[G]): LazyList[(A, B)] =
+  def zip[T[_], G[_], B](that: T[B])(using Stream[T, G], Answers[G]): LazyList[(A, B)] =
     s.toLazyList.zip(that.toLazyList)
 
   /** pair each element with its position */
   def zipWithIndex: LazyList[(A, Int)] = s.toLazyList.zipWithIndex
 
   /** this stream, then that one (any carrier) */
-  def ++[T[_], G[+_]](that: T[A])(using Stream[T, G], Answers[G]): LazyList[A] =
+  def ++[T[_], G[_]](that: T[A])(using Stream[T, G], Answers[G]): LazyList[A] =
     s.toLazyList #::: that.toLazyList
 
   // The consumers below answer a VALUE, not a stream, so they walk the
@@ -279,7 +286,7 @@ extension [W, A](a: A ! Writer % W)
    * the row's evidence found here, so the caller passes only the fold
    * — `countdown(n).foldUntil(using FoldUntil.find(p))` */
   def foldUntil[S, R](using fo: FoldUntil[W, S, R]): R =
-    !.run(Writer.foldUntil[W, S, A, R, Pure](a)(using summon)(using summon, fo))
+    Writer.foldUntil[W, S, A, R, Writer % W](a)(using Split.whole, fo).run
 
 /**
  * A writer program with ARBITRARY effects G is a stream too: the told
@@ -289,12 +296,12 @@ extension [W, A](a: A ! Writer % W)
  * program first: their handlers forward the telling, so they ARE
  * stream transformers, and what remains is the Answers-able residue.
  */
-extension [W, A, G[+_]](a: A ! Writer % W + G)(using TypeableK[G], Answers[G])
+extension [W, A, G[_]](a: A ! Writer % W + G)(using Answers[G])
   /** the next told value and the rest, or None (G handled here) */
-  def uncons: Option[(W, A ! Writer % W + G)] = Writer.uncons(a).runWith.toOption
+  def uncons: Option[(W, A ! Writer % W + G)] = Stream.runWith(Writer.uncons[W, A, G](a)).toOption
 
   /** unfold the told values into the final coalgebra; each pull runs its G */
-  def toLazyList: LazyList[W] = LazyList.unfold(a)(Writer.uncons(_).runWith.toOption)
+  def toLazyList: LazyList[W] = LazyList.unfold(a)(x => Stream.runWith(Writer.uncons[W, A, G](x)).toOption)
 
 /**
  * The effectful program's stopping fold, in a block of its own: an
@@ -304,12 +311,12 @@ extension [W, A, G[+_]](a: A ! Writer % W + G)(using TypeableK[G], Answers[G])
  * own clause, after the fold, and `a.foldUntil(using fo)` reads as the
  * pure program's does.
  */
-extension [W, A, G[+_]](a: A ! Writer % W + G)
+extension [W, A, G[_]](a: A ! Writer % W + G)
   /** a fold that stops (specs/fold-until.md): `Writer.foldUntil`, its
    * forwarded G run by the Answers in scope — the effectful twin of
    * the pure program's `foldUntil` above, one `using` for the caller */
   def foldUntil[S, R](using fo: FoldUntil[W, S, R])(using Answers[G]): R =
-    Writer.foldUntil[W, S, A, R, G](a)(using summon)(using summon, fo).runWith
+    Stream.runWith(Writer.foldUntil[W, S, A, R, Writer % W + G](a)(using Split.head, fo))
 
 /**
  * The sliding window, on a Group: each emitted value is the combine
@@ -318,7 +325,7 @@ extension [W, A, G[+_]](a: A ! Writer % W + G)
  * max, a String) is rejected at compile time: there is no un-seeing
  * without an inverse.
  */
-def sliding[S[_], F[+_], A](s: S[A])(n: Int)
+def sliding[S[_], F[_], A](s: S[A])(n: Int)
                            (using G: Group[A], St: Stream[S, F], H: Answers[F]): LazyList[A] =
   def go(q: Vector[A], acc: A, rest: LazyList[A]): LazyList[A] = rest match
     case a #:: t =>

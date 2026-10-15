@@ -180,6 +180,11 @@ Recorded as met; behaviour regressions are accepted where the speed is the point
   cancel passes (`Exit`); okay-freer's catch frame abandoned it for those too.
 - `Maybe.option` captures `k` for `Some` (a `Deep`), where okay-freer answered in place: the same result, a capture
   more.
+- Writer's streams (`uncons`, `foldUntil`, the iterators, Generate's instances) step the program (`Step`): after
+  an element is handed over, the producer's next code runs at the next pull, not at the handover; a rest handed out
+  is re-placed by reading paths, an effect missing at the new place throws. The effectful `uncons`, `Pull.toldIn`
+  and the stream instances take `Writer % W + G` with `G` one effect.
+- Writer's folds are the kernel's `Stateful` (answered in place); the `Fold.OfLong`/`OfInt` dispatch is gone.
 - `Once.memo` calls its step twice an operation (the kernel's `Stateful` asks `value` and `next` apart): pure, so the
   same.
 

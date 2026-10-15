@@ -1,8 +1,6 @@
 package okay.std
 
-import okay.freer.{!, %, +, Pure}
-
-import okay.{TypeableK}
+import okay.{!, %, +, Pure, defer, pure}
 
 /**
  * A SOURCE A PROGRAM READS ONE STEP AT A TIME (specs/direct-loops.md,
@@ -19,7 +17,7 @@ import okay.{TypeableK}
  * the Answers here" (Stream.scala), and one spelling must not mean
  * two things depending on where it stands.
  */
-trait Pull[A, G[+_]]:
+trait Pull[A, G[_]]:
   /** the next element and the rest, or None at the end — in `G` */
   def step: Option[(A, Pull[A, G])] ! G
 
@@ -30,13 +28,13 @@ trait Pull[A, G[+_]]:
   def withFilter(p: A => Boolean): Pull[A, G] =
     val self = this
     new Pull[A, G]:
-      def step: Option[(A, Pull[A, G])] ! G =
-        !.loop[Pull[A, G], Option[(A, Pull[A, G])], G](self) { s =>
-          s.step.map {
-            case Some((a, next)) if p(a) => Right(Some((a, next.withFilter(p))))
-            case Some((_, next)) => Left(next)
-            case None => Right(None)
-          }
+      def step: Option[(A, Pull[A, G])] ! G = skip(self)
+      // a refused element's next step from inside the bind: on the machine, a step of its loop, not a host frame
+      def skip(s: Pull[A, G]): Option[(A, Pull[A, G])] ! G =
+        s.step.flatMap[Option[(A, Pull[A, G])], G] {
+          case Some((a, next)) if p(a) => pure(Some((a, next.withFilter(p))))
+          case Some((_, next)) => defer(skip(next))
+          case None => pure(None)
         }
 
   /** the loop with a pure body, AS A PROGRAM — the form written by
@@ -47,16 +45,15 @@ trait Pull[A, G[+_]]:
    * at all, on purpose — a loop that is a program must be run, and
    * this is its name */
   def loop(f: A => Unit): Unit ! G =
-    !.loop[Pull[A, G], Unit, G](this) { p =>
-      p.step.map {
-        case Some((a, next)) => f(a); Left(next)
-        case None => Right(())
-      }
+    // the next step from inside the bind: on the machine, a step of its loop, not a host frame
+    step.flatMap[Unit, G] {
+      case Some((a, next)) => f(a); defer(next.loop(f))
+      case None => pure(())
     }
 
 object Pull:
   /** any `Stream` carrier, read by its `uncons` */
-  def of[S[_], A, G[+_]](s: S[A])(using St: Stream[S, G]): Pull[A, G] = new:
+  def of[S[_], A, G[_]](s: S[A])(using St: Stream[S, G]): Pull[A, G] = new:
     def step: Option[(A, Pull[A, G])] ! G = St.uncons(s).map(_.map((a, rest) => (a, of(rest))))
 
   /** the told values of a writer program — first-order, as
@@ -67,5 +64,5 @@ object Pull:
 
   /** the same, the producer performing `G` between tells: `G` is
    * where the reader's steps run */
-  def toldIn[W, G[+_] : TypeableK, A](a: A ! Writer % W + G): Pull[W, G] =
+  def toldIn[W, G[_], A](a: A ! Writer % W + G): Pull[W, G] =
     of[[X] =>> A ! Writer % X + G, W, G](a)(using writerStreamIn[A, G])

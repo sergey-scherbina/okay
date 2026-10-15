@@ -1,9 +1,14 @@
 package okay.std
 
-import okay.freer.*
-import okay.freer.Row.at
-
-import okay.{Answers, TypeableK, typeableK}
+import okay.{!, +, %, Answers, Handler, Pure, Run, TypeableK, effect, pure, typeableK}
+import okay.core.{+:, Eff, Paths, Row, Split}
+import okay.freer.{Cps, Fold, FoldUntil, />>}
+import okay.one.Cont
+import okay.one.handler.{Stateful, Handler as OneHandler}
+import okay.one.row.In
+import okay.one.step.Step
+import okay.one.step.Step.step
+import scala.annotation.tailrec
 
 
 /**
@@ -48,24 +53,21 @@ def out[W, A](w: Writer[W, A]): W = w match
 object Writer {
   /**
    * RECORD what a program asks for without answering any of it: each operation of `F` is told to a `Writer`
-   * and then performed as before, so the row keeps `F` and gains `Writer % W`.
+   * and then performed as before, so the program keeps `F` and gains `Writer % W`.
    *
-   *     Writer.tracing(prog)([X] => (e: Users[X]) => e.toString)   // A ! Users + Writer % String + G
+   *     Writer.tracing(prog)([X] => (e: Users[X]) => e.toString)   // A ! Writer % String + Users + G
    *
    * It records before anything is interpreted, so it sees the program's own asks whatever answers them.
-   * Re-emitting `e` does not loop: `translate` walks the SOURCE program only.
+   * Re-emitting `e` does not loop: each operation is TRANSLATED (the kernel's `Translating`), its program run
+   * outside the translating handler, where `F` is the handler of `F` around.
    */
-  def tracing[A, F[+_] : TypeableK, W, G[+_]](prog: A ! F + G)
-                                             (show: [X] => F[X] => W)
-  : A ! F + Writer % W + G =
-    type R = F + Writer % W + G
-    okay.freer.Classic.interpret[A, F, Writer % W, F + G](prog):
-      [X] => (e: F[X]) =>
-        Writer.tell(show(e)).at[R].flatMap(_ => effect[R, X](e))
+  def tracing[A, F[_], W, Es[_]](prog: A ! Es)(show: [X] => F[X] => W)(using s: Split[Es, F])
+  : A ! Writer % W + F + s.Rest =
+    prog.translate[F, Writer % W + F]([X] => (e: F[X]) => tell(show(e)) >> effect[F, X](e))
 
 
-  /** handle-frames-loops: what a Writer operation told, read off the machine's erased operation — a frame takes
-   * only `Writer % W`'s operations (its TypeableK) and `Say` is the only constructor, so this is that `w` */
+  /** handle-frames-loops: what a Writer operation told, read off an erased operation — `Say` is the only
+   * constructor, so this is that `w` */
   @scala.annotation.publicInBinary private[okay] def told[W](op: Any): W = op.asInstanceOf[Say[W, Unit]].w
 
 
@@ -74,142 +76,101 @@ object Writer {
   inline def apply[W](w: W): Writer[W, Unit] = Say(w)
 
   /** tell w: emit it as an operation, which answers NOTHING */
-  inline def tell[W](w: W): Unit ! Writer % W = effect(Writer(w))
+  inline def tell[W](w: W): Unit ! Writer % W = effect[Writer % W, Unit](Say(w))
 
   /**
    * The continuation after a value a stream view has just HANDED OVER,
-   * applied now — the moment every consumer's pull counting has always
-   * relied on — except that a throw from it is held back as the rest:
-   * a program that throws when next stepped. Applying it bare lost the
-   * value being handed over whenever the source's next step threw while
+   * applied now, except that a throw from it is held back as the rest:
+   * a program that throws when run. Applying it bare lost the value
+   * being handed over whenever the source's next step threw while
    * being built (`Source.of` over a stream whose `uncons` throws; found
-   * by source-merge-via-ready, `TestWriterToldBeforeThrow`). Free while
-   * nothing throws: a JVM `try` costs nothing on the path it does not
-   * take, and the `Delay` is allocated only for the throw.
+   * by source-merge-via-ready, `TestWriterToldBeforeThrow`). The views
+   * here no longer need it — a stepped program's rest is resumed when
+   * it is next pulled, so a throw from it comes at that pull — it stays
+   * for a view of one's own that applies a continuation at once.
    */
-  private[okay] inline def toldThen[F[+_], A](k: Unit => A ! F): A ! F =
-    try k(()) catch case e: Throwable => Free.Delay(() => throw e)
+  private[okay] inline def toldThen[A, Es[_]](k: Unit => A ! Es): A ! Es =
+    try k(()) catch case e: Throwable => okay.defer[A, Es](throw e)
 
-
-  import !.*
 
   /**
-   * Fold everything told into any Fold algebra, forwarding the
-   * effects F. Like State.handle, a bespoke tail-recursive loop — the
-   * accumulator has to be threaded through the loop itself, which an
-   * answer-polymorphic relay handler cannot hold.
-   */
-  def fold[W, S, A, F[+_]](a: A ! Writer % W + F)(using Distinct[Writer % W + F])
-                          (using TypeableK[Writer % W], Fold[W, S]): (S, A) ! F =
-    val K = summon[Fold[W, S]]
-    // GADT refinement needs a stable path, not an expression: bound to
-    // a val it gives `S` back from each test, so none of this casts
-    K match
-      // the same dispatch `Chunks.fold` makes, for the same reason: a
-      // fold that arrives as data has no step to inline, so the one
-      // thing left is to ask what its accumulator is. GADT refinement
-      // gives `S` back from each type test, so none of this casts.
-      case l: Fold.OfLong[W @unchecked] => foldWith[W, Long, A, F](a)(l.initLong)((s, w) => l.addLong(s, w))
-      case i: Fold.OfInt[W @unchecked] => foldWith[W, Int, A, F](a)(i.initInt)((s, w) => i.addInt(s, w))
-      case d: Fold.OfDouble[W @unchecked] => foldWith[W, Double, A, F](a)(d.initDouble)((s, w) => d.addDouble(s, w))
-      case b: Fold.OfBoolean[W @unchecked] => foldWith[W, Boolean, A, F](a)(b.initBoolean)((s, w) => b.addBoolean(s, w))
-      case _ => foldWith(a)(K.init)((s, w) => K.add(s, w))
-
-  /**
-   * The loop itself, with the step taken at the call site.
+   * Fold everything told into any Fold algebra, wherever `Writer % W`
+   * is among the program's effects, the rest forwarded. The fold is
+   * the kernel's `Stateful` handler: its accumulator a register of the
+   * machine, each tell answered in place — no capture, no loop of its
+   * own.
    *
-   * `inline` so the four dispatched branches above each beta-reduce
-   * their step into the loop body rather than calling through a
-   * `Function2`, whose `apply` erases `(Object, Object)Object` and
-   * would put back exactly the boxing the dispatch removed. That trap
-   * cost 27.5us against 7.8 when it was first written without inline
-   * in `Fold.long`, so it is worth spelling out.
+   * It used to dispatch on the accumulator (`Fold.OfLong`, ...) to keep
+   * a `Long` unboxed through its own loop; the machine's state is
+   * generic, so a dispatch would buy nothing here and is gone.
    */
-  inline def foldWith[W, S, A, F[+_]](a: A ! Writer % W + F)(using Distinct[Writer % W + F])(z: S)
-                                     (inline step: (S, W) => S)
-                                     (using TypeableK[Writer % W]): (S, A) ! F =
-    loopWith[W, S, A, (S, A), F](a)(z)(step)((s, a) => (s, a))
+  def fold[W, S, A, Es[_]](a: A ! Es)(using s: Split[Es, Writer % W], K: Fold[W, S]): (S, A) ! s.Rest =
+    loopWith[W, S, A, (S, A), Es](a)(K.init)((st, w) => K.add(st, w))((st, x) => (st, x))
+
+  /** The fold with the step given at the call site: the state and the program's answer at its end. */
+  def foldWith[W, S, A, Es[_]](a: A ! Es)(z: S)(step: (S, W) => S)(using s: Split[Es, Writer % W]): (S, A) ! s.Rest =
+    loopWith[W, S, A, (S, A), Es](a)(z)(step)((st, x) => (st, x))
 
   /**
-   * The loop itself, with a `finish` applied to the accumulator AND
-   * the program's answer where the PROGRAM ends — inside the loop,
-   * never as a `.map` over the residual: a map wrapped around a
-   * program that still forwards effects makes every forwarded node
-   * left-nested under it, and `resume` then rotates each of them
-   * again (either-scalarised, 2026-09-09: one outer `.map` cost 61 KB
-   * over 667 forwarded operations — more than the accumulator it was
-   * finishing). The answer reaches the finisher so that a drain
-   * wanting only the accumulator (`Source.runCollect`), or the
-   * accumulator reshaped (`Source.concat`), finishes here too instead
-   * of mapping the tuple away afterwards (writer-collect-loops).
+   * The fold with a `finish` applied to the accumulator AND the
+   * program's answer where the PROGRAM ends — the handler's `ret`,
+   * never a `.map` over the residual. The answer reaches the finisher
+   * so that a drain wanting only the accumulator (`Source.runCollect`),
+   * or the accumulator reshaped (`Source.concat`), finishes here too
+   * instead of mapping the tuple away afterwards (writer-collect-loops).
    */
-  inline def loopWith[W, S, A, R, F[+_]](a: A ! Writer % W + F)(z: S)
-                                         (inline step: (S, W) => S)
-                                         (inline finish: (S, A) => R)
-                                         (using TypeableK[Writer % W]): R ! F = {
-    // one step, both faces (handler-one-step): a tell moves the state, answers `()`; fold and frame built from it
-    HandleFrames.stateRun[Writer % W, S, A, R, F](summon[TypeableK[Writer % W]], (s, a) => Return(finish(s, a)))(
-      (s, op) => (step(s, Writer.told[W](op)), ()))(z, a)
-  }
+  def loopWith[W, S, A, R, Es[_]](a: A ! Es)(z: S)(step: (S, W) => S)(finish: (S, A) => R)
+                                 (using s: Split[Es, Writer % W]): R ! s.Rest =
+    new Run[s.Rest, R]:
+      def on[T <: Row](ps: Paths[s.Rest, T]): Eff[T, R] =
+        Cont.handle(a.fit(s.paths(ps)))(new Stateful[Writer % W, T, S, A, R]:
+          def initial: S = z
+          def ret(st: S, x: A): Eff[T, R] = Cont.pure(finish(st, x))
+          def value[X](st: S, op: Writer[W, X]): X = op match { case Say(_) => () }
+          def next[X](st: S, op: Writer[W, X]): S = op match { case Say(w) => step(st, w) })
 
   /**
-   * A fold that STOPS (specs/fold-until.md): `loopWith`'s walk with
-   * an early `Return(end(s))` the moment the state is done. The
-   * `Bind(Inject(Say), k)` arm does not call `k` then, which is what
-   * stops the producer: nothing past the satisfying tell is built,
-   * and an `F` operation that would have followed it is never
-   * performed. Answers `R` alone — a fold that stopped early never
-   * saw the program's answer, and a signature promising it would
-   * have to invent one.
+   * A fold that STOPS (specs/fold-until.md): the program STEPPED (the
+   * kernel's `Step`), each tell added to the state, the moment the
+   * state is done the step's rest dropped — which is what stops the
+   * producer: nothing past the satisfying tell runs, and an operation
+   * that would have followed it is never performed. The other effects'
+   * operations met on the way are performed where the fold is, the
+   * rest resumed with their answers. Answers `R` alone — a fold that
+   * stopped early never saw the program's answer, and a signature
+   * promising it would have to invent one.
    */
-  def foldUntil[W, S, A, R, F[+_]](a: A ! Writer % W + F)(using Distinct[Writer % W + F])
-                                  (using TypeableK[Writer % W], FoldUntil[W, S, R]): R ! F = {
-    val K = summon[FoldUntil[W, S, R]]
-    // one step, both faces (handler-one-step): a tell adds to the state; done, the run stops there
-    HandleFrames.stateRunUntil[Writer % W, S, A, R, F](summon[TypeableK[Writer % W]], K.done(_), K.end(_))(
-      (s, op) => (K.add(s, Writer.told[W](op)), ()))(K.init, a)
-  }
+  def foldUntil[W, S, A, R, Es[_]](a: A ! Es)(using s: Split[Es, Writer % W], K: FoldUntil[W, S, R]): R ! s.Rest =
+    new Run[s.Rest, R]:
+      def on[T <: Row](ps: Paths[s.Rest, T]): Eff[T, R] =
+        if K.done(K.init) then Cont.pure(K.end(K.init))
+        else Cont.defer(Stepping.until(Stepping.start(a, s.paths(ps)), K.init, Telling[W](), K))
 
-  /** collect everything told, in order, forwarding the effects F */
-  /** the handler as a value: `p.handle(Writer.log)` answers what was told, in order, and `A` */
-  def log[W](using t: TypeableK[Writer % W]): Handler[Writer % W, [A] =>> (Seq[W], A)] =
-    new Handler.Stepped[Writer % W, List[W], [A] =>> (Seq[W], A)]:
-      def run[A, F[+_]](p: A ! Writer % W + F)(using A <:< Any, Distinct[Writer % W + F], Handler.Nothing[F]): (Seq[W], A) ! F =
-        Writer.run(p)
-      // the step `run` walks with, exposed for a walk over a stack of handlers (handler-single-pass)
-      def takes: TypeableK[Writer % W] = t
-      def init: List[W] = Nil
-      def step(s: List[W], op: Any): (List[W], Any) | Handler.Halt[List[W]] =
-        (told[W](op) :: s, ())
-      override def stepAt(st: Array[Any], i: Int, op: Any): Any =
-        st(i) = told[W](op) :: st(i).asInstanceOf[List[W]]
-        ()
-      def ret[A, F[+_]](s: List[W], a: A): (Seq[W], A) ! F = pure((s.reverse, a))
+  /** the handler as a value: `p.handle(Writer.log)` answers what was told, in order, and `A` — the kernel's
+   * `Stateful`, a cons a tell, reversed once at the end */
+  def log[W]: Handler[Writer % W, [A] =>> (Seq[W], A)] = new Handler[Writer % W, [A] =>> (Seq[W], A)]:
+    def kernel[T <: Row, A]: OneHandler[Writer % W, T, A, (Seq[W], A)] = new Stateful[Writer % W, T, List[W], A, (Seq[W], A)]:
+      def initial: List[W] = Nil
+      def ret(st: List[W], a: A): Eff[T, (Seq[W], A)] = Cont.pure((st.reverse, a))
+      def value[X](st: List[W], op: Writer[W, X]): X = op match { case Say(_) => () }
+      def next[X](st: List[W], op: Writer[W, X]): List[W] = op match { case Say(w) => w :: st }
 
-  def run[W, A, F[+_]](a: A ! Writer % W + F)(using Distinct[Writer % W + F])
-                      (using TypeableK[Writer % W]): (Seq[W], A) ! F =
+  /** collect everything told, in order, forwarding the rest of the effects */
+  def run[W, A, Es[_]](a: A ! Es)(using s: Split[Es, Writer % W]): (Seq[W], A) ! s.Rest =
     // a List built by prepending and reversed ONCE at the end, not a
     // Vector appended per tell: either-scalarised (2026-09-09) measured
-    // `Writer.run` at 197 B per tell with the split, Either and Option
-    // all costing NOTHING on this loop — the whole price was `:+`
-    // (~150 B per append). A cons is 24 B, the reverse is one pass.
-    loopWith[W, List[W], A, (Seq[W], A), F](a)(Nil)((s, w) => w :: s)((s, a) => (s.reverse, a))
+    // the whole price of `Writer.run` at `:+` (~150 B per append). A
+    // cons is 24 B, the reverse is one pass.
+    a.handle(log[W])
 
   /**
    * `run` answering a `Vector`, with the answer KEPT — which a
-   * `Blob.getSource` needs because its answer is the outcome.
-   *
-   * It used to be its own copy of the loop, split on G rather than on
-   * `Writer % W`, because `writerK` at a parameterised W (`Writer %
-   * Chunk[Byte]`) was an unchecked E092 test until
-   * writer-typeablek-by-class (2026-09-19); with the test now the
-   * class of `Say` there is one loop, and this is a call to it — a
-   * cons per tell and one reverse, not a `Vector :+` per tell
+   * `Blob.getSource` needs because its answer is the outcome. A cons
+   * per tell and one reverse, not a `Vector :+` per tell
    * (writer-collect-loops).
    */
-  def collect[W, A, G[+_]](a: A ! Writer % W + G)(using Distinct[Writer % W + G])
-                          (using TypeableK[Writer % W]): (Vector[W], A) ! G =
-    loopWith[W, List[W], A, (Vector[W], A), G](a)(Nil)((s, w) => w :: s)((s, a) => (s.reverse.toVector, a))
+  def collect[W, A, Es[_]](a: A ! Es)(using s: Split[Es, Writer % W]): (Vector[W], A) ! s.Rest =
+    loopWith[W, List[W], A, (Vector[W], A), Es](a)(Nil)((st, w) => w :: st)((st, x) => (st.reverse.toVector, x))
 
   /**
    * Map the told values, keeping the PROGRAM.
@@ -218,44 +179,50 @@ object Writer {
    * right answer for a pure stream and the wrong one for a stream
    * that still has effects to perform: the elements would be pulled
    * by whoever forces the list, not by whoever consumes it. This one
-   * transforms the telling in place and forwards the G-operations
+   * transforms the telling in place and forwards the other operations
    * untouched, in order, so the result is a source like the input.
    *
-   * It is also what makes two DIFFERENTLY typed sources mergeable:
-   * `Free` is invariant in its row, so re-telling at a common type is
-   * a WALK over the program's nodes, not a subtyping step (see
-   * Source.merge) — `Writer[+W, +A]` (2026-09-02) narrows what the
-   * walk must actually rebuild: see `widen` below for the case with
-   * no transform, where only the Free nodes need rebuilding and the
-   * told OPERATION can be reused as is.
+   * Each tell is TRANSLATED (the kernel's `Translating`): `tell(f(w))`
+   * run outside, at the `Writer % V` of the place — answered in place,
+   * nothing captured, no walk. It is also what makes two DIFFERENTLY
+   * typed sources mergeable: re-telling at a common type (see `widen`
+   * below for the case with no transform).
    */
-  def map[W, V, A, G[+_]](a: A ! Writer % W + G)(using Distinct[Writer % W + G], TypeableK[Writer % W])(f: W => V)
-  : A ! Writer % V + G =
-    // the walk as a frame (handle-frames-loops): each tell re-told as `f` of it, outside the frame
-    def frame(x: A ! Writer % W + G): Shift.U[Writer % V + G, A] =
-      HandleFrames.statefulOver[Writer % W, Unit, A, A, Writer % V + G, Writer % W + G](summon[TypeableK[Writer % W]], (_, a) => pure(a))(
-        (_, op, resume) => Inject[Writer % V + G, Unit](Writer(f(Writer.told[W](op)))).flatMap(_ => resume((), ())))((), x)
-    def go(d: Int)(a: A ! Writer % W + G): A ! Writer % V + G = (a.resumeRun: @unchecked) match
+  def map[W, V, A, Es[_]](a: A ! Es)(using s: Split[Es, Writer % W])(f: W => V): A ! Writer % V + s.Rest =
+    a.translate[Writer % W, Writer % V]([X] => (op: Writer[W, X]) => op match
+      case Say(w) => tell(f(w)))
+
+  /**
+   * `map` on okay-freer's road: a CLASSIC tree's told values mapped, walked by okay-freer's frames — kept, as it
+   * was, for `Gen` alone (its walks are the classic's) until it moves; then it goes.
+   */
+  def map[W, V, A, G[+_]](a: okay.freer.![A, okay.freer.+[Writer % W, G]])
+                         (using okay.freer.Distinct[okay.freer.+[Writer % W, G]], TypeableK[Writer % W])(f: W => V)
+  : okay.freer.![A, okay.freer.+[Writer % V, G]] =
+    import okay.freer.{Free, HandleFrames, Shift, split}
+    import okay.freer.Free.{Bind, Inject}
+    type Src = okay.freer.+[Writer % W, G]
+    type Dst = okay.freer.+[Writer % V, G]
+    def frame(x: okay.freer.![A, Src]): Shift.U[Dst, A] =
+      HandleFrames.statefulOver[Writer % W, Unit, A, A, Dst, Src](summon[TypeableK[Writer % W]], (_, a) => okay.freer.pure(a))(
+        (_, op, resume) => Inject[Dst, Unit](Writer(f(Writer.told[W](op)))).flatMap(_ => resume((), ())))((), x)
+    def go(d: Int)(a: okay.freer.![A, Src]): okay.freer.![A, Dst] = (a.resumeRun: @unchecked) match
       case Free.Return(x) => Free.Return(x)
-      // THE HANDLED SIGNATURE IS TESTED FIRST (distinct-on-handlers,
-      // 2026-09-24). It was `split[G, Writer % W]`, the rest first; and
-      // when the rest is inferred as the row itself — `Writer.collect(
-      // Writer.map(p)(f))` solves G = Writer % W, `F | F` being `F` — every
-      // Say passed G's test and was forwarded UNMAPPED: a silently wrong
-      // answer (TestDistinct). Distinct cannot see that row, because the
-      // union collapses; testing Writer first makes it right.
+      // the handled signature tested first (distinct-on-handlers, 2026-09-24)
       case Inject(e) => split[Writer % W, G](e)
-        // the constructor refines the answer type to Unit on both
-        // sides, so the re-told operation types with nothing asserted
         { w0 => (w0: @unchecked) match
-            case Say(w) => Inject(Writer(f(w))): A ! Writer % V + G }
-        (g => Inject(g): A ! Writer % V + G)
+            case Say(w) => Inject(Writer(f(w))): okay.freer.![A, Dst] }
+        (g => Inject(g): okay.freer.![A, Dst])
       case Bind(Inject(e), k) => split[Writer % W, G](e)
         { w0 => (w0: @unchecked) match
-            case Say(w) => Inject(Writer(f(w))).flatMap(_ => go(d)(k(()))): A ! Writer % V + G }
+            case Say(w) => Inject(Writer(f(w))).flatMap(_ => go(d)(k(()))): okay.freer.![A, Dst] }
         (g => Inject(g).flatMap(x => go(d)(k(x))))
       case y => go(d)(HandleFrames.shallow(y, d))
-    HandleFrames.run[A, Writer % V + G](d => go(d)(a), frame(a))
+    HandleFrames.run[A, Dst](d => go(d)(a), frame(a))
+
+  /** the values told one by one, from `i` */
+  private def tellAll[W](ws: IndexedSeq[W], i: Int): Unit ! Writer % W =
+    if i >= ws.length then pure[Unit, Writer % W](()) else tell(ws(i)) >> tellAll(ws, i + 1)
 
   /**
    * ONE TOLD VALUE BECOMES MANY (merge-chunk-size-curve-inverted,
@@ -273,37 +240,28 @@ object Writer {
    *   merge + unchunk   231.7 -> 262.3 -> 430.3 us
    *   unchunk costs       ~0  ->  ~25  ->  ~150
    *
-   * This walks the program ONCE and re-tells each element directly,
-   * so no element crosses a coroutine boundary: what is rebuilt is a
-   * plain Free chain the runner walks linearly.
+   * This translates each tell into the values `f` makes of it, told
+   * directly at the place, so no element crosses a coroutine boundary.
    *
    * `f` may return any number of values, including none — an empty
    * result drops the told value, which makes this a filter as well as
    * an expansion.
    */
-  def expand[W, V, A, G[+_]](a: A ! Writer % W + G)(using Distinct[Writer % W + G], TypeableK[Writer % W])(f: W => IndexedSeq[V])
-  : A ! Writer % V + G =
-    def tellAll(vs: IndexedSeq[V], i: Int): Unit ! Writer % V + G =
-      if i >= vs.length then Free.Return(())
-      else Inject(Writer(vs(i))).flatMap(_ => tellAll(vs, i + 1))
+  def expand[W, V, A, Es[_]](a: A ! Es)(using s: Split[Es, Writer % W])(f: W => IndexedSeq[V]): A ! Writer % V + s.Rest =
+    a.translate[Writer % W, Writer % V]([X] => (op: Writer[W, X]) => op match
+      case Say(w) => tellAll(f(w), 0))
 
-    // the walk as a frame (handle-frames-loops): each tell re-told as the values `f` makes of it
-    def frame(x: A ! Writer % W + G): Shift.U[Writer % V + G, A] =
-      HandleFrames.statefulOver[Writer % W, Unit, A, A, Writer % V + G, Writer % W + G](summon[TypeableK[Writer % W]], (_, a) => pure(a))(
-        (_, op, resume) => tellAll(f(Writer.told[W](op)), 0).flatMap(_ => resume((), ())))((), x)
-    def go(d: Int)(a: A ! Writer % W + G): A ! Writer % V + G = (a.resumeRun: @unchecked) match
-      case Free.Return(x) => Free.Return(x)
-      // Writer tested first, for `map`'s reason (above)
-      case Inject(e) => split[Writer % W, G](e)
-        { w0 => (w0: @unchecked) match
-            case Say(w) => tellAll(f(w), 0).asInstanceOf[A ! Writer % V + G] }
-        (g => Inject(g): A ! Writer % V + G)
-      case Bind(Inject(e), k) => split[Writer % W, G](e)
-        { w0 => (w0: @unchecked) match
-            case Say(w) => tellAll(f(w), 0).flatMap(_ => go(d)(k(()))): A ! Writer % V + G }
-        (g => Inject(g).flatMap(x => go(d)(k(x))))
-      case y => go(d)(HandleFrames.shallow(y, d))
-    HandleFrames.run[A, Writer % V + G](d => go(d)(a), frame(a))
+  /** what `listen` heard: one told value, recorded beside its re-telling */
+  private enum Heard[W, X]:
+    case Hear(w: W) extends Heard[W, Unit]
+
+  /** the values heard, newest first: a register of the machine (the kernel's `Stateful`) */
+  private def hearing[W]: Handler[Heard % W, [A] =>> (List[W], A)] = new Handler[Heard % W, [A] =>> (List[W], A)]:
+    def kernel[T <: Row, A]: OneHandler[Heard % W, T, A, (List[W], A)] = new Stateful[Heard % W, T, List[W], A, (List[W], A)]:
+      def initial: List[W] = Nil
+      def ret(st: List[W], a: A): Eff[T, (List[W], A)] = Cont.pure((st, a))
+      def value[X](st: List[W], op: Heard[W, X]): X = op match { case Heard.Hear(_) => () }
+      def next[X](st: List[W], op: Heard[W, X]): List[W] = op match { case Heard.Hear(w) => w :: st }
 
   /**
    * WHAT A PART OF THE PROGRAM TOLD, as its answer — mtl's `listen`,
@@ -317,30 +275,14 @@ object Writer {
    * against every other effect is exactly the one without `listen`,
    * and a raise inside the scope still leaves the tells before it
    * told. What `listen` adds is a copy of the scope's tells, and only
-   * the scope's, in the answer.
+   * the scope's, in the answer: each tell TRANSLATED to a record and
+   * the same tell outside, the records kept by a `Stateful` around.
    */
-  def listen[W, A, G[+_]](a: A ! Writer % W + G)(using Distinct[Writer % W + G], TypeableK[Writer % W])
-  : (A, Seq[W]) ! Writer % W + G =
-    // the walk as a frame (handle-frames-loops): each tell re-told outside it, and heard
-    def frame(heard: List[W])(x: A ! Writer % W + G): Shift.U[Writer % W + G, (A, Seq[W])] =
-      HandleFrames.statefulOver[Writer % W, List[W], A, (A, Seq[W]), Writer % W + G, Writer % W + G](summon[TypeableK[Writer % W]],
-        (h, a) => pure((a, h.reverse)))(
-        (h, op, resume) =>
-          val w = Writer.told[W](op)
-          Inject[Writer % W + G, Unit](Writer(w)).flatMap(_ => resume(w :: h, ())))(heard, x)
-    def go(d: Int)(heard: List[W])(x: A ! Writer % W + G): (A, Seq[W]) ! Writer % W + G = (x.resumeRun: @unchecked) match
-      case Free.Return(v) => Free.Return((v, heard.reverse))
-      // Writer tested first, for `map`'s reason (above)
-      case Inject(e) => split[Writer % W, G](e)
-        { w0 => (w0: @unchecked) match
-            case Say(w) => Inject[Writer % W + G, Unit](Writer(w)).map(u => (u, (w :: heard).reverse)): (A, Seq[W]) ! Writer % W + G }
-        (g => Inject[Writer % W + G, A](g).map(v => (v, heard.reverse)))
-      case Bind(Inject(e), k) => split[Writer % W, G](e)
-        { w0 => (w0: @unchecked) match
-            case Say(w) => Inject[Writer % W + G, Unit](Writer(w)).flatMap(_ => go(d)(w :: heard)(k(()))): (A, Seq[W]) ! Writer % W + G }
-        (g => Inject(g).flatMap(x => go(d)(heard)(k(x))))
-      case y => go(d)(heard)(HandleFrames.shallow(y, d))
-    HandleFrames.run[(A, Seq[W]), Writer % W + G](d => go(d)(Nil)(a), frame(Nil)(a))
+  def listen[W, A, Es[_]](a: A ! Es)(using s: Split[Es, Writer % W]): (A, Seq[W]) ! Writer % W + s.Rest =
+    a.translate[Writer % W, Heard % W + Writer % W]([X] => (op: Writer[W, X]) => op match
+        case Say(w) => effect[Heard % W, Unit](Heard.Hear(w)) >> tell(w))
+      .handle(hearing[W])
+      .map((heard, x) => (x, heard.reverse))
 
   /**
    * A PART OF THE PROGRAM'S WHOLE OUTPUT, REWRITTEN — mtl's `censor`
@@ -357,44 +299,22 @@ object Writer {
    * place, and it already exists: `map` (one to one) and `expand` (one
    * to many, and a filter) over the same scope.
    */
-  def censor[W, A, G[+_]](a: A ! Writer % W + G)(f: Seq[W] => Seq[W])
-                         (using Distinct[Writer % W + G], TypeableK[Writer % W]): A ! Writer % W + G =
-    def tellAll(ws: IndexedSeq[W], i: Int): Unit ! Writer % W + G =
-      if i >= ws.length then Free.Return(())
-      else Inject[Writer % W + G, Unit](Writer(ws(i))).flatMap(_ => tellAll(ws, i + 1))
-
-    import okay.freer.Row.at
-    collect[W, A, G](a).at[Writer % W + G].flatMap((ws, x) => tellAll(f(ws).toIndexedSeq, 0).map(_ => x))
+  def censor[W, A, Es[_]](a: A ! Es)(f: Seq[W] => Seq[W])(using s: Split[Es, Writer % W]): A ! Writer % W + s.Rest =
+    collect[W, A, Es](a).flatMap((ws, x) => tellAll(f(ws).toIndexedSeq, 0).map(_ => x).at[Writer % W + s.Rest])
 
   /**
    * Re-tell at a WIDER element type with NO transform — `map`'s
-   * identity case, priced separately because it is common (every
-   * merge of differently-typed sources goes through it) and cheaper
-   * now that `Writer[+W, +A]` is covariant: the told OPERATION
-   * (`Say(w): Writer[W, Unit]`) already IS a `Writer[V, Unit]` for
-   * any `V >: W`, so this only rebuilds the Free nodes the walk
-   * cannot avoid (Free stays invariant in its row) — `map`'s per-
-   * element `Writer(f(w))` allocation is gone, `f` never runs.
+   * identity case, and free: `Writer[+W, +A]` is covariant, so the
+   * told OPERATION (`Say(w): Writer[W, Unit]`) already IS a
+   * `Writer[V, Unit]` for any `V >: W`, and the program is the same
+   * program — `f` never runs, nothing is walked or rebuilt.
    */
-  def widen[W, V >: W, A, G[+_] : TypeableK](a: A ! Writer % W + G)
-  : A ! Writer % V + G = a match
-    // a deferred head stays deferred, as in `!.widen`: the walk
-    // begins when the program runs, not when it is widened
-    case Free.Delay(t) => Free.Delay(() => widen[W, V, A, G](t()))
-    case Bind(Free.Delay(t), f) => Free.defer(() => widen(t()))(x => widen[W, V, A, G](f(x)))
-    case _ => (a.resume: @unchecked) match
-      case Free.Return(x) => Free.Return(x)
-      case Inject(e) => split[G, Writer % W](e)
-        (g => Inject(g): A ! Writer % V + G)
-        // Say is Writer's ONLY constructor, so a value that reaches
-        // here IS one — sound by the enum's shape, same as map's
-        // Say(w) destructure; @unchecked because BINDING the whole
-        // instance (not just its field) needs W's erased type
-        // argument to verify, which map's plain destructure does not
-        { case sw @ (_: Say[W, Unit] @unchecked) => Inject(sw: Writer[V, Unit]) }
-      case Bind(Inject(e), k) => split[G, Writer % W](e)
-        (g => Inject(g).flatMap(x => widen[W, V, A, G](k(x))))
-        { case sw @ (_: Say[W, Unit] @unchecked) => Inject(sw: Writer[V, Unit]).flatMap(_ => widen[W, V, A, G](k(()))) }
+  def widen[W, V >: W, A, G[_]](a: A ! Writer % W + G): A ! Writer % V + G =
+    // THE CAST, and why it is sound: a program is a function of the PATHS of its effects, and a path names a place,
+    // its effect's type phantom in it. At the place of `Writer % V` this program performs `Say(w)`, which is a
+    // `Writer[V, Unit]` by the enum's covariance — what that place's handler takes. `Run` is invariant in its
+    // effects (they are a function's argument), so the compiler cannot see it
+    a.asInstanceOf[A ! Writer % V + G]
 
   /**
    * ANY stream as a writer program: its elements told one by one, its
@@ -407,27 +327,19 @@ object Writer {
    * So a Channel, a List, a LazyList or a Producer becomes a source
    * here, and the whole pipeline vocabulary applies to it.
    *
-   * Lazy: nothing is pulled until the result is consumed, one element
-   * per pull, and the F-operations stay in the row rather than being
-   * run behind the caller's back. The deferral is `pure(()).flatMap`
-   * — a `Bind(Return(()), k)` node `!.resume` must ROTATE away before
-   * reading past it (Effects.scala, the tailrec rotation cases) — and
-   * it is load-bearing ONCE: the recursive step below already sits
-   * inside the PREVIOUS step's `flatMap`, which is itself deferral
-   * enough for the next pull. Re-wrapping every element cost a
-   * rotation per pull for nothing (profiled: writer-of-resume-fix,
-   * specs/writer-covariance.md — 38% of okaySourceMerge's CPU
-   * samples were exactly these two rotation lines).
+   * Lazy: nothing is pulled until the result is run, one element per
+   * pull, and the F-operations stay in the program rather than being
+   * run behind the caller's back. The first pull is deferred
+   * (`defer`); each next one sits inside the previous tell's bind,
+   * which is deferral enough.
    */
-  def of[S[_], F[+_], A](s: S[A])(using St: Stream[S, F]): Unit ! Writer % A + F =
-    okay.freer.pure[Writer % A + F, Unit](()).flatMap: _ =>
-      ofLoop[S, F, A](s)
+  def of[S[_], F[_], A](s: S[A])(using St: Stream[S, F]): Unit ! Writer % A + F =
+    okay.defer(ofLoop[S, F, A](s))
 
-  private def ofLoop[S[_], F[+_], A](s: S[A])(using St: Stream[S, F]): Unit ! Writer % A + F =
-    !.widen[Option[(A, S[A])], F, Writer % A](St.uncons(s)).flatMap:
-      case Some((a, rest)) =>
-        okay.freer.effect[Writer % A + F, Unit](Writer(a)).flatMap(_ => ofLoop[S, F, A](rest))
-      case None => okay.freer.pure(())
+  private def ofLoop[S[_], F[_], A](s: S[A])(using St: Stream[S, F]): Unit ! Writer % A + F =
+    St.uncons(s).flatMap[Unit, Writer % A + F]:
+      case Some((a, rest)) => tell(a) >> ofLoop[S, F, A](rest)
+      case None => pure[Unit, Writer % A + F](())
 
   /**
    * The observation of the writer as codata: the same shape as
@@ -437,87 +349,57 @@ object Writer {
    * program's own answer (nothing is lost — by then every told value
    * has already been observed). run/fold are this loop with a Fold
    * accumulating the Rights.
+   *
+   * The program is STEPPED (the kernel's `Step`) to its next tell; the
+   * rest is the step's `k`, data — resumed when the rest is next
+   * observed, not when this value is handed over, so a throw after the
+   * tell comes at the next pull (TestWriterToldBeforeThrow) and nothing
+   * past a value is computed before it is asked for.
    */
-  def uncons[W, A](a: A ! Writer % W): Either[A, (W, A ! Writer % W)] = (a.resume: @unchecked) match
-    case Free.Return(a) => Left(a)
-    case Inject(Say(w)) => Right((w, Free.Return(())))
-    // `k(())` is applied as `w` is handed over (TestFoldUntilStreams
-    // counts pulls by it) — but a THROW from it must not take `w` with
-    // it: it becomes the rest, thrown at the next step (source-merge-
-    // via-ready, TestWriterToldBeforeThrow): `Writer.toldThen`.
-    case Bind(Inject(Say(w)), k) => Right((w, Writer.toldThen(k)))
+  def uncons[W, A](a: A ! Writer % W): Either[A, (W, A ! Writer % W)] =
+    val template = Paths.One(In.Here[Writer % W, okay.core.Pure]())
+    Stepping.nextPure(Stepping.start(a, template), template, Telling[W]())
 
   /**
    * The same observation for a writer program performing ARBITRARY
    * effects G alongside its telling: the next told value arrives
-   * inside G — the G-operations met on the way are carried into the
-   * answer (deferred, not run). Any structured effect handler (State,
-   * Reader, Throws, ...) forwards the telling, so it can be run over
-   * the program FIRST — handlers are stream transformers — and the
-   * Answers-able residue (Async, say) is what the consumer pays at
-   * each pull. G is split from the told values by its runtime class.
+   * inside G — the G-operations met on the way performed where the
+   * observation runs, the step's rest resumed with their answers. Any
+   * structured effect handler (State, Reader, Throws, ...) forwards the
+   * telling, so it can be run over the program FIRST — handlers are
+   * stream transformers — and the Answers-able residue (Async, say) is
+   * what the consumer pays at each pull.
+   *
+   * The rest handed out is the step's `k`, tied to the place the
+   * observation ran at: observed again there, or anywhere its effects
+   * are at the same paths, it goes on from where it was; run elsewhere,
+   * its operations are re-placed by the paths read side by side, and
+   * one whose effect is not where it was is refused loudly
+   * (`IllegalStateException`) — as `Logic.msplit`'s rest.
    */
-  def uncons[W, A, G[+_] : TypeableK](a: A ! Writer % W + G)(using TypeableK[Writer % W])
-  : Either[A, (W, A ! Writer % W + G)] ! G = (a.resume: @unchecked) match
-    case Free.Return(a) => okay.freer.pure(Left(a))
-    // Writer tested first, for `map`'s reason: with the rest inferred
-    // as the Writer itself, a rest-first split sent every Say to G and
-    // answered Left — no elements, the told values escaped (TestDistinct)
-    case i @ Inject(e) => split[Writer % W, G](e)
-      { w0 => (w0: @unchecked) match
-          case Say(w) => okay.freer.pure(Right((w, Free.Return(())))): Either[A, (W, A ! Writer % W + G)] ! G }
-      (_ => forwarded[Writer % W, G](i).map(Left(_)): Either[A, (W, A ! Writer % W + G)] ! G)
-    case Bind(i @ Inject(e), k) => split[Writer % W, G](e)
-      { w0 => (w0: @unchecked) match
-          // `toldThen`: the pure `uncons`'s reason above
-          case Say(w) => okay.freer.pure(Right((w, Writer.toldThen(k)))): Either[A, (W, A ! Writer % W + G)] ! G }
-      (_ => forwarded[Writer % W, G](i).flatMap(x => uncons[W, A, G](k(x))))
+  def uncons[W, A, G[_]](a: A ! Writer % W + G): Either[A, (W, A ! Writer % W + G)] ! G =
+    new Run[G, Either[A, (W, A ! Writer % W + G)]]:
+      def on[T <: Row](ps: Paths[G, T]): Eff[T, Either[A, (W, A ! Writer % W + G)]] =
+        val template = Paths.Both(Paths.One(In.Here[Writer % W, T]()), ps.under[Writer % W])
+        Cont.defer(Stepping.next(Stepping.start(a, template), template, Telling[W]()))
 
   /**
-   * Writer's split is COMPLETE, and by the CLASS of `Say` alone.
+   * `TypeableK` by the CLASS of `Say` alone — evidence for code that
+   * still splits by class (okay-freer's walks); the root's programs
+   * find an effect by its path and need none.
    *
-   * `Say` is Writer's only constructor and is class-distinct from every
-   * other signature's operations, so "is this a writer operation" is
-   * one `isInstance` — total, needing no `Typeable[W]`, and therefore
-   * free of the E092 "cannot be checked at runtime" warning that the
-   * previous default paid at EVERY `Writer.fold`/`collect`/`run`/
-   * `uncons` call site whose W was parameterised (`Chunk[Byte]`,
-   * `Either[Bad, A]`, an abstract `O`): 23 `@nowarn`s across ten
-   * modules, each explaining the same caveat (writer-typeablek-by-class,
-   * 2026-09-19). What that default bought — telling `Writer % String`
-   * from `Writer % Int` in ONE row by the told value's class — no
-   * module used; it is `Writer.byValue` now, an opt-in
-   * (`import okay.std.Writer.byValue.given`), and `Distinct` refuses a
-   * two-Writer row without it, which is the direction Distinct.scala
-   * says is the safe one: an unmarked instance is refused and fixed by
-   * one import, where the reverse would pass a row that misroutes.
-   *
-   * IN Writer'S OWN COMPANION, not a bare top-level given (moved
-   * 2026-09-19, writerk-companion-scope): a `given` here is in the
-   * IMPLICIT SCOPE of every `TypeableK[Writer % W]` query, from any
-   * package, with no import.
+   * IN Writer'S OWN COMPANION: a `given` here is in the IMPLICIT SCOPE
+   * of every `TypeableK[Writer % W]` query, from any package, with no
+   * import.
    */
   given writerK[W]: TypeableK[Writer % W] = typeableK[Writer % W](classOf[Writer.Say[?, ?]])
-  // AND EVERY DOOR THAT SPLITS ON `Writer % W` TAKES ITS `TypeableK`
-  // FROM THE CALLER (row-parametricity-forwarding-law, 2026-09-25):
-  // a door that let `split` summon it HERE got this class test even
-  // when the caller had `byValue` in scope, so `Distinct` accepted a
-  // `Writer % Int + Writer % String` row on the finer test and
-  // `collect[Int]` then took the String's Say by the coarser one — the
-  // forwarding law caught it (TestRowForwarding). `run`, `fold` and
-  // `foldUntil` already took it; `collect`, `map`, `expand` and
-  // `uncons` do now. The `Stream` instance below (`writerStreamIn`)
-  // cannot: a given has no per-W parameter, so it streams by class.
 
   /**
    * The finer test, opt-in: the told value's own class as well, which
-   * is what separates `Writer % String + Writer % Int` in one row
-   * (`TestRowIdentity` asserts they route correctly, `TestDistinct`
-   * that the row is accepted) — declared `TypeableK.ByValue` so
-   * `Distinct` can read that it is finer than the class. It needs a
-   * `Typeable[W]`, and for a parameterised W that is an erased test
-   * and an E092 warning at the call site: the price of the finer
-   * question, paid only where it is asked.
+   * is what separates `Writer % String + Writer % Int` in one row on
+   * okay-freer's road (by path on the root's, no test at all). It needs
+   * a `Typeable[W]`, and for a parameterised W that is an erased test
+   * and an E092 warning at the call site.
    */
   object byValue:
     given writerK[W](using t: scala.reflect.Typeable[W]): TypeableK.ByValue[Writer % W] = new:
@@ -527,6 +409,181 @@ object Writer {
         case s: Writer.Say[?, ?] => t.unapply(s.w).isDefined
         case _ => false
 }
+
+/** what a stepped `Writer % W` operation hands over — its told value — and what it answers: nothing */
+private[std] final class Telling[W] extends Stepping.Told[Writer % W, W]:
+  def element[X](op: Writer[W, X]): W = op match { case Writer.Say(w) => w }
+  def answer[X](op: Writer[W, X]): X = op match { case Writer.Say(_) => () }
+
+/**
+ * A PROGRAM STEPPED (the kernel's `Step`): the views that peel the next element off a program — a writer's told
+ * value, a producer's production — and the folds that stop. `p.step` runs the program to its first operation and
+ * gives it back with the rest, `k` as data: an operation of the effect viewed (`E`, at the head of the row) is an
+ * element; one of the others is performed where the view runs, or answered here, and the rest resumed with its
+ * answer. What okay-freer's `resume`-based walks were, with the machine's frames: no rotation, constant stack.
+ */
+private[std] object Stepping:
+  /** what an operation of the viewed effect hands over, and what it answers */
+  abstract class Told[E[_], W]:
+    def element[X](op: E[X]): W
+    def answer[X](op: E[X]): X
+
+  /** an operation of the row outside the viewed effect, answered here */
+  abstract class Other[T <: Row]:
+    def apply[F[_], X](op: F[X], in: In[F, T]): X
+
+  object Other:
+    /** no row outside: none there */
+    def none: Other[okay.core.Pure] = new Other[okay.core.Pure]:
+      def apply[F[_], X](op: F[X], in: In[F, okay.core.Pure]): X = In.absurd(in)
+    /** `G` outside, each operation answered by `H` — a single operation's interpretation, no program built */
+    def answers[G[_]](H: Answers[G]): Other[G +: okay.core.Pure] = new Other[G +: okay.core.Pure]:
+      def apply[F[_], X](op: F[X], in: In[F, G +: okay.core.Pure]): X = In.same(in, In.Here[G, okay.core.Pure]()) match
+        case null => In.absurd(outside(in))
+        case same: In.Same[F, G] => H.handle(same(op))
+
+  /** the operation at `in` the viewed effect's own — its place the head — or `null` */
+  def own[F[_], E[_], T <: Row](in: In[F, E +: T]): In.Same[F, E] | Null = In.same(in, In.Here[E, T]())
+
+  /** a place past the head, in the row outside it */
+  def outside[F[_], E[_], T <: Row](in: In[F, E +: T]): In[F, T] = in match
+    case In.There(in2) => in2
+    case at: In.At[f, ?] => at.again[T]
+    case _ => throw IllegalStateException("Stepping: an operation of the viewed effect where another was expected")
+
+  def cancelled(): Nothing = throw IllegalStateException("Stepping: a stepped program was cancelled")
+
+  def moved(): Nothing = throw IllegalStateException(
+    "Stepping: the rest of a stepped program run where its effects are not as they were where it was stepped — " +
+      "an effect of it not among those of the place; run the rest where the view's answer is used")
+
+  /**
+   * THE REST of a program stepped at the place `template`, past an operation it handed over: a program again —
+   * `next` the step's `k` resumed with that operation's answer, run when the rest is. Viewed again at the same
+   * paths (`start`), it goes on from where it was; run anywhere else, its operations are performed at the place's
+   * paths, each re-placed by reading the two side by side (`relocate`).
+   */
+  final class Rest[Es[_], E[_], T <: Row, A](val template: Paths[Es, E +: T], next: () => Step[E +: T, A])
+      extends Run[Es, A]:
+    /** the rest stepped on at a place whose paths are the template's. THE CAST, and why it is sound: the program
+     * reads its row only through its operations' paths, and those are the template's at the new place as well */
+    def resumed[T2 <: Row]: Step[E +: T2, A] = next().asInstanceOf[Step[E +: T2, A]]
+
+    def on[R <: Row](ps: Paths[Es, R]): Eff[R, A] = Cont.defer(replay(next(), ps))
+
+    private def replay[R <: Row](st: Step[E +: T, A], ps: Paths[Es, R]): Eff[R, A] = st match
+      case Step.Done(a) => Cont.pure(a)
+      case y: Step.Yield[?, ?, f, x] =>
+        Cont.perform[f, R, x](y.op)(using relocate(y.in, template, ps)).flatMap(v => replay(y.resume(v), ps))
+      case Step.Failed(e) => throw e
+      case Step.Cancelled() => cancelled()
+
+  /** the same paths, leaf for leaf: a walk as deep as the sum of effects written in the program's type, a bound of
+   * the source text */
+  def samePaths(a: Paths[?, ?], b: Paths[?, ?]): Boolean = (a eq b) || ((a, b) match
+    case (x: Paths.One[?, ?], y: Paths.One[?, ?]) => x.head == y.head
+    case (x: Paths.Both[?, ?, ?], y: Paths.Both[?, ?, ?]) => samePaths(x.left, y.left) && samePaths(x.right, y.right)
+    case (_: Paths.None[?], _: Paths.None[?]) => true
+    case _ => false)
+
+  /**
+   * The place in `now` of the operation at `in` under `template`: the leaf of `template` whose path is `in`, read
+   * at the same leaf of `now`. THE CAST, and why it is sound: the two are the paths of one `Es`, leaf for leaf, so
+   * that leaf of `now` is the place of the same effect, `F`. The walk is as deep as the sum of effects written in
+   * the program's type, a bound of the source text.
+   */
+  def relocate[F[_], Es[_], E[_], T <: Row, R <: Row](in: In[F, E +: T], template: Paths[Es, E +: T],
+      now: Paths[Es, R]): In[F, R] =
+    var found: In[?, ?] | Null = null
+    def walk(t: Paths[?, ?], n: Paths[?, ?]): Unit = (t, n) match
+      case (to: Paths.One[?, ?], no: Paths.One[?, ?]) => if found == null && to.head == in then found = no.head
+      case (tb: Paths.Both[?, ?, ?], nb: Paths.Both[?, ?, ?]) => walk(tb.left, nb.left); walk(tb.right, nb.right)
+      case _ => ()
+    walk(template, now)
+    found match
+      case null => moved()
+      case f => f.asInstanceOf[In[F, R]]
+
+  /** `p` stepped at the place `template`: a rest stepped at the same paths before, on from where it was; any other
+   * program from its start */
+  def start[Es[_], E[_], T <: Row, A](p: A ! Es, template: Paths[Es, E +: T]): Step[E +: T, A] = p match
+    // unchecked: a `Rest` that is this `A ! Es` has its `Es` and `A`; its `E` is the template's head, which the
+    // paths compared say
+    case r: Rest[Es, E, ?, A] @unchecked if samePaths(r.template, template) => r.resumed[T]
+    case _ => p.fit(template).step
+
+  /** the next element and the rest, of a program with no other effect */
+  def nextPure[Es[_], E[_], A, W](st: Step[E +: okay.core.Pure, A], template: Paths[Es, E +: okay.core.Pure],
+      told: Told[E, W]): Either[A, (W, A ! Es)] = st match
+    case Step.Done(a) => Left(a)
+    case y: Step.Yield[?, ?, ?, ?] => own(y.in) match
+      case null => In.absurd(outside(y.in))
+      case same: In.Same[f, E] =>
+        val op = same(y.op)
+        Right((told.element(op), Rest[Es, E, okay.core.Pure, A](template, () => y.resume(told.answer(op)))))
+    case Step.Failed(e) => throw e
+    case Step.Cancelled() => cancelled()
+
+  /** the next element and the rest, the other effects' operations met on the way performed at `T` */
+  def next[Es[_], E[_], T <: Row, A, W](st: Step[E +: T, A], template: Paths[Es, E +: T], told: Told[E, W])
+  : Eff[T, Either[A, (W, A ! Es)]] = st match
+    case Step.Done(a) => Cont.pure(Left(a))
+    case y: Step.Yield[?, ?, f, x] => own(y.in) match
+      case null => Cont.perform[f, T, x](y.op)(using outside(y.in)).flatMap(v => next(y.resume(v), template, told))
+      case same: In.Same[f, E] =>
+        val op = same(y.op)
+        Cont.pure(Right((told.element(op), Rest[Es, E, T, A](template, () => y.resume(told.answer(op))))))
+    case Step.Failed(e) => throw e
+    case Step.Cancelled() => cancelled()
+
+  /** a fold that stops: each element added, the rest dropped once the state is done; the other effects'
+   * operations performed at `T` */
+  def until[E[_], T <: Row, A, W, S, R](st0: Step[E +: T, A], s0: S, told: Told[E, W], K: FoldUntil[W, S, R]): Eff[T, R] =
+    def again(st: Step[E +: T, A], s: S): Eff[T, R] = loop(st, s)
+    @tailrec def loop(st: Step[E +: T, A], s: S): Eff[T, R] = st match
+      case Step.Done(_) => Cont.pure(K.end(s))
+      case y: Step.Yield[?, ?, f, x] => own(y.in) match
+        case null => Cont.perform[f, T, x](y.op)(using outside(y.in)).flatMap(v => again(y.resume(v), s))
+        case same: In.Same[f, E] =>
+          val op = same(y.op)
+          val s2 = K.add(s, told.element(op))
+          if K.done(s2) then Cont.pure(K.end(s2)) else loop(y.resume(told.answer(op)), s2)
+      case Step.Failed(e) => throw e
+      case Step.Cancelled() => cancelled()
+    loop(st0, s0)
+
+  /**
+   * THE LINEAR VIEW: the program stepped element by element — no `Option`, no `Either`, no program built per
+   * element; an operation of the row outside answered by `other` in place. The rest after an element is resumed
+   * when the next one is asked for.
+   */
+  final class Iter[E[_], W, T <: Row, A](first: () => Step[E +: T, A], told: Told[E, W], other: Other[T])
+      extends Iterator[W]:
+    private var pending: () => Step[E +: T, A] = first
+    private var ready = false
+    private var ended = false
+    private var elem: W = scala.compiletime.uninitialized
+
+    @tailrec private def advance(st: Step[E +: T, A]): Unit = st match
+      case Step.Done(_) => ended = true
+      case y: Step.Yield[?, ?, ?, ?] => own(y.in) match
+        case null => advance(y.resume(other(y.op, outside(y.in))))
+        case same: In.Same[f, E] =>
+          val op = same(y.op)
+          elem = told.element(op)
+          ready = true
+          pending = () => y.resume(told.answer(op))
+      case Step.Failed(e) => ended = true; throw e
+      case Step.Cancelled() => ended = true; cancelled()
+
+    def hasNext: Boolean =
+      if !ready && !ended then advance(pending())
+      ready
+
+    def next(): W =
+      if !hasNext then throw java.util.NoSuchElementException("empty stream")
+      ready = false
+      elem
 
 /**
  * The fourth carrier, named: the pure (no other effect) writer
@@ -590,112 +647,41 @@ given feedStream[A]: Stream[[W] =>> A ! Writer % W, Pure] = new:
     pure(Writer.uncons(s).toOption)
 
   /**
-   * The specialized linear view of the PURE writer stream — the twin
-   * of `Stream[Producer, Pure]`'s own override in Generate.scala, and
-   * the one `Chunks.fold`/`foldLeft` will walk once `Chunks[A]` is
-   * `Feed[Chunk[A]]`. No `Option`, no `Either`, no program built per
-   * step: the DEFAULT `Iterator.unfold(s)(uncons(_).runWith)` pays all
-   * three once per element — which on a chunked stream is once per
-   * CHUNK, and was the whole of the ~2x stage 0 measured on
-   * `Chunks.fold` (producer-to-writer-carrier, `## Results`). Needs
-   * only `Answers[Pure]`, which every platform has — nothing here
-   * blocks, so nothing here needs `CanBlock`, unlike `writerStreamIn`'s
-   * G-forwarding twin below.
+   * The specialized linear view of the PURE writer stream: the
+   * program stepped tell by tell (`Stepping.Iter`) — no `Option`, no
+   * `Either`, no program built per step, which the DEFAULT
+   * `Iterator.unfold(s)(uncons(_).runWith)` pays once per element —
+   * which on a chunked stream is once per CHUNK, and was the whole of
+   * the ~2x stage 0 measured on `Chunks.fold`
+   * (producer-to-writer-carrier, `## Results`).
    */
   override def iterator[W](s: A ! Writer % W)(using Answers[Pure]): Iterator[W] =
-    import !.*
-    import scala.annotation.tailrec
-    new Iterator[W]:
-      private var cur: A ! Writer % W = s
-      private var ready = false
-      private var ended = false
-      private var elem: W = scala.compiletime.uninitialized
-
-      // `Say` is Writer's only constructor, so the two Inject shapes
-      // are exhaustive over what a pure writer program can resume to
-      @tailrec private def advance(): Unit = (cur: @unchecked) match
-        case Free.Return(_) => ended = true
-        case Inject(Writer.Say(w)) =>
-          elem = w
-          ready = true
-          ended = true
-        case Bind(Inject(Writer.Say(w)), k) =>
-          elem = w
-          ready = true
-          cur = Writer.toldThen(k)
-        case _ =>
-          cur = cur.resume
-          advance()
-
-      def hasNext: Boolean =
-        if !ready && !ended then advance()
-        ready
-
-      def next(): W =
-        if !hasNext then throw java.util.NoSuchElementException("empty writer stream")
-        ready = false
-        elem
+    val template = Paths.One(In.Here[Writer % W, okay.core.Pure]())
+    Stepping.Iter[Writer % W, W, okay.core.Pure, A](() => Stepping.start(s, template), Telling[W](), Stepping.Other.none)
 
 /**
  * And a writer program performing ARBITRARY effects G is a stream in
  * G: the same observation, with the G-operations met on the way
- * carried into the answer. This is the instance the concurrent
- * combinators ask for — `Channel.merge` needs a `Stream`, and an
- * asynchronous source (`Unit ! Writer % W + Async`) had none.
+ * performed where the observation runs. This is the instance the
+ * concurrent combinators ask for — `Channel.merge` needs a `Stream`,
+ * and an asynchronous source (`Unit ! Writer % W + Async`) had none.
+ * `G` is ONE effect here (a place of the row): the `Answers[G]` the
+ * consumers run it by answers one.
  */
-given writerStreamIn[A, G[+_] : TypeableK]: Stream[[W] =>> A ! Writer % W + G, G] = new:
+given writerStreamIn[A, G[_]]: Stream[[W] =>> A ! Writer % W + G, G] = new:
   def uncons[W](s: A ! Writer % W + G): Option[(W, A ! Writer % W + G)] ! G =
     Writer.uncons[W, A, G](s).map(_.toOption)
 
   /**
-   * The specialized linear view, mirroring `Stream[Producer, Pure]`'s
-   * own override in Generate.scala: no `Option`, no `Either`, no
-   * per-step program construction — the DEFAULT `Iterator.unfold(s)
-   * (uncons(_).runWith)` pays exactly those, once per CHUNK, which is
-   * what was left over after `producer-writer-carrier-foldwriter-eager`
-   * fixed the per-ELEMENT boxing (see Chunks.scala's `foldWriter` doc
-   * and [[escape-analysis-box-elimination-boundary]]). A forwarded
-   * `G`-operation is answered directly by `Answers[G].handle` — a
-   * COMONADIC, single-operation interpretation (`Answers[Async]`'s own
-   * `case Run(f) => f()` / `case Await(reg) => cb.block(reg)...`),
-   * not a program built and run.
+   * The specialized linear view: the program stepped at `Writer % W`
+   * before `G`, a G-operation answered directly by `Answers[G].handle`
+   * — a COMONADIC, single-operation interpretation
+   * (`Answers[Async]`'s own `case Run(f) => f()`), not a program built
+   * and run; no `Option`, no `Either` a step (see Chunks.scala's
+   * `foldWriter` doc and [[escape-analysis-box-elimination-boundary]]).
    */
   override def iterator[W](s: A ! Writer % W + G)(using H: Answers[G]): Iterator[W] =
-    import !.*
-    import scala.annotation.tailrec
-    new Iterator[W]:
-      private var cur: A ! Writer % W + G = s
-      private var ready = false
-      private var ended = false
-      private var elem: W = scala.compiletime.uninitialized
-
-      @tailrec private def advance(): Unit = cur match
-        case Free.Return(_) => ended = true
-        // Writer tested first, for `map`'s reason
-        case Inject(e) =>
-          split[Writer % W, G](e)(
-            w0 => (w0: @unchecked) match
-              case Writer.Say(w) => { elem = w; ready = true; ended = true }
-          )(
-            g => { val _ = H.handle(g); ended = true }
-          )
-        case Bind(Inject(e), k) =>
-          split[Writer % W, G](e)(
-            w0 => (w0: @unchecked) match
-              case Writer.Say(w) => { elem = w; ready = true; cur = Writer.toldThen(k) }
-          )(
-            g => { cur = k(H.handle(g)); advance() }
-          )
-        case _ =>
-          cur = cur.resume
-          advance()
-
-      def hasNext: Boolean =
-        if !ready && !ended then advance()
-        ready
-
-      def next(): W =
-        if !hasNext then throw java.util.NoSuchElementException("empty writer stream")
-        ready = false
-        elem
-
+    val template = Paths.Both(Paths.One(In.Here[Writer % W, G +: okay.core.Pure]()),
+      Paths.One(In.There[G, Writer % W, G +: okay.core.Pure](In.Here[G, okay.core.Pure]())))
+    Stepping.Iter[Writer % W, W, G +: okay.core.Pure, A](() => Stepping.start(s, template), Telling[W](),
+      Stepping.Other.answers(H))

@@ -1,9 +1,11 @@
 package okay.std
 
-import okay.freer.*
-import okay.freer.given
-
-import okay.{Answers, Id, TypeableK}
+import okay.{!, +, Answers, Handler, Id, Pure, Run, TypeableK, effect, pure}
+import okay.core.{+:, Eff, Paths, Row, Split}
+import okay.freer.{Cps, Fold, FoldUntil, Foldable, />>}
+import okay.one.Cont
+import okay.one.handler.Stateful
+import okay.one.row.In
 
 /**
  * Generators from delimited control: take is the input of a loop
@@ -11,9 +13,9 @@ import okay.{Answers, Id, TypeableK}
  * unfolding stream. One program — two semantics, by the Put instance:
  * LazyList materializes the stream by laziness (the continuation is
  * captured in the #:: tail, no effect runtime at all), and Producer
- * materializes it by effects (each put is an operation of the freer
- * tree, stepped by next and interpreted by an Answers, e.g.
- * Producer.log).
+ * materializes it by effects (each put is an operation of the
+ * program, stepped by the kernel's `Step` and interpreted by an
+ * Answers, e.g. Producer.log).
  */
 
 /**
@@ -48,7 +50,7 @@ inline def take[A, R]: A Loop R = Cps.shift(identity)
 
 /** the first n elements of a stream (lives here to overload with the
  * Loop take above — toplevel overloads must share a file) */
-extension [S[_], F[+_], A](s: S[A])(using Stream[S, F], Answers[F])
+extension [S[_], F[_], A](s: S[A])(using Stream[S, F], Answers[F])
   def take(n: Int): LazyList[A] = s.toLazyList.take(n)
 /** tie the knot: the fixpoint of the loop body, with a memoized stepper */
 inline def loop[A, R](f: A Loop R): A => R =
@@ -93,7 +95,7 @@ given Put[LazyList] with
 /** the identity signature: an operation is the value it produces */
 type Produce[A] = Id[A]
 
-/** the freer monad over Produce: a computation that emits as it goes */
+/** a program over Produce: a computation that emits as it goes */
 type Producer[A] = A ! Produce
 
 /** a chunk: an immutable indexed batch of elements (O(1) index, no
@@ -108,10 +110,10 @@ type Chunk[+A] = scala.collection.immutable.ArraySeq[A]
 /**
  * Emit a value as an effect operation.
  *
- * Typed at `Produce` alone. In a wider row — `Blob.put` asks for
- * `Produce + Async` — say `produce(a).plus[Async]` or
- * `produce(a).at[Produce + Async]`: Row's zero-cost coerce, not
- * the tree walk `!.widen` makes.
+ * Typed at `Produce` alone. Where more effects are needed — `Blob.put`
+ * asks for `Produce + Async` — say `produce(a).at[Produce + Async]`,
+ * or bind it among them: a program needing fewer effects fits where
+ * more are expected.
  *
  * What NOT to write there is `pure(a)`. It type-checks at every row
  * and produces nothing: a producer's `Pure` is its END, and the
@@ -120,7 +122,7 @@ type Chunk[+A] = scala.collection.immutable.ArraySeq[A]
  * apart — measured the hard way in okay-watch (a zero-byte object
  * under the right key, blob-source-seam).
  */
-inline def produce[A](a: A): Producer[A] = effect(a)
+inline def produce[A](a: A): Producer[A] = effect[Produce, A](a)
 
 /**
  * The ANSWER of a produce operation is the value it produced.
@@ -137,8 +139,8 @@ inline def produce[A](a: A): Producer[A] = effect(a)
  */
 def produced[A](e: Any): A = e.asInstanceOf[A]
 
-/** handle-frames-loops: a `Produce` frame's test — `Produce` is the identity signature, so its operations are the
- * ones that are not the rest's (`split[G, Produce]` decides the same way, by exclusion) */
+/** a `Produce` test for code that still splits by class (okay-freer's walks) — `Produce` is the identity
+ * signature, so its operations are the ones that are not the rest's; the root's programs find it by its path */
 def producing[G[+_]](using g: TypeableK[G]): TypeableK[Produce] = new TypeableK[Produce]:
   def test(x: Any): Boolean = !g.test(x)
 
@@ -147,6 +149,11 @@ def producing[G[+_]](using g: TypeableK[G]): TypeableK[Produce] = new TypeableK[
 given Put[Producer] with
   final override inline def put[W](w: W): Unit />> Producer[W] =
     Cps.shift(k => produce(w).flatMap(_ => k(())))
+
+/** what a stepped production hands over — the value — and what it answers: the same value */
+private[std] final class Producing[W] extends Stepping.Told[Produce, W]:
+  def element[X](op: Produce[X]): W = produced[W](op)
+  def answer[X](op: Produce[X]): X = op
 
 object Producer {
 
@@ -164,32 +171,35 @@ object Producer {
    * contract suite, okay-watch's restore); a fourth would have too.
    */
   /**
-   * Fold the produced elements, perform G as before, KEEP the answer.
-   * The general form `each` is a special case of, and tail-recursive
-   * across produced elements the way `Writer.collect` is: a walk that
-   * re-enters through `flatMap` only when a G operation has to be
-   * forwarded. The drains it replaced recursed through `map` per
-   * chunk — `drain(rest).map(c.toVector ++ _)` — which is a closure
-   * per chunk held until the end.
+   * Fold the produced elements, perform the rest of the effects as
+   * before, KEEP the answer — the kernel's `Stateful`: the accumulator
+   * a register of the machine, each production answered in place with
+   * itself. The drains it replaced recursed through `map` per chunk —
+   * `drain(rest).map(c.toVector ++ _)` — which is a closure per chunk
+   * held until the end.
    */
-  def fold[W, S, A, G[+_] : TypeableK](p: A ! Produce + G)(z: S)(f: (S, W) => S): (S, A) ! G =
-    // one step, both faces (handler-one-step): a production folds into the state and answers itself
-    HandleFrames.stateRun[Produce, S, A, (S, A), G](producing[G], (s, a) => pure((s, a)))(
-      (s, w) => (f(s, produced[W](w)), w))(z, p)
+  def fold[W, S, A, Es[_]](p: A ! Es)(z: S)(f: (S, W) => S)(using s: Split[Es, Produce]): (S, A) ! s.Rest =
+    new Run[s.Rest, (S, A)]:
+      def on[T <: Row](ps: Paths[s.Rest, T]): Eff[T, (S, A)] =
+        Cont.handle(p.fit(s.paths(ps)))(new Stateful[Produce, T, S, A, (S, A)]:
+          def initial: S = z
+          def ret(st: S, a: A): Eff[T, (S, A)] = Cont.pure((st, a))
+          def value[X](st: S, op: Produce[X]): X = op
+          def next[X](st: S, op: Produce[X]): S = f(st, produced[W](op)))
 
   /**
-   * `fold` with a stop (specs/fold-until.md): the same split walk with
-   * an early `pure(end(s))` the moment the state is done — the
-   * `Bind(Inject(e), k)` arm does not call `k` then, so nothing past
-   * the satisfying production is built and a `G` operation that would
-   * have followed it is never performed. Answers `R` alone: a fold that
-   * stopped early never saw the producer's answer (`Writer.foldUntil`
-   * makes the same choice for the same reason).
+   * `fold` with a stop (specs/fold-until.md): the program STEPPED (the
+   * kernel's `Step`), the moment the state is done its rest dropped —
+   * nothing past the satisfying production runs, and an operation that
+   * would have followed it is never performed. Answers `R` alone: a
+   * fold that stopped early never saw the producer's answer
+   * (`Writer.foldUntil` makes the same choice for the same reason).
    */
-  def foldUntil[W, S, R, A, G[+_] : TypeableK](p: A ! Produce + G)(using K: FoldUntil[W, S, R]): R ! G =
-    // one step, both faces (handler-one-step): a production adds to the state; done, the run stops there
-    HandleFrames.stateRunUntil[Produce, S, A, R, G](producing[G], K.done(_), K.end(_))(
-      (s, w) => (K.add(s, produced[W](w)), w))(K.init, p)
+  def foldUntil[W, S, R, A, Es[_]](p: A ! Es)(using s: Split[Es, Produce], K: FoldUntil[W, S, R]): R ! s.Rest =
+    new Run[s.Rest, R]:
+      def on[T <: Row](ps: Paths[s.Rest, T]): Eff[T, R] =
+        if K.done(K.init) then Cont.pure(K.end(K.init))
+        else Cont.defer(Stepping.until(Stepping.start(p, s.paths(ps)), K.init, Producing[W](), K))
 
   /**
    * A producer of CHUNKS as one Vector of their elements — the drain
@@ -198,22 +208,18 @@ object Producer {
    * same `go`. The answer is dropped, since for a `Chunk[X] !
    * (Produce + G)` it is phantom; `fold` keeps it where it is not.
    */
-  def concat[X, G[+_] : TypeableK](p: Chunk[X] ! Produce + G): Vector[X] ! G =
-    fold[Chunk[X], Vector[X], Chunk[X], G](p)(Vector.empty)((acc, c) => acc ++ c).map(_._1)
+  def concat[X, Es[_]](p: Chunk[X] ! Es)(using s: Split[Es, Produce]): Vector[X] ! s.Rest =
+    fold[Chunk[X], Vector[X], Chunk[X], Es](p)(Vector.empty)((acc, c) => acc ++ c).map(_._1)
 
   /**
-   * Run `f` on every production, G performed as before. A checked
-   * loop: `split` is INLINE, so the produced arm's `loop(k(w))` is in
-   * tail position, and a forwarded operation resumes through `again`
-   * from inside flatMap. okay2, whose `split` is an ordinary method
-   * taking closures, had this walk as one recursive method and
-   * overflowed at 200 000 productions (okay2-split-at-rest);
-   * TestFoldUntil pins it here.
+   * Run `f` on every production, the rest of the effects performed as
+   * before: the kernel's `Answering`, each production answered in
+   * place with itself after `f` has seen it — no loop of its own, so
+   * none to overflow (okay2's walk overflowed at 200 000 productions,
+   * okay2-split-at-rest; TestFoldUntil pins it).
    */
-  def each[W, A, G[+_] : TypeableK](p: A ! Produce + G)(f: W => Unit): A ! G =
-    // one step, both faces (handler-one-step): no state, the production answers itself
-    HandleFrames.stateRun[Produce, Unit, A, A, G](producing[G], (_, a) => pure(a))(
-      (_, w) => { f(produced[W](w)); ((), w) })((), p)
+  def each[W, A, Es[_]](p: A ! Es)(f: W => Unit)(using s: Split[Es, Produce]): A ! s.Rest =
+    p.handle(Handler.answering[Produce]([X] => (w: Produce[X]) => { f(produced[W](w)); w }))
 
   /** an Answers printing each produced value on the way through */
   def log(prefix: String = "", suffix: String = "\n"): Answers[Produce] = new:
@@ -222,56 +228,27 @@ object Producer {
 }
 
 /**
- * A producer is a stream: it observes by stepping its next operation —
- * one op per element, on demand, no further than the observer asks
- * (the eager fronts crash here, see compare/TestLaziness). The end is
- * its Pure, observed as None. The cast is sound for producers built
- * by put/produce at one element type: Produce is the identity
- * signature, an operation IS its element, but the element types of
- * the operations are erased by the identity — the value type A is the
- * only witness left.
+ * A producer is a stream: it observes by stepping its next operation
+ * (the kernel's `Step`) — one op per element, on demand, no further
+ * than the observer asks (the eager fronts crash here, see
+ * compare/TestLaziness). The end is its value, observed as None. The
+ * element is the operation itself: Produce is the identity signature,
+ * an operation IS its element, but the element types of the operations
+ * are erased by the identity — the value type A is the only witness
+ * left (`produced`).
  */
 given Stream[Producer, Pure] with
-  import !.*
-  import scala.annotation.tailrec
+  def uncons[A](p: Producer[A]): Option[(A, Producer[A])] ! Pure =
+    val template = Paths.One(In.Here[Produce, okay.core.Pure]())
+    pure(Stepping.nextPure(Stepping.start(p, template), template, Producing[A]()).toOption)
 
-  def uncons[A](p: Producer[A]): Option[(A, Producer[A])] ! Pure = pure((p.resume: @unchecked) match
-    case Free.Return(_) => None
-    case Inject(e) => Some((e, Free.Return(e)))
-    case Bind(Inject(e), k) => Some((produced[A](e), k(e))))
-
-  /** the specialized linear view: a direct walk of the freer tree —
-   * no Option, no tuple per element (measured; the generic default
-   * pays both). What remains per element is the stepping itself. */
+  /** the specialized linear view: the program stepped production by
+   * production — no Option, no tuple per element (measured; the
+   * generic default pays both). What remains per element is the
+   * stepping itself. */
   override def iterator[A](p: Producer[A])(using Answers[Pure]): Iterator[A] =
-    new Iterator[A]:
-      private var cur: Producer[A] = p
-      private var ready = false
-      private var ended = false
-      private var elem: A = scala.compiletime.uninitialized
-
-      @tailrec private def advance(): Unit = cur match
-        case Free.Return(_) => ended = true
-        case Inject(e) =>
-          elem = e
-          ready = true
-          cur = Free.Return(e)
-        case Bind(Inject(e), k) =>
-          elem = produced[A](e)
-          ready = true
-          cur = k(e)
-        case _ =>
-          cur = cur.resume
-          advance()
-
-      def hasNext: Boolean =
-        if !ready && !ended then advance()
-        ready
-
-      def next(): A =
-        if !hasNext then throw java.util.NoSuchElementException("empty producer")
-        ready = false
-        elem
+    val template = Paths.One(In.Here[Produce, okay.core.Pure]())
+    Stepping.Iter[Produce, A, okay.core.Pure, A](() => Stepping.start(p, template), Producing[A](), Stepping.Other.none)
 
 /** a producer folds as a stream without a result (push consumption) */
 given Foldable[Producer] with
@@ -281,25 +258,20 @@ given Foldable[Producer] with
 /**
  * An EFFECTFUL producer is a stream in the effect G: the program
  * emits its elements (the identity Produce side) and performs G along
- * the way — uncons steps to the next element, carrying the performed
- * G-operations in its answer. With G = Async this is the asynchronous
- * stream: the next element may have to be awaited, and on Loom the
- * consumer's Answers[Async] just blocks a virtual thread for it. G is
- * split from the elements by its runtime class (TypeableK), so G's
- * operations must be class-distinct from the element values.
+ * the way — uncons steps to the next element, performing the
+ * G-operations met on the way where it runs. With G = Async this is
+ * the asynchronous stream: the next element may have to be awaited,
+ * and on Loom the consumer's Answers[Async] just blocks a virtual
+ * thread for it. A production and a G-operation are told apart by
+ * their PATHS, not by class: G's operations need not be class-distinct
+ * from the element values any more. `G` is ONE effect (a place of the
+ * row), as the `Answers[G]` its consumers run it by.
  */
-given [G[+_] : TypeableK]: Stream[[A] =>> A ! Produce + G, G] with
-  import !.*
-
-  def uncons[A](p: A ! Produce + G): Option[(A, A ! Produce + G)] ! G = (p.resume: @unchecked) match
-    case Free.Return(_) => pure(None)
-    // `split`, not `<|>`: no Either per element (split-over-either)
-    case i @ Inject(e) => split[G, Produce](e)
-      (_ => forwarded[Produce, G](i).map(_ => None): Option[(A, A ! Produce + G)] ! G)
-      (w => pure(Some((produced[A](w), Free.Return(produced[A](w))))))
-    case Bind(i @ Inject(e), k) => split[G, Produce](e)
-      (_ => forwarded[Produce, G](i).flatMap(x => uncons(k(x))): Option[(A, A ! Produce + G)] ! G)
-      (w => pure(Some((produced[A](w), k(w)))))
+given [G[_]]: Stream[[A] =>> A ! Produce + G, G] with
+  def uncons[A](p: A ! Produce + G): Option[(A, A ! Produce + G)] ! G = new Run[G, Option[(A, A ! Produce + G)]]:
+    def on[T <: Row](ps: Paths[G, T]): Eff[T, Option[(A, A ! Produce + G)]] =
+      val template = Paths.Both(Paths.One(In.Here[Produce, T]()), ps.under[Produce])
+      Cont.defer(Stepping.next(Stepping.start(p, template), template, Producing[A]())).map(_.toOption)
 
   /**
    * The specialized linear view, mirroring `writerStreamIn`'s own
@@ -309,43 +281,13 @@ given [G[+_] : TypeableK]: Stream[[A] =>> A ! Produce + G, G] with
    * element. A forwarded `G`-operation is answered by `Answers[G].
    * handle` directly (producer-effectful-stream-iterator; the writer
    * twin measured 6.29 -> 5.43 us and 32,952 -> 12,688 B/op on 157
-   * chunks for the same move). The `produced` casts are the identity
-   * signature's own, as in `uncons` above.
+   * chunks for the same move).
    */
   override def iterator[A](p: A ! Produce + G)(using H: Answers[G]): Iterator[A] =
-    import scala.annotation.tailrec
-    new Iterator[A]:
-      private var cur: A ! Produce + G = p
-      private var ready = false
-      private var ended = false
-      private var elem: A = scala.compiletime.uninitialized
-
-      @tailrec private def advance(): Unit = cur match
-        case Free.Return(_) => ended = true
-        case Inject(e) =>
-          split[G, Produce](e)(
-            g => { val _ = H.handle(g); ended = true }
-          )(
-            w => { elem = produced[A](w); ready = true; ended = true }
-          )
-        case Bind(Inject(e), k) =>
-          split[G, Produce](e)(
-            g => { cur = k(H.handle(g)); advance() }
-          )(
-            w => { elem = produced[A](w); ready = true; cur = k(w) }
-          )
-        case _ =>
-          cur = cur.resume
-          advance()
-
-      def hasNext: Boolean =
-        if !ready && !ended then advance()
-        ready
-
-      def next(): A =
-        if !hasNext then throw java.util.NoSuchElementException("empty producer")
-        ready = false
-        elem
+    val template = Paths.Both(Paths.One(In.Here[Produce, G +: okay.core.Pure]()),
+      Paths.One(In.There[G, Produce, G +: okay.core.Pure](In.Here[G, okay.core.Pure]())))
+    Stepping.Iter[Produce, A, G +: okay.core.Pure, A](() => Stepping.start(p, template), Producing[A](),
+      Stepping.Other.answers(H))
 
 import scala.math.Numeric.Implicits.given
 

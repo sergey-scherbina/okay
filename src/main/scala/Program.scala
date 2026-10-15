@@ -51,8 +51,8 @@ object Run:
     def translate[E[_], F[_]](f: [X] => E[X] => X ! F)(using s: Split[Es, E]): A ! okay.core.+[F, s.Rest] =
       new Run[okay.core.+[F, s.Rest], A]:
         def on[R <: okay.core.Row](ps: Paths[okay.core.+[F, s.Rest], R]): Eff[R, A] =
-          val fps = ps.sub(Req.Left[F, F, s.Rest](Req.Only[F]()))
-          val rps = ps.sub(Req.Right[s.Rest, F, s.Rest](Req.Only[s.Rest]()))
+          val fps = Sides.left(ps)
+          val rps = Sides.right(ps)
           okay.one.Cont.handle(p.fit(s.paths(rps)))(new okay.one.handler.Translating[E, R, A, A]:
             def ret(a: A) = okay.one.Cont.pure(a)
             def apply[X](op: E[X]): Eff[R, X] = f(op).fit(fps))
@@ -149,7 +149,7 @@ trait WithinTwo extends WithinOne:
     def paths[R <: okay.core.Row](ps: Paths[Es2, R]): Paths[okay.core.+[F, G], R] = Paths.Both(f.paths(ps), g.paths(ps))
 trait WithinOne:
   given one[E[_], Es2[_]](using r: Req[E, Es2]): Within[E, Es2] with
-    def paths[R <: okay.core.Row](ps: Paths[Es2, R]): Paths[E, R] = ps.sub(r)
+    def paths[R <: okay.core.Row](ps: Paths[Es2, R]): Paths[E, R] = Sides.sub(ps, r)
 
 /** the effects of a bind: the continuation's if it has the program's among them, else the two summed */
 trait Join[Es[_], Es3[_]]:
@@ -172,8 +172,25 @@ trait JoinWithin extends JoinSum:
 trait JoinSum:
   given sum[Es[_], Es3[_]]: (Join[Es, Es3] { type Out[x] = Both[Es, Es3, x] }) = new Join[Es, Es3]:
     type Out[x] = Both[Es, Es3, x]
-    def left[R <: okay.core.Row](ps: Paths[okay.core.+[Es, Es3], R]): Paths[Es, R] = ps.sub(Req.Left[Es, Es, Es3](Req.Only[Es]()))
-    def right[R <: okay.core.Row](ps: Paths[okay.core.+[Es, Es3], R]): Paths[Es3, R] = ps.sub(Req.Right[Es3, Es, Es3](Req.Only[Es3]()))
+    def left[R <: okay.core.Row](ps: Paths[okay.core.+[Es, Es3], R]): Paths[Es, R] = Sides.left(ps)
+    def right[R <: okay.core.Row](ps: Paths[okay.core.+[Es, Es3], R]): Paths[Es3, R] = Sides.right(ps)
+
+/** THE PATHS OF A PART of the effects, by the sides of `Both` itself. Not `ps.sub(r)` alone: that ends by asking the
+ * part for itself by `Req.Only`, and a part of no effects (`Paths.None`: a program needing nothing, a runner's rest
+ * when it took the only effect) refuses it with a `MatchError` (okay-core's `Paths.None.sub`) */
+private[okay] object Sides:
+  /** `ps.sub(r)`, a part of no effects answered with itself: the walk as deep as `r`, a sum written in a type */
+  def sub[E[_], Es[_], R <: okay.core.Row](ps: Paths[Es, R], r: Req[E, Es]): Paths[E, R] = r match
+    case _: Req.Only[e] => ps
+    case l: Req.Left[e, f, g] => sub(left[f, g, R](ps), l.r)
+    case g: Req.Right[e, f, h] => sub(right[f, h, R](ps), g.r)
+  // unchecked: the `Both` of `Paths[F + G, R]` is made only as `Paths.Both(left: Paths[F, R], right: Paths[G, R])`
+  def left[F[_], G[_], R <: okay.core.Row](ps: Paths[okay.core.+[F, G], R]): Paths[F, R] = ps match
+    case b: Paths.Both[F, G, R] @unchecked => b.left
+    case _ => ps.sub(Req.Left[F, F, G](Req.Only[F]()))
+  def right[F[_], G[_], R <: okay.core.Row](ps: Paths[okay.core.+[F, G], R]): Paths[G, R] = ps match
+    case b: Paths.Both[F, G, R] @unchecked => b.right
+    case _ => ps.sub(Req.Right[G, F, G](Req.Only[G]()))
 
 /** a program needing fewer effects where one needing more is expected: each found among them */
 given widen[A, Es[_], Es2[_]](using w: Within[Es, Es2]): Conversion[A ! Es, A ! Es2] = _.at[Es2]
