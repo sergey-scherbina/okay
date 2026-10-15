@@ -2,8 +2,8 @@ package okay.lex
 
 import okay.{Chunks, through}
 
-import okay.freer.{%}
-import okay.freer.{!, pure}
+import okay.{%}
+import okay.{!, pure}
 import okay.std.{Writer}
 import okay.std.toLazyList
 import Json.K

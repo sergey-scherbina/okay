@@ -1,9 +1,7 @@
 package okay.actor
 
 import okay.{Async, Channel}
-import okay.freer.*
 import okay.given
-import okay.freer.given
 /**
  * The laws a poisonous message must keep, whatever the loop does to
  * read the mailbox: every message once, in order; supervision knows
@@ -26,7 +24,7 @@ class TestPoisonLaws extends munit.FunSuite:
 
   test("law: every message once, in order") {
     val seen = scala.collection.mutable.ArrayBuffer.empty[Int]
-    val a = Actor.spawn(()) { (_: Unit, m: Int) => okay.freer.effect[Async, Unit](Async.Run(() => seen += m)) }.runWith
+    val a = Actor.spawn(()) { (_: Unit, m: Int) => okay.effect[Async, Unit](Async.Run(() => seen += m)) }.runWith
     for i <- 0 until 2000 do assert(a.tell(i).runWith)
     a.stop().runWith
     settled(a, seen.synchronized(seen.size), 2000)
@@ -37,7 +35,7 @@ class TestPoisonLaws extends munit.FunSuite:
     val seen = scala.collection.mutable.ArrayBuffer.empty[Int]
     val a = Actor.spawn(0, Channel[Int](256), Supervise.Resume) { (n: Int, m: Int) =>
       if m == 7 then throw RuntimeException("poison")
-      else okay.freer.effect[Async, Int](Async.Run(() => { seen += m; n + 1 }))
+      else okay.effect[Async, Int](Async.Run(() => { seen += m; n + 1 }))
     }.runWith
     for i <- 0 until 20 do assert(a.tell(i).runWith)
     a.stop().runWith
@@ -49,7 +47,7 @@ class TestPoisonLaws extends munit.FunSuite:
     val seen = scala.collection.mutable.ArrayBuffer.empty[Int]
     val a = Actor.spawn(0, Channel[Int](256), Supervise.Stop) { (n: Int, m: Int) =>
       if m == 5 then throw RuntimeException("poison")
-      else okay.freer.effect[Async, Int](Async.Run(() => { seen += m; n + 1 }))
+      else okay.effect[Async, Int](Async.Run(() => { seen += m; n + 1 }))
     }.runWith
     for i <- 0 until 10 do { val _ = a.tell(i).runWith }
     // Stop closes the mailbox with 6..9 still accepted inside it and

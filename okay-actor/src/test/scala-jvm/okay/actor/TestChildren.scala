@@ -1,9 +1,7 @@
 package okay.actor
 
 import okay.{async, Channel, Scheduler, Schedulers}
-import okay.freer.*
 import okay.given
-import okay.freer.given
 /** LAW 8: children die first — a parent's stop completes only after
  * its children's mailboxes are closed AND drained. */
 class TestChildren extends munit.FunSuite {

@@ -2,7 +2,7 @@ package okay.lex
 
 
 import okay.{`>=>`, Lens, Traversal, foldMap, toVector, traverseOf}
-import okay.freer.*
+import okay.freer.Semigroup
 import okay.std.*
 import okay.given
 

@@ -4,10 +4,9 @@ package okay.reactive
 import okay.{Source, Async, CanBlock, Channel, Drain, Scheduler}
 import java.util.concurrent.Flow
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicLong, AtomicReference}
-import okay.freer.*
+import okay.{!, %, +}
 import okay.std.*
 import okay.given
-import okay.freer.given
 /**
  * Reactive Streams interop, over `java.util.concurrent.Flow` — the
  * JDK's own copy of the SPI, so this module adds no dependency to the
@@ -117,17 +116,17 @@ object Reactive {
     def serve(got: Chunk[A], i: Int, taken: Int): Source[A] =
       if i >= got.length then go(taken)
       else
-        okay.freer.effect[Writer % A + Async, Unit](Writer(got(i))).flatMap: _ =>
+        okay.effect(Writer(got(i))).flatMap: _ =>
           if taken + 1 >= refill then
             val s = sub.get
             if s != null then s.nn.request(refill.toLong)
             serve(got, i + 1, 0)
           else serve(got, i + 1, taken + 1)
     def go(taken: Int): Source[A] =
-      okay.freer.effect[Writer % A + Async, Chunk[A]](
+      okay.effect(
         Async.Await[Chunk[A]](k => { c.receiveManyAsync(batch)(k); () => () })).flatMap: got =>
-        if got.isEmpty then okay.freer.pure(()) else serve(got, 0, taken)
-    okay.freer.pure[Writer % A + Async, Unit](()).flatMap(_ => go(0))
+        if got.isEmpty then okay.pure(()) else serve(got, 0, taken)
+    okay.pure[Unit, Writer % A + Async](()).flatMap(_ => go(0))
 
   /**
    * A publisher that is already in an error state: every subscriber

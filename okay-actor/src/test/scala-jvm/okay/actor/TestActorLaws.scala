@@ -1,9 +1,7 @@
 package okay.actor
 
 import okay.{async, Channel, Scheduler, Schedulers}
-import okay.freer.*
 import okay.given
-import okay.freer.given
 /**
  * The laws of specs/actor.md, stage 0 — written as laws because the
  * guarantees they state are the reason to use an actor at all. "One

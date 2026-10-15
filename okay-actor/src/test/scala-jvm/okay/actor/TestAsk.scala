@@ -1,9 +1,7 @@
 package okay.actor
 
 import okay.{async, Scheduler, Schedulers}
-import okay.freer.*
 import okay.given
-import okay.freer.given
 /** LAW 7: an ask answers or times out — never both, never neither. */
 class TestAsk extends munit.FunSuite {
 
