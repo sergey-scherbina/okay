@@ -929,7 +929,14 @@ lazy val okayGraphql = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     name := "okay-graphql",
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
   )
-  .jvmSettings(Test / fork := true)
+  // scala-jvm: `GraphQLJava`, graphql-java's parser behind `GraphQLParser` — OPTIONAL for consumers, refused by
+  // name when absent (`GraphQLJava.missing`); the tests read every document with both
+  .jvmSettings(
+    Compile / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
+    Test / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+    Test / fork := true,
+    libraryDependencies += "com.graphql-java" % "graphql-java" % "22.3" % "optional;test",
+  )
 
 lazy val okayStm = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
