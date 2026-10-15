@@ -1,8 +1,9 @@
-package okay.freer
+package okay.std.tests
 
-
-
+import okay.freer.*
+import okay.freer.given
 import okay.std.*
+
 /**
  * PState's function answer on EVERY platform (cont-fun-answer): a hundred thousand `get`/`set` steps, past
  * Scala.js's engine stack (~10 800 frames on Node's default), where no stack switch exists.

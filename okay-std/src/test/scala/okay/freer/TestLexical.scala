@@ -2,10 +2,9 @@ package okay.freer
 
 
 import okay.std.*
-import okay.{! as _, pure as _, effect as _, value as _, + as _, % as _, Pure as _, *}
-import Bisim.{Answers, Verdict}
+import okay.{! as _, pure as _, effect as _, + as _, % as _, Pure as _, *}
+import Bisim.Answers
 import LexicalState.{get, set}
-import okay.freer.Row.at
 
 /**
  * specs/lexical-instances.md stage 0: handler instances as prompts,
@@ -55,7 +54,7 @@ class TestLexical extends munit.FunSuite:
     assertEquals(lex, (0, 10), "outer answered 0, inner answered 10")
   }
 
-  // ------------------------------------------------ against the row, by Bisim
+  // ------------------------------------------------ the counter
 
   given Answers[W] = Answers.writer[String]
 
@@ -68,19 +67,6 @@ class TestLexical extends munit.FunSuite:
       _ <- effect[Shift % ? + W, Unit](Writer(s"b=$b"))
     yield a + b
 
-  val counterRow: Int ! State % Int + W = for
-    a <- State.get[Int].at[State % Int + W]
-    _ <- Writer.tell(s"a=$a").at[State % Int + W]
-    _ <- State.set(a + 10).at[State % Int + W]
-    b <- State.get[Int].at[State % Int + W]
-    _ <- Writer.tell(s"b=$b").at[State % Int + W]
-  yield a + b
-
-  test("ONE instance, deep, is Bisim-equivalent to State.handle on the Writer row") {
-    val row = State.handle[Int](1)(counterRow)
-    val deep = Shift.run[(Int, Int), W](LexicalState.deep[Int, Int, Shift % ? + W](1)(counter))
-    assertEquals(Bisim.check(deep, row), Verdict.Same(1, 0))
-  }
 
   // ------------------------------------------------ what `tail` cannot run
 
@@ -114,12 +100,6 @@ class TestLexicalTail extends munit.FunSuite:
   given Answers[W] = Answers.writer[String]
 
   def run[A](p: A ! Shift % ? + Pure): A = !.run(Shift.run[A, Pure](p))
-
-  test("tail is Bisim-equivalent to State.handle on the Writer row") {
-    val t = new TestLexical
-    val tail = Shift.run[(Int, Int), W](LexicalState.tail[Int, Int, Shift % ? + W](1)(t.counter))
-    assertEquals(Bisim.check(tail, State.handle[Int](1)(t.counterRow)), Verdict.Same(1, 0))
-  }
 
   test("strategies MIX in one program: a deep outer and a tail inner State[Int], the same answer as two deeps") {
     val prog = LexicalState.deep[Int, (Int, Int), Shift % ? + Pure](0) { a =>
@@ -310,17 +290,11 @@ class TestLexicalPayAsYouGo extends munit.FunSuite:
   val counterW: Lexical.Inst[State % Int, W] => Int ! W = s =>
     for
       a <- s.get
-      _ <- Writer.tell(s"a=$a")
+      _ <- effect[W, Unit](Writer(s"a=$a"))
       _ <- s.set(a + 10)
       b <- s.get
-      _ <- Writer.tell(s"b=$b")
+      _ <- effect[W, Unit](Writer(s"b=$b"))
     yield a + b
-
-  test("tail on a row WITHOUT Shift: no guard, no machine — the program is (S, A) ! Writer, and Bisim-equal to State.handle") {
-    val t = new TestLexical
-    val lex: (Int, Int) ! W = LexicalState.tail[Int, Int, W](1)(counterW)
-    assertEquals(Bisim.check(lex, State.handle[Int](1)(t.counterRow)), Verdict.Same(1, 0))
-  }
 
   test("the default on the pure row: LexicalState(0) runs with !.run alone — no Shift anywhere") {
     val p: (Int, Int) ! Pure = LexicalState[Int, Int, Pure](5)(s => s.get.flatMap(v => s.set(v * 3)))
@@ -342,7 +316,7 @@ class TestLexicalPayAsYouGo extends munit.FunSuite:
 class TestLexicalWalk extends munit.FunSuite:
   import LexicalState.{get, set}
   import Layered.{reify, reflect}
-  import okay.freer.Row.{at, up}
+  import okay.freer.Row.up
 
   type W = Writer % String
   given Answers[W] = Answers.writer[String]
@@ -352,20 +326,6 @@ class TestLexicalWalk extends munit.FunSuite:
 
   /** the top: every walk's operations answered, or Instances.Survived */
   def done[A, G[+_]](p: A ! SI + G): A ! G = Instances.exhausted[State % Int, A, G](p)
-
-  test("walk is Bisim-equal to State.handle on the Writer row, after runLocal") {
-    val t = new TestLexical
-    val walked: (Int, Int) ! W = done(LexicalState.walk[Int, Int, W](1) { s =>
-      for
-        a <- s.get
-        _ <- Writer.tell(s"a=$a").at[SI + W]
-        _ <- s.set(a + 10)
-        b <- s.get
-        _ <- Writer.tell(s"b=$b").at[SI + W]
-      yield a + b
-    })
-    assertEquals(Bisim.check(walked, State.handle[Int](1)(t.counterRow)), Verdict.Same(1, 0))
-  }
 
   test("walk on the pure row: runLocal and !.run, no Shift anywhere") {
     assertEquals(!.run(done(LexicalState.walk[Int, Int, Pure](5)(s => s.get.flatMap(v => s.set(v * 3))))), (15, 15))

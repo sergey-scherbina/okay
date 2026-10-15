@@ -1,8 +1,8 @@
-package okay.freer
+package okay.std.tests
 
-
-
+import okay.freer.*
 import okay.std.*
+
 /**
  * `PState.Threaded.zoomWith` (specs/cont-js-depth.md stage 3a): a
  * typestate program over a part, run over the whole, as ONE operation of

@@ -335,21 +335,21 @@ trait CanFail[Es[_]]:
 
 trait CanFailLow:
   /** stop: the rest of the program does not run */
-  given viaAbort: [Es[_]] => Within[Abort, Es] => CanFail[Es] = new:
+  given viaAbort: [Es[_]] => okay.Evidence.All[Abort, Es] => Within[Abort, Es] => CanFail[Es] = new:
     def fail[A]: A ! Es = abort[A].at[Es]
 
 trait CanFailMid extends CanFailLow:
   /** nothing is there: a refuted `case Some(x) <-` IS an absence, so
    * where a row carries both Maybe and Abort, Maybe answers it
    * (specs/core-gaps.md) */
-  given viaMaybe: [Es[_]] => Within[Maybe, Es] => CanFail[Es] = new:
+  given viaMaybe: [Es[_]] => okay.Evidence.All[Maybe, Es] => Within[Maybe, Es] => CanFail[Es] = new:
     def fail[A]: A ! Es = Maybe.none[A].at[Es]
 
 object CanFail extends CanFailMid:
   /** prune: this branch dies, the search continues — and it wins over
    * Abort where a row carries both, because in a searching row `guard`
    * already means prune */
-  given viaChoose: [Es[_]] => Within[Choose, Es] => CanFail[Es] = new:
+  given viaChoose: [Es[_]] => okay.Evidence.All[Choose, Es] => Within[Choose, Es] => CanFail[Es] = new:
     def fail[A]: A ! Es = effect[Choose, A](Choose(Seq.empty)).at[Es]
 
 extension [A, Es[_]](p: A ! Es)

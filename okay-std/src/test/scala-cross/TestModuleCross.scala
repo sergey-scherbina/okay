@@ -1,9 +1,8 @@
-package okay.freer
+package okay.std.tests
 
-
-
-
+import okay.*
 import okay.std.*
+
 /**
  * The module vocabulary on EVERY platform (di-cross, specs/di.md).
  *
@@ -21,7 +20,7 @@ class TestModuleCross extends munit.FunSuite {
   trait Pool { def db: Db; def size: Int }
   final case class Conf(url: String)
 
-  def run[A](p: A ! Resource): A = !.run(Resource.run[A, Pure](p))
+  def run[A](p: A ! Resource): A = Resource.run(p).run
 
   test("modules acquire left to right and release in reverse at the end of the scope") {
     var log = List.empty[String]

@@ -1,6 +1,4 @@
-package okay.freer
-
-
+package okay.std.tests
 
 import okay.std.*
 /**

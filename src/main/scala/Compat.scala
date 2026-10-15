@@ -1,0 +1,54 @@
+package okay
+
+/**
+ * OKAY-FREER'S WORDS ON THE KERNEL'S PROGRAM (specs/freer-on-core-howto.md): the names a module on the classic
+ * road wrote — `!.run`, `!.tailcall`, `!.widen`, `p.plus[G]`, `Row.at`, `Row.union`, `Free.delay` — as wrappers
+ * over the root's words, so a module moves by its imports (`okay.freer.X` becomes `okay.X`) and keeps its
+ * signatures. Nothing here does work of its own: each word is one of the root's.
+ */
+object ! :
+  /** a program needing nothing: its value (`p.run`) */
+  def run[A](p: A ! Pure): A = p.run
+  /** a tail call: built when the run gets to it (`defer`) */
+  def tailcall[A, Es[_]](p: => A ! Es): A ! Es = defer(p)
+  /** the same program needing one effect more (`p.at[F + G]`) */
+  def widen[A, F[_], G[_]](p: A ! F): A ! F + G = p.at[F + G]
+  /** `tailRecM` for programs: from `s`, a `Left` goes on, a `Right` answers; each turn deferred */
+  def loop[S, A, Es[_]](s: S)(f: S => (Either[S, A] ! Es)): A ! Es = Programs.tailRecM[Es].tailRecM(s)(f)
+  /** `F` translated into the rest `G` (`p.translateInto`) */
+  def translate[A, F[_], G[_]](p: A ! F + G)(h: [X] => F[X] => X ! G): A ! G = p.translateInto[F, G](h)
+  /** `F` translated into `G` beside the rest `H` */
+  def interpret[A, F[_], G[_], H[_]](p: A ! F + H)(h: [X] => F[X] => X ! G + H): A ! G + H =
+    p.translate[F, G + H](h).at[G + H]
+
+/** okay-freer's `Row` words: widening by membership, a sum's answers from its parts */
+object Row:
+  extension [A, Es[_]](p: A ! Es)
+    /** the same program needing `G` more: `A ! Es + G` */
+    def plus[G[_]]: A ! Es + G = p.at[Es + G]
+    /** the same program needing more effects, `Es` among `Es2` */
+    def at[Es2[_]](using w: Within[Es, Es2]): A ! Es2 = Run.at(p)[Es2]
+    /** the same as `at` */
+    def up[Es2[_]](using w: Within[Es, Es2]): A ! Es2 = Run.at(p)[Es2]
+  /** a sum's answers, each part's own (`Answers.sum`) */
+  def union[F[_], G[_]](using f: Answers[F], g: Answers[G]): Answers[F + G] = Answers.sum[F, G]
+
+/** okay-freer's `Free` words for a program */
+object Free:
+  /** a value, needing `Es` */
+  def pure[Es[_], A](a: A): A ! Es = okay.pure[A, Es](a)
+  /** built when the run gets to it */
+  def delay[Es[_], A](thunk: () => A ! Es): A ! Es = defer(thunk())
+  /** `!.loop` */
+  def loop[S, A, Es[_]](s: S)(f: S => (Either[S, A] ! Es)): A ! Es = !.loop(s)(f)
+
+/** okay-freer's evidence that a union's effects are distinct: on the kernel two of one effect are two places, so
+ * there is nothing to forbid — always given, kept so a signature that asked for it compiles unchanged */
+sealed trait Distinct[R[_]]
+object Distinct:
+  private object Any extends Distinct[[x] =>> scala.Any]
+  given any[R[_]]: Distinct[R] = Any.asInstanceOf[Distinct[R]]
+
+extension [E[_], X](op: E[X])
+  /** an operation as a program, `op.perform` or `perform(op)`: `effect(op)` */
+  def perform: X ! E = effect(op)
