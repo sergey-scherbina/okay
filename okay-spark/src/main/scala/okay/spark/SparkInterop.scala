@@ -1,8 +1,8 @@
 package okay.spark
 
-import okay.freer.*
+import okay.*
+import okay.freer.Aggregator
 
-import okay.std.*
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{Dataset, Encoder, SparkSession}
 
@@ -162,15 +162,17 @@ object SparkBulk:
      * (rewritten and compiled) here, and the sorted RDD is held: a
      * native operation is a materialised boundary in the plan. Keys
      * travel as `Any` like elements do, and come back through `elem`.
+     * The heap is the one the program has already (`Tables.via`'s).
      */
-    def sort[A, F[+_]](p: A ! okay.Sort + F): A ! okay.std.State % okay.Tables.Heap[Rows] + F =
-      import okay.freer.Row.plus
+    def sort[A, Es[_]](p: A ! Es)
+                      (using s: okay.core.Split[Es, okay.Sort], w: Within[okay.std.State % okay.Tables.Heap[Rows], s.Rest])
+    : A ! s.Rest =
       def sorted[X, K](h: okay.Tables.Heap[Rows], t: okay.Tables.Table[X], key: X => K, ord: Ordering[K])
       : (okay.Tables.Table[X], okay.Tables.Heap[Rows]) =
         val keyed: RDD[(Any, Any)] = h.force(t)(this).map(x => (key(elem[X](x)): Any, x))
         val byKey = Ordering.fromLessThan[Any]((a, b) => ord.lt(elem[K](a), elem[K](b)))
         h.hold[X](RDD.rddToOrderedRDDFunctions(keyed)(using byKey, scala.reflect.ClassTag.Any, scala.reflect.ClassTag.Any)
           .sortByKey().values)
-      okay.freer.!.interpret(p):
+      p.translateInto[okay.Sort, okay.std.State % okay.Tables.Heap[Rows]]:
         [X] => (e: okay.Sort[X]) => e match
-          case okay.Sort.By(t, key, ord) => okay.std.State.update[okay.Tables.Heap[Rows], X](h => sorted(h, t, key, ord)).plus[F]
+          case okay.Sort.By(t, key, ord) => okay.std.State.update[okay.Tables.Heap[Rows], X](h => sorted(h, t, key, ord))

@@ -1,8 +1,7 @@
 package okay.spark
 
-import okay.freer.*
+import okay.*
 
-import okay.freer.given
 import okay.codec.{Cbor, Columns, Schema}
 import org.apache.spark.sql.Row as SRow
 import org.apache.spark.sql.types.*
@@ -132,7 +131,7 @@ object SparkValues extends Serializable:
     case vv: VariantVal => !.tailcall(variant(s, new Variant(vv.getValue, vv.getMetadata), rec))
     case _ => s match
       case o: Schema.SOption[x] =>
-        if v == null then pure[Pure, Option[x]](None)
+        if v == null then pure[Option[x], Pure](None)
         else !.tailcall(value(o.of(), v, t, rec)).map(Some(_))
       case l: Schema.SList[x] => elements(l.of(), v, t, rec).map(_.toList)
       case vs: Schema.SVector[x] => elements(vs.of(), v, t, rec)
@@ -216,7 +215,7 @@ object SparkValues extends Serializable:
     val tp = vr.getType
     s match
       case o: Schema.SOption[x] =>
-        if tp == Type.NULL then pure[Pure, Option[x]](None)
+        if tp == Type.NULL then pure[Option[x], Pure](None)
         else !.tailcall(variant(o.of(), vr, rec)).map(Some(_))
       case Schema.SIso(under, to, _) => !.tailcall(variant(under(), vr, rec)).map(b => to(b).fold(fail, identity))
       case _ if tp == Type.NULL => fail(s"a variant null is not a $s (an Option field takes it)")

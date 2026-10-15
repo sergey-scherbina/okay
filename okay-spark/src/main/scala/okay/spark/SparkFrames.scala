@@ -2,9 +2,8 @@ package okay.spark
 
 
 import okay.{Tables}
-import okay.freer.*
+import okay.*
 import okay.std.*
-import okay.freer.given
 import okay.Tables.{Heap, Table}
 import okay.codec.Schema
 import okay.sql.{Query, SqlValue, Structured}
@@ -141,15 +140,16 @@ final class SparkFrames(spark: SparkSession, bulk: SparkBulk):
 
   // ------------------------------------------------------------ the handler
   /** `Structured` answered on Spark: in Catalyst where the table is
-   * DataFrame-born, through the RDD otherwise */
-  def structured[A, F[+_]](p: A ! Structured + F): A ! State % H + F =
-    import okay.freer.Row.plus
-    !.interpret(p):
+   * DataFrame-born, through the RDD otherwise — into the heap the program
+   * has already (`Tables.via`'s, one place, as okay-freer's union made it) */
+  def structured[A, Es[_]](p: A ! Es)(using sp: okay.core.Split[Es, Structured], in: Within[State % H, sp.Rest])
+  : A ! sp.Rest =
+    p.translateInto[Structured, State % H]:
       [X] => (e: Structured[X]) => e match
         case Structured.Matching(t, w, s) =>
-          State.update[H, X](h => matching(h, t, w)(using s)).plus[F]
+          State.update[H, X](h => matching(h, t, w)(using s))
         case Structured.JoinOn(l, r, lf, rf, sa, sb) =>
-          State.update[H, X](h => joinOn(h, l, r, lf.name, rf.name, lf.idx, rf.idx)(using sa, sb)).plus[F]
+          State.update[H, X](h => joinOn(h, l, r, lf.name, rf.name, lf.idx, rf.idx)(using sa, sb))
 
   private def matching[A](h: H, t: Table[A], w: Query.Where[A])(using s: Schema[A]): (Table[A], H) =
     val r = SparkBulk.rdd(h.force(t)(bulk))
@@ -182,9 +182,11 @@ final class SparkFrames(spark: SparkSession, bulk: SparkBulk):
   /** a program in `Tables + Structured`, run on Spark; it may also use
    * `load`/`read`/`frame`, whose row is the heap's `State` */
   def run[A](p: A ! Tables + Structured + State % H): A =
-    // the rest of the row named: through the bridge's match type `via` cannot solve its `F` from `p`
-    val tabled: A ! Structured + State % H = Tables.via[A, Rows, Structured + State % H](bulk)(p)
-    State.run(Heap.empty[Rows])(structured(tabled))._2
+    // the rest of the row named (`via` takes `Tables` on the left); `via` translates into a `State % H` of its
+    // own, and `.at` folds it into the one the program has, which `structured` then translates into
+    val tabled = Tables.via[A, Rows, Structured + State % H](bulk)(p.at[Tables + (Structured + State % H)])
+    val one: A ! State % H = structured(tabled.at[Structured + State % H])
+    State.run(Heap.empty[Rows])(one)._2
 
 object SparkFrames:
   /** THE ONE CAST, as `SparkBulk`'s: the seam's RDD holds `Any`, and an

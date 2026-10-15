@@ -2,7 +2,7 @@ package okay.spark
 
 import okay.codec.{Columns, Json, Schema}
 import okay.codec.Columns.ColType
-import okay.freer.*
+import okay.*
 import org.apache.spark.sql.{DataFrame, Row, SparkSession}
 import org.apache.spark.sql.types.*
 

@@ -3,7 +3,8 @@ package okay.spark
 
 
 import okay.{Tables}
-import okay.freer.*
+import okay.*
+import okay.freer.Aggregator
 import okay.Tables.read
 import okay.Direct.{direct, unary_!}
 import org.apache.spark.sql.SparkSession

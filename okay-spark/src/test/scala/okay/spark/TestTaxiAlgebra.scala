@@ -2,9 +2,9 @@ package okay.spark
 
 import okay.{Bulk, Chunks, localBulk}
 import okay.freer.{Aggregator, Monoid}
+import okay.freer.given
 import okay.std.{sliding}
 import okay.Chunks.elements
-import okay.freer.given
 import okay.std.given
 import okay.codec.Schema
 import okay.parquet.ParquetFile

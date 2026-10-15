@@ -2,13 +2,13 @@ package okay.spark
 
 
 
+import scala.language.implicitConversions
 import okay.{Tables}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.codec.Schema
-import okay.freer.Row.plus
+import okay.Row.plus
 import okay.Chunks.elements
 import okay.Tables.{collect, select}
 import okay.sql.{Query, Structured}
@@ -200,7 +200,7 @@ class TestSparkFrames extends munit.FunSuite {
     // captured at the call
     var sc: Schema[?] = Schema.SLong
     for _ <- 1 to 300 do { val inner = sc; sc = Schema.SList(() => inner) }
-    def decode[X](s: Schema[X]): Any = okay.freer.!.run(SparkValues.value(s, vv, tt, Set.empty))
+    def decode[X](s: Schema[X]): Any = okay.!.run(SparkValues.value(s, vv, tt, Set.empty))
     var out: Any = null
     val th = Thread(null, () => out = decode(sc), "small", 256 * 1024)
     th.start(); th.join()

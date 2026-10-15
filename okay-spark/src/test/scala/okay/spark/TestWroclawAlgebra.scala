@@ -1,14 +1,15 @@
 package okay.spark
 
 import okay.{Bulk, Chunks, Sort, Tables}
-import okay.freer.*
-import okay.std.*
+import okay.*
+import okay.freer.{Aggregator, Group, Monoid}
 import okay.freer.given
+import okay.std.*
 import okay.std.given
 import okay.Tables.{Table, read, of}
 import okay.Chunks.elements
 import okay.Sort.sortBy
-import okay.freer.Row.plus
+import okay.Row.plus
 import okay.Direct.{direct, unary_!}
 import org.apache.spark.sql.SparkSession
 import java.io.File
@@ -208,14 +209,17 @@ class TestWroclawAlgebra extends munit.FunSuite:
     r
   lazy val local =
     val t0 = System.nanoTime()
-    val r = Tables.run(localBulk)(Sort.viaTables(analysis(file)))
+    val r = Tables.run(localBulk)(Sort.viaTables(analysis(file)).at[Tables])
     println(f"  local: ${r._1}%,d departures from the same program, ${(System.nanoTime() - t0) / 1000000}%,d ms")
     r
 
   test("the plan, printed before anything runs") {
-    val traced = okay.std.Writer.tracing(Gtfs.departures(file).plus[okay.freer.Pure])([X] => (e: Tables[X]) => e.productPrefix)
-    val handled = State.handle(Tables.Heap.empty[Chunks])(Tables.via(localBulk)(traced))
-    val (plan, _) = okay.freer.!.run(okay.std.Writer.run(handled))
+    val traced = okay.std.Writer.tracing[Table[Dep], Tables, String, Tables](Gtfs.departures(file))(
+      [X] => (e: Tables[X]) => e.productPrefix)
+    // `via` takes `Tables` on the left of the row
+    val handled = State.handle(Tables.Heap.empty[Chunks])(
+      Tables.via[Table[Dep], Chunks, Writer % String](localBulk)(traced.at[Tables + Writer % String]))
+    val (plan, _) = okay.!.run(okay.std.Writer.run(handled))
     println(s"  plan: ${plan.mkString(" ")}")
     assertEquals(plan.count(_ == "Join"), 3)
   }
