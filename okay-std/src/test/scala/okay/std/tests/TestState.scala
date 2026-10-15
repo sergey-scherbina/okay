@@ -93,4 +93,11 @@ class TestState extends munit.FunSuite {
   test("Reader.ask twice in a bind") {
     assertEquals(Reader.run(5)(Reader.ask[Int].flatMap(a => Reader.ask[Int].map(_ * a))).run, 25)
   }
+
+  test("two of one effect in a row are two places: the nearer handler answers (okay-freer refused it: Distinct)") {
+    val two: Int ! State % Int + State % Int = State.get[Int].at[State % Int + State % Int]
+    val inner = State.handle[Int](10)(two)
+    val outer = State.handle[Int](0)(inner)
+    assertEquals(outer.run._2._2, 10)
+  }
 }

@@ -33,13 +33,6 @@ class TestLexical extends munit.FunSuite:
     assertEquals(run(prog), (10, (10, 10)))
   }
 
-  test("on a ROW the same two instances need Tag: without it Distinct refuses the handler") {
-    val e = compileErrors("""
-      okay.std.State.handle[Int](0)(okay.std.State.handle[Int](10)(
-        okay.std.State.get[Int].at[okay.std.State % Int + okay.std.State % Int]))""")
-    assert(e.contains("cannot be told apart in one row"), s"compiled, or refused for another reason: $e")
-  }
-
   // ------------------------------------------------ no accidental handling
 
   test("NO ACCIDENTAL HANDLING: an inner State[Int] instance does not catch the outer's get") {

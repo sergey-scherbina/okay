@@ -137,15 +137,14 @@ class TestFail extends munit.FunSuite {
     assertEquals(s, 0)
   }
 
-  test("row order does not exist: + is a union and unions commute") {
-    // `.at[Abort + F]` written to REORDER a row is noise: the two
-    // spellings are the same type, and the value passes with no
-    // coercion at all — not even a cast
+  test("row order: + is a sum of effects, either order fitted to the other by at") {
+    // on the kernel `+` is a sum, not a union: the two spellings are two
+    // types, each fitted to the other by `at` (each effect found by its
+    // path), and both run the same
     val a: String ! Abort + State % Int = pure("x")
-    val b: String ! State % Int + Abort = a
-    val c: String ! Abort + State % Int = b
-    assert(a eq c)
-    assertEquals(State.run[Int, Option[String]](0)(runOption(b)),
-      (0, Some("x")))
+    val b: String ! State % Int + Abort = a.at[State % Int + Abort]
+    val c: String ! Abort + State % Int = b.at[Abort + State % Int]
+    assertEquals(State.run[Int, Option[String]](0)(runOption(b)), (0, Some("x")))
+    assertEquals(State.run[Int, Option[String]](0)(runOption(c)), (0, Some("x")))
   }
 }
