@@ -1,10 +1,9 @@
 package okay.acme
 
-import okay.freer.*
+import okay.*
+import okay.given
 
 import okay.std.*
-import okay.given
-import okay.freer.given
 import okay.security.given
 
 import java.nio.file.{Files, Path, Paths}
@@ -61,7 +60,7 @@ object Revoke:
       case Right(a) =>
         val cfg = Acme.Config(a.email, Vector.empty, a.accountKey, a.certFile, a.dir.resolve("key.pem"),
           directory = if a.production then Acme.Directory.letsEncrypt else Acme.Directory.letsEncryptStaging)
-        val out = Resource.run[Either[String, Unit], Pure](
+        val out = Resource.run(
           okay.jetty.Jetty.http().map(http => Acme.revoke(cfg, http, a.reason))).runWith
         out match
           case Right(()) =>

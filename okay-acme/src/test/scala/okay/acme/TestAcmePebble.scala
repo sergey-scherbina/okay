@@ -1,11 +1,8 @@
 package okay.acme
 
-
-import okay.{Async}
-import okay.freer.*
-import okay.std.*
+import okay.*
 import okay.given
-import okay.freer.given
+import okay.std.*
 import okay.http.{Http, Method, Request, Response}
 import okay.jetty.Jetty
 import okay.security.given
@@ -192,7 +189,7 @@ class TestAcmePebble extends munit.FunSuite:
     assume(pebble.start(), "pebble did not start")
     val challenges = Acme.Challenges.Memory()
     try
-      val out = Resource.run[Either[String, Acme.Outcome], Pure](
+      val out = Resource.run(
         // the challenge server on the port Pebble's config validates
         Jetty.serve(pebble.challengePort)(challenges.routes)().map { _ =>
           Acme.ensure(Acme.Config(
@@ -243,7 +240,7 @@ class TestAcmePebble extends munit.FunSuite:
         dir.resolve("account.pem"), dir.resolve("cert.pem"), dir.resolve("key.pem"),
         pebble.directory, timeout = java.time.Duration.ofSeconds(60))
       val http = trusting(pebble.ca)
-      val issued = Resource.run[Either[String, Acme.Outcome], Pure](
+      val issued = Resource.run(
         Jetty.serve(pebble.challengePort)(challenges.routes)().map(_ => Acme.ensure(cfg, http, challenges))).runWith
       assert(issued.exists(_.isInstanceOf[Acme.Outcome.Issued]), issued.toString)
 
@@ -274,7 +271,7 @@ class TestAcmePebble extends munit.FunSuite:
         pebble.directory, timeout = java.time.Duration.ofSeconds(60), eab = eab)
       val http = trusting(pebble.ca)
 
-      val without = Resource.run[Either[String, Acme.Outcome], Pure](
+      val without = Resource.run(
         Jetty.serve(pebble.challengePort)(challenges.routes)().map(_ =>
           Acme.ensure(cfg(None), http, challenges))).runWith
       assert(without.isLeft, "an account was opened without the binding the CA requires")
@@ -282,7 +279,7 @@ class TestAcmePebble extends munit.FunSuite:
         without.toString)
       assert(!Files.exists(dir.resolve("cert.pem")))
 
-      val with_ = Resource.run[Either[String, Acme.Outcome], Pure](
+      val with_ = Resource.run(
         Jetty.serve(pebble.challengePort)(challenges.routes)().map(_ =>
           Acme.ensure(cfg(Some((Pebble.eabKid, Pebble.eabKey))), http, challenges))).runWith
       assert(with_.exists(_.isInstanceOf[Acme.Outcome.Issued]), with_.toString)
@@ -306,7 +303,7 @@ class TestAcmePebble extends munit.FunSuite:
         pebble.directory, renewBefore = java.time.Duration.ofSeconds(1),
         timeout = java.time.Duration.ofSeconds(60))
       val http = trusting(pebble.ca)
-      val issued = Resource.run[Either[String, Acme.Outcome], Pure](
+      val issued = Resource.run(
         Jetty.serve(pebble.challengePort)(challenges.routes)().map(_ => Acme.ensure(cfg, http, challenges))).runWith
       assert(issued.exists(_.isInstanceOf[Acme.Outcome.Issued]), issued.toString)
 
@@ -326,7 +323,7 @@ class TestAcmePebble extends munit.FunSuite:
       // a certificate that is NOT due by our countdown and whose
       // window has not opened stays put
       val far = cfg.copy(renewBefore = java.time.Duration.ofSeconds(1))
-      val again = Resource.run[Either[String, Acme.Outcome], Pure](
+      val again = Resource.run(
         Jetty.serve(pebble.challengePort)(challenges.routes)().map(_ => Acme.ensure(far, http, challenges))).runWith
       assert(again.exists(_.isInstanceOf[Acme.Outcome.Current]), s"renewed with neither rule due: $again")
     finally

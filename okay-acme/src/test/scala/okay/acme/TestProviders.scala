@@ -1,10 +1,9 @@
 package okay.acme
 
-import okay.freer.*
+import okay.*
+import okay.given
 
 import okay.std.*
-import okay.given
-import okay.freer.given
 import okay.conf.{Secret, Secrets}
 import okay.http.{Http, Response}
 import okay.jetty.Jetty
@@ -33,7 +32,7 @@ class TestProviders extends munit.FunSuite:
   /** a server that records what it was sent and answers `reply` */
   private def stub(reply: Int => (Int, String))(body: (String, () => Vector[Seen]) => Unit): Unit =
     val seen = new java.util.concurrent.ConcurrentLinkedQueue[Seen]
-    Resource.run[Unit, Pure](Jetty.serve(0)({
+    Resource.run(Jetty.serve(0)({
       case r =>
         val path = r.url
         seen.add(Seen(r.method.name, path,
@@ -48,7 +47,7 @@ class TestProviders extends munit.FunSuite:
 
   test("deSEC: a Token header, a PUT of the rrset, and the delete is the same call with no records") {
     stub(_ => (200, "[]")) { (base, seen) =>
-      Resource.run[Unit, Pure](Jetty.http().map { http =>
+      Resource.run(Jetty.http().map { http =>
         val dns = Providers.desec(http, "okay.example", Secret("t"), secrets, endpoint = base)
           .fold(m => fail(m), identity)
         assertEquals(dns.putTxt("_acme-challenge.okay.example", "proof"), Right(()))
@@ -72,7 +71,7 @@ class TestProviders extends munit.FunSuite:
   test("Cloudflare: a Bearer token, a POST to the zone, and the delete uses the id the create answered") {
     stub(n => if n == 1 then (200, """{"success":true,"result":{"id":"rec-42"}}""") else (200, """{"success":true}""")) {
       (base, seen) =>
-        Resource.run[Unit, Pure](Jetty.http().map { http =>
+        Resource.run(Jetty.http().map { http =>
           val dns = Providers.cloudflare(http, "zone-1", Secret("t"), secrets, endpoint = base)
             .fold(m => fail(m), identity)
           assertEquals(dns.putTxt("_acme-challenge.okay.example", "proof"), Right(()))
@@ -95,7 +94,7 @@ class TestProviders extends munit.FunSuite:
 
   test("Route 53: signed with the repository's own SigV4, an UPSERT then a DELETE of what went up") {
     stub(_ => (200, "<ChangeResourceRecordSetsResponse/>")) { (base, seen) =>
-      Resource.run[Unit, Pure](Jetty.http().map { http =>
+      Resource.run(Jetty.http().map { http =>
         val dns = Providers.route53(http, "Z123", "AKIA", Secret("t"), secrets, endpoint = base)
           .fold(m => fail(m), identity)
         assertEquals(dns.putTxt("_acme-challenge.okay.example", "proof"), Right(()))
@@ -122,7 +121,7 @@ class TestProviders extends munit.FunSuite:
 
   test("a provider's refusal is ITS sentence, in every dialect they use") {
     stub(_ => (403, """{"errors":[{"code":10000,"message":"Invalid access token"}]}""")) { (base, _) =>
-      Resource.run[Unit, Pure](Jetty.http().map { http =>
+      Resource.run(Jetty.http().map { http =>
         val dns = Providers.route53(http, "Z1", "AKIA", Secret("t"), secrets, endpoint = base)
           .fold(m => fail(m), identity)
         val out = dns.putTxt("_acme-challenge.okay.example", "proof")
@@ -131,7 +130,7 @@ class TestProviders extends munit.FunSuite:
       }).runWith
     }
     stub(_ => (400, """{"detail":"invalid subname"}""")) { (base, _) =>
-      Resource.run[Unit, Pure](Jetty.http().map { http =>
+      Resource.run(Jetty.http().map { http =>
         val dns = Providers.desec(http, "okay.example", Secret("t"), secrets, endpoint = base)
           .fold(m => fail(m), identity)
         assert(dns.putTxt("x", "y").left.exists(_.contains("invalid subname")))
@@ -140,7 +139,7 @@ class TestProviders extends munit.FunSuite:
   }
 
   test("a credential is a Secret: a missing one refuses before any request") {
-    Resource.run[Unit, Pure](Jetty.http().map { http =>
+    Resource.run(Jetty.http().map { http =>
       assert(Providers.desec(http, "d", Secret("absent"), Secrets.memory(Map.empty)).isLeft)
       assert(Providers.cloudflare(http, "z", Secret("absent"), Secrets.memory(Map.empty)).isLeft)
       assert(Providers.route53(http, "z", "AKIA", Secret("absent"), Secrets.memory(Map.empty)).isLeft)

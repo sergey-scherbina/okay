@@ -1,11 +1,8 @@
 package okay.acme
 
-
-import okay.{Async}
-import okay.freer.*
-import okay.std.*
+import okay.*
 import okay.given
-import okay.freer.given
+import okay.std.*
 import okay.jetty.Jetty
 import okay.security.given
 
@@ -38,7 +35,7 @@ class TestAcme extends munit.FunSuite:
     assume(ca.ready, "openssl is needed for the fake CA and the CSR")
     val challenges = Acme.Challenges.Memory()
     try
-      val result = Resource.run[Either[String, Acme.Outcome], Pure](
+      val result = Resource.run(
         for
           challengeServer <- Jetty.serve(0)(challenges.routes)()
           caServer <- Jetty.serve(0)(ca.routes(Jetty.port(challengeServer)))()
@@ -86,7 +83,7 @@ class TestAcme extends munit.FunSuite:
       // with the 30-day default this test would be asserting that a
       // certificate expiring tomorrow needs no renewal, which is false
       def run(renewBefore: java.time.Duration): Either[String, Acme.Outcome] =
-        Resource.run[Either[String, Acme.Outcome], Pure](
+        Resource.run(
           for
             challengeServer <- Jetty.serve(0)(challenges.routes)()
             caServer <- Jetty.serve(0)(ca.routes(Jetty.port(challengeServer)))()
@@ -117,7 +114,7 @@ class TestAcme extends munit.FunSuite:
     assume(ca.ready, "openssl is needed for the fake CA")
     val challenges = Acme.Challenges.Memory()
     try
-      val out = Resource.run[Either[String, Acme.Outcome], Pure](
+      val out = Resource.run(
         for
           caServer <- Jetty.serve(0)(ca.routes(0))()
           http <- Jetty.http()
@@ -175,7 +172,7 @@ class TestAcme extends munit.FunSuite:
     val challenges = Acme.Challenges.Memory()
     try
       // a certificate on disk, far from due by our own countdown
-      val issued = Resource.run[Either[String, Acme.Outcome], Pure](
+      val issued = Resource.run(
         for
           challengeServer <- Jetty.serve(0)(challenges.routes)()
           caServer <- Jetty.serve(0)(ca.routes(Jetty.port(challengeServer)))()

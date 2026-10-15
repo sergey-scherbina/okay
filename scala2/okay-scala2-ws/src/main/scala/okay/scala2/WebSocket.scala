@@ -1,9 +1,7 @@
 package okay.scala2
 
-import okay.freer.%
-import okay.freer.Row.plus
+import okay.%
 import okay.given
-import okay.freer.given
 import okay.http.{Frame, Request}
 
 /**
@@ -71,11 +69,11 @@ object WsSession {
    */
   def fold[S](init: S)(step: (S, Frame) => (S, Seq[Frame])): WsSession = {
     def tells(fs: Seq[Frame]): okay.Stage[Frame, Frame, Unit] =
-      fs.foldLeft(okay.freer.pure(()): okay.Stage[Frame, Frame, Unit])((acc, f) =>
+      fs.foldLeft(okay.pure(()): okay.Stage[Frame, Frame, Unit])((acc, f) =>
         acc.flatMap(_ => okay.Stage.tell[Frame, Frame](f)))
     val stage = okay.Stage.transduce[Frame, Frame, S](init)(
       (s, f) => { val (next, out) = step(s, f); tells(out).map(_ => next) },
-      s => okay.freer.pure(s)).map(_ => ())
+      s => okay.pure(s)).map(_ => ())
     new WsSession(new WsSessionBody(stage))
   }
 
@@ -91,10 +89,10 @@ object WsSession {
    * it sends back, in order. A session is a pure program, so this is
    * exactly what a client would receive. */
   def replay(s: WsSession, incoming: Seq[Frame]): Vector[Frame] = {
-    val client: okay.freer.![Unit, okay.std.Writer % Frame] =
-      incoming.foldLeft(okay.freer.pure(()): okay.freer.![Unit, okay.std.Writer % Frame])((acc, f) =>
+    val client: okay.![Unit, okay.std.Writer % Frame] =
+      incoming.foldLeft(okay.pure(()): okay.![Unit, okay.std.Writer % Frame])((acc, f) =>
         acc.flatMap(_ => okay.std.Writer.tell(f)))
-    okay.freer.!.run(okay.std.Writer.collect[Frame, Unit, Nothing](okay.through(client)(stage(s))))._1
+    okay.!.run(okay.std.Writer.collect[Frame, Unit, okay.std.Writer % Frame](okay.through(client)(stage(s))))._1
   }
 }
 
@@ -108,8 +106,7 @@ object WsServer {
 
   def use[A](port: Int)(routes: Request => Eff[Async, Response])(sessions: PartialFunction[Request, WsSession])
             (body: Int => Eff[Async, A]): Eff[Async, A] =
-    Async.lift(okay.std.Resource.run[A, okay.Async](
+    Async.lift(okay.std.Resource.run(
       okay.jetty.Jetty.serve(port)({ case r => Async.core(routes(r)).map(_.core) })(sessions.andThen(WsSession.stage))
-        .plus[okay.Async]
-        .flatMap(s => Async.core(body(okay.jetty.Jetty.port(s))).plus[okay.std.Resource])))
+        .flatMap(s => Async.core(body(okay.jetty.Jetty.port(s))))))
 }

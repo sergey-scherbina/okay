@@ -1,10 +1,7 @@
 package okay.acme
 
-
-import okay.{Async, CanBlock}
-import okay.freer.*
+import okay.*
 import okay.given
-import okay.freer.given
 import okay.codec.Json
 import okay.http.{Body, Http, Method, Request, Response}
 import okay.security.{Crypto, Es256}
@@ -459,8 +456,8 @@ object Acme:
 
     private def send(r: Request): Either[String, Answer] =
       try
-        val res = Async.run[Response, Pure](http.send(r)).runWith
-        val text = Async.run[String, Pure](Http.text(res)).runWith
+        val res = Async.run(http.send(r)).runWith
+        val text = Async.run(Http.text(res)).runWith
         header(res, "replay-nonce").foreach(n => nonce = Some(n))
         val parsed = if text.isEmpty then Json.JObj(Vector.empty) else Json.parse(text)
         if res.status >= 400 then Left(problem(res.status, text))
@@ -632,11 +629,11 @@ object Acme:
     catch case e: Exception => Left(s"$p could not be written: ${e.getMessage}")
 
   private def get(http: Http, url: String)(using CanBlock): Either[String, Response] =
-    try Right(Async.run[Response, Pure](http.send(Request.get(url))).runWith)
+    try Right(Async.run(http.send(Request.get(url))).runWith)
     catch case e: Throwable => Left(s"GET $url failed: ${Option(e.getMessage).getOrElse(e.toString)}")
 
   private def json(r: Response)(using CanBlock): Either[String, Json] =
-    try Right(Json.parse(Async.run[String, Pure](Http.text(r)).runWith))
+    try Right(Json.parse(Async.run(Http.text(r)).runWith))
     catch case e: Throwable => Left(s"the CA's answer is not JSON: ${Option(e.getMessage).getOrElse(e.toString)}")
 
   private def header(r: Response, name: String): Option[String] =

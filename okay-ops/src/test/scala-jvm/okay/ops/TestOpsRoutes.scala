@@ -1,10 +1,9 @@
 package okay.ops
 
-import okay.freer.*
+import okay.*
+import okay.given
 
 import okay.std.*
-import okay.given
-import okay.freer.given
 import okay.jetty.Jetty
 import okay.persist.MemoryStore
 import java.net.http.{HttpClient, HttpRequest, HttpResponse}
@@ -28,7 +27,7 @@ class TestOpsRoutes extends munit.FunSuite:
   val client = HttpClient.newHttpClient()
 
   def withServer[A](store: okay.persist.Store = MemoryStore())(f: Int => A): A =
-    Resource.run[A, Pure](
+    Resource.run(
       Jetty.serve(0)(Ops.routes(store))().map(s => f(Jetty.port(s)))).runWith
 
   def get(port: Int, path: String): HttpResponse[String] =

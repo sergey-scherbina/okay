@@ -1,10 +1,7 @@
 package okay.acme
 
-
-import okay.{Async, CanBlock}
-import okay.freer.*
+import okay.*
 import okay.std.*
-import okay.freer.given
 import okay.codec.Json
 import okay.http.{Http, Method, Request, Response}
 
@@ -154,8 +151,8 @@ final class FakeCa(dir: Path, refuse: Option[String] = None):
       if ok then Files.readString(out) + Files.readString(dir.resolve("ca.pem")) else ""
 
   private def fetch(url: String)(using CanBlock): Option[String] =
-    try Some(Resource.run[String, Pure](okay.jetty.Jetty.http().map { h =>
-      Async.run[String, Pure](h.send(Request.get(url)).flatMap(Http.text)).runWith
+    try Some(Resource.run(okay.jetty.Jetty.http().map { h =>
+      Async.run(h.send(Request.get(url)).flatMap(Http.text)).runWith
     }).runWith)
     catch case _: Throwable => None
 

@@ -1,14 +1,9 @@
 package okay.acme
 
-
-
-
-import okay.freer.{Pure}
 import okay.{Async, CanBlock}
-import okay.freer.given
 import okay.codec.Json
 import okay.conf.{Schemes, Secret, Secrets}
-import okay.http.{Body, Http, Method, Request, Response}
+import okay.http.{Body, Http, Method, Request}
 
 import java.nio.charset.StandardCharsets.UTF_8
 
@@ -46,8 +41,8 @@ object Providers:
    * is all there is */
   private def call(http: Http, r: Request, who: String)(using CanBlock): Either[String, Json] =
     try
-      val res = Async.run[Response, Pure](http.send(r)).runWith
-      val text = Async.run[String, Pure](Http.text(res)).runWith
+      val res = Async.run(http.send(r)).runWith
+      val text = Async.run(Http.text(res)).runWith
       if res.status >= 400 then Left(s"$who answered ${res.status}: ${detail(text)}")
       else Right(if text.isEmpty then Json.JObj(Vector.empty) else parse(text))
     catch case e: Throwable => Left(s"$who could not be reached: ${Option(e.getMessage).getOrElse(e.toString)}")
