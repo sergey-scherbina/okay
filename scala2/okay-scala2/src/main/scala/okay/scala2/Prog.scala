@@ -55,7 +55,7 @@ final class Prog[A] private[scala2] (private val body: ProgBody[A]) {
 /**
  * THE ROW, OUT OF THE CONSTRUCTOR. scalac 2.13 reads a class's
  * primary-constructor parameter types when it first loads the class,
- * and a type naming `okay.freer.+` — a union — made it refuse the class
+ * and a type naming okay-freer's `+` — a union — made it refuse the class
  * outright: "Unsupported Scala 3 union in bounds of type +; found in
  * object okay.Effects$package", reported at the user's `package` line
  * before any of their code. Measured 2026-09-22 by bisection, and all

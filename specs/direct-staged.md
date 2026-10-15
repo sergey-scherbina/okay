@@ -37,6 +37,10 @@ operation term itself, at the mark.
 
 ## Interface
 
+Today (2026-10-15, on-kernel): `okay.std.Handled`/`okay.std.Stager` in okay-std's Staged.scala, off okay-freer —
+`Handled` is the root's `Func` at the diagonal composed by `Control[Func]`, an effect's kind `F[_]`, a staged row
+the union of its effects' constructors. The sketch below is the original design.
+
 ```scala
 // core, Staged.scala
 object Handled:

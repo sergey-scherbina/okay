@@ -307,13 +307,27 @@ object Join extends JoinSum:
   def within[Es[_], Es3[_]](w: Within[Es, Es3]): Join[Es, Es3] { type Out[x] = Es3[x] } =
     withins.computeIfAbsent(w, ww => WithinJ(ww.asInstanceOf[Within[K, K]])).asInstanceOf[Join[Es, Es3] { type Out[x] = Es3[x] }]
 
+  private final class ContainsJ(w: Within[K, K]) extends Join[K, K]:
+    type Out[x] = Any
+    def left[R <: okay.core.Row](ps: Paths[Out, R]): Paths[K, R] = ps
+    def right[R <: okay.core.Row](ps: Paths[Out, R]): Paths[K, R] = w.paths(ps)
+  private val containers = new java.util.concurrent.ConcurrentHashMap[Within[?, ?], ContainsJ]()
+  /** `Es3` among `Es`: the program's effects — one per evidence, kept */
+  def contains[Es[_], Es3[_]](w: Within[Es3, Es]): Join[Es, Es3] { type Out[x] = Es[x] } =
+    containers.computeIfAbsent(w, ww => ContainsJ(ww.asInstanceOf[Within[K, K]])).asInstanceOf[Join[Es, Es3] { type Out[x] = Es[x] }]
+
   /** the same effects, the same tree */
   given sameGiven[Es[_]]: (Join[Es, Es] { type Out[x] = Es[x] }) = same[Es]
   /** the program's effects among the continuation's: the evidence made at compile time, the `Join` kept per evidence */
   given withinGiven[Es[_], Es3[_]](using a: Evidence.All[Es, Es3], w: Within[Es, Es3]): (Join[Es, Es3] { type Out[x] = Es3[x] }) =
     within(w)
 
-trait JoinSum:
+trait JoinSum extends JoinSumLow:
+  /** the continuation's effects among the program's (a `! Pure` continuation, or one needing fewer): the program's */
+  given containsGiven[Es[_], Es3[_]](using a: Evidence.All[Es3, Es], w: Within[Es3, Es]): (Join[Es, Es3] { type Out[x] = Es[x] }) =
+    Join.contains(w)
+
+trait JoinSumLow:
   /** else the two summed */
   given sumGiven[Es[_], Es3[_]]: (Join[Es, Es3] { type Out[x] = Both[Es, Es3, x] }) = Join.sum[Es, Es3]
 

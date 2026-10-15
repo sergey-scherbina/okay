@@ -1,5 +1,10 @@
 # lexical-instances — a handler instance is a prompt; every strategy is a primitive you can name
 
+> **On the kernel (2026-10-15).** What follows is okay-freer's design (prompts, `Shift`, `walk`, `Stacked`). The
+> platform's lexical handlers are the root's `okay.Lexical`: an installation makes a fresh `Key`, its kernel handler
+> owns the key (`Handler.at`), an instance performs at `In.At` — any handler form, the strategy the form's
+> (specs/freer-on-core.md, "Known changes"; docs/many-instances.md, route 4).
+
 ## Overview
 
 A row routes an operation to a handler by the operation's CLASS

@@ -3,7 +3,6 @@ package okay
 
 import okay.std.*
 import okay.Direct.*
-import okay.freer.Handled
 
 /**
  * The docs/tutorial.md examples that mark with the glyph, verbatim

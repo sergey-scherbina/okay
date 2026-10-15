@@ -1,7 +1,6 @@
 package okay
 
 
-import okay.freer.{Handled, Stager}
 import okay.std.*
 import scala.quoted.*
 import scala.language.implicitConversions
@@ -25,10 +24,10 @@ import scala.language.implicitConversions
  */
 object Direct:
 
-  /** Compatibility aliases for the small core-level direct support
-   * surface. The DSL itself, including all macros, lives in this
-   * optional module. */
-  type DirectCtx[F[_]] = okay.freer.DirectCtx[F]
+  /** Evidence installed only while a `direct` block is being compiled: the gate of auto-colouring (a conversion
+   * needing it exists only inside a block). A marker the macro never constructs — it rewrites every use. */
+  @scala.annotation.implicitNotFound("no DirectCtx[${F}]: auto-coloring works only INSIDE a direct block.\nWrap the code in direct[F] { ... } — or use the explicit marks (.reflect / .? / !prog),\nwhich need no capability.")
+  final class DirectCtx[F[_]] private[okay] ()
 
   /**
    * THE BLOCK'S CARRIER, as `direct` takes it: the monad of programs `A ! Es` (the root's words: a bind is
@@ -371,7 +370,7 @@ object Direct:
    * (`Func` has no `delay`): a staged block is not stack-safe on a
    * left-nested chain, and says so in its spec.
    */
-  inline def staged[Sig[+_], R](inline st: Stager[Sig, R])[A]
+  inline def staged[Sig[_], R](inline st: Stager[Sig, R])[A]
                                (inline block: DirectCtx[Handled[Sig, R, *]] ?=> A)
                                (using inline b: Binds): Handled[Sig, R, A] =
     ${ okay.macros.DirectMacros.stagedImpl[Sig, R, A]('st, 'block, 'b) }

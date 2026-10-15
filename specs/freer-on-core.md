@@ -213,6 +213,12 @@ Recorded as met; behaviour regressions are accepted where the speed is the point
   indexed tree dropped the commit and left the transaction open); a retryable `sqlState` re-runs the bracket within
   `retries`. A statement outside any transaction is not written with `Tx` (it is the driver's own). `Typed.transact`
   and `region` are unchanged; their `G` is `G[_]`, and `Async` passed as `G` is a second `Async` place now.
+- okay-direct's `Direct.DirectCtx` and `CanTry` are okay-direct's own (`okay.Direct.DirectCtx`, `okay.CanTry`), no
+  longer okay-freer's: inside a `direct` block okay-freer's words that took its `DirectCtx` (`Shift`/`Cps`/`Indexed`
+  colourings) find none, and a `try` over okay-freer's tree has no `CanTry` (its `rows` instance stays in okay-freer).
+  A `try` over programs is `Direct.tryProgram` (the kernel's `recover`), as `CanTry.programs` is.
+- okay-std's `Replayable.Safe` markers (State, Reader, Throws) and `Failing` (with its `Failing[okay.freer.Pure]`)
+  are gone: the kernel's replay has no such discipline, and no platform module asked for either.
 - okay-py's dialogue (`Fn.calling`, `ProgramOf.calling`) answers `A ! F + ForeignEval` as before, but the row no
   longer collapses: callbacks in `ForeignEval` itself give `ForeignEval + ForeignEval` (`.at[ForeignEval]` to say
   `A ! ForeignEval`), and callbacks of `pure(x)` alone name their row (`pure[X, Pure]`; okay-freer's union took
@@ -244,6 +250,21 @@ Recorded as met; behaviour regressions are accepted where the speed is the point
   dialogue door is `Wf.Dialogue` (persist's own copy gone), `Wf.Dialogue.Ask` has a fourth field, `at`.
 - okay-sql's `Tx` is okay-tx's bracket: a failure rolls back (the indexed interpreter left the transaction open),
   a retryable `sqlState` re-runs; the indexed `Idle`/`Open`/`begin`/`commit` are gone.
+- Staging (`Direct.staged`): `Handled`/`Stager` are okay-std's (`okay.std.Handled`, `okay.std.Stager`, with the
+  stagers in `okay.std.*` already), `Handled` the root's `Func` composed by `Control[Func]`; the import of
+  `okay.freer.{Handled, Stager}` goes. A staged row is the union of its effects' constructors
+  (`[X] =>> State[S, X] | Writer[W, X]`) and an effect's kind is `F[_]`; run-time behaviour unchanged.
+- Lexical handlers are the root's `okay.Lexical` (src/main/scala/Lexical.scala), a PLACE BY KEY on the kernel: an
+  installation (`Lexical.handle(h)(body)`, any root `Handler`) makes a fresh `Key`, its kernel handler says the key
+  is its own (`Handler.at`), and the instance's operation is performed at `In.At` — `X ! Pure`, fitting any program.
+  okay-std's `LexicalState` (`deep`, `tail`, `apply` = tail; `get`/`set`/`modify`/`put`) is installed so: `deep` the
+  kernel's `Deep` (state-passing), `tail` State's own `Stateful`. Gone with okay-freer's machinery: the row
+  parameter of `Inst[E, G]` (now `Inst[E]`), the `Shift` in a deep instance's row and `Lexical.Closing`/`At`
+  evidence, `Clauses`/`TailClauses` (a root `Handler` instead), the `walk` strategy and `Instances.Of`, and
+  `Lexical.Stacked` — so an instance used past its installation no longer fails to COMPILE (Stacked) or throws
+  `Instances.Survived` (walk): it raises the kernel's `IllegalStateException` ("no handler of it in force") where it
+  is performed. A deep instance needs no `Shift` in the row, so it runs on any row. Answers unchanged
+  (okay-std's `TestLexical*`, moved out of package `okay.freer`).
 
 ## Two packages, not a flag
 

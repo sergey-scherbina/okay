@@ -237,7 +237,7 @@ object Frame:
  * when okay-py alone spoke this wire; since foreign-one it is the value
  * model of every language here, so the names are `Value`, `Frame`,
  * `Handle` and `ValueCodec`. These aliases keep every caller compiling
- * unchanged, the way `okay.freer.RowLift` stayed for `okay.freer.Row`; they go a
+ * unchanged, the way okay-freer's `RowLift` stayed for its `Row`; they go a
  * release later. `Value.PyNone` is `Value.Null` the same way.
  */
 type PyValue = Value

@@ -3,7 +3,6 @@ package okay
 
 import okay.std.*
 import okay.Direct.*
-import okay.freer.Handled
 
 /**
  * specs/direct-stagers.md: `Stagers.All` over Reader + State + Writer +

@@ -4,7 +4,6 @@ import okay.std.*
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 import okay.Direct.*
-import okay.freer.{Handled, Stager}
 
 /**
  * specs/direct-staged.md, the number: the SAME block text three ways

@@ -6,25 +6,6 @@ import okay.one.Cont
 import okay.one.handler.{Deep, Guard, Recovering, Handler as OneHandler}
 
 /**
- * How a forwarded operation reports its failure to the scope that
- * forwarded it, on okay-freer's road: a decoration of the operation
- * (`guard`), which `okay-async` supplies for `Async` (`AsyncFailing`).
- *
- * On the kernel the scope needs none of it: a handler that fails an
- * operation answers its `k` with the failure (`k.failed(e)`, okay-core),
- * which raises it where the operation was, inside the scope's guard —
- * whose finalizers run as for any other error. Kept for okay-freer's
- * modules (okay-async) until they move.
- */
-trait Failing[F[+_]]:
-  def guard[X](e: F[X], onFailure: () => Unit): F[X]
-
-object Failing:
-  /** okay-freer's `Pure` has no failure channel to decorate */
-  given pure: Failing[okay.freer.Pure] with
-    def guard[X](e: Nothing, onFailure: () => Unit): Nothing = e
-
-/**
  * AN OPERATION THAT NEVER RESUMES — Koka's `final ctl`, OCaml 5's
  * `discontinue` seen from the operation's side (bracket-final,
  * 2026-09-26). `raise`, `abort`, a `None` of `Maybe`, `Chronicle`'s

@@ -10,8 +10,8 @@ import okay.core.Split
  * A program that needs the time asks for it; which time it gets is the
  * handler's decision — the system's wall clock in production
  * (`Ambient.clock`, okay-platform), a fixed instant in a test, the
- * recorded reading on a replay. `Replayable` lists the clock among the
- * effects whose re-execution IS observable, which is exactly why it must
+ * recorded reading on a replay. A clock is among the effects whose
+ * re-execution IS observable, which is exactly why it must
  * be a port: the handler that answers it is what a journal records.
  *
  * The core itself reads no clock: `System.currentTimeMillis` lives in

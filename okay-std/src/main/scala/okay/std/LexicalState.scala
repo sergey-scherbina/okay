@@ -1,46 +1,35 @@
 package okay.std
 
-import okay.freer.{!, %, +, At, Instances, Lexical, Shift, pure}
+import okay.{!, %, Handler, Lexical, Pure, pure}
 
-/** State as `Lexical` instances, every strategy (was `Lexical.State`, moved to okay-std with State) */
+/** State as `Lexical` instances (docs/many-instances.md, route 4): each installation a place by key on the kernel,
+ * every strategy one installation of a handler form */
 object LexicalState:
   /** a deep state handler's answer: state-passing */
-  type Ans[S, A, G[+_]] = S => (S, A) ! G
+  type Ans[S, A] = S => (S, A) ! Pure
 
-  def deep[S, A, G[+_]](s0: S)(body: Lexical.Inst[State % S, G] => A ! G)
-                       (using Shift[?, Any] <:< G[Any], At): (S, A) ! G =
-    Lexical.deep(new Lexical.Clauses[State % S, A, Ans[S, A, G], Lexical.Unstacked[G]]:
-      def ret(a: A): Ans[S, A, G] ! G = pure((s: S) => pure((s, a)))
-      def op[X](e: State[S, X], k: X => Ans[S, A, G] ! G): Ans[S, A, G] ! G = e match
-        case State.Get() => pure((s: S) => k(s).flatMap(f => f(s)))
-        case State.Update(g) => pure((s: S) => { val (b, s1) = g(s); k(b).flatMap(f => f(s1)) })
-    )(body).flatMap(f => f(s0))
+  /** DEEP: the kernel's `Deep`, the state passed through the answers — the rest `k`, resumable any number of times */
+  def deep[S, A, Es[_]](s0: S)(body: Lexical.Inst[State % S] => A ! Es): (S, A) ! Es =
+    Lexical.handle[State % S, [a] =>> Ans[S, a], A, Es](Handler.deep[State % S, [a] =>> Ans[S, a]](
+      [a] => (x: a) => (s: S) => pure[(S, a), Pure]((s, x)))(
+      [a, X] => (e: State[S, X], k: X => Ans[S, a] ! Pure) => e match
+        case State.Get() => pure[Ans[S, a], Pure]((s: S) => k(s).flatMap(f => f(s)))
+        case State.Update(g) => pure[Ans[S, a], Pure]((s: S) => { val (b, s1) = g(s); k(b).flatMap(f => f(s1)) })
+    ))(body).flatMap(f => f(s0).at[Es])
 
   /** the default: tail */
-  def apply[S, A, G[+_]](s0: S)(body: Lexical.Inst[State % S, G] => A ! G)(using Lexical.Closing[G], At): (S, A) ! G =
-    tail(s0)(body)
+  def apply[S, A, Es[_]](s0: S)(body: Lexical.Inst[State % S] => A ! Es): (S, A) ! Es = tail(s0)(body)
 
-  /** tail, for State */
-  def tail[S, A, G[+_]](s0: S)(body: Lexical.Inst[State % S, G] => A ! G)(using Lexical.Closing[G], At): (S, A) ! G =
-    Lexical.tail[State % S, S, A, G](s0)(new Lexical.TailClauses[State % S, S]:
-      def op[X](e: State[S, X], s: S): (S, X) = e match
-        case State.Get() => (s, s)
-        case State.Update(g) => { val (b, s1) = g(s); (s1, b) }
-    )(body)
+  /** TAIL: State's own handler (`State(s0)`, the kernel's `Stateful`), each operation answered in place — a register
+   * of the machine, so a `k` taken past it resumes with the state as it was then: across a multi-shot capture it
+   * answers as `deep` does */
+  def tail[S, A, Es[_]](s0: S)(body: Lexical.Inst[State % S] => A ! Es): (S, A) ! Es =
+    Lexical.handle(State(s0))(body)
 
-  /** walk, for State */
-  def walk[S, A, G[+_]](s0: S)(body: Lexical.Inst[State % S, Instances.Of[State % S] + G] => A ! Instances.Of[State % S] + G)
-      : (S, A) ! Instances.Of[State % S] + G =
-    Lexical.walk[State % S, S, A, G](s0)(new Lexical.TailClauses[State % S, S]:
-      def op[X](e: State[S, X], s: S): (S, X) = e match
-        case State.Get() => (s, s)
-        case State.Update(g) => { val (b, s1) = g(s); (s1, b) }
-    )(body)
-
-  extension [S, G[+_]](i: Lexical.Inst[State % S, G])
-    def get: S ! G = i.perform(State.Get[S, S]())
-    def set(s: S): S ! G = i.perform(State.Update[S, S](State.Put(s)))
+  extension [S](i: Lexical.Inst[State % S])
+    def get: S ! Pure = i.perform(State.Get[S, S]())
+    def set(s: S): S ! Pure = i.perform(State.Update[S, S](State.Put(s)))
     /** `modify` */
-    def modify(f: S => S): S ! G = i.perform(State.Update[S, S](State.Modified(f)))
+    def modify(f: S => S): S ! Pure = i.perform(State.Update[S, S](State.Modified(f)))
     /** `set` as a statement */
-    def put(s: S): Unit ! G = i.perform(State.Update[S, Unit](_ => ((), s)))
+    def put(s: S): Unit ! Pure = i.perform(State.Update[S, Unit](_ => ((), s)))

@@ -224,90 +224,71 @@ anything. A handle is a fresh object, so sharing one is deliberate.
 instances exist, and — unlike `Refs` — no cast: the handle is compared
 by reference and the operation is already typed.
 
-## Route 4: a fresh PROMPT — the instances are NESTED
+## Route 4: a fresh KEY — the instances are NESTED
 
-Each handler INSTALLATION creates a fresh prompt, and the body reaches
+Each handler INSTALLATION creates a fresh key, and the body reaches
 it through the instance value the installation hands it. This is the
 design of "Binders by day, labels by night" (Biernacki, Piróg, Polesiuk
 and Sieczkowski, POPL 2020): a lexical binder in the types, a fresh
-label at run time. `okay.freer.Lexical` is the API:
+label at run time. Unlike the routes above it is on the kernel's words,
+not okay-freer's: the root's `okay.Lexical` is the API, and okay-std's
+`LexicalState` its State:
 
 ```scala
-val lex = run(LexicalState.deep[Int, Int, Shift % ? + Pure](0) { outer =>
-  LexicalState.deep[Int, Int, Shift % ? + Pure](10) { inner => outer.get.flatMap(o => inner.get.map(i => o * 100 + i)) }
+val lex = LexicalState.deep[Int, Int, Pure](0) { outer =>
+  LexicalState.deep[Int, Int, Pure](10) { inner => outer.get.flatMap(o => inner.get.map(i => o * 100 + i)) }
     .map(_._2)
-})
+}.run
 assertEquals(lex, (0, 10), "outer answered 0, inner answered 10")
 ```
 
 Two things set it apart from the other routes. **The effect never
-enters the row**: the program is `A ! Shift % ? + G`, so there is nothing
-to split, test or misroute, and two `State[Int]` are two names. And
-**there is no accidental handling**: `outer.get` names its
-installation, so the capture passes the inner handler of the same
-effect untouched. On a row that program cannot be written at all,
-because `get` can only mean the innermost `State % Int`.
+enters the row**: an instance's operation is `X ! Pure`, so there is
+nothing to split, test or misroute, and two `State[Int]` are two names.
+And **there is no accidental handling**: `outer.get` names its
+installation, so it passes the inner handler of the same effect
+untouched. On a row that program cannot be written at all, because
+`get` can only mean the innermost `State % Int`.
 
-Any handler can be written this way from its clauses, including one
-that is not tail-resumptive:
+On the kernel an instance is a PLACE BY KEY (okay-core's `In.At`, made
+by a `Key`): the installation's handler says the key is its own
+(`Handler.at`), and the machine finds it at run time wherever the
+operation is performed — the same look-up a row's place gets, by
+identity instead of by path. So any handler form installs lexically
+(`Lexical.handle(h)(body)`, `h` any root `Handler`: `answering`,
+`state`, `deep`, `aborting`), including one that is not
+tail-resumptive:
 
 ```scala
 case Flip.Coin() => k(true).flatMap(xs => k(false).map(xs ++ _))
 ```
 
-**The strategy is yours to name, and there is a default.** Two
-strategies run the same body, because the body only sees `Inst[F, G]`:
+```scala
+val r = Lexical.handle(all) { f =>
+  for x <- f.perform(Flip.Coin()); y <- f.perform(Flip.Coin()) yield (x, y)
+}.run
+```
 
-- `Lexical.tail` answers each operation IN PLACE (evidence passing,
-  Xie et al., ICFP 2020), with the handler's state in a cell made per
-  run. A cell would be wrong in one shape, a capture from outside the
-  installation resuming its body twice, and that shape needs `Shift` in
-  the row. So on a row WITH `Shift`, `tail` is installed deep instead,
-  the state carried by the continuation, and answers what `deep` does.
-- `Lexical.deep` runs the clauses with shift0 under a `dollar` whose
-  return function is the return clause. It suits anything, including
-  clauses that call `k` twice or never. It costs about 4x a row
-  handler.
-
-**You pay for what the row can do.** The instance's type carries the
-body's whole row, `Inst[F, G]`. `deep` needs `Shift` in it.
-`tail` on a row WITHOUT `Shift` cannot be crossed by a capture, so it
-keeps its cell and needs no machine, and the program is an ordinary one:
+**The strategy is the handler's form.** `LexicalState.tail` is State's
+own handler (the kernel's `Stateful`): each operation answered in
+place, the state a register of the machine, so a capture from outside
+the installation resumed twice resumes each time from the state it saw.
+`LexicalState.deep` is a `Deep` handler passing the state through its
+answers. Both answer the same on every shape the tests try (multi-shot
+inside and across the installation, an abort out of a resumption), and
+neither needs anything in the row. `LexicalState(s0)` is tail:
 
 ```scala
 val p: (Int, Int) ! Pure = LexicalState[Int, Int, Pure](5)(s => s.get.flatMap(v => s.set(v * 3)))
 ```
 
-The guard and the `Shift` machine appear only when the row has `Shift`.
-
-**One more strategy, by name only: `walk`.** It is `Instances`, made
-lexical. The installation makes a fresh handle and walks its body the
-way a row handler does, with the state threaded through the walk: no
-cell and no `Delay` per operation. Its operations are ordinary
-`Instances(handle, e)` nodes, typed by their signature, so the row gets
-`Instances.Of[F]` once per effect however many walks there are.
-`Instances.exhausted` goes at the top. It costs 1.29x a row handler's
-bytes, where `tail` costs 1.65x.
-
-```scala
-def done[A, G[+_]](p: A ! SI + G): A ! G = Instances.exhausted[State % Int, A, G](p)
-assertEquals(!.run(done(LexicalState.walk[Int, Int, Pure](5)(s => s.get.flatMap(v => s.set(v * 3))))), (15, 15))
-```
-
-A walk sees the program's spine. An instance operation performed inside
-a `Shift` delimiter's body, such as a `reset`, a `dollar` or a
-`Layered.reify`, reaches the machine and not the walk. `exhausted` then
-throws `Instances.Survived`: it does not answer wrongly. Put `Shift.run`
-inside the walk and the walk sees those operations in order. It is not
-the default because of that rule and because `Instances.Of[F]` has to
-appear in the row.
-
-`Lexical.handle` picks by what the clauses are: `TailClauses` run tail,
-`Clauses` run deep. `LexicalState(s0)`
-is tail. `Lexical.Stacked` has deep and tail instances whose use
-outside their installation does not compile. Details and numbers are
-in specs/lexical-instances.md. A row handler stays the right choice for
-one handler of a kind.
+An instance kept past its installation and used there finds no handler
+of its key in force: the kernel raises an `IllegalStateException` where
+it is performed, never a wrong answer. (okay-freer's `Lexical.Stacked`
+refused that at compile time, its `walk` threw `Instances.Survived`;
+neither moved to the kernel.) Details are in
+specs/lexical-instances.md; okay-std's `TestLexical*` hold the examples.
+A row handler stays the right choice for one handler of a kind.
 
 ## Choosing
 
@@ -321,10 +302,7 @@ lexically. The row handler is what you use when there is one of a kind.
 | named when you write the type, or an ALREADY WRITTEN program must run twice | any | `Tag` | a compile-time key | `Tag.Of[K, F]` each | a wrapper per operation, no cast |
 | made at run time, as cells | state | `Refs` | the cell | `Refs` | a heap and one cast |
 | made at run time from data, one handler choosing by handle | any | `Instances` | the handle | `Instances.Of[F]` | a wrapper per operation, no cast |
-| installed where they are used, nested, or reached past a handler of the same effect | any | `LexicalState(s0)` / `Lexical.handle` (tail) | the installation | nothing | 1.65x |
-| the same, cheapest, on the spine only | tail-resumptive | `Lexical.walk` (by name) | a fresh `Instances` handle | `Instances.Of[F]` | 1.29x |
-| the same, with multi-shot, dropped or stored `k` | any | `Lexical.deep` (by name) | a prompt | nothing (needs `Shift`) | ~7x bytes, ~4x time |
-| any of those, and use outside the installation must not compile | deep or tail | `Lexical.Stacked` | a prompt keyed in the row | `Shift % i.p.type` | as unstacked |
+| installed where they are used, nested, or reached past a handler of the same effect — any `k` | any | `LexicalState(s0)` / `Lexical.handle(h)` | the installation (a key, `In.At`) | nothing | the handler form's, found by key |
 
 The compiler enforces the first row's condition: `Distinct` refuses a row
 whose members cannot be told apart, and its message names these routes.

@@ -1,9 +1,6 @@
 package okay
 
 
-import okay.freer.*
-
-
 import scala.util.hashing.MurmurHash3
 
 /**

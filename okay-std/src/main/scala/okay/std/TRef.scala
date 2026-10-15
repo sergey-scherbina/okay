@@ -279,10 +279,9 @@ object TMap {
  * facade cost here, honest or otherwise — synchronous IS the honest
  * shape for a single-cell structure.
  *
- * Named `TDict`, not `TMap`: `okay.freer.TMap[K[_]]` already exists (the
- * STM engine's own heterogeneous write-set bookkeeping, keyed by a
- * type CONSTRUCTOR, not a plain key type) — a different shape this
- * name would collide with.
+ * Named `TDict`, not `TMap`: `TMap` was the name of okay-freer's STM
+ * write-set bookkeeping (heterogeneous, keyed by a type CONSTRUCTOR,
+ * not a plain key type) — a different shape, kept apart by name.
  */
 final class TDict[K, A](init: Map[K, A] = Map.empty[K, A]) {
   private val ref = TRef(init)

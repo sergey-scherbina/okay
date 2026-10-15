@@ -3,7 +3,6 @@ package okay
 
 import okay.std.*
 import okay.Direct.*
-import okay.freer.{Handled, Stager}
 
 /**
  * specs/direct-staged.md: a `direct` block whose operations are

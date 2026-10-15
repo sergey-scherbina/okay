@@ -2,9 +2,6 @@ package okay
 package macros
 
 
-import okay.freer.CanTry
-
-
 import scala.quoted.*
 import scala.annotation.tailrec
 

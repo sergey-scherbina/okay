@@ -1,7 +1,6 @@
 package okay.std
 
 import okay.{!, %, Effect, Handler, effect}
-import okay.freer.Replayable
 import okay.core.Split
 import okay.one.handler.{Answering, Handler as OneHandler}
 
@@ -13,7 +12,7 @@ import okay.one.handler.{Answering, Handler as OneHandler}
  * places, the nearer one answering — no misroute to forbid (okay-freer's `Distinct` and `TestRowIdentity` were the
  * union's).
  */
-enum Reader[R, +A] extends Replayable.Safe derives Effect {
+enum Reader[R, +A] derives Effect {
   /** read the environment */
   case Ask() extends Reader[R, R]
 

@@ -14,8 +14,8 @@ import org.springframework.web.reactive.result.method.annotation.ResponseBodyRes
  * WebFlux does NOT consult `ReactiveAdapterRegistry.getSharedInstance`:
  * `WebFluxConfigurationSupport` makes a registry BEAN of its own, and
  * a program registered only on the shared one reaches Jackson, which
- * tries to serialise the program (measured: "No serializer found for
- * class okay.freer.Free\$Bind"). So the registrar is a `BeanPostProcessor`
+ * tries to serialise the program (measured on okay-freer's tree: "No
+ * serializer found for class Free\$Bind", its bind node). So the registrar is a `BeanPostProcessor`
  * that teaches every registry bean as it is created — and the shared
  * instance too, for whoever asks it directly.
  */

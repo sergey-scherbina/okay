@@ -1,18 +1,18 @@
 package okay.std
 
-import okay.freer.{%, +, Handled, Stager}
+import okay.%
+import okay.std.Stager.{Acc, Answer}
 
-import okay.freer.Stager.{Acc, Answer}
-
-/** the stagers of okay-std's effects (were `Stager.StateWriter`, `Stager.All`) */
+/** the stagers of okay-std's effects (were `Stager.StateWriter`, `Stager.All`); a row is the union of its effects'
+ * constructors (Staged.scala's `Stager`) */
 object Stagers:
-  /** the canonical stage: `State % S + Writer % W`, the row every
+  /** the canonical stage: State and Writer, the row every
    * fusion number in this repository was taken on. A user's row is an
    * object of this shape — the arms are the handler's, one per
    * constructor, with the accumulator threaded as a value (never a
    * cell: a captured continuation must be re-runnable). */
-  final class StateWriter[S, W, A] extends Stager[State % S + Writer % W, Answer[S, W, A]]:
-    type Row = State % S + Writer % W
+  final class StateWriter[S, W, A] extends Stager[[X] =>> State[S, X] | Writer[W, X], Answer[S, W, A]]:
+    type Row = [X] =>> State[S, X] | Writer[W, X]
     type R = Answer[S, W, A]
 
     inline def stage[X](inline op: Row[X]): Handled[Row, R, X] =
@@ -35,8 +35,8 @@ object Stagers:
    * are in the match and never chosen. Reader + State + Writer +
    * Throws is the whole of what a direct block is written over when
    * it is not Async — Async is a suspension, not an arm. */
-  final class All[E, S, W, Err, A] extends Stager[Reader % E + State % S + Writer % W + Throws % Err, All.Answer[E, S, W, Err, A]]:
-    type Row = Reader % E + State % S + Writer % W + Throws % Err
+  final class All[E, S, W, Err, A] extends Stager[[X] =>> Reader[E, X] | State[S, X] | Writer[W, X] | Throws[Err, X], All.Answer[E, S, W, Err, A]]:
+    type Row = [X] =>> Reader[E, X] | State[S, X] | Writer[W, X] | Throws[Err, X]
     type R = All.Answer[E, S, W, Err, A]
 
     inline def stage[X](inline op: Row[X]): Handled[Row, R, X] =

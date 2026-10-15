@@ -3,7 +3,7 @@ package okay
 /**
  * OKAY-FREER'S WORDS ON THE KERNEL'S PROGRAM (specs/freer-on-core-howto.md): the names a module on the classic
  * road wrote — `!.run`, `!.tailcall`, `!.widen`, `p.plus[G]`, `Row.at`, `Row.union`, `Free.delay` — as wrappers
- * over the root's words, so a module moves by its imports (`okay.freer.X` becomes `okay.X`) and keeps its
+ * over the root's words, so a module moves by its imports (okay-freer's `X` becomes `okay.X`) and keeps its
  * signatures. Nothing here does work of its own: each word is one of the root's.
  */
 object `!`:

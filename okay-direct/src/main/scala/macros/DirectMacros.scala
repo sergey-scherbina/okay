@@ -2,7 +2,7 @@ package okay
 package macros
 
 
-import okay.freer.{Handled, Stager}
+import okay.std.{Handled, Stager}
 import scala.quoted.*
 import scala.language.implicitConversions
 import scala.annotation.tailrec
@@ -11,7 +11,7 @@ import okay.Direct.*
 /** the macros behind `direct` and `Direct.staged` (specs/direct-macro.md; okay-macros-package) */
 @scala.annotation.publicInBinary private[okay] object DirectMacros:
 
-  def stagedImpl[Sig[+_] : Type, R: Type, A: Type](st: Expr[Stager[Sig, R]],
+  def stagedImpl[Sig[_] : Type, R: Type, A: Type](st: Expr[Stager[Sig, R]],
                                                                  block: Expr[DirectCtx[Handled[Sig, R, *]] ?=> A],
                                                                  b: Expr[Binds])
                                                                 (using Quotes): Expr[Handled[Sig, R, A]] =

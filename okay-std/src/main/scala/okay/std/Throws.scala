@@ -1,7 +1,6 @@
 package okay.std
 
 import okay.{!, %, Effect, Handler, Within, effect, pure}
-import okay.freer.Replayable
 import okay.core.Split
 
 
@@ -29,7 +28,7 @@ import scala.annotation.implicitNotFound
  * going to its own handler — no misroute to forbid (okay-freer's
  * `Distinct` and `TestRowIdentity` were the union's).
  */
-case class Throws[E, +A](e: E) extends Final, Replayable.Safe derives Effect
+case class Throws[E, +A](e: E) extends Final derives Effect
 
 object Throws:
   /** the handler as a value: `p.handle(Throws.either)` answers `Either[E, A]` — a raise ENDS the body, its
@@ -206,7 +205,7 @@ object throws {
    * reads plausibly — a value that cannot throw has nothing to unwrap
    * — but `throws` is COVARIANT in `E`, so the typer solves `E` to
    * its upper bound. The refusal message for a GENUINE receiver said
-   * it outright: `okay.?[A, okay.freer.Unsafe](y)` for a `String throws
+   * it outright: `okay.?[A, Unsafe](y)` for a `String throws
    * Safe`. `E` is `Unsafe` for a converted receiver too, so no
    * condition on `E` can tell the two apart.
    *

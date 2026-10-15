@@ -34,7 +34,7 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
   lazy val rowOf: Option[TypeRepr] =
     programOf(TypeRepr.of[F].appliedTo(TypeRepr.of[scala.Unit])).map(_._1)
 
-  lazy val stagedType: Symbol = Symbol.requiredModule("okay.freer.Handled").typeMember("Handled")
+  lazy val stagedType: Symbol = Symbol.requiredModule("okay.std.Handled").typeMember("Handled")
 
   /** the block's row when its F is `Handled[Row, R, *]` (specs/direct-
    * staged.md) — opaque, so it does not dealias to the function it is.

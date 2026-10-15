@@ -1,9 +1,6 @@
 package okay.tsbrowser
 
-
-import okay.freer.*
-
-
+import okay.{!, %, Async}
 import okay.std.*
 import scala.scalajs.js
 import scala.scalajs.concurrent.JSExecutionContext.Implicits.queue
