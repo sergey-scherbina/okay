@@ -1,7 +1,6 @@
 package okay.foreign
 
 
-import okay.freer.{given}
 
 
 import okay.std.{Reader}

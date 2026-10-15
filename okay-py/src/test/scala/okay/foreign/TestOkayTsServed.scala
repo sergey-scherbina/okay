@@ -3,7 +3,7 @@ package okay.foreign
 import java.nio.file.{Files, Path, Paths}
 
 import okay.codec.Schema
-import okay.freer.{%, +, !, pure, given}
+import okay.{%, !, pure}
 import okay.std.Writer
 
 /**
@@ -103,7 +103,7 @@ class TestOkayTsAudited extends okay.testkit.Munit.Diagnosed {
   /** the audit: a callback whose program tells the trail, and refuses — a condition the far side catches */
   private val transfer = Foreign.Callback[Writer % String]("transfer", args =>
     summon[Shape].decode[Transfer](args.head) match
-      case Left(c) => pure[Writer % String, Either[Condition, Value]](Left(c))
+      case Left(c) => pure[Either[Condition, Value], Writer % String](Left(c))
       case Right(t) =>
         val account = t.to.trim.toUpperCase
         val masked = "****" + account.takeRight(4)

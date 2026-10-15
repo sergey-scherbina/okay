@@ -8,10 +8,9 @@ import okay.{Take}
 
 
 
-import okay.freer.{%, +}
-import okay.freer.{!, effect, pure, given}
+import okay.{%, +}
+import okay.{!, effect, pure}
 import okay.std.{Choose, Reader, Writer, runChoice}
-import okay.freer.Row.plus
 
 /**
  * ONE test body over every link (polyglot-one-wire): whatever the far side
@@ -177,11 +176,11 @@ abstract class WireConformance extends munit.FunSuite:
     type S = Take % Long + Writer % Long
     def take(left: Int): Unit ! S =
       if left == 0 then pure(())
-      else effect[S, Option[Long]](Take.Await()).flatMap {
-        case Some(x) => effect[S, Unit](Writer(x)).flatMap(_ => take(left - 1))
+      else effect[Take % Long, Option[Long]](Take.Await()).at[S].flatMap {
+        case Some(x) => Writer.tell(x).at[S].flatMap(_ => take(left - 1))
         case None => pure(())
       }
-    val consumer = okay.through(Foreign.stream[Long](address("numbers"), credit = 2)(100000L, 1L, tag))(take(4).plus[ForeignEval + Holding])
+    val consumer = okay.through(Foreign.stream[Long](address("numbers"), credit = 2)(100000L, 1L, tag))(take(4).at[Take % Long + (Writer % Long + (ForeignEval + Holding))])
     assertEquals(within(Writer.run(Foreign.releasing(consumer)).runWith(using engine.handler)._1.toList), List(0L, 1L, 2L, 3L))
     val sent = settled(tag)
     assert(sent <= 4 + 2, s"the far side sent $sent chunks for a consumer that took four at a credit of two")

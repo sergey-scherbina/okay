@@ -1,10 +1,8 @@
 package okay.foreign
 
-import okay.freer.{+}
-import okay.freer.{/>>}
-import okay.freer.{!, effect, pure, Cps}
+import okay.{+, !, effect, pure}
+import okay.freer.{/>>, Cps}
 import okay.codec.Codecs
-import okay.freer.Row.plus
 import okay.codec.Schema
 import Value.*
 
@@ -350,7 +348,7 @@ object Foreign {
 
   /**
    * A Python PROGRAM-AS-DATA (remote-foreign, specs/remote-foreign.md): the
-   * function returns `okay.done(v)` or `okay.freer.perform(name, ...).then(f)`,
+   * function returns `okay.done(v)` or `okay.perform(name, ...).then(f)`,
    * each name a callback of `cbs`. The far side keeps every continuation
    * of the run by id, so a handler that resumes twice (`Choice`) continues
    * the same pure Python function twice — multi-shot across a process. The
@@ -361,9 +359,9 @@ object Foreign {
   private val runIds = java.util.concurrent.atomic.AtomicLong()
 
   final class ProgramOf[Out: Schema](address: String)(using shape: Shape):
-    def calling[F[+_]](cbs: Callbacks[F]): Starting[F] = Starting(cbs)
+    def calling[F[_]](cbs: Callbacks[F]): Starting[F] = Starting(cbs)
 
-    final class Starting[F[+_]](cbs: Callbacks[F]):
+    final class Starting[F[_]](cbs: Callbacks[F]):
       def apply(): PyRun[F, Out] = PyRun(runIds.incrementAndGet(), address, Vector.empty, cbs)
       def apply[A: ToPy](a: A): PyRun[F, Out] = PyRun(runIds.incrementAndGet(), address, Vector(ToPy(a)), cbs)
       def apply[A: ToPy, B: ToPy](a: A, b: B): PyRun[F, Out] =
@@ -371,23 +369,23 @@ object Foreign {
 
   /** one run of a program-as-data: the okay program that walks it, and
    * the release of the continuations the far side keeps for it */
-  final class PyRun[F[+_], Out: Schema](val id: Long, address: String, args: Vector[Value], cbs: Callbacks[F])(using shape: Shape):
+  final class PyRun[F[_], Out: Schema](val id: Long, address: String, args: Vector[Value], cbs: Callbacks[F])(using shape: Shape):
     type R = F + ForeignEval
 
     /** walk the far program node by node; each named operation is a
      * callback of `cbs`, run under the caller's handlers */
     def program: Either[Condition, Out] ! R =
       def step(e: Either[Condition, PyNode]): Either[Condition, Out] ! R = e match
-        case Left(c) => pure[R, Either[Condition, Out]](Left(c))
-        case Right(PyNode.Done(v)) => pure[R, Either[Condition, Out]](shape.decode[Out](v))
+        case Left(c) => pure[Either[Condition, Out], R](Left(c))
+        case Right(PyNode.Done(v)) => pure[Either[Condition, Out], R](shape.decode[Out](v))
         case Right(PyNode.Perform(name, as, k, _)) => cbs.get(name) match
-          case None => pure[R, Either[Condition, Out]](Left(Condition("NoCallback",
+          case None => pure[Either[Condition, Out], R](Left(Condition("NoCallback",
             s"'$name' is not among this program's callbacks (${cbs.names.mkString(", ")})")))
-          case Some(cb) => cb.run(as).plus[ForeignEval].flatMap {
-            case Left(c) => pure[R, Either[Condition, Out]](Left(c))
-            case Right(a) => effect[R, Either[Condition, PyNode]](ForeignEval.Continue(id, k, Right(a))).flatMap(step)
+          case Some(cb) => cb.run(as).at[R].flatMap {
+            case Left(c) => pure[Either[Condition, Out], R](Left(c))
+            case Right(a) => effect[ForeignEval, Either[Condition, PyNode]](ForeignEval.Continue(id, k, Right(a))).at[R].flatMap(step)
           }
-      effect[R, Either[Condition, PyNode]](ForeignEval.Program(id, address, args, cbs.names)).flatMap(step)
+      effect[ForeignEval, Either[Condition, PyNode]](ForeignEval.Program(id, address, args, cbs.names)).at[R].flatMap(step)
 
     /** drop every continuation the far side keeps for this run */
     def forget: Unit ! ForeignEval = effect[ForeignEval, Unit](ForeignEval.Forget(id))
@@ -492,25 +490,25 @@ object Foreign {
 
   /** the callbacks one call offers, all in one row `F` (a union row for
    * several effects: callbacks are programs, and a program has one row) */
-  def callbacks[F[+_]](cbs: Callback[F]*): Callbacks[F] = Callbacks(cbs.toVector)
+  def callbacks[F[_]](cbs: Callback[F]*): Callbacks[F] = Callbacks(cbs.toVector)
 
   final class CallbackOf[Arg: Schema, Res: Schema](name: String)(using shape: Shape):
-    def apply[F[+_]](f: Arg => Res ! F): Callback[F] = Callback(name, args =>
+    def apply[F[_]](f: Arg => Res ! F): Callback[F] = Callback(name, args =>
       val in = args match
         case Vector(one) => shape.decode[Arg](one)
         case many => shape.decode[Arg](Value.Arr(many))
       in match
-        case Left(c) => pure[F, Either[Condition, Value]](Left(c))
+        case Left(c) => pure[Either[Condition, Value], F](Left(c))
         case Right(i) => f(i).map(o => Right(shape.encode(o))),
       Some((summon[Schema[Arg]], summon[Schema[Res]])))
 
   /** `types`: the argument's and the answer's Schemas, when the callback was
    * made by `callback[Arg, Res]` — what `Ts.ops` writes a TypeScript
    * signature from (typescript-types T12) */
-  final class Callback[F[+_]](val name: String, val run: Vector[Value] => Either[Condition, Value] ! F,
+  final class Callback[F[_]](val name: String, val run: Vector[Value] => Either[Condition, Value] ! F,
                               val types: Option[(Schema[?], Schema[?])] = None)
 
-  final class Callbacks[F[+_]](val all: Vector[Callback[F]]):
+  final class Callbacks[F[_]](val all: Vector[Callback[F]]):
     def names: Vector[String] = all.map(_.name)
     def get(name: String): Option[Callback[F]] = all.find(_.name == name)
 
@@ -530,9 +528,9 @@ object Foreign {
         .map(_.flatMap(shape.decode[Out](_)))
 
     /** this function, offered `cbs` to call back into (foreign-callbacks) */
-    def calling[F[+_]](cbs: Callbacks[F]): Calling[F] = Calling(cbs)
+    def calling[F[_]](cbs: Callbacks[F]): Calling[F] = Calling(cbs)
 
-    final class Calling[F[+_]](cbs: Callbacks[F]):
+    final class Calling[F[_]](cbs: Callbacks[F]):
       def apply(): Either[Condition, Out] ! F + ForeignEval = dialogue(Vector.empty)
       def apply[A: ToPy](a: A): Either[Condition, Out] ! F + ForeignEval =
         dialogue(Vector(ToPy(a)))
@@ -553,13 +551,13 @@ object Foreign {
         type R = F + ForeignEval
         val run = runIds.incrementAndGet()
         def go(node: Either[Condition, PyNode]): Either[Condition, Out] ! R = node match
-          case Left(c) => pure[R, Either[Condition, Out]](Left(c))
-          case Right(PyNode.Done(v)) => pure[R, Either[Condition, Out]](shape.decode[Out](v))
+          case Left(c) => pure[Either[Condition, Out], R](Left(c))
+          case Right(PyNode.Done(v)) => pure[Either[Condition, Out], R](shape.decode[Out](v))
           case Right(PyNode.Perform(name, as, k, _)) =>
             val answered: Either[Condition, Value] ! R = cbs.get(name) match
-              case Some(cb) => cb.run(as).plus[ForeignEval]
-              case None => pure[R, Either[Condition, Value]](Left(Condition("NoCallback",
+              case Some(cb) => cb.run(as).at[R]
+              case None => pure[Either[Condition, Value], R](Left(Condition("NoCallback",
                 s"'$name' is not among this call's callbacks (${cbs.names.mkString(", ")})")))
-            answered.flatMap(a => effect[R, Either[Condition, PyNode]](ForeignEval.Continue(run, k, a))).flatMap(go)
-        effect[R, Either[Condition, PyNode]](ForeignEval.Program(run, address, args, cbs.names, direct = true)).flatMap(go)
+            answered.flatMap(a => effect[ForeignEval, Either[Condition, PyNode]](ForeignEval.Continue(run, k, a)).at[R]).flatMap(go)
+        effect[ForeignEval, Either[Condition, PyNode]](ForeignEval.Program(run, address, args, cbs.names, direct = true)).at[R].flatMap(go)
 }

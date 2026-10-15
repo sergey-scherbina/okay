@@ -3,10 +3,10 @@ package okay.foreign
 
 
 
-import okay.freer.{%, +}
-import okay.freer.{!, given}
+import okay.{%, +}
+import okay.{!}
 import okay.std.{Writer}
-import okay.freer.Row.plus
+import okay.Row.plus
 
 object TestPyStream:
   val m = Py.module("streamy", """
@@ -48,7 +48,7 @@ class TestPyStream extends munit.FunSuite {
   override def afterAll(): Unit = if TestPy.python.nonEmpty then w.close()
 
   private def numbers(n: Int): Unit ! Writer % Long + PyEval =
-    (1L to n.toLong).foldLeft(okay.freer.pure[Writer % Long, Unit](()))((p, x) => p.flatMap(_ => Writer.tell(x))).plus[PyEval]
+    (1L to n.toLong).foldLeft(okay.pure[Unit, Writer % Long](()))((p, x) => p.flatMap(_ => Writer.tell(x))).plus[PyEval]
 
   private def run[O](p: Unit ! Writer % O + PyEval): List[O] = Writer.run(p).runWith._1.toList
 
@@ -70,7 +70,7 @@ class TestPyStream extends munit.FunSuite {
 
   test("a Python failure ends the stage, naming the condition") {
     val bad = Py.stage[String, Long]("streamy:evens", chunk = 2)
-    val src = okay.freer.pure[Writer % String, Unit](()).flatMap(_ => Writer.tell("x")).plus[PyEval]
+    val src = okay.pure[Unit, Writer % String](()).flatMap(_ => Writer.tell("x")).plus[PyEval]
     val e = intercept[PyStream.Failed](run(okay.through(src)(bad)))
     assertEquals(e.condition.kind, "TypeError")
   }

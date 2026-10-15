@@ -1,6 +1,6 @@
 package okay.foreign.golden
 
-import okay.freer.!
+import okay.!
 import okay.codec.Schema
 import okay.foreign.{Condition, ForeignEval, ToPy, Ts}
 import okay.foreign.TestTsOneShape.{Order, Totals}

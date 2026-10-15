@@ -3,10 +3,10 @@ package okay.foreign
 
 
 
-import okay.freer.{%, +}
-import okay.freer.{!, given}
+import okay.{%, +}
+import okay.{!}
 import okay.std.{Writer}
-import okay.freer.Row.plus
+import okay.Row.plus
 import Value.*
 
 /** the stage's shape without python3 (foreign-streaming): default gate */
@@ -26,8 +26,8 @@ class TestPyStreamShape extends munit.FunSuite {
     // += 1; tell(x) })` reads one ahead — reassociating the bind runs the
     // next lambda — which is a side effect in a lambda, not a pull.)
     val src: Unit ! Writer % Long + PyEval =
-      (1L to 10L).foldRight(okay.freer.pure[Writer % Long, Unit](()))((x, rest) =>
-        okay.freer.Free.delay(() => { produced += 1; Writer.tell(x).flatMap(_ => rest) })).plus[PyEval]
+      (1L to 10L).foldRight(okay.pure[Unit, Writer % Long](()))((x, rest) =>
+        okay.defer({ produced += 1; Writer.tell(x).flatMap(_ => rest) })).plus[PyEval]
     val out = Writer.run(okay.through(src)(Py.stage[Long, Long]("m:id", chunk = 4))).runWith(using mock)._1
     assertEquals(out.toList, (1L to 10L).toList)
     // four produced when the first chunk is sent, eight at the second,

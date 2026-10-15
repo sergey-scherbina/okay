@@ -1,7 +1,7 @@
 package okay.foreign
 
 
-import okay.freer.{effect, given}
+import okay.{effect}
 
 
 import okay.std.{Choose, Reader, runChoice}

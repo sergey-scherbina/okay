@@ -8,10 +8,9 @@ import okay.{Take}
 
 
 
-import okay.freer.{%, +}
-import okay.freer.{!, effect, pure, given}
+import okay.{%, +}
+import okay.{!, effect, pure}
 import okay.std.{Writer}
-import okay.freer.Row.plus
 
 object TestPySource:
   val m = Py.module("sources", """
@@ -62,8 +61,8 @@ class TestPySource extends munit.FunSuite:
     type S = Take % Long + Writer % Long
     def go(left: Int): Unit ! S =
       if left == 0 then pure(())
-      else effect[S, Option[Long]](Take.Await()).flatMap {
-        case Some(x) => effect[S, Unit](Writer(x)).flatMap(_ => go(left - 1))
+      else effect[Take % Long, Option[Long]](Take.Await()).at[S].flatMap {
+        case Some(x) => Writer.tell(x).at[S].flatMap(_ => go(left - 1))
         case None => pure(())
       }
     go(4)
@@ -77,14 +76,14 @@ class TestPySource extends munit.FunSuite:
 
   test("BACK-PRESSURE: a consumer that takes four asks the far side for two chunks, not four") {
     val h = Counting()
-    val out = run(okay.through(Py.source[Long]("sources:rows")(10L, 3L))(takeFour.plus[ForeignEval + Holding]), h)
+    val out = run(okay.through(Py.source[Long]("sources:rows")(10L, 3L))(takeFour.at[Take % Long + (Writer % Long + (ForeignEval + Holding))]), h)
     assertEquals(out, List(0L, 1L, 2L, 3L))
     assertEquals(h.chunks, 2, "the far side was read further than the consumer asked")
   }
 
   test("a consumer that stops early still gives the iterator back, once, when the scope ends (foreign-source-early-stop)") {
     val h = Counting()
-    val out = run(okay.through(Py.source[Long]("sources:rows")(10000L, 3L))(takeFour.plus[ForeignEval + Holding]), h)
+    val out = run(okay.through(Py.source[Long]("sources:rows")(10000L, 3L))(takeFour.at[Take % Long + (Writer % Long + (ForeignEval + Holding))]), h)
     assertEquals(out, List(0L, 1L, 2L, 3L))
     assertEquals(h.released, 1, "the stopped source kept its iterator on the far side")
     // and it is gone there: asking it for more is refused by name

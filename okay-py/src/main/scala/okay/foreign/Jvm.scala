@@ -1,6 +1,6 @@
 package okay.foreign
 
-import okay.freer.{!, Free}
+import okay.!
 import okay.codec.Schema
 import scala.jdk.CollectionConverters.*
 
@@ -27,19 +27,19 @@ import scala.jdk.CollectionConverters.*
 object Jvm:
 
   /** the callbacks, as the JVM walker asks them */
-  def calls[F[+_]](cbs: Foreign.Callbacks[F]): okay.Foreign.Calls[F] = new okay.Foreign.Calls[F]:
+  def calls[F[_]](cbs: Foreign.Callbacks[F]): okay.Foreign.Calls[F] = new okay.Foreign.Calls[F]:
     def names: Seq[String] = cbs.names
     def apply(name: String, arg: AnyRef): Option[AnyRef ! F] = cbs.get(name).map { cb =>
       value(arg) match
         case Left(what) => refused(name, what)
         case Right(v) => cb.run(Vector(v)).flatMap {
-          case Right(answer) => okay.freer.pure[F, AnyRef](jvm(answer))
+          case Right(answer) => okay.pure[AnyRef, F](jvm(answer))
           case Left(c) => refused(name, s"${c.kind}: ${c.message}")
         }
     }
 
-  private def refused[F[+_]](name: String, why: String): AnyRef ! F =
-    Free.delay(() => throw IllegalArgumentException(s"the callback '$name' refused its argument: $why"))
+  private def refused[F[_]](name: String, why: String): AnyRef ! F =
+    okay.defer(throw IllegalArgumentException(s"the callback '$name' refused its argument: $why"))
 
   /** how deep a list may nest, either way: a limit written down rather than
    * a stack the value's shape decides (Arrow C++'s kMaxNestingDepth) */
@@ -118,7 +118,7 @@ object Jvm:
    * generated module that types it `a` would accept anything, and the
    * point of generating it is that Frege's checker refuses a wrong call.
    */
-  def frege[F[+_]](module: String, cbs: Foreign.Callbacks[F]): String =
+  def frege[F[_]](module: String, cbs: Foreign.Callbacks[F]): String =
     val ops = cbs.all.map { c =>
       val typed = c.types.flatMap((a, r) => fregeType(a).zip(fregeType(r)))
       val (a, r) = typed.getOrElse(throw IllegalArgumentException(
@@ -141,7 +141,7 @@ object Jvm:
 
   /** the Clojure namespace `ns` declaring these callbacks, one `defn` each
    * making the operation `ok/perform` runs */
-  def clojure[F[+_]](ns: String, cbs: Foreign.Callbacks[F]): String =
+  def clojure[F[_]](ns: String, cbs: Foreign.Callbacks[F]): String =
     val defns = cbs.all.map { c =>
       def named(s: Schema[?]) = fregeType(s).getOrElse(s.toString)
       val doc = c.types.fold(c.name)((a, r) => s"${c.name}: ${named(a)} -> ${named(r)}")

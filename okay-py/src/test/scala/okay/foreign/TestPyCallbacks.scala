@@ -1,9 +1,8 @@
 package okay.foreign
 
-import okay.freer.{!}
+import okay.{!}
 
 import okay.std.{Reader, State}
-import okay.freer.given
 import okay.durable.Durable
 
 object TestPyCallbacks:
@@ -69,7 +68,7 @@ class TestPyCallbacks extends okay.testkit.Munit.Diagnosed {
 
   test("a callback that calls Python again, on the same worker, is answered") {
     val via = Py.callback[Long, Long]("via_python")(x => Py.fn[Long]("okaycb:square")(x).map(_.getOrElse(-1L)))
-    val prog: Either[Condition, Long] ! PyEval = Py.fn[Long]("okaycb:nested").calling(Py.callbacks(via))(7L)
+    val prog: Either[Condition, Long] ! PyEval = Py.fn[Long]("okaycb:nested").calling(Py.callbacks(via))(7L).at[PyEval]
     assertEquals(prog.runWith, Right(50L))
   }
 
@@ -90,7 +89,7 @@ class TestPyCallbacks extends okay.testkit.Munit.Diagnosed {
     val pool = PyWorkers.start(2, TestPy.python.get, Map("PYTHONPATH" -> dir.toString))
     try
       val via = Py.callback[Long, Long]("via_python")(x => Py.fn[Long]("okaycb:square")(x).map(_.getOrElse(-1L)))
-      val nested: Either[Condition, Long] ! PyEval = Py.fn[Long]("okaycb:nested").calling(Py.callbacks(via))(7L)
+      val nested: Either[Condition, Long] ! PyEval = Py.fn[Long]("okaycb:nested").calling(Py.callbacks(via))(7L).at[PyEval]
       assertEquals(nested.runWith(using pool.handler), Right(50L))
       val counted = State.handle(0)(Py.fn[Long]("okaycb:twice").calling(Py.callbacks(inc))(5L))
       assertEquals(counted.runWith(using pool.handler), (2, Right(12L)))

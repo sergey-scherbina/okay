@@ -201,6 +201,17 @@ Recorded as met; behaviour regressions are accepted where the speed is the point
 - `Gen`'s `zip` steps both sides when the zipped program runs, not when `zip` is called.
 - `Once.memo` calls its step twice an operation (the kernel's `Stateful` asks `value` and `next` apart): pure, so the
   same.
+- okay-sql's `Tx` (the indexed tree `Idle -> Open -> Idle`, `TxOp`, `Conn[S]`) is okay-tx's brackets over the
+  driver: `Tx.atomic` holds its body, a statement reads the bracket's connection, `Tx.interpret(db)` runs them, in
+  the kernel's words (`Eff`, rows), since okay-tx's effect names its outer row. A failure inside now ROLLS BACK (the
+  indexed tree dropped the commit and left the transaction open); a retryable `sqlState` re-runs the bracket within
+  `retries`. A statement outside any transaction is not written with `Tx` (it is the driver's own). `Typed.transact`
+  and `region` are unchanged; their `G` is `G[_]`, and `Async` passed as `G` is a second `Async` place now.
+- okay-py's dialogue (`Fn.calling`, `ProgramOf.calling`) answers `A ! F + ForeignEval` as before, but the row no
+  longer collapses: callbacks in `ForeignEval` itself give `ForeignEval + ForeignEval` (`.at[ForeignEval]` to say
+  `A ! ForeignEval`), and callbacks of `pure(x)` alone name their row (`pure[X, Pure]`; okay-freer's union took
+  `Nothing + ForeignEval` as `ForeignEval`). `Foreign.releasing` is a kernel `Stateful` handler of `Holding` (was
+  `HandleFrames.stateRun`); `Callback`, `Callbacks`, `Jvm.calls` take `F[_]`.
 
 ## Two packages, not a flag
 

@@ -1,7 +1,7 @@
 package okay.foreign
 
 
-import okay.freer.{effect, given}
+import okay.{effect}
 
 
 import okay.std.{Choose, runChoice}
@@ -13,8 +13,8 @@ object Reliable:
     import okay
 
     def pairs():
-        return okay.freer.perform("choose", [1, 2]).then(lambda x:
-               okay.freer.perform("choose", [10, 20]).then(lambda y:
+        return okay.perform("choose", [1, 2]).then(lambda x:
+               okay.perform("choose", [10, 20]).then(lambda y:
                okay.done(x + y)))
 
     def slow():
@@ -27,8 +27,8 @@ object Reliable:
     # NOT a pure function of its answers: its second operation is named
     # after the process, so a replay on a fresh process meets another name
     def drifty():
-        return okay.freer.perform("choose", [1, 2]).then(lambda x:
-               okay.freer.perform("step%d" % os.getpid(), x).then(lambda y: okay.done(y)))
+        return okay.perform("choose", [1, 2]).then(lambda x:
+               okay.perform("step%d" % os.getpid(), x).then(lambda y: okay.done(y)))
 
     class Counter:
         def __init__(self): self.n = 0
@@ -103,7 +103,7 @@ class TestSupervised extends munit.FunSuite:
     val choose = Foreign.callback[Vector[Long], Long]("choose")(xs => effect[Choose, Long](Choose(xs)))
     val anyStep = (name: String) => Foreign.callback[Long, Long](name) { x =>
       if !crashed then { crashed = true; crash }
-      okay.freer.pure[Choose, Long](x)
+      okay.pure[Long, Choose](x)
     }
     val drifty = Foreign.program[Long]("rel:drifty")
     // the operation's name carries the FIRST process's pid; offer it
@@ -117,7 +117,7 @@ class TestSupervised extends munit.FunSuite:
   test("a direct-style call caught mid-ask answers WorkerDied: its far-side frame is gone") {
     val w = ForeignWorker.supervised(fresh())
     given okay.Answers[ForeignEval] = w.handler
-    val priceOf = Foreign.callback[String, Double]("price_of") { _ => crash; okay.freer.Free.pure(4.0) }
+    val priceOf = Foreign.callback[String, Double]("price_of") { _ => crash; okay.pure[Double, okay.Pure](4.0) }
     val got = Foreign.fn[Double]("rel:quote").calling(Foreign.callbacks(priceOf))("tea").runWith
     assert(got.left.exists(_.kind == "WorkerDied"), got.toString)
     assertEquals(Foreign.fn[Long]("rel:fast")(5L).runWith, Right(10L))

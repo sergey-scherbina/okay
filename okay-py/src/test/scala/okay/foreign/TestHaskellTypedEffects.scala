@@ -1,7 +1,6 @@
 package okay.foreign
 
 import java.nio.file.{Files, Path}
-import okay.freer.{given}
 import okay.std.{Reader}
 object TestHaskellTypedEffects:
   /** the effect a Haskell program may perform, written ONCE, here, with its types */
