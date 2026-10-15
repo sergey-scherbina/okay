@@ -9,7 +9,7 @@ import java.util.Base64
 import javax.crypto.Cipher
 import javax.crypto.spec.{OAEPParameterSpec, PSource}
 import java.security.spec.MGF1ParameterSpec
-import okay.freer.*
+import okay.*
 import okay.codec.{Json, Schema}
 import okay.codec.Json.*
 import okay.conf.{Secret, Secrets}

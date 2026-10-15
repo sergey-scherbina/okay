@@ -10,7 +10,7 @@ import java.security.spec.{ECGenParameterSpec, ECPrivateKeySpec, ECPublicKeySpec
 import java.util.Base64
 import javax.crypto.Cipher
 import javax.crypto.spec.{OAEPParameterSpec, PSource}
-import okay.freer.*
+import okay.*
 import okay.chain.Network
 import okay.codec.Json
 import okay.codec.Json.*

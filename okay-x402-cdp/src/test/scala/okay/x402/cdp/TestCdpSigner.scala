@@ -7,7 +7,7 @@ import java.nio.charset.StandardCharsets.UTF_8
 import java.security.{KeyPair, KeyPairGenerator, PublicKey, Signature}
 import java.security.spec.ECGenParameterSpec
 import java.util.Base64
-import okay.freer.*
+import okay.*
 import okay.chain.Network
 import okay.codec.Json
 import okay.codec.Json.*
