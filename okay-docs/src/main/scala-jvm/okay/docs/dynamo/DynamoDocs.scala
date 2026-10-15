@@ -2,11 +2,10 @@ package okay.docs.dynamo
 
 import okay.{Async, async, ChunkBuf, Source}
 
-import okay.freer.{+, %}
-import okay.freer.{!, effect}
+import okay.{+, %}
+import okay.{!, effect}
 import okay.std.{Chunk, Writer}
 import okay.given
-import okay.freer.given
 import okay.codec.{Codecs, Json, Schema}
 import okay.docs.{Cond, Consistency, Docs, PutResult}
 import okay.blob.SigV4
@@ -69,8 +68,8 @@ final class DynamoDocs[A](http: Http, endpoint: String, region: String, creds: S
     val req = Request(Method.Post, s"$endpoint/",
       Seq("x-amz-target" -> target, "content-type" -> contentType) ++ auth,
       Body.Bytes(ArraySeq.unsafeWrapArray(payload)))
-    val (status, text) = !.run(Async.run[(Int, String), okay.freer.Pure](
-      http.send(req).flatMap(r => Http.text(r).map(t => (r.status, t)))))
+    val (status, text) = Async.run(
+      http.send(req).flatMap(r => Http.text(r).map(t => (r.status, t)))).run
     val json = Json.parse(text)
     if status == 200 then Right(json)
     else
@@ -172,7 +171,7 @@ final class DynamoDocs[A](http: Http, endpoint: String, region: String, creds: S
     if !indexes.contains(field) then
       throw IllegalArgumentException(
         s"field $field is not a declared index — refused (declared: ${indexes.keys.mkString(", ")})")
-    effect[F, Chunk[(String, A)]](Async.Run { () =>
+    effect[Async, Chunk[(String, A)]](Async.Run { () =>
       val r = must("Query", obj("TableName" -> JStr(table), "IndexName" -> JStr(s"ix_$field-index"),
         "KeyConditionExpression" -> JStr("#f = :v"),
         "ExpressionAttributeNames" -> obj("#f" -> JStr(s"ix_$field")),
@@ -182,7 +181,7 @@ final class DynamoDocs[A](http: Http, endpoint: String, region: String, creds: S
         case JArr(vs) => vs
         case _ => Vector.empty
       ChunkBuf.of(items.flatMap(it => for id <- jsonText(jsonField(it, "id"), "S"); v <- decode(it) yield (id, v.value)).sortBy(_._1))
-    }).flatMap(c => effect[F, Unit](Writer(c)))
+    }).at[F].flatMap(c => Writer.tell(c).at[F])
 
   /** two read modes exist: eventual (One) and consistent (Strong);
    * a Quorum request is granted Strong — named, not hidden */

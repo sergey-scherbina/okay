@@ -1,10 +1,9 @@
 package okay.docs.dynamo
 
 import okay.{Async, Source}
-import okay.freer.{!}
+import okay.{!, +, Pure}
 import okay.std.{Chunk, Resource}
 import okay.given
-import okay.freer.given
 import okay.crypto.given
 import okay.blob.SigV4
 import okay.codec.{Json, Schema}
@@ -28,7 +27,7 @@ class TestPersistenceE2E extends munit.FunSuite:
   val pgPort = sys.env.get("OKAY_PG_PORT").flatMap(_.toIntOption).getOrElse(5432)
   val dynamo = sys.env.getOrElse("OKAY_DYNAMO", "http://127.0.0.1:8000")
 
-  def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](prog))
+  def run[A](prog: A ! Async): A = Async.run(prog).run
   def connect(): PgSql ! Async = PgSql.connect(pgHost, pgPort, "okay", "okay", "okay")
 
   lazy val pgUp: Boolean = try { run(connect()).close(); true } catch { case _: Throwable => false }
@@ -47,24 +46,26 @@ class TestPersistenceE2E extends munit.FunSuite:
   test("a Pool over the pg wire lends to transactRetry: write skew between two borrowed connections, the loser re-runs, the pool is whole after") {
     assume(pgUp, s"no Postgres at $pgHost:$pgPort — the live suite skips")
     val pool = Pool[PgSql](2, 5000L)(() => connect())(_.close())
-    run(pool.borrow(db => !.widen[Long, Async, Resource](
-      db.update("drop table if exists e2e_ssi").flatMap(_ => db.update("create table e2e_ssi(k int not null)"))))): Unit
+    run(pool.borrow(db =>
+      db.update("drop table if exists e2e_ssi").flatMap(_ => db.update("create table e2e_ssi(k int not null)"))
+        .at[Resource + Async])): Unit
     var runs = 0
     // b's first run: read, then a whole transaction on ANOTHER borrowed
     // connection between b's read and b's write — the rw-conflict cycle
-    def aWrites(): Unit = run(pool.borrow(a => !.widen[Long, Async, Resource](Resource.run[Long, Async](
-      Typed.transact[Long, Async](a, Isolation.Serializable)(_ =>
-        !.widen[Long, Async, Resource](count(a, "e2e_ssi").flatMap(_ => a.update("insert into e2e_ssi values (1)")))))))): Unit
-    val r = run(pool.borrow(b => !.widen[Typed.Retried[Long], Async, Resource](
+    def aWrites(): Unit = run(pool.borrow(a => Resource.run(
+      Typed.transact[Long, Pure](a, Isolation.Serializable)(_ =>
+        count(a, "e2e_ssi").flatMap(_ => a.update("insert into e2e_ssi values (1)")).at[Resource + Async + Pure]))
+      .at[Resource + Async])): Unit
+    val r = run(pool.borrow(b =>
       Typed.transactRetry(b, Isolation.Serializable, Typed.Retry(3)) { _ =>
-        !.widen[Long, Async, Resource](count(b, "e2e_ssi").flatMap { _ =>
+        count(b, "e2e_ssi").flatMap { _ =>
           runs += 1
           if runs == 1 then aWrites()
           b.update("insert into e2e_ssi values (2)")
-        })
-      })))
+        }.at[Resource + Async]
+      }.at[Resource + Async]))
     assertEquals(r.attempts, 2, "the first run lost to a, the second landed")
-    assertEquals(run(pool.borrow(db => !.widen[Long, Async, Resource](count(db, "e2e_ssi")))), 2L)
+    assertEquals(run(pool.borrow(db => count(db, "e2e_ssi").at[Resource + Async])), 2L)
     val st = pool.stats
     assertEquals((st.busy, st.waiting, st.closed), (0, 0, false))
     assert(st.created <= 2 && st.idle == st.created, s"$st")
@@ -87,7 +88,7 @@ class TestPersistenceE2E extends munit.FunSuite:
       forward = o => docs.put(o.id, Doc(next), cond(o)).map {
         case PutResult.Applied(v) => o.copy(version = Some(v), log = o.log :+ name)
         case PutResult.Stale(cur) => o.copy(version = cur, log = o.log :+ s"$name (already)")
-      }.flatMap(o2 => if name == "ship" && halt then throw Saga.Halt() else okay.freer.pure(o2)),
+      }.flatMap(o2 => if name == "ship" && halt then throw Saga.Halt() else okay.pure(o2)),
       compensate = o => docs.put(o.id, Doc(s"un-$next"), Cond.Always).map(_ => o.copy(log = o.log :+ s"undo $name")))
     def saga() = Saga[Order](topic, "ord-1")(
       cas("reserve", "reserved")(_ => Cond.IfAbsent),

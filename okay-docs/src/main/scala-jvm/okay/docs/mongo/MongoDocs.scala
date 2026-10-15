@@ -4,8 +4,8 @@ import com.mongodb.MongoWriteException
 import com.mongodb.client.{MongoClient, MongoClients, MongoCollection}
 import com.mongodb.client.model.{Filters, FindOneAndUpdateOptions, IndexOptions, Indexes, ReturnDocument, Updates}
 import okay.{Async, async, ChunkBuf, Source}
-import okay.freer.{+, %}
-import okay.freer.{!, effect}
+import okay.{+, %}
+import okay.{!, effect}
 import okay.std.{Chunk, Writer}
 import okay.codec.Schema
 import okay.docs.{Cond, Consistency, Docs, PutResult}
@@ -98,12 +98,12 @@ final class MongoDocs[A](coll: MongoCollection[Document],
     if !indexes.contains(field) then
       throw IllegalArgumentException(
         s"field $field is not a declared index — refused (declared: ${indexes.keys.mkString(", ")})")
-    effect[F, Chunk[(String, A)]](Async.Run { () =>
+    effect[Async, Chunk[(String, A)]](Async.Run { () =>
       ChunkBuf.of(coll.find(Filters.eq(s"ix_$field", equals)).limit(max)
         .iterator().asScala
         .flatMap(d => decode(d).map(v => (d.getString("_id"), v.value)))
         .toVector.sortBy(_._1))
-    }).flatMap(c => effect[F, Unit](Writer(c)))
+    }).at[F].flatMap(c => Writer.tell(c).at[F])
 
   /** a standalone node answers Strong for everything it accepts;
    * on a replica set the deployment's read/write concerns decide,

@@ -2,8 +2,8 @@ package okay.docs
 
 import okay.{Async, async, ChunkBuf, Source}
 
-import okay.freer.{+, %}
-import okay.freer.{!, effect}
+import okay.{+, %}
+import okay.{!, effect}
 import okay.std.{Chunk, Writer}
 import okay.codec.Schema
 import okay.persist.{Ack, Topic, Typed}
@@ -97,14 +97,14 @@ final class TopicDocs[A](topic: Topic,
       throw IllegalArgumentException(
         s"field $field is not a declared index — a scan wearing a query's hat " +
           s"is refused (declared: ${indexes.keys.mkString(", ")})"))
-    effect[F, Chunk[(String, A)]](Async.Run { () =>
+    effect[Async, Chunk[(String, A)]](Async.Run { () =>
       synchronized {
         advance()
         ChunkBuf.of(state.iterator
           .collect { case (id, v) if f(v.value) == equals => (id, v.value) }
           .take(max).toVector.sortBy(_._1))
       }
-    }).flatMap(c => effect[F, Unit](Writer(c)))
+    }).at[F].flatMap(c => Writer.tell(c).at[F])
 
   /** a single fold has no weaker truth to offer */
   def grants(requested: Consistency): Consistency = Consistency.Strong

@@ -2,8 +2,8 @@ package okay.docs.cassandra
 
 import okay.{Async, async, ChunkBuf, Source}
 
-import okay.freer.{+, %}
-import okay.freer.{!, effect}
+import okay.{+, %}
+import okay.{!, effect}
 import okay.std.{Chunk, Writer}
 import okay.codec.{Codecs, Schema}
 import okay.docs.{Cond, Consistency, Docs, PutResult}
@@ -137,11 +137,11 @@ final class CassandraDocs[A](session: CqlSession, keyspace: String, table: Strin
     if !indexes.contains(field) then
       throw IllegalArgumentException(
         s"field $field is not a declared index — refused (declared: ${indexes.keys.mkString(", ")})")
-    effect[F, Chunk[(String, A)]](Async.Run { () =>
+    effect[Async, Chunk[(String, A)]](Async.Run { () =>
       val rows = exec(s"SELECT id, d, ver FROM $t WHERE ix_$field = ? LIMIT ?", equals, java.lang.Integer.valueOf(max))
         .all().asScala.toVector
       ChunkBuf.of(rows.flatMap(r => decode(r).map(v => (r.getString("id"), v.value))).sortBy(_._1))
-    }).flatMap(c => effect[F, Unit](Writer(c)))
+    }).at[F].flatMap(c => Writer.tell(c).at[F])
 
   /** the dial itself: ONE, QUORUM, ALL — each granted as asked; the
    * deployment's replication factor decides what a quorum is */

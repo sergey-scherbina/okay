@@ -2,9 +2,8 @@ package okay.rag
 
 import okay.{Answers}
 
-import okay.freer.{+}
-import okay.freer.{!}
-import okay.freer.given
+import okay.{+}
+import okay.{!}
 /** The retrieval layer: store, keyword, fusion, ingestion, and the
  * re-index that costs the edit. */
 class TestRetrieve extends munit.FunSuite {
@@ -32,20 +31,20 @@ class TestRetrieve extends munit.FunSuite {
   given Answers[Embed] = Vectors.hashingHandler()
 
   /** run a program in the embedding row */
-  def run[A](p: A ! Embed + okay.freer.Pure): A = p.runWith
+  def run[A](p: A ! Embed + okay.Pure): A = p.runWith
 
   test("ingestion: every segment embedded and stored, once") {
     val store = MemoryStore()
-    val p = run(Ingest.run[okay.freer.Pure](store, files)(_.length))
+    val p = run(Ingest.run[okay.Pure](store, files)(_.length))
     assertEquals(p.sources, 3)
     assertEquals(p.embedded, p.segments)
-    assertEquals(okay.freer.!.run(store.size), p.segments)
+    assertEquals(okay.!.run(store.size), p.segments)
   }
 
   test("vector search finds the file about the thing asked for") {
     val store = MemoryStore()
-    run(Ingest.run[okay.freer.Pure](store, files)(_.length)): Unit
-    val hits = run(Retrieve.vector[okay.freer.Pure](store).retrieve("multiply numbers", 3))
+    run(Ingest.run[okay.Pure](store, files)(_.length)): Unit
+    val hits = run(Retrieve.vector[okay.Pure](store).retrieve("multiply numbers", 3))
     assert(hits.nonEmpty)
     assert(hits.head.segment.source == "Math.scala",
       s"expected Math.scala first, got ${hits.map(h => (h.segment.source, h.score))}")
@@ -69,7 +68,7 @@ class TestRetrieve extends munit.FunSuite {
   test("symbol retrieval: exact, with no vectors in play") {
     val idx = Symbols.project(files)
     val byId = files.map(f => (f.id, f)).toMap
-    val hits = okay.freer.!.run(Retrieve.symbols(idx, byId).retrieve("hello", 3))
+    val hits = okay.!.run(Retrieve.symbols(idx, byId).retrieve("hello", 3))
     assertEquals(hits.length, 1)
     assert(hits.head.segment.text.contains("def hello"))
     assert(hits.head.segment.quotes(byId("Greeter.scala")))
@@ -89,21 +88,21 @@ class TestRetrieve extends munit.FunSuite {
   test("hybrid: keyword and symbols fused behind one retriever") {
     val segs = files.flatMap(f => Ingest.segment(f, 400)(_.length))
     val byId = files.map(f => (f.id, f)).toMap
-    val hybrid = Retrieve.hybrid[okay.freer.Pure](Seq(
+    val hybrid = Retrieve.hybrid[okay.Pure](Seq(
       Retrieve.keyword(Keyword.index(segs)),
       Retrieve.symbols(Symbols.project(files), byId)))
-    val hits = okay.freer.!.run(hybrid.retrieve("add", 5))
+    val hits = okay.!.run(hybrid.retrieve("add", 5))
     assert(hits.exists(_.segment.text.contains("def add")))
   }
 
   test("multi-query explores rewrites as nondeterminism, then fuses") {
     val segs = files.flatMap(f => Ingest.segment(f, 400)(_.length))
     val base = Retrieve.keyword(Keyword.index(segs))
-    val multi = Retrieve.multiQuery[okay.freer.Pure](base)(q => Seq(s"$q numbers", s"$q sum"))
-    val hits = okay.freer.!.run(multi.retrieve("add", 5))
+    val multi = Retrieve.multiQuery[okay.Pure](base)(q => Seq(s"$q numbers", s"$q sum"))
+    val hits = okay.!.run(multi.retrieve("add", 5))
     assert(hits.exists(_.segment.source == "Math.scala"))
     // the rewrites genuinely widened the result
-    assert(hits.length >= okay.freer.!.run(base.retrieve("add", 5)).length)
+    assert(hits.length >= okay.!.run(base.retrieve("add", 5)).length)
   }
 
   test("re-index after an edit embeds only what changed") {
@@ -114,36 +113,36 @@ class TestRetrieve extends munit.FunSuite {
     // changed" is trivially everything (the first run of this test
     // said so, which is the useful kind of failure)
     val budget = 60
-    run(Ingest.run[okay.freer.Pure](store, Seq(src), budget)(_.length)): Unit
+    run(Ingest.run[okay.Pure](store, Seq(src), budget)(_.length)): Unit
     val session = Code.parse(src.text)
-    val sizeBefore = okay.freer.!.run(store.size)
+    val sizeBefore = okay.!.run(store.size)
 
     val at = src.text.indexOf("a * b")
     val edited = src.text.patch(at, "a - b", 5)
     val (fresh, p) = run(
-      Ingest.reindex[okay.freer.Pure](store, session, src, edited,
+      Ingest.reindex[okay.Pure](store, session, src, edited,
         at, at + 5, at + 5, budget)(_.length))
 
     assertEquals(okay.parse.Cst.lexemes(fresh.tree), edited)
     assert(p.reused > 0, "nothing was reused — the whole file was re-embedded")
     assert(p.embedded < p.segments,
       s"re-embedded everything: ${p.embedded} of ${p.segments}")
-    assertEquals(okay.freer.!.run(store.size), sizeBefore)   // no duplicates left behind
+    assertEquals(okay.!.run(store.size), sizeBefore)   // no duplicates left behind
   }
 
   test("the index persists through our own codec, exactly") {
     val store = MemoryStore()
-    run(Ingest.run[okay.freer.Pure](store, files)(_.length)): Unit
+    run(Ingest.run[okay.Pure](store, files)(_.length)): Unit
     val bytes = Persist.save(store)
     val back = Persist.load(bytes)
     assert(back.isRight, back.left.getOrElse(""))
     val restored = MemoryStore()
     restored.restore(back.toOption.get)
-    assertEquals(okay.freer.!.run(restored.size), okay.freer.!.run(store.size))
+    assertEquals(okay.!.run(restored.size), okay.!.run(store.size))
     // and the restored index answers the same query the same way
     val q = Vectors.hashing()("multiply numbers")
-    assertEquals(okay.freer.!.run(restored.search(q, 3)).map(_.segment.span),
-      okay.freer.!.run(store.search(q, 3)).map(_.segment.span))
+    assertEquals(okay.!.run(restored.search(q, 3)).map(_.segment.span),
+      okay.!.run(store.search(q, 3)).map(_.segment.span))
   }
 
   test("the similarity metric is a parameter, not a constant") {
@@ -221,8 +220,8 @@ class TestRetrieve extends munit.FunSuite {
     // first by only one, and it cannot be seen if each list was cut
     // to three before fusion ever ran.
     val counted = scala.collection.mutable.Buffer[Int]()
-    def spy(inner: Retriever[okay.freer.Pure]): Retriever[okay.freer.Pure] = new:
-      def retrieve(query: String, k: Int): Seq[Scored] ! okay.freer.Pure =
+    def spy(inner: Retriever[okay.Pure]): Retriever[okay.Pure] = new:
+      def retrieve(query: String, k: Int): Seq[Scored] ! okay.Pure =
         counted += k
         inner.retrieve(query, k)
 
@@ -230,19 +229,19 @@ class TestRetrieve extends munit.FunSuite {
     val kw = Retrieve.keyword(Keyword.index(segs))
 
     counted.clear()
-    val _ = Retrieve.hybrid[okay.freer.Pure](Seq(spy(kw)), fanOut = 25)
+    val _ = Retrieve.hybrid[okay.Pure](Seq(spy(kw)), fanOut = 25)
       .retrieve("numbers", 3).runWith
     assertEquals(counted.toList, List(25),
       "the retriever was not asked for the fan-out")
 
     // and k still wins when it is the larger of the two
     counted.clear()
-    val _ = Retrieve.hybrid[okay.freer.Pure](Seq(spy(kw)), fanOut = 2)
+    val _ = Retrieve.hybrid[okay.Pure](Seq(spy(kw)), fanOut = 2)
       .retrieve("numbers", 9).runWith
     assertEquals(counted.toList, List(9), "asking for k > fanOut lost hits")
 
     // whatever the fan-out, exactly k comes back
-    val out = Retrieve.hybrid[okay.freer.Pure](Seq(kw), fanOut = 25)
+    val out = Retrieve.hybrid[okay.Pure](Seq(kw), fanOut = 25)
       .retrieve("numbers", 2).runWith
     assert(out.size <= 2, s"returned ${out.size} for k = 2")
   }
