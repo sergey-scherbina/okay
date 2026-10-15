@@ -67,14 +67,6 @@ private[java] object Rows {
    */
   def answered[X](a: Any): X = a.asInstanceOf[X]
 
-  /**
-   * THE ONE ROW CAST: a Scala program's effect placed at `Top`'s place (`Eff.from`). Java has no row to follow, so
-   * every effect of the Scala program is performed where `Top` is, and whatever answers `Top` there — a Java
-   * handler, which splits operations by their class — answers it. Right because `Top`'s operations are any values:
-   * what is performed at that place is never read at a type other than the one a test of its class gave it.
-   */
-  def at[E[_], R <: okay.core.Row](in: In[Top, R]): In[E, R] = in.asInstanceOf[In[E, R]]
-
   def named(x: Any): String = if x == null then "null" else s"${x.getClass.getName} ($x)"
 }
 

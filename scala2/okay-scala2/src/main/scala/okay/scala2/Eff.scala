@@ -2,7 +2,6 @@ package okay.scala2
 
 import okay.{!, +, %, Answers, Erased, Foreign, Run, effect}
 import okay.core.{Paths, Req}
-import okay.one.row.In
 import okay.given
 import scala.util.control.NonFatal
 
@@ -54,16 +53,6 @@ private[scala2] object Rows {
   /** the one effect every `Eff` needs: its operations are any values */
   type Top[X] = Any
 
-  /**
-   * THE ONE ROW CAST (operator rule: no cast without necessity): a core
-   * program's effect placed at `Top`'s place (`erase`). Every effect of
-   * the core program is performed where `Top` is, and whatever answers
-   * `Top` there is a handler of this facade — which splits operations by
-   * their CLASS (`moved`) — or `Eff.run`'s refusal. Right because `Top`'s
-   * operations are any values: what is performed at that place is read at
-   * another type only after a class test gave it that type.
-   */
-  private def at[E[_], R <: okay.core.Row](in: In[Top, R]): In[E, R] = in.asInstanceOf[In[E, R]]
 
   /** a core program of the row `F`, its effects at `Top`'s place */
   def erase[A, F[_]](p: A ! F)(using e: Erased[F]): A ! Top = new Run[Top, A]:

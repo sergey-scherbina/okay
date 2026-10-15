@@ -2,7 +2,7 @@ package okay.chat
 
 
 import okay.{Async, Source}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.http.{Body, Method, Request, Response}
 import okay.llm.{Anthropic, Cut, OpenAi, Transport}
@@ -39,7 +39,7 @@ object Chat {
     def go(ts: List[String]): Unit ! Writer % String + Async = ts match
       case Nil => pure(())
       case t :: rest =>
-        effect[Writer % String + Async, Unit](Writer(t + " ")).flatMap(_ => go(rest))
+        Writer.tell(t + " ").at[Writer % String + Async].flatMap(_ => go(rest))
     go(reply.split(' ').toList)
 
   /** the config rides the Secrets capability as `env:NAME`
@@ -109,10 +109,9 @@ object Chat {
           else policy(i, t))
       }
     Writer.map(guarded)(t => sse("data", Json.print(JStr(t)))).flatMap {
-      case Right(_) => effect[Writer % Chunk[Byte] + Async, Unit](
-        Writer(sse("done", "")))
-      case Left(v) => effect[Writer % Chunk[Byte] + Async, Unit](
-        Writer(sse("cut", Json.print(obj("rule" -> JStr(v.rule), "at" -> JNum(v.at))))))
+      case Right(_) => Writer.tell(sse("done", "")).at[Writer % Chunk[Byte] + Async]
+      case Left(v) => Writer.tell(
+        sse("cut", Json.print(obj("rule" -> JStr(v.rule), "at" -> JNum(v.at))))).at[Writer % Chunk[Byte] + Async]
     }
 
   // ---- request parsing -------------------------------------------------

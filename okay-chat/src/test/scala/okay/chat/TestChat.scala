@@ -1,10 +1,8 @@
 package okay.chat
 
-import okay.{Async, Source}
-import okay.freer.*
+import okay.{!, Async, Source}
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.http.{Body, Http, Method, Request, Response}
 import okay.llm.{Anthropic, Cut}
 import okay.conf.Secrets
@@ -18,7 +16,7 @@ import java.nio.charset.StandardCharsets.UTF_8
  */
 class TestChat extends munit.FunSuite {
 
-  def run[A](p: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](p))
+  def run[A](p: A ! Async): A = Async.run(p).run
 
   def text(src: Source[Chunk[Byte]]): String =
     run(Http.text(Response(200, Nil, src)))
