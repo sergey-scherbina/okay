@@ -1,11 +1,10 @@
 package okay
 
 
-import okay.freer.*
 
 
 import okay.std.*
-import okay.freer.Row.plus
+import okay.core.Split
 import scala.collection.mutable
 
 /**
@@ -95,12 +94,12 @@ final class SharedOnce:
 
   /** the `Once` operations of `a` answered from THIS store, the rest
    * of the row forwarded */
-  def runIn[A, F[+_]](a: A ! (Once + (Async + F))): A ! Async + F =
-    !.translate[A, Once, Async + F](a)([X] => (o: Once[X]) => answer(o).plus[F])
+  def runIn[A, Es[_]](a: A ! Es)(using s: Split[Es, Once], w: Within[Async, s.Rest]): A ! s.Rest =
+    a.translateInto[Once, Async]([X] => (o: Once[X]) => answer(o))
 
   /** the common case: a program whose only other effect is `Async` */
   def run[A](a: A ! Once + Async): A ! Async =
-    !.translate[A, Once, Async](a)([X] => (o: Once[X]) => answer(o))
+    a.translateInto[Once, Async]([X] => (o: Once[X]) => answer(o))
 
 object SharedOnce:
   /** a cell: the program is in flight (with everyone waiting for it),

@@ -1,13 +1,9 @@
 package okay
 
-
-import okay.freer.*
-
-
-import okay.std.*
-import okay.freer.given
+import okay.core.{Paths, Split}
+import okay.one.machine.Machine
 import scala.annotation.implicitNotFound
-import scala.annotation.tailrec
+import scala.util.control.NonFatal
 
 /**
  * Asynchrony, cross-platform (specs/cross-platform-async.md): programs
@@ -175,11 +171,6 @@ trait Scheduler:
 
 object Async {
 
-  // `Failing[Async]` belongs to Async's implicit scope even though the
-  // implementation lives in its own file.
-  export AsyncFailing.given
-
-  import !.*
   import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger, AtomicReference}
   import scala.concurrent.{Future, Promise}
 
@@ -188,16 +179,21 @@ object Async {
     effect(Await(register))
 
   /** the handler as a value: `p.handle(Async.blocking)` — each operation executed in place, an Await parked */
-  def blocking(using cb: CanBlock, w: Wait, p: Pause): Handler[Async, [A] =>> A] = new Handler[Async, [A] =>> A]:
-    def run[A, F[+_]](prog: A ! Async + F)(using A <:< Any, Distinct[Async + F], Handler.Nothing[F]): A ! F = Async.run(prog)
+  def blocking(using cb: CanBlock, w: Wait, p: Pause): Handler[Async, [A] =>> A] =
+    Handler.answering[Async]([X] => (e: Async[X]) => e match
+      case Run(f) => f()
+      case Await(reg, poll) => pollThenBlock(reg, poll).fold(e => throw e, identity))
 
-  /** handle by executing each operation in place, forwarding the
-   * effects F; an Await parks (hence the evidence) */
-  def run[A, F[+_]](prog: A ! Async + F)(using cb: CanBlock, w: Wait, p: Pause): A ! F =
-    relay[A, A, Async, F](prog)(pure(_)):
-      [X, Y] => e => e match
-        case Run(f) => Cps.Pure(f())
-        case Await(reg, poll) => Cps.Pure(pollThenBlock(reg, poll).fold(e => throw e, identity))
+  /** handle by executing each operation in place, wherever Async is
+   * among the program's effects; an Await parks (hence the evidence) */
+  def run[A, Es[_]](prog: A ! Es)(using s: Split[Es, Async], cb: CanBlock, w: Wait, p: Pause): A ! s.Rest =
+    prog.handle(blocking)
+
+  /** the row a program of Async alone is run at by a drive, and its one path */
+  type Row = Async +: okay.core.Pure
+  private[okay] val paths: Paths[Async, Row] = Paths.One(okay.one.row.In.Here[Async, okay.core.Pure]())
+  /** a drive's program paused at an operation: the operation, and the rest of the machine, resumed or failed */
+  type Rest[A] = Machine.Head.Paused[Row, A, ?, ?, ?, ?, ?, ?, ?]
 
   /** POLL, THEN PARK for a blocking runner (drive-poll-then-park): an
    * Await that carries a poll is asked by the given `Wait` on THIS
@@ -285,9 +281,9 @@ object Async {
     CancelScope.arm(this, once, onCollected)
     private[okay] def released(): Unit = once.run(release)
     /** the operation that opens the scope */
-    def enter[F[+_]]: Unit ! Async + F = okay.freer.effect(Run(Enter(this)))
+    def enter: Unit ! Async = effect(Run(Enter(this)))
     /** the operation that closes it */
-    def exit[F[+_]]: Unit ! Async + F = okay.freer.effect(Run(Exit(this)))
+    def exit: Unit ! Async = effect(Run(Exit(this)))
 
   object CancelScope:
     /** the collector's action, closing over the helper's parameters
@@ -393,60 +389,43 @@ object Async {
     protected def sliceEnded(@scala.annotation.unused token: AnyRef | Null): Unit = ()
 
     /**
-     * A direct loop over the tree's cases, the shape `runFree` and
-     * Stm's runner have: the rotation and the `Bind(Pure, f)` step as
-     * in `Free.fold`, the operation dispatched by a method call.
-     * `fold` with a polymorphic handler value did the same work with a
-     * closure built per operation and the answer threaded back through
-     * it — measured at 12.6 us of a 4000-bind chain on the JVM
-     * (docs/benchmarks.md §18b/§18c).
+     * THE LOOP OVER THE MACHINE'S HEAD (okay-core's `Machine.head`): the
+     * program run to its next operation, handed out as ONE object
+     * (`Head.Paused`), the rest the machine's own frames — resumed with an
+     * answer, or failed where the operation was, so a `recover` or a
+     * Resource guard in the program sees a failed Await or a throwing Run.
      */
-    def apply(prog: A ! Async): Unit = drive(prog, (), null)
+    def apply(prog: A ! Async): Unit = drive(prog, null, null)
 
     /** a LATE answer resumes the fiber: by default right here, on whoever
      * answered — which inside a pool saves a wake. A platform whose
      * fibers have a home overrides it to send a foreign answerer's
      * resumption home instead (adaptive-elementwise-small-ring) */
-    protected def resumeLate[X](x: X, k: X => A ! Async): Unit = resumeHere(x, k)
+    protected def resumeLate[X](r: Either[Throwable, X], k: Rest[A]): Unit = resumeHere(r, k)
     /** resume on the calling thread, inside this drive's loop */
-    protected final def resumeHere[X](x: X, k: X => A ! Async): Unit = drive(null, x, k)
+    protected final def resumeHere[X](r: Either[Throwable, X], k: Rest[A]): Unit = drive(null, r, k)
 
     /** the loop, entered either with a program or with a late answer and
-     * the continuation it resumes. The continuation is applied INSIDE the
-     * try and the slice (drive-resume-throw-lost: a throw there fails the
-     * fiber), and without building a `Bind` around it first — one
-     * allocation and one rotation per late resumption, which every
-     * `spawn`/`join` pays (spawnjoin-rise-bisect) */
-    private def drive[X](prog: (A ! Async) | Null, x: X, k: (X => A ! Async) | Null): Unit =
+     * the rest it resumes. The rest is resumed INSIDE the try and the
+     * slice (drive-resume-throw-lost: a throw there fails the fiber) */
+    private def drive(prog: (A ! Async) | Null, r: Either[Throwable, ?] | Null, k: Rest[A] | Null): Unit =
       var looping = !stopped
       val slice = sliceStarted()
       try
         if looping then
-          var cur: A ! Async = if k != null then k(x) else prog.nn
+          var cur: Machine.Head[Row, A] =
+            if k != null then resumed(r.nn, k) else Machine.head(prog.nn.fit(paths))
           while looping do
             looping = false
-            // the rotation is `Free.resume`'s, so this loop is three
-            // cases and turns once per OPERATION rather than once per
-            // node. The `stopped` check therefore no longer falls
-            // between two rotation steps — which changes nothing a
-            // canceller can observe: rotating reassociates nodes and
-            // runs no user code, and the check that matters, the one
-            // before the next operation, is exactly where it was.
-            (cur.resume: @unchecked) match
-              case Free.Return(a) =>
+            cur match
+              case Machine.Head.Done(a) =>
                 // a scope still open at the END was never exited: its
                 // program stopped early (a consumer that took what it
                 // needed) — release what it holds
                 releaseScopes()
                 succeed(a)
-              case Free.Bind(Free.Inject(e), f) =>
-                val next = op(e, f)
-                if next != null then
-                  cur = next
-                  looping = !stopped
-                  if !looping then { discontinue(cur); releaseScopes() }
-              case Free.Inject(e) =>
-                val next = op(e, Free.Return(_))
+              case p: Machine.Head.Paused[Row, A, ?, y, ?, ?, ?, ?, ?] @unchecked =>
+                val next = op[y](p.op.asInstanceOf[Async[y]], p)
                 if next != null then
                   cur = next
                   looping = !stopped
@@ -454,31 +433,42 @@ object Async {
       catch case e: Throwable => { releaseScopes(); fail(e) }
       finally sliceEnded(slice)
 
+    /** the rest resumed with an answer: its value, or its failure raised where the operation was */
+    private def resumed(r: Either[Throwable, ?], k: Rest[A]): Machine.Head[Row, A] = k match
+      case p: Machine.Head.Paused[Row, A, ?, y, ?, ?, ?, ?, ?] @unchecked => r match
+        case Right(x) => p.resume(x.asInstanceOf[y])
+        case Left(e) => p.fail(e)
+
     /**
      * CANCELLED BETWEEN TWO OPERATIONS (drive-discontinue, 2026-09-26):
-     * the rest of the program is dropped here, and a Resource scope
-     * inside it would drop its finalizers with it. The next operation
-     * is the LEFTMOST node of the tree, reached by descending `Bind`s
-     * without rotating them or calling any continuation, so no user
-     * code runs. If a scope guarded it, it releases. A `Return`, or a
-     * `Delay` whose thunk is user code, has nothing reachable, and a
-     * scope that has already finished has already released.
+     * the rest of the program is dropped here. The operation it stopped at
+     * is asked to `discontinue` (a parked merge's registrations), and the
+     * rest is failed with the cancellation so the guards it holds — a
+     * Resource scope's release, an `ensuring` — run; what it answers is
+     * nobody's.
      */
-    @tailrec private def discontinue(p: Free[Async, ?]): Unit = p match
-      case Free.Bind(a, _) => discontinue(a)
-      case Free.Inject(Run(d: Discontinue)) => d.discontinue()
-      case Free.Inject(Await(d: Discontinue, _)) => d.discontinue()
+    private def discontinue(h: Machine.Head[Row, A]): Unit = h match
+      case p: Machine.Head.Paused[Row, A, ?, y, ?, ?, ?, ?, ?] @unchecked =>
+        p.op.asInstanceOf[Async[y]] match
+          case Run(d: Discontinue) => d.discontinue()
+          case Await(d: Discontinue, _) => d.discontinue()
+          case _ => ()
+        try { val _ = p.fail(java.util.concurrent.CancellationException("cancelled")) }
+        catch case NonFatal(_) => ()
       case _ => ()
 
-    /** one operation: the continuation to drive next when the answer
-     * came synchronously, null when the drive parked on a callback
-     * (which re-enters `apply`) or the program finished here */
-    private def op[X](e: Async[X], k: X => A ! Async): (A ! Async) | Null = e match
+    /** one operation: the head to drive next when the answer came
+     * synchronously, null when the drive parked on a callback (which
+     * re-enters through `resumeLate`) */
+    private def op[X](e: Async[X], k: Machine.Head.Paused[Row, A, ?, X, ?, ?, ?, ?, ?]): Machine.Head[Row, A] | Null = e match
       case Run(f) =>
         f match
           case m: ScopeMark => marked(m)
           case _ => ()
-        k(f())
+        var x: X = null.asInstanceOf[X]
+        var err: Throwable | Null = null
+        try x = f() catch case NonFatal(t) => err = t
+        if err != null then k.fail(err) else k.resume(x)
       case Await(reg, poll) =>
         // ONE poll, no wait (drive-poll-then-park): after its first
         // callback this drive runs on whoever woke it — a producer's
@@ -490,29 +480,24 @@ object Async {
         val now = if poll == null then null else poll()
         if now != null then
           now match
-            case Right(x) => k(x)
-            case Left(e) => { releaseScopes(); fail(e); null }
+            case Right(x) => k.resume(x)
+            case Left(err) => k.fail(err)
         else
           // the cell holds the answer, the "moved on" marker, or nothing:
           // typed, so what comes out is the operation's Either
           val cell = AtomicReference[Got[X] | Moved.type | Null](null)
           val cancelReg = reg { r =>
             if !cell.compareAndSet(null, Got(r)) then
-              if !stopped then r match
-                // the continuation is the FIBER'S code, so it runs inside
-                // `apply` — its try, its slice — and never as `apply`'s
-                // argument (drive-resume-throw-lost, 2026-09-28): `k(x)`
-                // evaluated on the way in threw at whoever answered the
-                // callback, and the fiber never answered at all. One Bind
-                // per late resumption, rotated by `resume` like any other
-                case Right(x) => resumeLate(x, k)
-                case Left(e) => { releaseScopes(); fail(e) }
+              // the rest is the FIBER'S code, so it runs inside `apply`'s
+              // loop — its try, its slice — never on the way in
+              // (drive-resume-throw-lost, 2026-09-28)
+              if !stopped then resumeLate(r, k)
           }
           cell.getAndSet(Moved) match
-            case g: Got[X] =>
+            case g: Got[X] @unchecked =>
               g.x match
-                case Right(x) => k(x)
-                case Left(e) => { releaseScopes(); fail(e); null }
+                case Right(x) => k.resume(x)
+                case Left(err) => k.fail(err)
             case _ =>
               unregister = cancelReg
               if stopped then cancelReg()

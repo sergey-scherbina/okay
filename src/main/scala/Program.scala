@@ -56,8 +56,21 @@ object Run:
           okay.one.Cont.handle(p.fit(s.paths(rps)))(new okay.one.handler.Translating[E, R, A, A]:
             def ret(a: A) = okay.one.Cont.pure(a)
             def apply[X](op: E[X]): Eff[R, X] = f(op).fit(fps))
+    /** `E` TRANSLATED INTO `F`, an effect the program needs already: each operation of `E` a program needing `F`,
+     * run where it is performed — the program needing the rest, `F` among it (a `Once` answered by `Async` in a
+     * program that has `Async`: one place, not two) */
+    def translateInto[E[_], F[_]](f: [X] => E[X] => X ! F)(using s: Split[Es, E], w: Within[F, s.Rest]): A ! s.Rest =
+      new Run[s.Rest, A]:
+        def on[R <: okay.core.Row](ps: Paths[s.Rest, R]): Eff[R, A] =
+          val fps = w.paths(ps)
+          okay.one.Cont.handle(p.fit(s.paths(ps)))(new okay.one.handler.Translating[E, R, A, A]:
+            def ret(a: A) = okay.one.Cont.pure(a)
+            def apply[X](op: E[X]): Eff[R, X] = f(op).fit(fps))
     /** the facade's form of the same program */
     def ctx: A !! Es = (c: Needs[Es]) ?=> p.fit(c.paths)
+    /** RUN with each effect ANSWERED in place by its `Answers` (okay-freer's `runWith`): one place and one
+     * `Answering` handler an effect — a sum's `Answers` assembled from its parts' (`Answers.sum`) */
+    def runWith(using a: Answers[Es]): A = Program.runAll(p, a)
 
   extension [A](p: A ! Pure)
     /** a program needing nothing: its value */
@@ -79,6 +92,34 @@ object Program:
    * clause, which the clause only binds and returns */
   private[okay] def lift[A, T <: okay.core.Row](e: Eff[T, A]): A ! Pure = new Run[Pure, A]:
     def on[R <: okay.core.Row](ps: Paths[Pure, R]): Eff[R, A] = e.asInstanceOf[Eff[R, A]]
+  private type K[x] = Any
+  /** `p` run, each effect answered by its part of `a`: the parts in order, the first at the head of the row */
+  private[okay] def runAll[A, Es[_]](p: A ! Es, a: Answers[Es]): A = a match
+    case Answers.NoneA => p.asInstanceOf[A ! Pure].run
+    case _: Answers.Sum[?, ?] =>
+      val leaves = scala.collection.mutable.ArrayBuffer[Answers[K]]()
+      // BOUNDED by the sum as written in the program's type: one call a `+`
+      def paths(x: Answers[?]): Paths[K, okay.core.Row] = x match
+        case Answers.NoneA => Paths.none.asInstanceOf[Paths[K, okay.core.Row]]
+        case s: Answers.Sum[?, ?] => Paths.Both(paths(s.left), paths(s.right)).asInstanceOf[Paths[K, okay.core.Row]]
+        case l =>
+          leaves += l.asInstanceOf[Answers[K]]
+          var in: okay.core.In[K, ?] = okay.one.row.In.Here[K, okay.core.Row]()
+          var i = leaves.size - 1
+          while i > 0 do { in = okay.one.row.In.There(in.asInstanceOf[okay.core.In[K, okay.core.Row]]); i -= 1 }
+          Paths.One(in.asInstanceOf[okay.core.In[K, okay.core.Row]])
+      val ps = paths(a)
+      var e: Eff[okay.core.Row, A] = p.fit(ps.asInstanceOf[Paths[Es, okay.core.Row]])
+      for l <- leaves do e = handleHead[K, okay.core.Row, A](e.asInstanceOf[Eff[K +: okay.core.Row, A]], l)
+      e.asInstanceOf[Eff[okay.core.Pure, A]].run
+    case leaf =>
+      val e = p.fit(Paths.One(okay.one.row.In.Here[Es, okay.core.Pure]()))
+      handleHead[Es, okay.core.Pure, A](e, leaf).run
+  /** the effect at the head answered in place */
+  private def handleHead[E[_], T <: okay.core.Row, A](e: Eff[E +: T, A], a: Answers[E]): Eff[T, A] =
+    okay.one.Cont.handle(e)(new okay.one.handler.Answering[E, T, A, A]:
+      def ret(x: A) = okay.one.Cont.pure(x)
+      def value[X](op: E[X]): X = a.handle(op))
   /** from the facade's form: the same program, a value */
   def of[A, Es[_]](q: A !! Es): A ! Es = new Run[Es, A]:
     def on[R <: okay.core.Row](ps: Paths[Es, R]): Eff[R, A] = q(using Needs.of(ps))

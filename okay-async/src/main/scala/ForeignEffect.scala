@@ -1,12 +1,11 @@
 package okay
 
 
-import okay.freer.*
+import okay.core.Split
 
 
 import scala.concurrent.Future
 import scala.concurrent.ExecutionContext.parasitic
-import okay.freer.Row.plus
 
 /**
  * A FOREIGN effect's value as an okay program (specs/direct-foreign-mark.md).
@@ -22,7 +21,7 @@ trait ForeignEffect[M[_]]:
   /** the okay effect the value becomes — a MEMBER, not a parameter: the
    * macro searches `ForeignEffect[M]` knowing only M, and a wildcard for
    * a higher-kinded parameter finds nothing (observed, the first cut) */
-  type G[+X]
+  type G[X]
   def lift[A](m: M[A]): A ! G
 
 object ForeignEffect:
@@ -30,7 +29,7 @@ object ForeignEffect:
    * callback runner; a Future cannot be cancelled, so the canceller only
    * drops the callback's effect (the drive ignores a late answer) */
   given future: ForeignEffect[Future] with
-    type G[+X] = Async[X]
+    type G[X] = Async[X]
     def lift[A](m: Future[A]): A ! Async =
       Async.await[A] { k =>
         m.onComplete(t => k(t.toEither))(using parasitic)
@@ -44,7 +43,6 @@ object ForeignEffect:
  * for an IO or a Task), leaving the rest of the row as it was. `M` is named, and the rest is read off the program
  * with one unknown at a time (`handle`'s shape): two unknown rows solved together is row-membership-crash.
  */
-extension [A, R[+_]](p: A ! R)
-  def via[M[+_]](using fe: ForeignEffect[M])[F[+_]]
-                (using row: (A ! R) =:= (A ! M + F), t: TypeableK[M], d: Distinct[M + fe.G + F]): A ! fe.G + F =
-    !.interpret[A, M, fe.G, F](row(p))([X] => (m: M[X]) => fe.lift(m).plus[F])
+extension [A, R[_]](p: A ! R)
+  def via[M[_]](using fe: ForeignEffect[M])(using s: Split[R, M]): A ! fe.G + s.Rest =
+    p.translate[M, fe.G]([X] => (m: M[X]) => fe.lift(m))

@@ -1,6 +1,6 @@
 package okay.guice
 
-import okay.freer.*
+import okay.!
 
 import okay.std.*
 import com.google.inject.{AbstractModule, Injector, Module as GModule}

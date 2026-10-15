@@ -1,7 +1,6 @@
 package okay
 
 
-import okay.freer.*
 
 
 import scala.annotation.implicitNotFound

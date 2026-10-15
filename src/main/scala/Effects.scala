@@ -351,4 +351,13 @@ final class ComonadAnswers[F[_]](val C: Comonad[F]) extends Answers[F]:
 
 given [F[_] : Comonad as C]: Answers[F] = ComonadAnswers[F](C)
 
-object Answers
+object Answers:
+  /** no effects: nothing to answer */
+  private[okay] object NoneA extends Answers[NoEffectsK]:
+    def handle[A](a: NoEffectsK[A]): A = throw MatchError(a)
+  private type NoEffectsK[X] = okay.core.NoEffects[X]
+  given none: Answers[okay.core.NoEffects] = NoneA
+  /** a SUM's answers: each side's, kept as the parts — `runWith` makes one place and one handler a part */
+  private[okay] final class Sum[F[_], G[_]](val left: Answers[F], val right: Answers[G]) extends Answers[F + G]:
+    def handle[A](a: (F + G)[A]): A = throw MatchError(a)
+  given sum[F[_], G[_]](using f: Answers[F], g: Answers[G]): Answers[F + G] = Sum(f, g)

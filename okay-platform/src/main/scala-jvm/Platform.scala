@@ -1,7 +1,6 @@
 package okay
 
 
-import okay.freer.*
 
 
 import java.util.concurrent.{CompletableFuture, CompletionException, ExecutionException, ExecutorService, ForkJoinPool}
@@ -1103,7 +1102,7 @@ object Schedulers {
      * part (resume-late-withdraw, TestMergeOrder red). Since
      * channel-route-per-producer a feed claims its part once and a
      * resume anywhere writes to it */
-    override protected def resumeLate[X](x: X, k: X => A ! Async): Unit =
+    override protected def resumeLate[X](x: Either[Throwable, X], k: Async.Rest[A]): Unit =
       val h = home
       val me = Thread.currentThread()
       // NOT inline when this thread is running ANOTHER fiber right now

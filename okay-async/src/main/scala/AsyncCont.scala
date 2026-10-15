@@ -20,9 +20,6 @@ import okay.core.{pure, defer}
  *  - `runAsync`, the callback drive: the program STEPPED (okay-core's `Step`) — Async the one effect left, every
  *    operation comes to the top with the rest as data (`Resume`, multi-shot, from any thread). The drive executes a
  *    Run and runs the rest at once; an Await keeps the rest until the callback re-enters it.
- *
- * And the two bridges to the classic, per program: `toClassic` (each stop of the machine an operation of a
- * classic program) and `fromClassic` (a classic program as one Await of the machine).
  */
 object AsyncCont:
 
@@ -143,34 +140,8 @@ object AsyncCont:
   def enter(scope: Async.CancelScope): Op[Async, Unit] = effect(Async.Run(Async.Enter(scope)))
   def exit(scope: Async.CancelScope): Op[Async, Unit] = effect(Async.Run(Async.Exit(scope)))
 
-  /** A MACHINE PROGRAM AS A CLASSIC ONE, for code still on the tree (the Scala 2 facade, a classic caller): each
-   * operation the machine stops at becomes the same operation in the classic program, the rest of the machine
-   * its continuation — so the classic handler in force (blocking, a drive, a fiber's) answers it, and nothing
-   * runs before the classic program is run */
-  def toClassic[A](p: Eff[Async +: okay.core.Pure, A]): okay.freer.![A, Async] =
-    okay.freer.Free.delay(() => classic(p.step))
-
-  /** A CLASSIC PROGRAM AS ONE OPERATION OF THE MACHINE: driven by the classic callback drive, its answer the
-   * Await's — so it never parks a thread the machine's handler did not choose to park */
-  def fromClassic[A](p: => okay.freer.![A, Async]): Op[Async, A] =
-    awaitEither[A] { k =>
-      val running = Async.runAsyncCancellable(p)
-      running.future.onComplete(t => k(t.toEither))(using scala.concurrent.ExecutionContext.parasitic)
-      () => running.cancel()
-    }
-
   /** the row of a program of the machine's Async: the one effect left */
   type R = Async +: okay.core.Pure
-
-  /** `toClassic`'s road: the program stepped, each operation an operation of the classic program, the rest its
-   * continuation — so the classic handler in force (blocking, a drive, a fiber's) answers it */
-  private def classic[A](s: OStep[R, A]): okay.freer.![A, Async] = s match
-    case OStep.Done(a) => okay.freer.pure(a)
-    case OStep.Failed(e) => throw e
-    case y: OStep.Yield[R, A, e, x] => y.in match
-      case _: okay.one.row.In.Here[f, t] =>
-        okay.freer.effect(y.op).flatMap(v => okay.freer.Free.delay(() => classic(y.resume(v))))
-      case th: okay.one.row.In.There[f, g, t] => okay.one.row.In.absurd(th.in)
 
   /**
    * THE DRIVE ANSWERS IN PLACE WHAT IT CAN (drive-in-place): a Run is executed where the program stops at it and
@@ -210,11 +181,14 @@ object AsyncCont:
     private def next(s: OStep[R, A]): OStep[R, A] | Null = s match
       case OStep.Done(a) =>
         // a scope still open at the end was never exited: its program stopped early — released
-        releaseScopes(); promise.trySuccess(a); null
+        releaseScopes(); promise.trySuccess(a): Unit; null
       case OStep.Failed(e) =>
-        releaseScopes(); promise.tryFailure(e); null
+        releaseScopes(); promise.tryFailure(e): Unit; null
+      case OStep.Cancelled() =>
+        releaseScopes(); promise.tryFailure(cancelled): Unit; null
       case y: OStep.Yield[R, A, e, x] => y.in match
         case th: okay.one.row.In.There[f, g, t] => okay.one.row.In.absurd(th.in)
+        case at: okay.one.row.In.At[f, r] => okay.one.row.In.unhandled(at)
         case _: okay.one.row.In.Here[f, t] =>
           val op: Async[x] = y.op
           op match
