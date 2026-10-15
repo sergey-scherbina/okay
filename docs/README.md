@@ -352,6 +352,8 @@ API reference, gotchas.
 | [`okay-cluster`](modules/okay-cluster.md) | the remote channel, distributed chunk work, the JS↔JVM acceptance |
 | [`okay-pool`](modules/okay-pool.md) | the engine on a cluster manager: a pool of identical processes, any of which takes a submission over HTTP and coordinates it, journal-backed so a member's death is a resume by any other one [specs/cluster-pool.md](../specs/cluster-pool.md) |
 | [`okay-http`](modules/okay-http.md) | REST and WebSocket as programs: a body is a `Source`, a socket session is a `Stage[Frame, Frame, A]` |
+| [`okay-graphql`](modules/okay-graphql.md) | GraphQL on the kernel: resolvers as programs of `Fetch`, an executor in rounds — each source called once per round with all its keys (no N+1, no DataLoader); interfaces and unions, introspection, validation with locations, async sources, subscriptions; our parser or graphql-java's |
+| [`okay-graphql-http`](modules/okay-graphql-http.md) | GraphQL over HTTP (POST, GET, both media types) and subscriptions over a WebSocket (graphql-transport-ws), on okay-http's seams |
 | [`okay-jetty`](modules/okay-jetty.md) | Jetty behind the same two seams — and the WebSocket SERVER okay-http could not serve |
 | [`okay-kernel`](modules/okay-kernel.md) | a microkernel: versioned contracts (`Port`), plugins that need and provide them, a plan that names every problem before anything runs, a start that releases in reverse; ServiceLoader and a plugins directory on the JVM |
 | [`okay-staging`](modules/okay-staging.md) | the staged codec for a schema that exists only at run time — JVM only, optional by construction, switchable off at launch |
@@ -394,6 +396,7 @@ API reference, gotchas.
 | [`okay-r`](modules/okay-r.md) | R as a handler (typed calls, callbacks, held objects, streams, programs as data), the same model with R's own three-way absence: NULL, a TYPED NA inside a vector, and NaN — kept apart at the type level so a statistical function is not quietly handed the wrong one |
 | [`okay-foreign-workflow`](modules/okay-foreign-workflow.md) | foreign calls as the ACTIVITIES of okay's durable workflows, in do-notation: journalled, crash-resumed, the function's failure remembered and the wire's retried |
 | [`okay-foreign-cluster`](modules/okay-foreign-cluster.md) | the MAP of a cluster job in Python or R: a `Flow` stage whose chunks cross to a pooled interpreter as one Arrow frame each, the reduce staying the JVM `Wire` |
+| [`okay-foreign-ws`](modules/okay-foreign-ws.md) | the okay wire over a WebSocket a server accepts: a far side in a browser (okay-ts) or behind an HTTP-only proxy, driven as every far side is (`ForeignWs.route`, served by okay-jetty) |
 | [`okay-script`](modules/okay-script.md) | markdown files as Scala source: fenced blocks through the real Scala 3 compiler in-process, errors pointing at the original `.md` line |
 | [`okay-langchain4j`](modules/okay-langchain4j.md) | their ChatModel as a `Answers[Model]` — their provider breadth behind our effect |
 | [`okay-langchain4j-embed`](modules/okay-langchain4j-embed.md) | their EmbeddingModel as `String => Embedding` and as okay-rag's `Answers[Embed]` |

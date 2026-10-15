@@ -113,7 +113,12 @@ object Jetty {
              * dependency — `SSLContext` is the JDK's — and okay-jetty
              * still knows nothing about certificates, modes or
              * secrets. `None` is the plaintext connector, unchanged. */
-            ssl: Option[javax.net.ssl.SSLContext] = None)
+            ssl: Option[javax.net.ssl.SSLContext] = None,
+            /** the subprotocol a WebSocket session accepts, among those
+             * its client asked for (`Sec-WebSocket-Protocol`): a client
+             * like graphql-ws refuses a server that names none. `None`,
+             * the default, accepts none, as before */
+            subprotocol: Request => Option[String] = _ => None)
            (using CanBlock, Scheduler): Server ! Resource =
     Resource.acquire {
       // one virtual thread per request on the main connector
@@ -159,9 +164,12 @@ object Jetty {
       val upgrade = WebSocketUpgradeHandler.from(server,
         (container: org.eclipse.jetty.websocket.server.ServerWebSocketContainer) => {
           container.addMapping("/*",
-            (req: ServerUpgradeRequest, _: ServerUpgradeResponse, _: Callback) => {
+            (req: ServerUpgradeRequest, res: ServerUpgradeResponse, _: Callback) => {
               val r = requestOf(req)
-              if ws.isDefinedAt(r) then session(ws(r), if push.isDefinedAt(r) then push(r) else pure(())) else null
+              if ws.isDefinedAt(r) then
+                subprotocol(r).filter(req.getSubProtocols.asScala.contains).foreach(res.setAcceptedSubProtocol)
+                session(ws(r), if push.isDefinedAt(r) then push(r) else pure(()))
+              else null
             })
           ()
         })
