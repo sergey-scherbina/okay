@@ -1,7 +1,7 @@
 package okay.scala2
 
-import okay.TypeableK
-import Rows.{Top, coerce}
+import okay.{+, !}
+import Rows.{Top, erase, moved}
 
 /**
  * Nondeterminism for Scala 2.13 (specs/scala2-facade.md, stage 13):
@@ -14,24 +14,19 @@ import Rows.{Top, coerce}
  * cut. `interleave` and `fairBind` are
  * the FAIR forms, where an infinite branch cannot starve the other one.
  *
- * THE RESIDUAL TEST (residual-row-typeable). okay's fair combinators
- * declare a `TypeableK[F]` for the rest of the row, and on the Scala 2
- * side that rest is only the phantom `R`, stored at `Top`. The instance
- * here is the COMPLEMENT of the side that is known: an operation of the
- * rest is anything that is not a `Choose`. That is the core's own
- * "test one side, take the other by exclusion", packaged as an
- * instance. It was also found (2026-09-23) that `Logic.interleave`,
- * `fairBind` and `observe` never CONSULT that instance; their only
- * split is `msplit`'s `split[Choose, F]`, which tests the `Choose` side.
- * So the complement cannot misroute anything today. If the core ever
- * starts to call it, it is still the right answer for a two-part row.
+ * Underneath, a combinator moves `Choose`'s operations to it beside the
+ * rest of the row (`Rows.moved`) and is the core's own; one that keeps
+ * `Choose` puts it back at the row's one place (`Rows.erase`).
  */
 sealed trait Choose
 
 object Choose {
 
+  /** the row a combinator works at: `Choose` beside the rest */
+  private[scala2] type C = okay.std.Choose + Top
+
   /** one of `as`: every one is an answer (okay's `choose`) */
-  def choose[A](as: A*): Eff[Choose, A] = Eff.of(coerce(okay.std.choose(as*)))
+  def choose[A](as: A*): Eff[Choose, A] = Eff.of(erase(okay.std.choose(as*)))
 
   /** no answer at all */
   def fail[A]: Eff[Choose, A] = choose[A]()
@@ -42,7 +37,7 @@ object Choose {
   /** every answer, in order (okay's `runChoice`), the rest of the row
    * forwarded */
   def runChoice[A, R](e: Eff[Choose & R, A]): Eff[R, Seq[A]] =
-    Eff.of(coerce(okay.std.runChoice[A, Top](coerce(e.program))))
+    Eff.of(okay.std.runChoice[A, C](moved[okay.std.Choose, A](e.program)))
 }
 
 /**
@@ -56,41 +51,41 @@ object Choose {
  */
 object Logic {
 
-  private[scala2] given residual: TypeableK[Top] = new TypeableK[Top] {
-    private val choose = summon[TypeableK[okay.std.Choose]]
-    def test(x: Any): Boolean = !choose.test(x)
-  }
+  import Choose.C
+
+  /** `Choose`'s operations beside the rest */
+  private def lift[A](e: Eff[?, A]): A ! C = moved[okay.std.Choose, A](e.program)
 
   /** the first `n` answers; the search stops there, so it may be infinite */
   def observe[A, R](n: Int)(e: Eff[Choose & R, A]): Eff[R, Seq[A]] =
-    Eff.of(coerce(okay.std.Logic.observe[A, Top](n)(coerce(e.program))))
+    Eff.of(okay.std.Logic.observe[A, C](n)(lift(e)))
 
   /** the first answer and the rest of the search as a program, or None */
   def msplit[A, R](m: Eff[Choose & R, A]): Eff[R, Option[(A, Eff[Choose & R, A])]] =
-    Eff.of(coerce(okay.std.Logic.msplit[A, Top](coerce(m.program))
-      .map(_.map { case (a, rest) => (a, Eff.of[Choose & R, A](coerce(rest))) })))
+    Eff.of(okay.std.Logic.msplit[A, C](lift(m))
+      .map(_.map { case (a, rest) => (a, Eff.of[Choose & R, A](erase(rest))) }))
 
   /** commit to the first answer, dropping the rest of the search */
   def cut[R <: Choose, A](e: Eff[R, A]): Eff[R, A] =
-    Eff.of(coerce(okay.std.Logic.cut[A, Top](coerce(e.program))))
+    Eff.of(erase(okay.std.Logic.cut[A, C](lift(e))))
 
   /** the soft cut: `th` for every answer of `cond`, and `el` only if
    * `cond` has none */
   def ifte[R <: Choose, A, B](cond: Eff[R, A])(th: A => Eff[R, B])(el: => Eff[R, B]): Eff[R, B] =
-    Eff.of(coerce(okay.std.Logic.ifte[A, B, Top](coerce(cond.program))(a => coerce(th(a).program))(coerce(el.program))))
+    Eff.of(erase(okay.std.Logic.ifte[A, B, C](lift(cond))(a => lift(th(a)))(lift(el))))
 
   /** negation as failure: one answer exactly when `m` has none */
   def gnot[R <: Choose, A](m: Eff[R, A]): Eff[R, Unit] =
-    Eff.of(coerce(okay.std.Logic.gnot[A, Top](coerce(m.program))))
+    Eff.of(erase(okay.std.Logic.gnot[A, C](lift(m))))
 
   /** the FAIR or: answers of `a` and `b` take turns */
   def interleave[R <: Choose, A](a: Eff[R, A], b: => Eff[R, A]): Eff[R, A] =
-    Eff.of(coerce(okay.std.Logic.interleave[A, Top](coerce(a.program), coerce(b.program))))
+    Eff.of(erase(okay.std.Logic.interleave[A, C](lift(a), lift(b))))
 
   /** the FAIR bind: every answer of `m` gets a turn before one branch of
    * `f` can monopolise the search */
   def fairBind[R <: Choose, A, B](m: Eff[R, A])(f: A => Eff[R, B]): Eff[R, B] =
-    Eff.of(coerce(okay.std.Logic.fairBind[A, B, Top](coerce(m.program))(a => coerce(f(a).program))))
+    Eff.of(erase(okay.std.Logic.fairBind[A, B, C](lift(m))(a => lift(f(a)))))
 }
 
 /**

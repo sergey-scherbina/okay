@@ -2,8 +2,8 @@ package okay.java
 
 import okay.{Pane, Stage, through}
 
-import okay.freer.{%}
-import okay.freer.{!, Aggregator, pure}
+import okay.{%, !, pure}
+import okay.freer.Aggregator
 import okay.std.{Writer}
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.stream.{Gatherer, Gatherers, Stream}
@@ -30,7 +30,7 @@ class TestGather extends munit.FunSuite {
 
   /** a finite producer */
   def emit[I](xs: Seq[I]): Unit ! Writer % I =
-    xs.foldRight(pure[Writer % I, Unit](()))((x, p) => Writer.tell(x).flatMap(_ => p))
+    xs.foldRight(pure[Unit, Writer % I](()))((x, p) => Writer.tell(x).flatMap(_ => p))
 
   /** okay runs the stage itself */
   def own[I, O, A](src: Unit ! Writer % I, s: Stage[I, O, A]): List[O] =
@@ -193,8 +193,8 @@ class TestGather extends munit.FunSuite {
   test("a continuation from INSIDE a run, resumed after that run finished, is REFUSED by name") {
     // what cannot be replayed is the rest of a run: the continuation
     // after the first window holds that run's gatherer, whose finisher
-    // nulls its array (an NPE inside the JDK, java-gatherers). A Free
-    // continuation is multi-shot, so resuming it again is possible —
+    // nulls its array (an NPE inside the JDK, java-gatherers). A program's
+    // rest is multi-shot, so resuming it again is possible —
     // and answered with our message, before the JDK's state is touched.
     // Five elements, not three: `rest` is driven to its NEXT output
     // when it is made, so the refusal needs an await left after that

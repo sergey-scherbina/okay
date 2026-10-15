@@ -2,8 +2,8 @@ package okay.java
 
 import okay.{Pane, Stage, through}
 
-import okay.freer.{%}
-import okay.freer.{!, Aggregator, pure}
+import okay.{%, !, pure}
+import okay.freer.Aggregator
 import okay.std.{Writer}
 import java.util.stream.{Gatherers, Stream}
 import scala.jdk.CollectionConverters.*
@@ -17,7 +17,7 @@ import scala.jdk.CollectionConverters.*
 class TestDocExamplesGather extends munit.FunSuite:
 
   def lines(xs: String*): Unit ! Writer % String =
-    xs.foldRight(pure[Writer % String, Unit](()))((x, p) => Writer.tell(x).flatMap(_ => p))
+    xs.foldRight(pure[Unit, Writer % String](()))((x, p) => Writer.tell(x).flatMap(_ => p))
 
   test("guide §5: an okay stage as a JDK intermediate operation, on an infinite stream") {
     // a stage that answers after three: the JDK's integrator returns false

@@ -2,12 +2,10 @@ package okay.scala2
 
 import okay.{Take}
 
-import okay.freer.{%, +}
-import okay.freer.{!}
-import okay.freer.Row.plus
+import okay.{%, +, !, Foreign}
 import okay.given
 import okay.std.given
-import Rows.coerce
+import Rows.{erase, typed}
 
 /**
  * A stream for Scala 2.13 (specs/scala2-facade.md, stage 4).
@@ -26,14 +24,14 @@ final class Source[A] private (private val body: SourceBody[A]) {
 
   private[scala2] def core: okay.Source[A] = body.s
 
-  def map[B](f: A => B): Source[B] = Source.of(okay.std.Writer.map[A, B, Unit, okay.Async](core)(f))
+  def map[B](f: A => B): Source[B] = Source.of(okay.std.Writer.map[A, B, Unit, okay.std.Writer % A + okay.Async](core)(f))
 
   def filter(p: A => Boolean): Source[A] =
-    Source.of(okay.std.Writer.expand[A, A, Unit, okay.Async](core)(a => if (p(a)) Vector(a) else Vector.empty))
+    Source.of(okay.std.Writer.expand[A, A, Unit, okay.std.Writer % A + okay.Async](core)(a => if (p(a)) Vector(a) else Vector.empty))
 
   /** each element becomes any number of elements, in order */
   def mapConcat[B](f: A => Iterable[B]): Source[B] =
-    Source.of(okay.std.Writer.expand[A, B, Unit, okay.Async](core)(a => f(a).toIndexedSeq))
+    Source.of(okay.std.Writer.expand[A, B, Unit, okay.std.Writer % A + okay.Async](core)(a => f(a).toIndexedSeq))
 
   def take(n: Int): Source[A] = Source.through(core)(Source.taking[A](n))
 
@@ -53,16 +51,16 @@ final class Source[A] private (private val body: SourceBody[A]) {
     Source.of(okay.drained(okay.Channel.merge[A, okay.Source, okay.Async, okay.Source, okay.Async](core, that.core)))
 
   /** every element, in order */
-  def runCollect: Eff[Async, Vector[A]] = Eff.of(coerce(okay.runCollect(core)))
+  def runCollect: Eff[Async, Vector[A]] = Eff.of(erase(okay.runCollect(core)))
 
   def runForeach(f: A => Eff[Async, Unit]): Eff[Async, Unit] =
-    Eff.of(coerce(okay.runForeach(core)(a => coerce[Rows.Top, okay.Async, Unit](f(a).program))))
+    Eff.of(erase(okay.runForeach(core)(a => typed[okay.Async, Unit](f(a).program))))
 
   def runFold[S](z: S)(f: (S, A) => S): Eff[Async, S] =
-    Eff.of(coerce(okay.std.Writer.loopWith[A, S, Unit, S, okay.Async](core)(z)(f)((s, _) => s)))
+    Eff.of(erase(okay.std.Writer.loopWith[A, S, Unit, S, okay.std.Writer % A + okay.Async](core)(z)(f)((s, _) => s)))
 
   /** the program this source is */
-  def toEff: Eff[Writer[A] & Async, Unit] = Eff.of(coerce(core))
+  def toEff: Eff[Writer[A] & Async, Unit] = Eff.of(erase(core))
 }
 
 /** held out of `Source`'s constructor, as `ProgBody` is out of `Prog`'s */
@@ -76,7 +74,7 @@ object Source {
 
   def fromIterable[A](as: Iterable[A]): Source[A] = of(okay.Source.of(as.toList))
 
-  def empty[A]: Source[A] = of(okay.freer.pure(()))
+  def empty[A]: Source[A] = of(okay.pure(()))
 
   /** the half-open range */
   def range(from: Long, until: Long): Source[Long] = of(okay.Source.range(from, until))
@@ -85,7 +83,8 @@ object Source {
   def unfold[S, A](s: S)(f: S => Option[(A, S)]): Source[A] = of(okay.Source.unfold(s)(f))
 
   /** a source written as a program that tells */
-  def fromEff[A](e: Eff[Writer[A] & Async, Unit]): Source[A] = of(coerce(e.program))
+  def fromEff[A](e: Eff[Writer[A] & Async, Unit]): Source[A] =
+    of(typed[okay.std.Writer % A + okay.Async, Unit](e.program)(using Foreign.Member.of[okay.std.Writer % A] | Foreign.Member.of[okay.Async]))
 
   // ---- stages: the stage's row carries Async too, so `through` can
   // forward the source's own Async operations past it
@@ -95,9 +94,9 @@ object Source {
   private def through[I, O](s: okay.Source[I])(st: Unit ! St[I, O]): Source[O] =
     of(okay.through[I, O, okay.Async, Unit, Unit](s)(st))
 
-  private def await[I, O]: Option[I] ! St[I, O] = okay.Stage.await[I, O].plus[okay.Async]
-  private def tell[I, O](o: O): Unit ! St[I, O] = okay.Stage.tell[I, O](o).plus[okay.Async]
-  private def done[I, O]: Unit ! St[I, O] = okay.freer.pure(())
+  private def await[I, O]: Option[I] ! St[I, O] = okay.Stage.await[I, O].at[St[I, O]]
+  private def tell[I, O](o: O): Unit ! St[I, O] = okay.Stage.tell[I, O](o).at[St[I, O]]
+  private def done[I, O]: Unit ! St[I, O] = okay.pure(())
 
   private def passAll[A]: Unit ! St[A, A] =
     await[A, A].flatMap {

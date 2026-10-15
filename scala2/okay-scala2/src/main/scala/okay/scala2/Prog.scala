@@ -2,12 +2,9 @@ package okay.scala2
 
 import okay.{Async, async}
 
-import okay.freer.{%, +}
-import okay.freer.{!}
+import okay.{%, +, !, Foreign}
 import okay.std.{Throws, raise}
-import okay.freer.Row.at
 import okay.given
-import okay.freer.given
 import scala.util.control.NonFatal
 
 /**
@@ -17,7 +14,7 @@ import scala.util.control.NonFatal
  * The library's own programs are `A ! Row`, and a row is a union —
  * which Scala 2 cannot spell — and its combinators are `inline`, which
  * Scala 2's TASTy reader refuses to call ("Unsupported Scala 3 inline
- * method flatMap; found in class okay.freer.Free"). This class is the same
+ * method flatMap; found in class okay.Run"). This class is the same
  * program behind a signature with neither: plain methods, one type
  * parameter, no row. The row is still there — it is the type of
  * `program` — and a Scala 3 caller crosses back through `Bridge.lift` and
@@ -39,7 +36,7 @@ final class Prog[A] private[scala2] (private val body: ProgBody[A]) {
 
   /** the failure as a value; the result never fails */
   def attempt: Prog[Either[Throwable, A]] =
-    Prog.of(okay.std.runEither[A, Async, Throwable](program).at[Prog.Row])
+    Prog.of(okay.std.runEither[A, Prog.Row, Throwable](program).at[Prog.Row])
 
   /** on failure, continue with `h` */
   def recover(h: Throwable => Prog[A]): Prog[A] =
@@ -52,13 +49,13 @@ final class Prog[A] private[scala2] (private val body: ProgBody[A]) {
   def run(): A = runEither().fold(e => throw e, identity)
 
   /** run to the answer on this thread, a failure as a value (JVM) */
-  def runEither(): Either[Throwable, A] = okay.std.runEither[A, Async, Throwable](program).runWith
+  def runEither(): Either[Throwable, A] = okay.std.runEither[A, Prog.Row, Throwable](program).runWith
 }
 
 /**
  * THE ROW, OUT OF THE CONSTRUCTOR. scalac 2.13 reads a class's
  * primary-constructor parameter types when it first loads the class,
- * and a type naming `okay.freer.+` — a union — makes it refuse the class
+ * and a type naming `okay.freer.+` — a union — made it refuse the class
  * outright: "Unsupported Scala 3 union in bounds of type +; found in
  * object okay.Effects$package", reported at the user's `package` line
  * before any of their code. Measured 2026-09-22 by bisection, and all
@@ -80,7 +77,10 @@ object Prog {
   /** the row every `Prog` runs in */
   private[scala2] type Row = Async + Throws % Throwable
 
-  def pure[A](a: A): Prog[A] = Prog.of(okay.freer.pure(a))
+  def pure[A](a: A): Prog[A] = Prog.of(okay.pure[A, Row](a))
+
+  /** which values are operations of the row, for `Eff.toProg` */
+  private[scala2] def member: Foreign.Member[Row] = Foreign.Member.of[Async] | Foreign.Member.of[Throws % Throwable]
 
   /** suspend `a`: nothing runs until the program does, and a throw
    * inside it is this program's failure */

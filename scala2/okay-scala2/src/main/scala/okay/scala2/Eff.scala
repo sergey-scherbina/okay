@@ -1,8 +1,9 @@
 package okay.scala2
 
-import okay.freer.{!, Free}
+import okay.{!, +, %, Answers, Erased, Foreign, Run, effect}
+import okay.core.{Paths, Req}
+import okay.one.row.In
 import okay.given
-import okay.freer.given
 import scala.util.control.NonFatal
 
 /**
@@ -21,12 +22,12 @@ import scala.util.control.NonFatal
  * 2026-09-22). `Eff.run` accepts only `Eff[Any, A]`, so a program with
  * an effect left unhandled does not compile.
  *
- * Underneath is okay's `Free` and okay's own handlers; each operation
+ * Underneath is okay's program and okay's own handlers; each operation
  * and each handler below is a one-line call into the Scala 3 library.
  */
 final class Eff[-R, +A] private (private val body: EffBody[A]) {
 
-  private[scala2] def program: Free[Rows.Top, A] = body.p
+  private[scala2] def program: A ! Rows.Top = body.p
 
   def map[B](f: A => B): Eff[R, B] = Eff.of(body.p.map(f))
 
@@ -35,46 +36,89 @@ final class Eff[-R, +A] private (private val body: EffBody[A]) {
 }
 
 /** held out of `Eff`'s constructor, as `ProgBody` is out of `Prog`'s */
-private[scala2] final class EffBody[+A](val p: Free[Rows.Top, A]) extends AnyVal
+private[scala2] final class EffBody[+A](val p: A ! Rows.Top) extends AnyVal
 
+/**
+ * THE ROW OF THE SCALA 3 SIDE. On the Scala 2 side the row is a phantom
+ * intersection that no Scala 3 type follows, so a program needs ONE
+ * effect, `Top`, whose operations are any values; the phantom `R`
+ * guarantees statically that every operation has a handler before
+ * `Eff.run` accepts it. A core program crosses in by `erase` (each of its
+ * effects performed at `Top`'s place) and a handler takes its effect off
+ * by `moved` (its operations moved, by class, to it beside `Top`) and then
+ * the core's own runner; a core program is read back at its row by
+ * `typed` (each operation checked to be one of the row's).
+ */
 private[scala2] object Rows {
 
-  /** the row every `Eff` is STORED at: the real row is the phantom `R` */
-  type Top[+X] = Any
+  /** the one effect every `Eff` needs: its operations are any values */
+  type Top[X] = Any
 
   /**
-   * THE ONE CAST (operator rule: no cast without necessity). On the
-   * Scala 2 side the row is a phantom intersection that no Scala 3 type
-   * follows, so a program is stored at `Top` and each handler below
-   * re-types it at the concrete union row it handles — and the
-   * operations re-type their own single-effect programs to `Top`. It is
-   * right because `Free` never looks at its row at run time: handlers
-   * split operations by their CLASS (TypeableK), and `Eff`'s `R`
-   * guarantees statically that every operation in the tree has a
-   * handler before `Eff.run` accepts it. There is no typed route:
-   * `Free` is invariant in its row and `R` has no Scala 3 counterpart.
+   * THE ONE ROW CAST (operator rule: no cast without necessity): a core
+   * program's effect placed at `Top`'s place (`erase`). Every effect of
+   * the core program is performed where `Top` is, and whatever answers
+   * `Top` there is a handler of this facade — which splits operations by
+   * their CLASS (`moved`) — or `Eff.run`'s refusal. Right because `Top`'s
+   * operations are any values: what is performed at that place is read at
+   * another type only after a class test gave it that type.
    */
-  def coerce[F[+_], G[+_], A](p: Free[F, A]): Free[G, A] = p.asInstanceOf[Free[G, A]]
+  private def at[E[_], R <: okay.core.Row](in: In[Top, R]): In[E, R] = in.asInstanceOf[In[E, R]]
+
+  /** a core program of the row `F`, its effects at `Top`'s place */
+  def erase[A, F[_]](p: A ! F)(using e: Erased[F]): A ! Top = new Run[Top, A]:
+    def on[R <: okay.core.Row](ps: Paths[Top, R]): okay.core.Eff[R, A] = p.fit(e.paths(ps.find(Req.only)))
+
+  /** `E`'s operations moved to it beside `Top` (its `Member` says which); the others stay at `Top` */
+  def moved[E[_], A](p: A ! Top)(using m: Foreign.Member[E]): A ! E + Top =
+    p.translate[Top, E + Top]([X] => (op: Top[X]) => m.operation(Foreign.obj(op)) match
+      case Some(q) => q.map(answered[X]).at[E + Top]
+      case None => effect[Top, X](op).at[E + Top]
+    ).at[E + Top]
+
+  /** the program at the core row `F`: each operation checked to be one of F's as it is performed */
+  def typed[F[_], A](p: A ! Top)(using m: Foreign.Member[F]): A ! F =
+    p.translate[Top, F]([X] => (op: Top[X]) => m.operation(Foreign.obj(op)) match
+      case Some(q) => q.map(answered[X])
+      case None => throw IllegalStateException(s"okay.scala2: ${named(op)} is not an operation of the row")
+    ).at[F]
+
+  /** an operation's answer at its answer type: `X` is erased, and `Member` performed the operation that has it */
+  private def answered[X](a: Any): X = a.asInstanceOf[X]
+
+  private[scala2] def named(x: Any): String = if (x == null) "null" else s"${x.getClass.getName} ($x)"
+
+  /** what `run` answers an operation that reached it with: a refusal by name */
+  private[scala2] val unhandled: Answers[Top] = new Answers[Top]:
+    def handle[X](op: Top[X]): X = throw IllegalStateException(s"okay.scala2: no handler took ${named(op)}")
+
+  /** `Async`'s operations answered on this thread, every other refused */
+  private[scala2] val asyncOnly: Answers[Top] = new Answers[Top]:
+    private val async = Foreign.Member.of[okay.Async]
+    private val answers = summon[Answers[okay.Async]]
+    def handle[X](op: Top[X]): X = async.operation(Foreign.obj(op)) match
+      case Some(q) => answered[X](q.runWith(using answers))
+      case None => unhandled.handle(op)
 }
 
-import Rows.{Top, coerce}
+import Rows.{Top, erase, moved, typed}
 
 object Eff {
 
-  private[scala2] def of[R, A](p: Free[Top, A]): Eff[R, A] = new Eff(new EffBody(p))
+  private[scala2] def of[R, A](p: A ! Top): Eff[R, A] = new Eff(new EffBody(p))
 
-  def pure[A](a: A): Eff[Any, A] = of(okay.freer.pure(a))
+  def pure[A](a: A): Eff[Any, A] = of(okay.pure[A, Top](a))
 
   /** every effect handled: the answer */
-  def run[A](e: Eff[Any, A]): A = okay.freer.!.run(coerce[Top, Nothing, A](e.program))
+  def run[A](e: Eff[Any, A]): A = e.program.runWith(using Rows.unhandled)
 
   /** only `Async` left: run it on this thread (JVM, blocking) */
-  def runAsync[A](e: Eff[Async, A]): A = coerce[Top, okay.Async, A](e.program).runWith
+  def runAsync[A](e: Eff[Async, A]): A = e.program.runWith(using Rows.asyncOnly)
 
   /** a `Prog` is this row exactly */
-  def fromProg[A](p: Prog[A]): Eff[Async & Throws[Throwable], A] = of(coerce(p.program))
+  def fromProg[A](p: Prog[A]): Eff[Async & Throws[Throwable], A] = of(erase(p.program))
 
-  def toProg[A](e: Eff[Async & Throws[Throwable], A]): Prog[A] = Prog.of(coerce(e.program))
+  def toProg[A](e: Eff[Async & Throws[Throwable], A]): Prog[A] = Prog.of(typed[Prog.Row, A](e.program)(using Prog.member))
 }
 
 /** the capability: a mutable cell of type `S` */
@@ -86,18 +130,18 @@ object State {
   // compiles against okay2 with the same lines.
 
   /** read the current state */
-  def get[S]: Eff[State[S], S] = Eff.of(coerce(okay.std.State.get[S]))
+  def get[S]: Eff[State[S], S] = Eff.of(erase(okay.std.State.get[S]))
 
   /** replace the state, answering the new one */
-  def set[S](s: S): Eff[State[S], S] = Eff.of(coerce(okay.std.State.set(s)))
+  def set[S](s: S): Eff[State[S], S] = Eff.of(erase(okay.std.State.set(s)))
 
   /** apply `f` to the state, answering the new one */
-  def modify[S](f: S => S): Eff[State[S], S] = Eff.of(coerce(okay.std.State.modify(f)))
+  def modify[S](f: S => S): Eff[State[S], S] = Eff.of(erase(okay.std.State.modify(f)))
 
   /** handle it from `s`, the rest of the row forwarded: the final state
    * beside the answer */
   def handle[S, A, R](s: S)(e: Eff[State[S] & R, A]): Eff[R, (S, A)] =
-    Eff.of(coerce(okay.std.State.handle(s)[A, Top](coerce(e.program))))
+    Eff.of(okay.std.State.handle(s)[A, okay.std.State % S + Top](moved[okay.std.State % S, A](e.program)))
 
   /** run a program whose only capability is `State[S]` to its final
    * state and answer */
@@ -108,22 +152,22 @@ object State {
 sealed trait Reader[E]
 
 object Reader {
-  def ask[E]: Eff[Reader[E], E] = Eff.of(coerce(okay.std.Reader.ask[E]))
+  def ask[E]: Eff[Reader[E], E] = Eff.of(erase(okay.std.Reader.ask[E]))
 
   /** answer every `ask` with `env`, the rest of the row forwarded */
   def run[E, A, R](env: E)(e: Eff[Reader[E] & R, A]): Eff[R, A] =
-    Eff.of(coerce(okay.std.Reader.run[E, A, Top](env)(coerce(e.program))))
+    Eff.of(okay.std.Reader.run[E, A, okay.std.Reader % E + Top](env)(moved[okay.std.Reader % E, A](e.program)))
 }
 
 /** the capability: an output log of `W` */
 sealed trait Writer[W]
 
 object Writer {
-  def tell[W](w: W): Eff[Writer[W], Unit] = Eff.of(coerce(okay.std.Writer.tell(w)))
+  def tell[W](w: W): Eff[Writer[W], Unit] = Eff.of(erase(okay.std.Writer.tell(w)))
 
   /** everything told, in order, beside the answer, as a Vector */
   def collect[W, A, R](e: Eff[Writer[W] & R, A]): Eff[R, (Vector[W], A)] =
-    Eff.of(coerce(okay.std.Writer.collect[W, A, Top](coerce(e.program))))
+    Eff.of(okay.std.Writer.collect[W, A, okay.std.Writer % W + Top](moved[okay.std.Writer % W, A](e.program)))
 
   /** everything told, in order, beside the answer (a `Seq`, as okay's
    * `run` answers — here the Vector `collect` builds, by covariance) */
@@ -134,11 +178,11 @@ object Writer {
 sealed trait Throws[E]
 
 object Throws {
-  def raise[E, A](e: E): Eff[Throws[E], A] = Eff.of(coerce(okay.std.raise[E, A](e)))
+  def raise[E, A](e: E): Eff[Throws[E], A] = Eff.of(erase(okay.std.raise[E, A](e)))
 
   /** a failure as a `Left`, the rest of the row forwarded */
   def runEither[A, E, R](e: Eff[Throws[E] & R, A]): Eff[R, Either[E, A]] =
-    Eff.of(coerce(okay.std.runEither[A, Top, E](coerce(e.program))))
+    Eff.of(okay.std.runEither[A, okay.std.Throws % E + Top, E](moved[okay.std.Throws % E, A](e.program)))
 }
 
 /** the capability: suspended (possibly blocking) computation */
@@ -147,7 +191,7 @@ sealed trait Async
 object Async {
   /** suspend `a`; it runs when the program does — `Async(a)`, as okay2
    * spells it (okay's top-level `async(a)`) */
-  def apply[A](a: => A): Eff[Async, A] = Eff.of(coerce(okay.async(a)))
+  def apply[A](a: => A): Eff[Async, A] = Eff.of(erase(okay.async(a)))
 
   /** the program's failure as DATA: it runs on its own fiber, and
    * whatever it threw arrives as a `Left` — okay's and okay2's
@@ -164,8 +208,8 @@ object Async {
   // ---- concurrency (stage 5), over the platform's own Scheduler and
   // Timer: a virtual thread per fiber on the JVM
 
-  private[scala2] def core[A](e: Eff[Async, A]): A ! okay.Async = coerce(e.program)
-  private[scala2] def lift[A](p: A ! okay.Async): Eff[Async, A] = Eff.of(coerce(p))
+  private[scala2] def core[A](e: Eff[Async, A]): A ! okay.Async = typed[okay.Async, A](e.program)
+  private[scala2] def lift[A](p: A ! okay.Async): Eff[Async, A] = Eff.of(erase(p))
 
   /** start `e` on its own fiber; the answer is the running fiber */
   def fork[A](e: Eff[Async, A]): Eff[Async, Fiber[A]] =

@@ -1,9 +1,8 @@
 package okay.java
 
-import okay.TypeableK
-import okay.freer.{Free, effect}
+import okay.effect
 import java.util.function.{BiFunction, Function as JFunction, Supplier, UnaryOperator}
-import Rows.{Top, answered}
+import Rows.{Top, answered, top}
 
 /**
  * A CAPABILITY: the right to perform the operations of `O`, made by one
@@ -33,7 +32,7 @@ final class Cap[O] private[java] (cls: Class[O]) {
     via[R](op)
 
   /** an operation tagged with this capability, at the answer type its maker states */
-  private[java] def via[R](op: Any): Eff[R] = new Eff(effect[Top, R](Cap.Tagged(this, op)))
+  private[java] def via[R](op: Any): Eff[R] = new Eff(effect[Top, R](top[R](Cap.Tagged(this, op))))
 
   override def toString: String = s"Cap(${cls.getName})@${Integer.toHexString(System.identityHashCode(this))}"
 }
@@ -46,7 +45,7 @@ object Cap {
   }
 
   /** this capability's operations, by identity */
-  private def test(cap: Cap[?]): TypeableK[Top] = {
+  private def test(cap: Cap[?]): Any => Boolean = {
     case t: Tagged => t.cap eq cap
     case _ => false
   }
@@ -58,8 +57,8 @@ object Cap {
 
   /** a fresh capability for each run of the handler, handed to `body`, its operations taken by `handle` */
   private def scoped[O, A, B](cls: Class[O], body: JFunction[Cap[O], Eff[A]])
-                             (handle: (TypeableK[Top], Eff[A]) => Eff[B]): Eff[B] =
-    new Eff(Free.delay[Top, B] { () =>
+                             (handle: (Any => Boolean, Eff[A]) => Eff[B]): Eff[B] =
+    new Eff(okay.defer[B, Top] {
       val cap = new Cap[O](cls)
       handle(test(cap), body.apply(cap)).program
     })

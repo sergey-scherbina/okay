@@ -1,10 +1,7 @@
 package okay.java
 
-import okay.freer.{%, +, Pure}
-import okay.freer.{!}
+import okay.{%, +, !}
 import okay.std.{Reader, State}
-import okay.freer.Row.plus
-import okay.freer.given
 import okay.java.examples.JavaEffects
 import okay.testkit.Munit.Diagnosed
 
@@ -54,14 +51,14 @@ class TestJavaEffects extends munit.FunSuite, Diagnosed:
 
   test("a Scala program handled by Java handlers"):
     val p: Int ! (Reader % Int + State % Int) =
-      Reader.ask[Int].plus[State % Int].flatMap(r => State.modify[Int](_ + r).plus[Reader % Int])
+      Reader.ask[Int].flatMap(r => State.modify[Int](_ + r))
     val r = Eff.from(p).handle(Handler.reader(5)).handle(StateHandler.state(1)).run()
     assertEquals(r, Stated(6, 6))
 
   test("a Java program run by Scala handlers, a stranger refused by name"):
     val prog: Int ! Reader % Int = Eff.ask[Int]().map(_ + 1).toScala[Reader % Int]
-    assertEquals(!.run(Reader.run[Int, Int, Pure](41)(prog)), 42)
+    assertEquals(!.run(Reader.run[Int, Int, Reader % Int](41)(prog)), 42)
     val stranger = JavaEffects.twoNexts().toScala[Reader % Int]
-    val e = intercept[IllegalArgumentException](!.run(Reader.run[Int, Integer, Pure](41)(stranger)))
+    val e = intercept[IllegalArgumentException](!.run(Reader.run[Int, Integer, Reader % Int](41)(stranger)))
     note(e.getMessage)
     assert(e.getMessage.contains("JavaEffects$Counter$Next"), e.getMessage)

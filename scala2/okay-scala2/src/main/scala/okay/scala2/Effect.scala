@@ -1,8 +1,8 @@
 package okay.scala2
 
-import okay.{TypeableK}
-import okay.freer.{Free, Classic}
-import okay.freer.given
+import okay.{Foreign, Run, TypeableK, effect}
+import okay.core.Paths
+import okay.one.row.In
 import scala.reflect.ClassTag
 import Rows.Top
 
@@ -45,14 +45,20 @@ abstract class Effect[F[_]](implicit tag: ClassTag[F[Any]]) { self =>
   private def narrow[X](op: Op[X]): F[X] = op.asInstanceOf[F[X]]
 
   /** perform one operation */
-  def send[A](op: F[A] & Op[A]): Eff[Effect[F], A] = Eff.of(Rows.coerce(okay.freer.effect[Op, A](op)))
+  def send[A](op: F[A] & Op[A]): Eff[Effect[F], A] = Eff.of(effect[Top, A](op))
 
-  /** handle this effect: `ret` for the answer, `h` for each operation */
+  /** handle this effect: `ret` for the answer, `h` for each operation — the kernel's `Deep` written out, this
+   * effect's operations moved to `Op` beside `Top` (`Rows.moved`), the clauses' programs at `Top`'s place outside */
   def handle[R, A, B](e: Eff[Effect[F] & R, A])(ret: A => Eff[R, B])(h: Handler[F, R, B]): Eff[R, B] =
-    val E = Classic[Free]
-    Eff.of(E.handle[Op, Top](using test)[A, B](Rows.coerce(e.program))(a => ret(a).program)(
-      [X] => (op: Op[X]) =>
-        E.control.shift[X, Free[Top, B], Free[Top, B]](k => h(narrow(op), (x: X) => Eff.of[R, B](k(x))).program)))
+    val p = Rows.moved[Op, A](e.program)(using Foreign.Member.of[Op](using test))
+    val answer = ret
+    Eff.of(new Run[Top, B]:
+      def on[T <: okay.core.Row](ps: Paths[Top, T]): okay.core.Eff[T, B] =
+        val here = Paths.Both(Paths.One(In.Here[Op, T]()), ps.under[Op])
+        okay.one.Cont.handle(p.fit(here))(new okay.one.handler.Deep[Op, T, A, B]:
+          def ret(a: A) = answer(a).program.fit(ps)
+          def apply[X](op: Op[X], k: X => okay.one.![B, T]) =
+            h(narrow(op), (x: X) => Eff.of[R, B](okay.Program.lift(k(x)).at[Top])).program.fit(ps)))
 
   /**
    * handle the LAST effect and answer. Not a convenience: `handle` at the

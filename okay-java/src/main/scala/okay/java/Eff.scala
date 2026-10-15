@@ -1,12 +1,10 @@
 package okay.java
 
-import okay.{Answers, Async, Foreign, TypeableK, typeableK}
-
-import okay.freer.{Distinct, Classic, Row}
-import okay.freer.{+}
-import okay.freer.{!, Free, Member, effect}
+import okay.{!, +, %, Answers, Async, Erased, Foreign, Run, effect}
+import okay.core.{Paths, Req}
+import okay.std.{Reader, State, Throws}
 import okay.given
-import okay.freer.given
+import okay.one.row.In
 import java.util.function.{BiFunction, Function as JFunction, Supplier, UnaryOperator}
 
 /**
@@ -15,12 +13,16 @@ import java.util.function.{BiFunction, Function as JFunction, Supplier, UnaryOpe
  * okay's row is a union of type constructors, which Java cannot spell, and
  * okay-scala2's way around it — a phantom intersection `Eff[R, A]` — is not
  * open to Java either: an intersection is legal there only as a bound,
- * never as a type argument. So a Java program is `Eff<A>`, stored at an
- * erased row as okay-scala2 stores its own, and the row is checked when
- * the program RUNS: an operation nothing handled is refused by name.
- * Everything else is the core's own machinery — the handlers below are
- * `Handler.answerOf`, `stateOf`, `intoOf` and `Effects.handle`, each told
- * which operations are its own by the `Class` a Java caller names.
+ * never as a type argument. So a Java program is `Eff<A>`, a program
+ * needing ONE effect, `Top`, whose operations are any values, and the row
+ * is checked when the program RUNS: an operation nothing handled is
+ * refused by name. Everything else is the root's own words — a Java
+ * handler translates `Top` into `Top` (`translate`), answering its own
+ * operations and performing the others outside; a state or a core effect
+ * first moves its own operations to an effect of their own beside `Top`
+ * and is then the ordinary handler of it (`Handler.state`, `Reader.run`).
+ * Each Java handler is told which operations are its own by the `Class` a
+ * Java caller names.
  *
  * {{{
  * sealed interface Counter<R> extends Op<R> {
@@ -38,18 +40,24 @@ trait Op[+R]
 
 private[java] object Rows {
 
-  /** the row every `Eff` is stored at */
-  type Top[+X] = Any
+  /** the one effect every `Eff` needs: its operations are any values. Opaque, so no evidence of rows mistakes it
+   * for another effect (an alias of `Any` would equal every other such alias) */
+  opaque type Top[X] = Any
 
-  /**
-   * THE ONE ROW CAST, made here once (okay-scala2's `Rows.coerce`, for the
-   * same reason): Java has no row to follow, so a program is stored at
-   * `Top` and re-typed at the concrete row a core handler takes. It is
-   * right because `Free` never reads its row at run time — handlers split
-   * operations by their class — and an operation nobody took is refused by
-   * name when the program runs (`Eff.unhandled`).
-   */
-  def coerce[F[+_], G[+_], A](p: Free[F, A]): Free[G, A] = p.asInstanceOf[Free[G, A]]
+  /** the operations a Java handler took off `Top`, as an effect of their own beside it (`Own + Top`) */
+  opaque type Own[X] = Any
+
+  /** a value performed as an operation of `Top`, answering `X` */
+  def top[X](op: Any): Top[X] = op
+
+  /** the value an operation of `Top` is */
+  def raw[X](op: Top[X]): Any = op
+
+  /** an operation of `Top` that a handler's test said is its own */
+  def own[X](op: Top[X]): Own[X] = op
+
+  /** the value an operation of `Own` is */
+  def rawOwn[X](op: Own[X]): Any = op
 
   /**
    * A Java clause's answer at its operation's answer type. A Java lambda
@@ -59,19 +67,37 @@ private[java] object Rows {
    */
   def answered[X](a: Any): X = a.asInstanceOf[X]
 
-  /** the test a handler splits by: the class its Java caller named */
-  def test(cls: Class[?]): TypeableK[Top] = typeableK[Top](cls)
-
-  /** every row here is distinct by construction: one Java handler takes one class */
-  def distinct[F[+_]]: Distinct[F] = Distinct.unchecked[F]()
+  /**
+   * THE ONE ROW CAST: a Scala program's effect placed at `Top`'s place (`Eff.from`). Java has no row to follow, so
+   * every effect of the Scala program is performed where `Top` is, and whatever answers `Top` there — a Java
+   * handler, which splits operations by their class — answers it. Right because `Top`'s operations are any values:
+   * what is performed at that place is never read at a type other than the one a test of its class gave it.
+   */
+  def at[E[_], R <: okay.core.Row](in: In[Top, R]): In[E, R] = in.asInstanceOf[In[E, R]]
 
   def named(x: Any): String = if x == null then "null" else s"${x.getClass.getName} ($x)"
 }
 
-import Rows.{Top, answered, coerce}
+import Rows.{Own, Top, answered, raw, rawOwn, top}
+
+private[java] object Moves {
+
+  /** a Java handler's own operations moved to `Own` beside `Top` (`test` says which); the others stay */
+  def own[A](p: A ! Top, test: Any => Boolean): A ! Own + Top =
+    p.translate[Top, Own + Top]([X] => (op: Top[X]) =>
+      if test(raw(op)) then effect[Own, X](Rows.own(op)).at[Own + Top] else effect[Top, X](op).at[Own + Top]
+    ).at[Own + Top]
+
+  /** a Scala effect's operations moved to it beside `Top` (its `Member` says which); the others stay */
+  def scala[E[_], A](p: A ! Top)(using m: Foreign.Member[E]): A ! E + Top =
+    p.translate[Top, E + Top]([X] => (op: Top[X]) => m.operation(Foreign.obj(raw(op))) match
+      case Some(q) => q.map(answered[X]).at[E + Top]
+      case None => effect[Top, X](op).at[E + Top]
+    ).at[E + Top]
+}
 
 /** a program answering `A`, performing operations nothing in Java's types records */
-final class Eff[A] private[java] (private[java] val program: Free[Top, A]) {
+final class Eff[A] private[java] (private[java] val program: A ! Top) {
 
   def map[B](f: JFunction[? >: A, ? <: B]): Eff[B] = new Eff(program.map(a => f.apply(a)))
 
@@ -91,43 +117,43 @@ final class Eff[A] private[java] (private[java] val program: Free[Top, A]) {
 
   /** the core `Throws`: a `raise` answered by `f` of what was raised */
   def recover(f: JFunction[Any, ? <: A]): Eff[A] =
-    new Eff(coerce(okay.std.runEither[A, Top, Any](coerce(program))(using Rows.distinct)).map(_.fold(e => f.apply(e), a => a)))
+    new Eff(okay.std.runEither[A, Throws % Any + Top, Any](Moves.scala[Throws % Any, A](program))
+      .map(_.fold(e => f.apply(e), a => a)))
 
   /** every operation handled: the answer. One left is refused by name */
   def run(): A = program.runWith(using Eff.unhandled)
 
   /** only the core `Async` left: run it on this thread, blocking */
-  def runAsync(): A = coerce[Top, Async + Top, A](program).runWith(using Eff.asyncOnly)
+  def runAsync(): A = program.runWith(using Eff.asyncOnly)
 
   /**
    * This program for Scala, in the row `F`: each operation is checked to be
    * one of F's as it is performed, and refused by name if not.
    */
-  def toScala[F[+_]](using m: Member[F]): A ! F =
-    // the context bound's evidence comes LAST, after the translation
-    !.translate[A, Top, F](coerce(program))(using Rows.distinct)([X] => (e: Top[X]) =>
-      m.operation(Foreign.obj(e)) match
-        case Some(op) => effect[F, Any](op).map(answered[X])
-        case None => throw IllegalArgumentException(s"okay.java: ${Rows.named(e)} is not an operation of the row"))(
-      using Eff.everything)
+  def toScala[F[_]](using m: Foreign.Member[F]): A ! F =
+    program.translate[Top, F]([X] => (op: Top[X]) => m.operation(Foreign.obj(raw(op))) match
+      case Some(q) => q.map(answered[X])
+      case None => throw IllegalArgumentException(s"okay.java: ${Rows.named(raw(op))} is not an operation of the row")
+    ).at[F]
 }
 
 object Eff {
 
-  def pure[A](a: A): Eff[A] = new Eff(okay.freer.pure(a))
+  def pure[A](a: A): Eff[A] = new Eff(okay.pure[A, Top](a))
 
   /** perform one operation of a Java effect */
-  def perform[R](op: Op[R]): Eff[R] = new Eff(coerce(effect[Op, R](op)))
+  def perform[R](op: Op[R]): Eff[R] = new Eff(effect[Top, R](top[R](op)))
 
   /**
    * `next()` when the program reaches here, not now: the tail call that keeps
    * a recursive Java program stack-safe — `loop(n)` returning
    * `Eff.defer(() -> loop(n - 1))` runs in constant stack at any depth.
    */
-  def defer[A](next: Supplier[Eff[A]]): Eff[A] = new Eff(Free.delay(() => next.get().program))
+  def defer[A](next: Supplier[Eff[A]]): Eff[A] = new Eff(okay.defer(next.get().program))
 
   /** a Scala program, for Java: its operations are handled by Java's handlers or by `run`'s refusal */
-  def from[A, F[+_]](p: A ! F): Eff[A] = new Eff(coerce(p))
+  def from[A, F[_]](p: A ! F)(using e: Erased[F]): Eff[A] = new Eff(new Run[Top, A]:
+    def on[R <: okay.core.Row](ps: Paths[Top, R]): okay.core.Eff[R, A] = p.fit(e.paths(ps.find(Req.only))))
 
   // ------------------------------------------------- the core effects
 
@@ -156,16 +182,18 @@ object Eff {
 
   /** what `run` answers an operation that reached it with: a refusal by name, never the operation as a value */
   private[java] val unhandled: Answers[Top] = new Answers[Top]:
-    def handle[X](op: Top[X]): X = op match
+    def handle[X](op: Top[X]): X = raw(op) match
       case t: Cap.Tagged => throw IllegalStateException(
         s"okay.java: ${t.op} was performed through ${t.cap} outside its handler — the capability escaped its scope")
-      case _ => throw IllegalStateException(s"okay.java: no handler took ${Rows.named(op)}")
+      case other => throw IllegalStateException(s"okay.java: no handler took ${Rows.named(other)}")
 
-  private[java] val asyncOnly: Answers[Async + Top] =
-    Row.union[Async, Top](using summon[TypeableK[Async]], summon[Answers[Async]], unhandled)(using Rows.distinct)
-
-  /** `toScala` re-types every operation */
-  private[java] val everything: TypeableK[Top] = _ => true
+  /** `Async`'s operations answered on this thread, every other refused as `run` refuses it */
+  private[java] val asyncOnly: Answers[Top] = new Answers[Top]:
+    private val async = Foreign.Member.of[Async]
+    private val answers = summon[Answers[Async]]
+    def handle[X](op: Top[X]): X = async.operation(Foreign.obj(raw(op))) match
+      case Some(q) => answered[X](q.runWith(using answers))
+      case None => unhandled.handle(op)
 }
 
 /** a state and the program's answer beside it */
@@ -176,37 +204,36 @@ object Stated {
 }
 
 /** a handler that keeps the program's answer: `Handler.answer`, `Handler.into`, `Handler.reader` */
-final class Handler private (private val take: [A] => Free[Top, A] => Free[Top, A]) {
+final class Handler private (private val take: [A] => (A ! Top) => A ! Top) {
   private[java] def run[A](e: Eff[A]): Eff[A] = new Eff(take[A](e.program))
 }
 
 object Handler {
 
   /** form 1: each operation of `cls` answered by `f`, and the program goes on */
-  def answer[O](cls: Class[O], f: JFunction[? >: O, ?]): Handler = answerBy(Rows.test(cls), op => f.apply(cls.cast(op)))
+  def answer[O](cls: Class[O], f: JFunction[? >: O, ?]): Handler = answerBy(cls.isInstance, op => f.apply(cls.cast(op)))
 
   /** form 3: each operation of `cls` becomes the program `f` makes of it, in whatever effects remain */
-  def into[O](cls: Class[O], f: JFunction[? >: O, Eff[?]]): Handler = intoBy(Rows.test(cls), op => f.apply(cls.cast(op)))
+  def into[O](cls: Class[O], f: JFunction[? >: O, Eff[?]]): Handler = intoBy(cls.isInstance, op => f.apply(cls.cast(op)))
 
   // the forms over any test: by class above, by a capability's identity in `Cap`; `f` reads the raw operation
 
-  private[java] def answerBy(test: TypeableK[Top], f: Any => Any): Handler =
-    val h = okay.freer.Handler.answerOf[Top]([X] => (op: Top[X]) => answered[X](f(op)))(using test)
-    new Handler([A] => (p: Free[Top, A]) => coerce[Top, Top, A](
-      h.run[A, Top](coerce(p))(using summon, Rows.distinct, okay.freer.Handler.Nothing.any)))
+  private[java] def answerBy(test: Any => Boolean, f: Any => Any): Handler =
+    intoBy(test, op => Eff.pure(f(op)))
 
-  private[java] def intoBy(test: TypeableK[Top], f: Any => Eff[?]): Handler =
-    val h = okay.freer.Handler.intoOf[Top, Top]([X] => (op: Top[X]) => f(op).program.map(answered[X]))(using test)
-    new Handler([A] => (p: Free[Top, A]) =>
-      h.run[A, Top](coerce(p))(using summon, Rows.distinct, summon))
+  private[java] def intoBy(test: Any => Boolean, f: Any => Eff[?]): Handler =
+    new Handler([A] => (p: A ! Top) =>
+      p.translate[Top, Top]([X] => (op: Top[X]) =>
+        if test(raw(op)) then f(raw(op)).program.map(answered[X]) else effect[Top, X](op)
+      ).at[Top])
 
   /** the core `Reader`: every `Eff.ask()` answered with `env` */
   def reader[E](env: E): Handler =
-    new Handler([A] => (p: Free[Top, A]) => coerce[Top, Top, A](okay.std.Reader.run[E, A, Top](env)(coerce(p))(using Rows.distinct)))
+    new Handler([A] => (p: A ! Top) => okay.std.Reader.run[E, A, Reader % E + Top](env)(Moves.scala[Reader % E, A](p)))
 }
 
 /** a handler threading a state `S`: the program's answer arrives beside the last state */
-final class StateHandler[S] private (private val take: [A] => Free[Top, A] => Free[Top, (S, A)]) {
+final class StateHandler[S] private (private val take: [A] => (A ! Top) => (S, A) ! Top) {
   private[java] def run[A](e: Eff[A]): Eff[Stated[S, A]] = new Eff(take[A](e.program).map((s, a) => Stated(s, a)))
 }
 
@@ -214,18 +241,17 @@ object StateHandler {
 
   /** form 2: each operation of `cls` answered from the state, which it may replace: `(s, op) -> Stated.of(s2, answer)` */
   def of[O, S](cls: Class[O], init: S, step: BiFunction[S, ? >: O, Stated[S, ?]]): StateHandler[S] =
-    stateBy(Rows.test(cls), init, (s, op) => step.apply(s, cls.cast(op)))
+    stateBy(cls.isInstance, init, (s, op) => step.apply(s, cls.cast(op)))
 
-  private[java] def stateBy[S](test: TypeableK[Top], init: S, step: (S, Any) => Stated[S, ?]): StateHandler[S] =
-    val h = okay.freer.Handler.stateOf[Top, S](init)([X] => (s: S, op: Top[X]) =>
-      val next = step(s, op)
-      (next.state, answered[X](next.value)))(using test)
-    new StateHandler([A] => (p: Free[Top, A]) =>
-      h.run[A, Top](coerce(p))(using summon, Rows.distinct, okay.freer.Handler.Nothing.any))
+  private[java] def stateBy[S](test: Any => Boolean, init: S, step: (S, Any) => Stated[S, ?]): StateHandler[S] =
+    val h = okay.Handler.state[Own, S](init)([X] => (s: S, op: Own[X]) =>
+      val next = step(s, rawOwn(op))
+      (next.state, answered[X](next.value)))
+    new StateHandler([A] => (p: A ! Top) => Moves.own(p, test).handle(h))
 
   /** the core `State`, from `init`: `Eff.get()`, `put`, `modify` */
   def state[S](init: S): StateHandler[S] =
-    new StateHandler([A] => (p: Free[Top, A]) => okay.std.State.handle(init)[A, Top](coerce(p))(using Rows.distinct))
+    new StateHandler([A] => (p: A ! Top) => okay.std.State.handle(init)[A, State % S + Top](Moves.scala[State % S, A](p)))
 }
 
 /** the rest of the program after an operation, as a `Control` clause holds it */
@@ -239,18 +265,23 @@ trait Clause[O, B] {
   def apply(op: O, k: Resume[B]): Eff[B]
 }
 
-/** form 4: a handler with the continuation in hand, its return clause turning the answer `A` into `B` */
-final class Control[A, B] private[java] (test: TypeableK[Top], ret: JFunction[? >: A, Eff[B]], clause: Clause[Any, B]) {
+/** form 4: a handler with the continuation in hand, its return clause turning the answer `A` into `B` — the
+ * kernel's `Deep` written out, its clauses' programs at `Top`'s place outside it */
+final class Control[A, B] private[java] (test: Any => Boolean, ret: JFunction[? >: A, Eff[B]], clause: Clause[Any, B]) {
   private[java] def run(e: Eff[A]): Eff[B] =
-    val E = Classic[Free]
-    new Eff(E.handle[Top, Top](using test)[A, B](coerce(e.program))(a => ret.apply(a).program)(
-      [X] => (op: Top[X]) =>
-        E.control.shift[X, Free[Top, B], Free[Top, B]](k => clause(op, x => new Eff(k(answered[X](x)))).program)))
+    val p = Moves.own(e.program, test)
+    new Eff(new Run[Top, B]:
+      def on[R <: okay.core.Row](ps: Paths[Top, R]): okay.core.Eff[R, B] =
+        val here = Paths.Both(Paths.One(In.Here[Own, R]()), ps.under[Own])
+        okay.one.Cont.handle(p.fit(here))(new okay.one.handler.Deep[Own, R, A, B]:
+          def ret(a: A) = Control.this.ret.apply(a).program.fit(ps)
+          def apply[X](op: Own[X], k: X => okay.one.![B, R]) =
+            clause(rawOwn(op), x => new Eff(okay.Program.lift(k(answered[X](x))).at[Top])).program.fit(ps)))
 }
 
 object Control {
 
   /** `ret` for the program's answer, `clause` for each operation of `cls`: `(op, k) -> k.resume(true)` */
   def of[O, A, B](cls: Class[O], ret: JFunction[? >: A, Eff[B]], clause: Clause[? >: O, B]): Control[A, B] =
-    new Control[A, B](Rows.test(cls), ret, (op, k) => clause.apply(cls.cast(op), k))
+    new Control[A, B](cls.isInstance, ret, (op, k) => clause.apply(cls.cast(op), k))
 }

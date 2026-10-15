@@ -1,7 +1,6 @@
 package okay.java
 
 import okay.{Push, Stage}
-import okay.freer.Free
 import java.util.stream.Gatherer
 import scala.collection.mutable.ArrayBuffer
 
@@ -72,7 +71,7 @@ object Gather {
    * gatherer — runs inside an okay pipeline (`through`, `pipe`).
    *
    * The Gatherer's state is made when the stage STARTS, not when this
-   * is called (a `Free.delay`): the same stage value run twice must
+   * is called (a `defer`): the same stage value run twice must
    * not share one mutable state. The integrator pushes into a buffer
    * the stage then tells, element by element; when it answers `false`
    * the stage stops awaiting — `through` then pulls nothing more from
@@ -81,13 +80,13 @@ object Gather {
    * A program BUILT over it is a value too: `through` starts its
    * drive when the program runs, not when it is built (Pipe.scala,
    * windows-stage-rerun-loses-pane, 2026-09-23), so each run of the
-   * built program reaches this `delay` and makes its own state. It
+   * built program reaches this `defer` and makes its own state. It
    * used to drive the stage eagerly to its first output, and the
    * built program then held this run's gatherer — measured, a second
    * run NPE'd inside the JDK's `windowFixed` (its finisher nulls its
    * array). What CANNOT be replayed is a continuation from inside a
    * run — the rest after some output, resumed again after the run
-   * finished (a Free continuation is multi-shot): the JDK's state is
+   * finished (a program's rest is multi-shot): the JDK's state is
    * an opaque mutable object that cannot be snapshotted, so that is
    * REFUSED by name below, before the JDK's state is touched.
    */
@@ -95,7 +94,7 @@ object Gather {
     val init = g.initializer
     val integrator = g.integrator
     val finisher = g.finisher
-    Free.delay { () =>
+    okay.defer {
       val state = init.get()
       val out = ArrayBuffer.empty[O]
       val ds: Gatherer.Downstream[O] = o => { out += o; true }
@@ -112,7 +111,7 @@ object Gather {
       def flush(): Stage[I, O, Unit] =
         val batch = out.toVector
         out.clear()
-        okay.freer.!.each(batch)(o => Stage.tell[I, O](o))
+        okay.Pulling.tellAll[I, O](batch, 0)
 
       def finish(): Stage[I, O, Unit] =
         live()
