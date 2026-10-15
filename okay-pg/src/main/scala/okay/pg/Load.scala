@@ -1,7 +1,7 @@
 package okay.pg
 
 import okay.Async
-import okay.freer.{!}
+import okay.{!}
 import okay.sql.SqlValue
 
 /**

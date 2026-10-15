@@ -2,7 +2,7 @@ package okay.outbox
 
 
 import okay.{Async, Source}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.codec.Schema
 import okay.sql.{Sql, SqlValue, Typed}
@@ -19,11 +19,10 @@ private[outbox] object Rows:
   def all[A: Schema](db: Sql, sql: String, params: Vector[SqlValue] = Vector.empty): Vector[A] ! Async =
     // generic in B so the damage type is whatever `Typed.rows` says
     def go[B](p: Source[Chunk[Either[B, A]]]): Vector[A] ! Async =
-      given Fold[Chunk[Either[B, A]], Vector[A]] = Fold(Vector.empty[A]) { (acc, c) =>
+      Writer.foldWith[Chunk[Either[B, A]], Vector[A], Unit, Writer % Chunk[Either[B, A]] + Async](p)(Vector.empty[A]) { (acc, c) =>
         val (bad, good) = c.partitionMap(identity)
         bad.headOption match
           case Some(b) => throw IllegalStateException(s"$sql: a row this Schema cannot read: $b")
           case None => acc ++ good
-      }
-      Writer.fold[Chunk[Either[B, A]], Vector[A], Unit, Async](p).map(_._1)
+      }.map(_._1)
     go(Typed.rows[A](db, sql, params))

@@ -2,11 +2,10 @@ package okay.delta
 
 import okay.{Async, ChunkBuf, Source}
 
-import okay.freer.{+, %}
-import okay.freer.{!}
+import okay.{+, %}
+import okay.{!}
 import okay.std.{Chunk, Stream, Writer}
 import okay.given
-import okay.freer.given
 import okay.std.given
 import okay.sql.{SqlType, SqlValue, Typed}
 import okay.sql.given
@@ -36,7 +35,7 @@ class TestDelta extends munit.FunSuite:
         "(Subject.getSubject, JEP 486); build.sbt runs it on JDK 21 where one is installed")
     v >= 24
 
-  def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](prog))
+  def run[A](prog: A ! Async): A = !.run(Async.run(prog))
 
   def collectChunks[A](s: Source[Chunk[A]]): List[Chunk[A]] =
     summon[Stream[[W] =>> Unit ! Writer % W + Async, Async]].iterator(s).toList

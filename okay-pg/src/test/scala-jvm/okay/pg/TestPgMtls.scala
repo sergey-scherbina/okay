@@ -2,11 +2,10 @@ package okay.pg
 
 import okay.{Async, Source}
 
-import okay.freer.{+, %}
-import okay.freer.{!}
+import okay.{+, %}
+import okay.{!}
 import okay.std.{Chunk, Stream, Writer}
 import okay.given
-import okay.freer.given
 import okay.std.given
 import okay.crypto.given
 import okay.sql.SqlValue
@@ -33,7 +32,7 @@ class TestPgMtls extends munit.FunSuite:
   val host = sys.env.getOrElse("OKAY_PG_HOST", "127.0.0.1")
   val port = sys.env.get("OKAY_PG_PORT").flatMap(_.toIntOption).getOrElse(5432)
 
-  def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](prog))
+  def run[A](prog: A ! Async): A = !.run(Async.run(prog))
 
   /** copies a file out of the container; None if docker or the file is absent */
   private def fromContainer(name: String, mode: String): Option[String] =

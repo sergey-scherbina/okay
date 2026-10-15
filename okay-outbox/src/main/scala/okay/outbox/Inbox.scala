@@ -2,7 +2,7 @@ package okay.outbox
 
 
 import okay.{Async}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.codec.Schema
 import okay.sql.{Sql, SqlValue, Typed}
@@ -39,12 +39,12 @@ final class Inbox(table: String = "okay_inbox",
   /** the whole shape: a transaction that records the id and runs the
     * body; a duplicate runs nothing and answers None */
   def once[A](db: Sql, id: String)(body: => A ! Async): Option[A] ! Async =
-    Resource.run[Option[A], Async](
-      Typed.transact[Option[A], Async](db) { _ =>
-        !.widen[Boolean, Async, Resource](first(db, id)).flatMap { fresh =>
-          if fresh then !.widen[A, Async, Resource](body).map(Some(_))
+    Resource.run(
+      Typed.transact[Option[A], Pure](db) { _ =>
+        first(db, id).at[Resource + Async + Pure].flatMap { fresh =>
+          if fresh then body.at[Resource + Async + Pure].map(Some(_))
           else pure(None)
         }
-      })
+      }).at[Async]
 
 private final case class Seen(id: String, seenAt: Long) derives Schema

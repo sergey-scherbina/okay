@@ -1,7 +1,7 @@
 package okay.pg
 
 import okay.{Async, NetConn, NetEof, async}
-import okay.freer.{!}
+import okay.{!}
 import okay.crypto.Crypto
 import okay.tls.{Tls, TlsConfig}
 import okay.conf.Secrets

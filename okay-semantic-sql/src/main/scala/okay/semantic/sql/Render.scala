@@ -1,7 +1,7 @@
 package okay.semantic.sql
 
 import okay.Async
-import okay.freer.{!}
+import okay.{!, +, %}
 import okay.std.{Chunk, Writer}
 import okay.sql.{Sql, SqlValue}
 import okay.semantic.*
@@ -158,19 +158,19 @@ final class Statement[A] private[sql] (val plan: Plan[A], val sql: String, val p
 
   def execute(using db: Sql): Either[Vector[String], Result] ! Async =
     def aggregate: Either[Vector[String], Result] ! Async =
-      Writer.foldWith[Chunk[Vector[SqlValue]], Vector[Vector[SqlValue]], Unit, Async](db.query(sql, params))(Vector.empty)(
+      Writer.foldWith[Chunk[Vector[SqlValue]], Vector[Vector[SqlValue]], Unit, Writer % Chunk[Vector[SqlValue]] + Async](db.query(sql, params))(Vector.empty)(
         (frames, chunk) => frames ++ chunk).map((frames, _) => decode(frames))
     // Build the preflight chain iteratively; effect interpretation trampolines its binds.
-    val checked = preflights.foldLeft(okay.freer.pure[Async, Either[Vector[String], Unit]](Right(()))) { (program, check) =>
+    val checked = preflights.foldLeft(okay.pure[Either[Vector[String], Unit], Async](Right(()))) { (program, check) =>
       program.flatMap {
-        case bad @ Left(_) => okay.freer.pure(bad)
+        case bad @ Left(_) => okay.pure(bad)
         case Right(_) =>
-          Writer.foldWith[Chunk[Vector[SqlValue]], Boolean, Unit, Async](db.query(check._1))(false)(
+          Writer.foldWith[Chunk[Vector[SqlValue]], Boolean, Unit, Writer % Chunk[Vector[SqlValue]] + Async](db.query(check._1))(false)(
             (found, chunk) => found || chunk.nonEmpty).map((found, _) =>
               if found then Left(Vector(check._2)) else Right(()))
       }
     }
     checked.flatMap {
-      case Left(es) => okay.freer.pure(Left(es))
+      case Left(es) => okay.pure(Left(es))
       case Right(_) => aggregate
     }

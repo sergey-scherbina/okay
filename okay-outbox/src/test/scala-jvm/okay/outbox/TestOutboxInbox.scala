@@ -1,11 +1,11 @@
 package okay.outbox
 
+import scala.language.implicitConversions
 
 import okay.{Async}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.codec.Schema
 import okay.jdbc.JdbcSql
 import okay.persist.{Ack, MemoryStore, Store, Topic, Policy}
@@ -45,7 +45,7 @@ class TestOutboxInbox extends munit.FunSuite:
     run(Rows.all[Order](db, "select id, total from orders order by id"))
 
   def placeOrder(db: Sql, outbox: Outbox, o: Order, abort: Boolean = false): Unit ! Resource + Async =
-    Typed.transact[Unit, Async](db) { _ =>
+    Typed.transact[Unit, okay.Pure](db) { _ =>
       for
         _ <- !.widen[Long, Async, Resource](Typed.update[Order](db, "insert into orders (id, total) values (?, ?)")(o))
         _ <- !.widen[String, Async, Resource](outbox.enqueue(db, "orders", s"placed ${o.id}".getBytes("UTF-8"), key = o.id.getBytes("UTF-8")))
@@ -61,8 +61,8 @@ class TestOutboxInbox extends munit.FunSuite:
   test("one fate: a committed transaction's event is relayed, an aborted one's is not") {
     val (db, outbox, _) = fixture()
     val store = MemoryStore()
-    run(Resource.run[Unit, Async](placeOrder(db, outbox, Order("o1", 10))))
-    assertEquals(intercept[RuntimeException](run(Resource.run[Unit, Async](placeOrder(db, outbox, Order("o2", 20), abort = true)))).getMessage, "payment declined")
+    run(Resource.run(placeOrder(db, outbox, Order("o1", 10))))
+    assertEquals(intercept[RuntimeException](run(Resource.run(placeOrder(db, outbox, Order("o2", 20), abort = true)))).getMessage, "payment declined")
     assertEquals(orders(db).map(_.id), Vector("o1"))         // the rows share the fate
     assertEquals(run(outbox.pending(db)), 1L)
 
@@ -78,7 +78,7 @@ class TestOutboxInbox extends munit.FunSuite:
     val store = MemoryStore()
     for i <- 1 to 5 do
       now += 1
-      run(Resource.run[Unit, Async](placeOrder(db, outbox, Order(s"o$i", i))))
+      run(Resource.run(placeOrder(db, outbox, Order(s"o$i", i))))
     assertEquals(run(outbox.relayOnce(db, store, batch = 2)), 2)
     assertEquals(run(outbox.relayOnce(db, store, batch = 2)), 2)
     assertEquals(run(outbox.relayOnce(db, store, batch = 2)), 1)
@@ -108,7 +108,7 @@ class TestOutboxInbox extends munit.FunSuite:
     val (db, outbox, inbox) = fixture()
     val memory = MemoryStore()
     val store = Dying(memory, diesAfterAppend = true)
-    run(Resource.run[Unit, Async](placeOrder(db, outbox, Order("o1", 10))))
+    run(Resource.run(placeOrder(db, outbox, Order("o1", 10))))
     assertEquals(intercept[RuntimeException](run(outbox.relayOnce(db, store))).getMessage, "relay died after the append")
     assertEquals(run(outbox.pending(db)), 1L)                // not marked: will be relayed again
     store.diesAfterAppend = false
@@ -127,9 +127,9 @@ class TestOutboxInbox extends munit.FunSuite:
 
   test("inbox: first once per id; a failing body leaves the id unrecorded so the record is tried again") {
     val (db, _, inbox) = fixture()
-    val transactional = Typed.transact[Boolean, Async](db)(_ => !.widen[Boolean, Async, Resource](inbox.first(db, "m1")))
-    assertEquals(run(Resource.run[Boolean, Async](transactional)), true)
-    assertEquals(run(Resource.run[Boolean, Async](transactional)), false)
+    val transactional = Typed.transact[Boolean, okay.Pure](db)(_ => !.widen[Boolean, Async, Resource](inbox.first(db, "m1")))
+    assertEquals(run(Resource.run(transactional)), true)
+    assertEquals(run(Resource.run(transactional)), false)
 
     var tries = 0
     def attempt(): Option[Int] = run(inbox.once(db, "m2") { okay.async { tries += 1; if tries == 1 then throw RuntimeException("db hiccup") else tries } })

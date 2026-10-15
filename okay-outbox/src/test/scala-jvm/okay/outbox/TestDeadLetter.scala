@@ -2,9 +2,8 @@ package okay.outbox
 
 
 import okay.{Async}
-import okay.freer.*
+import okay.*
 import okay.given
-import okay.freer.given
 import okay.persist.{Ack, MemoryStore, Offsets, Record, Typed, of}
 
 /**

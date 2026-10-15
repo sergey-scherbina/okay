@@ -1,6 +1,6 @@
 package okay.scala2
 
-import okay.freer.Row.plus
+import okay.{+, %}
 import okay.codec.Schema
 import okay.sql.{Bad, Drift, Isolation, SqlValue, Typed}
 
@@ -61,8 +61,9 @@ final class Db private (sql: okay.sql.Sql) {
    */
   def transaction[A](isolation: Isolation = Isolation.ReadCommitted, readOnly: Boolean = false)
                     (body: Db => Eff[Async, A]): Eff[Async, A] =
-    Async.lift(okay.std.Resource.run[A, okay.Async](
-      Typed.transact[A, okay.Async](sql, isolation, readOnly)(_ => Async.core(body(this)).plus[okay.std.Resource])))
+    Async.lift(okay.std.Resource.run(
+      Typed.transact[A, okay.Pure](sql, isolation, readOnly)(_ =>
+        Async.core(body(this)).at[okay.std.Resource + okay.Async + okay.Pure])).at[okay.Async])
 }
 
 object Db {
@@ -76,7 +77,7 @@ object Db {
     new Db(new okay.jdbc.JdbcSql(connection, fetchSize))
 
   private def flat[A](s: okay.Source[okay.std.Chunk[Either[Bad, A]]]): Source[Either[Bad, A]] =
-    Source.of(okay.std.Writer.expand[okay.std.Chunk[Either[Bad, A]], Either[Bad, A], Unit, okay.Async](s)(c => c))
+    Source.of(okay.std.Writer.expand[okay.std.Chunk[Either[Bad, A]], Either[Bad, A], Unit, okay.std.Writer % okay.std.Chunk[Either[Bad, A]] + okay.Async](s)(c => c))
 
   private def firstBad[A](s: Source[Either[Bad, A]]): Eff[Async & Throws[Bad], Vector[A]] =
     s.runCollect.flatMap { rows =>

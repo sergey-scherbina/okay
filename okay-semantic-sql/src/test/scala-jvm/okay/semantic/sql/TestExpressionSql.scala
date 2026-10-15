@@ -2,7 +2,6 @@ package okay.semantic.sql
 
 
 import okay.given
-import okay.freer.given
 import okay.codec.Json.*
 import okay.semantic.{Dimension, Kind, Measure, Origin, Request, Value}
 import okay.semantic.ossie.{Bindings, Document, Execution, FieldKey}
