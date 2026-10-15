@@ -1,7 +1,7 @@
 package okay.blob
 
 import okay.{Async, async}
-import okay.freer.{!, pure}
+import okay.{!, pure}
 import okay.persist.{Record, Segments, Topic}
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*

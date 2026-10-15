@@ -1,9 +1,8 @@
 package okay.blob
 
 import okay.Async
-import okay.freer.{!}
+import okay.!
 import okay.given
-import okay.freer.given
 import okay.persist.{Ack, Doctor, FileStore, Policy}
 import java.nio.file.{Files, Path}
 
@@ -15,7 +14,7 @@ import java.nio.file.{Files, Path}
  */
 class TestBackup extends munit.FunSuite {
 
-  def run[A](p: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](p))
+  def run[A](p: A ! Async): A = Async.run(p).run
 
   def store(): (Path, okay.persist.Topic) =
     val root = Files.createTempDirectory("okay-backup-src")

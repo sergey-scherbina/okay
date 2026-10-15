@@ -1,9 +1,8 @@
 package okay.blob
 
 import okay.Async
-import okay.freer.{!, pure}
+import okay.{!, pure}
 import okay.given
-import okay.freer.given
 import okay.http.{Http, Request, Response}
 
 /** the conf invariants at this seam: the SECRET key reaches the HMAC
@@ -22,7 +21,7 @@ class TestNoLeak extends munit.FunSuite {
     val s3 = S3(recording, "http://s3.example", "bucket", "us-east-1",
       SigV4.Creds("AKIAEXAMPLE", canary))
 
-    def run[A](p: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](p))
+    def run[A](p: A ! Async): A = Async.run(p).run
     assertEquals(run(s3.head("k")), None)
     run(s3.delete("k"))
     val err = intercept[IllegalStateException](

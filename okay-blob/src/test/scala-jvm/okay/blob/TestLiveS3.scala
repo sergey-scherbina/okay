@@ -1,9 +1,7 @@
 package okay.blob
 
 import okay.Async
-import okay.freer.{!}
 import okay.given
-import okay.freer.given
 import okay.http.{Method, Request, Transports}
 
 /**
@@ -43,8 +41,8 @@ class TestLiveS3 extends BlobContract("s3") {
       .withZone(java.time.ZoneOffset.UTC).format(java.time.Instant.now)
     val auth = SigV4.sign("PUT", s"/$bucket", Nil,
       Seq("host" -> "127.0.0.1:9000"), SigV4.emptyHash, "us-east-1", stamp, creds)
-    val r = !.run(Async.run[okay.http.Response, okay.freer.Pure](
-      http.send(Request(Method.Put, s"${TestLiveS3.endpoint}/$bucket", auth))))
+    val r = Async.run(
+      http.send(Request(Method.Put, s"${TestLiveS3.endpoint}/$bucket", auth))).run
     assert(r.ok, s"bucket create: HTTP ${r.status}")
     S3(http, TestLiveS3.endpoint, bucket, "us-east-1", creds)
 }

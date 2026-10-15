@@ -2,10 +2,10 @@ package okay.blob
 
 import okay.{Async, Source, async}
 
-import okay.freer.{+, %}
-import okay.freer.{!, effect, pure}
+import okay.{+, %}
+import okay.{!, effect, pure}
 import okay.std.{Chunk, Writer}
-import okay.freer.Row.plus
+import okay.Row.plus
 import java.nio.file.{Files, Path, StandardCopyOption}
 import scala.collection.immutable.ArraySeq
 
@@ -37,9 +37,6 @@ final class Fs(root: Path, chunkSize: Int = 64 * 1024) extends Blob {
     val mtime = Files.getLastModifiedTime(p).toMillis
     Meta(key, size, Etag(s"$size-$mtime"), mtime)
 
-  // Writer % Chunk[Byte]'s split test is unchecked under erasure — sound
-  // by construction (Say is Writer's ONLY constructor), the TypeableK
-  // caveat Writer.scala documents on Writer.run
   def put(key: String, bytes: Source[Chunk[Byte]]): Etag ! Async =
     resolve(key) match
       case Left(why) => throw IllegalArgumentException(why)   // a broken caller, not hostile data
@@ -50,7 +47,7 @@ final class Fs(root: Path, chunkSize: Int = 64 * 1024) extends Blob {
           Files.newOutputStream(tmp)
         }.flatMap { out =>
           val sink: okay.freer.Fold[Chunk[Byte], Unit] = okay.freer.Fold(())((_, c) => out.write(c.toArray))
-          Writer.fold[Chunk[Byte], Unit, Unit, Async](bytes)(using summon)(using summon, sink).flatMap { _ =>
+          Writer.fold[Chunk[Byte], Unit, Unit, Writer % Chunk[Byte] + Async](bytes)(using summon, sink).flatMap { _ =>
             async {
               out.close()
               Files.move(tmp, path, StandardCopyOption.REPLACE_EXISTING,
@@ -65,11 +62,11 @@ final class Fs(root: Path, chunkSize: Int = 64 * 1024) extends Blob {
     resolve(key) match
       case Left(why) => pure(Left(why))
       case Right(path) =>
-        effect[FB, Boolean](Async.Run(() => Files.isRegularFile(path))).flatMap {
+        effect(Async.Run(() => Files.isRegularFile(path))).flatMap {
           case false => pure(Left(s"no such key '$key'"))
           case true =>
             val (from, until) = range.getOrElse((0L, Long.MaxValue))
-            effect[FB, java.io.InputStream](Async.Run { () =>
+            effect(Async.Run { () =>
               val in = Files.newInputStream(path)
               var toSkip = from
               while toSkip > 0 do
@@ -82,9 +79,9 @@ final class Fs(root: Path, chunkSize: Int = 64 * 1024) extends Blob {
   /** tell chunks until `remaining` runs out or the stream ends */
   private def stream(in: java.io.InputStream, remaining: Long)
   : Either[String, Unit] ! FB =
-    if remaining <= 0 then effect[FB, Unit](Async.Run(() => in.close())).map(_ => Right(()))
+    if remaining <= 0 then effect(Async.Run(() => in.close())).map(_ => Right(())).at[FB]
     else
-      effect[FB, Chunk[Byte] | Null](Async.Run { () =>
+      effect(Async.Run[Chunk[Byte] | Null] { () =>
         val want = math.min(chunkSize.toLong, remaining).toInt
         val buf = new Array[Byte](want)
         val n = in.read(buf)
@@ -104,8 +101,7 @@ final class Fs(root: Path, chunkSize: Int = 64 * 1024) extends Blob {
       }
 
   def list(prefix: String): Source[Chunk[Meta]] =
-    type FM = Writer % Chunk[Meta] + Async
-    effect[FM, Vector[Meta]](Async.Run { () =>
+    effect(Async.Run[Vector[Meta]] { () =>
       if !Files.isDirectory(root) then Vector.empty
       else
         val all = scala.jdk.CollectionConverters.IteratorHasAsScala(

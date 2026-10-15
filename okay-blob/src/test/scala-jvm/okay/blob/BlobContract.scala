@@ -2,12 +2,12 @@ package okay.blob
 
 import okay.{Async, Source}
 
-import okay.freer.{+, %}
-import okay.freer.{!, Fold}
+import okay.{+, %}
+import okay.!
+import okay.freer.Fold
 import okay.std.{Chunk, Writer}
-import okay.freer.Row.plus
+import okay.Row.plus
 import okay.given
-import okay.freer.given
 import scala.collection.immutable.ArraySeq
 
 /**
@@ -19,12 +19,12 @@ abstract class BlobContract(engine: String) extends munit.FunSuite {
 
   def make(): Blob
 
-  def run[A](p: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](p))
+  def run[A](p: A ! Async): A = Async.run(p).run
 
   /** a Source of `total` deterministic bytes in `piece`-sized chunks */
   def bytes(total: Int, piece: Int = 8 * 1024): Source[Chunk[Byte]] =
     def go(off: Int): Source[Chunk[Byte]] =
-      if off >= total then okay.freer.pure(())
+      if off >= total then okay.pure(())
       else
         val n = math.min(piece, total - off)
         val a = Array.tabulate[Byte](n)(i => ((off + i) % 251).toByte)
@@ -33,13 +33,11 @@ abstract class BlobContract(engine: String) extends munit.FunSuite {
 
   /** drain a get: the collected bytes, the outcome, and the LARGEST
    * chunk seen — the constant-memory witness */
-  // Writer % Chunk[Byte]'s split test is unchecked under erasure —
-  // sound by construction, the TypeableK caveat Writer.scala documents
   def drainGet(p: Either[String, Unit] ! Writer % Chunk[Byte] + Async): (Array[Byte], Either[String, Unit], Int) =
     val out = java.io.ByteArrayOutputStream()
     var biggest = 0
     val sink: Fold[Chunk[Byte], Unit] = Fold(())((_, c) => { out.write(c.toArray); biggest = math.max(biggest, c.length) })
-    val (_, outcome) = run(Writer.fold[Chunk[Byte], Unit, Either[String, Unit], Async](p)(using summon)(using summon, sink))
+    val (_, outcome) = run(Writer.fold[Chunk[Byte], Unit, Either[String, Unit], Writer % Chunk[Byte] + Async](p)(using summon, sink))
     (out.toByteArray, outcome, biggest)
 
   def drainList(p: Source[Chunk[Meta]]): Vector[Meta] =

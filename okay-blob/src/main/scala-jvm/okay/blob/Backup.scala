@@ -1,7 +1,7 @@
 package okay.blob
 
 import okay.{Async, Source, async}
-import okay.freer.{!, pure}
+import okay.{!, +, %, pure}
 import okay.std.{Chunk, Writer}
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
@@ -91,13 +91,10 @@ object Backup {
    * until a consumer copied it verbatim */
   private def stream(path: Path): Source[Chunk[Byte]] = Bytes.file(path)
 
-  // Writer % Chunk[Byte]'s split test is unchecked under erasure — sound
-  // by construction (Say is Writer's ONLY constructor), the TypeableK
-  // caveat Writer.scala documents on Writer.run
   private def fetch(blob: Blob, key: String, target: Path): Unit ! Async =
     async(Files.newOutputStream(target)).flatMap { out =>
       val sink: okay.freer.Fold[Chunk[Byte], Unit] = okay.freer.Fold(())((_, c) => out.write(c.toArray))
-      Writer.fold[Chunk[Byte], Unit, Either[String, Unit], Async](blob.get(key))(using summon)(using summon, sink)
+      Writer.fold[Chunk[Byte], Unit, Either[String, Unit], Writer % Chunk[Byte] + Async](blob.get(key))(using summon, sink)
         .map { (_, outcome) =>
           out.close()
           outcome match

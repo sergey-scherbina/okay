@@ -2,10 +2,9 @@ package okay.blob
 
 import okay.{Async, Source}
 
-import okay.freer.{+, %}
-import okay.freer.{!, effect, pure}
+import okay.{!, effect, pure}
 import okay.std.{Chunk, Writer}
-import okay.freer.Row.plus
+import okay.Row.plus
 import java.nio.file.{Files, Path}
 import scala.collection.immutable.ArraySeq
 
@@ -36,10 +35,9 @@ object Bytes:
   /** any InputStream, opened when the program runs and closed at its
    * end; `open` is by name for exactly that reason */
   def stream(open: => java.io.InputStream, chunk: Int = DefaultChunk): Source[Chunk[Byte]] =
-    type F = Writer % Chunk[Byte] + Async
-    effect[F, java.io.InputStream](Async.Run(() => open)).flatMap { in =>
+    effect(Async.Run(() => open)).flatMap { in =>
       def go: Source[Chunk[Byte]] =
-        effect[F, Chunk[Byte] | Null](Async.Run { () =>
+        effect(Async.Run[Chunk[Byte] | Null] { () =>
           val buf = new Array[Byte](chunk)
           val n = in.read(buf)
           if n < 0 then { in.close(); null }

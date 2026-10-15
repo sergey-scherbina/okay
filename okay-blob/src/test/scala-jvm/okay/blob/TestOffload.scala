@@ -1,10 +1,9 @@
 package okay.blob
 
 import okay.Async
-import okay.freer.{!}
+import okay.!
 import okay.std.{Writer}
 import okay.given
-import okay.freer.given
 import okay.persist.{Ack, FileStore, Policy, Segments}
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
@@ -33,7 +32,7 @@ class TestOffload extends munit.FunSuite:
 
   private def bytes(s: String): Array[Byte] = s.getBytes("UTF-8")
   private def str(b: Array[Byte]): String = new String(b, "UTF-8")
-  def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](prog))
+  def run[A](prog: A ! Async): A = Async.run(prog).run
 
   def logsUnder(root: Path): Vector[Path] =
     Files.walk(root).iterator.asScala

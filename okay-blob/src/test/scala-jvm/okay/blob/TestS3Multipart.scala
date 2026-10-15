@@ -1,10 +1,9 @@
 package okay.blob
 
 import okay.{Async, Source}
-import okay.freer.{!}
+import okay.{!, +, %}
 import okay.std.{Chunk, Writer}
 import okay.given
-import okay.freer.given
 import okay.http.{Method, Request, Transports}
 import scala.collection.immutable.ArraySeq
 
@@ -28,12 +27,12 @@ class TestS3Multipart extends munit.FunSuite {
       .withZone(java.time.ZoneOffset.UTC).format(java.time.Instant.now)
     val auth = SigV4.sign("PUT", s"/$name", Nil,
       Seq("host" -> "127.0.0.1:9000"), SigV4.emptyHash, "us-east-1", stamp, creds)
-    val r = !.run(Async.run[okay.http.Response, okay.freer.Pure](
-      http.send(Request(Method.Put, s"${TestLiveS3.endpoint}/$name", auth))))
+    val r = Async.run(
+      http.send(Request(Method.Put, s"${TestLiveS3.endpoint}/$name", auth))).run
     assert(r.ok, s"bucket create: HTTP ${r.status}")
     name
 
-  def run[A](p: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](p))
+  def run[A](p: A ! Async): A = Async.run(p).run
 
   /** byte `i` of the object: a pure function, so the bytes need not be held */
   def byteAt(i: Long): Byte =
@@ -62,8 +61,8 @@ class TestS3Multipart extends munit.FunSuite {
     assertEquals(run(s3.head("big/object")).map(_.size), Some(n))
     var at = 0L
     var bad = -1L
-    val out = Writer.fold[Chunk[Byte], Unit, Either[String, Unit], Async](s3.get("big/object"))(
-      using summon)(using summon, okay.freer.Fold(())((_, c) =>
+    val out = Writer.fold[Chunk[Byte], Unit, Either[String, Unit], Writer % Chunk[Byte] + Async](s3.get("big/object"))(
+      using summon, okay.freer.Fold(())((_, c) =>
         for b <- c do { if bad < 0 && b != byteAt(at) then bad = at; at += 1 }))
     assertEquals(run(out)._2, Right(()), "the get did not find the object")
     assertEquals(at, n)

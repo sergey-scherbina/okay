@@ -2,10 +2,10 @@ package okay.blob
 
 import okay.{Async, Source, async}
 
-import okay.freer.{+, %}
-import okay.freer.{!}
+import okay.{+, %}
+import okay.!
 import okay.std.{Chunk, Writer}
-import okay.freer.Row.plus
+import okay.Row.plus
 import scala.collection.immutable.ArraySeq
 
 /**
@@ -57,14 +57,11 @@ trait Blob:
   /** the whole object in memory, or the Left naming the key. For an
    * object that fits; the streaming `get` is the road for one that
    * does not, and this is a consumer of it, not a second engine call */
-  // Writer % Chunk[Byte]'s split test is unchecked under erasure — sound
-  // by construction (Say is Writer's ONLY constructor), the TypeableK
-  // caveat Writer.scala documents on Writer.run
   def getBytes(key: String, range: Option[(Long, Long)] = None)
   : Either[String, Array[Byte]] ! Async =
     async(java.io.ByteArrayOutputStream()).flatMap { out =>
       val sink: okay.freer.Fold[Chunk[Byte], Unit] = okay.freer.Fold(())((_, c) => out.write(c.toArray))
-      Writer.fold[Chunk[Byte], Unit, Either[String, Unit], Async](get(key, range))(using summon)(using summon, sink)
+      Writer.fold[Chunk[Byte], Unit, Either[String, Unit], Writer % Chunk[Byte] + Async](get(key, range))(using summon, sink)
         .map((_, outcome) => outcome.map(_ => out.toByteArray))
     }
 
