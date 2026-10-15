@@ -1,4 +1,0 @@
-okay-wt-okay-graphql-next 2026-10-15T16:49:36Z
-agent: claude-fable (session okay-free)
-status: in-progress
-next: spec, then interfaces/unions, introspection, validation, async sources, HTTP route, subscriptions, graphql-java adapter
