@@ -4,6 +4,21 @@ Companion of [freer-on-core.md](freer-on-core.md) (the why and the mapping) and
 [freer-on-core-order.md](freer-on-core-order.md) (the order). Converted examples to copy from: okay-std (main),
 okay-async (`Async.scala`: a drive over the machine's head), okay-platform.
 
+## The shortest road: change the imports
+
+The root keeps okay-freer's names as wrappers over its own words (`src/main/scala/Compat.scala`): `!.run`,
+`!.tailcall`, `!.widen`, `!.loop`, `!.translate`, `!.interpret`, `Row.plus`/`at`/`up`/`union`,
+`Free.pure`/`delay`/`loop`, `op.perform`, and `Distinct` always given. So first change `okay.freer.X` to `okay.X`
+in the imports (`import okay.freer.*` and `.given` to `import okay.*`) and compile; most of a module compiles
+then. What is left is what the wrappers cannot keep:
+
+- `pure[F, A]` (effect first) is `pure[A, F]` on the root.
+- `effect[Row, X](op)` with a whole row named: `effect(op)` (it widens where needed).
+- A runner's signature over a rest inferred by the union (`A ! E + F => B ! F`) takes `Split` (below).
+- Code that walks the tree (below).
+- A program's `Monad` (generic `traverse`/`sequence`) by `import okay.Programs.given` — never into a scope where a
+  program's own `flatMap` is used: its one-row `flatMap` takes the bind from `Run.flatMap`.
+
 ## The words
 
 - Imports: `import okay.freer.*`, `import okay.freer.given`, `okay.freer.Row.{plus, at, up}`, `okay.freer.{...}`
