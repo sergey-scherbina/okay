@@ -29,14 +29,11 @@ infix type +:[E[_], T <: Row] = okay.core.+:[E, T]
  * State % Int +: Pure`, is a handler's business (the row outside it), never a program's */
 infix type +[F[_], G[_]] = okay.core.+[F, G]
 infix type %[F[_, _], S] = okay.core.%[F, S]
-type Pure = okay.core.Pure
 /** `E` in the row `R`: its place, the compiler builds it (okay-core's `In`) */
 type Member[E[_], R <: Row] = okay.core.In[E, R]
 /** `T` the row `R` with `E` removed, wherever it is (okay-core's) */
 type Removed[E[_], R <: Row, T <: Row] = okay.core.Removed[E, R, T]
 /** a handler of `E`: `ret` a value, a clause over any row outside with the rest as `k`; one answering in place */
-type Handler[E[_], A, Ans] = okay.core.Handler[E, A, Ans]
-type Answering[E[_], A, Ans] = okay.core.Answering[E, A, Ans]
 
 /** THE INTERFACE: okay-core's, as it is */
 type Effects[M[_ <: Row, _]] = RowEffects[M]
@@ -56,7 +53,8 @@ object Effects:
   inline def apply[M[_ <: Row, _]](using E: Effects[M]): E.type = E
 
 /** `import okay.*` is the one monad's facade: `A ! R`, `effect`, `op.perform`, `p.handle(h)`, `p.value` */
-export Effects.machine.{given, *}
+// the interface's own words are `Effects.machine`'s, imported where wanted: the root's `!` is the program as a
+// value (Program.scala), `!!` the facade's context function
 /** an operation not yet at a row: `effect(op)`, `op.perform` — its path found where it is bound (`flatMap`, `map`),
  * or given, `at[R]` */
 type Op[E[_], X] = Effects.machine.Operation[E, X]

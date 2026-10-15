@@ -1,6 +1,7 @@
 package okay
 
 import okay.core.Eff
+import okay.Effects.machine.{effect, handle, value, run as runAt}
 
 /** specs/freer-min.md, stage 47: the interface over rows, the one monad its instance, `A ! R` its program */
 class TestEffectsRows extends munit.FunSuite:
@@ -12,16 +13,16 @@ class TestEffectsRows extends munit.FunSuite:
     case Get[S]() extends State[S, S]
     case Put[S](s: S) extends State[S, Unit]
 
-  def reader[A](n: Int): Answering[Ask, A, A] = new Answering[Ask, A, A]:
+  def reader[A](n: Int): okay.core.Answering[Ask, A, A] = new okay.core.Answering[Ask, A, A]:
     def ret(a: A): A = a
     def value[X](op: Ask[X]): X = op match
       case Ask.Number => n
-  def writer[A]: Handler[Say, A, (List[String], A)] = new Handler[Say, A, (List[String], A)]:
+  def writer[A]: okay.core.Handler[Say, A, (List[String], A)] = new okay.core.Handler[Say, A, (List[String], A)]:
     def ret(a: A): (List[String], A) = (Nil, a)
     def apply[T <: Row, X](op: Say[X], k: X => Eff[T, (List[String], A)]): Eff[T, (List[String], A)] = op match
       case Say.Line(s) => k(()).map((log, a) => (s :: log, a))
   /** a state in a cell of the handler: `get` and `put` answered where they are performed */
-  def cell[S, A](s0: S): Answering[State % S, A, (S, A)] = new Answering[State % S, A, (S, A)]:
+  def cell[S, A](s0: S): okay.core.Answering[State % S, A, (S, A)] = new okay.core.Answering[State % S, A, (S, A)]:
     private var s = s0
     def ret(a: A): (S, A) = (s, a)
     def value[X](op: State[S, X]): X = op match
@@ -29,9 +30,9 @@ class TestEffectsRows extends munit.FunSuite:
       case State.Put(v) => s = v
 
   /** a program written once over the interface: its row declared, each operation by its path */
-  def prog[M[_ <: Row, _]](using E: Effects[M]): M[Ask +: Say +: Pure, Int] =
-    E.perform[Ask, Ask +: Say +: Pure, Int](Ask.Number).flatMap(n =>
-      E.perform[Say, Ask +: Say +: Pure, Unit](Say.Line(n.toString)).map(_ => n + 1))
+  def prog[M[_ <: Row, _]](using E: Effects[M]): M[Ask +: Say +: okay.core.Pure, Int] =
+    E.perform[Ask, Ask +: Say +: okay.core.Pure, Int](Ask.Number).flatMap(n =>
+      E.perform[Say, Ask +: Say +: okay.core.Pure, Unit](Say.Line(n.toString)).map(_ => n + 1))
 
   test("the one monad is the instance found with no import; handlers apply in any order"):
     val E = Effects[Eff]
@@ -40,19 +41,19 @@ class TestEffectsRows extends munit.FunSuite:
 
   test("the facade: A ! R is the one monad's program, an operation at the row expected, handle wherever the effect is"):
     // a program needing its effects, in any order: fitted where it is handled
-    val counting: Int ! State % Int + Say =
+    val counting: Int !! State % Int + Say =
       for
         n <- effect[State % Int, Int](State.Get[Int]())   // an effect of two parameters names its effect
         _ <- effect[State % Int, Unit](State.Put(n + 1))
         _ <- effect(Say.Line(s"$n"))
         m <- effect[State % Int, Int](State.Get[Int]())
       yield m
-    assertEquals(run(handle(writer[(Int, Int)])(handle(cell[Int, Int](41))(counting))), (List("41"), (42, 42)))
-    assertEquals(run(handle(cell[Int, (List[String], Int)](41))(handle(writer[Int])(counting))), (42, (List("41"), 42)))
+    assertEquals(Effects.machine.run(handle(writer[(Int, Int)])(handle(cell[Int, Int](41))(counting))), (List("41"), (42, 42)))
+    assertEquals(Effects.machine.run(handle(cell[Int, (List[String], Int)](41))(handle(writer[Int])(counting))), (42, (List("41"), 42)))
 
-  test("a row named, A +: Pure; a tail call costs no frame"):
-    def loop[M[_ <: Row, _]](n: Int, acc: Int)(using E: Effects[M]): M[Ask +: Pure, Int] =
+  test("a row named, A +: okay.core.Pure; a tail call costs no frame"):
+    def loop[M[_ <: Row, _]](n: Int, acc: Int)(using E: Effects[M]): M[Ask +: okay.core.Pure, Int] =
       if n == 0 then E.pure(acc)
-      else E.perform[Ask, Ask +: Pure, Int](Ask.Number).flatMap(x => E.tailcall(loop[M](n - 1, acc + x)))
+      else E.perform[Ask, Ask +: okay.core.Pure, Int](Ask.Number).flatMap(x => E.tailcall(loop[M](n - 1, acc + x)))
     val E = Effects[Eff]
     assertEquals(E.run(E.handleAt(reader[Int](1))(loop[Eff](100000, 0))), 100000)

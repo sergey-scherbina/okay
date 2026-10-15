@@ -140,6 +140,35 @@ row. What the platform's `Distinct` forbade — two members of one signature —
 - okay-bench's `core` lane (223 µs on the mixed program) is the bar the platform's own program should meet on the
   new road; the `kernel` lane (286) its program over the protocol.
 
+## `!` a value, `!!` the facade's (2026-10-15)
+
+The platform calls methods on programs held as values — `p.handle(h)` (≈800), `p.runWith` (≈1800), `p.run`
+(thousands), a program in a `val` handled later. The facade's `!` is a CONTEXT FUNCTION of the place: a method on it
+outside a program applies it first, so none of those compile. So the root has two:
+
+- `A ! Es` — the program as a VALUE (`Program.scala`, the default): one object a node (`Run`), a function of the
+  paths of its effects in the place's row, at a place the kernel's `Eff`. okay-freer's words on it: `flatMap`,
+  `map`, `>>`, `p.at[Es2]`, `p.handle(h)`, `p.run`, `pure`, `effect`, `defer`. The effects of a bind are the
+  continuation's if it has the program's among them, else the two summed (`Join`); a program needing fewer effects
+  fits where more are expected (`widen`, a conversion; each effect found by its `Req`); a handler is a value
+  polymorphic in the body's value (`Handler[E, O]`, its kernel form at a row).
+- `A !! Es` — the facade's form (`okay.core.!`): no object a node, about twice as fast on binds, no methods outside
+  a program (`handle(h)(p)`, `run(p)`). `p.ctx` and `Program.of(q)` cross between them.
+
+Measured (one loop, 1000 × ask + tell, µs / KB a run): the kernel at a row named 21 / 297; the facade's `!!`
+17 / 281; okay-freer, classic, 32 / 384; the value `!` 34 / 497. The value is at the classic's speed on binds; the
+gain on the core road comes from the kernel's handlers (captures, forwarding, cancellation). Where a hot path wants
+more, `!!` is there.
+
+## A runner: `Split`, not a shape
+
+okay-freer's runners are `A ! E + F => B ! F`, `F` inferred by the union's subtyping from a program in any order.
+The kernel's `+` is a tree (`Both`), and `F` by shape fails on `A + B + C` and on any order where `E` is not first.
+So a runner takes `E` off wherever it is: `Split[Es, E] { type Rest }` (okay-core 7d48d40), found where the runner
+is called from the program's own effects; over `E + F` with `F` abstract its `Rest` is `F` itself. A runner is
+`def run[Es[_]](p: A ! Es)(using s: Split[Es, E]): B ! s.Rest`; `p.handle(h)` is one. A chain of runners infers
+with nothing named (`TestRestRow`). The platform's ≈340 rest-polymorphic signatures move to this form.
+
 ## Two packages, not a flag
 
 `okay.freer` is FROZEN: the classic road as it is, its own JMH lanes, nothing in it changed. The kernel's words

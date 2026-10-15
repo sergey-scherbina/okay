@@ -6,6 +6,8 @@ import okay.std.Writer
 import okay.freer.Row.plus
 import java.util.concurrent.atomic.AtomicBoolean
 import scala.collection.immutable.ArraySeq
+import okay.Effects.machine.{effect, handle, value, run as runAt}
+import okay.core.{pure, defer}
 
 /**
  * THE STREAM ON THE MACHINE, A TWIN (stream-twin): beside the classic `Source[W] = Unit ! Writer % W + Async`, a
@@ -24,7 +26,7 @@ import scala.collection.immutable.ArraySeq
  * the chunk it needs; a producer whose elements are effects reads one per pull (`fromIterator`).
  */
 object StreamCont:
-  type R = Async +: Pure
+  type R = Async +: okay.core.Pure
 
   /** how many elements a range or a list answers per pull */
   final val ChunkSize = 256

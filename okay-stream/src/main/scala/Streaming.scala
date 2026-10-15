@@ -4,6 +4,8 @@ import okay.std.Writer
 import okay.freer.Row.plus
 import okay.std.given
 import scala.concurrent.Future
+import okay.Effects.machine.{effect, handle, value, run as runAt}
+import okay.core.{pure, defer}
 
 /**
  * STREAMS, ONE FRONT, TWO BACKENDS (stream-twin; the operator: "если имплементация стримов очень зависит от

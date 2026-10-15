@@ -7,6 +7,8 @@ import okay.one.step.Step.step
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
 import scala.concurrent.{Future, Promise}
 import scala.util.control.NonFatal
+import okay.Effects.machine.{effect, handle, value, run as runAt}
+import okay.core.{pure, defer}
 
 /**
  * ASYNC ON THE ONE MONAD (cont-first-module; okay-core's since 2026-10-14): the same two operations, `Async.Run` and
@@ -36,23 +38,23 @@ object AsyncCont:
     effect(Async.Await(register))
 
   /** each operation executed in place, an Await parked: `p.handle(AsyncCont.blocking)` */
-  def blocking[A](using cb: CanBlock, w: Wait, p: Pause): Answering[Async, A, A] = new Answering[Async, A, A]:
+  def blocking[A](using cb: CanBlock, w: Wait, p: Pause): okay.core.Answering[Async, A, A] = new okay.core.Answering[Async, A, A]:
     def ret(a: A): A = a
     def value[X](op: Async[X]): X = op match
       case Async.Run(f) => f()
       case Async.Await(reg, poll) => Async.pollThenBlock(reg, poll).fold(e => throw e, identity)
 
   /** the blocking terminal: a program with Async its last effect, to its value */
-  def run[A](p: Eff[Async +: Pure, A])(using CanBlock, Wait, Pause): A = p.handle(blocking[A]).value
+  def run[A](p: Eff[Async +: okay.core.Pure, A])(using CanBlock, Wait, Pause): A = p.handle(blocking[A]).value
 
   /** the callback terminal: never parks a thread; the future completes when the program answers, or fails at
    * the first throw, failed Await or failed step */
-  def runAsync[A](p: Eff[Async +: Pure, A]): Future[A] = runAsyncCancellable(p).future
+  def runAsync[A](p: Eff[Async +: okay.core.Pure, A]): Future[A] = runAsyncCancellable(p).future
 
   /** the callback terminal with its cancellation door (async-cancel), as the classic's: `cancel` stops the drive
    * at its next operation, unregisters a pending Await, releases the open cancel scopes and fails the future
    * with a `CancellationException`; idempotent */
-  def runAsyncCancellable[A](p: Eff[Async +: Pure, A]): Async.Running[A] =
+  def runAsyncCancellable[A](p: Eff[Async +: okay.core.Pure, A]): Async.Running[A] =
     val promise = Promise[A]()
     val d = Drive(promise)
     try d.loop(p.step) catch case NonFatal(e) => promise.tryFailure(e)
@@ -60,7 +62,7 @@ object AsyncCont:
 
   /** the program run as a unit of its own, its failure a value: `Left` for a throw, a failed Await or a cancel
    * of its own; cancelling the program this is part of cancels it too (the Await's canceller) */
-  def attempt[A](p: Eff[Async +: Pure, A]): Op[Async, Either[Throwable, A]] =
+  def attempt[A](p: Eff[Async +: okay.core.Pure, A]): Op[Async, Either[Throwable, A]] =
     awaitEither[Either[Throwable, A]] { k =>
       val running = runAsyncCancellable(p)
       running.future.onComplete(t => k(Right(t.toEither)))(using scala.concurrent.ExecutionContext.parasitic)
@@ -73,7 +75,7 @@ object AsyncCont:
    * JS, a thread on Native): the fiber runs ONE operation of the classic's, an Await whose registration starts the
    * machine's cancellable drive — so the program's synchronous part runs on the fiber's own thread of control,
    * and cancelling the fiber unregisters the Await, which cancels the drive */
-  def spawn[A](p: Eff[Async +: Pure, A])(using S: Scheduler): Fiber[A] =
+  def spawn[A](p: Eff[Async +: okay.core.Pure, A])(using S: Scheduler): Fiber[A] =
     S.fork(() => Async.await[A] { k =>
       val running = runAsyncCancellable(p)
       running.future.onComplete(t => k(t.toEither))(using scala.concurrent.ExecutionContext.parasitic)
@@ -81,7 +83,7 @@ object AsyncCont:
     })
 
   /** `spawn` as an operation: the fiber starts when the program gets here */
-  def fork[A](p: Eff[Async +: Pure, A])(using Scheduler): Op[Async, Fiber[A]] = async(spawn(p))
+  def fork[A](p: Eff[Async +: okay.core.Pure, A])(using Scheduler): Op[Async, Fiber[A]] = async(spawn(p))
 
   /** join a fiber as an operation: its answer, or its failure at this operation */
   def join[A](f: Fiber[A]): Op[Async, A] = awaitEither[A](k => { f.onComplete(k); () => () })
@@ -91,7 +93,7 @@ object AsyncCont:
 
   /** both, each on its own fiber, paired; the first failure fails the pair and cancels the other (the classic's
    * `par`, supervised) */
-  def par[A, B](a: Eff[Async +: Pure, A], b: Eff[Async +: Pure, B])(using Scheduler): Op[Async, (A, B)] =
+  def par[A, B](a: Eff[Async +: okay.core.Pure, A], b: Eff[Async +: okay.core.Pure, B])(using Scheduler): Op[Async, (A, B)] =
     awaitEither[(A, B)] { k =>
       val (fa, fb) = (spawn(a), spawn(b))
       val done = AtomicBoolean(false)
@@ -109,7 +111,7 @@ object AsyncCont:
     }
 
   /** the first of the two to SUCCEED, the loser cancelled; if both fail, the later failure (the classic's) */
-  def race[A](a: Eff[Async +: Pure, A], b: Eff[Async +: Pure, A])(using Scheduler): Op[Async, A] =
+  def race[A](a: Eff[Async +: okay.core.Pure, A], b: Eff[Async +: okay.core.Pure, A])(using Scheduler): Op[Async, A] =
     awaitEither[A] { k =>
       val (fa, fb) = (spawn(a), spawn(b))
       val won = AtomicBoolean(false)
@@ -124,7 +126,7 @@ object AsyncCont:
 
   /** the answer within the duration, or None, the program cancelled; its own failure comes through at once
    * (the classic's `timeout`, timeout-masks-failure) */
-  def timeout[A](millis: Long)(p: Eff[Async +: Pure, A])(using Scheduler, Timer): Op[Async, Option[A]] =
+  def timeout[A](millis: Long)(p: Eff[Async +: okay.core.Pure, A])(using Scheduler, Timer): Op[Async, Option[A]] =
     awaitEither[Option[A]] { k =>
       val f = spawn(p)
       val done = AtomicBoolean(false)
@@ -145,7 +147,7 @@ object AsyncCont:
    * operation the machine stops at becomes the same operation in the classic program, the rest of the machine
    * its continuation — so the classic handler in force (blocking, a drive, a fiber's) answers it, and nothing
    * runs before the classic program is run */
-  def toClassic[A](p: Eff[Async +: Pure, A]): okay.freer.![A, Async] =
+  def toClassic[A](p: Eff[Async +: okay.core.Pure, A]): okay.freer.![A, Async] =
     okay.freer.Free.delay(() => classic(p.step))
 
   /** A CLASSIC PROGRAM AS ONE OPERATION OF THE MACHINE: driven by the classic callback drive, its answer the
@@ -158,7 +160,7 @@ object AsyncCont:
     }
 
   /** the row of a program of the machine's Async: the one effect left */
-  type R = Async +: Pure
+  type R = Async +: okay.core.Pure
 
   /** `toClassic`'s road: the program stepped, each operation an operation of the classic program, the rest its
    * continuation — so the classic handler in force (blocking, a drive, a fiber's) answers it */
