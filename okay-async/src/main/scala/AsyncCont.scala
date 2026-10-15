@@ -1,11 +1,8 @@
 package okay
 
 import okay.core.Eff
-import okay.one.step.Step as OStep
-import okay.one.step.Step.step
-import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
+import java.util.concurrent.atomic.AtomicBoolean
 import scala.concurrent.{Future, Promise}
-import scala.util.control.NonFatal
 import okay.Effects.machine.{effect, handle, value}
 
 /**
@@ -51,8 +48,8 @@ object AsyncCont:
    * with a `CancellationException`; idempotent */
   def runAsyncCancellable[A](p: Eff[Async +: okay.core.Pure, A]): Async.Running[A] =
     val promise = Promise[A]()
-    val d = Drive(promise)
-    try d.loop(p.step) catch case NonFatal(e) => promise.tryFailure(e)
+    val d = Async.PromiseDrive[A](promise)
+    d.applyKernel(p)
     Async.Running(promise.future, () => d.cancel())
 
   /** the program run as a unit of its own, its failure a value: `Left` for a throw, a failed Await or a cancel
@@ -140,83 +137,3 @@ object AsyncCont:
 
   /** the row of a program of the machine's Async: the one effect left */
   type R = Async +: okay.core.Pure
-
-  /**
-   * THE DRIVE ANSWERS IN PLACE WHAT IT CAN (drive-in-place): a Run is executed where the program stops at it and
-   * the rest run at once, in this loop. Only an Await still pending stops the loop: the drive keeps the rest for
-   * the callback and parks. The callback may fire during the registration, on this thread or another: whoever
-   * comes SECOND to the flag continues — the loop in place, or the callback by re-entering `loop` with the rest
-   * resumed, a run of the machine of its own. The answer is written before the callback's turn at the flag, so
-   * the one that comes second reads it.
-   */
-  private final class Drive[A](promise: Promise[A]):
-    @volatile private var stopped = false
-    /** the pending Await's canceller */
-    @volatile private var unregister: () => Unit = () => ()
-    /** the open cancel scopes, newest first; changed under the drive's monitor */
-    @volatile private var scopes: List[Async.CancelScope] = Nil
-
-    private def marked(m: Async.ScopeMark): Unit = synchronized {
-      scopes = if m.entering then m.scope :: scopes else scopes.filterNot(_ eq m.scope)
-    }
-    private def releaseScopes(): Unit = scopes.foreach(s => try s.released() catch case NonFatal(_) => ())
-
-    def cancel(): Unit =
-      val now = synchronized { val was = stopped; stopped = true; !was }
-      if now then
-        unregister()
-        releaseScopes()
-        promise.tryFailure(java.util.concurrent.CancellationException("cancelled")): Unit
-
-    private def cancelled: Throwable = java.util.concurrent.CancellationException("cancelled")
-
-    /** the loop: the program stepped to its next Await still pending, or to its end — a loop, not a frame */
-    def loop(s0: OStep[R, A]): Unit =
-      var s: OStep[R, A] | Null = s0
-      while s != null do s = next(s)
-
-    /** one stop of the program: the step after it, or `null` — the end, or an Await parked */
-    private def next(s: OStep[R, A]): OStep[R, A] | Null = s match
-      case OStep.Done(a) =>
-        // a scope still open at the end was never exited: its program stopped early — released
-        releaseScopes(); promise.trySuccess(a): Unit; null
-      case OStep.Failed(e) =>
-        releaseScopes(); promise.tryFailure(e): Unit; null
-      case OStep.Cancelled() =>
-        releaseScopes(); promise.tryFailure(cancelled): Unit; null
-      case y: OStep.Yield[R, A, e, x] => y.in match
-        case th: okay.one.row.In.There[f, ?, ?] => okay.one.row.In.absurd(th.in)
-        case at: okay.one.row.In.At[f, ?] => okay.one.row.In.unhandled(at)
-        case _: okay.one.row.In.Here[f, ?] =>
-          val op: Async[x] = y.op
-          op match
-            case Async.Run(f) =>
-              if stopped then y.resume.fail(cancelled)
-              else
-                f match
-                  case m: Async.ScopeMark => marked(m)
-                  case _ => ()
-                try y.resume(f()) catch case NonFatal(err) => y.resume.fail(err)
-            case Async.Await(reg, poll) =>
-              if stopped then y.resume.fail(cancelled)
-              else
-                // ONE poll, no wait (drive-poll-then-park, as the classic's drive)
-                val now = if poll == null then null else poll()
-                if now != null then answered[x](now, y.resume)
-                else
-                  val got = AtomicReference[Either[Throwable, x] | Null](null)
-                  val second = AtomicBoolean(false)
-                  val cancelReg = reg { r =>
-                    got.set(r)
-                    if second.getAndSet(true) && !stopped then loop(answered[x](r, y.resume))
-                  }
-                  if !second.getAndSet(true) then
-                    unregister = cancelReg
-                    if stopped then cancelReg()
-                    null
-                  else answered[x](got.get.nn, y.resume)
-
-    /** the rest resumed with the callback's answer: its value, or its failure raised where the Await was */
-    private def answered[X](r: Either[Throwable, X], k: OStep.Resume[X, R, A]): OStep[R, A] = r match
-      case Right(x) => k(x)
-      case Left(e) => k.fail(e)

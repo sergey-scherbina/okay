@@ -423,7 +423,10 @@ object Async {
      * answer, or failed where the operation was, so a `recover` or a
      * Resource guard in the program sees a failed Await or a throwing Run.
      */
-    def apply(prog: A ! Async): Unit = drive(prog, null, null)
+    def apply(prog: A ! Async): Unit = drive(prog, null, null, null)
+
+    /** the same loop over a program of the kernel at the drive's row (okay-async's `AsyncCont`): one drive for both */
+    def applyKernel(e: okay.core.Eff[Row, A]): Unit = drive(null, e, null, null)
 
     /** a LATE answer resumes the fiber: by default right here, on whoever
      * answered — which inside a pool saves a wake. A platform whose
@@ -431,18 +434,21 @@ object Async {
      * resumption home instead (adaptive-elementwise-small-ring) */
     protected def resumeLate[X](r: Either[Throwable, X], k: Rest[A]): Unit = resumeHere(r, k)
     /** resume on the calling thread, inside this drive's loop */
-    protected final def resumeHere[X](r: Either[Throwable, X], k: Rest[A]): Unit = drive(null, r, k)
+    protected final def resumeHere[X](r: Either[Throwable, X], k: Rest[A]): Unit = drive(null, null, r, k)
 
     /** the loop, entered either with a program or with a late answer and
      * the rest it resumes. The rest is resumed INSIDE the try and the
      * slice (drive-resume-throw-lost: a throw there fails the fiber) */
-    private def drive(prog: (A ! Async) | Null, r: Either[Throwable, ?] | Null, k: Rest[A] | Null): Unit =
+    private def drive(prog: (A ! Async) | Null, kernel: okay.core.Eff[Row, A] | Null, r: Either[Throwable, ?] | Null,
+        k: Rest[A] | Null): Unit =
       var looping = !stopped
       val slice = sliceStarted()
       try
         if looping then
           var cur: Machine.Head[Row, A] =
-            if k != null then resumed(r.nn, k) else Machine.head(prog.nn.fit(paths))
+            if k != null then resumed(r.nn, k)
+            else if kernel != null then Machine.head(kernel)
+            else Machine.head(prog.nn.fit(paths))
           while looping do
             looping = false
             cur match
