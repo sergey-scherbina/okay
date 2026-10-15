@@ -1,9 +1,6 @@
 package okay.llm
 
-import okay.{Async, Web}
-
-import okay.freer.{%, +}
-import okay.freer.{!, effect}
+import okay.{!, %, +, Async, Web}
 import okay.std.{Writer}
 import scala.scalajs.js
 
@@ -50,6 +47,6 @@ object Transports:
           }: Unit | js.Thenable[Unit]): Unit
         () => ()      // fetch is not cancellable here; nothing to undo
       }
-      okay.freer.!.widen[String, Async, Writer % String](request).flatMap { text =>
-        okay.freer.!.each(text.split("\n").toIndexedSeq)(line => effect[F, Unit](Writer(line)))
+      request.flatMap[Unit, F] { text =>
+        !.each(text.split("\n").toIndexedSeq)(line => Writer.tell(line).at[F])
       }

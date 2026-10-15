@@ -1,9 +1,6 @@
 package okay.llm
 
-import okay.{Async}
-
-import okay.freer.{%, +}
-import okay.freer.{!}
+import okay.{!, %, +, Async, Handler, Walk}
 import okay.std.{Writer}
 import okay.codec.{Json, Schema}
 import okay.lex.Json as JsonLex
@@ -42,8 +39,6 @@ object Structured {
    */
   def cut[A](tokens: Unit ! Writer % String + Async)
             (using s: Schema[A], h: okay.Answers[Async]): Cut[A] =
-    import okay.freer.!.*
-    type F = Writer % String + Async
 
     var text = ""
     var session = Parse.full(JsonLex.scan, JsonParse.instrs)("")
@@ -60,22 +55,24 @@ object Structured {
       if Cst.errors(session.tree).nonEmpty then None
       else okay.codec.Codecs.json(s).decode(Json.value(session.tree)).toOption
 
-    @tailrec def walk(rest: Unit ! F): Cut[A] = (rest.resume: @unchecked) match
-      case Return(_) => Cut(None, text, count, stopped = false)
-      case Inject(e) => okay.freer.<|>[Async, Writer % String](e) match
-        case Left(a) => h.handle(a); Cut(None, text, count, stopped = false)
-        case Right(Writer.Say(w)) => feed(w) match
-          case Some(v) => Cut(Some(v), text, count, stopped = true)
-          case None => Cut(None, text, count, stopped = false)
-      case Bind(Inject(e), k) => okay.freer.<|>[Async, Writer % String](e) match
-        case Left(a) => walk(k(h.handle(a)))
-        case Right(Writer.Say(w)) => feed(w) match
-          // complete: the rest of the stream is never pulled, which
-          // for a live model means it is never generated
-          case Some(v) => Cut(Some(v), text, count, stopped = true)
-          case None => walk(k(()))
+    // the Async operations answered in place by `h` as the walk pulls; the tells walked one by one
+    val told: Unit ! Writer % String =
+      tokens.handle(Handler.answering[Async]([X] => (op: Async[X]) => h.handle(op)))
 
-    walk(tokens)
+    @tailrec def walk(rest: Unit ! Writer % String): Cut[A] = Walk.view(rest) match
+      case Walk.Done(_) => Cut(None, text, count, stopped = false)
+      case o: Walk.Op[Writer % String, x, Unit, Writer % String] => said(o) match
+        // complete: the rest of the stream is never pulled, which
+        // for a live model means it is never generated
+        case Left(v) => Cut(Some(v), text, count, stopped = true)
+        case Right(next) => walk(next)
+
+    // the constructor gives the told token AND the answer type Unit — no cast on either half
+    def said[X](o: Walk.Op[Writer % String, X, Unit, Writer % String]): Either[A, Unit ! Writer % String] =
+      (o.op: Writer[String, X]) match
+        case Writer.Say(w) => feed(w).toLeft(o.resume(()))
+
+    walk(told)
 
   /** the value alone, for callers who do not care what it cost */
   def first[A](tokens: Unit ! Writer % String + Async)

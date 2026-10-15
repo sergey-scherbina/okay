@@ -1,9 +1,6 @@
 package okay.llm
 
-import okay.{Async}
-
-import okay.freer.{%, +}
-import okay.freer.{!, effect, pure}
+import okay.{!, %, +, Async, pure}
 import okay.std.{Writer}
 import okay.codec.Json
 import okay.codec.Json.*
@@ -91,7 +88,7 @@ object Models:
   private type Lines = Unit ! Writer % String + Async
 
   private def body(lines: Lines): Json ! Async =
-    Writer.run[String, Unit, Async](lines).map((ls, _) => Json.parse(ls.mkString("\n")))
+    Writer.run[String, Unit, Writer % String + Async](lines).map((ls, _) => Json.parse(ls.mkString("\n")))
 
   private[llm] object J:
     def field(j: Json, k: String): Option[Json] = j match
@@ -181,11 +178,11 @@ object Models:
         J.str(j, "error").map(Progress.Failed(_))
           .orElse(if J.str(j, "status").contains("success") then Some(Progress.Done) else None)
           .orElse(J.long(j, "completed").map(c => Progress.Bytes(c, J.long(j, "total"))))
-      okay.freer.!.widen[(Seq[String], Unit), Async, Writer % Progress](Writer.run[String, Unit, Async](lines)).flatMap { (ls, _) =>
+      Writer.run[String, Unit, Writer % String + Async](lines).flatMap[Unit, F] { (ls, _) =>
         // the recursion is only through the program's flatMap: trampolined
         def go(rest: List[Progress]): Unit ! F = rest match
           case Nil => pure(())
-          case e :: t => effect[F, Unit](Writer(e)).flatMap(_ => go(t))
+          case e :: t => Writer.tell(e).at[F].flatMap(_ => go(t))
         go(ls.iterator.flatMap(eventOf).toList)
       }
     def remove(id: ModelId): Either[Refused, Unit] ! Async =

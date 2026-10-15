@@ -1,9 +1,6 @@
 package okay.llm
 
-import okay.{Async}
-
-import okay.freer.{%, +}
-import okay.freer.{!}
+import okay.{!, %, +, Async}
 import okay.std.{Writer}
 import okay.codec.{Json, Schema}
 
@@ -139,7 +136,7 @@ object OpenAi {
    */
   def complete(transport: Transport, apiKey: String, body: String,
                url: String = chatUrl): Response ! Async =
-    Writer.run[String, Unit, Async](transport.post(url, headers(apiKey), body))
+    Writer.run[String, Unit, Writer % String + Async](transport.post(url, headers(apiKey), body))
       .map { (lines, _) =>
         okay.codec.Codecs.readJson[Response](lines.mkString("\n"))
           .getOrElse(Response(Nil, None))   // total: a damaged body is no choices
@@ -154,33 +151,5 @@ object OpenAi {
    * uses, with this protocol's `token` */
   def tokensOf(lines: Unit ! Writer % String + Async)
   : Unit ! Writer % String + Async =
-    import okay.freer.!.*
-    type F = Writer % String + Async
-
-    def go(rest: Unit ! F, buf: List[String]): Unit ! F = (rest.resume: @unchecked) match
-      case Return(_) => flush(buf)
-      case Inject(e) => okay.freer.<|>[Async, Writer % String](e) match
-        case Left(a) => Inject(a).flatMap(_ => flush(buf))
-        case Right(Writer.Say(line)) => absorb(line, buf)(b => flush(b))
-      case Bind(Inject(e), k) => okay.freer.<|>[Async, Writer % String](e) match
-        case Left(a) => Inject(a).flatMap(x => go(k(x), buf))
-        case Right(Writer.Say(line)) =>
-          absorb(line, buf)(b => go(k(()), b))
-
-    def flush(buf: List[String]): Unit ! F =
-      if buf.isEmpty then okay.freer.pure(())
-      else emit(buf.reverse.mkString("\n"))(okay.freer.pure(()))
-
-    def absorb(line: String, buf: List[String])(next: List[String] => Unit ! F): Unit ! F =
-      if line.isEmpty then
-        if buf.isEmpty then next(Nil) else emit(buf.reverse.mkString("\n"))(next(Nil))
-      else if line.startsWith("data:") then next(line.drop(5).trim :: buf)
-      else next(buf)
-
-    def emit(payload: String)(next: => Unit ! F): Unit ! F =
-      token(payload) match
-        case Some(t) => okay.freer.effect[F, Unit](Writer(t)).flatMap(_ => next)
-        case None => next
-
-    go(lines, Nil)
+    SseTokens(lines)(token)
 }

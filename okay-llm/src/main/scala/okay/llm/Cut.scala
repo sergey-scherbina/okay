@@ -1,8 +1,8 @@
 package okay.llm
 
-import okay.{Async, Condition}
-import okay.freer.*
-import okay.std.*
+import okay.{!, %, +, Async, Condition, Handler, effect, pure}
+import okay.std.Writer
+
 /**
  * Streaming validation that cuts generation (specs/llm-agentic.md,
  * llm-streaming-cut): a validator stands IN the token stream and, on
@@ -23,7 +23,8 @@ import okay.std.*
  *
  * A passing stream really never captures, and the push really is
  * nothing — a thousand of them cost 28.4 µs, so one is about 0.03 µs.
- * But entering `Shift % ? + Async` puts EVERY operation of the body
+ * But entering `Shift % ? + Async` (okay-freer's Shift, where this was measured;
+ * the guard is the kernel's `Aborting` handler now) puts EVERY operation of the body
  * through the delimited-control machine, and that is per token:
  *
  *     writerTell            15.098 / 18.012 µs   N tells, no machine
@@ -51,20 +52,48 @@ object Cut {
    * was seen — the caller retries, reprompts, or surfaces it */
   final case class Violation(rule: String, at: Int, seen: String)
 
+  /** the name of a guard: a cut names the guard it ends. One is made by
+   * `guarded` alone, so holding one means being handed it by a guard */
+  final class Prompt[A] private[Cut] ()
+
+  /** the ambient form of a guard's prompt — the evidence of being
+   * inside one: its constructor is private, so a `violation` outside
+   * any guard does not compile */
+  final class Prompted[A] private[Cut] (val prompt: Prompt[A])
+
+  /** THE CUT AS AN OPERATION: the guarded generation ends at the guard
+   * of `prompt` with `v`, its answer never comes. A guard is the
+   * kernel's `Aborting` handler of it: the operation ends the body,
+   * the rest — the stream's further pulls — dropped */
+  final case class Cutting[X](prompt: Prompt[?], v: Violation)
+
   /** the streaming row under a cut boundary */
-  type Guarded[A] = Writer % String + (Shift % ? + Async)
+  type Guarded[A] = Writer % String + (Cutting + Async)
+
+  private type R = Writer % String + (Cutting + Async)
+
+  /** the guard of `p`: a cut ends the body with `Left`, an answer is
+   * `Right`. A cut is caught by the NEAREST guard; one naming a guard
+   * further out is refused, named (the kernel's handler of an effect
+   * is the innermost one; a cut cannot pass through it) */
+  private def stopAt(p: Prompt[?]): Handler[Cutting, [a] =>> Either[Violation, a]] =
+    Handler.aborting[Cutting, [a] =>> Either[Violation, a]]([a] => (a: a) => Right(a))(
+      [a, x] => (op: Cutting[x]) =>
+        if op.prompt eq p then Left(op.v)
+        else throw IllegalStateException(
+          s"Cut: a cut to an outer guard through an inner one (${op.v}); a cut ends the nearest guard"))
 
   /** install the boundary; the body streams tokens and may abort to
    * the prompt with a named violation */
-  def guarded[A](gen: Prompt[Either[Violation, A]] => A ! (Writer % String + (Shift % ? + Async)))
+  def guarded[A](gen: Prompt[Either[Violation, A]] => A ! (Writer % String + (Cutting + Async)))
   : Either[Violation, A] ! Writer % String + Async =
-    val p = Shift.prompt[Either[Violation, A]]
-    Shift.run(Shift.push(p)(gen(p).map(Right(_))))
+    val p = Prompt[Either[Violation, A]]()
+    gen(p).handle(stopAt(p))
 
   /** abort the generation with a violation — the non-local exit */
   def cut[A, X](p: Prompt[Either[Violation, A]])(v: Violation)
-  : X ! (Writer % String + (Shift % ? + Async)) =
-    Shift.abort[Either[Violation, A], X, Writer % String + Async](p)(Left(v))
+  : X ! (Writer % String + (Cutting + Async)) =
+    effect[Cutting, X](Cutting[X](p, v)).at[R]
 
   /**
    * The recurring shape: pull a token source, CHECK each token, emit
@@ -75,18 +104,14 @@ object Cut {
   def checked[A](p: Prompt[Either[Violation, A]],
                  tokens: Unit ! Writer % String + Async)
                 (check: (Int, String) => Option[Violation])
-  : Unit ! (Writer % String + (Shift % ? + Async)) =
-    def go(src: Unit ! Writer % String + Async, i: Int)
-    : Unit ! (Writer % String + (Shift % ? + Async)) =
-      !.widen[Either[Unit, (String, Unit ! Writer % String + Async)],
-              Async, Writer % String + Shift % ?](
-        Writer.uncons[String, Unit, Async](src)).flatMap {
+  : Unit ! (Writer % String + (Cutting + Async)) =
+    // the recursion is only through the program's flatMap: trampolined
+    def go(src: Unit ! Writer % String + Async, i: Int): Unit ! R =
+      Writer.uncons[String, Unit, Async](src).flatMap[Unit, R] {
         case Left(_) => pure(())
         case Right((t, rest)) => check(i, t) match
           case Some(v) => cut[A, Unit](p)(v)
-          case None =>
-            effect[Writer % String + (Shift % ? + Async), Unit](Writer(t))
-              .flatMap(_ => go(rest, i + 1))
+          case None => Writer.tell(t).at[R].flatMap(_ => go(rest, i + 1))
       }
     go(tokens, 0)
 
@@ -96,39 +121,34 @@ object Cut {
 
   /**
    * The boundary with an ambient prompt — and the evidence is
-   * `Shift.Prompted`, not `Prompt` (delim-doors-are-prompted,
-   * 2026-09-18). A `Prompt` is one line to make, so asking for one as
-   * a GIVEN proves nothing: a `violation` outside any guard compiled
-   * and then failed at runtime with `NoPrompt`. `Prompted`'s
-   * constructor is private to `Shift`, so holding one means being
-   * inside the guard that installed it. The explicit forms
+   * `Prompted`, not `Prompt` (delim-doors-are-prompted, 2026-09-18):
+   * `Prompted`'s constructor is private to `Cut`, so holding one
+   * means being inside the guard that installed it — a `violation`
+   * outside any guard does not compile. The explicit forms
    * (`guarded`, `cut`, `checked(p, …)`) are unaffected.
    */
-  def guard[A](gen: Shift.Prompted[Either[Violation, A]] ?=> A ! (Writer % String + (Shift % ? + Async)))
+  def guard[A](gen: Prompted[Either[Violation, A]] ?=> A ! (Writer % String + (Cutting + Async)))
   : Either[Violation, A] ! Writer % String + Async =
-    // `Shift.scope` is the only door that hands out the evidence —
-    // its constructor is private to `Shift`, which is exactly what
-    // makes the evidence worth asking for
-    Shift.run(Shift.scope[Either[Violation, A], Writer % String + Async](gen.map(Right(_))))
+    guarded[A](p => gen(using Prompted(p)))
 
   /** `checked` against the NEAREST guard — the prompt is ambient
    * (the ctx-prompts door; the explicit form stays) */
   def checked[A](tokens: Unit ! Writer % String + Async)
                 (check: (Int, String) => Option[Violation])
-                (using p: Shift.Prompted[Either[Violation, A]])
-  : Unit ! (Writer % String + (Shift % ? + Async)) =
+                (using p: Prompted[Either[Violation, A]])
+  : Unit ! (Writer % String + (Cutting + Async)) =
     checked(p.prompt, tokens)(check)
 
   /** abort to the nearest guard — no prompt in hand */
-  def violation[A, X](v: Violation)(using p: Shift.Prompted[Either[Violation, A]])
-  : X ! (Writer % String + (Shift % ? + Async)) =
+  def violation[A, X](v: Violation)(using p: Prompted[Either[Violation, A]])
+  : X ! (Writer % String + (Cutting + Async)) =
     cut[A, X](p.prompt)(v)
 
   /** `checked`, prompt ambient */
   def watched[A](tokens: Unit ! Writer % String + Async)
                 (check: (Int, String) => Option[Violation])
-                (using p: Shift.Prompted[Either[Violation, A]])
-  : Unit ! (Writer % String + (Shift % ? + Async)) =
+                (using p: Prompted[Either[Violation, A]])
+  : Unit ! (Writer % String + (Cutting + Async)) =
     checked[A](p.prompt, tokens)(check)
 
   // ── the repair door (specs/condition.md): between passing a token
@@ -137,7 +157,7 @@ object Cut {
   // never signals.
 
   /** the screened row: conditions over the guarded row */
-  type Screened = Condition.Op + (Writer % String + (Shift % ? + Async))
+  type Screened = Condition.Op + (Writer % String + (Cutting + Async))
 
   /**
    * `checked`, repairable: a violating token SIGNALS the Violation
@@ -150,22 +170,18 @@ object Cut {
    */
   def screened[A](tokens: Unit ! Writer % String + Async)
                  (check: (Int, String) => Option[Violation])
-                 (using p: Shift.Prompted[Either[Violation, A]])
+                 (using p: Prompted[Either[Violation, A]])
   : Unit ! Screened =
-    type R = Writer % String + (Shift % ? + Async)
-    def emit(t: String): Unit ! Screened =
-      effect[Screened, Unit](Writer(t))
+    def emit(t: String): Unit ! Screened = Writer.tell(t).at[Screened]
+    // the recursion is only through the program's flatMap: trampolined
     def go(src: Unit ! Writer % String + Async, i: Int): Unit ! Screened =
-      !.widen[Either[Unit, (String, Unit ! Writer % String + Async)],
-              Async, Condition.Op + (Writer % String + Shift % ?)](
-        Writer.uncons[String, Unit, Async](src)).flatMap {
+      Writer.uncons[String, Unit, Async](src).flatMap[Unit, Screened] {
         case Left(_) => pure(())
         case Right((t, rest)) => check(i, t) match
           case None => emit(t).flatMap(_ => go(rest, i + 1))
           case Some(v) =>
             Condition.within[Option[String], R]("drop")(
-              !.widen[String, Condition.Op, R](Condition.signal[String](v))
-                .map(Some(_)))(_ => None).flatMap {
+              Condition.signal[String](v).map[Option[String]](Some(_)).at[Screened])(_ => None).flatMap {
               case Some(t2) => emit(t2).flatMap(_ => go(rest, i + 1))
               case None => go(rest, i + 1)
             }
@@ -173,10 +189,8 @@ object Cut {
     // the typed frame: an Invoke("cut", v) reaches recover as a
     // Violation or is refused named (the ClassTag door), not cast
     Condition.frame[Option[Violation], Violation, R]("cut")(go(tokens, 0).map(_ => None))(
-      v => Some(v)).flatMap {
-      case Some(v) =>
-        !.widen[Unit, Writer % String + (Shift % ? + Async), Condition.Op](
-          violation[A, Unit](v))
+      v => Some(v)).flatMap[Unit, Screened] {
+      case Some(v) => violation[A, Unit](v).at[Screened]
       case None => pure(())
     }
 }

@@ -1,10 +1,9 @@
 package okay.llm
 
 import okay.{Async, Condition, async}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.Condition.Decision
 import Cut.*
 
@@ -19,19 +18,19 @@ class TestCutRepair extends munit.FunSuite {
         case Nil => pure(())
         case t :: rest =>
           !.widen[Unit, Async, Writer % String](async { pulled += 1 }).flatMap(_ =>
-            effect[Writer % String + Async, Unit](Writer(t))).flatMap(_ => go(rest))
+            Writer.tell(t).at[Writer % String + Async]).flatMap(_ => go(rest))
       go(tokens)
 
   def collect[A](p: Either[Violation, A] ! Writer % String + Async)
   : (Vector[String], Either[Violation, A]) =
-    val (ts, a) = Async.run[(Seq[String], Either[Violation, A]), Pure](
-      Writer.run[String, Either[Violation, A], Async](p)).runWith
+    val (ts, a) = Async.run(
+      Writer.run[String, Either[Violation, A], Writer % String + Async](p)).run
     (ts.toVector, a)
 
   def screenedRun(src: Counted, policy: (Any, Vector[String]) => Decision)
   : (Vector[String], Either[Violation, String]) =
     collect(Cut.guard[String] {
-      Condition.run[Unit, Writer % String + (Shift % ? + Async)](policy)(
+      Condition.run[Unit, Screened](policy)(
         screened[String](src.source)((i, t) =>
           if t == "BAD" then Some(Violation("no-bad", i, t)) else None))
         .map(_ => "done")

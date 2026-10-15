@@ -1,9 +1,6 @@
 package okay.llm
 
-import okay.{Async, Stage}
-
-import okay.freer.{%, +}
-import okay.freer.{!, effect, pure}
+import okay.{!, %, +, Async, Stage, Walk, pure}
 import okay.std.{Writer}
 import okay.codec.{Json, Schema}
 
@@ -167,45 +164,54 @@ object Anthropic {
   /** one completion, whole */
   def message(transport: Transport, apiKey: String, body: String,
               url: String = messagesUrl): Answer ! Async =
-    Writer.run[String, Unit, Async](transport.post(url, messagesHeaders(apiKey), body))
+    Writer.run[String, Unit, Writer % String + Async](transport.post(url, messagesHeaders(apiKey), body))
       .map((lines, _) => answer(lines.mkString("\n")))
 
   /** the reusable tail: SSE lines to text tokens */
   def tokensOf(lines: Unit ! Writer % String + Async)
   : Unit ! Writer % String + Async =
-    def go(rest: Unit ! Writer % String + Async, buf: List[String])
-    : Unit ! Writer % String + Async =
-      import okay.freer.!.*
-      (rest.resume: @unchecked) match
-        case Return(_) => flushEvent(buf)
-        case Inject(e) => okay.freer.<|>[Async, Writer % String](e) match
-          case Left(a) => Inject(a).flatMap(_ => flushEvent(buf))
-          case Right(Writer.Say(line)) => emitFrom(line, buf)(b => flushEvent(b))
-        case Bind(Inject(e), k) => okay.freer.<|>[Async, Writer % String](e) match
-          case Left(a) => Inject(a).flatMap(x => go(k(x), buf))
-          case Right(Writer.Say(line)) =>
-            // the constructor gives the told line AND refines the
-            // continuation's domain to Unit — no cast on either half
-            emitFrom(line, buf)(b => go(k(()), b))
+    SseTokens(lines)(token)
+}
 
-    def flushEvent(buf: List[String]): Unit ! Writer % String + Async =
+/**
+ * SSE lines to text tokens, a protocol's `token` deciding what an
+ * event's payload carries — the one walk both clients use. The lines
+ * are WALKED (`okay.Walk.next`): each told line taken where it is, the
+ * Async operations met on the way performed where the walk is, an
+ * event's token told when its blank line (or the end) closes it. A
+ * walk rather than a handler because one tell in becomes zero or one
+ * out, decided by the lines buffered so far — the walk keeps the
+ * buffer as an argument, not a register.
+ */
+private[llm] object SseTokens:
+  type F = Writer % String + Async
+
+  def apply(lines: Unit ! F)(token: String => Option[String]): Unit ! F =
+    // the recursion is only through the program's flatMap: trampolined
+    def go(rest: Unit ! F, buf: List[String]): Unit ! F =
+      Walk.next[Writer % String, Unit, F](rest).flatMap {
+        case Walk.Done(_) => flush(buf)
+        case o: Walk.Op[Writer % String, x, Unit, F] => said(o, buf)
+      }
+
+    // the constructor gives the told line AND the answer type Unit — no cast on either half
+    def said[X](o: Walk.Op[Writer % String, X, Unit, F], buf: List[String]): Unit ! F =
+      (o.op: Writer[String, X]) match
+        case Writer.Say(line) => absorb(line, buf)(b => go(o.resume(()), b))
+
+    def flush(buf: List[String]): Unit ! F =
       if buf.isEmpty then pure(())
-      else tokenOf(buf.reverse.mkString("\n"))(pure(()))
+      else emit(buf.reverse.mkString("\n"))(pure(()))
 
-    def emitFrom(line: String, buf: List[String])
-                (next: List[String] => Unit ! Writer % String + Async)
-    : Unit ! Writer % String + Async =
+    def absorb(line: String, buf: List[String])(next: List[String] => Unit ! F): Unit ! F =
       if line.isEmpty then
-        if buf.isEmpty then next(Nil)
-        else tokenOf(buf.reverse.mkString("\n"))(next(Nil))
+        if buf.isEmpty then next(Nil) else emit(buf.reverse.mkString("\n"))(next(Nil))
       else if line.startsWith("data:") then next(line.drop(5).trim :: buf)
       else next(buf)
 
-    def tokenOf(payload: String)(next: => Unit ! Writer % String + Async)
-    : Unit ! Writer % String + Async =
+    def emit(payload: String)(next: => Unit ! F): Unit ! F =
       token(payload) match
-        case Some(t) => effect[Writer % String + Async, Unit](Writer(t)).flatMap(_ => next)
+        case Some(t) => Writer.tell(t).flatMap(_ => next)
         case None => next
 
     go(lines, Nil)
-}

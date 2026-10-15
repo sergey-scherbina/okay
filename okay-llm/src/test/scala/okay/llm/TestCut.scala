@@ -1,10 +1,9 @@
 package okay.llm
 
 import okay.{Async, async}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
-import okay.freer.given
 import Cut.*
 
 /** specs/llm-agentic.md, llm-streaming-cut — one test per box
@@ -22,13 +21,13 @@ class TestCut extends munit.FunSuite {
           // the count is an Async op — DATA until run — so it ticks
           // when the token is pulled, not when the node is built
           !.widen[Unit, Async, Writer % String](async { pulled += 1 }).flatMap(_ =>
-            effect[Writer % String + Async, Unit](Writer(t))).flatMap(_ => go(rest))
+            Writer.tell(t).at[Writer % String + Async]).flatMap(_ => go(rest))
       go(tokens)
 
   def collect[A](p: Either[Violation, A] ! Writer % String + Async)
   : (Vector[String], Either[Violation, A]) =
-    val (ts, a) = Async.run[(Seq[String], Either[Violation, A]), Pure](
-      Writer.run[String, Either[Violation, A], Async](p)).runWith
+    val (ts, a) = Async.run(
+      Writer.run[String, Either[Violation, A], Writer % String + Async](p)).run
     (ts.toVector, a)
 
   test("a violating stream: Left names rule and position, no further pulls") {
@@ -46,7 +45,7 @@ class TestCut extends munit.FunSuite {
   test("a passing stream is identical to the unguarded run") {
     val plain = Counted(List("a", "b", "c"))
     val (direct, _) = collect(
-      !.widen[Unit, Writer % String + Async, Pure](plain.source).map(Right(_)))
+      plain.source.map[Either[Violation, Unit]](Right(_)))
     val guardedSrc = Counted(List("a", "b", "c"))
     val (through, result) = collect(guarded[Unit] { p =>
       checked(p, guardedSrc.source)((_, _) => None)
@@ -58,14 +57,12 @@ class TestCut extends munit.FunSuite {
 
   test("nested guards: the inner violation aborts the INNER prompt; the outer continues") {
     val outer = guarded[String] { po =>
-      // an inner, stricter guard: a fresh prompt pushed INSIDE the
-      // same machine (the Scope discipline: one run, nested pushes)
-      val p2 = Shift.prompt[Either[Violation, Unit]]
-      Shift.push[Either[Violation, Unit], Writer % String + Async](p2)(
+      // an inner, stricter guard INSIDE the outer one: its cut ends
+      // the nearest guard, the inner
+      guarded[Unit] { p2 =>
         checked(p2, Counted(List("ok", "BAD")).source)((i, t) =>
           if t == "BAD" then Some(Violation("inner", i, t)) else None)
-          .map(Right(_))
-      ).flatMap {
+      }.at[Writer % String + (Cutting + Async)].flatMap {
         case Left(v) =>
           // the inner scope cut; the OUTER stream continues past it
           checked(po, Counted(List("outer-goes-on")).source)((_, _) => None)

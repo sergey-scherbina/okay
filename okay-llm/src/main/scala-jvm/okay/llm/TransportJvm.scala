@@ -1,9 +1,6 @@
 package okay.llm
 
-import okay.{Async}
-
-import okay.freer.{%, +}
-import okay.freer.{!, effect, pure}
+import okay.{!, %, +, Async, effect, pure}
 import okay.std.{Writer}
 /**
  * The JVM transport: java.net.http, streaming the response line by
@@ -27,17 +24,17 @@ object Transports:
                       verb: java.net.http.HttpRequest.Builder => java.net.http.HttpRequest.Builder)
     : Unit ! Writer % String + Async =
       type F = Writer % String + Async
-      effect[F, java.util.Iterator[String]](Async.Run { () =>
+      effect[Async, java.util.Iterator[String]](Async.Run { () =>
         val b = verb(java.net.http.HttpRequest.newBuilder(java.net.URI.create(url)))
         headers.foreach((k, v) => b.header(k, v))
         client.send(b.build(),
           java.net.http.HttpResponse.BodyHandlers.ofLines()).body().iterator()
       }).flatMap { it =>
         def go(): Unit ! F =
-          effect[F, Boolean](Async.Run(() => it.hasNext)).flatMap { has =>
+          effect[Async, Boolean](Async.Run(() => it.hasNext)).flatMap { has =>
             if !has then pure(())
-            else effect[F, String](Async.Run(() => it.next()))
-              .flatMap(line => effect[F, Unit](Writer(line)).flatMap(_ => go()))
+            else effect[Async, String](Async.Run(() => it.next()))
+              .flatMap(line => Writer.tell(line).flatMap(_ => go()))
           }
         go()
       }

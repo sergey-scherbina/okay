@@ -1,12 +1,8 @@
 package okay.llm
 
-import okay.{Async}
-
-import okay.freer.{%, +, Pure}
-import okay.freer.{!, effect, pure}
+import okay.{!, %, +, Async, pure}
 import okay.std.{Writer}
 import okay.given
-import okay.freer.given
 import okay.llm.Models.*
 
 /** a transport that records what it was asked and answers by the path —
@@ -20,15 +16,15 @@ final class ScriptedWire(answers: PartialFunction[(String, String), String]) ext
     val text = answers.lift((verb, path)).getOrElse("""{"error":{"message":"no such route","type":"not_found"}}""")
     def go(ls: List[String]): Unit ! F = ls match
       case Nil => pure(())
-      case l :: t => effect[F, Unit](Writer(l)).flatMap(_ => go(t))
+      case l :: t => Writer.tell(l).at[F].flatMap(_ => go(t))
     go(text.split('\n').toList)
   def post(url: String, headers: Map[String, String], body: String) = answer("POST", url, body)
   def get(url: String, headers: Map[String, String]) = answer("GET", url, "")
   def delete(url: String, headers: Map[String, String], body: String) = answer("DELETE", url, body)
 
 class TestModels extends munit.FunSuite:
-  def go[A](p: A ! Async): A = Async.run[A, Pure](p).runWith
-  def collect[A](p: Unit ! Writer % A + Async): Seq[A] = go(Writer.run[A, Unit, Async](p))._1
+  def go[A](p: A ! Async): A = Async.run[A, Async](p).run
+  def collect[A](p: Unit ! Writer % A + Async): Seq[A] = go(Writer.run[A, Unit, Writer % A + Async](p))._1
 
   test("ModelId: org:repo, org/repo and hf:org/repo are one model; show is the canonical form; Ollama's name:tag keeps its spelling") {
     assert(ModelId.same("mlx-community:Qwen3.5-4B-MLX-4bit", "hf:mlx-community/Qwen3.5-4B-MLX-4bit"))

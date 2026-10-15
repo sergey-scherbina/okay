@@ -1,9 +1,7 @@
 package okay.llm
 
-import okay.{Stage, Take, pipe, through}
-import okay.freer.*
+import okay.*
 import okay.std.*
-import okay.freer.given
 import okay.Direct.*
 
 /**
@@ -23,7 +21,7 @@ class TestTakeLoopInBlock extends munit.FunSuite:
     val doubling: Stage[Int, Int, Unit] = direct[[A] =>> A ! Take % Int + Writer % Int] {
       for i <- Take.each[Int] do Writer.tell(i * 2).?
     }
-    val (out, _) = !.run(Writer.run[Int, Unit, okay.freer.Pure](through(told(1, 2, 3))(doubling)))
+    val (out, _) = !.run(Writer.run[Int, Unit, Writer % Int](through(told(1, 2, 3))(doubling)))
     assertEquals(out, Seq(2, 4, 6))
   }
 

@@ -1,21 +1,20 @@
 package okay.llm
 
 import okay.{Async}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
-import okay.freer.given
 /** the capability door on Cut: guard/watched/violation with the
  * prompt ambient — behavior identical to the explicit forms */
 class TestCutCtx extends munit.FunSuite {
 
   def tokens(ts: String*): Unit ! Writer % String + Async =
-    ts.foldLeft(pure[Writer % String + Async, Unit](())):
-      (m, t) => m.flatMap(_ => effect[Writer % String + Async, Unit](Writer(t)))
+    ts.foldLeft(pure[Unit, Writer % String + Async](())):
+      (m, t) => m.flatMap(_ => Writer.tell(t).at[Writer % String + Async])
 
   def collect[A](p: Either[Cut.Violation, A] ! Writer % String + Async)
   : (Seq[String], Either[Cut.Violation, A]) =
-    val (out, a) = !.run(Writer.run(okay.Async.run[Either[Cut.Violation, A], Writer % String](p)))
+    val (out, a) = Writer.run[String, Either[Cut.Violation, A], Writer % String](okay.Async.run(p)).run
     (out, a)
 
   test("guard { watched(...) } — the validator holds no prompt; a violation cuts") {

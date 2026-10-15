@@ -1,12 +1,8 @@
 package okay.llm
 
-import okay.{Async}
-
-import okay.freer.{%, +}
-import okay.freer.{!, effect, pure}
+import okay.{!, %, +, Async, effect, pure}
 import okay.std.{Writer}
 import okay.given
-import okay.freer.given
 import okay.codec.Json
 
 /** The thin client over a mock transport: tokens stream, lazily. */
@@ -18,7 +14,7 @@ class TestLlm extends munit.FunSuite {
       type F = Writer % String + Async
       def go(ls: List[String]): Unit ! F = ls match
         case Nil => pure(())
-        case l :: t => effect[F, Unit](Writer(l)).flatMap(_ => go(t))
+        case l :: t => Writer.tell(l).at[F].flatMap(_ => go(t))
       go(events)
 
   def deltaEvent(text: String): List[String] = List(
@@ -50,8 +46,7 @@ class TestLlm extends munit.FunSuite {
     val flaky: Transport = new Transport:
       def post(url: String, headers: Map[String, String], body: String)
       : Unit ! Writer % String + Async =
-        type F = Writer % String + Async
-        effect[F, Unit](Async.Run { () =>
+        effect[Async, Unit](Async.Run { () =>
           attempts += 1
           if attempts == 1 then throw RuntimeException("wire down")
         }).flatMap(_ => canned.post(url, headers, body))
@@ -73,16 +68,5 @@ class TestLlm extends munit.FunSuite {
 
   /** drain the token stream (Writer % String + Async, no real waits here) */
   def collect(s: Unit ! Writer % String + Async): List[String] =
-    import okay.freer.!.*
-    def go(rest: Unit ! Writer % String + Async, acc: List[String]): List[String] =
-      (rest.resume: @unchecked) match
-        case Return(_) => acc.reverse
-        case Inject(e) => okay.freer.<|>[Async, Writer % String](e) match
-          case Left(a) => summon[okay.Answers[Async]].handle(a); acc.reverse
-          case Right(Writer.Say(w)) => (w :: acc).reverse
-        case Bind(Inject(e), k) => okay.freer.<|>[Async, Writer % String](e) match
-          case Left(a) => go(k(summon[okay.Answers[Async]].handle(a)), acc)
-          // a tell answers nothing — the continuation gets unit, not the line
-          case Right(Writer.Say(w)) => go(k(()), w :: acc)
-    go(s, Nil)
+    Writer.run[String, Unit, Writer % String + Async](s).runWith._1.toList
 }
