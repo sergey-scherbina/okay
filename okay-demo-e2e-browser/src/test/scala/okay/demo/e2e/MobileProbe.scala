@@ -1,12 +1,11 @@
 package okay.demo.e2e
 
 
-import okay.freer.*
+import okay.*
 
 
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.std.given
 import okay.jetty.Jetty
 import okay.script.Site
@@ -32,7 +31,7 @@ object MobileProbe:
         |""".stripMargin): Unit
     say("page written")
     val site = Site(root)
-    Resource.run[Unit, Pure](Jetty.serve(0)(site.routes)(site.ws).map { s =>
+    Resource.run(Jetty.serve(0)(site.routes)(site.ws).map { s =>
       val port = Jetty.port(s)
       say(s"jetty on $port")
       val pw = Playwright.create()

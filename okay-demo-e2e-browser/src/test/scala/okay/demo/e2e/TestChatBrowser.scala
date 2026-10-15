@@ -1,12 +1,11 @@
 package okay.demo.e2e
 
 
-import okay.freer.*
+import okay.*
 
 
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.std.given
 import okay.jetty.Jetty
 import okay.demo.ChatDemo
@@ -38,7 +37,7 @@ class TestChatBrowser extends munit.FunSuite {
   def withServer[A](f: Int => A): A =
     val store = okay.demo.Board.store(":memory:")
     provide(deadWire, noSecrets, okay.demo.Board(okay.demo.Board.topicOf(store)), store)(
-      Resource.run[A, Pure](
+      Resource.run(
         Jetty.serve(0)(ChatDemo.routes(okay.chat.Chat.scripted, 512))()
           .map(s => f(Jetty.port(s)))).runWith)
 

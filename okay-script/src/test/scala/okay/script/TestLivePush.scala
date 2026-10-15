@@ -1,10 +1,9 @@
 package okay.script
 
 import okay.{Async, Stage, through}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.std.given
 import okay.http.{Frame, Request, Transports, Ws}
 import okay.jetty.Jetty
@@ -24,8 +23,7 @@ class TestLivePush extends munit.FunSuite:
     """```scala declare
       |import okay.{Async, Source}
       |import okay.given
-      |import okay.freer.*
-      |import okay.freer.given
+      |import okay.*
       |import okay.std.*
       |import okay.std.given
       |import okay.ui.*
@@ -51,10 +49,10 @@ class TestLivePush extends munit.FunSuite:
     withSite { site =>
       val r = Request.get("/counter?__live=counter")
       assert(site.push.isDefinedAt(r) && !site.push.isDefinedAt(Request.get("/counter?__live=nope")))
-      val pushed = Async.run[Seq[Frame], Pure](Writer.run(site.push(r)).map(_._1)).runWith
+      val pushed = Async.run(Writer.run(site.push(r)).map(_._1)).runWith
       val events = pushed.collect { case Frame.Text(s) => Protocol.eventOf(s) }
       assertEquals(events, Seq(Some(Event.Pressed("inc")), Some(Event.Pressed("inc"))))
-      val (out, _) = !.run(Writer.run(through(Writer.of(pushed.toList :+ Frame.Close(1000, "")))(site.ws(r))))
+      val (out, _) = !.run(Writer.run(through(Writer.of(pushed.toList :+ Frame.Close(1000, "")).at[Writer % Frame])(site.ws(r))))
       val lines = out.collect { case Frame.Text(s) => s }
       assertEquals(lines.length, 3, lines.toString)
       assertEquals(Protocol.patchOf(lines(1)), Some(Patch.SetText(List(0), "count: 1")))
@@ -64,10 +62,10 @@ class TestLivePush extends munit.FunSuite:
 
   test("over Jetty: the tree, then two patches nobody pressed for") {
     withSite { site =>
-      val got = Resource.run[Seq[Frame], Pure](
+      val got = Resource.run(
         Jetty.serve(0)(site.routes)(site.ws, site.push).map { server =>
           val sockets = Transports.sockets()
-          Async.run[Seq[Frame], Pure](
+          Async.run(
             sockets.connect(s"ws://127.0.0.1:${Jetty.port(server)}/counter?__live=counter").flatMap { sock =>
               val listen: Stage[Frame, Frame, Seq[Frame]] =
                 Stage.await[Frame, Frame].flatMap { a =>

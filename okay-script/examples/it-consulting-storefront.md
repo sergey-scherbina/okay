@@ -88,7 +88,7 @@ def html(status: Int, body: String): Response ! Async =
 // generator) can bind a fresh one without editing this file
 val port = sys.props.get("okay.script.storefront.port").flatMap(_.toIntOption).getOrElse(8099)
 
-Resource.run[Unit, Pure](
+Resource.run(
   Jetty.serve(port) {
     case r if OkayServer.path(r) == "/" =>
       html(200, page)

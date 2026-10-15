@@ -3,10 +3,8 @@ package okay.script
 
 
 
-import okay.freer.{Pure}
 import okay.{Async}
 import okay.given
-import okay.freer.given
 import okay.http.{Http, Request, Response as HttpResponse}
 
 import java.nio.file.{Files, Path}
@@ -18,7 +16,7 @@ class TestWarm extends munit.FunSuite:
 
   private val Api = "```scala\nimport okay.script.api.*\n```\n"
 
-  private def text(r: HttpResponse): String = Async.run[String, Pure](Http.text(r)).runWith
+  private def text(r: HttpResponse): String = Async.run(Http.text(r)).runWith
 
   private def withRoot[A](body: (Path, (String, String) => Unit) => A): A =
     val root = Files.createTempDirectory("okay-script-warm-")
@@ -102,10 +100,10 @@ class TestWarm extends munit.FunSuite:
         assert(!site.routes.isDefinedAt(Request.get("/metrics")))
         val all = site.routes orElse site.opsRoutes
         assert(all.isDefinedAt(Request.get("/metrics")))
-        val health = Async.run[HttpResponse, Pure](all(Request.get("/healthz"))).runWith
+        val health = Async.run(all(Request.get("/healthz"))).runWith
         assertEquals(health.status, 200)
         assert(text(health).contains("live=true"))
-        val stats = Async.run[HttpResponse, Pure](all(Request.get("/stats"))).runWith
+        val stats = Async.run(all(Request.get("/stats"))).runWith
         assert(text(stats).startsWith("{\"pageRequests\":"), text(stats))
         // a PAGE of that name wins: the site's own content is never
         // shadowed by an endpoint the deployment chose to add
@@ -113,7 +111,7 @@ class TestWarm extends munit.FunSuite:
         val site2 = Site(root)
         try
           val chained = site2.routes orElse site2.opsRoutes
-          assert(text(Async.run[HttpResponse, Pure](chained(Request.get("/metrics"))).runWith).contains("my own metrics page"))
+          assert(text(Async.run(chained(Request.get("/metrics"))).runWith).contains("my own metrics page"))
         finally site2.close()
       finally site.close()
     }

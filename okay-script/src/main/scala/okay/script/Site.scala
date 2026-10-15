@@ -1,5 +1,5 @@
 package okay.script
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.{Async, CanBlock, Scheduler, Source, Stage, Take, through}
 import okay.http.{Frame, Http, Request, Response as HttpResponse}
@@ -150,7 +150,7 @@ final class Site(
   private def pushOf(app: api.Live[?]): Source[Frame] =
     val eventsToFrames: Stage[Event, Frame, Unit] =
       Stage.transduce(())((_, e) => Stage.tell[Event, Frame](Frame.Text(Protocol.eventLine(e))), _ => pure(()))
-    through[Event, Frame, Async, Unit, Unit](app.push)(!.widen[Unit, Take % Event + Writer % Frame, Async](eventsToFrames))
+    through[Event, Frame, Async, Unit, Unit](app.push)(eventsToFrames.at[Take % Event + (Writer % Frame + Async)])
 
   /** `key` is the session cookie, when the socket carries one: the
    * app resumes the state that key last reached (script-live-resume);

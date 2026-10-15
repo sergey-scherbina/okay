@@ -1,8 +1,7 @@
 package okay.script
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.jetty.Jetty
 
 import java.net.{HttpURLConnection, URI}
@@ -42,7 +41,7 @@ class TestServe extends munit.FunSuite:
       val a = Serve.parse(Array(root.toString, "0"), k => Option.when(k == "OKAY_DATA")(data.toString)).toOption.get
       val site = Serve.site(a)
       try
-        Resource.run[String, Pure](site.serve(0).map { server =>
+        Resource.run(site.serve(0).map { server =>
           val (code, body) = get(s"http://127.0.0.1:${Jetty.port(server)}/")
           assertEquals(code, 200)
           body

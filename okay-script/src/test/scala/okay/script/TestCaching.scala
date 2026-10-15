@@ -3,10 +3,8 @@ package okay.script
 
 
 
-import okay.freer.{Pure}
 import okay.{Async}
 import okay.given
-import okay.freer.given
 import okay.http.{Body, Http, Request, Response as HttpResponse}
 import okay.security.SessionIssuer
 
@@ -20,7 +18,7 @@ class TestCaching extends munit.FunSuite:
 
   private val Api = "```scala\nimport okay.script.api.*\n```\n"
 
-  private def text(r: HttpResponse): String = Async.run[String, Pure](Http.text(r)).runWith
+  private def text(r: HttpResponse): String = Async.run(Http.text(r)).runWith
   private def header(r: HttpResponse, n: String): Option[String] =
     r.headers.collectFirst { case (k, v) if k.equalsIgnoreCase(n) => v }
 

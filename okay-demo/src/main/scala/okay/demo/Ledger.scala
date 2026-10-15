@@ -1,7 +1,8 @@
 package okay.demo
 
 import okay.{Async, Chunks, Pane}
-import okay.freer.{!, Aggregator}
+import okay.!
+import okay.freer.Aggregator
 import okay.given
 import okay.blob.{Backup, Blob}
 import okay.cluster.{Cluster, Flow, Job, Jobs, Run, Wire}

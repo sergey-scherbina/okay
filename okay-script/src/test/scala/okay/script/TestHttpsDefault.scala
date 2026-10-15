@@ -1,10 +1,9 @@
 package okay.script
 
 import okay.{Async}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.http.{Http, Request, Response as HttpResponse}
 import okay.jetty.Jetty
 
@@ -16,7 +15,7 @@ import java.nio.file.{Files, Path}
  */
 class TestHttpsDefault extends munit.FunSuite:
 
-  private def text(r: HttpResponse): String = Async.run[String, Pure](Http.text(r)).runWith
+  private def text(r: HttpResponse): String = Async.run(Http.text(r)).runWith
   private def header(r: HttpResponse, n: String): Option[String] =
     r.headers.collectFirst { case (k, v) if k.equalsIgnoreCase(n) => v }
 
@@ -85,11 +84,11 @@ class TestHttpsDefault extends munit.FunSuite:
 
   test("the redirect port answers every path with a 301 to the https one") {
     val to = Serve.redirectTo(8443)
-    val r = Async.run[HttpResponse, Pure](to(Request.get("/a/b?c=d", Seq("Host" -> "shop.example.com:80")))).runWith
+    val r = Async.run(to(Request.get("/a/b?c=d", Seq("Host" -> "shop.example.com:80")))).runWith
     assertEquals(r.status, 301)
     assertEquals(header(r, "location"), Some("https://shop.example.com:8443/a/b?c=d"))
     // the standard port is not spelled out
-    val std = Async.run[HttpResponse, Pure](Serve.redirectTo(443)(Request.get("/", Seq("Host" -> "shop.example.com")))).runWith
+    val std = Async.run(Serve.redirectTo(443)(Request.get("/", Seq("Host" -> "shop.example.com")))).runWith
     assertEquals(header(std, "location"), Some("https://shop.example.com/"))
   }
 
@@ -107,7 +106,7 @@ class TestHttpsDefault extends munit.FunSuite:
 
       val site = Site(root)
       try
-        val body = Resource.run[String, Pure](site.serve(0, Some(ssl)).map { server =>
+        val body = Resource.run(site.serve(0, Some(ssl)).map { server =>
           val sock = javax.net.ssl.SSLContext.getInstance("TLS") match
             case c =>
               // a client that trusts THIS certificate and nothing else:

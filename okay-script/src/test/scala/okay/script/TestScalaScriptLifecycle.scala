@@ -44,7 +44,7 @@ class TestScalaScriptLifecycle extends munit.FunSuite:
          |import okay.jetty.Jetty
          |import okay.http.{Server as OkayServer}
          |
-         |Resource.run[Unit, Pure](
+         |Resource.run(
          |  Jetty.serve($port) {
          |    case r if r.url == "/hello" => OkayServer.text(200, "hi from okay-script")
          |  }().map { s =>

@@ -1,11 +1,9 @@
 package okay.demo
 
 import okay.{Async, CanBlock, Scheduler, Source, Stage, Take, through, merge}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
-import okay.freer.given
-import okay.freer.!.widen
 
 import java.time.Instant
 
@@ -139,18 +137,18 @@ object Combine {
   /**
    * The concurrent half: the two sources merged by READINESS (a fiber
    * per source, the loser of every race simply arrives later), then
-   * the pure stage run over the merge. `widen` embeds the stage in
-   * the wider row — Free is invariant in its signature, so that
-   * embedding is a walk rather than a subtyping step. Lazy
+   * the pure stage run over the merge. `at` embeds the stage in
+   * the wider row — a program is invariant in its row, so that
+   * embedding is said rather than a subtyping step. Lazy
    * throughout: the fold at the end is what pulls.
    */
   def joined(repo: StateRepo, battery: Source[Battery], charging: Source[Charging])
             (using Scheduler, CanBlock): StateRepo ! Writer % Output + Async =
     through[Event, Output, Async, Unit, StateRepo](battery merge charging)(
-      widen[StateRepo, Take % Event + Writer % Output, Async](combine(repo)))
+      combine(repo).at[Take % Event + (Writer % Output + Async)])
 
   /** the outputs, and the repository the run ended with */
   def outputs(repo: StateRepo, battery: Source[Battery], charging: Source[Charging])
              (using Scheduler, CanBlock): (Seq[Output], StateRepo) =
-    Writer.run[Output, StateRepo, Async](joined(repo, battery, charging)).runWith
+    Writer.run[Output, StateRepo, Writer % Output + Async](joined(repo, battery, charging)).runWith
 }

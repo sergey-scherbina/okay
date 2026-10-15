@@ -1,9 +1,8 @@
 package okay.demo
 
 import okay.Async
-import okay.freer.{!}
+import okay.{!}
 import okay.given
-import okay.freer.given
 import okay.blob.Fs
 import java.nio.file.Files
 
@@ -14,7 +13,7 @@ import java.nio.file.Files
 class TestLedger extends munit.FunSuite {
   import Ledger.*
 
-  def run[A](p: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](p))
+  def run[A](p: A ! Async): A = !.run(Async.run(p))
 
   /** three days of a small shop: three items, deterministic amounts */
   val day0 = 1_700_000_000_000L / Day * Day

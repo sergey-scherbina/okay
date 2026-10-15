@@ -1,8 +1,7 @@
 package okay.script
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.conf.{Secret, Secrets}
 import okay.jetty.Jetty
 import okay.tls.{Tls, TlsConfig}
@@ -76,7 +75,7 @@ class TestRealCerts extends munit.FunSuite:
     val root = pages()
     val site = Site(root)
     try
-      val body = Resource.run[String, Pure](site.serve(0, Some(ctx)).map { server =>
+      val body = Resource.run(site.serve(0, Some(ctx)).map { server =>
         get(Jetty.port(server), s"$dir/ec-cert.pem")._1
       }).runWith
       assert(body.startsWith("HTTP/1.1 200") && body.contains("served"), body.take(200))
@@ -93,7 +92,7 @@ class TestRealCerts extends munit.FunSuite:
     try
       // the client is given ONLY the CA -- it can trust the leaf just
       // because the server sent the intermediate with it
-      val body = Resource.run[String, Pure](site.serve(0, Some(ctx)).map { server =>
+      val body = Resource.run(site.serve(0, Some(ctx)).map { server =>
         get(Jetty.port(server), s"$dir/ca.pem")._1
       }).runWith
       assert(body.startsWith("HTTP/1.1 200"), body.take(200))
@@ -117,7 +116,7 @@ class TestRealCerts extends munit.FunSuite:
     val root = pages()
     val site = Site(root)
     try
-      Resource.run[Unit, Pure](site.serve(0, Some(ctx)).map { server =>
+      Resource.run(site.serve(0, Some(ctx)).map { server =>
         val port = Jetty.port(server)
         val (body1, cert1) = get(port, dir.resolve("ec-cert.pem").toString)
         assert(body1.startsWith("HTTP/1.1 200"), body1.take(120))
@@ -150,7 +149,7 @@ class TestRealCerts extends munit.FunSuite:
     val root = pages()
     val site = Site(root)
     try
-      Resource.run[Unit, Pure](site.serve(0, Some(ctx)).map { server =>
+      Resource.run(site.serve(0, Some(ctx)).map { server =>
         val port = Jetty.port(server)
         assert(get(port, dir.resolve("ec-cert.pem").toString)._1.startsWith("HTTP/1.1 200"))
         // half a file, as a renewal caught mid-write looks

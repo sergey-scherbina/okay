@@ -1,8 +1,7 @@
 package okay.script
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.jetty.Jetty
 
 import java.net.{HttpURLConnection, URI}
@@ -68,7 +67,7 @@ class TestSiteLive extends munit.FunSuite:
     page(root, "style.css", "nav { font-weight: bold }\n")
     val site = Site(root)
     try
-      Resource.run[Unit, Pure](Jetty.serve(0)(site.routes)().map { server =>
+      Resource.run(Jetty.serve(0)(site.routes)().map { server =>
         val base = s"http://127.0.0.1:${Jetty.port(server)}"
 
         val home = call(s"$base/")

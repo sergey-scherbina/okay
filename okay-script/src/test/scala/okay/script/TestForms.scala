@@ -3,10 +3,8 @@ package okay.script
 
 
 
-import okay.freer.{Pure}
 import okay.{Async}
 import okay.given
-import okay.freer.given
 import okay.codec.Schema
 import okay.http.{Body, Http, Request, Response as HttpResponse}
 import okay.script.api.{Forms, Live}
@@ -103,7 +101,7 @@ class TestForms extends munit.FunSuite:
         |```
         |""".stripMargin): Unit
     val site = Site(root)
-    def text(r: HttpResponse): String = Async.run[String, Pure](Http.text(r)).runWith
+    def text(r: HttpResponse): String = Async.run(Http.text(r)).runWith
     try
       val get = text(site.handle(Request.get("/checkout")))
       assert(get.contains("""<form method="post" action="/checkout">""") && get.contains("""name="qty""""), get)

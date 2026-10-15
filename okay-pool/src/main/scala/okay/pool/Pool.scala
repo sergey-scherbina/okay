@@ -1,10 +1,9 @@
 package okay.pool
 
 import okay.{Async, Scheduler}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.cluster.{JobStats, JobTrace, Probe}
 import okay.cluster.{Checkpoint, Cluster, Folded, Job, Jobs, Lease, Req, Resp, Served}
 import okay.codec.{Codecs, Json}
@@ -295,11 +294,11 @@ object Pool:
       okay.Threads.spawn("okay-pool-worker")(() => Served.serve(socket, worker))
       ready = true
       val serving = Jetty.serve(conf.httpPort)(router.routes)()
-      Resource.run[Unit, Pure](serving.map { s =>
+      Resource.run(serving.map { s =>
         println(s"okay-pool: worker protocol on ${socket.getLocalPort}${if conf.tlsCert.nonEmpty then " (mTLS)" else ""}, " +
           s"http on ${Jetty.port(s)}, jobs [${Jobs.names.mkString(", ")}]")
         Thread.sleep(Long.MaxValue)
-      }).runWith
+      }).run
 
   /** mTLS on the worker protocol, or a capability at the submission
    * door, or the explicit override — never silence (specs/cluster-pool.md,

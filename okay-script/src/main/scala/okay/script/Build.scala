@@ -1,9 +1,8 @@
 package okay.script
 
 import okay.{Async}
-import okay.freer.*
+import okay.*
 import okay.given
-import okay.freer.given
 import okay.http.{Http, Request, Response as HttpResponse}
 
 import java.nio.charset.StandardCharsets.UTF_8
@@ -131,7 +130,7 @@ object Build:
   private def renderOne(site: Site, url: String, lang: String): Either[String, Array[Byte]] =
     try
       val r = site.handle(Request.get(url, Seq("Accept-Language" -> lang)))
-      val body = Async.run[Array[Byte], Pure](Http.bytes(r).map(_.toArray)).runWith
+      val body = Async.run(Http.bytes(r).map(_.toArray)).run
       val text = String(body, UTF_8)
       if r.status == 200 then
         location(r) match

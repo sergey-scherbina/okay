@@ -1,9 +1,9 @@
 package okay.demo
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.{Async, Channel, Source, Timer}
 import okay.given
-import okay.freer.given
+import okay.freer.Static
 import okay.http.{Http, McpHttp, Request, Response}
 import okay.mcp.{Mcp, Server as McpServer}
 import okay.jetty.Jetty
@@ -166,11 +166,11 @@ object ChatDemo {
     given okay.Answers[Tool] = Handlers.tools(boardTable(b))
     val ctx = Handlers.context(Compact.all)._2
     given okay.Answers[AgentContext] = ctx
-    given r1: okay.Answers[AgentModel + Async] = okay.freer.Row.union[AgentModel, Async]
+    given r1: okay.Answers[AgentModel + Async] = okay.Row.union[AgentModel, Async]
     given r2: okay.Answers[AgentContext + (AgentModel + Async)] =
-      okay.freer.Row.union[AgentContext, AgentModel + Async]
+      okay.Row.union[AgentContext, AgentModel + Async]
     given r3: okay.Answers[Tool + (AgentContext + (AgentModel + Async))] =
-      okay.freer.Row.union[Tool, AgentContext + (AgentModel + Async)]
+      okay.Row.union[Tool, AgentContext + (AgentModel + Async)]
     import okay.Direct.*
     def seed(ms: List[Anthropic.Message]): Unit ! okay.agent.Agent = ms match
       case Nil => pure(())
@@ -379,7 +379,7 @@ object ChatDemo {
             // the board-wide feed — matched BEFORE the /events/<email>
             // prefix route: "board" must not parse as an email
             val src: Source[Chunk[Byte]] =
-              effect[Writer % Chunk[Byte] + Async, Unit](Writer(Chat.sse("hello", "")))
+              Writer.tell(Chat.sse("hello", ""))
                 .flatMap(_ => Writer.map(Writer.of(boardSub()))(kind =>
                       Chat.sse("board", Json.print(JStr(kind)))))
             pure(src)
@@ -391,7 +391,7 @@ object ChatDemo {
             // the inbox as a LIVE stream: jetty holds it open, and a task
             // assigned tomorrow becomes a frame then
             val src: Source[Chunk[Byte]] =
-              effect[Writer % Chunk[Byte] + Async, Unit](Writer(Chat.sse("hello", "")))
+              Writer.tell(Chat.sse("hello", ""))
                 .flatMap(_ => Writer.map(Writer.of(inbox(email)))(note =>
                       Chat.sse("note", Json.print(JStr(note)))))
             pure(src)
@@ -481,8 +481,8 @@ object ChatDemo {
         val answer = offlineTurn(board, last.stripPrefix("/board").trim, who)
         def stream(ts: List[String]): Unit ! Writer % String + Async = ts match
           case Nil => pure(())
-          case t :: rest => effect[Writer % String + Async, Unit](
-            Writer(t + " ")).flatMap(_ => stream(rest))
+          case t :: rest => Writer.tell(
+            t + " ").flatMap(_ => stream(rest))
         Chat.reply(_ => stream(answer.split(' ').toList), budget)(messages)
       }
     // admin routes are okay-admin (extracted 2026-09-02, specs/admin.md).
@@ -517,7 +517,7 @@ object ChatDemo {
     def app(store: okay.persist.Store)(routes: PartialFunction[Request, Response ! Async])
     : PartialFunction[Request, Response ! Async] =
       opsRoutes(store).orElse(lifecycle.route(red.route(okay.ops.Red.byMethodAndPath)(routes)))
-    Resource.run[Unit, Pure](modules.use { app_run(port, budget, mode, node, app) }).runWith
+    Resource.run(modules.use { app_run(port, budget, mode, node, app) }).run
 
   /**
    * THE APPLICATION'S DEPENDENCIES, AS A VALUE (specs/di.md, first use

@@ -2,7 +2,6 @@ package okay.demo
 
 import okay.{Answers}
 
-import okay.freer.given
 
 import okay.agent.ToolCall
 import okay.rag.*

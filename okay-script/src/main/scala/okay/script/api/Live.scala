@@ -1,7 +1,7 @@
 package okay.script.api
 
 import okay.{Source, Stage}
-import okay.freer.*
+import okay.*
 import okay.ui.{Event, Html, Ui, Wire}
 import okay.std.TDict
 

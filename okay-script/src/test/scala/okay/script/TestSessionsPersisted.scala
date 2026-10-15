@@ -3,10 +3,8 @@ package okay.script
 
 
 
-import okay.freer.{Pure}
 import okay.{Async}
 import okay.given
-import okay.freer.given
 import okay.http.{Http, Request, Response as HttpResponse}
 import okay.persist.{FileStore, MemoryStore}
 
@@ -75,7 +73,7 @@ class TestSessionsPersisted extends munit.FunSuite:
     val api = "```scala\nimport okay.script.api.*\n```\n"
     Files.writeString(pages.resolve("set.md"), api + "```scala\nSession.current.set(\"cart\", \"ok-3\")\n```\nset\n"): Unit
     Files.writeString(pages.resolve("get.md"), api + "cart=${Session.current.get(\"cart\").getOrElse(\"none\")}\n"): Unit
-    def text(r: HttpResponse): String = Async.run[String, Pure](Http.text(r)).runWith
+    def text(r: HttpResponse): String = Async.run(Http.text(r)).runWith
     try
       val store1 = FileStore.open(dir)
       val site1 = Site(pages, sessions = Sessions.persisted(store1))

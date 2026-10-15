@@ -3,10 +3,8 @@ package okay.script
 
 
 
-import okay.freer.{Pure}
 import okay.{Async}
 import okay.given
-import okay.freer.given
 import okay.http.{Body, Http, Request, Response as HttpResponse}
 
 import java.nio.file.{Files, Paths}
@@ -26,7 +24,7 @@ class TestSiteExample extends munit.FunSuite:
 
   override def afterAll(): Unit = site.close()
 
-  private def text(r: HttpResponse): String = Async.run[String, Pure](Http.text(r)).runWith
+  private def text(r: HttpResponse): String = Async.run(Http.text(r)).runWith
 
   private def header(r: HttpResponse, name: String): Option[String] =
     r.headers.collectFirst { case (k, v) if k.equalsIgnoreCase(name) => v }

@@ -1,7 +1,6 @@
 package okay.demo
 
 import okay.Answers
-import okay.freer.given
 import okay.agent.{Conversation, Durable, Handlers, Tool}
 import okay.agent.Conversation.{Intake, Outcome, Reply, Say}
 import okay.frame.{Frame, Source}

@@ -1,12 +1,11 @@
 package okay.demo.e2e
 
 
-import okay.freer.*
+import okay.*
 
 
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.std.given
 import okay.jetty.Jetty
 import okay.script.Site
@@ -41,7 +40,7 @@ class TestStorefrontBrowser extends munit.FunSuite {
     }
     val site = Site(root, languages = Vector("pl", "en", "uk", "ru"))
     try
-      Resource.run[A, Pure](Jetty.serve(0)(site.routes)().map(s => f(Jetty.port(s), site))).runWith
+      Resource.run(Jetty.serve(0)(site.routes)().map(s => f(Jetty.port(s), site))).runWith
     finally
       site.close()
       Files.walk(root).sorted(java.util.Comparator.reverseOrder[Path]()).forEach(p => Files.deleteIfExists(p): Unit)

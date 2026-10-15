@@ -1,10 +1,9 @@
 package okay.demo
 
 import okay.{Async}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.jetty.Jetty
 import okay.mcp.{Client, Mcp, Session as McpSession}
 import okay.agent.ToolCall
@@ -78,7 +77,7 @@ class TestChatDemo extends munit.FunSuite {
 
   def withServer[A](budget: Int, served: (Board, okay.persist.Store) = freshBoard)(f: Int => A): A =
     val (board, store) = served
-    provide(deadWire, noSecrets, board, store)(Resource.run[A, Pure](
+    provide(deadWire, noSecrets, board, store)(Resource.run(
       Jetty.serve(0)(ChatDemo.routes(okay.chat.Chat.scripted, budget))()
         .map(s => f(Jetty.port(s)))).runWith)
 
@@ -147,7 +146,7 @@ class TestChatDemo extends munit.FunSuite {
     } catch { case _: Throwable => false }
     assume(up, s"no local model at $base — skipped")
     val (board, store) = freshBoard
-    provide(okay.llm.Transports.http(), noSecrets, board, store)(Resource.run[Unit, Pure](
+    provide(okay.llm.Transports.http(), noSecrets, board, store)(Resource.run(
       Jetty.serve(0)(ChatDemo.routes(okay.chat.Chat.local(base), 512))()
         .map { s =>
           val port = Jetty.port(s)
@@ -183,11 +182,11 @@ class TestChatDemo extends munit.FunSuite {
         """data: {"type":"content_block_delta","delta":{"text":" wire"}}""", "",
         "data: [DONE]", "")
         .foldLeft(pure(()): Unit ! F)((acc, l) =>
-          acc.flatMap(_ => effect[F, Unit](Writer(l))))
+          acc.flatMap(_ => Writer.tell(l).at[F]))
     def run(wire: okay.llm.Transport, secrets: okay.conf.Secrets): String =
       val (board, store) = freshBoard
       provide(wire, secrets, board, store)(
-        Resource.run[String, Pure](
+        Resource.run(
           Jetty.serve(0)(ChatDemo.handler(512))().map { s =>
             new String(post(Jetty.port(s),
               """{"messages":[{"role":"user","content":"hi"}]}""").readAllBytes(), UTF_8)

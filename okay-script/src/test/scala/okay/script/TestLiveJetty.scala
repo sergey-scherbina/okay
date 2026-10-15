@@ -1,10 +1,9 @@
 package okay.script
 
 import okay.{Async, Stage}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.http.{Frame, Transports, Ws}
 import okay.jetty.Jetty
 import okay.ui.{Event, Patch, Protocol}
@@ -32,10 +31,10 @@ class TestLiveJetty extends munit.FunSuite:
         |""".stripMargin): Unit
     val site = Site(root)
     try
-      val got = Resource.run[Seq[Frame], Pure](
+      val got = Resource.run(
         Jetty.serve(0)(site.routes)(site.ws).map { server =>
           val sockets = Transports.sockets()
-          Async.run[Seq[Frame], Pure](
+          Async.run(
             sockets.connect(s"ws://127.0.0.1:${Jetty.port(server)}/counter?__live=counter").flatMap { sock =>
               // a browser says hello first (live.js does), then reads the tree
               val say: Stage[Frame, Frame, Seq[Frame]] =

@@ -1,9 +1,8 @@
 package okay.demo
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.{Async, Timer}
 import okay.given
-import okay.freer.given
 import okay.resilience.{Breaker, Limiter, Refused}
 
 /**
@@ -34,12 +33,12 @@ class TestGuardedLlm extends munit.FunSuite:
     def set(t: Long): Unit = now = t
 
   def run[A](prog: A ! Writer % String + Async): (Vector[String], A) =
-    Async.runAsync(Writer.run[String, A, Async](prog)).value match
+    Async.runAsync(Writer.run[String, A, Writer % String + Async](prog)).value match
       case Some(t) => val (ls, a) = t.get; (ls.toVector, a)
       case None => fail("the test program did not complete synchronously")
 
   def refusal[A](prog: A ! Writer % String + Async): Refused =
-    Async.runAsync(Writer.run[String, A, Async](prog)).value match
+    Async.runAsync(Writer.run[String, A, Writer % String + Async](prog)).value match
       case Some(scala.util.Failure(r: Refused)) => r
       case Some(other) => fail(s"expected a Refused, got $other")
       case None => fail("the test program did not complete synchronously")

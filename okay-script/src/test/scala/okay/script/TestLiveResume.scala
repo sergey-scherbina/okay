@@ -1,9 +1,8 @@
 package okay.script
 
 import okay.{through}
-import okay.freer.*
+import okay.*
 import okay.std.*
-import okay.freer.given
 import okay.std.given
 import okay.http.{Frame, Request}
 import okay.ui.{Event, Patch, Ui, Protocol}
@@ -50,7 +49,7 @@ class TestLiveResume extends munit.FunSuite:
   private def drive(site: Site, cookie: Option[String], in: List[Frame]): Vector[String] =
     val headers = cookie.map(c => "Cookie" -> s"${Site.SessionCookie}=$c").toSeq
     val stage = site.ws(Request.get("/counter?__live=counter", headers))
-    val (out, _) = !.run(Writer.run(through(Writer.of(in))(stage)))
+    val (out, _) = !.run(Writer.run(through(Writer.of(in).at[Writer % Frame])(stage)))
     out.collect { case Frame.Text(s) => s }.toVector
 
   private def treeText(line: String): Option[Ui] = Protocol.treeOf(line)

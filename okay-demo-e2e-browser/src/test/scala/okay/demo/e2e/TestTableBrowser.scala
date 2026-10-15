@@ -1,12 +1,11 @@
 package okay.demo.e2e
 
 
-import okay.freer.*
+import okay.*
 
 
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.std.given
 import okay.jetty.Jetty
 import okay.script.Site
@@ -52,7 +51,7 @@ class TestTableBrowser extends munit.FunSuite {
         |""".stripMargin): Unit
     val site = Site(root)
     try
-      Resource.run[A, Pure](
+      Resource.run(
         Jetty.serve(0)(site.routes)(site.ws).map(s => f(Jetty.port(s)))).runWith
     finally
       site.close()

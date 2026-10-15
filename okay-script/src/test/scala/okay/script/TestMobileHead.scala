@@ -3,16 +3,14 @@ package okay.script
 
 
 
-import okay.freer.{Pure}
 import okay.{Async}
 import okay.given
-import okay.freer.given
 import okay.http.{Http, Request, Response as HttpResponse}
 import java.nio.file.{Files, Path}
 
 /** the mobile head renders inside a page and the mobile files are served (ui-mobile) */
 class TestMobileHead extends munit.FunSuite:
-  private def text(r: HttpResponse): String = Async.run[String, Pure](Http.text(r)).runWith
+  private def text(r: HttpResponse): String = Async.run(Http.text(r)).runWith
   test("installable() renders in a page's head; the four mobile files are served") {
     val root = Files.createTempDirectory("okay-mobile-head-")
     Files.writeString(root.resolve("counter.md"),

@@ -1,10 +1,9 @@
 package okay.demo
 
 import okay.{Async, Channel, Source}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.agent.ToolCall
 import okay.codec.Json
 import okay.mcp.{Client, Duplex, Link, Mcp, Server, Session}

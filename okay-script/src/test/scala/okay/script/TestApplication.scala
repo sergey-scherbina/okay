@@ -3,10 +3,8 @@ package okay.script
 
 
 
-import okay.freer.{Pure}
 import okay.{Async}
 import okay.given
-import okay.freer.given
 import okay.codec.Schema
 import okay.http.{Http, Request, Response as HttpResponse}
 import okay.persist.MemoryStore
@@ -26,7 +24,7 @@ class TestApplication extends munit.FunSuite:
 
   private val Api = "```scala\nimport okay.script.api.*\n```\n"
 
-  private def text(r: HttpResponse): String = Async.run[String, Pure](Http.text(r)).runWith
+  private def text(r: HttpResponse): String = Async.run(Http.text(r)).runWith
   private def sessionCookie(r: HttpResponse): Option[String] =
     r.headers.collectFirst { case (k, v) if k.equalsIgnoreCase("set-cookie") && v.startsWith(Site.SessionCookie + "=") => v.takeWhile(_ != ';') }
 

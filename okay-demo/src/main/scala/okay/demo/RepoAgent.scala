@@ -2,8 +2,7 @@ package okay.demo
 
 import okay.{Async, Answers, given}
 
-import okay.freer.{+}
-import okay.freer.given
+import okay.{+}
 import okay.agent.*
 import okay.codec.Schema
 import okay.llm.Transports
@@ -143,7 +142,7 @@ object RepoAgent {
     // may suspend — which is fine for a pure embedder and is exactly
     // the seam that would send a network-backed one to the tool row.
     given Answers[Embed] = Vectors.hashingHandler()
-    val retriever = Retrieve.hybrid[okay.freer.Pure](Seq(
+    val retriever = Retrieve.hybrid[okay.Pure](Seq(
       Retrieve.symbols(repo.index, repo.corpus.sources),
       Retrieve.keyword(repo.keyword),
       Retrieve.handled(Retrieve.vector(repo.vectors))))
@@ -158,10 +157,10 @@ object RepoAgent {
     given Answers[Model] = provider
     given Answers[Tool] = Handlers.tools(tools(repo))
     given Answers[Context] = ctx
-    given rowMA: Answers[Model + Async] = okay.freer.Row.union[Model, Async]
+    given rowMA: Answers[Model + Async] = okay.Row.union[Model, Async]
     given rowCMA: Answers[Context + (Model + Async)] =
-      okay.freer.Row.union[Context, Model + Async]
-    given rowAll: Answers[Agent] = okay.freer.Row.union[Tool, Context + (Model + Async)]
+      okay.Row.union[Context, Model + Async]
+    given rowAll: Answers[Agent] = okay.Row.union[Tool, Context + (Model + Async)]
 
     val prog = Agent.remember(Turn.System(
       "You answer questions about a codebase. Relevant source is " +

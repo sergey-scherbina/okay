@@ -3,10 +3,8 @@ package okay.script
 
 
 
-import okay.freer.{Pure}
 import okay.{Async}
 import okay.given
-import okay.freer.given
 import okay.http.{Http, Request, Response as HttpResponse}
 
 import java.nio.file.{Files, Path}
@@ -68,7 +66,7 @@ class MeasureScript extends munit.FunSuite:
     val cpus = Runtime.getRuntime.availableProcessors
     println(f"%nhost: $cpus cpus, load average $load%.2f")
 
-  private def text(r: HttpResponse): String = Async.run[String, Pure](Http.text(r)).runWith
+  private def text(r: HttpResponse): String = Async.run(Http.text(r)).runWith
 
   private def tempRoot(): Path = Files.createTempDirectory("okay-script-measure-")
   private def rmrf(p: Path): Unit =

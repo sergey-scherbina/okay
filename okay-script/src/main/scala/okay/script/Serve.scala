@@ -1,10 +1,9 @@
 package okay.script
 
 import okay.{Async, CanBlock}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.persist.FileStore
 import okay.security.given
 
@@ -301,8 +300,8 @@ object Serve:
         val cfg = okay.acme.Acme.Config(email, domains, account, cert, key,
           directory = if prod then okay.acme.Acme.Directory.letsEncrypt else okay.acme.Acme.Directory.letsEncryptStaging,
           eab = a.acmeEab)
-        Resource.run[Either[String, okay.acme.Acme.Outcome], Pure](
-          okay.jetty.Jetty.http().map(http => okay.acme.Acme.ensure(cfg, http, challenges))).runWith
+        Resource.run(
+          okay.jetty.Jetty.http().map(http => okay.acme.Acme.ensure(cfg, http, challenges))).run
           .map(Some(_))
 
   /** the Site the arguments describe -- a caller wanting `verify`/
@@ -379,9 +378,9 @@ object Serve:
               // everything can never be renewed
               .map(p => okay.jetty.Jetty.serve(p)(
                 challenges.routes orElse redirectTo(okay.jetty.Jetty.port(server)))().map(Some(_)))
-              .getOrElse(pure(None))
+              .getOrElse(pure[Option[org.eclipse.jetty.server.Server], Resource](None))
           yield server
-          Resource.run[Unit, Pure](serving.map { server =>
+          Resource.run(serving.map { server =>
             println(s"okay-script: serving ${a.root.toAbsolutePath} at " +
               s"${a.scheme}://127.0.0.1:${okay.jetty.Jetty.port(server)}/" +
               a.data.map(d => s" (data in $d)").getOrElse("") +
@@ -389,6 +388,6 @@ object Serve:
             a.httpPort.filter(_ => ssl.isDefined)
               .foreach(p => println(s"okay-script: port $p redirects to https"))
             Thread.sleep(Long.MaxValue)
-          }).runWith
+          }).run
         catch case _: InterruptedException => ()
         finally s.close()

@@ -3,10 +3,8 @@ package okay.script
 
 
 
-import okay.freer.{Pure}
 import okay.{Async}
 import okay.given
-import okay.freer.given
 import okay.http.{Http, Request}
 
 import java.nio.file.{Files, Path}
@@ -47,7 +45,7 @@ class TestStorefront extends munit.FunSuite:
 
   private def get(site: Site, url: String): (Int, String) =
     val r = site.handle(Request.get(url))
-    (r.status, Async.run[String, Pure](Http.text(r)).runWith)
+    (r.status, Async.run(Http.text(r)).runWith)
 
   test("the storefront renders: a domain TYPE, an i18n seam, prices and cards, all across module boundaries") {
     withSite { site =>
@@ -144,7 +142,7 @@ class TestStorefront extends munit.FunSuite:
       s"${java.net.URLEncoder.encode(k, "UTF-8")}=${java.net.URLEncoder.encode(v, "UTF-8")}").mkString("&")
     val r = site.handle(Request.post(url, okay.http.Body.Text(body),
       Seq(("content-type", "application/x-www-form-urlencoded"))))
-    Async.run[String, Pure](Http.text(r)).runWith
+    Async.run(Http.text(r)).runWith
 
   test("the offer screen is a PARAMETER and its form is the Schema's: a good order is taken, a bad one comes back") {
     withSite { site =>

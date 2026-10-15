@@ -1,10 +1,9 @@
 package okay.script
 
 import okay.{Async, through}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.std.given
 import okay.http.{Frame, Http, Request, Response as HttpResponse}
 import okay.script.api.{Live, mount}
@@ -58,7 +57,7 @@ class TestLive extends munit.FunSuite:
       |${mount("counter", counter)}
       |""".stripMargin
 
-  private def text(r: HttpResponse): String = Async.run[String, Pure](Http.text(r)).runWith
+  private def text(r: HttpResponse): String = Async.run(Http.text(r)).runWith
 
   private def withSite[A](body: (Site, Path) => A): A =
     val root = Files.createTempDirectory("okay-script-live-")
@@ -95,7 +94,7 @@ class TestLive extends munit.FunSuite:
     withSite { (site, _) =>
       val stage = site.ws(Request.get("/counter?__live=counter"))
       def press(k: String) = Frame.Text(Protocol.eventLine(Event.Pressed(k)))
-      val (out, _) = !.run(Writer.run(through(Writer.of(List(press("inc"), press("forged"), Frame.Close(1000, ""), press("inc"))))(stage)))
+      val (out, _) = !.run(Writer.run(through(Writer.of(List(press("inc"), press("forged"), Frame.Close(1000, ""), press("inc"))).at[Writer % Frame])(stage)))
       val lines = out.collect { case Frame.Text(s) => s }
       assertEquals(lines.length, 2, lines.toString)
       assertEquals(Protocol.treeOf(lines(0)), Some(Ui.Column(Vector(Ui.Text("count: 0"), Ui.Button("+1", "inc")))))

@@ -2,7 +2,6 @@ package okay.pool
 
 
 import okay.given
-import okay.freer.given
 import okay.cluster.{Checkpoint, Lease, Served}
 import okay.codec.Json
 import okay.http.{Body, Method, Request}

@@ -3,10 +3,8 @@ package okay.script
 
 
 
-import okay.freer.{Pure}
 import okay.{Async}
 import okay.given
-import okay.freer.given
 import okay.http.{Http, Request, Response as HttpResponse}
 
 import java.nio.file.{Files, Path}
@@ -28,7 +26,7 @@ class TestModules extends munit.FunSuite:
       site.close()
       Files.walk(root).sorted(java.util.Comparator.reverseOrder[Path]()).forEach(p => Files.deleteIfExists(p): Unit)
 
-  private def text(r: HttpResponse): String = Async.run[String, Pure](Http.text(r)).runWith
+  private def text(r: HttpResponse): String = Async.run(Http.text(r)).runWith
   private def get(site: Site, url: String): (Int, String) =
     val r = site.handle(Request.get(url))
     (r.status, text(r))

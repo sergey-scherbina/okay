@@ -1,8 +1,7 @@
 package okay.script
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.conf.{Secret, Secrets}
 import okay.jetty.Jetty
 import okay.tls.{Tls, TlsConfig}
@@ -58,7 +57,7 @@ class TestServeTls extends munit.FunSuite:
     assert(ssl.isDefined)
     val site = Serve.site(a)
     try
-      val body = Resource.run[String, Pure](site.serve(0, ssl).map { server =>
+      val body = Resource.run(site.serve(0, ssl).map { server =>
         val port = Jetty.port(server)
         // the CLIENT half of the same seam: VerifyFull against this
         // run's own CA file -- chain AND hostname, not a trust-all

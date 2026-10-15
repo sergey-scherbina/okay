@@ -3,10 +3,8 @@ package okay.script
 
 
 
-import okay.freer.{Pure}
 import okay.{Async}
 import okay.given
-import okay.freer.given
 import okay.http.{Body, Http, Request, Response as HttpResponse}
 
 import java.nio.charset.StandardCharsets.ISO_8859_1
@@ -72,7 +70,7 @@ class TestMultipart extends munit.FunSuite:
       val req = Request.post("/upload", Body.Bytes(scala.collection.immutable.ArraySeq.unsafeWrapArray(body)),
         Seq("Content-Type" -> s"multipart/form-data; boundary=$boundary"))
       val r: HttpResponse = site.handle(req)
-      val t = Async.run[String, Pure](Http.text(r)).runWith
+      val t = Async.run(Http.text(r)).runWith
       assertEquals(r.status, 200, t)
       assert(t.contains("title=Okay tee"), t)
       assert(t.contains("name=tee.png") && t.contains("ct=image/png"), t)

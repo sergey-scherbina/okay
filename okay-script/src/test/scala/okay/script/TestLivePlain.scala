@@ -3,10 +3,8 @@ package okay.script
 
 
 
-import okay.freer.{Pure}
 import okay.{Async}
 import okay.given
-import okay.freer.given
 import okay.codec.Schema
 import okay.http.{Body, Http, Request, Response as HttpResponse}
 import okay.script.api.{Live, Session}
@@ -120,7 +118,7 @@ class TestLivePlain extends munit.FunSuite:
         |${mountPlain("counter", counter)}
         |""".stripMargin): Unit
     val site = Site(root)
-    def text(r: HttpResponse): String = Async.run[String, Pure](Http.text(r)).runWith
+    def text(r: HttpResponse): String = Async.run(Http.text(r)).runWith
     val form = Seq("Content-Type" -> "application/x-www-form-urlencoded")
     try
       val get = site.handle(Request.get("/counter"))
