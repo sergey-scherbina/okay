@@ -3,7 +3,7 @@ package okay.chatweb
 
 
 import okay.{Async, Channel, async}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
 import okay.ui.{Event, React, ReactJs, Ui}

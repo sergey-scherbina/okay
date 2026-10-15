@@ -1,7 +1,7 @@
 package okay.telegram
 
 import okay.{Async}
-import okay.freer.*
+import okay.*
 /**
  * A COMMAND THE CLIENT LISTS IN ITS MENU (specs/telegram-live.md): the
  * same table a program's screens are keyed by, so there is exactly one

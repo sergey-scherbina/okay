@@ -1,9 +1,9 @@
 package okay.telegram
-import okay.freer.*
+import okay.*
 import okay.{Async, Timer}
 import okay.codec.Json
 import okay.codec.Json.*
-import okay.http.{Body, Http, Request, Response}
+import okay.http.{Body, Http, Request}
 import okay.ui.Telegram.Key
 
 /**
@@ -65,7 +65,7 @@ final class Bot(http: Http, token: String, base: String = "https://api.telegram.
     getUpdates(offset, timeoutSeconds).flatMap {
       case Left(r) => pure(Left(r))
       case Right(us) =>
-        okay.freer.!.each(us)(handle).map(_ => Right(us.map(_.updateId + 1).foldLeft(offset)(_ max _)))
+        okay.!.each(us)(handle).map(_ => Right(us.map(_.updateId + 1).foldLeft(offset)(_ max _)))
     }
 
   /**

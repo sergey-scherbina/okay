@@ -1,9 +1,8 @@
 package okay.telegram
 
 import okay.{Async}
-import okay.freer.*
+import okay.*
 import okay.given
-import okay.freer.given
 import okay.ui.{Event, Ui}
 
 /** the README's examples, compiled — a readme whose examples do not
@@ -30,6 +29,6 @@ class TestReadme extends munit.FunSuite:
       case Update.PreCheckout(_, _, id, _, _, _) => bot.answerPreCheckout(id, ok = true).map(_ => ())
       case _ => pure(())
     val api = FakeApi { case "sendMessage" => FakeApi.ok("""{"message_id":1}""") }
-    Async.run[Unit, Pure](answer(Bot(api, "t"))(Update.Message(1, 5, 5, 1, "hi"))).runWith
+    Async.run(answer(Bot(api, "t"))(Update.Message(1, 5, 5, 1, "hi"))).run
     assertEquals(Js.str(api.of("sendMessage").head, "text"), "you said: hi")
   }

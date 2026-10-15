@@ -1,9 +1,8 @@
 package okay.telegram
 
 import okay.{Async, async}
-import okay.freer.*
+import okay.*
 import okay.given
-import okay.freer.given
 import okay.codec.Json
 import okay.ui.{Event, Telegram, Ui}
 import okay.ui.Telegram.{Act, Message}
@@ -12,7 +11,7 @@ import okay.ui.Telegram.Key
 /** specs/telegram-bot.md — the performer, the router, and THE GATE: an
  * okay-ui application pressed through a chat edits its one message */
 class TestChats extends munit.FunSuite:
-  def go[A](p: A ! Async): A = Async.run[A, Pure](p).runWith
+  def go[A](p: A ! Async): A = Async.run(p).run
   val token = "1:T"
 
   test("perform: a Send answers its id, an Edit edits, an Answer answers, an Ask forces a reply; a refusal is told and answers None") {

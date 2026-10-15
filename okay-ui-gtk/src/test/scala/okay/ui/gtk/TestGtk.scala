@@ -3,10 +3,9 @@ package okay.ui.gtk
 
 
 import okay.{Async, Source}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.ui.*
 import scala.scalanative.unsafe.*
 import scala.scalanative.unsigned.*
@@ -29,7 +28,7 @@ class TestGtk extends munit.FunSuite {
 
   val display: Boolean = Gtk.init()
 
-  def now[A](p: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](p))
+  def now[A](p: A ! Async): A = Async.run(p).run
 
   /** a widget tree as a string: type names and values, structurally */
   def show(w: Gtk4.Widget): String =

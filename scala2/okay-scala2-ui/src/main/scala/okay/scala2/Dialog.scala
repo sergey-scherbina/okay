@@ -2,7 +2,7 @@ package okay.scala2
 
 import okay.codec.Schema
 import okay.ui.{Event, Nav, Screen, Ui}
-import Rows.coerce
+import Rows.{erase, typed}
 
 /**
  * okay-ui's scenarios and screens for Scala 2.13 (specs/scala2-facade.md,
@@ -25,16 +25,16 @@ sealed trait Dialog
 object Dialog {
 
   /** draw `ui`, and answer the next event */
-  def show(ui: Ui): Eff[Dialog, Event] = Eff.of(coerce(okay.ui.Dialog.show(ui)))
+  def show(ui: Ui): Eff[Dialog, Event] = Eff.of(erase(okay.ui.Dialog.show(ui)))
 
   /** a form for `A` drawn from its `Schema`, asking until it decodes;
    * `None` if the user leaves it */
   def ask[A](message: String)(using s: Schema[A]): Eff[Dialog, Option[A]] =
-    Eff.of(coerce(okay.ui.Form.ask[A](message)))
+    Eff.of(erase(okay.ui.Form.ask[A](message)))
 
   /** run the scenario on a host; `None` if the host closes first */
   def run[A](host: UiHost)(prog: Eff[Dialog, A]): Eff[Async, Option[A]] =
-    Async.lift(okay.ui.Dialog.run(host.host)(coerce(prog.program)))
+    Async.lift(okay.ui.Dialog.run(host.host)(typed[okay.ui.Dialog, A](prog.program)))
 
   /** run the scenario with no host: every screen it drew, and its answer
    * if the events were enough to finish it */
@@ -48,7 +48,7 @@ object Dialog {
         case Nil => (drawn :+ ui, None)
       }
     }
-    go(okay.ui.Dialog.start(coerce(prog.program)), events.toList, Vector.empty)
+    go(okay.ui.Dialog.start(typed[okay.ui.Dialog, A](prog.program)), events.toList, Vector.empty)
   }
 }
 

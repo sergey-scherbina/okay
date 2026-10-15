@@ -37,7 +37,7 @@ def update(n: Int, e: Event): Int = e match
 val chats = Chats(bot, (_, host) => Ui.run(0)(view)(update)(host).map(_ => ()))
 
 // the loop: every update to its chat's host; payments and the rest are yours
-Async.run[Long, Pure](bot.serve(chats.hear)).runWith
+Async.run(bot.serve(chats.hear)).run
 ```
 
 The message the chat sees is `count: 0` with a `+` button under it. A

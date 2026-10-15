@@ -3,7 +3,7 @@ package okay.ui.gtk
 
 
 import okay.{Async, Channel, Scheduler, Source, async}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
 import okay.ui.*

@@ -1,9 +1,8 @@
 package okay.telegram
 
 import okay.{Async, Timer, async}
-import okay.freer.*
+import okay.*
 import okay.given
-import okay.freer.given
 import okay.codec.Json
 import okay.http.{Http, Request, Response}
 import okay.ui.Telegram.Key
@@ -32,7 +31,7 @@ object FakeApi:
   def ok(result: String): String = s"""{"ok":true,"result":$result}"""
 
 class TestBot extends munit.FunSuite:
-  def run[A](p: A ! Async): A = Async.run[A, Pure](p).runWith
+  def run[A](p: A ! Async): A = Async.run(p).run
   val token = "123:SECRET-TOKEN"
 
   test("A CALL IS A POST OF JSON, and the API's refusal is a value that never carries the token") {

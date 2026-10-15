@@ -70,7 +70,7 @@ final class ScriptedHost private (events: Seq[Event], close: Boolean) {
   private val drawn = new java.util.concurrent.ConcurrentLinkedQueue[Ui]
 
   val host: UiHost = new UiHost(new UiHostBody(new okay.ui.Host {
-    def render(ui: Ui): okay.freer.![Unit, okay.Async] = okay.async { val _ = drawn.add(ui) }
+    def render(ui: Ui): okay.![Unit, okay.Async] = okay.async { val _ = drawn.add(ui) }
     def events: okay.Source[Event] =
       okay.Source.of((if (close) ScriptedHost.this.events :+ Event.Closed else ScriptedHost.this.events).toList)
   }))

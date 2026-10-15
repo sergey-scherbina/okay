@@ -1,9 +1,8 @@
 package okay.telegram
 
 import okay.{Async, Timer, async}
-import okay.freer.*
+import okay.*
 import okay.given
-import okay.freer.given
 import okay.ui.Telegram.{Act, Key, Message}
 
 /** a timer that fires when the test says so — a window closes when
@@ -21,7 +20,7 @@ final class ManualTimer extends Timer:
 /** specs/telegram-live.md — edits coalesced, last write wins; the
  * command table installed and dispatched */
 class TestLive extends munit.FunSuite:
-  def go[A](p: A ! Async): A = Async.run[A, Pure](p).runWith
+  def go[A](p: A ! Async): A = Async.run(p).run
   val token = "1:T"
   def api() = FakeApi { case "sendMessage" => FakeApi.ok("""{"message_id":9"""+"}")
     case "editMessageText" => FakeApi.ok("true"); case "answerCallbackQuery" => FakeApi.ok("true") }
