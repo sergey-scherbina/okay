@@ -220,6 +220,22 @@ Recorded as met; behaviour regressions are accepted where the speed is the point
   `Wf.Dialogue.Ask(q, resume, fail, at)` (a fourth field) and read by `Dialogue#where`, which fills persist's
   `Diagnosis.where`, `Retire.State.Asking.where` and the worker's `Statuses` row again.
 
+- TWO OF ONE EFFECT ARE TWO PLACES, everywhere: okay-freer's union merged `Async + Async`, `State % H + State % H`,
+  `Tables + Tables` into one; on the kernel they stay two and a caller folds them with `.at[...]` (`Provider.relay`,
+  okay-py's dialogue rows, okay-sql's `transact` with `G = Async` — pass `Pure`). The interpreters that answer into an
+  effect the program already has take it from the program (`translateInto`): `Structured.viaTables`,
+  `FlowBulk.streamed`, `SparkFrames.structured`, `SparkBulk.sort` require that heap/Tables among the effects.
+- No compile-time replay discipline: `Wf.replay`, persist's durable dialogues and okay-agent's Stepper no longer refuse
+  a row holding a non-replayable effect (okay-freer's `Replayable` read the union); a body with `Async` in its row
+  re-performs it on replay.
+- okay-zio: a row of ZIO members has the union of the members' errors (`DbErr | LogErr`), not an inferred parent.
+- okay-stream: `Chunks.dropWhile` keeps a chunk whose first element already fails the predicate (it dropped it);
+  `Push`'s final await pauses as `Waiting` first and is `Done` at the next call.
+- okay-workflow/okay-persist: a pause carries its source position again (`Wf.At`, as okay-freer's `At`); the plain
+  dialogue door is `Wf.Dialogue` (persist's own copy gone), `Wf.Dialogue.Ask` has a fourth field, `at`.
+- okay-sql's `Tx` is okay-tx's bracket: a failure rolls back (the indexed interpreter left the transaction open),
+  a retryable `sqlState` re-runs; the indexed `Idle`/`Open`/`begin`/`commit` are gone.
+
 ## Two packages, not a flag
 
 `okay.freer` is FROZEN: the classic road as it is, its own JMH lanes, nothing in it changed. The kernel's words
