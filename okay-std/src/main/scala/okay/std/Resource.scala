@@ -3,7 +3,7 @@ package okay.std
 import okay.{!, Answers, Effect, Handler, Run, defer, effect, pure}
 import okay.core.{Eff, Paths, Row, Split}
 import okay.one.Cont
-import okay.one.handler.{Deep, Recovering, Handler as OneHandler}
+import okay.one.handler.{Deep, Guard, Recovering, Handler as OneHandler}
 
 /**
  * How a forwarded operation reports its failure to the scope that
@@ -34,19 +34,14 @@ object Failing:
  * An operation is final by its VALUE where it has to be (`Maybe`,
  * `Choose`), so `isFinal` is a method, not only the type.
  *
- * On okay-freer's road `Resource.run` read this marker on every
- * operation it forwarded and released before a final one. On the
- * kernel an operation goes to its handler by its path and never
- * passes through the scope, so the scope reads nothing: its release
- * is a GUARD (okay-core's `Guard`), run when the scope is left by its
- * end, an error, an ABORT or a cancel. An abort is the kernel's
- * `Aborting` handler (`runEither`, `runOption`, `runUnsafe`): it
- * unwinds the levels it drops, so a scope inside is released. A
- * handler that drops `k` as a value instead (a `Deep` clause that
- * does not call it: `Maybe.option`'s `None`, `Chronicle`'s `halt`, a
- * `Choose` with no alternatives) unwinds nothing, and the scope's
- * release does not run. The marker stays as what these operations
- * say of themselves.
+ * The scope reads this marker: its release is a GUARD (okay-core's
+ * `Guard`), told of every operation passing out of it to a handler
+ * taking the rest (`Guard.passing`), and a final one lets go of what
+ * the scope holds before it goes — its handler drops the rest, which
+ * never comes back to the guard. An abort by the kernel's `Aborting`
+ * (`runEither`, `runOption`) unwinds the guard instead: its finalizer.
+ * What no marker can tell is a handler that drops the rest of an
+ * operation that normally resumes.
  */
 trait Final:
   def isFinal: Boolean = true
@@ -102,21 +97,47 @@ object Resource {
     runAll(fin).foreach(t => if t ne cause then cause.addSuppressed(t))
 
   /**
-   * ONE ACQUISITION'S RELEASE, RUN ONCE: the guard holding it may be left more than one way (its end, an error, an
-   * abort) and, in a `k` resumed more than once, more than once — the release runs the first time only.
+   * ONE ACQUISITION'S RELEASE, HELD BY THE BRANCHES THAT CAN STILL USE IT (logic-cut-releases): the path that
+   * acquired it holds it; a choice passing out of the scope hands that hold to its branch point (`Fork`), and every
+   * branch the handler starts takes it again. Called, ONE holder lets go — at a branch's end, an error, an abort, a
+   * cancel, an operation that never resumes passing out (`Final`); the release runs when the last does, once.
    */
   private final class Held(release: () => Unit) extends (() => Unit):
-    private var held = true
+    private var holders = 1
+    private var released = false
+    def take(): Unit = holders += 1
     def apply(): Unit =
-      if held then
-        held = false
+      holders -= 1
+      if holders <= 0 && !released then
+        released = true
         release()
+
+  /**
+   * A CHOICE PASSING OUT OF A SCOPE holding `held`: the path's hold is the branch point's now, and every branch the
+   * handler starts takes it again. The branch point lets go when every alternative has started — `known` of them,
+   * or as many as there turned out to be (`exhausted`) — or when the handler abandons the rest.
+   */
+  private final class Fork(held: Held, known: Int) extends Forked.Counting:
+    private var total = known
+    private var started = 0
+    private var done = false
+    /** a branch starts: the hold taken BEFORE the branch point may let go of its own */
+    def start(): Unit =
+      held.take()
+      started += 1
+      settle()
+    def exhausted(n: Int): Unit = { total = n; settle() }
+    def abandon(): Unit = if !done then { done = true; held() }
+    private def settle(): Unit = if !done && total >= 0 && started >= total then { done = true; held() }
 
   /**
    * THE SCOPE'S RELEASE OF ONE ACQUISITION, A GUARD (okay-core's `Recovering`): at the end of what it holds, the
    * release, then the value; an error thrown in it, the release with its failure suppressed on the error, which
-   * goes on; an abort or a cancel, the release as the guard's finalizer. One a guard, nested as the acquisitions
-   * are: the newest is the innermost, released first.
+   * goes on; an abort or a cancel, the release as the guard's finalizer — each one holder letting go (`Held`). Told
+   * of the operations passing out of it (`passing`): one that never resumes (`Final`: a `None`, a `halt`, a choice
+   * of none) lets go before it goes, its handler dropping the rest; a choice is sent out with its branch point
+   * (`Forked`), which each resumption starts a branch of. One a guard, nested as the acquisitions are: the newest is
+   * the innermost, released first.
    */
   private final class Releasing[T <: Row, A](held: Held) extends Recovering[T, A, A]:
     def ret(a: A): okay.one.![A, T] = Cont.defer { held(); Cont.pure(a) }
@@ -124,6 +145,16 @@ object Resource {
     def recover(e: Throwable): okay.one.![A, T] | Null =
       releaseAfter(List(held), e)
       throw e
+    override def passing[E[_], X](op: E[X]): Guard.Out[E, X] = op match
+      case f: Final if f.isFinal =>
+        held()
+        null
+      case c: Choose[?] =>
+        val f = Fork(held, c.as.knownSize)
+        // THE CLAIM: `op` is a `Choose`, and a `Choose` of the same alternatives, wrapped, is the same operation of
+        // the same effect
+        Guard.Out(Choose(Forked(c.as, f)).asInstanceOf[E[X]], () => f.start())
+      case _ => null
 
   /** `p` with `release` guarding it: run once, whichever way `p` is left */
   private[std] def releasing[T <: Row, A](p: okay.one.![A, T], release: () => Unit): okay.one.![A, T] =
@@ -202,20 +233,21 @@ object Resource {
    *  - an ABORT by the kernel's `Aborting` handler outside (`raise`
    *    under `runEither`, `abort` under `runOption`) unwinds the scope:
    *    released (bracket-final);
-   *  - a handler outside that DROPS the continuation as a value (a
-   *    `Deep` clause not calling `k`: `Maybe.option`'s `None`,
-   *    `Chronicle`'s `halt`, a pruned `Choose`) unwinds nothing: the
-   *    release does not run (see `Final`). `bracketNow` (a
-   *    `try/finally`) is the release that holds even then;
+   *  - an operation that never resumes passing out (`Final`:
+   *    `Maybe`'s `None`, `Chronicle`'s `halt`, a choice of none):
+   *    released before it goes, its handler dropping the rest;
    *  - a multi-shot handler INSIDE replays only the scope's inner part,
    *    so each acquire still releases exactly once;
-   *  - a multi-shot handler OUTSIDE the scope (a `choose` passing out of
-   *    it, resumed once per alternative) puts the guard back with each
-   *    resumption: the release runs once, at the end of the FIRST
-   *    branch to leave the scope — the later branches run on with the
-   *    resource released. okay-freer's road shared it among the
-   *    branches and released it after the last (logic-cut-releases,
-   *    `Forked`); the kernel's guard has no hook for a resumption.
+   *  - a CHOICE passing out of the scope (a `choose` resumed once per
+   *    alternative outside it) goes out with its branch point
+   *    (`Forked`): what the scope holds is shared by the branches and
+   *    released after the last, or when the handler abandons the rest
+   *    (`cut`, `observe`, a throw out of the search;
+   *    logic-cut-releases). Another multi-shot handler outside is taken
+   *    as resuming once: released at the end of its first resumption;
+   *  - a handler that drops the rest of an operation that normally
+   *    resumes: not released. `bracketNow` (a `try/finally`) is the
+   *    release that holds even then.
    */
   def run[A, Es[_]](a: A ! Es)(using s: Split[Es, Resource]): A ! s.Rest = a.handle(region)
 }
@@ -230,12 +262,13 @@ object Resource {
  * fails an operation of `use` (`k.failed`), and when an abort or a
  * cancel passes out of it.
  *
- * An ABORT from `use` releases too, when the handler outside is the
- * kernel's `Aborting` (`runEither`, `runOption`). What a guard cannot
- * see is a handler that drops the continuation as a value (a `Deep`
- * clause not calling `k`: `Maybe`'s `None`, `halt`, a pruned branch) —
- * see `Resource.run`. `bracketNow`'s `try/finally` is the release that
- * holds even then.
+ * An ABORT from `use` releases too: the kernel's `Aborting` outside
+ * (`runEither`, `runOption`) unwinds the guard, and an operation that
+ * never resumes (`Final`: a `None`, `halt`, a choice of none) releases
+ * before it goes; a choice is shared by its branches — see
+ * `Resource.run`. What it cannot see is a handler that drops the rest
+ * of an operation that normally resumes; `bracketNow`'s `try/finally`
+ * is the release that holds even then.
  *
  * This is the name cats (`bracket`), ZIO (`acquireReleaseWith`) and kyo
  * give the effect-polymorphic form. It belonged to `bracketNow` until

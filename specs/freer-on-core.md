@@ -188,19 +188,14 @@ Recorded as met; behaviour regressions are accepted where the speed is the point
   and the stream instances take `Writer % W + G` with `G` one effect.
 - Writer's folds are the kernel's `Stateful` (answered in place); the `Fold.OfLong`/`OfInt` dispatch is gone.
 - `Resource` is a kernel `Deep` handler whose rest runs under a guard (release once: at the end, on an error with
-  a failing release suppressed on it, on an abort or a cancel as the finalizer). TWO REGRESSIONS, open:
-  (1) a handler OUTSIDE the scope that drops `k` as a value — a `Deep` clause not calling it: `Maybe.option`'s
-  `None`, `Chronicle`'s halt, an empty `Choose` — does not release (okay-freer released before forwarding a `Final`
-  operation); aborts through the kernel's `Aborting` (`runEither`, `runOption`) do. The way: those clauses abort
-  through the kernel, or the kernel gets a discontinue that unwinds a dropped `k`'s finalizers (`Step.Resume.cancel`
-  does it for a stepped program). (2) a multi-shot handler outside the scope (`choose` resumed once per alternative):
-  the guard is put back on each resumption and releases at the end of the FIRST branch; later branches run with the
-  resource released (okay-freer shared it and released after the last — logic-cut-releases). `Forked`/`Shared` in
-  Choice and Logic are unused now.
-- A multi-prompt abort is ONE word, okay-std's `Escape` (`prompt`, `prompted`, `escape`, `leave`, `run`): okay-ui's
-  `Scope` and okay-llm's `Cut` are thin uses of it (`Scope.Exit` and `Cut.Cutting` are `Escape`; their `Prompt` and
-  `Prompted` are `Escape`'s). A cut naming an outer guard through an inner one is still refused, now as
-  `Escape.NoPrompt` (an `IllegalStateException`, as before) at the inner guard's `run`.
+  a failing release suppressed on it, on an abort or a cancel as the finalizer). The guard is told of each operation
+  passing out of it to a handler taking the rest (okay-core's `Guard.passing`, 2026-10-15), so the two cases a guard
+  alone missed are okay-freer's again: a `Final` operation (`Maybe`'s `None`, `Chronicle`'s halt, a choice of none)
+  releases before it goes; a `Choose` goes out with its branch point (`Forked`), the resource shared by the branches
+  and released after the last, or when the rest is abandoned (logic-cut-releases; `TestSharedResource`,
+  `TestResourceDropped`). As on okay-freer, a multi-shot handler of another effect is taken as resuming once (released
+  at the end of its first resumption), and a handler that drops the rest of an operation that normally resumes does
+  not release.
 - `Resource.bracket` acquires when the program runs: a program run twice acquires twice.
 - `Gen`'s `zip` steps both sides when the zipped program runs, not when `zip` is called.
 - `Once.memo` calls its step twice an operation (the kernel's `Stateful` asks `value` and `next` apart): pure, so the

@@ -4,7 +4,6 @@ Companion of [freer-on-core.md](freer-on-core.md). Every module's main, tests an
 
 - Walk: Op "is last" (no frames after) → cats' onCancel law.
 - Condition 100k nested frames quadratic (kernel level walk).
-- Resource regressions (1) dropped k, (2) multi-shot.
 - TestDocSnippets ratchet: ~494 doc lines pinned by removed freer suites.
 - Warnings pass (std Reader/State/Writer unused imports, AsyncCont, root test warnings, feature warnings).
 - Stack-safety inventory (recscan) rows.
