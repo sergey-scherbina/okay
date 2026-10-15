@@ -2,7 +2,7 @@ package okay.std
 
 import okay.{!, +, %, Answers, Handler, Pure, Run, TypeableK, effect, pure, typeableK}
 import okay.core.{+:, Eff, Paths, Row, Split}
-import okay.freer.{Cps, />>}
+import okay.{Cps, />>}
 import okay.{Fold, FoldUntil}
 import okay.one.Cont
 import okay.one.handler.{Stateful, Handler as OneHandler}

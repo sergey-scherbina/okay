@@ -1,7 +1,7 @@
 package okay
 
 import okay.core.Split
-import okay.freer.Cps
+import okay.{Cps}
 import okay.std.*
 /**
  * ZOOMING BY AN OPTIC — the half of `State` and `PState` that is

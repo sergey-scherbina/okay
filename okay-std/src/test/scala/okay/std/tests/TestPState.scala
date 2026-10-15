@@ -1,9 +1,8 @@
 package okay.std.tests
 
-import okay.freer.given
 import okay.std.*
 
-/** PState, the type-changing state (its programs okay-freer's `Cps` and `Freer`, untouched by the kernel's words) */
+/** PState, the type-changing state (its shift road okay-core's `Cont` (`okay.Cps`), its data road okay-freer's indexed `Freer`) */
 class TestPState extends munit.FunSuite {
 
   test("PState: type-changing state, Int -> String -> Boolean") {

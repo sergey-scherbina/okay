@@ -2,7 +2,7 @@ package okay
 
 import okay.std.*
 import okay.std.given
-import okay.freer.{Cps, />>}
+import okay.{Cps, />>}
 import okay.FoldUntil
 /**
  * An asynchronous SOURCE: a program that tells its elements as it

@@ -3,8 +3,8 @@ package okay.ui
 
 import okay.{!, +, Pure}
 
-import okay.freer./>>
-import okay.freer.Cps
+import okay.{/>>}
+import okay.{Cps}
 import okay.codec.{Codecs, Json, Schema}
 import scala.annotation.tailrec
 

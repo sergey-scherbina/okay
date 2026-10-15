@@ -2,8 +2,8 @@ package okay.codec
 
 import scala.compiletime.{constValueTuple, erasedValue, summonInline}
 import scala.deriving.Mirror
-import okay.freer./>>
-import okay.freer.Cps
+import okay.{/>>}
+import okay.{Cps}
 /**
  * The reified shape of a datatype (specs/codecs.md): every derivation
  * — JSON, CBOR, a validator, a Spark encoder — is a CATAMORPHISM over

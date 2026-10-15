@@ -42,6 +42,9 @@ then. What is left is what the wrappers cannot keep:
 - Intercepting (a handler of `E` for `p` whose own operations go to the `E` outside): `p.intercept(h)`.
 - Evidence that goes: `TypeableK`, `Distinct`, `Handler.Nothing`, `A <:< Any`, `Row.In` (the kernel finds a path,
   no class test).
+- `Cps` (Danvy–Filinski's `(A => S) => R`) is the root's `okay.Cps`: okay-core's `Cont` under one `$` over no effects
+  (`Carrier`), opaque only so its words are found with it — `Cps.Pure`, `defer`, `delay`, `shift`, `reset`, `c / k`,
+  `A />> R`. The fold and aggregation algebras are the root's too (`okay.Fold`, `Monoid`, `Aggregator`, ...).
 - `Failing` goes: on the kernel a failed operation is raised where it was (`k.failed`), inside the guards.
 - `Async`: `Async.run(p)` is a runner (Split); `CancelScope.enter`/`exit` have no type parameter; a drive's
   rest is `Async.Rest[A]`.

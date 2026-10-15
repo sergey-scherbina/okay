@@ -1,7 +1,7 @@
 package okay
 
-import okay.freer./>>
-import okay.freer.Cps
+import okay.{/>>}
+import okay.{Cps}
 import okay.codec.{Base64, Codecs, Json, Schema}
 
 /**

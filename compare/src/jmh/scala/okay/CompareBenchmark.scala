@@ -1,6 +1,6 @@
 package okay
 
-import okay.freer.{Cps, />>}
+import okay.{Cps, />>}
 
 import okay.std.*
 import org.openjdk.jmh.annotations.{State, *}

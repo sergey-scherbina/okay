@@ -2,7 +2,8 @@ package okay.std
 
 import okay.{!, +, %, Effect, Handler, effect, pure}
 import okay.core.Split
-import okay.freer.{Freer, TypeableI, Unary, +~, splitI, forwardedI, Indexed, Cps, Replayable}
+import okay.freer.{Freer, TypeableI, Unary, +~, splitI, forwardedI, Indexed, Replayable}
+import okay.{Cps}
 import scala.annotation.tailrec
 
 

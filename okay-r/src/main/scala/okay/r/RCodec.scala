@@ -1,7 +1,7 @@
 package okay.r
 
-import okay.freer./>>
-import okay.freer.Cps
+import okay.{/>>}
+import okay.{Cps}
 import okay.codec.Codecs
 import okay.codec.Schema
 import RValue.*

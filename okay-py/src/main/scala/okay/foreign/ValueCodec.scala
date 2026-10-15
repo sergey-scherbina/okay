@@ -1,7 +1,7 @@
 package okay.foreign
 
 import okay.{+, !, effect, pure}
-import okay.freer.{/>>, Cps}
+import okay.{/>>, Cps}
 import okay.codec.Codecs
 import okay.codec.Schema
 import Value.*

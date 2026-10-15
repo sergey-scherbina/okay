@@ -1,6 +1,6 @@
 package okay
 
-import okay.freer.{Cps, />>}
+import okay.{Cps, />>}
 
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit

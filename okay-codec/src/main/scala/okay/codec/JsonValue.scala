@@ -1,8 +1,8 @@
 package okay.codec
 
 import Json.*
-import okay.freer./>>
-import okay.freer.Cps
+import okay.{/>>}
+import okay.{Cps}
 /**
  * The fast VALUE parser beside the lossless one (specs/codecs.md,
  * "Value parser"). `Json.parse` is a lexer, a CST with every trivia
