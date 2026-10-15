@@ -891,6 +891,30 @@ lazy val okayOptics = crossProject(JVMPlatform, JSPlatform, NativePlatform)
  * heterogeneous map with TYPED keys, nothing transactional, and
  * `Refs` is run-time state cells rather than STM. Neither moved.
  */
+/**
+ * TRANSACTIONS AS A SUBTREE (okay.tx): `Tx` — `Atomic(body)` a bracket that holds its body, so brackets cannot
+ * mismatch; `Rollback` a leaf — its handler the resource's owner (`Transactor`: begin, commit, rollback, retry),
+ * walking the tree with one bit, closed or open: one begin and one commit however deep the brackets nest, a
+ * rollback or a failure anywhere inside rolling back and failing the rest where the bracket was (the kernel's
+ * `k.failed`). On the kernel's words (`okay.core`), cross-built; the JVM's own: `Jdbc`, a transactor over a JDBC
+ * connection, its test on H2. Lives here, not in okay-core: a transaction is the platform's, the kernel's are the
+ * monad, the rows and the primitives
+ */
+lazy val okayTx = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-tx"))
+  .dependsOn(okay)
+  .settings(
+    name := "okay-tx",
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+  .jvmSettings(
+    Compile / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
+    Test / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+    Test / fork := true,
+    libraryDependencies += "com.h2database" % "h2" % "2.3.232" % Test,
+  )
+
 lazy val okayStm = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-stm"))
@@ -3860,7 +3884,7 @@ lazy val okayUiGtk = (project in file("okay-ui-gtk"))
   )
 lazy val gtkProjects: Seq[ProjectReference] = if (gtkAvailable) Seq(okayUiGtk) else Seq.empty
 
-lazy val platformMembers: Seq[ProjectReference] = gtkProjects ++ Seq[ProjectReference](okay.jvm, okay.js, okay.native, okayJdk22, okayAsync.jvm, okayAsync.js, okayAsync.native, okayDirect.jvm, okayDirect.js, okayDirect.native, okayPlatform.jvm, okayPlatform.js, okayPlatform.native, okayPlatformJdk25, okayStream.jvm, okayStream.js, okayStream.native, okayWorkflow.jvm, okayWorkflow.js, okayWorkflow.native, okayData.jvm, okayData.js, okayData.native, okayOptics.jvm, okayOptics.js, okayOptics.native, okayStm.jvm, okayStm.js, okayStm.native, okayStaging, okayCats.jvm, okayCats.js, okayCats.native, okayZio, okayKyo, okayFs2, okayReactive, okayActor.jvm, okayActor.js, okayActor.native, okayKafka,
+lazy val platformMembers: Seq[ProjectReference] = gtkProjects ++ Seq[ProjectReference](okay.jvm, okay.js, okay.native, okayJdk22, okayAsync.jvm, okayAsync.js, okayAsync.native, okayDirect.jvm, okayDirect.js, okayDirect.native, okayPlatform.jvm, okayPlatform.js, okayPlatform.native, okayPlatformJdk25, okayStream.jvm, okayStream.js, okayStream.native, okayWorkflow.jvm, okayWorkflow.js, okayWorkflow.native, okayData.jvm, okayData.js, okayData.native, okayOptics.jvm, okayOptics.js, okayOptics.native, okayStm.jvm, okayStm.js, okayStm.native, okayTx.jvm, okayTx.js, okayTx.native, okayStaging, okayCats.jvm, okayCats.js, okayCats.native, okayZio, okayKyo, okayFs2, okayReactive, okayActor.jvm, okayActor.js, okayActor.native, okayKafka,
     okayJava, okayAudit, okayClojure, okayFrege, okayScala2, okayScala2Codec, okayScala2Http, okayScala2Sql, okayScala2Agent, okayScala2Ui, okayScala2Ws, okayScala2Resilience, okayScala2Persist, okayScala2Stm, okayScala2Stores, okayScala2Llm, okayScala2Rag, okayScala2Mcp, okayScala2Optics, okayScala2Workflow, okayScala2Services, okayScala2Prelude, okayScala2Probe, okaySpark, okayFlink, okayJdbc, okayR2dbc, okayDelta,
     okayLex.jvm, okayLex.js, okayLex.native, okayCrdt.jvm, okayCrdt.js, okayCrdt.native, okayChain.jvm, okayChain.js, okayChain.native, okayScalus, okayScalusSpark, okayScalusFlink, okayX402.jvm, okayX402.js, okayX402Evm, okayX402Cdp, okayX402Signers, okayX402Mcp.jvm, okayX402Mcp.js,
     okayParse.jvm, okayParse.js, okayParse.native,

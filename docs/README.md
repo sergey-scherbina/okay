@@ -305,6 +305,7 @@ API reference, gotchas.
 | [`okay-workflow`](modules/okay-workflow.md) | the static workflow: `Wf`'s questions, `Proc`'s free arrow over them, and the macro that builds one — a leaf of the core, so it became a module |
 | [`okay-data`](modules/okay-data.md) | data structures that are not the effect system: the approximate aggregators (`Sketch`), and the coordination-free pair `Uid` and `Hlc`. `Aggregator` itself stayed in the core |
 | [`okay-optics`](modules/okay-optics.md) | profunctor optics and the `Fuse` planner: Iso/Lens/Prism/Traversal and friends, the interpretations, and the optic spelling of zooming |
+| [`okay-tx`](modules/okay-tx.md) | transactions as a subtree: `Atomic` a bracket holding its body, `Rollback` a leaf; the handler the resource's owner, one begin and one commit however deep; `Jdbc`, a transactor over a JDBC connection |
 | [`okay-stm`](modules/okay-stm.md) | software transactional memory: the `Tx` language and the runtimes that commit several cells together. The single cell, `TRef`, stayed in the core |
 | [`okay-cats`](modules/okay-cats.md) | cats instances (law-tested), IO and free-monad bridges, their runtime as our Scheduler |
 | [`okay-zio`](modules/okay-zio.md) | ZIO and ZStream bridges, the ZIO scheduler, ZLayer ⇄ Module |
