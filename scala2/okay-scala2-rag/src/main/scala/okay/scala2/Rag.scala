@@ -1,10 +1,7 @@
 package okay.scala2
 
 import scala.collection.immutable.ArraySeq
-import okay.{Answers}
-import okay.freer.{+, Row}
-import okay.given
-import okay.freer.given
+import okay.Handler
 import okay.rag.{Embed, Fusion, Ingest, Keyword, MemoryStore, PgVector, Postings, Retrieve, Scored, VectorStore, Vectors}
 
 /**
@@ -14,7 +11,7 @@ import okay.rag.{Embed, Fusion, Ingest, Keyword, MemoryStore, PgVector, Postings
  * a Scala 2 caller uses them directly: `Ingest.segment(source,
  * budget)(size)`, `Keyword.index(segments)`, `Keyword.search(index,
  * query, k)`, `Fusion.rrf(lists)`, `Corpus.of(sources)`. What Scala 2
- * cannot use is the vector side: a `VectorStore[okay.freer.Pure]` cannot even
+ * cannot use is the vector side: a `VectorStore[okay.Pure]` cannot even
  * be NAMED (`Pure` is a top-level alias), every store operation answers
  * a program, and the embedding model is an `Embed` handler. A
  * `VectorIndex` holds the store and the model, which is a plain
@@ -24,14 +21,12 @@ final class VectorIndex private[scala2] (body: IndexBody) {
 
   /** split, embed in batches of `batch`, store; what was done */
   def add(sources: Seq[okay.rag.Source], budget: Int = 400, batch: Int = 32): Ingest.Progress = {
-    given Answers[Embed] = body.embedding.handler
-    Ingest.run[okay.freer.Pure](body.store, sources, budget, batch)(_.length).runWith
+    Ingest.run(body.store, sources, budget, batch)(_.length).handle(body.embedding.handler).run
   }
 
   /** the `k` segments nearest to `query` */
   def search(query: String, k: Int): Seq[Scored] = {
-    given Answers[Embed] = body.embedding.handler
-    Retrieve.vector[okay.freer.Pure](body.store).retrieve(query, k).runWith
+    Retrieve.vector(body.store).retrieve(query, k).handle(body.embedding.handler).run
   }
 
   /** vector and keyword retrieval fused by reciprocal rank: the one to
@@ -40,7 +35,7 @@ final class VectorIndex private[scala2] (body: IndexBody) {
     Fusion.rrf(Seq(search(query, k * 2), Keyword.search(keywords, query, k * 2))).take(k)
 
   /** how many segments are stored */
-  def size: Int = okay.freer.!.run(body.store.size)
+  def size: Int = body.store.size.run
 }
 
 /**
@@ -53,19 +48,11 @@ final class PgIndex private[scala2] (body: PgBody) {
   /** split, embed in batches of `batch`, store (an upsert: re-adding a
    * source replaces its segments) */
   def add(sources: Seq[okay.rag.Source], budget: Int = 400, batch: Int = 32): Eff[Async, Ingest.Progress] =
-    Async {
-      given Answers[Embed] = body.embedding.handler
-      given Answers[Embed + okay.Async] = Row.union[okay.Async, Embed] // Async is the side tested: Embed has no TypeableK
-      Ingest.run[okay.Async](body.store, sources, budget, batch)(_.length).runWith
-    }
+    Async.lift(Ingest.run(body.store, sources, budget, batch)(_.length).handle(body.embedding.handler))
 
   /** the `k` segments nearest to `query`, scored on okay-rag's scale */
   def search(query: String, k: Int): Eff[Async, Seq[Scored]] =
-    Async {
-      given Answers[Embed] = body.embedding.handler
-      given Answers[Embed + okay.Async] = Row.union[okay.Async, Embed]
-      Retrieve.vector[okay.Async](body.store).retrieve(query, k).runWith
-    }
+    Async.lift(Retrieve.vector(body.store).retrieve(query, k).handle(body.embedding.handler))
 
   /** vector hits fused with keyword hits by reciprocal rank */
   def hybrid(keywords: Postings, query: String, k: Int): Eff[Async, Seq[Scored]] =
@@ -79,15 +66,13 @@ private[scala2] final class PgBody(val store: PgVector, val embedding: Embedder)
 
 /** the store and the model, kept out of `VectorIndex`'s constructor,
  * whose parameter types the Scala 2 reader reads eagerly */
-private[scala2] final class IndexBody(val store: VectorStore[okay.freer.Pure], val embedding: Embedder)
+private[scala2] final class IndexBody(val store: VectorStore[okay.Pure], val embedding: Embedder)
 
 /** the embedding model as the `Embed` handler okay-rag asks for */
 private[scala2] final class Embedder(embed: Seq[String] => Seq[Array[Float]]) {
-  val handler: Answers[Embed] = new Answers[Embed] {
-    def handle[A](e: Embed[A]): A = e match {
-      case Embed.Of(texts) => embed(texts).map(v => ArraySeq.unsafeWrapArray(v))
-    }
-  }
+  val handler: Handler[Embed, [A] =>> A] = Handler.answering[Embed]([A] => (e: Embed[A]) => e match {
+    case Embed.Of(texts) => embed(texts).map(v => ArraySeq.unsafeWrapArray(v))
+  })
 }
 
 object Rag {
