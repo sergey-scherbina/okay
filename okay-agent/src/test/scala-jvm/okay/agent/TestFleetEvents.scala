@@ -1,17 +1,16 @@
 package okay.agent
 
 import okay.{Async, Source}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.std.given
 import okay.codec.Json
 import okay.persist.MemoryStore
 
 /** specs/agent-fleet.md, "Events": what a screen folds instead of asking */
 class TestFleetEvents extends munit.FunSuite:
-  def go[A](p: A ! Async): A = Async.run[A, Pure](p).runWith
+  def go[A](p: A ! Async): A = Async.run(p).runWith
   def take[A](s: Source[A], n: Int): List[A] =
     summon[Stream[[W] =>> Unit ! Writer % W + Async, Async]].iterator(s).take(n).toList
 

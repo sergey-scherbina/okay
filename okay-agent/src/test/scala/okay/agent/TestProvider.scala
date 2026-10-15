@@ -2,11 +2,10 @@ package okay.agent
 
 import okay.{Async, Answers}
 
-import okay.freer.{%, +}
-import okay.freer.{!, effect, pure}
+import okay.{%, +}
+import okay.!
 import okay.std.{Writer}
 import okay.given
-import okay.freer.given
 import okay.codec.{Json, Schema}
 import okay.llm.{OpenAi, Transport}
 import scala.collection.mutable
@@ -29,7 +28,7 @@ class TestProvider extends munit.FunSuite {
         val reply = rest match
           case r :: t => rest = t; r
           case Nil => """{"choices":[]}"""
-        effect[F, Unit](Writer(reply)).map(_ => ())
+        okay.effect(Writer(reply)).at[F].map(_ => ())
 
   case class SearchArgs(query: String)
   given Schema[SearchArgs] = Schema.derived
@@ -50,10 +49,6 @@ class TestProvider extends munit.FunSuite {
     given Answers[Model] = model
     given Answers[Tool] = tool
     given Answers[Context] = ctx
-    given rowMA: Answers[Model + Async] = okay.freer.Row.union[Model, Async]
-    given rowCMA: Answers[Context + (Model + Async)] =
-      okay.freer.Row.union[Context, Model + Async]
-    given rowAll: Answers[Agent] = okay.freer.Row.union[Tool, Context + (Model + Async)]
     prog.runWith
 
   test("the request carries the turns and the DERIVED tool schema") {
@@ -124,8 +119,8 @@ class TestProvider extends munit.FunSuite {
       def post(url: String, headers: Map[String, String], body: String)
       : Unit ! Writer % String + Async =
         type F = Writer % String + Async
-        events.foldLeft(pure[F, Unit](()))((acc, l) =>
-          acc.flatMap(_ => effect[F, Unit](Writer(l)).map(_ => ())))
+        events.foldLeft(okay.pure[Unit, F](()))((acc, l) =>
+          acc.flatMap(_ => okay.effect(Writer(l)).at[F].map(_ => ())))
 
     val tokens = collect(OpenAi.stream(transport, "k",
       OpenAi.request("m", Seq(OpenAi.message("user", "hi")), stream = true)))
@@ -143,7 +138,7 @@ class TestProvider extends munit.FunSuite {
     val model = Provider.openAi(
       canned(Seq.fill(4)(answer("ok")), sent), "k", "m")
     val (_, ctx) = Handlers.context(Compact.window(120)(Compact.chars))
-    val prog = (1 to 3).foldLeft(okay.freer.pure[Agent, String]("")) { (acc, i) =>
+    val prog = (1 to 3).foldLeft(okay.pure[String, Agent]("")) { (acc, i) =>
       acc.flatMap(_ => Agent.converse(s"turn $i " + "z" * 200))
     }
     run(prog)(model, Handlers.tools(Map.empty), ctx): Unit
@@ -152,18 +147,8 @@ class TestProvider extends munit.FunSuite {
       assert(body.length < 2000, s"the compactor let a whole history through: ${body.length}")
   }
 
-  /** drain a token stream (no real waiting in these tests) */
+  /** drain a token stream (no real waiting in these tests): the
+   * Writer collected, Async answered in place */
   def collect(s: Unit ! Writer % String + Async): List[String] =
-    import okay.freer.!.*
-    def go(rest: Unit ! Writer % String + Async, acc: List[String]): List[String] =
-      (rest.resume: @unchecked) match
-        case Return(_) => acc.reverse
-        case Inject(e) => okay.freer.<|>[Async, Writer % String](e) match
-          case Left(a) => summon[Answers[Async]].handle(a); acc.reverse
-          case Right(Writer.Say(w)) => (w :: acc).reverse
-        case Bind(Inject(e), k) => okay.freer.<|>[Async, Writer % String](e) match
-          case Left(a) => go(k(summon[Answers[Async]].handle(a)), acc)
-          // a tell answers nothing — the continuation gets unit, not the line
-          case Right(Writer.Say(w)) => go(k(()), w :: acc)
-    go(s, Nil)
+    Writer.run[String, Unit, Writer % String + Async](s).runWith._1.toList
 }

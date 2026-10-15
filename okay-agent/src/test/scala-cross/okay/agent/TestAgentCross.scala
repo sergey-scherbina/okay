@@ -2,8 +2,8 @@ package okay.agent
 
 import okay.{Async}
 
-import okay.freer.{%, +}
-import okay.freer.{!, effect}
+import okay.{%, +}
+import okay.!
 import okay.std.{Writer}
 import okay.codec.{Json, Schema}
 import okay.llm.Transport
@@ -42,7 +42,7 @@ class TestAgentCross extends munit.FunSuite {
         val reply = rest match
           case r :: t => rest = t; r
           case Nil => """{"choices":[]}"""
-        effect[F, Unit](Writer(reply)).map(_ => ())
+        okay.effect(Writer(reply)).at[F].map(_ => ())
 
   def answer(text: String): String =
     s"""{"choices":[{"message":{"role":"assistant","content":"$text"},"finish_reason":"stop"}]}"""
@@ -63,7 +63,7 @@ class TestAgentCross extends munit.FunSuite {
     val noContext: A ! Model + Async =
       Memory.run[Vector[Turn], A, Model + Async](Compact.all)(noTools)
     val onlyAsync: A ! Async =
-      Provider.openAiRelay[A, Async](transport, "k", "m")(noContext)
+      Provider.openAiRelay[A, Async](transport, "k", "m")(noContext).at[Async]
     Async.runAsync(onlyAsync)
 
   test("cross: the agent loop runs with nothing that can park") {

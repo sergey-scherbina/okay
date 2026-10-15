@@ -1,8 +1,7 @@
 package okay.agent
 
 
-import okay.{Async}
-import okay.freer.*
+import okay.{!, +, Async, Wf, effect, pure}
 /**
  * The stepper (specs/llm-agentic.md, "The stepper"): run an agent
  * program under a debugger's hand — it PAUSES at every tool call,
@@ -41,6 +40,12 @@ import okay.freer.*
  *
  * What it does buy: the deletion, one driver instead of two, and
  * `Paused` and `drive` maintained in one place for every consumer.
+ *
+ * ON THE KERNEL (freer-on-core): the dialogue is okay-workflow's
+ * `Wf.Dialogue`, the program walked by the root's `okay.Walk` to its
+ * next question — its rest a value, resumed any number of times, so
+ * the fork above still holds. There is no `Shift` and no prompt: a
+ * pause is an operation of `Wf.Talking[ToolCall, String]`.
  */
 object Stepper {
 
@@ -50,28 +55,32 @@ object Stepper {
   /**
    * A paused run: the call to inspect, and the rest of the run as a
    * function of the result you choose to give it — which is what a
-   * `Shift.Dialogue` is, with `ToolCall` for the question and the
+   * `Wf.Dialogue` is, with `ToolCall` for the question and the
    * tool's result for the answer.
    */
-  type Stepping[A] = Shift.Dialogue[ToolCall, String, A, Rest]
+  type Stepping[A] = Wf.Dialogue[ToolCall, String, A, Rest]
+
+  /** the question a stepping run asks: a tool call, answered by its result */
+  private type Asking = Wf.Talking[ToolCall, String]
 
   /** the program, stepping: every Tool.Call becomes a pause */
   def stepped[A](prog: A ! Agent): Stepping[A] ! Rest =
-    Shift.resumable[ToolCall, String, A, Rest]:
-      val widened: A ! (Tool + (Shift % ? + Rest)) =
-        !.widen[A, Tool + Rest, Shift % ?](prog)
-      !.translate[A, Tool, Shift % ? + Rest](widened):
-        [X] => (t: Tool[X]) => t match
-          case Tool.Call(c) =>
-            // `ask`, not `pause`: a natural transformation is not a
-            // direct block, and this is the door that lane added
-            Shift.ask[ToolCall, String, A, Rest](c)
-              .map(s => s: X)   // Tool.Call refines X >: String; Free is invariant
+    Wf.Dialogue.of[ToolCall, String, A, Rest](
+      prog.translate[Tool, Asking]([X] => (t: Tool[X]) => t match
+        case Tool.Call(c) =>
+          effect[Asking, String](Wf.Talk.Say(c))
+            .map(s => s: X)))   // Tool.Call refines X >: String; `!`'s answer is lifted by a map
 
   /** drive a stepping run: `onCall` decides each pause's answer —
    * consult the real tool table, edit its output, or fabricate */
   def drive[A](s: Stepping[A] ! Rest)(onCall: ToolCall => String ! Rest): A ! Rest =
-    s.flatMap(Shift.drive[ToolCall, String, A, Rest](_)(onCall))
+    s.flatMap(answered(_)(onCall))
+
+  /** a pause answered, and the run on to the next: the recursion is in
+   * the program's binds (each turn a continuation), not on the stack */
+  private def answered[A](d: Stepping[A])(onCall: ToolCall => String ! Rest): A ! Rest = d match
+    case Wf.Dialogue.Done(a) => pure[A, Rest](a)
+    case Wf.Dialogue.Ask(c, resume, _) => onCall(c).flatMap(resume).flatMap(answered(_)(onCall))
 
   /** the transparent driver: every pause performs the real tool —
    * stepping with nobody watching equals not stepping */

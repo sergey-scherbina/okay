@@ -1,9 +1,7 @@
 package okay.agent
-import okay.freer.*
 import okay.std.*
-import okay.{! as _, + as _, % as _, Pure as _, *}
+import okay.*
 import okay.given
-import okay.freer.given
 import okay.std.given
 import okay.codec.Json
 import okay.persist.{Ack, MemoryStore}
@@ -12,7 +10,7 @@ import Fleet.{Command, Control, Event}
 /** specs/agent-fleet.md, "Commands": the control plane as a topic the
  * service folds, with a principal the service checks */
 class TestFleetCommands extends munit.FunSuite:
-  def go[A](p: A ! Async): A = Async.run[A, Pure](p).runWith
+  def go[A](p: A ! Async): A = Async.run(p).runWith
   def take[A](s: Source[A], n: Int): List[A] =
     summon[Stream[[W] =>> Unit ! Writer % W + Async, Async]].iterator(s).take(n).toList
   def until(what: => Boolean, ms: Int = 5000): Unit =

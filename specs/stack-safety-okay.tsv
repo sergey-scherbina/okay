@@ -1,6 +1,11 @@
 # file:line	def	kind	lambda consumers on the cycle
 okay-actor/src/main/scala/okay/actor/Actor.scala	155	stop	mutual		BOUNDED: per level of the actor hierarchy the program spawned (a child under its parent): the program's own tree
 okay-actor/src/main/scala/okay/actor/Actor.scala	165	stopAll	mutual		BOUNDED: per level of the actor hierarchy the program spawned (a child under its parent): the program's own tree
+okay-agent/src/main/scala/okay/agent/Agent.scala	142	step	lambda	Join$.sameGiven	DEFERRED: the recursion is inside the program's own flatMap, whose continuation the kernel machine runs in constant stack
+okay-agent/src/main/scala/okay/agent/Conversation.scala	253	fill	mutual	Join$.sameGiven	DEFERRED: the recursion is inside the program's own flatMap, whose continuation the kernel machine runs in constant stack
+okay-agent/src/main/scala/okay/agent/Conversation.scala	278	loop	mutual	Join$.sameGiven	DEFERRED: the recursion is inside the program's own flatMap, whose continuation the kernel machine runs in constant stack
+okay-agent/src/main/scala/okay/agent/Fleet.scala	444	go	lambda	Evidence$All$.one	DEFERRED: the recursion is inside the program's own flatMap, whose continuation the kernel machine runs in constant stack
+okay-agent/src/main/scala/okay/agent/Stepper.scala	81	answered	lambda	Join$.sameGiven	DEFERRED: the recursion is inside the program's own flatMap, whose continuation the kernel machine runs in constant stack
 okay-arrow/src/main/scala-jvm/okay/arrow/ApacheArrow.scala	179	field	direct	Vector.map	BOUNDED: per level of a column's TYPE, at most Column.MaxNesting (64, Arrow C++'s kMaxNestingDepth): the Arrow Java schema of a Table's column, which Table refuses past the limit
 okay-arrow/src/main/scala-jvm/okay/arrow/ApacheArrow.scala	211	fill	direct	Vector.foreach	BOUNDED: per level of a column's TYPE, at most Column.MaxNesting (64, Arrow C++'s kMaxNestingDepth): fills Arrow Java vectors from a Table's columns, which Table refuses past the limit
 okay-arrow/src/main/scala-jvm/okay/arrow/ApacheArrow.scala	289	column	direct	Vector.map	BOUNDED: per level of a column's TYPE, at most Column.MaxNesting (64, Arrow C++'s kMaxNestingDepth): fromRoot checks Arrow Java's schema against the limit on an explicit stack before this walks it

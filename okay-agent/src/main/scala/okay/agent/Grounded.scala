@@ -1,8 +1,8 @@
 package okay.agent
 
 import okay.{==>, Answers}
-import okay.freer.{!, Aggregator}
-import okay.freer.given
+import okay.{!, pure}
+import okay.freer.Aggregator
 import okay.rag.{Retriever, Scored}
 
 /**
@@ -40,7 +40,7 @@ object Grounded {
    * the other.
    */
   def context[S](policy: Aggregator[Turn, S, Seq[Turn]],
-                 retriever: Retriever[okay.freer.Pure],
+                 retriever: Retriever[okay.Pure],
                  budget: Int, share: Double = 0.5, k: Int = 4,
                  // what the model ACTUALLY sees is assembled here and
                  // nowhere else, so without a seam it is invisible —
@@ -57,7 +57,7 @@ object Grounded {
 
     /** as many passages as the retrieval share allows */
     def passages(query: String): Seq[Turn] =
-      val hits = okay.freer.!.run(retriever.retrieve(query, k))
+      val hits = retriever.retrieve(query, k).run
       hits.map(turn).foldLeft((Vector.empty[Turn], 0)) { (acc, t) =>
         val (kept, used) = acc
         val cost = size(t)
@@ -111,7 +111,7 @@ object Grounded {
    * `F ==> Id` (comonadic), `F ==> ([X] =>> X ! G)` (this), and
    * `F !> S` (Cps-valued, adding abort and multi-shot).
    */
-  def translating[S, F[+_]](policy: Aggregator[Turn, S, Seq[Turn]],
+  def translating[S, F[_]](policy: Aggregator[Turn, S, Seq[Turn]],
                             retriever: Retriever[F],
                             budget: Int, share: Double = 0.5, k: Int = 4,
                             onRecall: Seq[Turn] => Unit = _ => ())
@@ -142,17 +142,17 @@ object Grounded {
       view
 
     val nt: Context ==> ([X] =>> X ! F) =
-      // the row is covariant, so a case gives X >: its answer; `!` is
-      // invariant in the answer, so each branch is built AT X
+      // the effect is covariant, so a case gives X >: its answer; each
+      // branch is built AT X
       [X] => (e: Context[X]) => e match
-        case Context.Remember(t) => okay.freer.pure[F, X](st.remember(t))
+        case Context.Remember(t) => pure[X, F](st.remember(t))
         case Context.Recall() =>
           val conversation = st.recall
           lastQuestion(conversation) match
-            case None => onRecall(conversation); okay.freer.pure[F, X](conversation)
+            case None => onRecall(conversation); pure[X, F](conversation)
             case Some(q) => retriever.retrieve(q, k).map[X](assemble(conversation, _))
-        case Context.Mark() => okay.freer.pure[F, X](st.mark)
-        case Context.Restore(s) => okay.freer.pure[F, X](st.restore(s))
+        case Context.Mark() => pure[X, F](st.mark)
+        case Context.Restore(s) => pure[X, F](st.restore(s))
 
     (st, nt)
 }

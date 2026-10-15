@@ -1,8 +1,6 @@
 package okay.agent
-import okay.freer.*
-import okay.{Answers, Async}
+import okay.{!, Answers, Async, Wf, pure}
 import okay.given
-import okay.freer.given
 import okay.codec.Json
 import Stepper.*
 
@@ -12,7 +10,6 @@ class TestStepper extends munit.FunSuite {
   def runRest[A](prog: A ! Rest)(model: Answers[Model], ctx: Answers[Context]): A =
     given Answers[Model] = model
     given Answers[Context] = ctx
-    given rowAll: Answers[Rest] = Row.flat[Rest]
     prog.runWith
 
   def freshCtx: Answers[Context] = Handlers.context(Compact.all)._2
@@ -39,7 +36,6 @@ class TestStepper extends munit.FunSuite {
       given Answers[Model] = model
       given Answers[Tool] = Handlers.tools(table)
       given Answers[Context] = freshCtx
-      given r: Answers[Agent] = Row.flat[Agent]
       agent.runWith
 
     // stepped: collect what paused, answer from the same table
@@ -69,12 +65,11 @@ class TestStepper extends munit.FunSuite {
       Agent.complete().flatMap(r => Agent.call(r.calls.head)).map(_.toUpperCase)
 
     val forked = stepped(prog).flatMap {
-      case Shift.Paused.Ask(_, resume, _) =>
-        // the SAME continuation, resumed twice with different pasts.
-        // `Shift.run` is what the bespoke enum used to hide: the
-        // resumption is a program in the machine's own row.
-        Shift.run(resume("first world")).flatMap { a =>
-          Shift.run(resume("second world")).map { b => (a.finished, b.finished) }
+      case Wf.Dialogue.Ask(_, resume, _) =>
+        // the SAME rest, resumed twice with different pasts: the
+        // resumption is a program in the stepper's own row
+        resume("first world").flatMap { a =>
+          resume("second world").map { b => (a.finished, b.finished) }
         }
       case done => pure((done.finished, done.finished))
     }
@@ -90,7 +85,6 @@ class TestStepper extends munit.FunSuite {
       given Answers[Model] = model
       given Answers[Tool] = Handlers.tools(table)
       given Answers[Context] = freshCtx
-      given r: Answers[Agent] = Row.flat[Agent]
       agent.runWith
     assertEquals(runRest(transparent(stepped(agent))(table))(model, freshCtx), direct)
   }
@@ -98,27 +92,15 @@ class TestStepper extends munit.FunSuite {
   test("the transparent driver over PROGRAMS: an effectful tool performs in the stepper's row, and the run is the direct one") {
     var performed = 0
     val tableF = Map[String, ToolCall => String ! Rest]("search" -> (_ =>
-      !.widen[String, Async, Context + Model](okay.async { performed += 1; "found" })))
+      okay.async { performed += 1; "found" }.at[Rest]))
     val table = Map[String, ToolCall => String]("search" -> (_ => "found"))
     def model = Handlers.scripted(Seq(Reply("", Seq(search)), Reply("fin", Nil)))
     val direct =
       given Answers[Model] = model
       given Answers[Tool] = Handlers.tools(table)
       given Answers[Context] = freshCtx
-      given r: Answers[Agent] = Row.flat[Agent]
       agent.runWith
     assertEquals(runRest(transparentF(stepped(agent))(tableF))(model, freshCtx), direct)
     assertEquals(performed, 1)
-  }
-
-  test("a stepping run is NOT replayable, and the row says why") {
-    // the backlog asked for this rewrite partly to gain `Shift.replay`
-    // for free. It does not: replaying a stepping session would ask
-    // the MODEL again, and `Replayable` refuses the row that says so.
-    val e = compileErrors("""
-      okay.freer.Shift.replay[ToolCall, String, String, Stepper.Rest](
-        summon[okay.freer.Shift.Asking[ToolCall, String, String, okay.freer.Shift % ? + Stepper.Rest]] ?=>
-          okay.freer.pure(""))(Nil)""")
-    assert(e.nonEmpty, "a stepping run typechecked as replayable")
   }
 }

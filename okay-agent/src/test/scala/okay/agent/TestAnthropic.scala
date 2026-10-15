@@ -2,11 +2,10 @@ package okay.agent
 
 import okay.{Async, Answers}
 
-import okay.freer.{%, +}
-import okay.freer.{!, effect}
+import okay.{%, +}
+import okay.!
 import okay.std.{Writer}
 import okay.given
-import okay.freer.given
 import okay.codec.{Json, Schema}
 import okay.llm.Transport
 import scala.collection.mutable
@@ -33,7 +32,7 @@ class TestAnthropic extends munit.FunSuite {
         val reply = rest match
           case r :: t => rest = t; r
           case Nil => """{"content":[]}"""
-        effect[F, Unit](Writer(reply)).map(_ => ())
+        okay.effect(Writer(reply)).at[F].map(_ => ())
 
   case class SearchArgs(query: String)
   given Schema[SearchArgs] = Schema.derived
@@ -50,10 +49,6 @@ class TestAnthropic extends munit.FunSuite {
     given Answers[Model] = model
     given Answers[Tool] = tool
     given Answers[Context] = ctx
-    given rowMA: Answers[Model + Async] = okay.freer.Row.union[Model, Async]
-    given rowCMA: Answers[Context + (Model + Async)] =
-      okay.freer.Row.union[Context, Model + Async]
-    given rowAll: Answers[Agent] = okay.freer.Row.union[Tool, Context + (Model + Async)]
     prog.runWith
 
   test("system is lifted to the top level and content becomes blocks") {

@@ -1,9 +1,7 @@
 package okay.agent
 
-import okay.{Answers}
-
-import okay.freer.{+}
-import okay.freer.{!, Aggregator}
+import okay.{!, +, Answers, Handler, pure}
+import okay.freer.Aggregator
 import okay.lex.Scan
 import okay.lex.Bpe
 
@@ -84,30 +82,29 @@ object Handlers {
    * what a platform with no threads needs — `runWith` wants a handler
    * for the WHOLE row, Async included, and on JS there is none.
    */
-  def relayTools[A, F[+_]](table: Map[String, ToolCall => String])
+  def relayTools[A, F[_]](table: Map[String, ToolCall => String])
                                            (prog: A ! Tool + F): A ! F =
     def answer(c: ToolCall): String = table.get(c.name) match
       case Some(f) =>
         try f(c) catch case ex: Throwable => s"error: ${ex.getMessage}"
       case None => s"error: no such tool '${c.name}'"
 
-    okay.freer.!.translate[A, Tool, F](prog) {
-      [X] => (e: Tool[X]) => e match
-        case Tool.Call(c) => okay.freer.pure[F, X](answer(c))
-    }
+    // answered in place: nothing captured (the kernel's Answering)
+    prog.handle(Handler.answering[Tool]([X] => (e: Tool[X]) => e match
+      case Tool.Call(c) => answer(c)))
 
   /** `relayTools` for a table of PROGRAMS (`Toolbox.In[F]`): each call
    * runs its tool in the row the program already carries. An unknown
    * tool is still an answer; a tool's own failure is the row's
    * business — a program cannot be `try`-caught from outside, and
    * the tool that must answer its failure does so in its own row */
-  def relayToolsF[A, F[+_]](table: Map[String, ToolCall => String ! F])
+  def relayToolsF[A, F[_]](table: Map[String, ToolCall => String ! F])
                            (prog: A ! Tool + F): A ! F =
-    okay.freer.!.translate[A, Tool, F](prog) {
+    !.translate[A, Tool, F](prog) {
       [X] => (e: Tool[X]) => e match
         case Tool.Call(c) => table.get(c.name) match
-          case Some(f) => f(c).map(s => s: X)   // Tool.Call refines X >: String; Free is invariant
-          case None => okay.freer.pure[F, X](s"error: no such tool '${c.name}'")
+          case Some(f) => f(c).map(s => s: X)   // Tool.Call refines X >: String; `!`'s answer is lifted by a map
+          case None => pure[X, F](s"error: no such tool '${c.name}'")
     }
 
   // ---------------------------------------------------------------- model

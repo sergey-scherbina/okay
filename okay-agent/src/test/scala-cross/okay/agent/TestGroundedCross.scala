@@ -2,8 +2,8 @@ package okay.agent
 
 import okay.{Async}
 
-import okay.freer.{+}
-import okay.freer.{!}
+import okay.{+}
+import okay.{!}
 import okay.given
 import okay.rag.*
 
@@ -44,9 +44,9 @@ class TestGroundedCross extends munit.FunSuite {
     Keyword.index(files.flatMap(f => Ingest.segment(f, 400)(_.length)))
 
   val ask: Seq[Turn] ! Context + Async =
-    okay.freer.effect[Context + Async, Unit](
-      Context.Remember(Turn.User("how do I greet someone by name?")))
-      .flatMap(_ => okay.freer.effect[Context + Async, Seq[Turn]](Context.Recall()))
+    okay.effect(
+      Context.Remember(Turn.User("how do I greet someone by name?"))).at[Context + Async]
+      .flatMap(_ => okay.effect(Context.Recall()).at[Context + Async])
 
   /**
    * A retriever that cannot answer now: it rides the platform timer,
@@ -63,7 +63,7 @@ class TestGroundedCross extends munit.FunSuite {
       Compact.window(4000)(Compact.chars), remote,
       budget = 4000, share = 0.6, k = 2, onRecall = v => seen = v)(Compact.chars)
 
-    Async.runAsync(okay.freer.!.translate(ask)(nt)).map { turns =>
+    Async.runAsync(okay.!.translate(ask)(nt)).map { turns =>
       assert(turns.exists(t => Compact.text(t).contains("Greeter")),
         s"the code never reached recall: ${turns.map(t => Compact.text(t).take(40))}")
       // the passage carries its provenance header, as it does in the
@@ -82,7 +82,7 @@ class TestGroundedCross extends munit.FunSuite {
       Compact.window(tiny)(Compact.chars), remote,
       budget = tiny, share = 0.5, k = 2)(Compact.chars)
 
-    Async.runAsync(okay.freer.!.translate(ask)(nt)).map { turns =>
+    Async.runAsync(okay.!.translate(ask)(nt)).map { turns =>
       val used = turns.map(Compact.chars).sum
       assert(used <= tiny, s"the assembly spent $used of $tiny")
       assert(turns.nonEmpty, "the budget starved everything")

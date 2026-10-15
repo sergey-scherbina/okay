@@ -1,9 +1,6 @@
 package okay.agent
 
-import okay.{Async, Answers}
-
-import okay.freer.{+}
-import okay.freer.{!, effect, pure}
+import okay.{!, +, Answers, Async, effect, pure}
 import okay.codec.Json
 
 /**
@@ -115,24 +112,24 @@ object Agent {
 
   /** ask the model with the current (compacted) context */
   def complete(tools: Seq[ToolSpec] = Nil): Reply ! Agent =
-    recall.flatMap(ctx => effect[Agent, Reply](Model.Complete(ctx, tools)))
+    recall.flatMap(ctx => effect(Model.Complete(ctx, tools)).at[Agent])
 
   /** count tokens locally (the BPE Scan, no network) */
-  def count(text: String): Int ! Agent = effect(Model.Count(text))
+  def count(text: String): Int ! Agent = effect(Model.Count(text)).at[Agent]
 
-  def call(c: ToolCall): String ! Agent = effect(Tool.Call(c))
+  def call(c: ToolCall): String ! Agent = effect(Tool.Call(c)).at[Agent]
 
-  def remember(t: Turn): Unit ! Agent = effect(Context.Remember(t))
+  def remember(t: Turn): Unit ! Agent = effect(Context.Remember(t)).at[Agent]
 
-  def recall: Seq[Turn] ! Agent = effect(Context.Recall())
+  def recall: Seq[Turn] ! Agent = effect(Context.Recall()).at[Agent]
 
-  def mark: Snapshot ! Agent = effect(Context.Mark())
+  def mark: Snapshot ! Agent = effect(Context.Mark()).at[Agent]
 
-  def restore(s: Snapshot): Unit ! Agent = effect(Context.Restore(s))
+  def restore(s: Snapshot): Unit ! Agent = effect(Context.Restore(s)).at[Agent]
 
   /** run every requested tool and remember each result */
   def runTools(calls: Seq[ToolCall]): Unit ! Agent =
-    okay.freer.!.each(calls)(c => call(c).flatMap(r => remember(Turn.Result(c.id, r))))
+    !.each(calls)(c => call(c).flatMap(r => remember(Turn.Result(c.id, r))))
 
   /**
    * The loop: remember the message, ask (recall compacts on the way),
@@ -145,7 +142,7 @@ object Agent {
     def step(n: Int): String ! Agent =
       complete(tools).flatMap { reply =>
         remember(Turn.Assistant(reply.text, reply.calls)).flatMap { _ =>
-          if reply.calls.isEmpty || n <= 0 then pure(reply.text)
+          if reply.calls.isEmpty || n <= 0 then pure[String, Agent](reply.text)
           else runTools(reply.calls).flatMap(_ => step(n - 1))
         }
       }

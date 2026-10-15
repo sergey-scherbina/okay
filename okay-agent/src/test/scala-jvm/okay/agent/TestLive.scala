@@ -1,11 +1,9 @@
 package okay.agent
 
-import okay.{Async, Answers}
+import okay.Answers
 
-import okay.freer.{+}
-import okay.freer.{!}
+import okay.{!}
 import okay.given
-import okay.freer.given
 import okay.codec.{Json, Schema}
 import okay.llm.{OpenAi, Transport, Transports}
 import scala.collection.mutable
@@ -67,10 +65,6 @@ class TestLive extends munit.FunSuite {
     given Answers[Model] = model
     given Answers[Tool] = tool
     given Answers[Context] = ctx
-    given rowMA: Answers[Model + Async] = okay.freer.Row.union[Model, Async]
-    given rowCMA: Answers[Context + (Model + Async)] =
-      okay.freer.Row.union[Context, Model + Async]
-    given rowAll: Answers[Agent] = okay.freer.Row.union[Tool, Context + (Model + Async)]
     prog.runWith
 
   liveTest("live: a completion comes back through our own decoder") {
@@ -113,7 +107,7 @@ class TestLive extends munit.FunSuite {
     val budget = 400
     val (_, ctx) = Handlers.context(Compact.window(budget)(Compact.chars))
 
-    val prog = (1 to 3).foldLeft(okay.freer.pure[Agent, String]("")) { (acc, i) =>
+    val prog = (1 to 3).foldLeft(okay.pure[String, Agent]("")) { (acc, i) =>
       acc.flatMap(_ => Agent.converse(s"Question $i: name one colour. " + "x" * 300))
     }
     run(prog)(provider, Handlers.tools(Map.empty), ctx): Unit

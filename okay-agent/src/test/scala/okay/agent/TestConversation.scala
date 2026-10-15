@@ -1,7 +1,6 @@
 package okay.agent
 
 import okay.Answers
-import okay.freer.given
 import okay.codec.Json.*
 import okay.agent.Conversation.*
 import okay.frame.{Frame, Slot}

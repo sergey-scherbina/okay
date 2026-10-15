@@ -1,10 +1,9 @@
 package okay.agent
 
 import okay.{Async, Answers}
-import okay.freer.{+}
-import okay.freer.{!}
+import okay.{+}
+import okay.{!}
 import okay.given
-import okay.freer.given
 import okay.rag.*
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -42,9 +41,9 @@ class TestGroundedTranslating extends munit.FunSuite {
 
   /** ask, then recall — written in the row it needs and no more */
   val ask: Seq[Turn] ! Context + Async =
-    okay.freer.effect[Context + Async, Unit](
-      Context.Remember(Turn.User("how do I greet someone by name?")))
-      .flatMap(_ => okay.freer.effect[Context + Async, Seq[Turn]](Context.Recall()))
+    okay.effect(
+      Context.Remember(Turn.User("how do I greet someone by name?"))).at[Context + Async]
+      .flatMap(_ => okay.effect(Context.Recall()).at[Context + Async])
 
   /**
    * A retriever that answers from ANOTHER THREAD, through the Async
@@ -53,7 +52,7 @@ class TestGroundedTranslating extends munit.FunSuite {
    */
   def remote(calls: AtomicInteger): Retriever[Async] = new Retriever[Async]:
     def retrieve(query: String, k: Int): Seq[Scored] ! Async =
-      okay.freer.effect(Async.Await[Seq[Scored]] { cb =>
+      okay.effect(Async.Await[Seq[Scored]] { cb =>
         val t = Thread.ofVirtual().start(() =>
           Thread.sleep(20)
           calls.incrementAndGet()
@@ -71,7 +70,7 @@ class TestGroundedTranslating extends munit.FunSuite {
 
     // Context is interpreted INTO Async, which then leaves through the
     // ordinary async driver — the point of the whole exercise
-    val grounded: Seq[Turn] ! Async = okay.freer.!.translate(ask)(nt)
+    val grounded: Seq[Turn] ! Async = okay.!.translate(ask)(nt)
 
     Async.runAsync(grounded).map { turns =>
       assertEquals(calls.get, 1, "the retrieval did not actually run")
@@ -99,10 +98,9 @@ class TestGroundedTranslating extends munit.FunSuite {
       budget = 4000, share = 0.6, k = 2, onRecall = v => ntSeen = v)(Compact.chars)
 
     given Answers[Context] = handler
-    given Answers[Context + Async] = okay.freer.Row.union[Context, Async]
     val viaHandler = ask.runWith
 
-    Async.runAsync(okay.freer.!.translate(ask)(nt)).map { viaTranslate =>
+    Async.runAsync(okay.!.translate(ask)(nt)).map { viaTranslate =>
       assertEquals(viaTranslate.map(Compact.text), viaHandler.map(Compact.text))
       assertEquals(ntSeen.map(Compact.text), pureSeen.map(Compact.text))
     }
@@ -114,7 +112,7 @@ class TestGroundedTranslating extends munit.FunSuite {
     // the program was RUN rather than inside context assembly.
     val boom = new Retriever[Async]:
       def retrieve(query: String, k: Int): Seq[Scored] ! Async =
-        okay.freer.effect(Async.Await[Seq[Scored]] { cb =>
+        okay.effect(Async.Await[Seq[Scored]] { cb =>
           cb(Left(RuntimeException("the index is offline")))
           () => ()
         })
@@ -122,7 +120,7 @@ class TestGroundedTranslating extends munit.FunSuite {
     val (_, nt) = Grounded.translating(
       Compact.window(4000)(Compact.chars), boom, budget = 4000)(Compact.chars)
 
-    Async.runAsync(okay.freer.!.translate(ask)(nt)).failed.map { e =>
+    Async.runAsync(okay.!.translate(ask)(nt)).failed.map { e =>
       assertEquals(e.getMessage, "the index is offline")
     }
   }

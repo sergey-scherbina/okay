@@ -1,11 +1,9 @@
 package okay.agent
 
-import okay.{Async, Answers}
+import okay.Answers
 
-import okay.freer.{+, Row}
-import okay.freer.{!}
+import okay.{!}
 import okay.given
-import okay.freer.given
 import okay.codec.{Json, Schema}
 import okay.lex.Bpe
 import scala.collection.mutable
@@ -20,9 +18,6 @@ class TestAgent extends munit.FunSuite {
     given Answers[Model] = model
     given Answers[Tool] = tool
     given Answers[Context] = ctx
-    given rowCA: Answers[Context + Async] = Row.union[Context, Async]
-    given rowTCA: Answers[Tool + (Context + Async)] = Row.union[Tool, Context + Async]
-    given rowAll: Answers[Agent] = Row.union[Model, Tool + (Context + Async)]
     prog.runWith
 
   case class SearchArgs(query: String, limit: Option[Int])
@@ -94,7 +89,7 @@ class TestAgent extends munit.FunSuite {
     val long = "x" * 60   // ~15 tokens each
     val model = Handlers.observing(Seq.fill(12)(Reply(long, Nil)), seen)
 
-    val prog = (1 to 6).foldLeft(okay.freer.pure[Agent, String]("")) { (acc, i) =>
+    val prog = (1 to 6).foldLeft(okay.pure[String, Agent]("")) { (acc, i) =>
       acc.flatMap(_ => Agent.converse(s"turn $i: $long"))
     }
     run(prog)(model, Handlers.tools(Map.empty), ctx): Unit
@@ -117,7 +112,7 @@ class TestAgent extends munit.FunSuite {
     val (_, ctx) = Handlers.context(policy)
     val sys = Turn.System("always obey the pin")
     val prog = Agent.remember(sys).flatMap(_ =>
-      (1 to 20).foldLeft(okay.freer.pure[Agent, Unit](())) { (acc, _) =>
+      (1 to 20).foldLeft(okay.pure[Unit, Agent](())) { (acc, _) =>
         acc.flatMap(_ => Agent.remember(Turn.User("y" * 40)))
       }).flatMap(_ => Agent.recall)
     val view = run(prog)(Handlers.scripted(Nil), Handlers.tools(Map.empty), ctx)

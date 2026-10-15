@@ -1,8 +1,5 @@
 package okay.agent
-import okay.{Answers}
-import okay.freer.{+}
-import okay.freer.*
-import okay.freer.{!, given}
+import okay.{!, +, Answers, pure}
 import okay.codec.Json
 import okay.lex.{Bpe, Scan}
 import okay.llm.{Anthropic, OpenAi, Transport}
@@ -154,26 +151,23 @@ object Provider {
   // event loop (Async.runAsync). Same program, both platforms; the
   // comonadic handler above stays as the JVM convenience.
 
-  def relay[A, F[+_]](complete: (Seq[Turn], Seq[ToolSpec]) => Reply ! okay.Async,
+  def relay[A, F[_]](complete: (Seq[Turn], Seq[ToolSpec]) => Reply ! okay.Async,
                                        count: String => Int = _.length / 4)
                                       (prog: A ! Model + F): A ! okay.Async + F =
     // the handler as a NATURAL TRANSFORMATION into another row: a
     // Model operation answers with a PROGRAM in Async, which is what
     // Answers[Model] = Model ==> Id could not express — Id has
     // nowhere to put the suspension
-    // a row is a union, so (Model + F) + Async IS Model + (Async + F):
-    // the ascription is the compiler's own equality, not a cast
-    val widened: A ! (Model + (okay.Async + F)) = okay.freer.!.widen[A, Model + F, okay.Async](prog)
-    okay.freer.!.translate[A, Model, okay.Async + F](widened) {
-      [X] => (e: Model[X]) => e match
-        // covariant row: X >: the case's answer, and `!` is invariant —
-        // so the answer is lifted to X (a map, not a cast)
-        case Model.Complete(ctx, tools) => okay.freer.!.widen[Reply, okay.Async, F](complete(ctx, tools)).map[X](r => r)
-        case Model.Count(text) => okay.freer.pure[okay.Async + F, X](count(text))
-    }
+    // the kernel's Translating: Model taken off wherever it is, Async
+    // put at the head of the rest
+    prog.translate[Model, okay.Async]([X] => (e: Model[X]) => e match
+      // covariant effect: X >: the case's answer, so the answer is
+      // lifted to X (a map, not a cast)
+      case Model.Complete(ctx, tools) => complete(ctx, tools).map[X](r => r)
+      case Model.Count(text) => pure[X, okay.Async](count(text)))
 
   /** the OpenAI-compatible provider as a relay — the cross-platform door */
-  def openAiRelay[A, F[+_]](
+  def openAiRelay[A, F[_]](
       transport: Transport, apiKey: String, model: String,
       url: String = OpenAi.chatUrl, maxTokens: Option[Int] = Some(1024),
       count: String => Int = _.length / 4)(prog: A ! Model + F): A ! okay.Async + F =

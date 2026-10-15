@@ -1,8 +1,6 @@
 package okay.agent
-import okay.freer.*
-import okay.{! as _, Pure as _, pure as _, effect as _, *}
+import okay.*
 import okay.given
-import okay.freer.given
 import okay.codec.Json
 import okay.persist.MemoryStore
 import Fleet.Control
@@ -13,7 +11,7 @@ import Fleet.Control
  * sends it, so pausing, stopping and killing happen at known points.
  */
 class TestFleet extends munit.FunSuite:
-  def go[A](p: A ! Async): A = Async.run[A, Pure](p).runWith
+  def go[A](p: A ! Async): A = Async.run(p).runWith
   def until(what: => Boolean, ms: Int = 5000): Unit =
     val end = System.currentTimeMillis + ms
     while !what && System.currentTimeMillis < end do Thread.sleep(5)

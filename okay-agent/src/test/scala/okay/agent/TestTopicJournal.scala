@@ -1,11 +1,9 @@
 package okay.agent
 
-import okay.{Async, Answers}
+import okay.Answers
 
-import okay.freer.{+}
-import okay.freer.{!}
+import okay.{!}
 import okay.given
-import okay.freer.given
 import okay.codec.Json
 import okay.agent.Durable.OnRepeat
 import okay.persist.{Ack, MemoryStore, Topic}
@@ -25,10 +23,6 @@ class TestTopicJournal extends munit.FunSuite {
     given Answers[Model] = model
     given Answers[Tool] = tool
     given Answers[Context] = ctx
-    given rowMA: Answers[Model + Async] = okay.freer.Row.union[Model, Async]
-    given rowCMA: Answers[Context + (Model + Async)] =
-      okay.freer.Row.union[Context, Model + Async]
-    given rowAll: Answers[Agent] = okay.freer.Row.union[Tool, Context + (Model + Async)]
     prog.runWith
 
   val charge = ToolCall("c1", "charge",
