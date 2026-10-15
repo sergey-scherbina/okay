@@ -1,12 +1,10 @@
 package okay
 
-
-import okay.freer.*
-
-
-import okay.std.*
-import okay.freer.!.*
-import scala.annotation.tailrec
+import okay.core.{+:, Paths}
+import okay.one.machine.Machine
+import okay.one.machine.Machine.Head
+import okay.one.row.In
+import okay.std.{Sim, TMap, TRef}
 import scala.collection.mutable
 
 /** the transaction language: no Async, no Run — I/O inside a
@@ -180,20 +178,23 @@ object Stm {
             log.addReads(branchB)
             throw RetryNow   // both branches retried: so does the whole thing
 
-  /** run one program against a log, synchronously — the freer
-   * tree's own Bind gives every step its type. Shared by the
-   * top-level attempt loop AND `OrElse`'s branches (perform, above)
-   * — not tail-recursive across that boundary, which is fine: a
-   * transaction body is source code, not a loop counter. */
-  private def runWithLog[A](tx: A ! Tx, log: Log): A =
-    @tailrec def loop(p: A ! Tx): A = (p.resume: @unchecked) match
-      case Return(a) => a
-      case Inject(e) => perform(e, log)
-      case Bind(Inject(e), k) => loop(k(perform(e, log)))
-    loop(tx)
+  /** the row a transaction is run at: `Tx` alone, at the head */
+  private type TxRow = Tx +: okay.core.Pure
+  private val txPaths: Paths[Tx, TxRow] = Paths.One(In.Here[Tx, okay.core.Pure]())
 
-  /** run the whole program against the log, synchronously */
-  private def interpret[A](tx: A ! Tx, log: Log): A = runWithLog(tx, log)
+  /** run one program against a log, synchronously — each operation
+   * ANSWERED IN PLACE by the log (the kernel's `Answering`: nothing
+   * captured, the machine's own loop). Shared by the top-level attempt
+   * loop AND `OrElse`'s branches (perform, above) — nested across that
+   * boundary once per `orElse` in the transaction's text, which is
+   * fine: a transaction body is source code, not a loop counter. */
+  private def runWithLog[A](tx: A ! Tx, log: Log): A = interpret(tx.fit(txPaths), log)
+
+  /** the program fitted at the transaction's row, run against the log */
+  private def interpret[A](tx: okay.core.Eff[TxRow, A], log: Log): A =
+    okay.one.Cont.handle(tx)(new okay.one.handler.Answering[Tx, okay.core.Pure, A, A]:
+      def ret(a: A) = okay.one.Cont.pure(a)
+      def value[X](op: Tx[X]): X = perform(op, log)).run
 
   /** a cell a commit has taken, with the value to install into it:
    * release it, or install */
@@ -237,11 +238,15 @@ object Stm {
       false
 
   /** the structural fast paths, shared by tl2 and direct: a program
-   * that IS one operation needs no log */
-  private def fast[A](tx: A ! Tx): Option[A ! Async] = (tx.resume: @unchecked) match
-    case Return(a) => Some(pure(a))
-    case Inject(Tx.Modify(r, f)) => Some(async(r.modify(f)))
-    case Inject(Tx.Read(r)) => Some(async(r.get))
+   * that IS one operation needs no log — read off the fitted program's
+   * own node (a value, or one operation at the head) */
+  private def fast[A](tx: okay.core.Eff[TxRow, A]): Option[A ! Async] = tx match
+    case okay.one.Cont.Return(a) => Some(pure(a))
+    // unchecked: at the row `Tx +: Pure` a `PerformHere` (`Cont[E +: T, S, S, X]`) has E = Tx, T = Pure, X = A
+    case p: okay.one.Cont.PerformHere[Tx, okay.core.Pure, ?, A] @unchecked => p.op match
+      case Tx.Modify(r, f) => Some(async(r.modify(f)))
+      case Tx.Read(r) => Some(async(r.get))
+      case _ => None
     case _ => None
 
   /** park the transaction on its read set; the first change re-runs
@@ -267,9 +272,10 @@ object Stm {
    */
   val tl2: Stm[Async] = new Stm[Async]:
     def atomically[A](tx: A ! Tx): A ! Async =
-      fast(tx).getOrElse(Async.await { k => attempt(tx, k); () => () })
+      val e = tx.fit(txPaths)
+      fast(e).getOrElse(Async.await { k => attempt(e, k); () => () })
 
-    private def attempt[A](tx: A ! Tx, k: Either[Throwable, A] => Unit): Unit =
+    private def attempt[A](tx: okay.core.Eff[TxRow, A], k: Either[Throwable, A] => Unit): Unit =
       var done = false
       while !done do
         val log = new Log
@@ -291,9 +297,10 @@ object Stm {
    */
   val direct: Stm[Async] = new Stm[Async]:
     def atomically[A](tx: A ! Tx): A ! Async =
-      fast(tx).getOrElse(Async.await { k => attempt(tx, k); () => () })
+      val e = tx.fit(txPaths)
+      fast(e).getOrElse(Async.await { k => attempt(e, k); () => () })
 
-    private def attempt[A](tx: A ! Tx, k: Either[Throwable, A] => Unit): Unit =
+    private def attempt[A](tx: okay.core.Eff[TxRow, A], k: Either[Throwable, A] => Unit): Unit =
       val log = new Log
       try
         val a = interpret(tx, log)
@@ -315,23 +322,29 @@ object Stm {
    */
   val sim: Stm[Sim.Op] = new Stm[Sim.Op]:
     def atomically[A](tx: A ! Tx): A ! Sim.Op =
-      def attempt: A ! Sim.Op =
+      val e = tx.fit(txPaths)
+      // DEFERRED: a fresh log and the program stepped when the run gets
+      // here, so a failed commit's `attempt` is a new program, no frame
+      def attempt: A ! Sim.Op = defer {
         val log = new Log
-        def step[X](e: Tx[X]): Either[Throwable, X] =
-          try Right(perform(e, log))
+        def step[X](op: Tx[X]): Either[Throwable, X] =
+          try Right(perform(op, log))
           catch case t: Throwable => Left(t)
         def finish(a: A): A ! Sim.Op = if commit(log) then pure(a) else attempt
-        def after[X](outcome: Either[Throwable, X])(next: X => A ! Sim.Op): A ! Sim.Op =
-          outcome match
-            case Right(x) => next(x)
-            case Left(Abort) => attempt
-            case Left(RetryNow) => Sim.sleep(1).flatMap(_ => attempt)
-            case Left(t) => throw t
-        def loop(p: A ! Tx): A ! Sim.Op = (p.resume: @unchecked) match
-          case Return(a) => finish(a)
-          case Inject(e) => Sim.yieldNow.flatMap(_ => after(step(e))(finish))
-          case Bind(Inject(e), k) => Sim.yieldNow.flatMap(_ => after(step(e))(x => loop(k(x))))
-        loop(tx)
+        // the transaction STEPPED (the machine's head): each operation
+        // a scheduling point, then answered against the log
+        def loop(h: Head[TxRow, A]): A ! Sim.Op = h match
+          case Head.Done(a) => finish(a)
+          case p: Head.Paused[?, ?, ?, x, ?, ?, ?, ?, ?] =>
+            In.same(p.in, In.Here[Tx, okay.core.Pure]()) match
+              case null => throw IllegalStateException("Stm.sim: an operation not of Tx, at a row of Tx alone")
+              case same: In.Same[f, Tx] =>
+                Sim.yieldNow.flatMap(_ => step(same(p.op)) match
+                  case Right(x) => loop(p.resume(x))
+                  case Left(Abort) => attempt
+                  case Left(RetryNow) => Sim.sleep(1).flatMap(_ => attempt)
+                  case Left(t) => throw t)
+        loop(Machine.head(e))
+      }
       attempt
 }
-

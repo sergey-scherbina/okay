@@ -1,10 +1,6 @@
 package okay
 
-
-import okay.freer.*
-
-
-import okay.std.*
+import okay.std.{Sim, TRef}
 /** the same transaction code under the deterministic scheduler:
  * every interleaving by seed, the invariant at every one */
 class TestStmSim extends munit.FunSuite {

@@ -1,10 +1,6 @@
 package okay
 
-
-import okay.freer.*
-
-
-import okay.std.*
+import okay.std.TRef
 import scala.concurrent.Future
 
 /**
@@ -75,7 +71,7 @@ class BenchStmCross extends munit.FunSuite:
   private def chain(s: Stm[Async], tx: TRef[Long] => Long ! Tx): Long ! Async =
     val r = TRef(0L)
     def go(i: Long, acc: Long): Long ! Async =
-      if i >= N then okay.freer.pure(acc)
+      if i >= N then pure(acc)
       else s.atomically(tx(r)).flatMap(x => go(i + 1, acc + x))
     go(0L, 0L)
 
@@ -86,7 +82,7 @@ class BenchStmCross extends munit.FunSuite:
   test("bench: control -- the same chain with async(i), no transaction") {
     lane("control") { () =>
       def go(i: Long, acc: Long): Long ! Async =
-        if i >= N then okay.freer.pure(acc)
+        if i >= N then pure(acc)
         else async(i).flatMap(x => go(i + 1, acc + x))
       go(0L, 0L)
     }

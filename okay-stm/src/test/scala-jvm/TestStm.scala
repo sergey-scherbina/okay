@@ -1,13 +1,6 @@
 package okay
 
-
-
-import okay.freer.*
-
-
-
-import okay.std.*
-import okay.freer.given
+import okay.std.TRef
 /** the STM battery on the parking platform (specs/stm.md): atomic
  * transfers under contention, consistent snapshots, retry woken by
  * the right commit, the fast paths */

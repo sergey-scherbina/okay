@@ -1,10 +1,6 @@
 package okay
 
-
-import okay.freer.*
-
-
-import okay.std.*
+import okay.std.TRef
 import okay.given
 
 /** the transaction language behaves the same behind every handler:
