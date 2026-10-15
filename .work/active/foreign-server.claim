@@ -1,0 +1,6 @@
+feature/foreign-server 2026-10-15T13:20:25Z
+agent: claude-code (session 04094c70, okay-ts interop)
+heartbeat: 2026-10-15T13:20:25Z
+status: not-started
+done-so-far:
+next: spec specs/foreign-server.md
