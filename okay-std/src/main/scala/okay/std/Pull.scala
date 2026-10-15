@@ -1,6 +1,6 @@
 package okay.std
 
-import okay.freer.*
+import okay.freer.{!, %, +, Pure}
 
 import okay.{TypeableK}
 

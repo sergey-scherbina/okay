@@ -1,10 +1,7 @@
 package okay.std
 
-import okay.freer.*
-
-import okay.{Effect, TypeableK}
-
-import okay.freer.Row.at
+import okay.{!, %, Effect, Handler, Pure, Within, effect, pure}
+import okay.core.Split
 
 /**
  * ERRORS THAT ACCUMULATE, IN A PROGRAM THAT GOES ON
@@ -31,8 +28,9 @@ import okay.freer.Row.at
  * accumulate), its warnings vanish when the handlers run in the wrong
  * order, and it has no `all`. The spec says so at length.
  *
- * PARAMETERISED, so the derived test is by class only and a row holds
- * one Chronicle. It is class-distinct from Throws, Writer and Maybe.
+ * PARAMETERISED; on the kernel's rows an operation goes to its handler
+ * by its PATH, so two Chronicles in a row are two places (okay-freer's
+ * `Distinct` was the union's). It is distinct from Throws, Writer and Maybe.
  */
 enum Chronicle[E, +A] derives Effect:
   /** record an error and go on */
@@ -61,35 +59,24 @@ object Chronicle:
 
   import Verdict.*
 
-  /** the handler: every recorded error, in order, and whether the
-   * program finished; forwards the effects F */
-  /** the handler as a value: `p.handle(Chronicle.verdict)`, every problem collected beside the answer */
-  def verdict[E]: Handler[Chronicle % E, [A] =>> Verdict[E, A]] = new Handler.Stepped[Chronicle % E, List[E], [A] =>> Verdict[E, A]]:
-    def run[A, F[+_]](p: A ! Chronicle % E + F)(using A <:< Any, Distinct[Chronicle % E + F], Handler.Nothing[F]): Verdict[E, A] ! F =
-      Chronicle.run(p)
-    // the step `run` walks with, exposed for a walk over a stack of handlers (handler-single-pass): a halt
-    // stops with the record
-    def takes: TypeableK[Chronicle % E] = summon[TypeableK[Chronicle % E]]
-    def init: List[E] = Nil
-    def step(errs: List[E], op: Any): (List[E], Any) | Handler.Halt[List[E]] =
-      (op.asInstanceOf[Chronicle[E, Any]]: @unchecked) match
-        case Dictate(err) => (err :: errs, ())
-        case Halt() => Handler.Halt(errs)
-    def ret[A, F[+_]](errs: List[E], a: A): Verdict[E, A] ! F =
-      pure(if errs.isEmpty then Clean(a) else Warned(a, errs.reverse.toVector))
-    override def halted[A, F[+_]](errs: List[E]): Verdict[E, A] ! F = pure(Failed(errs.reverse.toVector))
+  /** the handler as a value: `p.handle(Chronicle.verdict)`, every recorded error, in order, and whether the
+   * program finished. A clause given `k` (the kernel's `Deep`): a dictate resumes the rest once and puts its error in
+   * front of the rest's verdict; a halt drops the rest, `Failed` with nothing after it */
+  def verdict[E]: Handler[Chronicle % E, [A] =>> Verdict[E, A]] =
+    Handler.deep[Chronicle % E, [A] =>> Verdict[E, A]]([A] => (a: A) => Clean(a))(
+      [A, X] => (op: Chronicle[E, X], k: X => Verdict[E, A] ! Pure) => op match
+        case Dictate(err) => k(()).map(recorded(err, _))
+        case Halt() => pure[Verdict[E, A], Pure](Failed(Vector.empty)))
 
-  def run[E, A, F[+_]](p: A ! Chronicle % E + F)(using Distinct[Chronicle % E + F]): Verdict[E, A] ! F = {
-    def verdict[B](errs: List[E], a: B): Verdict[E, B] =
-      if errs.isEmpty then Clean(a) else Warned(a, errs.reverse.toVector)
+  /** `err`, recorded before what the rest came to */
+  private def recorded[E, A](err: E, v: Verdict[E, A]): Verdict[E, A] = v match
+    case Clean(a) => Warned(a, Vector(err))
+    case Warned(a, errs) => Warned(a, err +: errs)
+    case Failed(errs) => Failed(err +: errs)
 
-    // one step, both faces (handler-one-step): a dictate records and resumes, a halt stops with the record
-    HandleFrames.stateRunOr[Chronicle % E, List[E], A, Verdict[E, A], F](summon[TypeableK[Chronicle % E]],
-      (errs, a) => pure(verdict(errs, a)))(
-      (errs, op) => (op.asInstanceOf[Chronicle[E, Any]]: @unchecked) match
-        case Dictate(err) => (err :: errs, ())
-        case Halt() => HandleFrames.Stop(pure(Failed(errs.reverse.toVector))))(Nil, p)
-  }
+  /** every recorded error, in order, and whether the program finished — wherever Chronicle is among the program's
+   * effects: the rest of them forwarded */
+  def run[E, A, Es[_]](p: A ! Es)(using s: Split[Es, Chronicle % E]): Verdict[E, A] ! s.Rest = p.handle(verdict[E])
 
   /**
    * ACCUMULATE ACROSS ELEMENTS (arrow-kt's `mapOrAccumulate`): each
@@ -102,15 +89,16 @@ object Chronicle:
    * happened. The `Verdict` sees the same list in the same order. A
    * forwarded effect sees them after every element's own work.
    */
-  def all[E, X, B, F[+_]](xs: Iterable[X])(f: X => B ! Chronicle % E + F)
-                         (using Distinct[Chronicle % E + F]): Vector[B] ! Chronicle % E + F =
-    val perElement: (Vector[B], Vector[E], Boolean) ! F =
-      okay.freer.!.foldM(xs)((Vector.empty[B], Vector.empty[E], false)): (acc, x) =>
+  def all[E, X, B, Es[_]](xs: Iterable[X])(f: X => B ! Es)
+                         (using s: Split[Es, Chronicle % E], w: Within[s.Rest, Es], c: Within[Chronicle % E, Es])
+                         : Vector[B] ! Es =
+    val perElement: (Vector[B], Vector[E], Boolean) ! s.Rest =
+      foldM[X, (Vector[B], Vector[E], Boolean), s.Rest](xs)((Vector.empty[B], Vector.empty[E], false)): (acc, x) =>
         val (bs, es, halted) = acc
-        run[E, B, F](f(x)).map:
+        run[E, B, Es](f(x))(using s).map:
           case Clean(b) => (bs :+ b, es, halted)
           case Warned(b, more) => (bs :+ b, es ++ more, halted)
           case Failed(more) => (bs, es ++ more, true)
-    perElement.at[Chronicle % E + F].flatMap: (bs, es, halted) =>
-      val told = okay.freer.!.each(es)(e => dictate(e).at[Chronicle % E + F])
-      told.flatMap(_ => if halted then halt[E, Vector[B]].at[Chronicle % E + F] else pure(bs))
+    perElement.at[Es].flatMap: (bs, es, halted) =>
+      val told = foldM[E, Unit, Es](es)(())((_, e) => dictate(e).at[Es])
+      told.flatMap(_ => if halted then halt[E, Vector[B]].at[Es] else pure[Vector[B], Es](bs))

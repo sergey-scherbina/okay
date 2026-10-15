@@ -1,6 +1,6 @@
 package okay.std
 
-import okay.freer.*
+import okay.freer.{!, %, +, At, Instances, Lexical, Shift, pure}
 
 /** State as `Lexical` instances, every strategy (was `Lexical.State`, moved to okay-std with State) */
 object LexicalState:

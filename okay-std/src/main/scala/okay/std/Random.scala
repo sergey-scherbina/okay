@@ -1,8 +1,7 @@
 package okay.std
 
-import okay.freer.*
-
-import okay.{Effect, TypeableK}
+import okay.{!, Effect, Handler, effect}
+import okay.core.Split
 
 
 /**
@@ -35,9 +34,10 @@ object Random:
     require(bound > 0, "bound must be positive")
     nextDouble.map(d => (d * bound).toInt)
 
-  /** the handler over a source of 64-bit draws — the only door to a real one */
+  /** the handler over a source of 64-bit draws — the only door to a real one: each draw answered in place (the
+   * kernel's `Answering`) */
   def at(source: () => Long): Handler[Random, [A] =>> A] =
-    Handler.answerOf[Random]([X] => (e: Random[X]) => e match
+    Handler.answering[Random]([X] => (e: Random[X]) => e match
       case NextLong() => source())
 
   private final val Golden = 0x9E3779B97F4A7C15L
@@ -48,15 +48,12 @@ object Random:
     z = (z ^ (z >>> 27)) * 0x94D049BB133111EBL
     z ^ (z >>> 31)
 
-  /** repeatable draws from `seed` (SplitMix64); the answer carries the next seed */
-  def seeded(seed: Long): Handler[Random, [A] =>> (Long, A)] = new Handler.Stepped[Random, Long, [A] =>> (Long, A)]:
-    def run[A, F[+_]](p: A ! Random + F)(using A <:< Any, Distinct[Random + F], Handler.Nothing[F]): (Long, A) ! F =
-      HandleFrames.stateRun[Random, Long, A, (Long, A), F](summon[TypeableK[Random]], (s, a) => pure((s, a)))(
-        (s, _) => { val s2 = s + Golden; (s2, mix(s2)) })(seed, p)
-    def takes: TypeableK[Random] = summon[TypeableK[Random]]
-    def init: Long = seed
-    def step(s: Long, op: Any): (Long, Any) | Handler.Halt[Long] = { val s2 = s + Golden; (s2, mix(s2)) }
-    def ret[A, F[+_]](s: Long, a: A): (Long, A) ! F = pure((s, a))
+  /** repeatable draws from `seed` (SplitMix64); the answer carries the next seed — a register of the machine (the
+   * kernel's `Stateful`), so a `k` taken past it continues from the seed it was captured with */
+  def seeded(seed: Long): Handler[Random, [A] =>> (Long, A)] =
+    Handler.state[Random, Long](seed)([X] => (s: Long, e: Random[X]) => e match
+      case NextLong() => { val s2 = s + Golden; (s2, mix(s2)) })
 
-  /** repeatable draws from `seed`, forwarding the effects F */
-  def run[A, F[+_]](seed: Long)(p: A ! Random + F)(using Distinct[Random + F]): A ! F = seeded(seed).run(p).map(_._2)
+  /** repeatable draws from `seed`, wherever Random is among the program's effects: the rest of them forwarded */
+  def run[A, Es[_]](seed: Long)(p: A ! Es)(using s: Split[Es, Random]): A ! s.Rest =
+    p.handle(seeded(seed)).map(_._2)

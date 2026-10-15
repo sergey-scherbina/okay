@@ -1,8 +1,8 @@
 package okay.std
 
-import okay.freer.*
-
-import okay.{TypeableK, typeableK}
+import okay.{!, Handler, effect, typeableK}
+import okay.core.{Row, Split}
+import okay.one.handler.{Stateful, Handler as OneHandler}
 
 
 /**
@@ -85,22 +85,37 @@ object Refs:
   inline def write[S](c: Ref[S], s: S): S ! Refs = effect(Write(c, s))
 
   /**
-   * The handler is `State.handle`'s loop over a HEAP: the next free
-   * slot and the slots themselves, threaded rather than mutated, so
-   * the residual program stays re-runnable.
+   * The handler is `State`'s over a HEAP: the next free slot and the
+   * slots themselves, the handler's state — a register of the machine
+   * (the kernel's `Stateful`), immutable, so a `k` taken past it has the
+   * heap as it was then and the residual program stays re-runnable.
    *
    * THE ONE CAST is `slot`: a heap keyed by identity cannot be typed,
    * and every value in it was put there by an operation at the same S
    * as the one now reading it (see the class comment). Isolated here
    * so there is one place to check that claim.
    */
-  def handle[A, F[+_]](p: A ! Refs + F): A ! F =
-    // one step, both faces (handler-one-step): the counter and the heap are the state
-    HandleFrames.stateRun[Refs, (Int, Map[Int, Any]), A, A, F](summon[TypeableK[Refs]], (_, a) => pure(a))(
-      (s, op) => (op.asInstanceOf[Refs[Any]]: @unchecked) match
-        case New(init) => ((s._1 + 1, s._2.updated(s._1, init)), s._1)
-        case Read(c) => (s, s._2(c))
-        case Write(c, v) => ((s._1, s._2.updated(c, v)), v))((0, Map.empty), p)
+  private def heap: Handler[Refs, [A] =>> A] = new Handler[Refs, [A] =>> A]:
+    def kernel[T <: Row, A]: OneHandler[Refs, T, A, A] = new Stateful[Refs, T, Heap, A, A]:
+      def initial: Heap = (0, Map.empty)
+      def ret(h: Heap, a: A) = okay.one.Cont.pure(a)
+      def value[X](h: Heap, op: Refs[X]): X = op match
+        case New(_) => h._1
+        case Read(c) => slot(h, c)
+        case Write(_, v) => v
+      def next[X](h: Heap, op: Refs[X]): Heap = op match
+        case New(init) => (h._1 + 1, h._2.updated(h._1, init))
+        case Read(_) => h
+        case Write(c, v) => (h._1, h._2.updated(c, v))
+
+  /** the next free slot and the slots */
+  private type Heap = (Int, Map[Int, Any])
+
+  /** what `c`'s slot holds, at `c`'s type */
+  private def slot[S](h: Heap, c: Ref[S]): S = h._2(c).asInstanceOf[S]
+
+  /** `p`'s cells, wherever Refs is among its effects: the rest of them forwarded */
+  def handle[A, Es[_]](p: A ! Es)(using s: Split[Es, Refs]): A ! s.Rest = p.handle(heap)
 
   /** run a program that uses cells, and nothing else */
-  inline def run[A](p: A ! Refs): A = !.run(handle[A, Pure](p))
+  inline def run[A](p: A ! Refs): A = handle[A, Refs](p).run

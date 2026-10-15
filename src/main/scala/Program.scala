@@ -108,10 +108,19 @@ object Handler:
    * register of the machine, a `k` taken past it with the state as it was then (the kernel's `Stateful`) */
   def state[E[_], S](s0: S)(step: [X] => (S, E[X]) => (S, X)): Handler[E, [A] =>> (S, A)] = new Handler[E, [A] =>> (S, A)]:
     def kernel[T <: okay.core.Row, A]: OneHandler[E, T, A, (S, A)] = new okay.one.handler.Stateful[E, T, S, A, (S, A)]:
+      // the machine asks `value`, then `next`, of one operation: the step once, kept between the two
+      private var lastOp: AnyRef | Null = null
+      private var lastStep: (S, Any) | Null = null
+      private def stepped[X](s: S, op: E[X]): (S, X) =
+        val l = lastStep
+        if (lastOp eq op.asInstanceOf[AnyRef]) && l != null then
+          lastOp = null; lastStep = null; l.asInstanceOf[(S, X)]
+        else
+          val r = step(s, op); lastOp = op.asInstanceOf[AnyRef]; lastStep = r; r
       def initial = s0
       def ret(s: S, a: A) = okay.one.Cont.pure((s, a))
-      def value[X](s: S, op: E[X]): X = step(s, op)._2
-      def next[X](s: S, op: E[X]): S = step(s, op)._1
+      def value[X](s: S, op: E[X]): X = stepped(s, op)._2
+      def next[X](s: S, op: E[X]): S = stepped(s, op)._1
   /** a clause given `k`, the rest under the handler — dropped, resumed, resumed again (the kernel's `Deep`); its
    * programs need nothing but the rest of the row */
   def deep[E[_], O[_]](ret0: [A] => A => O[A])(clause: [A, X] => (E[X], X => O[A] ! Pure) => O[A] ! Pure): Handler[E, O] =

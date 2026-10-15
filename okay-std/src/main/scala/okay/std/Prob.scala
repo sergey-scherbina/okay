@@ -1,12 +1,7 @@
 package okay.std
 
-import okay.freer.*
-import okay.freer.given
-
-import okay.{Effect}
-
-
-import scala.annotation.tailrec
+import okay.{!, Effect, Handler, Pure, effect, pure}
+import okay.core.Split
 
 /**
  * PROBABILISTIC PROGRAMMING AS AN EFFECT — the Hansei design (Kiselyov
@@ -19,7 +14,7 @@ import scala.annotation.tailrec
  *
  * `runExact` is the showcase this earns its keep for: it explores
  * EVERY branch by MULTI-SHOT capture, invoking the delimited
- * continuation once per alternative — exactly what `Effects.handle`
+ * continuation once per alternative — exactly what the kernel's `Deep`
  * already gives `runChoice` for free, and exactly what a ONE-SHOT
  * effect runtime cannot do at all (docs/benchmarks.md's kyo/cats
  * measurements are lanes that could not host this handler, not lanes
@@ -63,28 +58,28 @@ object Prob:
     b.foldLeft(a) { case (m, (k, w)) => m.updated(k, m.getOrElse(k, 0.0) + w) }
 
   /**
-   * EXACT INFERENCE: every branch, weighted, forwarding the effects
-   * F. Answers the JOINT weight of every value the program can reach
-   * — `Return(a)` alone is weight 1 for `a`; a `Dist` multiplies each
-   * branch's own weight into whatever the rest of the program (from
-   * that branch onward) answers. `.posterior` normalizes the result
-   * to sum to 1 — the Bayesian conditioning `observe` sets up.
+   * EXACT INFERENCE: every branch, weighted, wherever Dist is among the
+   * program's effects, the rest of them forwarded. Answers the JOINT
+   * weight of every value the program can reach — a value alone is
+   * weight 1 for it; a `Dist` multiplies each branch's own weight into
+   * whatever the rest of the program (from that branch onward) answers.
+   * `.posterior` normalizes the result to sum to 1 — the Bayesian
+   * conditioning `observe` sets up.
    *
    * Multi-shot: `k` is invoked once per alternative in `choices`,
    * each invocation a FRESH continuation — the defining property
    * `Choose`'s own comment names, priced the same way here.
    */
-  /** the handler as a value: `p.handle(Prob.exact)`, the exact posterior by exhaustive multi-shot */
-  def exact: Handler[Dist, [A] =>> Map[A, Double]] = new Handler[Dist, [A] =>> Map[A, Double]]:
-    def run[A, F[+_]](p: A ! Dist + F)(using A <:< Any, Distinct[Dist + F], Handler.Nothing[F]): Map[A, Double] ! F = runExact(p)
-
-  def runExact[A, F[+_]](p: A ! Dist + F): Map[A, Double] ! F =
-    val E = Classic[Free]
-    E.handle[Dist, F](p)(a => pure[F, Map[A, Double]](Map(a -> 1.0))):
-      [X] => (c: Dist[X]) => E.control.shift: k =>
-        okay.freer.!.foldM(c.choices)(Map.empty[A, Double]): (m, choice) =>
+  /** the handler as a value: `p.handle(Prob.exact)`, the exact posterior by exhaustive multi-shot (the kernel's
+   * `Deep`) */
+  def exact: Handler[Dist, [A] =>> Map[A, Double]] =
+    Handler.deep[Dist, [A] =>> Map[A, Double]]([A] => (a: A) => Map(a -> 1.0))(
+      [A, X] => (c: Dist[X], k: X => Map[A, Double] ! Pure) =>
+        foldM[(X, Double), Map[A, Double], Pure](c.choices)(Map.empty[A, Double]): (m, choice) =>
           val (x, w) = choice
-          k(x).map(sub => merge(m, sub.view.mapValues(_ * w).toMap))
+          k(x).map(sub => merge(m, sub.view.mapValues(_ * w).toMap)))
+
+  def runExact[A, Es[_]](p: A ! Es)(using s: Split[Es, Dist]): Map[A, Double] ! s.Rest = p.handle(exact)
 
   extension [A](m: Map[A, Double])
     /** the posterior: weights normalized to sum to 1 (empty if every
@@ -94,12 +89,11 @@ object Prob:
       if total == 0.0 then m else m.view.mapValues(_ / total).toMap
 
   /**
-   * ONE SAMPLE, drawn by weight at each `dist` — a single-shot,
-   * comonadic walk (no capture, no `Effects.handle`: the SAME bespoke
-   * resume-loop shape `State.handle`/`Once.run` use, because a
-   * program that may FAIL (an empty `Dist`, from a failed `observe`)
-   * has no answer to give the ordinary `Return` case). `None` is a
-   * rejected run.
+   * ONE SAMPLE, drawn by weight at each `dist` — a single-shot walk:
+   * a clause given `k` (the kernel's `Deep`) resumes it at most once,
+   * with the value drawn, and drops it where there is nothing to draw
+   * (an empty `Dist`, from a failed `observe`), since such a program has
+   * no value to answer with. `None` is a rejected run.
    */
   def sampleOnce[A](p: A ! Dist)(using rng: scala.util.Random): Option[A] =
     def pick[X](choices: Seq[(X, Double)]): Option[X] =
@@ -109,20 +103,16 @@ object Prob:
         val r = rng.nextDouble() * total
         var acc = 0.0
         choices.find { case (_, w) => acc += w; acc >= r }.map(_._1)
-    @tailrec def loop(x: A ! Dist): Option[A] = (x.resume: @unchecked) match
-      case Free.Return(a) => Some(a)
-      case Free.Inject(c: Dist[A]) => pick(c.choices)
-      case Free.Bind(Free.Inject(c: Dist[x]), k) =>
-        pick(c.choices) match
-          case None => None
-          case Some(v) => loop(k(v))
-    loop(p)
+    p.handle(Handler.deep[Dist, Option]([B] => (b: B) => Some(b))(
+      [B, X] => (c: Dist[X], k: X => Option[B] ! Pure) => pick(c.choices) match
+        case None => pure[Option[B], Pure](None)
+        case Some(v) => k(v))).run
 
   /**
    * REJECTION SAMPLING: draw `n` runs, keep the ones that survive
    * every `observe`, answer their empirical frequencies. The other
-   * reading of the SAME program `runExact` reads exhaustively — no
-   * capture here at all, which is the point of naming both: exact
+   * reading of the SAME program `runExact` reads exhaustively — each
+   * `k` resumed once at most, which is the point of naming both: exact
    * inference is multi-shot because it must see every branch,
    * rejection sampling is single-shot because it only ever needs one.
    *

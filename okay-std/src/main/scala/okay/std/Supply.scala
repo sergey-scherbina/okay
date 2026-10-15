@@ -1,8 +1,8 @@
 package okay.std
 
-import okay.freer.*
-
-import okay.{Effect, TypeableK}
+import okay.{!, %, Effect, Handler, effect}
+import okay.core.{Row, Split}
+import okay.one.handler.{Stateful, Handler as OneHandler}
 
 
 /**
@@ -11,14 +11,15 @@ import okay.{Effect, TypeableK}
  * `Fresh` effect of fused-effects and polysemy.
  *
  *     val three = for a <- Fresh.next; b <- Fresh.next; c <- Fresh.next yield List(a, b, c)
- *     !.run(Fresh.run(three))   // List(0, 1, 2)
+ *     Fresh.run(three).run   // List(0, 1, 2)
  *
  * `State % Long` with `modify(_ + 1)` does the same and exposes `set`
  * to code that should only ever DRAW. A supply has one operation, so
  * the code drawing from it cannot rewind it.
  *
- * PARAMETERISED, so the derived test is by class only and a row may
- * hold one Supply (`Distinct` says so at compile time; `Tag` names two).
+ * PARAMETERISED; on the kernel's rows an operation goes to its handler
+ * by its PATH, so two supplies in a row are two places, each draw going
+ * to its own handler (okay-freer's `Distinct` was the union's).
  */
 enum Supply[S, +A] derives Effect:
   /** the next value */
@@ -33,18 +34,18 @@ object Fresh:
   /** a fresh number */
   inline def next: Long ! Fresh = Supply.next[Long]
 
-  /** the handler as a value: `p.handle(Fresh.counter)` — fresh numbers from 0 */
-  def counter: Handler[Fresh, [A] =>> A] = new Handler.Stepped[Fresh, Long, [A] =>> A]:
-    def run[A, F[+_]](p: A ! Fresh + F)(using A <:< Any, Distinct[Fresh + F], Handler.Nothing[F]): A ! F = Fresh.run(p)
-    // the step `run` walks with, exposed for a walk over a stack of handlers (handler-single-pass)
-    def takes: TypeableK[Fresh] = summon[TypeableK[Fresh]]
-    def init: Long = 0L
-    def step(n: Long, op: Any): (Long, Any) | Handler.Halt[Long] = (n + 1, n)
-    def ret[A, F[+_]](n: Long, a: A): A ! F = pure(a)
+  /** the handler as a value: `p.handle(Fresh.counter)` — fresh numbers from 0, the next one a register of the
+   * machine (the kernel's `Stateful`), the answer the body's value */
+  def counter: Handler[Fresh, [A] =>> A] = new Handler[Fresh, [A] =>> A]:
+    def kernel[T <: Row, A]: OneHandler[Fresh, T, A, A] = new Stateful[Fresh, T, Long, A, A]:
+      def initial: Long = 0L
+      def ret(n: Long, a: A) = okay.one.Cont.pure(a)
+      def value[X](n: Long, op: Supply[Long, X]): X = op match
+        case Supply.Next() => n
+      def next[X](n: Long, op: Supply[Long, X]): Long = n + 1
 
-  /** handle Fresh from 0, forwarding the effects F */
-  def run[A, F[+_]](p: A ! Fresh + F)(using Distinct[Fresh + F]): A ! F =
-    Supply.run(0L)(_ + 1)(p).map(_._2)
+  /** handle Fresh from 0, wherever it is among the program's effects: the rest of them forwarded */
+  def run[A, Es[_]](p: A ! Es)(using s: Split[Es, Fresh]): A ! s.Rest = p.handle(counter)
 
 object Supply:
   /** draw the next value */
@@ -55,25 +56,18 @@ object Supply:
    * of the one before; the answer carries the next UNDRAWN value, so a
    * later supply can continue where this one stopped.
    *
-   * The seed is threaded through the loop, as State's is, not kept in a
+   * The seed is the handler's state, as State's is, not kept in a
    * mutable cell: the residual program stays re-runnable, and under a
    * multi-shot handler (Choose) each branch continues from the seed it
    * was captured with (single-shot-row priced a cell in 2026-09 and
    * refuted it).
    */
-  /** the handler as a value: `p.handle(Supply.from(first)(step))`, answering the next supply and `A` */
-  def from[S](first: S)(next: S => S): Handler[Supply % S, [A] =>> (S, A)] = new Handler.Stepped[Supply % S, S, [A] =>> (S, A)]:
-    def run[A, F[+_]](p: A ! Supply % S + F)(using A <:< Any, Distinct[Supply % S + F], Handler.Nothing[F]): (S, A) ! F =
-      Supply.run(first)(next)(p)
-    // the step `run` walks with, exposed for a walk over a stack of handlers (handler-single-pass)
-    def takes: TypeableK[Supply % S] = summon[TypeableK[Supply % S]]
-    def init: S = first
-    def step(s: S, op: Any): (S, Any) | Handler.Halt[S] = (next(s), s)
-    def ret[A, F[+_]](s: S, a: A): (S, A) ! F = pure((s, a))
+  /** the handler as a value: `p.handle(Supply.from(first)(step))`, answering the next supply and `A` (the kernel's
+   * `Stateful`) */
+  def from[S](first: S)(next: S => S): Handler[Supply % S, [A] =>> (S, A)] =
+    Handler.state[Supply % S, S](first)([X] => (s: S, op: Supply[S, X]) => op match
+      case Next() => (next(s), s))
 
-  def run[S](first: S)(step: S => S)[A, F[+_]](p: A ! Supply % S + F)
-            (using Distinct[Supply % S + F]): (S, A) ! F = {
-    // one step, both faces (handler-one-step): `Next` answers the state and steps it
-    HandleFrames.stateRun[Supply % S, S, A, (S, A), F](summon[TypeableK[Supply % S]], (s, a) => pure((s, a)))(
-      (s, _) => (step(s), s))(first, p)
-  }
+  /** `p`'s draws from `first`, wherever Supply is among its effects: the rest of them forwarded */
+  def run[S](first: S)(step: S => S)[A, Es[_]](p: A ! Es)(using sp: Split[Es, Supply % S]): (S, A) ! sp.Rest =
+    p.handle(from(first)(step))

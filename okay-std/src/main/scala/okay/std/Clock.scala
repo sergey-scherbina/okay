@@ -1,8 +1,7 @@
 package okay.std
 
-import okay.freer.*
-
-import okay.{Effect, TypeableK}
+import okay.{!, Effect, Handler, effect}
+import okay.core.Split
 
 
 /**
@@ -27,23 +26,20 @@ object Clock:
   /** the time, in milliseconds since the epoch */
   inline def now: Long ! Clock = effect(Now())
 
-  /** the handler over a source of milliseconds — the only door to a real clock */
+  /** the handler over a source of milliseconds — the only door to a real clock: each reading answered in place (the
+   * kernel's `Answering`) */
   def at(source: () => Long): Handler[Clock, [A] =>> A] =
-    Handler.answerOf[Clock]([X] => (e: Clock[X]) => e match
+    Handler.answering[Clock]([X] => (e: Clock[X]) => e match
       case Now() => source())
 
   /** every reading is `millis`: a test's clock */
   def fixed(millis: Long): Handler[Clock, [A] =>> A] = at(() => millis)
 
-  /** readings `first`, `first + increment`, …: a test's clock that moves */
-  def ticking(first: Long, increment: Long): Handler[Clock, [A] =>> (Long, A)] = new Handler.Stepped[Clock, Long, [A] =>> (Long, A)]:
-    def run[A, F[+_]](p: A ! Clock + F)(using A <:< Any, Distinct[Clock + F], Handler.Nothing[F]): (Long, A) ! F =
-      HandleFrames.stateRun[Clock, Long, A, (Long, A), F](summon[TypeableK[Clock]], (s, a) => pure((s, a)))(
-        (s, _) => (s + increment, s))(first, p)
-    def takes: TypeableK[Clock] = summon[TypeableK[Clock]]
-    def init: Long = first
-    def step(s: Long, op: Any): (Long, Any) | Handler.Halt[Long] = (s + increment, s)
-    def ret[A, F[+_]](s: Long, a: A): (Long, A) ! F = pure((s, a))
+  /** readings `first`, `first + increment`, …: a test's clock that moves — the next reading a register of the
+   * machine (the kernel's `Stateful`), the answer carrying it */
+  def ticking(first: Long, increment: Long): Handler[Clock, [A] =>> (Long, A)] =
+    Handler.state[Clock, Long](first)([X] => (s: Long, e: Clock[X]) => e match
+      case Now() => (s + increment, s))
 
-  /** answer every `now` with `millis`, forwarding the effects F */
-  def run[A, F[+_]](millis: Long)(p: A ! Clock + F)(using Distinct[Clock + F]): A ! F = fixed(millis).run(p)
+  /** answer every `now` with `millis`, wherever Clock is among the program's effects: the rest of them forwarded */
+  def run[A, Es[_]](millis: Long)(p: A ! Es)(using s: Split[Es, Clock]): A ! s.Rest = p.handle(fixed(millis))

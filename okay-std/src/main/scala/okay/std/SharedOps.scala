@@ -1,13 +1,13 @@
 package okay.std
 
-import okay.freer.*
-
+import okay.{!, %, effect}
+import okay.freer.Freer
 
 
 /**
  * The shared nodes of the fieldless operations (specs/effect-op-cost.md):
- * every `State.get` is this one `Inject(Get())`, every `Reader.ask` this
- * one `Inject(Ask())`, instead of a fresh pair per call.
+ * one program of `Get()`, one of `Ask()`, shared, instead of a fresh one
+ * per call; `getT`, the threaded road's read, one node of the indexed tree.
  *
  * They live HERE and not in `State` / `Reader`: a `val` initialised with
  * an expression makes its module's initialisation impure to the inliner,
