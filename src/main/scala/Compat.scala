@@ -15,6 +15,23 @@ object ! :
   def widen[A, F[_], G[_]](p: A ! F): A ! F + G = p.at[F + G]
   /** `tailRecM` for programs: from `s`, a `Left` goes on, a `Right` answers; each turn deferred */
   def loop[S, A, Es[_]](s: S)(f: S => (Either[S, A] ! Es)): A ! Es = Programs.tailRecM[Es].tailRecM(s)(f)
+  /** a fold that performs, built right-nested — each step's continuation builds the next, nothing rotated; indexed
+   * and flat; `f` runs when the program does. Stack-safe: the recursion is in the binds' continuations */
+  def foldM[X, B, Es[_]](xs: Iterable[X])(z: B)(f: (B, X) => B ! Es): B ! Es =
+    val v = scala.collection.immutable.ArraySeq.untagged.from(xs)
+    val n = v.length
+    def go(i: Int, acc: B): B ! Es =
+      if i >= n then okay.pure[B, Es](acc) else Run.flatMap(f(acc, v(i)))(y => go(i + 1, y))(using Join.same[Es])
+    defer(go(0, z))
+  /** a fold whose step is ONE bind: each element's program, its answer combined into the accumulator purely */
+  def foldEach[X, A, B, Es[_]](xs: Iterable[X])(z: B)(f: X => A ! Es)(combine: (B, A) => B): B ! Es =
+    val v = scala.collection.immutable.ArraySeq.untagged.from(xs)
+    val n = v.length
+    def go(i: Int, acc: B): B ! Es =
+      if i >= n then okay.pure[B, Es](acc) else Run.flatMap(f(v(i)))(a => go(i + 1, combine(acc, a)))(using Join.same[Es])
+    defer(go(0, z))
+  /** `f` on each element, in order, for its effects */
+  def each[X, Es[_]](xs: Iterable[X])(f: X => Unit ! Es): Unit ! Es = foldM[X, Unit, Es](xs)(())((_, x) => f(x))
   /** `F` translated into the rest `G` (`p.translateInto`) */
   def translate[A, F[_], G[_]](p: A ! F + G)(h: [X] => F[X] => X ! G): A ! G = p.translateInto[F, G](h)
   /** `F` translated into `G` beside the rest `H` */
