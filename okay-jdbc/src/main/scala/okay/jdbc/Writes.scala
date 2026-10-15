@@ -1,8 +1,8 @@
 package okay.jdbc
 
 import okay.{Async, async}
-import okay.freer.{!}
-import okay.std.{Chunk}
+import okay.{!, +, %}
+import okay.std.{Chunk, Writer}
 import okay.codec.Schema
 import okay.persist.{Ack, Topic, Typed}
 import okay.sql.{Sql, SqlValue}
@@ -56,7 +56,7 @@ final class Writes(db: Sql, topic: Topic, run: String):
     def again(rest: List[Rec.Intent], acc: Vector[Recovered]): Vector[Recovered] ! Async = resolve(rest, acc)
     @tailrec def resolve(rest: List[Rec.Intent], acc: Vector[Recovered]): Vector[Recovered] ! Async =
       rest match
-        case Nil => okay.freer.pure(acc)
+        case Nil => okay.pure(acc)
         case i :: tail => policy(i.key) match
           case Policy.WithKey =>
             // the SAME statement, the SAME key: their constraint
@@ -106,8 +106,7 @@ final class Writes(db: Sql, topic: Topic, run: String):
     intents
 
   private def countRows(p: okay.Source[Chunk[Vector[SqlValue]]]): Long ! Async =
-    given okay.freer.Fold[Chunk[Vector[SqlValue]], Long] = okay.freer.Fold(0L)((n, c) => n + c.length)
-    okay.std.Writer.fold[Chunk[Vector[SqlValue]], Long, Unit, Async](p).map(_._1)
+    Writer.loopWith[Chunk[Vector[SqlValue]], Long, Unit, Long, Writer % Chunk[Vector[SqlValue]] + Async](p)(0L)((n, c) => n + c.length)((n, _) => n)
 
 object Writes:
 

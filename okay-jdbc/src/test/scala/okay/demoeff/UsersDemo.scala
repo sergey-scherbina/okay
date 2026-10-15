@@ -23,11 +23,9 @@ package okay.demoeff
 
 
 import okay.{Answers, Effect, tracing}
-import okay.freer.*
+import okay.*
 import okay.std.*
-import okay.freer.given
 import java.sql.{Connection, DriverManager}
-import okay.freer.Row.plus
 import okay.Direct.{direct, given}
 import scala.language.implicitConversions
 
@@ -84,8 +82,8 @@ object UsersDemo:
    */
   def rename(id: Long, to: String): Option[String] ! Users = runOption {
     for
-      case Some(old) <- Users.find(id).plus[Abort]
-      _              <- Users.save(id, to).plus[Abort]
+      case Some(old) <- Users.find(id).at[Users + Abort]
+      _              <- Users.save(id, to).at[Users + Abort]
     yield old
   }
 
@@ -230,28 +228,27 @@ object UsersDemo:
    * recording happens BEFORE interpretation, so the log holds what
    * the PROGRAM asked, not what the store did about it.
    *
-   * `!.interpret` is `translate` with the widening done for it — the
-   * target row is bigger than the source's, and F, whatever the
-   * caller was already doing, rides through untouched. Inside,
-   * `.plus[F]` puts each step in that row: the constructors build at
-   * `State % S`, and the branch has to answer in `State % S + F`.
+   * `translate` puts each operation's program in place of the
+   * operation: the branch answers in `State % S` alone, and F,
+   * whatever the caller was already doing, rides through untouched.
    */
-  def stored[A, S : Store as S, F[+_]](prog: A ! Users + F): A ! State % S + F =
-    !.interpret(prog):
+  def stored[A, S : Store as S, F[_]](prog: A ! Users + F): A ! State % S + F =
+    prog.translate[Users, State % S]:
       [X] => (e: Users[X]) => e match
         case Users.Find(id) =>
-          State.get[S].plus[F].map(S.get(id))
+          State.get[S].map(S.get(id))
         case Users.Save(id, name) =>
           // NOT `modify`: `Save` answers the name that WAS there, and
           // the write destroys it. `update` is the transition that
           // answers something the write is about to destroy, and
           // `Store.replace` is the read-then-write in the order that
           // makes that answer true.
-          State.update[S, X](S.replace(id, name)).plus[F]
+          State.update[S, X](S.replace(id, name))
 
-  def tracked[A, S : Store, F[+_]](prog: A ! Users + F): A ! Tracked[S] + F =
+  def tracked[A, S : Store, F[_]](prog: A ! Users + F): A ! Tracked[S] + F =
     stored[A, S, Writer % String + F](
-      Writer.tracing(prog)([X] => (e: Users[X]) => e.toString))
+      Writer.tracing[A, Users, String, Users + F](prog)([X] => (e: Users[X]) => e.toString)
+        .at[Users + (Writer % String + F)]).at[Tracked[S] + F]
 
   private def nameOf(c: Connection, id: Long): String =
     val rs = c.createStatement().executeQuery(s"select name from users where id = $id")
@@ -291,8 +288,8 @@ object UsersDemo:
       // neither it nor the program knows which one it got.
       def pureRun[S : Store](init: S): (S, (Seq[String], Option[String])) =
         State.run[S, (Seq[String], Option[String])](init)(
-          Writer.run[String, Option[String], State % S](
-            tracked[Option[String], S, Pure](rename(7L, "grace"))))
+          Writer.run[String, Option[String], Tracked[S] + Pure](
+            tracked[Option[String], S, Pure](rename(7L, "grace").at[Users + Pure])).at[State % S])
       val (store, (told, answer)) = pureRun(Map(7L -> "ada"))
       println(s"PURE  $answer / log=${told.mkString(", ")} / store=$store")
       val (vecStore, (vecTold, vecAnswer)) = pureRun(Vector(7L -> "ada"))

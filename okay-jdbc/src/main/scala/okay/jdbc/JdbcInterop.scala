@@ -2,8 +2,8 @@ package okay.jdbc
 
 import okay.{Async, async, Source}
 
-import okay.freer.{+, %}
-import okay.freer.{!, effect}
+import okay.{+, %}
+import okay.{!, effect}
 import okay.std.{Chunk, Writer}
 import java.sql.{Connection, DriverManager, PreparedStatement, ResultSet}
 
@@ -41,20 +41,20 @@ object JdbcInterop {
       buf.take(i)
 
     def go(rs: ResultSet, st: java.sql.Statement): Source[Chunk[A]] =
-      effect[F, Chunk[A]](Async.Run(() => readChunk(rs))).flatMap { c =>
+      effect(Async.Run(() => readChunk(rs))).at[F].flatMap { c =>
         if c.length < fetchSize then
-          effect[F, Unit](Async.Run { () => rs.close(); st.close() }).flatMap { _ =>
-            if c.isEmpty then okay.freer.pure(())
-            else effect[F, Unit](Writer(c))
+          effect(Async.Run { () => rs.close(); st.close() }).at[F].flatMap { _ =>
+            if c.isEmpty then okay.pure(())
+            else effect(Writer(c)).at[F]
           }
-        else effect[F, Unit](Writer(c)).flatMap(_ => go(rs, st))
+        else effect(Writer(c)).at[F].flatMap(_ => go(rs, st))
       }
 
-    effect[F, (ResultSet, java.sql.Statement)](Async.Run { () =>
+    effect(Async.Run { () =>
       val st = conn.createStatement()
       st.setFetchSize(fetchSize)
       (st.executeQuery(sql), st)
-    }).flatMap(go)
+    }).at[F].flatMap(go)
 
   /** one chunk, one batch: bind each row, execute, count updates */
   def batch[A](conn: Connection, sql: String)(bind: (PreparedStatement, A) => Unit)

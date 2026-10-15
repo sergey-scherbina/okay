@@ -1,10 +1,11 @@
 package okay.jdbc
 
-import okay.{Async, Source}
-import okay.freer.{!}
+import scala.language.implicitConversions
+
+import okay.{Async, Pure, Source}
+import okay.{!}
 import okay.std.{Chunk, Resource}
 import okay.given
-import okay.freer.given
 import okay.codec.Schema
 import okay.sql.{Granted, Isolation, Sql, SqlType, SqlValue, Typed}
 import okay.sql.given
@@ -33,7 +34,7 @@ class TestPgJdbc extends munit.FunSuite {
     try f(JdbcSql(conn))
     finally conn.close()
 
-  def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](prog))
+  def run[A](prog: A ! Async): A = !.run(Async.run(prog))
 
   def drain[A](p: Source[Chunk[A]]): Vector[A] ! Async = Source.concat(p)
 
@@ -47,14 +48,14 @@ class TestPgJdbc extends munit.FunSuite {
     withDb { db =>
       run(db.update("drop table if exists jdbc_tag", Vector.empty)): Unit
       run(db.update("create table jdbc_tag(n int not null)", Vector.empty)): Unit
-      val prog = Typed.transact[Long, Async](db, Isolation.ReadCommitted) { _ =>
+      val prog = Typed.transact[Long, Pure](db, Isolation.ReadCommitted) { _ =>
         !.widen[Long, Async, Resource](db.update("insert into jdbc_tag values (1)", Vector.empty))
           .flatMap(_ => !.widen[Long, Async, Resource](okay.async {
             try run(db.update("select syntax error from", Vector.empty))
             catch { case _: SQLException => 0L }
           }))
       }
-      val committed = try { run(Resource.run[Long, Async](prog)): Unit; true } catch { case _: SQLException => false }
+      val committed = try { run(Resource.run(prog)): Unit; true } catch { case _: SQLException => false }
       val rows = count(db, "select count(*) from jdbc_tag")
       assert(!committed || rows == 1L, "commit reported success and the row is absent: the rollback that does not roll back")
       assertEquals(rows, 0L)
@@ -98,9 +99,9 @@ class TestPgJdbc extends munit.FunSuite {
       val da = JdbcSql(a); val dbb = JdbcSql(b)
       run(da.update("drop table if exists jdbc_ssi0", Vector.empty)): Unit
       run(da.update("create table jdbc_ssi0(k int not null)", Vector.empty)): Unit
-      val e = intercept[SQLException](run(Resource.run[Long, Async](Typed.transact[Long, Async](dbb, Isolation.Serializable) { _ =>
+      val e = intercept[SQLException](run(Resource.run(Typed.transact[Long, Pure](dbb, Isolation.Serializable) { _ =>
         !.widen[Long, Async, Resource](okay.async(count(dbb, "select count(*) from jdbc_ssi0")).flatMap { _ =>
-          run(Resource.run[Long, Async](Typed.transact[Long, Async](da, Isolation.Serializable) { _ =>
+          run(Resource.run(Typed.transact[Long, Pure](da, Isolation.Serializable) { _ =>
             !.widen[Long, Async, Resource](okay.async(count(da, "select count(*) from jdbc_ssi0"))
               .flatMap(_ => da.update("insert into jdbc_ssi0 values (1)", Vector.empty)))
           })): Unit
@@ -108,7 +109,7 @@ class TestPgJdbc extends munit.FunSuite {
         })
       })))
       assertEquals(dbb.sqlState(e), Some("40001"), e.getMessage)
-      assertEquals(run(Resource.run[Granted, Async](Typed.transact[Granted, Async](dbb)(g => okay.freer.pure(g)))).granted, Isolation.ReadCommitted)
+      assertEquals(run(Resource.run(Typed.transact[Granted, Pure](dbb)(g => okay.pure(g)))).granted, Isolation.ReadCommitted)
     finally { a.close(); b.close() }
   }
 
@@ -119,7 +120,7 @@ class TestPgJdbc extends munit.FunSuite {
       val da = JdbcSql(a); val dbb = JdbcSql(b)
       run(da.update("drop table if exists jdbc_ssi", Vector.empty)): Unit
       run(da.update("create table jdbc_ssi(k int not null)", Vector.empty)): Unit
-      def aWrites(): Unit = run(Resource.run[Long, Async](Typed.transact[Long, Async](da, Isolation.Serializable) { _ =>
+      def aWrites(): Unit = run(Resource.run(Typed.transact[Long, Pure](da, Isolation.Serializable) { _ =>
         !.widen[Long, Async, Resource](okay.async(count(da, "select count(*) from jdbc_ssi"))
           .flatMap(_ => da.update("insert into jdbc_ssi values (1)", Vector.empty)))
       })): Unit

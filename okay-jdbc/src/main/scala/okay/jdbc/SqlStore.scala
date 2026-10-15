@@ -1,10 +1,9 @@
 package okay.jdbc
 
 import okay.Async
-import okay.freer.{!}
+import okay.{!}
 import okay.std.{Chunk}
 import okay.given
-import okay.freer.given
 import okay.persist.{Ack, Policy, Record, Store, Topic}
 import okay.sql.{Sql, SqlValue}
 
@@ -102,7 +101,7 @@ final class SqlStore(db: Sql, prefix: String = "okay_persist") extends Store:
 
   // ── plumbing ───────────────────────────────────────────────────
 
-  private def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](prog))
+  private def run[A](prog: A ! Async): A = !.run(Async.run[A, Async](prog))
 
   private def drain(p: okay.Source[Chunk[Vector[SqlValue]]])
   : Vector[Vector[SqlValue]] = run(okay.Source.concat(p))

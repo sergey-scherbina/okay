@@ -1,12 +1,13 @@
 package okay.jdbc
 
-import okay.{Async, Source}
+import scala.language.implicitConversions
 
-import okay.freer.{+, %}
-import okay.freer.{!, effect}
+import okay.{Async, Pure, Source}
+
+import okay.{+, %}
+import okay.{!, effect}
 import okay.std.{Chunk, Resource, Stream, Throws, Writer}
 import okay.given
-import okay.freer.given
 import okay.std.given
 import okay.codec.Schema
 import okay.sql.{Bad, Granted, Isolation, Sql, SqlType, SqlValue, Typed}
@@ -79,7 +80,7 @@ class TestTyped extends munit.FunSuite {
     try f(JdbcSql(conn))
     finally conn.close()
 
-  def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](prog))
+  def run[A](prog: A ! Async): A = !.run(Async.run(prog))
 
   /** drain the effectful chunked stream into a list of chunks */
   def collectChunks[A](s: Source[Chunk[A]]): List[Chunk[A]] =
@@ -226,11 +227,11 @@ class TestTyped extends munit.FunSuite {
     val conn = DriverManager.getConnection(url, "app", "app")
     try
       val db = JdbcSql(conn)
-      val prog = Typed.transact[Long, Async](db, Isolation.ReadCommitted) { _ =>
+      val prog = Typed.transact[Long, Pure](db, Isolation.ReadCommitted) { _ =>
         !.widen[Long, Async, Resource](
           db.update("insert into customer(id, user_name, balance, active) values (20, 'tx', 1.0, true)"))
       }
-      val n = !.run(Async.run[Long, okay.freer.Pure](Resource.run[Long, Async](prog)))
+      val n = !.run(Async.run(Resource.run(prog)))
       assertEquals(n, 1L)
       assert(conn.getAutoCommit, "autocommit not restored after commit")
       assertEquals(countBy(db, "id = 20"), 1L)
@@ -243,11 +244,11 @@ class TestTyped extends munit.FunSuite {
     try
       val db = JdbcSql(conn)
       val h = Typed.Db(db)                        // Db[Tx.No]
-      val prog = Typed.region[Long, Async](h) { tx =>
+      val prog = Typed.region[Long, Pure](h) { tx =>
         !.widen[Long, Async, Resource](
           tx.update("insert into customer(id, user_name, balance, active) values (22, 'typed', 1.0, true)"))
       }
-      val n = !.run(Async.run[Long, okay.freer.Pure](Resource.run[Long, Async](prog)))
+      val n = !.run(Async.run(Resource.run(prog)))
       assertEquals(n, 1L)
       assertEquals(countBy(db, "id = 22"), 1L)
       assertEquals(run(db.update("delete from customer where id = 22")), 1L)
@@ -257,9 +258,9 @@ class TestTyped extends munit.FunSuite {
       // and region demands Db[Tx.No]
       val errors = compileErrors(
         "val h2: Typed.Db[Typed.Tx.No] = null.asInstanceOf[Typed.Db[Typed.Tx.No]]\n" +
-        "Typed.region[Long, okay.Async](h2) { tx =>\n" +
-        "  Typed.region[Long, okay.Async](tx)(inner =>\n" +
-        "    okay.freer.!.widen[Long, okay.Async, okay.std.Resource](tx.update(\"select 1\")))\n" +
+        "Typed.region[Long, okay.Pure](h2) { tx =>\n" +
+        "  Typed.region[Long, okay.Pure](tx)(inner =>\n" +
+        "    okay.!.widen[Long, okay.Async, okay.std.Resource](tx.update(\"select 1\")))\n" +
         "}")
       assert(errors.contains("Found:") && errors.contains("Tx.Yes"), errors)
     finally conn.close()
@@ -269,13 +270,13 @@ class TestTyped extends munit.FunSuite {
     val conn = DriverManager.getConnection(url, "app", "app")
     try
       val db = JdbcSql(conn)
-      val prog = Typed.transact[Long, Async](db, Isolation.ReadCommitted) { _ =>
+      val prog = Typed.transact[Long, Pure](db, Isolation.ReadCommitted) { _ =>
         !.widen[Long, Async, Resource](
           db.update("insert into customer(id, user_name, balance, active) values (21, 'boom', 1.0, true)"))
           .map(_ => throw RuntimeException("boom"))
       }
       intercept[RuntimeException](
-        !.run(Async.run[Long, okay.freer.Pure](Resource.run[Long, Async](prog)))): Unit
+        !.run(Async.run(Resource.run(prog)))): Unit
       assert(conn.getAutoCommit, "autocommit not restored after rollback")
       assertEquals(countBy(db, "id = 21"), 0L, "the insert survived the exception")
     finally conn.close()
@@ -285,15 +286,15 @@ class TestTyped extends munit.FunSuite {
     val conn = DriverManager.getConnection(url, "app", "app")
     try
       val db = JdbcSql(conn)
-      val prog = Typed.transact[Long, Async](db, Isolation.ReadCommitted) { _ =>
+      val prog = Typed.transact[Long, Pure](db, Isolation.ReadCommitted) { _ =>
         !.widen[Long, Async, Resource](
           db.update("insert into customer(id, user_name, balance, active) values (22, 'boom', 1.0, true)"))
           .flatMap(_ => !.widen[Long, Async, Resource](db.update("select syntax error from")))
       }
-      intercept[java.sql.SQLException](!.run(Async.run[Long, okay.freer.Pure](Resource.run[Long, Async](prog)))): Unit
+      intercept[java.sql.SQLException](!.run(Async.run(Resource.run(prog)))): Unit
       assert(conn.getAutoCommit, "autocommit not restored: the brake never ran")
       assertEquals(countBy(db, "id = 22"), 0L, "the insert survived the failed statement")
-      val g = run(Resource.run[Granted, Async](Typed.transact[Granted, Async](db)(g => okay.freer.pure(g))))
+      val g = run(Resource.run(Typed.transact[Granted, Pure](db)(g => okay.pure(g))))
       assertEquals(g.granted, Isolation.ReadCommitted)
     finally conn.close()
   }
@@ -306,11 +307,11 @@ class TestTyped extends munit.FunSuite {
       val prog = Typed.transact[Long, G](db, Isolation.ReadCommitted) { _ =>
         !.widen[Long, Async, Resource + G](
           db.update("insert into customer(id, user_name, balance, active) values (22, 'abort', 1.0, true)"))
-          .flatMap(_ => effect[Resource + Async + G, Long](Throws("changed my mind")))
+          .flatMap(_ => effect(Throws("changed my mind")))
       }
-      val out = !.run(Async.run[Either[String, Long], Nothing](
-        Resource.run[Either[String, Long], Async](
-          okay.std.runEither[Long, Resource + Async, String](prog))))
+      val out = !.run(Async.run(
+        Resource.run(
+          okay.std.runEither[Long, Resource + Async + Throws % String, String](prog))))
       assertEquals(out, Left("changed my mind"))
       assert(conn.getAutoCommit, "autocommit not restored after the abort")
       assertEquals(countBy(db, "id = 22"), 0L, "the insert survived the abort")
@@ -319,19 +320,19 @@ class TestTyped extends munit.FunSuite {
 
   test("nested transact on one connection refuses loudly") {
     withDb { db =>
-      val prog = Typed.transact[Granted, Async](db) { _ =>
-        Typed.transact[Granted, Async](db)(g2 => okay.freer.pure(g2))
+      val prog = Typed.transact[Granted, Pure](db) { _ =>
+        Typed.transact[Granted, Pure](db)(g2 => okay.pure(g2))
       }
       val e = intercept[IllegalStateException](
-        !.run(Async.run[Granted, okay.freer.Pure](Resource.run[Granted, Async](prog))))
+        !.run(Async.run(Resource.run(prog))))
       assert(e.getMessage.contains("nested"), e.getMessage)
     }
   }
 
   test("requested isolation is passed through; the granted level is exposed") {
     withDb { db =>
-      val prog = Typed.transact[Granted, Async](db, Isolation.Serializable)(g => okay.freer.pure(g))
-      val g = !.run(Async.run[Granted, okay.freer.Pure](Resource.run[Granted, Async](prog)))
+      val prog = Typed.transact[Granted, Pure](db, Isolation.Serializable)(g => okay.pure(g))
+      val g = !.run(Async.run(Resource.run(prog)))
       assertEquals(g.requested, Isolation.Serializable)
       assertEquals(g.granted, Isolation.Serializable)
       assert(!g.downgraded)
@@ -434,7 +435,7 @@ class TestTyped extends munit.FunSuite {
       val db = JdbcSql(conn)
       val before = conn.getTransactionIsolation
       assertNotEquals(before, java.sql.Connection.TRANSACTION_SERIALIZABLE)
-      val g = run(Resource.run[Granted, Async](Typed.transact[Granted, Async](db, Isolation.Serializable, readOnly = true)(g => okay.freer.pure(g))))
+      val g = run(Resource.run(Typed.transact[Granted, Pure](db, Isolation.Serializable, readOnly = true)(g => okay.pure(g))))
       assertEquals(g.granted, Isolation.Serializable)
       // JDBC's setReadOnly is a hint H2 ignores: the grant reports what the connection says
       assertEquals(g.readOnly, conn.isReadOnly)

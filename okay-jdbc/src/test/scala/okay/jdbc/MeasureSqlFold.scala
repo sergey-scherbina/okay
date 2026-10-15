@@ -2,11 +2,10 @@ package okay.jdbc
 
 import okay.{Async, Source}
 
-import okay.freer.{+, %}
-import okay.freer.{!, effect}
+import okay.{+, %}
+import okay.{!, effect}
 import okay.std.{Chunk, Stream, Writer}
 import okay.given
-import okay.freer.given
 import okay.std.given
 import okay.codec.Schema
 import okay.sql.{Bad, Col, Granted, Isolation, Sql, SqlValue, Typed}
@@ -77,22 +76,22 @@ class MeasureSqlFold extends munit.FunSuite:
 
   /** a driver that replays frames already in memory: the fold, alone */
   private final class Replay(cols: Vector[Col], frames: Vector[Vector[SqlValue]], per: Int) extends Sql:
-    def describe(sql: String): Vector[Col] ! Async = okay.freer.pure(cols)
+    def describe(sql: String): Vector[Col] ! Async = okay.pure(cols)
     def query(sql: String, params: Vector[SqlValue] = Vector.empty)
     : Source[Chunk[Vector[SqlValue]]] =
       type F = Writer % Chunk[Vector[SqlValue]] + Async
       def go(rest: Vector[Vector[SqlValue]]): Source[Chunk[Vector[SqlValue]]] =
-        if rest.isEmpty then okay.freer.pure(())
+        if rest.isEmpty then okay.pure(())
         else
           val (c, more) = rest.splitAt(per)
           val chunk: Chunk[Vector[SqlValue]] = scala.collection.immutable.ArraySeq.from(c)
-          effect[F, Unit](Writer(chunk)).flatMap(_ => go(more))
+          effect(Writer(chunk)).at[F].flatMap(_ => go(more))
       go(frames)
-    def update(sql: String, params: Vector[SqlValue] = Vector.empty): Long ! Async = okay.freer.pure(0L)
-    def batch(sql: String, rows: Chunk[Vector[SqlValue]]): Long ! Async = okay.freer.pure(0L)
-    def begin(isolation: Isolation, readOnly: Boolean): Granted ! Async = okay.freer.pure(Granted(isolation, isolation))
-    def commit(): Unit ! Async = okay.freer.pure(())
-    def rollback(): Unit ! Async = okay.freer.pure(())
+    def update(sql: String, params: Vector[SqlValue] = Vector.empty): Long ! Async = okay.pure(0L)
+    def batch(sql: String, rows: Chunk[Vector[SqlValue]]): Long ! Async = okay.pure(0L)
+    def begin(isolation: Isolation, readOnly: Boolean): Granted ! Async = okay.pure(Granted(isolation, isolation))
+    def commit(): Unit ! Async = okay.pure(())
+    def rollback(): Unit ! Async = okay.pure(())
     def cancel(): Unit = ()
 
   private def withDb[A](f: Sql => A): A =
@@ -137,7 +136,7 @@ class MeasureSqlFold extends munit.FunSuite:
   test("the fold alone, and its share of a row read end to end") {
     // the frames and their description, taken from the real driver once
     val (cols, frames) = withDb { db =>
-      val cs = !.run(Async.run[Vector[Col], Nothing](db.describe(select)))
+      val cs = !.run(Async.run(db.describe(select)))
       val fs = scala.collection.mutable.ArrayBuffer.empty[Vector[SqlValue]]
       fs ++= summon[Stream[[W] =>> Unit ! Writer % W + Async, Async]].iterator(db.query(select)).flatten
       (cs, fs.toVector)

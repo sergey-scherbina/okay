@@ -2,10 +2,9 @@ package okay.demoeff
 
 
 import okay.{tracing}
-import okay.freer.*
+import okay.*
 import okay.std.*
-import okay.freer.given
-import UsersDemo.{Store, InMemory, rename, tracked}
+import UsersDemo.{Store, InMemory, Tracked, rename, tracked}
 
 /**
  * The demo's claims, as assertions: one program, several
@@ -15,8 +14,8 @@ class TestUsersDemo extends munit.FunSuite {
 
   def pureRun[S : Store](init: S): (S, (Seq[String], Option[String])) =
     State.run[S, (Seq[String], Option[String])](init)(
-      Writer.run[String, Option[String], State % S](
-        tracked[Option[String], S, Pure](rename(7L, "grace"))))
+      Writer.run[String, Option[String], Tracked[S] + Pure](
+        tracked[Option[String], S, Pure](rename(7L, "grace").at[Users + Pure])).at[State % S])
 
   test("two carriers, one interpreter: the answer and the log do not depend on the store") {
     val (asMap, mapOut) = pureRun(Map(7L -> "ada"))

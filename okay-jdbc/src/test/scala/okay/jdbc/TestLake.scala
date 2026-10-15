@@ -2,11 +2,10 @@ package okay.jdbc
 
 import okay.{Async, Source}
 
-import okay.freer.{+, %}
-import okay.freer.{!}
+import okay.{+, %}
+import okay.{!}
 import okay.std.{Chunk, Stream, Writer}
 import okay.given
-import okay.freer.given
 import okay.std.given
 import okay.codec.Schema
 import okay.sql.{Sql, Typed}
@@ -61,7 +60,7 @@ class TestLake extends munit.FunSuite {
     try f(JdbcSql(conn))
     finally conn.close()
 
-  def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](prog))
+  def run[A](prog: A ! Async): A = !.run(Async.run(prog))
 
   def collectChunks[A](s: Source[Chunk[A]]): List[Chunk[A]] =
     summon[Stream[[W] =>> Unit ! Writer % W + Async, Async]].iterator(s).toList

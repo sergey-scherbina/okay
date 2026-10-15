@@ -2,11 +2,10 @@ package okay.r2dbc
 
 import okay.{Async, Source}
 
-import okay.freer.{+, %}
-import okay.freer.{!}
+import okay.{+, %}
+import okay.{!}
 import okay.std.{Chunk, Stream, Writer}
 import okay.given
-import okay.freer.given
 import okay.std.given
 import okay.sql.{Isolation, SqlType, SqlValue, Typed}
 import okay.sql.given
@@ -27,7 +26,7 @@ abstract class R2dbcSuite extends munit.FunSuite:
    * non-Option column there — stated, not hidden */
   def knowsNullability: Boolean = true
 
-  def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](prog))
+  def run[A](prog: A ! Async): A = !.run(Async.run[A, Async](prog))
 
   def collectChunks[A](s: Source[Chunk[A]]): List[Chunk[A]] =
     summon[Stream[[W] =>> Unit ! Writer % W + Async, Async]].iterator(s).toList

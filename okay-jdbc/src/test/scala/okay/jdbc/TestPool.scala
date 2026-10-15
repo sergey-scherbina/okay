@@ -1,10 +1,11 @@
 package okay.jdbc
 
+import scala.language.implicitConversions
+
 import okay.{Async, Source}
-import okay.freer.{!}
+import okay.{!}
 import okay.std.{Chunk, Resource}
 import okay.given
-import okay.freer.given
 import okay.sql.{Isolation, Pool, Sql, SqlValue}
 import java.sql.DriverManager
 import java.util.concurrent.atomic.AtomicInteger
@@ -21,7 +22,7 @@ class TestPool extends munit.FunSuite {
     try c.createStatement().execute("create table marks(n int not null)"): Unit
     finally c.close()
 
-  def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](prog))
+  def run[A](prog: A ! Async): A = !.run(Async.run(prog))
 
   def drain(p: Source[Chunk[Vector[SqlValue]]]): Vector[Vector[SqlValue]] ! Async = Source.concat(p)
 
@@ -61,7 +62,7 @@ class TestPool extends munit.FunSuite {
     assertEquals(pool.stats.idle, o.opened.get)
     pool.close()
     assertEquals(o.live.get, 0, "close disposes the idle connections")
-    run(pool.stats.closed match { case true => okay.freer.pure(()); case false => throw AssertionError("closed") })
+    run(pool.stats.closed match { case true => okay.pure(()); case false => throw AssertionError("closed") })
   }
 
   test("a borrower's open transaction is rolled back by the brake on return; the next borrower sees autocommit and no leftover") {
@@ -104,7 +105,7 @@ class TestPool extends munit.FunSuite {
   test("pinned: a Resource scope holds one connection across several statements and returns it at the scope's end") {
     val o = Opened()
     val pool = Pool[JdbcSql](1, 1000L)(() => o.open())(o.close)
-    val n = run(Resource.run[Long, Async](pool.pinned.flatMap { db =>
+    val n = run(Resource.run(pool.pinned.flatMap { db =>
       !.widen[Long, Async, Resource](db.update("insert into marks values (7)", Vector.empty))
         .flatMap(_ => !.widen[Long, Async, Resource](count(db)))
     }))

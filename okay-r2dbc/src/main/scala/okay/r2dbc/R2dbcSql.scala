@@ -2,8 +2,8 @@ package okay.r2dbc
 
 import okay.{Async, async, ChunkBuf, Source}
 
-import okay.freer.{+, %}
-import okay.freer.{!, effect}
+import okay.{+, %}
+import okay.{!, effect}
 import okay.std.{Chunk, Writer}
 import okay.sql.{Col, Granted, Isolation, Sql, SqlType, SqlValue}
 import io.r2dbc.spi.{Connection, ColumnMetadata, IsolationLevel, Result, Row, RowMetadata, Statement, TransactionDefinition}
@@ -46,20 +46,20 @@ final class R2dbcSql(conn: Connection, fetchSize: Int = 64) extends Sql:
     type F = Writer % Chunk[Vector[SqlValue]] + Async
 
     def go(rows: RowStream): Source[Chunk[Vector[SqlValue]]] =
-      effect[F, (Vector[Vector[SqlValue]], Boolean)](Async.Run(() => rows.next(fetchSize))).flatMap {
+      effect(Async.Run(() => rows.next(fetchSize))).at[F].flatMap {
         case (items, done) =>
           val c = ChunkBuf.of(items)
           if done then
-            if c.isEmpty then okay.freer.pure(())
-            else effect[F, Unit](Writer(c))
-          else effect[F, Unit](Writer(c)).flatMap(_ => go(rows))
+            if c.isEmpty then okay.pure(())
+            else effect(Writer(c)).at[F]
+          else effect(Writer(c)).at[F].flatMap(_ => go(rows))
       }
 
-    effect[F, RowStream](Async.Run { () =>
+    effect(Async.Run { () =>
       val st = conn.createStatement(sql).fetchSize(fetchSize)
       bindAll(st, params)
       RowStream(st)
-    }).flatMap(go)
+    }).at[F].flatMap(go)
 
   def update(sql: String, params: Vector[SqlValue]): Long ! Async = async {
     val st = conn.createStatement(sql)

@@ -1,9 +1,8 @@
 package okay.jdbc
 
 import okay.Async
-import okay.freer.{!}
+import okay.{!}
 import okay.given
-import okay.freer.given
 import okay.codec.Schema
 import okay.persist.{MemoryStore, Offsets, Store}
 import okay.sql.Sql
@@ -37,7 +36,7 @@ class TestPoll extends munit.FunSuite {
     try f(JdbcSql(conn))
     finally conn.close()
 
-  def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](prog))
+  def run[A](prog: A ! Async): A = !.run(Async.run(prog))
 
   def insert(db: Sql, seqs: Long*): Unit =
     seqs.foreach(s => run(db.update(s"insert into events values ($s, 'p-$s')")))

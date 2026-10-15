@@ -1,12 +1,13 @@
 package okay.jdbc
 
-import okay.{Async, Source}
+import scala.language.implicitConversions
 
-import okay.freer.{+, %}
-import okay.freer.{!, effect}
+import okay.{Async, Pure, Source}
+
+import okay.{+, %}
+import okay.{!, effect}
 import okay.std.{Chunk, Resource, Stream, Throws, Writer}
 import okay.given
-import okay.freer.given
 import okay.std.given
 import okay.codec.Schema
 import okay.persist.{MemoryStore, Typed as PTyped}
@@ -60,7 +61,7 @@ class TestSqlite extends munit.FunSuite {
     try f(JdbcSql(conn))
     finally conn.close()
 
-  def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](prog))
+  def run[A](prog: A ! Async): A = !.run(Async.run(prog))
 
   def collectChunks[A](s: Source[Chunk[A]]): List[Chunk[A]] =
     summon[Stream[[W] =>> Unit ! Writer % W + Async, Async]].iterator(s).toList
@@ -94,8 +95,8 @@ class TestSqlite extends munit.FunSuite {
     try
       val db = JdbcSql(conn)
       // granted isolation is read back, not assumed
-      val g = !.run(Async.run[Granted, okay.freer.Pure](Resource.run[Granted, Async](
-        Typed.transact[Granted, Async](db, Isolation.Serializable)(g => okay.freer.pure(g)))))
+      val g = !.run(Async.run(Resource.run(
+        Typed.transact[Granted, Pure](db, Isolation.Serializable)(g => okay.pure(g)))))
       assertEquals(g.granted, Isolation.Serializable)
 
       // a handled abort crossing the scope rolls back
@@ -103,11 +104,11 @@ class TestSqlite extends munit.FunSuite {
       val prog = Typed.transact[Long, G](db, Isolation.Serializable) { _ =>
         !.widen[Long, Async, Resource + G](
           db.update("insert into customer(id, user_name, balance, active) values (50, 'x', 1, 1)"))
-          .flatMap(_ => effect[Resource + Async + G, Long](Throws("no")))
+          .flatMap(_ => effect(Throws("no")))
       }
-      val out = !.run(Async.run[Either[String, Long], Nothing](
-        Resource.run[Either[String, Long], Async](
-          okay.std.runEither[Long, Resource + Async, String](prog))))
+      val out = !.run(Async.run(
+        Resource.run(
+          okay.std.runEither[Long, Resource + Async + Throws % String, String](prog))))
       assertEquals(out, Left("no"))
       assert(conn.getAutoCommit)
       val n = collectChunks(db.query("select count(*) c from customer where id = 50")).flatten

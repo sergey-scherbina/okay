@@ -1,12 +1,13 @@
 package okay.jdbc
 
+import scala.language.implicitConversions
+
 import okay.{Async, Source}
 
-import okay.freer.{+, %}
-import okay.freer.{!, effect}
+import okay.{+, %}
+import okay.{!, effect}
 import okay.std.{Chunk, Stream, Throws, Writer}
 import okay.given
-import okay.freer.given
 import okay.std.given
 import JdbcInterop.*
 import java.sql.DriverManager
@@ -21,16 +22,16 @@ class TestJdbcInterop extends munit.FunSuite {
 
   test("a query streams fetch-size rows per chunk, in order") {
     withDb { c =>
-      !.run(okay.Async.run[Unit, okay.freer.Pure](execute(c, "create table nums(n int)")))
+      !.run(okay.Async.run(execute(c, "create table nums(n int)")))
       val rows = okay.ChunkBuf.of(1 to 250)
-      val inserted = !.run(okay.Async.run[Int, okay.freer.Pure](
+      val inserted = !.run(okay.Async.run(
         batch(c, "insert into nums values (?)")((ps, n: Int) => ps.setInt(1, n))(rows)))
       assertEquals(inserted, 250)
 
       val all = collectChunks(query(c, "select n from nums order by n", 64)(_.getInt(1)))
       assertEquals(all.map(_.length), List(64, 64, 64, 58))
       assertEquals(all.flatten, (1 to 250).toList)
-      !.run(okay.Async.run[Unit, okay.freer.Pure](execute(c, "drop table nums")))
+      !.run(okay.Async.run(execute(c, "drop table nums")))
     }
   }
 
@@ -39,15 +40,14 @@ class TestJdbcInterop extends munit.FunSuite {
     summon[Stream[[W] =>> Unit ! Writer % W + Async, Async]].iterator(s).toList
 
   test("the Resource region closes the connection on a handled abort") {
-    type F = Throws % String + okay.std.Resource
     var conn: java.sql.Connection = null
-    val prog2 = okay.freer.!.widen[java.sql.Connection, okay.std.Resource, Throws % String](
+    val prog2 = okay.!.widen[java.sql.Connection, okay.std.Resource, Throws % String](
       connection("jdbc:h2:mem:r2")).flatMap { c =>
       conn = c
-      effect[F, Int](Throws("boom"))
+      effect(Throws("boom"))
     }
-    val out = !.run(okay.std.Resource.run[Either[String, Int], okay.freer.Pure](
-      okay.std.runEither[Int, okay.std.Resource, String](prog2)))
+    val out = !.run(okay.std.Resource.run(
+      okay.std.runEither[Int, okay.std.Resource + Throws % String, String](prog2)))
     assertEquals(out, Left("boom"))
     assert(conn.isClosed, "the region must close the connection after the abort")
   }

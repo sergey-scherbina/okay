@@ -1,9 +1,8 @@
 package okay.jdbc
 
 import okay.Async
-import okay.freer.{!}
+import okay.{!}
 import okay.given
-import okay.freer.given
 import okay.persist.{Ack, MemoryStore, Typed}
 import okay.sql.{Sql, SqlValue}
 import java.sql.DriverManager
@@ -32,7 +31,7 @@ class TestWrites extends munit.FunSuite {
     try f(JdbcSql(conn))
     finally conn.close()
 
-  def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](prog))
+  def run[A](prog: A ! Async): A = !.run(Async.run(prog))
 
   def clear(db: Sql): Unit = { run(db.update("delete from orders")): Unit }
 
