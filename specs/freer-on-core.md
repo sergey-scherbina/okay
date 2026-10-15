@@ -159,11 +159,12 @@ with no change to okay-sql; the protocol (okay-kernel) for every program, throug
 5. The classic road removed with its flag: `Freer`, `Classic`, `HandleFrames`, `ShiftMachine`, `Bang`, `Eager`,
    the carrier, `Row.at`, `TypeableK`, `Distinct` — to git's history.
 
-## Open
+## Decided (2026-10-15)
 
-- `direct` (okay-direct) suspends a program by its own machinery over the tree; whether it stays as it is over
-  `Cont` values or becomes the kernel's `Step` is decided when it is reached (step 2 lists it).
-- The platform's `Needs`-like fitting (`Reach`, `Static`'s row) and the kernel's `Needs`: one or the other, not
-  both; the kernel's, unless a case needs what only the macro reads.
-- Scala 2.13 (`okay-scala2-*`): the kernel's words are inline; the Scala 2 modules read `okay.core.Ops` (no
-  inline). The same aliases there, over `Ops`.
+- `direct` (okay-direct): a compile-time macro rewriting straight-line code into `flatMap` chains over `!`; no
+  machinery of its own at run time. With the words swapped it emits the kernel's `flatMap`: no change, its suite
+  checks it at step 2.
+- The platform's own fitting: there is none left — `Reach` went with the OnOkay bridge (2026-10-14). The fitting
+  is the kernel's `Needs`.
+- Scala 2.13 (`scala2/okay-scala2-*`, on `okay.freer`): the same aliases over `okay.core.Ops` (the kernel's words
+  with no inline; okay-core's `scala2/prelude`), a step of its own inside step 2, checked by the 2.13 compiler.
