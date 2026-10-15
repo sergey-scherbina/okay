@@ -76,14 +76,43 @@ Moves onto the kernel's nodes, one file at a time with its tests: `Cps` (answers
 `Shift` (`Dollar`, `Shift0`, `Shifts`), `Indexed` (`Atm`/`PState`), `Static` (lowers a selective into a program:
 builds `Cont` nodes; its `peek` is `Step`), `Lexical` (one look ahead: `Step`).
 
-## Where a tree is held as a value
+## A program as a value: what Free had, and what the kernel has
 
-`A ! F` is no longer a value of a tree: it is a program fitted to a place. Code that stores a program, passes it
-through a data structure, or matches its nodes needs the program AT A ROW: `p.at[R]` with the row named, or
-`Place.at[R]`, giving `Eff[R, A]` — a `Cont`, a value. The compiler lists these places: switching the words and
-compiling the platform gives the exact list; each is one of three kinds — a program stored (name its row), a
-program matched (one of the walkers above), a program compared (`reify`/`reflect`: a round trip through `Cont`'s
-nodes, which are syntax too).
+Free was a tree value: stored, passed, matched on its nodes, re-seen at a wider row by a cast (`Row.at`: the union
+erases). The kernel has the same property, in three forms, and one more than Free had:
+
+- `A ! Es` — a program polymorphic in its row, a value (a context function of `Needs[Es]`): stored and passed, not
+  matched; fitted to any place holding its effects, in any order, by `Needs`, with no `View` and no cast.
+- `Eff[R, A] = Cont[R, Nothing, Nothing, A]` — the program AT A ROW: a tree of nodes (`Return`, `Bind`, `Map`,
+  `Defer`, `Perform`, `Handle*`, `Guarded`, `Resume`, …), a public enum — matched, walked, reified (`reify` and
+  `reflect` are the identity: the tree is syntax). From `A ! Es` by `p.at[R]`, or under `Place.at[R]`.
+- `Rest` and `Resume(rest, y)` — the REST of a program after an operation, as a node: what Free never had (after
+  the first `Bind` its rest is a host closure, which is what `Static` exists to get around). A handler installed is a
+  node too (`HandleK`), a guard a node (`Guarded`): a program with its handlers on, or a program suspended at an
+  operation, is a value — stored, stepped (`Step`), handed to another machine (the protocol).
+
+What differs is the row of a value. Free's `Free[F, A]` was a `Free[R, A]` for any `R ⊇ F` for free — the union
+erases, `Row.at` is a cast. A `Cont` value has a concrete row, `Eff[F +: G +: Pure, A]`; put under handlers of
+another order it is RE-SEEN, not cast: `widen`/`Removed` put one `View` node around it, and the paths of its
+operations are relocated at the lookup (`Removed.relocate`). One node a re-seeing, not a rebuild — and not zero, as
+a cast is. It is needed only where a value already at a row meets a place of another row; programs written as
+`A ! Es` never need it. Those places are what the compiler lists at step 1.
+
+## Two of one effect in a row: which one an operation uses
+
+A `perform` never ADDS an effect to a row. The row is the place's — the handlers in force — and a program needing
+`F` fits a place where `F` is present: its path is found by the givens of `In` (`here` first, then `there`), so an
+operation goes to the NEAREST `F` from where the program is placed, innermost first. Two `Writer % String` in a row
+are two places; an operation written against `Writer % String` reaches the nearer one. The same rule the platform
+had at run time (`TypeableK` tested on the way out, the first handler that takes it), now decided at compile time
+by the path — and visible in the type: `In.There(In.Here())` names the outer one.
+
+What tells two effects apart is their TYPE: `Writer % String` and `Writer % Int` are two effects, two paths,
+nothing to confuse. The same type twice is two places of one effect — the nearer one is the program's unless it
+says otherwise: a path named by hand (`Path`, `In.There`), or an interceptor (`local`, `handleWith`,
+`Removed.again`), a handler of `F` at the nearer place whose own clauses perform `F` to the outer one. A handler
+takes its effect from a place of its own choosing too (`Removed`: the head by `handleIn`, any place by `handle`),
+so "which `Writer` does this handler serve" is in its position, the same way.
 
 ## Stepping, where a walk is needed
 
