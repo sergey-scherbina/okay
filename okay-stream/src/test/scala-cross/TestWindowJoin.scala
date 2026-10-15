@@ -1,11 +1,9 @@
 package okay
 
 
-import okay.freer.*
 
 
 import okay.std.*
-import okay.freer.given
 import scala.util.Random
 import Chunks.elements
 
@@ -107,19 +105,19 @@ class TestWindowJoin extends munit.FunSuite with okay.testkit.Munit.Diagnosed {
   // ------------------------------------------------------------ the stage
 
   private def producer(evs: Seq[Ev]): Ev ! Writer % Ev =
-    evs.foldLeft(pure[Writer % Ev, Ev](evs.head)):
+    evs.foldLeft(pure[Ev, Writer % Ev](evs.head)):
       (m, e) => m.flatMap(_ => Writer.tell(e).map(_ => e))
 
   test("the stage form gives the machine's pairs, and the same value drives twice; it ends when nothing can be produced") {
     val evs = List(L("a", 0), R("a", 5), R("a", 20), R("b", 15), L("a", 15))
     val st = WindowJoin.stage[String, Row, Row](10L, 0L)(_._1, _._1)
-    val (first, _) = !.run(Writer.run(through(producer(evs))(st)))
-    val (second, _) = !.run(Writer.run(through(producer(evs))(st)))
+    val (first, _) = (Writer.run(through(producer(evs))(st))).run
+    val (second, _) = (Writer.run(through(producer(evs))(st))).run
     val expected = drive(fresh(10L, 0L), evs)
     assertEquals(first.map { case (k, (a, b)) => (k, a._2, b._2) }.toVector, expected)
     assertEquals(second, first, "a Stage is a VALUE: no state survives a run")
     // both sides ended, then rows nobody can join: the stage has returned and never awaits them
-    val (told, _) = !.run(Writer.run(through(producer(List(L("a", 0), LEnd, R("a", 1), REnd, R("a", 2))))(st)))
+    val (told, _) = (Writer.run(through(producer(List(L("a", 0), LEnd, R("a", 1), REnd, R("a", 2))))(st))).run
     assertEquals(told.map { case (k, (a, b)) => (k, a._2, b._2) }, Seq(("a", "L0", "R1")))
   }
 }

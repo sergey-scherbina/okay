@@ -4,7 +4,6 @@ package okay
 
 
 import okay.std.*
-import okay.freer.given
 import okay.std.given
 /**
  * channel-drain: the batched receive takes what is already buffered

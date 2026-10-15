@@ -1,7 +1,5 @@
-import okay.{Stage, through}
-import okay.freer.*
+import okay.{!, %, Stage, pure, through}
 import okay.std.*
-import okay.freer.given
 /**
  * Typestate on the stream (specs/stage-pipeline.md, stage-phased):
  * the CSV shape end to end, the switch's output ordering, both
@@ -13,9 +11,9 @@ class TestPhased extends munit.FunSuite {
   /** feed lines through a stage, collect (outputs, answer) */
   def runStage[O, A](lines: Seq[String])(st: Stage[String, O, A]): (Seq[O], A) =
     val told: String ! Writer % String =
-      lines.foldLeft(pure[Writer % String, String]("")):
+      lines.foldLeft(pure[String, Writer % String]("")):
         (m, l) => m.flatMap(_ => Writer.tell(l).map(_ => l))
-    !.run(Writer.run(through(told)(st)))
+    (Writer.run(through(told)(st))).run
 
   /** the CSV shape: S1 = Unit (waiting for the header), S2 = the
    * column names; a row becomes name->value pairs — the body never
@@ -44,9 +42,9 @@ class TestPhased extends munit.FunSuite {
       endHead = n => Vector(s"died-in-head:$n"),
       endBody = tag => Vector(s"end:$tag"))
     val told: Int ! Writer % Int =
-      Seq(3, 4, 5, 1).foldLeft(pure[Writer % Int, Int](0)):
+      Seq(3, 4, 5, 1).foldLeft(pure[Int, Writer % Int](0)):
         (m, i) => m.flatMap(_ => Writer.tell(i).map(_ => i))
-    val (out, answer) = !.run(Writer.run(through(told)(st)))
+    val (out, answer) = (Writer.run(through(told)(st))).run
     assertEquals(out, Seq("head:3", "head:4", "switch:12", "sum=12 body:1", "end:sum=12"))
     assertEquals(answer, Right("sum=12"))
   }
@@ -99,9 +97,9 @@ class TestPhased3 extends munit.FunSuite {
 
   def runStage[O, A](lines: Seq[String])(st: Stage[String, O, A]): (Seq[O], A) =
     val told: String ! Writer % String =
-      lines.foldLeft(pure[Writer % String, String]("")):
+      lines.foldLeft(pure[String, Writer % String]("")):
         (m, l) => m.flatMap(_ => Writer.tell(l).map(_ => l))
-    !.run(Writer.run(through(told)(st)))
+    (Writer.run(through(told)(st))).run
 
   /** S1 = Unit (awaiting the request line), S2 = (method, target) +
    * headers so far, S3 = the complete head; body lines emit tagged */

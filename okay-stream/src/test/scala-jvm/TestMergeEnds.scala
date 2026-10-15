@@ -4,7 +4,6 @@ package okay
 
 
 import okay.std.*
-import okay.freer.given
 import okay.std.given
 /**
  * The merge paths the DEFAULT channel feeds, run to the end with a

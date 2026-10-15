@@ -1,15 +1,10 @@
 package okay
 
-
+import okay.freer.{Fold}
 // the classic's `toLazyList` is a program's; a `Chunks` value takes `Chunks.toLazyList`, chunk by chunk
-import okay.freer.*
 import okay.std.{toLazyList as _, *}
-import okay.freer.given
 import okay.std.given
-import !.*
 import Chunks.*
-import Row.plus
-import Row.at
 
 /** Chunked streams: batch amortization over the ordinary stream layer. */
 class TestChunks extends munit.FunSuite {
@@ -164,8 +159,8 @@ class TestChunks extends munit.FunSuite {
     // combinators avoid it by never being invoked directly with a
     // literal Nothing outside the library that defines them; this
     // test sidesteps it the same way production code will: G=Async)
-    def run[A](p: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](p))
-    def feedOf(c: Chunks[Long]): Source[Chunk[Long]] = Writer.of(c.toLazyList).plus[Async]
+    def run[A](p: A ! Async): A = (Async.run(p)).run
+    def feedOf(c: Chunks[Long]): Source[Chunk[Long]] = Writer.of(c.toLazyList).at[Writer % Chunk[Long] + Async]
 
     val chunks = Chunks.range(0, 10000, 64)
     val feed = feedOf(chunks)
@@ -204,7 +199,7 @@ class TestChunks extends munit.FunSuite {
   // iterator's result against `Writer.run` — built on the unrelated
   // `Writer.foldWith` trampoline — as an independent oracle.
   test("the specialized writer iterator agrees with Writer.run when real G-ops are interleaved") {
-    def run[A](p: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](p))
+    def run[A](p: A ! Async): A = (Async.run(p)).run
 
     def prog: Unit ! Writer % Int + Async =
       for
@@ -216,14 +211,14 @@ class TestChunks extends munit.FunSuite {
         _ <- Writer.tell(999).at[Writer % Int + Async]
       yield ()
 
-    val (expected, _) = run(Writer.run[Int, Unit, Async](prog))
+    val (expected, _) = run(Writer.run[Int, Unit, Writer % Int + Async](prog))
     val told = run(async(writerStreamIn[Unit, Async].iterator(prog).toVector))
     assertEquals(told, expected.toVector)
 
     // and the empty/no-G-op cases still agree too
     def onlyTells: Unit ! Writer % Int + Async =
-      Writer.tell(1).plus[Async].flatMap(_ => Writer.tell(2).plus[Async])
-    val (expectedTells, _) = run(Writer.run[Int, Unit, Async](onlyTells))
+      Writer.tell(1).at[Writer % Int + Async].flatMap(_ => Writer.tell(2).at[Writer % Int + Async])
+    val (expectedTells, _) = run(Writer.run[Int, Unit, Writer % Int + Async](onlyTells))
     assertEquals(run(async(writerStreamIn[Unit, Async].iterator(onlyTells).toVector)), expectedTells.toVector)
 
     def empty: Unit ! Writer % Int + Async = pure(())

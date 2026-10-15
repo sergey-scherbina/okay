@@ -1,8 +1,6 @@
 package okay
 
 import okay.StreamCont.{Src, range}
-import okay.Effects.machine.{effect, handle, value, run as runAt}
-import okay.core.pure
 
 /** the machine's stream twin (stream-twin): one source, the JVM, JS and Native suites */
 class TestStreamCont extends munit.FunSuite {

@@ -1,14 +1,11 @@
 package okay
 
 
-import okay.freer.*
 
 
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.std.given
-import okay.freer.Row.plus
 import scala.collection.immutable.ArraySeq
 
 /**
@@ -19,16 +16,16 @@ import scala.collection.immutable.ArraySeq
  */
 class TestSourceProducer extends munit.FunSuite:
 
-  def run[A](p: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](p))
+  def run[A](p: A ! Async): A = (Async.run(p)).run
 
   type P = Produce + Async
 
   test("a producer in Async becomes a source: told in order, Async performed, answer dropped") {
     var performed = 0
-    val p: Int ! P = produce(1).plus[Async]
-      .flatMap(_ => async { performed += 1; 7 }.plus[Produce])
-      .flatMap(_ => produce(2).plus[Async])
-      .flatMap(_ => produce(3).plus[Async])
+    val p: Int ! P = produce(1).at[P]
+      .flatMap(_ => async { performed += 1; 7 }.at[P])
+      .flatMap(_ => produce(2).at[P])
+      .flatMap(_ => produce(3).at[P])
       .flatMap(_ => pure(-1))          // the phantom answer
     val (told, unit) = run(Writer.run(Source.ofProducer(p)))
     assertEquals(told, Seq(1, 2, 3))
@@ -41,7 +38,7 @@ class TestSourceProducer extends munit.FunSuite:
     val c1: Chunk[Byte] = ArraySeq[Byte](1, 2, 3)
     val c2: Chunk[Byte] = ArraySeq[Byte](4)
     val get: Either[String, Unit] ! P =
-      effect[P, Chunk[Byte]](c1).flatMap(_ => effect[P, Chunk[Byte]](c2)).flatMap(_ => pure(Right(())))
+      produce[Chunk[Byte]](c1).at[P].flatMap(_ => produce[Chunk[Byte]](c2).at[P]).flatMap(_ => pure(Right(())))
     val r = run(Writer.collect(Source.fromProducer[Chunk[Byte], Either[String, Unit], Async](get)))
     assertEquals(r._1.map(_.toVector), Seq(Vector[Byte](1, 2, 3), Vector[Byte](4)))
     assertEquals(r._2, Right(()))
@@ -54,12 +51,12 @@ class TestSourceProducer extends munit.FunSuite:
 
   test("a source becomes a producer: each told value produced, Async kept, `end` is the final Pure") {
     var performed = 0
-    val s: Source[Int] = Writer.tell(10).plus[Async]
-      .flatMap(_ => async { performed += 1 }.plus[Writer % Int])
-      .flatMap(_ => Writer.tell(20).plus[Async])
+    val s: Source[Int] = Writer.tell(10).at[Writer % Int + Async]
+      .flatMap(_ => async { performed += 1 }.at[Writer % Int + Async])
+      .flatMap(_ => Writer.tell(20).at[Writer % Int + Async])
     val p: Int ! P = Source.toProducer(s)(end = -1)
     var seen = Vector.empty[Int]
-    val end = run(Producer.each[Int, Int, Async](p)(seen :+= _))
+    val end = run(Producer.each[Int, Int, P](p)(seen :+= _))
     assertEquals(seen, Vector(10, 20))
     assertEquals(end, -1)
     assertEquals(performed, 1)
@@ -80,9 +77,9 @@ class TestSourceProducer extends munit.FunSuite:
   }
 
   test("Producer.each keeps the answer uncons loses at its None") {
-    val p: String ! P = produce("x").plus[Async].flatMap(_ => pure("the answer"))
+    val p: String ! P = produce("x").at[P].flatMap(_ => pure("the answer"))
     var seen = Vector.empty[String]
-    assertEquals(run(Producer.each[String, String, Async](p)(seen :+= _)), "the answer")
+    assertEquals(run(Producer.each[String, String, P](p)(seen :+= _)), "the answer")
     assertEquals(seen, Vector("x"))
   }
 
@@ -92,7 +89,7 @@ class TestSourceProducer extends munit.FunSuite:
     // element type, so nothing distinguishes this from produce(1)
     val silent: Int ! P = pure(1)
     var seen = 0
-    val _ = run(Producer.each[Int, Int, Async](silent)(_ => seen += 1))
+    val _ = run(Producer.each[Int, Int, P](silent)(_ => seen += 1))
     assertEquals(seen, 0)
     // Source: the SAME line compiles too — measured, not hoped: the
     // first draft of this test asserted a type error and was wrong.
@@ -101,13 +98,13 @@ class TestSourceProducer extends munit.FunSuite:
     // which the compiler can flag (-Wvalue-discard, on in this build),
     // where the Produce form is an ordinary well-typed answer nothing
     // can flag. The element type in the SIGNATURE is what buys that
-    val discarded = compileErrors("val s: okay.Source[Int] = okay.freer.pure(1)")
+    val discarded = compileErrors("val s: okay.Source[Int] = pure(1)")
     assert(!discarded.toLowerCase.contains("error"), discarded)
     // and what it compiles TO tells nothing, exactly as at Produce
-    assertEquals(run(Writer.run(pure[Writer % Int + Async, Unit](())))._1.size, 0)
+    assertEquals(run(Writer.run(pure[Unit, Writer % Int + Async](())))._1.size, 0)
     // and the named injector is the one that emits, at either row
     var told = 0
-    val _ = run(Producer.each[Int, Int, Async](produce(1).plus[Async])(_ => told += 1))
+    val _ = run(Producer.each[Int, Int, P](produce(1).at[P])(_ => told += 1))
     assertEquals(told, 1)
   }
 

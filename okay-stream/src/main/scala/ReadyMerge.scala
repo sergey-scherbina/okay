@@ -1,7 +1,6 @@
 package okay
 
 
-import okay.freer.*
 
 
 import okay.std.*
@@ -53,11 +52,15 @@ private[okay] object ReadyMerge:
     // a cancel — or a consumer that stops early — then reaches the
     // sources it has parked even while its code sits inside the
     // consumer's continuation and it never parks itself
-    okay.freer.pure[Writer % A + Async, Unit](()).flatMap: _ =>
+    defer:
       val r = new Run[A](sources, onPark, quantum, onRegister, waiting, pause, release)
-      okay.freer.effect[Writer % A + Async, Unit](Async.Run(Async.Enter(r.scope))).flatMap(_ => r.again())
+      effect[Async, Unit](Async.Run(Async.Enter(r.scope))).at[Writer % A + Async].flatMap(_ => r.again())
 
   /** a registration's answer, when it came before the drive moved on */
+  /** a tell: its value, and the rest past it */
+  private def told[A, X, R[_]](o: Walk.Op[Writer % A, X, Unit, R]): (A, Unit ! R) = o.op match
+    case Writer.Say(w) => (w, o.resume(()))
+
   private final class Answer[X](val r: Either[Throwable, X])
   private object Moved
 
@@ -69,7 +72,10 @@ private[okay] object ReadyMerge:
 
     /** each source's current continuation. Written by a callback only
      * while its source is parked, and published through `woken` */
-    private val slot = ArrayBuffer.from(sources)
+    // each source WALKED (`Walk`): to its next tell, its Async on the way walked out to the merge, which answers it
+    // itself — a slot holds the walk, a program needing Async alone, resumed where it stopped
+    private type W = Walk.Step[Writer % A, Unit, R] ! Async
+    private val slot: ArrayBuffer[W] = ArrayBuffer.from(sources.map(src => Walk.next[Writer % A, Unit, R](src)))
 
     // the READY sources, by index — touched by the drive alone, which
     // runs one step at a time and hands over between threads with a
@@ -127,7 +133,8 @@ private[okay] object ReadyMerge:
      * a cast; polled when a turn passes and when the ring runs dry,
      * registered only when the ring is dry and the poll found nothing */
     private final class Held[X](val i: Int, reg: (Either[Throwable, X] => Unit) => (() => Unit),
-                                p: () => (Either[Throwable, X] | Null), k: X => Source[A]):
+                                p: () => (Either[Throwable, X] | Null), k: X => W,
+                                fail: Throwable => W):
       /** true when the poll answered — the side is out of `idle` either
        * way: back in the ring, or dropped (drain, then fail) */
       def poll(): Boolean =
@@ -140,7 +147,7 @@ private[okay] object ReadyMerge:
               case Left(e) => failed(e)
             true
         catch case e: Throwable => { failed(e); true }
-      def register(): Unit = try registerNow(i, reg, k) catch case e: Throwable => failed(e)
+      def register(): Unit = try registerNow(i, reg, k, fail) catch case e: Throwable => failed(e)
 
     private val idle = new Array[Held[?]](math.max(n, 1))
     private var idleN = 0
@@ -200,7 +207,6 @@ private[okay] object ReadyMerge:
     private val resumeMerge: Any => Unit ! R = _ => again()
 
     @tailrec private def step(): Unit ! R =
-      import !.*
       drainWoken()
       if size == 0 && idleN > 0 then settleIdle()
       if size == 0 then
@@ -209,76 +215,54 @@ private[okay] object ReadyMerge:
           // every source has ended: the scope closes, then the answer
           val f = failure
           val done =
-            if f == null then okay.freer.pure[R, Unit](())
-            else okay.freer.effect[R, Unit](Async.Run[Unit](() => throw f))
-          okay.freer.effect[R, Unit](Async.Run(Async.Exit(scope))).flatMap(_ => done)
+            if f == null then pure[Unit, R](())
+            else effect[Async, Unit](Async.Run[Unit](() => throw f)).at[R]
+          effect[Async, Unit](Async.Run(Async.Exit(scope))).at[R].flatMap(_ => done)
       else
         val i = pop()
         // `resume` runs the source's own code (a `Bind(Return(x), f)`
         // applies `f`), so a throw here is that source failing
-        val node = try slot(i).resume catch case e: Throwable => { failed(e); null }
-        if node == null then step()
-        else (node: @unchecked) match
-          case Free.Return(_) =>
-            live -= 1
+        val node = try Walk.view(slot(i)) catch case e: Throwable => { failed(e); null }
+        node match
+          case null => step()
+          case Walk.Done(told) => told match
+            case Walk.Done(_) =>
+              live -= 1
+              step()
+            case o: Walk.Op[Writer % A, x, Unit, R] =>
+              val (w, rest) = ReadyMerge.told(o)
+              slot(i) = Walk.next[Writer % A, Unit, R](rest)
+              if i != last then { last = i; streak = 0 }
+              streak += 1
+              if streak < quantum then pushFront(i)
+              else
+                streak = 0
+                pushBack(i)
+                if idleN > 0 then pollIdle()
+              Writer.tell(w).at[R].flatMap(resumeMerge)
+          case o: Walk.Op[Async, x, Walk.Step[Writer % A, Unit, R], Async] =>
+            turn[x](i, o.op, o.resume, o.fail)
             step()
-          // Writer tested first, for `Writer.uncons`'s reason. A told
-          // value goes out as the SOURCE'S OWN `Inject(Say)` node — not
-          // a new `Say` and `Inject` per element (merge-cap256-gap)
-          case inj @ Inject(e) => split[Writer % A, Async](e)
-            { w0 => (w0: @unchecked) match
-                case Writer.Say(_) =>
-                  live -= 1
-                  inj.flatMap(resumeMerge) }
-            { g =>
-                turn(i, g, _ => okay.freer.pure[R, Unit](()))
-                step() }
-          case Bind(inj @ Inject(e), k) => split[Writer % A, Async](e)
-            { w0 => (w0: @unchecked) match
-                case Writer.Say(_) =>
-                  // `k(())` is the source's code too: the element it
-                  // told is still delivered, the source is dropped
-                  try
-                    slot(i) = k(())
-                    if i != last then { last = i; streak = 0 }
-                    streak += 1
-                    if streak < quantum then pushFront(i)
-                    else
-                      streak = 0
-                      pushBack(i)
-                      // a turn passed: the idle sides get their look,
-                      // so a side with data waits at most one turn
-                      if idleN > 0 then pollIdle()
-                  catch case e: Throwable => failed(e)
-                  inj.flatMap(resumeMerge) }
-            { g =>
-                turn(i, g, k)
-                step() }
 
-    /** source `i`'s Async operation: a Run is performed in its own turn
-     * (it goes back to the FRONT), an Await answered during its own
-     * registration likewise, and an Await that is not answered parks the
-     * source until its callback publishes it. Anything the source's own
-     * code throws on the way — the Run, the registration, the
-     * continuation — drops that source (drain, then fail) */
-    private def turn[X](i: Int, g: Async[X], k: X => Source[A]): Unit =
-      try operate(i, g, k) catch case e: Throwable => failed(e)
+    private def turn[X](i: Int, g: Async[X], k: X => W, fail: Throwable => W): Unit =
+      try operate(i, g, k, fail) catch case e: Throwable => failed(e)
 
-    private def operate[X](i: Int, g: Async[X], k: X => Source[A]): Unit = g match
+    private def operate[X](i: Int, g: Async[X], k: X => W, fail: Throwable => W): Unit = g match
       case Async.Run(f) =>
-        slot(i) = k(f())
+        val x = f()
+        slot(i) = k(x)
         pushFront(i)
       case Async.Await(reg, poll) =>
         // a pollable side is never registered from here: it is polled
         // when a turn passes, and on a dry ring `settleIdle` polls it
         // once more and registers it only then
         if poll != null then
-          idle(idleN) = Held(i, reg, poll, k)
+          idle(idleN) = Held(i, reg, poll, k, fail)
           idleN += 1
-        else registerNow(i, reg, k)
+        else registerNow(i, reg, k, fail)
 
     private def registerNow[X](i: Int, reg: (Either[Throwable, X] => Unit) => (() => Unit),
-                               k: X => Source[A]): Unit =
+                               k: X => W, fail: Throwable => W): Unit =
         onRegister()
         val cell = AtomicReference[Answer[X] | Moved.type | Null](null)
         val c = reg { r =>
@@ -286,8 +270,8 @@ private[okay] object ReadyMerge:
             // asynchronous: build the continuation WITHOUT running it —
             // `k` is the source's code, and only the drive runs that
             slot(i) = r match
-              case Right(x) => okay.freer.pure[R, X](x).flatMap(k)
-              case Left(e) => okay.freer.effect[R, X](Async.Run[X](() => throw e)).flatMap(k)
+              case Right(x) => k(x)
+              case Left(e) => fail(e)
             cancels.set(i, null)
             woken.add(i): Unit
             fire()
@@ -308,7 +292,7 @@ private[okay] object ReadyMerge:
      * reads the queue — Dekker's handshake, so a wake-up between the two
      * is seen by one side or the other */
     private def park(): Unit ! R =
-      okay.freer.effect[R, Unit](Async.Await[Unit](parking)).flatMap(_ => again())
+      effect[Async, Unit](Async.Await[Unit](parking)).at[R].flatMap(_ => again())
 
     private val cancelling: () => Unit = () => cancelAll()
 

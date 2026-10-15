@@ -1,12 +1,8 @@
 package okay
 
-
-import okay.freer.*
-
-
 import okay.std.*
-import okay.freer.given
 import okay.std.given
+import okay.freer.{Cps, FoldUntil, />>}
 /**
  * An asynchronous SOURCE: a program that tells its elements as it
  * goes, performing Async between them. The shape every streaming seam
@@ -39,7 +35,7 @@ enum Flush[+A] derives Effect:
 object Flush:
 
   /** emit whatever the chunker holds, full or not */
-  def now[F[+_]]: Unit ! Flush + F = effect(Flush.Now)
+  def now[F[_]]: Unit ! Flush + F = effect[Flush, Unit](Flush.Now).at[Flush + F]
 
 /** a source that can also mark its own chunk boundaries. An ordinary
  * `Source` widens into it (it simply never uses the operation), so
@@ -58,7 +54,7 @@ type Source[W] = Unit ! Writer % W + Async
  */
 given Put[Source] with
   final override inline def put[W](w: W): Unit />> Source[W] =
-    Cps.shift(k => !.widen[Unit, Writer % W, Async](Writer.tell(w)).flatMap(_ => k(())))
+    Cps.shift(k => Writer.tell(w).at[Writer % W + Async].flatMap(_ => k(())))
 
 object Source {
   /**
@@ -69,7 +65,7 @@ object Source {
    * effects the stream itself has.
    */
   def of[S[_], A](s: S[A])(using Stream[S, Pure]): Source[A] =
-    !.widen[Unit, Writer % A, Async](Writer.of(s))
+    Writer.of(s).at[Writer % A + Async]
 
   /** these elements, told in order */
   def apply[A](as: A*): Source[A] = of(as.toList)
@@ -109,15 +105,15 @@ object Source {
   def unfold[S, A](s: S)(f: S => Option[(A, S)]): Source[A] =
     def go(s: S): Source[A] = f(s) match
       case Some((a, s2)) =>
-        okay.freer.effect[Writer % A + Async, Unit](Writer(a)).flatMap(_ => go(s2))
-      case None => okay.freer.pure(())
-    okay.freer.pure[Writer % A + Async, Unit](()).flatMap(_ => go(s))
+        Writer.tell(a).at[Writer % A + Async].flatMap(_ => go(s2))
+      case None => pure(())
+    defer(go(s))
 
   def range(from: Long, until: Long): Source[Long] =
     def go(i: Long): Source[Long] =
-      if i >= until then okay.freer.pure(())
-      else okay.freer.effect[Writer % Long + Async, Unit](Writer(i)).flatMap(_ => go(i + 1))
-    okay.freer.pure[Writer % Long + Async, Unit](()).flatMap(_ => go(from))
+      if i >= until then pure(())
+      else Writer.tell(i).at[Writer % Long + Async].flatMap(_ => go(i + 1))
+    defer(go(from))
 
   /**
    * A producer in a row, as a source — the Writer road for a seam
@@ -136,28 +132,14 @@ object Source {
    * unconsed. `Writer.of(p)` arrives at the same type through uncons
    * and pays both.
    */
-  def fromProducer[W, B, G[+_] : TypeableK](p: B ! Produce + G): B ! Writer % W + G =
-    import !.*
-    type R = Writer % W + G
-    // the walk as a frame of the machine (handle-frames-loops): each production told
-    def frame(x: B ! Produce + G): okay.freer.Shift.U[R, B] =
-      okay.freer.HandleFrames.statefulOver[Produce, Unit, B, B, R, Produce + G](okay.std.producing[G], (_, b) => okay.freer.pure(b))(
-        (_, w, resume) => okay.freer.effect[R, Unit](Writer(produced[W](w))).flatMap(_ => resume((), w)))((), x)
-    def go(d: Int)(p: B ! Produce + G): B ! R = (p.resumeRun: @unchecked) match
-      case Free.Return(b) => okay.freer.pure(b)
-      case Inject(e) => split[G, Produce](e)
-        (g => Inject(g): B ! R)
-        (w => okay.freer.effect[R, Unit](Writer(produced[W](w))).map(_ => produced[B](w)))
-      case Bind(Inject(e), k) => split[G, Produce](e)
-        (g => Inject(g).flatMap(x => go(d)(k(x))): B ! R)
-        (w => okay.freer.effect[R, Unit](Writer(produced[W](w))).flatMap(_ => go(d)(k(w))))
-      case y => go(d)(HandleFrames.shallow(y, d))
-    okay.freer.HandleFrames.run[B, R](d => go(d)(p), frame(p))
+  def fromProducer[W, B, G[_]](p: B ! Produce + G): B ! Writer % W + G =
+    // each production told, its own value answered (the kernel's `Translating`)
+    p.translate[Produce, Writer % W]([X] => (w: Produce[X]) => Writer.tell(produced[W](w)).map(_ => w))
 
   /** a producer whose elements ARE its answer type — `Producer[A]` in
    * a row — as a `Source`: the answer, phantom by construction, is
    * dropped for the Unit a source answers */
-  def ofProducer[A, G[+_] : TypeableK](p: A ! Produce + G): Unit ! Writer % A + G =
+  def ofProducer[A, G[_]](p: A ! Produce + G): Unit ! Writer % A + G =
     fromProducer[A, A, G](p).map(_ => ())
 
   /**
@@ -186,7 +168,7 @@ object Source {
    * operation (writer-collect-loops).
    */
   def concat[X](s: Source[Chunk[X]]): Vector[X] ! Async =
-    Writer.loopWith[Chunk[X], List[Chunk[X]], Unit, Vector[X], Async](s)(Nil)((l, c) => c :: l)((l, _) => flattenReversed(l))
+    Writer.loopWith[Chunk[X], List[Chunk[X]], Unit, Vector[X], Writer % Chunk[X] + Async](s)(Nil)((l, c) => c :: l)((l, _) => flattenReversed(l))
 
   /** the chunks consed newest-first, as one Vector in arrival order */
   private def flattenReversed[X](l: List[Chunk[X]]): Vector[X] =
@@ -203,37 +185,10 @@ object Source {
       rs = rs.tail
     b.result()
 
-  def toProducer[A, G[+_]](s: Unit ! Writer % A + G)(end: A): A ! Produce + G =
-    import !.*
-    type R = Produce + G
-    // the walk as a frame of the machine (handle-frames-loops): each tell produced, the end answered
-    def frame(x: Unit ! Writer % A + G): okay.freer.Shift.U[R, A] =
-      okay.freer.HandleFrames.statefulOver[Writer % A, Unit, Unit, A, R, Writer % A + G](summon[TypeableK[Writer % A]], (_, _) => okay.freer.pure(end))(
-        (_, op, resume) => okay.freer.effect[R, A](Writer.told[A](op)).flatMap(_ => resume((), ())))((), x)
-    def go(d: Int)(s: Unit ! Writer % A + G): A ! R = (s.resumeRun: @unchecked) match
-      case Free.Return(_) => okay.freer.pure(end)
-      // Say is Writer's ONLY constructor, so a value that reaches the
-      // second arm IS one — `Writer.widen`'s own argument, and its
-      // @unchecked: the erased W cannot be verified, only its shape
-      // Writer tested first (distinct-on-handlers): with the rest
-      // inferred as the Writer itself, a rest-first split forwarded
-      // every Say untouched
-      case Inject(e) => split[Writer % A, G](e)
-        // the producer still ENDS in `end`: a bare terminal Inject
-        // would answer its own element instead
-        (w => (w: @unchecked) match
-          case Writer.Say(v) => okay.freer.effect[R, A](v).flatMap(_ => okay.freer.pure(end)))
-        // a terminal operation's answer is the program's own, Unit here
-        (g => (Inject(g): Unit ! R).map(_ => end))
-      case Bind(Inject(e), k) => split[Writer % A, G](e)
-        (w => (w: @unchecked) match
-          case Writer.Say(v) => okay.freer.effect[R, A](v).flatMap(_ => go(d)(k(()))))
-        // the operation's answer type is the tree's own existential and
-        // cannot be named: no ascription, the expected type of the
-        // branch types the re-injection — `Writer.widen`'s own shape
-        (g => Inject(g).flatMap(x => go(d)(k(x))))
-      case y => go(d)(HandleFrames.shallow(y, d))
-    okay.freer.HandleFrames.run[A, R](d => go(d)(s), frame(s))
+  def toProducer[A, G[_]](s: Unit ! Writer % A + G)(end: A): A ! Produce + G =
+    // each tell produced, the end answered (the kernel's `Translating`)
+    s.translate[Writer % A, Produce]([X] => (op: Writer[A, X]) => op match
+      case Writer.Say(v) => produce(v).map(_ => ())).map(_ => end)
 
   /**
    * Merge by READINESS on ONE thread of control (specs/ready-merge.md):
@@ -267,11 +222,11 @@ object Source {
    * node of `s`, so wrap a CHUNK source, not an element source.
    */
   private[okay] def releasing[A](release: () => Unit)(s: Source[A]): Source[A] =
-    okay.freer.pure[Writer % A + Async, Unit](()).flatMap: _ =>
+    defer:
       val scope = Async.CancelScope(release)
-      okay.freer.effect[Writer % A + Async, Unit](Async.Run(Async.Enter(scope)))
+      effect[Async, Unit](Async.Run(Async.Enter(scope))).at[Writer % A + Async]
         .flatMap(_ => s)
-        .flatMap(_ => okay.freer.effect[Writer % A + Async, Unit](Async.Run(Async.Exit(scope))))
+        .flatMap(_ => effect[Async, Unit](Async.Run(Async.Exit(scope))).at[Writer % A + Async])
 
 
   /**
@@ -323,10 +278,10 @@ object Source {
     // one receive as a program on THIS row, the way `Channel.drained`
     // spells its await — `receive` answers `! Async` alone
     def receive[X](c: Channel[X]): Option[X] ! R =
-      okay.freer.effect[R, Option[X]](Async.Await[Option[X]] { k => c.receiveAsync(k); () => c.cancelReceive(k) })
+      effect[Async, Option[X]](Async.Await[Option[X]] { k => c.receiveAsync(k); () => c.cancelReceive(k) }).at[R]
     // the sides' fibers start HERE, at the first pull (a Source is a
     // value, and running it twice zips twice)
-    okay.freer.pure[R, Unit](()).flatMap: _ =>
+    defer:
       val cl = Channel.buffer[A, Source, Async](capacity)(s)
       val cr = Channel.buffer[B, Source, Async](capacity)(t)
       // entered in front, EXITED where the zip ends (one Exit a run, in
@@ -343,21 +298,21 @@ object Source {
       val scope = Async.CancelScope(Merge.closing(cl, cr))
       def end(other: Channel[?]): Unit ! R =
         other.close()
-        okay.freer.effect[R, Unit](Async.Run(Async.Exit(scope)))
+        effect[Async, Unit](Async.Run(Async.Exit(scope))).at[R]
       def go: Unit ! R =
         receive(cl).flatMap:
           case None => end(cr)
           case Some(a) =>
             receive(cr).flatMap:
               case None => end(cl)
-              case Some(b) => okay.freer.effect[R, Unit](Writer((a, b))).flatMap(_ => go)
-      okay.freer.effect[R, Unit](Async.Run(Async.Enter(scope))).flatMap(_ => go)
+              case Some(b) => Writer.tell((a, b)).at[R].flatMap(_ => go)
+      effect[Async, Unit](Async.Run(Async.Enter(scope))).at[R].flatMap(_ => go)
 
   /** `zip`, the pair folded by `f` as it is told — one `Writer.map`
    * walk over the zipped program, not a second join */
   def zipWith[A, B, C](s: Source[A], t: Source[B], capacity: Int = 64)(f: (A, B) => C)
                       (using Scheduler, CanBlock, Wait, Pause): Source[C] =
-    Writer.map[(A, B), C, Unit, Async](zip(s, t, capacity))(f.tupled)
+    Writer.map[(A, B), C, Unit, Writer % (A, B) + Async](zip(s, t, capacity))(f.tupled)
 
   /**
    * The sort-merge join by key of two live sources NON-DECREASING in
@@ -400,10 +355,10 @@ object Source {
                          (using Scheduler, CanBlock, Timer, Merge, Wait, Pause): Source[(K, (A, B))] =
     type Ev = WindowJoin.Event[K, A, B]
     def ended[X](s: Source[X]): Source[Option[X]] =
-      Writer.map[X, Option[X], Unit, Async](s)(x => Some(x))
-        .flatMap(_ => okay.freer.effect[Writer % Option[X] + Async, Unit](Writer(None)))
+      Writer.map[X, Option[X], Unit, Writer % X + Async](s)(x => Some(x))
+        .flatMap(_ => Writer.tell[Option[X]](None).at[Writer % Option[X] + Async])
     through(ended(l).either(ended(r), capacity))(
-      !.widen[Unit, Take % Ev + Writer % (K, (A, B)), Async](WindowJoin.stage[K, A, B](within, lateness)(atL, atR)))
+      WindowJoin.stage[K, A, B](within, lateness)(atL, atR).at[Take % Ev + (Writer % (K, (A, B)) + Async)])
 
   /** what `merge(chunked = true)` batches by. Not a parameter: the
    * size barely moves the number (16 against 64 measured ~10% apart
@@ -442,7 +397,7 @@ extension [A](s: Source[A])
     // abstract A was an unchecked E092 test; since
     // writer-typeablek-by-class (2026-09-19) it is a call
     // (writer-collect-loops).
-    Writer.loopWith[A, List[A], Unit, Vector[A], Async](s)(Nil)((l, a) => a :: l)((l, _) => l.reverse.toVector)
+    Writer.loopWith[A, List[A], Unit, Vector[A], Writer % A + Async](s)(Nil)((l, a) => a :: l)((l, _) => l.reverse.toVector)
 
   /**
    * A fold that stops (specs/fold-until.md): `Writer.foldUntil` on
@@ -451,7 +406,7 @@ extension [A](s: Source[A])
    * element that satisfied the fold.
    */
   def runFoldUntil[S, R](using FoldUntil[A, S, R]): R ! Async =
-    Writer.foldUntil[A, S, Unit, R, Async](s)
+    Writer.foldUntil[A, S, Unit, R, Writer % A + Async](s)
 
   /**
    * Run `f` for each element, in order — `ZStream#runForeach`,
@@ -470,17 +425,9 @@ extension [A](s: Source[A])
     // operation re-enters the loop the way `Writer.foldWith` does.
     // Same order, same effects; stack safety is the trampoline's, as
     // before, since every element re-enters through flatMap.
-    import !.*
-    def loop(x: Source[A]): Unit ! Async = (x.resume: @unchecked) match
-      case Free.Return(_) => okay.freer.pure(())
-      case Inject(e) => split[Async, Writer % A](e)
-        (g => Inject(g).map(_ => ()): Unit ! Async)
-        { case Writer.Say(a) => f(a) }
-      case Bind(Inject(e), k) => split[Async, Writer % A](e)
-        (g => Inject(g).flatMap(v => loop(k(v))))
-        { w0 => (w0: @unchecked) match
-            case Writer.Say(a) => f(a).flatMap(_ => loop(k(()))) }
-    loop(s)
+    // each tell translated into f's program, run where the tell was (the kernel's `Translating`)
+    s.translateInto[Writer % A, Async]([X] => (op: Writer[A, X]) => op match
+      case Writer.Say(a) => f(a))
 
   /** `Source.mergeReady` of two sources: by readiness, on this
    * program's own thread of control, no fiber per side */
@@ -624,7 +571,7 @@ extension [A](s: Source[A])
     // choice); the sides' fibers start HERE, at the first pull, as they
     // always did — a Source is a value, and running it twice merges twice
     if !chunked then
-      pure[Writer % (A | B) + Async, Unit](()).flatMap(_ => m.elements[A | B](sw, tw, capacity))
+      defer(m.elements[A | B](sw, tw, capacity))
     else
       // capacity counts ELEMENTS, so the channel gets that many
       // divided by what each of its slots now holds
@@ -634,8 +581,8 @@ extension [A](s: Source[A])
       // two coroutines and made every element of every chunk cross the
       // handshake. `Writer.expand` walks the chunked program once and
       // re-tells the elements into a plain Free chain
-      pure[Writer % (A | B) + Async, Unit](()).flatMap: _ =>
-        Writer.expand[Chunk[A | B], A | B, Unit, Async](
+      defer:
+        Writer.expand[Chunk[A | B], A | B, Unit, Writer % Chunk[A | B] + Async](
           m.chunks[A | B](sw, tw, slots, Source.ChunkSize, flushAfter))(c => c)
 
   /**
@@ -650,8 +597,8 @@ extension [A](s: Source[A])
   infix def either[B](t: Source[B], capacity: Int = 64, chunked: Boolean = false,
                       flushAfter: Option[Long] = None)
                      (using Scheduler, CanBlock, Timer, Merge, Wait, Pause): Source[Either[A, B]] =
-    Writer.map[A, Either[A, B], Unit, Async](s)(a => Left(a))
-      .merge(Writer.map[B, Either[A, B], Unit, Async](t)(b => Right(b)), capacity, chunked, flushAfter)
+    Writer.map[A, Either[A, B], Unit, Writer % A + Async](s)(a => Left(a))
+      .merge(Writer.map[B, Either[A, B], Unit, Writer % B + Async](t)(b => Right(b)), capacity, chunked, flushAfter)
 
 extension [A](s: Source[A])
   /**
@@ -688,7 +635,7 @@ extension [A](s: Source[A])
    * case still needs only ONE channel.
    */
   def chunked(size: Int = Source.ChunkSize): Source[Chunk[A]] =
-    through(s)(!.widen[Unit, Take % A + Writer % Chunk[A], Async](Stage.chunked[A](size)))
+    through(s)(Stage.chunked[A](size).at[Take % A + (Writer % Chunk[A] + Async)])
 
 extension [A](s: Source[Chunk[A]])
   /** chunks back into elements — the inverse of `chunked`, so a
@@ -701,7 +648,7 @@ extension [A](s: Source[Chunk[A]])
     // (merge-chunk-size-curve-inverted — the numbers are in
     // `Writer.expand`'s scaladoc). `expand` walks the program once
     // and re-tells the elements into a plain Free chain.
-    Writer.expand[Chunk[A], A, Unit, Async](s)(c => c)
+    Writer.expand[Chunk[A], A, Unit, Writer % Chunk[A] + Async](s)(c => c)
 
 /** map the elements of a `Flushing` stream, leaving its `Flush.now`
  * marks exactly where the producer put them — `Writer.map` alone
@@ -709,21 +656,11 @@ extension [A](s: Source[Chunk[A]])
  * for the compound `Flush + Async`, so the split is spelled out here,
  * the same two-step `feedFlushing` (Channel.scala) already does */
 private def mapFlushing[A, B](a: Flushing[A])(f: A => B): Flushing[B] =
-  import !.*
-  (a.resume: @unchecked) match
-    case Free.Return(x) => Free.Return(x)
-    case Inject(e) => split[Flush, Writer % A + Async](e)
-      (fl => Inject(fl): Flushing[B])
-      (wa => split[Async, Writer % A](wa)
-        (g => Inject(g): Flushing[B])
-        { w0 => (w0: @unchecked) match
-            case Writer.Say(w) => Inject(Writer(f(w))) })
-    case Bind(Inject(e), k) => split[Flush, Writer % A + Async](e)
-      (fl => Inject(fl).flatMap(x => mapFlushing(k(x))(f)))
-      (wa => split[Async, Writer % A](wa)
-        (g => Inject(g).flatMap(x => mapFlushing(k(x))(f)))
-        { w0 => (w0: @unchecked) match
-            case Writer.Say(w) => Inject(Writer(f(w))).flatMap(_ => mapFlushing(k(()))(f)) })
+  Writer.map[A, B, Unit, Flush + (Writer % A + Async)](a)(f).at[Flush + (Writer % B + Async)]
+
+/** a flushing source's elements seen at a wider type: Writer is covariant in what it tells, so this is
+ * `Writer.widen`'s claim (one cast, there and here) */
+private def widenFlushing[A, B >: A](a: Flushing[A]): Flushing[B] = a.asInstanceOf[Flushing[B]]
 
 extension [A](s: Flushing[A])
   /**
@@ -742,12 +679,12 @@ extension [A](s: Flushing[A])
                              flushAfter: Option[Long] = None)
                             (using Scheduler, Timer, Merge, Wait, Pause): Source[A | B] =
     val slots = math.max(1, capacity / Source.ChunkSize)
-    val sw = !.widen[Unit, Flush + (Writer % A + Async), Writer % (A | B)](s)
-    val tw = !.widen[Unit, Flush + (Writer % B + Async), Writer % (A | B)](t)
+    val sw = widenFlushing[A, A | B](s)
+    val tw = widenFlushing[B, A | B](t)
     val m = summon[Merge]
     // the given mechanism's flushing join, unchunked by `Writer.expand`
-    pure[Writer % (A | B) + Async, Unit](()).flatMap: _ =>
-      Writer.expand[Chunk[A | B], A | B, Unit, Async](
+    defer:
+      Writer.expand[Chunk[A | B], A | B, Unit, Writer % Chunk[A | B] + Async](
         m.flushing[A | B](sw, tw, slots, Source.ChunkSize, flushAfter))(c => c)
 
   /**

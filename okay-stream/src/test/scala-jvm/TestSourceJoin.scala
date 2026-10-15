@@ -1,11 +1,7 @@
 package okay
 
-
-import okay.freer.*
-
-
+import okay.freer.{FoldUntil}
 import okay.std.*
-import okay.freer.given
 import okay.std.given
 import Chunks.elements
 import java.util.concurrent.TimeUnit
@@ -55,7 +51,7 @@ class TestSourceJoin extends munit.FunSuite with okay.testkit.Munit.Diagnosed {
     val produced = AtomicInteger(0)
     @volatile var feeder: Thread | Null = null
     val endless: Source[(Int, Int)] =
-      okay.freer.effect[Writer % (Int, Int) + Async, Unit](Async.Run(() => feeder = Thread.currentThread()))
+      effect[Async, Unit](Async.Run(() => feeder = Thread.currentThread())).at[Writer % (Int, Int) + Async]
         .flatMap(_ => Source.of(LazyList.from(0).map(i => { produced.incrementAndGet(); (i, i) })))
     val out = rows(Source.joinSorted(Source.of(List((1, "a"))), endless, capacity = 4))
     assertEquals(out, Vector((1, ("a", 1))))
@@ -95,10 +91,10 @@ class TestSourceJoin extends munit.FunSuite with okay.testkit.Munit.Diagnosed {
   test("a side that fails fails the join, after every pair told before the failure") {
     object Boom extends RuntimeException("boom")
     val failing: Source[(Int, String)] =
-      Source.of(List((0, "x"), (1, "y"))).flatMap(_ => okay.freer.effect[R, Unit](Async.Run[Unit](() => throw Boom)))
+      Source.of(List((0, "x"), (1, "y"))).flatMap(_ => effect[Async, Unit](Async.Run[Unit](() => throw Boom)).at[R])
     val seen = scala.collection.mutable.ArrayBuffer.empty[(Int, (Int, String))]
     val j = Source.joinSorted(Source.of(LazyList.from(0).map(i => (i, i))), failing, capacity = 64)
-    val thrown = intercept[RuntimeException](j.runForeach(p => okay.freer.pure[Async, Unit] { seen += p; () }).runWith)
+    val thrown = intercept[RuntimeException](j.runForeach(p => pure[Unit, Async] { seen += p; () }).runWith)
     assert(thrown eq Boom, s"wrong failure: $thrown")
     // the run at 1 was never closed, so its row was never matched: the failure reached it first
     assertEquals(seen.toVector, Vector((0, (0, "x"))))
@@ -107,7 +103,7 @@ class TestSourceJoin extends munit.FunSuite with okay.testkit.Munit.Diagnosed {
   test("a key out of order fails the join, after the pairs before it") {
     val seen = scala.collection.mutable.ArrayBuffer.empty[(Int, (String, String))]
     val j = Source.joinSorted(Source.of(List((0, "a"), (2, "b"))), Source.of(List((0, "x"), (2, "y"), (1, "z"))))
-    val e = intercept[IllegalArgumentException](j.runForeach(p => okay.freer.pure[Async, Unit] { seen += p; () }).runWith)
+    val e = intercept[IllegalArgumentException](j.runForeach(p => pure[Unit, Async] { seen += p; () }).runWith)
     assert(e.getMessage.contains("right side") && e.getMessage.contains("key 1 after 2"), e.getMessage)
     assertEquals(seen.toVector, Vector((0, ("a", "x"))))
   }

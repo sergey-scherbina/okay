@@ -1,7 +1,6 @@
 package okay
 
 
-import okay.freer.*
 
 
 /** Verifies that the A/B switches scripts/ab-defaults.sh drives actually

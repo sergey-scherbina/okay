@@ -1,11 +1,7 @@
 package okay
 
-
-import okay.freer.*
-
-
+import okay.freer.{Fold, FoldUntil}
 import okay.std.*
-import okay.freer.given
 import okay.std.given
 import scala.collection.immutable.ArraySeq
 
@@ -127,11 +123,8 @@ object Chunks {
   def fibs[N: Numeric as N](size: Int = 64): Chunks[N] =
     generate((N.zero, N.one))(_._1)((x, y) => (y, x + y))(size)
 
-  import !.*
-
   /** defer one step: nothing before the bind runs at construction */
-  private[okay] inline def defer[X](inline x: => Feed[X]): Feed[X] =
-    pure[Writer % X, Unit](()).flatMap(_ => x)
+  private[okay] inline def defer[X](inline x: => Feed[X]): Feed[X] = okay.defer(x)
 
   /** the empty chunk — what a G-effectful `Chunk[X] ! Produce + G`
    * ends in (its final `Pure`, which its stream instance never reads),
@@ -146,7 +139,7 @@ object Chunks {
 
   /** pull one chunk: the pure step of a chunked stream */
   private[okay] def pull[A](p: Chunks[A]): Option[(Chunk[A], Chunks[A])] =
-    Writer.uncons(p).toOption
+    Writer.uncons[Chunk[A], Unit](p).toOption
 
   /**
    * The chunk-in, chunk-out transformers: each stage is a tight array
@@ -173,12 +166,8 @@ object Chunks {
    * a private one makes the compiler synthesize an accessor whose
    * name is unstable across compiler versions, which breaks a
    * downstream JAR on a mere recompile. */
-  def mapWith[A, B](p: Chunks[A])(g: Chunk[A] => Chunk[B]): Chunks[B] = defer:
-    (p.resume: @unchecked) match
-      case Return(_) => end
-      case Inject(Writer.Say(c)) => Writer.tell(g(c))
-      case Bind(Inject(Writer.Say(c)), k) =>
-        Writer.tell(g(c)).flatMap(_ => mapWith(k(()))(g))
+  def mapWith[A, B](p: Chunks[A])(g: Chunk[A] => Chunk[B]): Chunks[B] =
+    Writer.map[Chunk[A], Chunk[B], Unit, Writer % Chunk[A]](p)(g).at[Writer % Chunk[B]]
 
   /** keep the elements satisfying pred (empty result chunks are skipped) */
   inline def filter[A](p: Chunks[A])(inline pred: A => Boolean): Chunks[A] =
@@ -186,56 +175,48 @@ object Chunks {
 
   /** the recursion behind the inline `filter` — public for the same
    * binary-compatibility reason as `mapWith` */
-  def filterWith[A](p: Chunks[A])(g: Chunk[A] => Chunk[A]): Chunks[A] = defer:
-    (p.resume: @unchecked) match
-      case Return(_) => end
-      case Inject(Writer.Say(c)) => Writer.tell(g(c))
-      case Bind(Inject(Writer.Say(c)), k) =>
-        val fc = g(c)
-        if fc.isEmpty then filterWith(k(()))(g)
-        else Writer.tell(fc).flatMap(_ => filterWith(k(()))(g))
+  def filterWith[A](p: Chunks[A])(g: Chunk[A] => Chunk[A]): Chunks[A] =
+    Writer.expand[Chunk[A], Chunk[A], Unit, Writer % Chunk[A]](p) { c =>
+      val fc = g(c)
+      if fc.isEmpty then IndexedSeq.empty else IndexedSeq(fc)
+    }.at[Writer % Chunk[A]]
 
   /** the first n elements (the last chunk truncated) */
   def take[A](p: Chunks[A])(n: Int): Chunks[A] = defer:
     if n <= 0 then end
-    else (p.resume: @unchecked) match
-      case Return(_) => end
-      case Inject(Writer.Say(c)) => Writer.tell(c.take(n))
-      case Bind(Inject(Writer.Say(c)), k) =>
+    else pull(p) match
+      case None => end
+      case Some((c, rest)) =>
         if c.length >= n then Writer.tell(c.take(n))
-        else Writer.tell(c).flatMap(_ => take(k(()))(n - c.length))
+        else Writer.tell(c).flatMap(_ => take(rest)(n - c.length))
 
   /** all but the first n elements */
   def drop[A](p: Chunks[A])(n: Int): Chunks[A] = defer:
     if n <= 0 then p
-    else (p.resume: @unchecked) match
-      case Return(_) => end
-      case Inject(Writer.Say(c)) => Writer.tell(c.drop(n))
-      case Bind(Inject(Writer.Say(c)), k) =>
-        if c.length <= n then drop(k(()))(n - c.length)
-        else Writer.tell(c.drop(n)).flatMap(_ => k(()))
+    else pull(p) match
+      case None => end
+      case Some((c, rest)) =>
+        if c.length <= n then drop(rest)(n - c.length)
+        else Writer.tell(c.drop(n)).flatMap(_ => rest)
 
   /** the longest prefix satisfying pred */
   def takeWhile[A](p: Chunks[A])(pred: A => Boolean): Chunks[A] = defer:
-    (p.resume: @unchecked) match
-      case Return(_) => end
-      case Inject(Writer.Say(c)) =>
-        Writer.tell(c.takeWhile(pred))
-      case Bind(Inject(Writer.Say(c)), k) =>
+    pull(p) match
+      case None => end
+      case Some((c, rest)) =>
         val i = c.indexWhere(a => !pred(a))
-        if i < 0 then Writer.tell(c).flatMap(_ => takeWhile(k(()))(pred))
+        if i < 0 then Writer.tell(c).flatMap(_ => takeWhile(rest)(pred))
         else Writer.tell(c.take(i))
 
   /** the rest, after the longest prefix satisfying pred */
   def dropWhile[A](p: Chunks[A])(pred: A => Boolean): Chunks[A] = defer:
-    (p.resume: @unchecked) match
-      case Return(_) => end
-      case Inject(Writer.Say(c)) => Writer.tell(c.dropWhile(pred))
-      case Bind(Inject(Writer.Say(c)), k) =>
+    pull(p) match
+      case None => end
+      case Some((c, rest)) =>
         val i = c.indexWhere(a => !pred(a))
-        if i < 0 then dropWhile(k(()))(pred)
-        else if i == 0 then k(())
-        else Writer.tell(c.drop(i)).flatMap(_ => k(()))
+        if i < 0 then dropWhile(rest)(pred)
+        else if i == 0 then Writer.tell(c).flatMap(_ => rest)
+        else Writer.tell(c.drop(i)).flatMap(_ => rest)
 
   /**
    * The terminal, SPECIALIZED: the step is known where the fold is
@@ -376,10 +357,9 @@ object Chunks {
    * at a literal step; the investigation that built it, with every
    * number, is specs/producer-to-writer-carrier.md (Results).
    */
-  inline def foldLeftWriter[A, S, G[+_]](p: Unit ! Writer % Chunk[A] + G)(z: S)
-                                        (inline f: (S, A) => S)
-                                        (using okay.TypeableK[Writer % Chunk[A]]): (S, Unit) ! G =
-    Writer.foldWith[Chunk[A], S, Unit, G](p)(z): (s, c) =>
+  inline def foldLeftWriter[A, S, G[_]](p: Unit ! Writer % Chunk[A] + G)(z: S)
+                                        (inline f: (S, A) => S): (S, Unit) ! G =
+    Writer.foldWith[Chunk[A], S, Unit, Writer % Chunk[A] + G](p)(z): (s, c) =>
       var acc = s
       var i = 0
       while i < c.length do
@@ -533,28 +513,19 @@ object Chunks {
    * steps once per chunk. The consumer drives; when the chunks end,
    * every further await answers None.
    */
-  def pipe[W, B](p: Chunks[W])(c: B ! Take % W): B = {
-    import scala.annotation.tailrec
-
-    @tailrec def fetch(ch: Chunk[W], i: Int, rest: Chunks[W]): (Option[W], Chunk[W], Int, Chunks[W]) =
-      if i < ch.length then (Some(ch(i)), ch, i + 1, rest)
+  def pipe[W, B](p: Chunks[W])(c: B ! Take % W): B =
+    // the consumer's awaits answered in place, the chunk walked by a cursor
+    var ch: Chunk[W] = emptyChunk
+    var i = 0
+    var rest: Chunks[W] = p
+    @scala.annotation.tailrec def fetch(): Option[W] =
+      if i < ch.length then { i += 1; Some(ch(i - 1)) }
       else pull(rest) match
-        case Some((c2, r)) => fetch(c2, 0, r)
-        case None => (None, ch, i, end)
+        case Some((c2, r)) => ch = c2; i = 0; rest = r; fetch()
+        case None => rest = end; None
+    c.handle(Handler.answering[Take % W]([X] => (op: Take[W, X]) => op match
+      case Take.Await() => fetch())).run
 
-    @tailrec def loop(ch: Chunk[W], i: Int, rest: Chunks[W], c: B ! Take % W): B = (c.resume: @unchecked) match
-      case Return(b) => b
-      case Inject(Take.Await()) => fetch(ch, i, rest)._1
-      case Bind(Inject(Take.Await()), k) =>
-        val (o, ch2, i2, r2) = fetch(ch, i, rest)
-        loop(ch2, i2, r2, k(o))
-
-    loop(emptyChunk, 0, p, c)
-  }
-
-  /** the non-specializing chunk map, for callers that hold `f` as a
-   * value (Parallel's per-chunk fibers); `ChunkBuf.mapper` is the
-   * specializing form the inline `map` uses */
   private[okay] def mapChunk[A, B](c: Chunk[A])(f: A => B): Chunk[B] =
     val n = c.length
     val buf = ChunkBuf[B](n)

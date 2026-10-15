@@ -1,11 +1,7 @@
 package okay
 
-
-import okay.freer.*
-
-
 import okay.std.*
-import okay.freer.given
+import okay.freer.{FoldUntil, foldUntilTo, given_Foldable_F}
 /**
  * The examples docs/tutorial.md §2, docs/guide.md §2–3 and the
  * typepedia print for `FoldUntil` and `!.loop`, VERBATIM — a doc
@@ -33,7 +29,7 @@ class TestDocExamplesFoldUntil extends munit.FunSuite:
   }
 
   test("guide §2: !.loop — Collatz steps, the state carrying the count") {
-    val steps: Int ! Nothing = !.loop[(Int, Int), Int, Nothing]((27, 0)) { (n, k) =>
+    val steps: Int ! Pure = !.loop[(Int, Int), Int, Pure]((27, 0)) { (n, k) =>
       pure(if n == 1 then Right(k) else Left((if n % 2 == 0 then n / 2 else 3 * n + 1, k + 1)))
     }
     val answer =
@@ -66,7 +62,7 @@ class TestDocExamplesFoldUntil extends munit.FunSuite:
         n => Left(n))                                         // the input ended first
 
     def lines(xs: String*): Unit ! Writer % String =
-      xs.foldRight(pure[Writer % String, Unit](()))((l, rest) => Writer.tell(l).flatMap(_ => rest))
+      xs.foldRight(pure[Unit, Writer % String](()))((l, rest) => Writer.tell(l).flatMap(_ => rest))
 
     assertEquals(!.run(
       Writer.run(through(lines("host: a", "port: 1", "", "body"))(header))   // (Seq((host,a), (port,1)), Right(2))

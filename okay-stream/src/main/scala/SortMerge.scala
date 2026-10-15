@@ -1,7 +1,6 @@
 package okay
 
 
-import okay.freer.*
 
 
 import okay.std.*
@@ -212,19 +211,19 @@ object SortMerge {
                         (using Scheduler, CanBlock, Wait, Pause): Source[O] =
     type R = Writer % O + Async
     def receive[X](c: Channel[X]): Option[X] ! R =
-      okay.freer.effect[R, Option[X]](Async.Await[Option[X]] { k => c.receiveAsync(k); () => c.cancelReceive(k) })
-    okay.freer.pure[R, Unit](()).flatMap: _ =>
+      effect[Async, Option[X]](Async.Await[Option[X]] { k => c.receiveAsync(k); () => c.cancelReceive(k) }).at[R]
+    defer:
       val m = fresh()
       val out = ArrayBuffer.empty[O]
       val cl = Channel.buffer[(K, A), Source, Async](capacity)(s)
       val cr = Channel.buffer[(K, B), Source, Async](capacity)(t)
       val scope = Async.CancelScope(Merge.closing(cl, cr))
       def tellAll(i: Int): Unit ! R =
-        if i >= out.length then { out.clear(); okay.freer.pure[R, Unit](()) }
-        else okay.freer.effect[R, Unit](Writer(out(i))).flatMap(_ => tellAll(i + 1))
+        if i >= out.length then { out.clear(); pure[Unit, R](()) }
+        else Writer.tell(out(i)).at[R].flatMap(_ => tellAll(i + 1))
       def end: Unit ! R =
         cl.close(); cr.close()
-        okay.freer.effect[R, Unit](Async.Run(Async.Exit(scope)))
+        effect[Async, Unit](Async.Run(Async.Exit(scope))).at[R]
       def go: Unit ! R =
         m.step(o => { out += o; () }) match
           case Need.Done => tellAll(0).flatMap(_ => end)
@@ -236,5 +235,5 @@ object SortMerge {
             tellAll(0).flatMap(_ => receive(cr)).flatMap:
               case None => m.rightEnd(); go
               case Some((k, b)) => m.right(k, b); go
-      okay.freer.effect[R, Unit](Async.Run(Async.Enter(scope))).flatMap(_ => go)
+      effect[Async, Unit](Async.Run(Async.Enter(scope))).at[R].flatMap(_ => go)
 }

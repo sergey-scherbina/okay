@@ -1,7 +1,6 @@
 package okay
 
 
-import okay.freer.*
 
 
 /**
@@ -36,7 +35,7 @@ class TestChannelHandoff extends munit.FunSuite:
     assertEquals(c.receiveBlocking(), Some(1))
     assertEquals(c.receiveBlocking(), Some(2))
     @volatile var got: Option[Int] = null
-    val waiter = Async.spawn(okay.freer.pure(()).map(_ => { got = c.receiveBlocking(); () }))
+    val waiter = Async.spawn(pure(()).map(_ => { got = c.receiveBlocking(); () }))
     Thread.sleep(50)                              // parked on an empty channel
     assert(c.offer(3))
     waiter.join()
@@ -52,7 +51,7 @@ class TestChannelHandoff extends munit.FunSuite:
     assertEquals(c.receiveBlocking(), None)
     val d = Channel[Int](8)
     @volatile var got: Option[Int] = Some(-1)
-    val waiter = Async.spawn(okay.freer.pure(()).map(_ => { got = d.receiveBlocking(); () }))
+    val waiter = Async.spawn(pure(()).map(_ => { got = d.receiveBlocking(); () }))
     Thread.sleep(50)
     d.close()
     waiter.join()
@@ -72,7 +71,7 @@ class TestChannelHandoff extends munit.FunSuite:
   test("law: a receiver parked on the handoff is woken by fail+close with the failure") {
     val c = Channel[Int](8)
     @volatile var seen: Throwable | Null = null
-    val waiter = Async.spawn(okay.freer.pure(()).map(_ =>
+    val waiter = Async.spawn(pure(()).map(_ =>
       try { val _ = c.receiveBlocking() } catch case t: RuntimeException => seen = t))
     Thread.sleep(50)
     c.fail(new RuntimeException("late"))
@@ -96,7 +95,7 @@ class TestChannelHandoff extends munit.FunSuite:
   test("law: many elements through many blocking receives, none lost, order kept, across a ring of 2") {
     val c = Channel[Int](2)
     val n = 3000
-    val producer = Async.spawn(okay.freer.pure(()).map(_ => { for i <- 0 until n do assert(c.sendBlocking(i)); c.close() }))
+    val producer = Async.spawn(pure(()).map(_ => { for i <- 0 until n do assert(c.sendBlocking(i)); c.close() }))
     val out = Vector.newBuilder[Int]
     var more = true
     while more do c.receiveBlocking() match

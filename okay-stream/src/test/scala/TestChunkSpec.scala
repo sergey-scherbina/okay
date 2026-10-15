@@ -1,9 +1,6 @@
 package okay
 
-
-import okay.freer.*
-
-
+import okay.freer.{Fold}
 import okay.std.*
 import scala.collection.immutable.ArraySeq
 

@@ -1,20 +1,18 @@
 package okay
 
 
-import okay.freer.*
 
 
 import okay.std.*
-import okay.freer.given
 import okay.std.given
 /** core's TestWriterToldBeforeThrow, for a writer WITH effects — the
  * view `Channel.buffer`'s feed walks — and end to end through buffer */
 class TestSourceToldBeforeThrow extends munit.FunSuite {
 
   private def told: Source[Int] =
-    !.widen[Unit, Writer % Int, Async](
+    (
       Writer.tell(1).flatMap(_ => Writer.tell(2)).flatMap(_ => Writer.tell(3))
-        .flatMap(_ => throw RuntimeException("after 3")))
+        .flatMap(_ => throw RuntimeException("after 3"))).at[Writer % Int + Async]
 
   private def drain(next: () => Option[Int]): (List[Int], String) =
     var out = List.empty[Int]

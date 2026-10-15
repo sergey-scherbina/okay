@@ -1,10 +1,8 @@
 package okay
 
 
-import okay.freer.*
 
 
-import okay.freer.given
 import okay.std.given
 /**
  * feed-offer-first: the feed offers in a loop and parks only on the
@@ -15,7 +13,7 @@ class TestFeedOfferFirst extends munit.FunSuite:
 
   private def collect(src: Source[Int]): Vector[Int] =
     val out = Vector.newBuilder[Int]
-    src.runForeach(x => okay.freer.effect[Async, Unit](Async.Run(() => out += x))).runWith
+    src.runForeach(x => effect[Async, Unit](Async.Run(() => out += x))).runWith
     out.result()
 
   test("law: an element the ring refused is not lost -- every element arrives, in order, through a ring of 2") {
@@ -33,13 +31,13 @@ class TestFeedOfferFirst extends munit.FunSuite:
 
   test("law: a consumer that stops early leaves the producer parked on a refusal, not spinning -- and close releases it") {
     val c = Channel[Int](2)
-    val producer = Async.spawn(okay.freer.pure(()).flatMap(_ =>
+    val producer = Async.spawn(defer[Unit, Async] {
       // the same loop feed runs, spelled out: offer until refused, then one send
       def go(i: Int): Unit ! Async =
-        if i >= 100 then okay.freer.pure(())
+        if i >= 100 then pure(())
         else if c.offer(i) then go(i + 1)
-        else c.send(i).flatMap(ok => if ok then go(i + 1) else okay.freer.pure(()))
-      go(0)))
+        else c.send(i).flatMap(ok => if ok then go(i + 1) else pure(()))
+      go(0) })
     assertEquals(c.receiveBlocking(), Some(0))       // take one; the producer is now parked on a refusal
     Thread.sleep(20)
     c.close()                                        // close under the producer

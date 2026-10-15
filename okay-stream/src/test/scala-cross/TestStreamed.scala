@@ -1,12 +1,8 @@
 package okay
 
-
-import okay.freer.*
-
-
+import okay.freer.{Aggregator}
 import scala.util.Random
 import Chunks.elements
-import Row.plus
 import Streamed.{joinSorted, joinWithin, windowed, zip}
 import Tables.{join, collect}
 
@@ -29,7 +25,7 @@ class TestStreamed extends munit.FunSuite {
       val rnd = Random(seed)
       val l = keyed(rnd, rnd.nextInt(60), "l").sortBy(_._1)
       val r = keyed(rnd, rnd.nextInt(60), "r").sortBy(_._1)
-      val sorted = run(Tables.of(l).plus[Streamed].joinSorted(Tables.of(r).plus[Streamed]).collect.map(_.elements.toVector.sorted))
+      val sorted = run(Tables.of(l).at[R].joinSorted(Tables.of(r).at[R]).collect.map(_.elements.toVector.sorted))
       val hashed = Tables.run(B)(Tables.of(l).join(Tables.of(r)).collect.map(_.elements.toVector.sorted))
       assertEquals(sorted, hashed, s"seed $seed")
   }
@@ -40,7 +36,7 @@ class TestStreamed extends munit.FunSuite {
       val l = Vector.fill(rnd.nextInt(50))((rnd.nextInt(5), (rnd.nextLong(100), s"l${rnd.nextInt(1000)}")))
       val r = Vector.fill(rnd.nextInt(50))((rnd.nextInt(5), (rnd.nextLong(100), s"r${rnd.nextInt(1000)}")))
       val within = 7L
-      val got = run(Tables.of(l).plus[Streamed].joinWithin(Tables.of(r).plus[Streamed], within, lateness)(_._1, _._1)
+      val got = run(Tables.of(l).at[R].joinWithin(Tables.of(r).at[R], within, lateness)(_._1, _._1)
         .collect.map(_.elements.toVector.sorted))
       val expected = (for (k, a) <- l; (k2, b) <- r if k == k2 && math.abs(a._1 - b._1) <= within yield (k, (a, b))).sorted
       assertEquals(got, expected, s"seed $seed lateness $lateness")
@@ -51,7 +47,7 @@ class TestStreamed extends munit.FunSuite {
     val rnd = Random(7)
     val evs = Vector.fill(400)(Ev(rnd.nextLong(2000), (rnd.nextInt(3) + 'a').toChar.toString, rnd.nextInt(10).toLong))
     val sum = Aggregator.sum[Long].contramap[Ev](_.v)
-    val got = run(Tables.of(evs).plus[Streamed].windowed(200L, 100L, 30L)(_.key)(_.ts)(sum).collect.map(_.elements.toVector))
+    val got = run(Tables.of(evs).at[R].windowed(200L, 100L, 30L)(_.key)(_.ts)(sum).collect.map(_.elements.toVector))
     val w = new Windows[String, Ev, Long, Long](200L, 100L, 30L, _.key, _.ts, sum)
     val expected = Vector.newBuilder[Pane[String, Long]]
     for e <- evs do w.add(e)(p => { expected += p; () })
@@ -61,7 +57,7 @@ class TestStreamed extends munit.FunSuite {
   }
 
   test("zip is Chunks.zip: positional, ending at the shorter side") {
-    val got = run(Tables.of(List(1, 2, 3)).plus[Streamed].zip(Tables.of(List("a", "b")).plus[Streamed]).collect.map(_.elements.toVector))
+    val got = run(Tables.of(List(1, 2, 3)).at[R].zip(Tables.of(List("a", "b")).at[R]).collect.map(_.elements.toVector))
     assertEquals(got, Vector((1, "a"), (2, "b")))
   }
 }

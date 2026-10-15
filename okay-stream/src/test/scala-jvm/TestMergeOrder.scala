@@ -1,7 +1,6 @@
 package okay
 
 
-import okay.freer.given
 
 
 import okay.std.given

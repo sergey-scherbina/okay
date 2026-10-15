@@ -1,7 +1,6 @@
-import okay.{Pane, Stage, Windows, through}
-import okay.freer.*
+import okay.{!, %, Pane, Stage, Windows, pure, through}
+import okay.freer.Aggregator
 import okay.std.*
-import okay.freer.given
 import scala.collection.mutable
 
 /**
@@ -124,12 +123,12 @@ class TestWindows extends munit.FunSuite {
 
   /** the elements as a producer: every one told, as TestPhased does it */
   def producer(evs: Seq[Ev]): Ev ! Writer % Ev =
-    evs.foldLeft(pure[Writer % Ev, Ev](evs.head)):
+    evs.foldLeft(pure[Ev, Writer % Ev](evs.head)):
       (m, e) => m.flatMap(_ => Writer.tell(e).map(_ => e))
 
   /** feed events through a stage, collect what it tells */
   def runStage[O, R](evs: Seq[Ev])(st: Stage[Ev, O, R]): (Seq[O], R) =
-    !.run(Writer.run(through(producer(evs))(st)))
+    (Writer.run(through(producer(evs))(st))).run
 
   test("the stage form gives the class's panes, and the same value drives twice") {
     val evs = events(500, 4000L, 4, 20L)
@@ -152,8 +151,8 @@ class TestWindows extends munit.FunSuite {
     val evs = Vector(Ev(1, "a", 1), Ev(2, "a", 2), Ev(15, "a", 15), Ev(16, "a", 16), Ev(30, "a", 30))
     val built = through(producer(evs))(Windows.stage(10L, 10L, 0L)((e: Ev) => e.key)((e: Ev) => e.ts)(sum))
     val expected = Vector(Pane(0L, 10L, "a", 3L), Pane(10L, 20L, "a", 31L), Pane(30L, 40L, "a", 30L))
-    assertEquals(!.run(Writer.run(built))._1.toVector, expected)
-    assertEquals(!.run(Writer.run(built))._1.toVector, expected, "the second run of one built program lost no pane")
+    assertEquals((Writer.run(built)).run._1.toVector, expected)
+    assertEquals((Writer.run(built)).run._1.toVector, expected, "the second run of one built program lost no pane")
   }
 
   test("a window is a stage like any other: it composes under `through`") {

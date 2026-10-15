@@ -1,16 +1,13 @@
 package okay
 
 
-import okay.freer.*
 
 
 import okay.std.*
-import okay.freer.given
 import okay.Tables.{Plan, read}
 import okay.Chunks.elements
 import java.nio.file.Files
 import scala.jdk.CollectionConverters.*
-import okay.freer.Row.plus
 
 /** The plan rewrites (specs/bulk.md, bulk-plan): what they change, what they leave alone. */
 class TestPlan extends munit.FunSuite {
@@ -50,7 +47,7 @@ class TestPlan extends munit.FunSuite {
       (if swap then small.join(big).select { case (k, (s, b)) => (k, b, s) } else big.join(small).select { case (k, (b, s)) => (k, b, s) })
         .collect.map(_.elements.toVector.sorted)
     val plans = scala.collection.mutable.ListBuffer.empty[String]
-    val viaSwap = State.run(Tables.Heap.empty[Chunks])(Tables.via(B, p => plans += Plan.show(p))(prog(true).plus[okay.freer.Pure]))._2
+    val viaSwap = State.run(Tables.Heap.empty[Chunks])(Tables.via(B, p => plans += Plan.show(p))(prog(true).at[Tables + Pure]))._2
     val direct = Tables.run(B)(prog(false))
     assertEquals(viaSwap, direct)
     val lines = plans.head.linesIterator.toSeq

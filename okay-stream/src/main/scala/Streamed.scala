@@ -1,11 +1,7 @@
 package okay
 
-
-import okay.freer.*
-
-
+import okay.freer.{Aggregator}
 import Chunks.elements
-import Row.{In, at, plus}
 
 /**
  * THE STREAM OPERATORS AS A SIGNATURE IN THE ROW (specs/streams-seam.md,
@@ -62,13 +58,13 @@ object Streamed:
     inline def zip[B](r: Table[B]): Table[(A, B)] ! Streamed = effect(Zip(t, r))
 
   // ------------------------- on a program: any row that has Streamed
-  extension [K, A, F[+_]](l: Table[(K, A)] ! F)(using In[Streamed, F])
+  extension [K, A, F[_]](l: Table[(K, A)] ! F)(using Within[Streamed, F])
     def joinSorted[B](r: Table[(K, B)] ! F)(using Ordering[K]): Table[(K, (A, B))] ! F =
       l.flatMap(lt => r.flatMap(rt => lt.joinSorted(rt).at[F]))
     def joinWithin[B](r: Table[(K, B)] ! F, within: Long, lateness: Long)
                      (atL: A => Long, atR: B => Long): Table[(K, (A, B))] ! F =
       l.flatMap(lt => r.flatMap(rt => lt.joinWithin(rt, within, lateness)(atL, atR).at[F]))
-  extension [A, F[+_]](p: Table[A] ! F)(using In[Streamed, F])
+  extension [A, F[_]](p: Table[A] ! F)(using Within[Streamed, F])
     def windowed[K, Acc, O](size: Long, slide: Long, lateness: Long)
                            (key: A => K)(at: A => Long)
                            (agg: Aggregator[A, Acc, O]): Table[Pane[K, O]] ! F =
@@ -99,19 +95,19 @@ object Streamed:
     out.result()
 
   /** the default: through the primitives, so it runs on any platform */
-  def viaTables[A, G[+_]](p: A ! Streamed + G): A ! Tables + G =
-    !.interpret(p):
+  def viaTables[A, Es[_]](p: A ! Es)(using s: okay.core.Split[Es, Streamed]): A ! Tables + s.Rest =
+    p.translate[Streamed, Tables]:
       [X] => (e: Streamed[X]) => e match
         case JoinSorted(l, r, ord) =>
-          l.collect.plus[G].flatMap(cl => r.collect.plus[G].flatMap(cr =>
-            Tables.of(Chunks.joinSorted(cl, cr)(using ord).elements.toVector).plus[G].map(t => t: X)))
+          l.collect.flatMap(cl => r.collect.flatMap(cr =>
+            Tables.of(Chunks.joinSorted(cl, cr)(using ord).elements.toVector).map(t => t: X)))
         case JoinWithin(l, r, within, lateness, atL, atR) =>
-          l.collect.plus[G].flatMap(cl => r.collect.plus[G].flatMap(cr =>
+          l.collect.flatMap(cl => r.collect.flatMap(cr =>
             Tables.of(joinWithinLocal(cl.elements.toVector, cr.elements.toVector, within, lateness, atL, atR))
-              .plus[G].map(t => t: X)))
+              .map(t => t: X)))
         case Windowed(t, size, slide, lateness, key, at, agg) =>
-          t.collect.plus[G].flatMap(c =>
-            Tables.of(windowedLocal(c.elements.toVector, size, slide, lateness, key, at, agg)).plus[G].map(t => t: X))
+          t.collect.flatMap(c =>
+            Tables.of(windowedLocal(c.elements.toVector, size, slide, lateness, key, at, agg)).map(t => t: X))
         case Zip(l, r) =>
-          l.collect.plus[G].flatMap(cl => r.collect.plus[G].flatMap(cr =>
-            Tables.of(Chunks.zip(cl, cr).elements.toVector).plus[G].map(t => t: X)))
+          l.collect.flatMap(cl => r.collect.flatMap(cr =>
+            Tables.of(Chunks.zip(cl, cr).elements.toVector).map(t => t: X)))

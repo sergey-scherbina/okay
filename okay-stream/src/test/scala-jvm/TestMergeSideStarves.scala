@@ -1,9 +1,6 @@
 package okay
 
-
-import okay.freer.*
-
-
+import okay.freer.{FoldUntil}
 import okay.std.given
 /**
  * ready-merge-side-starves (okay-stream/BUGS.md): a ready merge of two

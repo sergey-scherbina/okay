@@ -4,7 +4,6 @@ package okay
 
 
 import okay.std.*
-import okay.freer.given
 import okay.std.given
 /**
  * WHEN A FEED STOPS — pinned down, because a reader who closes a

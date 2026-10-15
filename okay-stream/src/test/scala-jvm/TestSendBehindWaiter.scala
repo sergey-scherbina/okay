@@ -1,9 +1,6 @@
 package okay
 
-
-import okay.freer.*
-
-
+import okay.freer.{FoldUntil}
 import java.util.concurrent.{CompletableFuture, TimeUnit, TimeoutException}
 
 /**
@@ -40,10 +37,10 @@ class TestSendBehindWaiter extends munit.FunSuite with okay.testkit.Munit.Diagno
   /** the merge's feed (`Channel.feed`): offer while the ring takes, and
    * park with ONE send on the element it refused */
   private def produce(c: Channel[Int], from: Int): Unit ! Async =
-    okay.freer.pure[Async, Unit](()).flatMap { _ =>
+    pure[Unit, Async](()).flatMap { _ =>
       var i = from
       while c.offer(i) do i += 2
-      c.send(i).flatMap(ok => if ok then produce(c, i + 2) else okay.freer.pure[Async, Unit](()))
+      c.send(i).flatMap(ok => if ok then produce(c, i + 2) else pure[Unit, Async](()))
     }
 
   /** the fiber's answer within `secs`, or None */

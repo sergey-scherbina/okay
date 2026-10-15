@@ -1,9 +1,6 @@
 package okay
 
-
-import okay.freer.*
-
-
+import okay.freer.{FoldUntil}
 import okay.std.*
 import okay.std.given
 /** `Source.mergeReady` needs no fiber and no blocking, so it runs where
@@ -23,8 +20,8 @@ class TestReadyMergeCross extends munit.FunSuite {
 
   test("a callback source merges with a ready one, on every platform") {
     def answered(x: Int): Source[Int] =
-      okay.freer.effect[R, Int](Async.Await[Int] { k => k(Right(x)); () => () })
-        .flatMap(v => okay.freer.effect[R, Unit](Writer(v)))
+      effect[Async, Int](Async.Await[Int] { k => k(Right(x)); () => () }).at[R]
+        .flatMap(v => Writer.tell(v).at[R])
     val m = answered(1).flatMap(_ => answered(2)) mergeReady Source.of(List(10, 20))
     Async.runAsync(m.runCollect).map(v => assertEquals(v, Vector(1, 10, 2, 20)))
   }
@@ -35,8 +32,8 @@ class TestReadyMergeCross extends munit.FunSuite {
     // second source is still parked — the drive's end runs the merge's
     // cancel scope, which it never exited
     var cancelled = false
-    val parked: Source[Int] = okay.freer.effect[R, Int](Async.Await[Int](_ => () => cancelled = true))
-      .flatMap(v => okay.freer.effect[R, Unit](Writer(v)))
+    val parked: Source[Int] = effect[Async, Int](Async.Await[Int](_ => () => cancelled = true)).at[R]
+      .flatMap(v => Writer.tell(v).at[R])
     val m = Source.mergeReady(Source.of(List(1, 2, 3, 4)), parked)
     Async.runAsync(m.runFoldUntil(using FoldUntil.take[Int](2))).map { got =>
       assertEquals(got.size, 2)
@@ -49,9 +46,9 @@ class TestReadyMergeCross extends munit.FunSuite {
     val polls = java.util.concurrent.atomic.AtomicInteger(0)
     val registered = java.util.concurrent.atomic.AtomicInteger(0)
     val side: Source[Int] =
-      okay.freer.effect[R, Int](Async.Await[Int](
+      effect[Async, Int](Async.Await[Int](
         k => { registered.incrementAndGet(); k(Right(7)); () => () },
-        () => { polls.incrementAndGet(); null })).flatMap(x => okay.freer.effect[R, Unit](Writer(x)))
+        () => { polls.incrementAndGet(); null })).at[R].flatMap(x => Writer.tell(x).at[R])
     Async.runAsync(Source.mergeReady(side, Source.of(List(1, 2, 3))).runCollect).map { out =>
       assertEquals(out, Vector(1, 2, 3, 7))
       assertEquals(registered.get, 1)

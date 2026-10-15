@@ -1,5 +1,6 @@
 package okay
 
+import okay.freer.{Aggregator}
 /** ONE suite, written once over the front (`Streaming[S]`), run on both backends: the front is transparent when
  * the same program answers the same on each (stream-twin) */
 abstract class StreamingSuite[S[_]](backend: String)(using St: Streaming[S]) extends munit.FunSuite {
@@ -59,7 +60,7 @@ abstract class StreamingSuite[S[_]](backend: String)(using St: Streaming[S]) ext
   }
 
   test(s"$backend: tumbling windows count their elements") {
-    val panes = range(0, 25).windowed(Windows.tumbling(10, 0)((_: Long) => "k")(identity)(okay.freer.Aggregator.count[Long]))
+    val panes = range(0, 25).windowed(Windows.tumbling(10, 0)((_: Long) => "k")(identity)(Aggregator.count[Long]))
     runAsync(panes.toVector).map(v => assertEquals(v.map(_.value), Vector(10L, 10L, 5L)))
   }
 

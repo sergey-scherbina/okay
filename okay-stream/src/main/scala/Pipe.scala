@@ -1,13 +1,7 @@
 package okay
 
-
-import okay.freer.*
-
-
 import okay.std.*
-import okay.freer.given
-import scala.annotation.tailrec
-import okay.freer.!.*
+import okay.freer.FoldUntil
 
 /**
  * The consumer side of a pipeline: await the next element of type V.
@@ -48,13 +42,14 @@ object Take:
    * foldUntil)` is `Writer.foldUntil(p)` by the coroutine road.
    */
   def foldUntil[W, S, R](using fo: FoldUntil[W, S, R]): R ! Take % W =
-    !.loop[S, R, Take % W](fo.init) { s =>
-      if fo.done(s) then pure(Right(fo.end(s)))
-      else await[W].map {
-        case Some(w) => Left(fo.add(s, w))
-        case None => Right(fo.end(s))
+    // trampolined: each step re-enters through the program's flatMap
+    def go(s: S): R ! Take % W =
+      if fo.done(s) then pure(fo.end(s))
+      else await[W].flatMap {
+        case Some(w) => go(fo.add(s, w))
+        case None => pure(fo.end(s))
       }
-    }
+    defer(go(fo.init))
 
 /**
  * Connect a producer to a consumer: each await meets the next told
@@ -65,16 +60,10 @@ object Take:
  * consumer's answer is the result; the producer's surplus is dropped,
  * its answer ignored. Fully typed by the Take/Writer GADTs — no casts.
  */
-def pipe[W, A, B](p: A ! Writer % W)(c: B ! Take % W): B = {
-  @tailrec def loop(p: A ! Writer % W, c: B ! Take % W): B = (c.resume: @unchecked) match
-    case Return(b) => b
-    case Inject(Take.Await()) => Writer.uncons(p).toOption.map(_._1)
-    case Bind(Inject(Take.Await()), k) => Writer.uncons(p) match
-      case Right((w, rest)) => loop(rest, k(Some(w)))
-      case Left(_) => loop(p, k(None))
-
-  loop(p, c)
-}
+def pipe[W, A, B](p: A ! Writer % W)(c: B ! Take % W): B =
+  val u = Pulling.PureUp[W, A](p)
+  c.handle(Handler.answering[Take % W]([X] => (op: Take[W, X]) => op match
+    case Take.Await() => u.next())).run
 
 /**
  * A pipeline stage (specs/stage-pipeline.md): a transducer as a
@@ -90,11 +79,11 @@ object Stage {
 
   /** the next input, or None — upstream ended */
   inline def await[I, O]: Option[I] ! Take % I + Writer % O =
-    effect(Take.Await())
+    effect[Take % I, Option[I]](Take.Await()).at[Take % I + Writer % O]
 
   /** emit one output — it answers nothing, like every tell */
   inline def tell[I, O](o: O): Unit ! Take % I + Writer % O =
-    effect(Writer(o))
+    Writer.tell(o).at[Take % I + Writer % O]
 
   /** the identity stage: every input becomes an output */
   def id[T]: Stage[T, T, Unit] =
@@ -208,7 +197,7 @@ object Stage {
       endBody: S2 => Vector[O]): Stage[I, O, Either[S1, S2]] =
 
     def tellAll(os: Vector[O]): Stage[I, O, Unit] =
-      okay.freer.!.each(os)(o => tell[I, O](o))
+      Pulling.tellAll[I, O](os, 0)
 
     // the switch, run through PState: the Atkey instance executed
     type R = (Either[S1, S2], Vector[O])
@@ -261,7 +250,7 @@ object Stage {
       endThird: S3 => Vector[O]): Stage[I, O, Either[S1, Either[S2, S3]]] =
 
     def tellAll(os: Vector[O]): Stage[I, O, Unit] =
-      okay.freer.!.each(os)(o => tell[I, O](o))
+      Pulling.tellAll[I, O](os, 0)
 
     // each seam's switch runs through PState — the same executed
     // Atkey step as `phased`, at both type changes
@@ -361,296 +350,96 @@ object Stage {
  * awaits answer None (the upstream may have flushed first). The
  * downstream's answer is the result. Nothing runs until the final
  * consumer pulls.
- */
-/**
- * The claims this file makes that the type system cannot check, named
- * once each rather than asserted thirty-three times.
  *
- * All of them are about what a `Bind` forgets. Under
- * `Bind(Inject(e), k)` an operation's answer type IS the bind's
- * intermediate, and that is existential — so `k` wants a value at a
- * type only the row's own invariant knows. `case Inject(e)` needs
- * none of this: GADT refinement gives the type back, which is why
- * these shapes appear only under a bind.
+ * On the kernel (specs/freer-on-core.md): the downstream's `Take` is
+ * TRANSLATED — each await a program that steps the upstream to its next
+ * tell (`Writer.uncons`, the machine's head), its own awaits and other
+ * effects performed where they are met. The upstream's rest is the
+ * run's own state, made when the program RUNS (`defer`), so a built
+ * program run twice starts its stages afresh
+ * (windows-stage-rerun-loses-pane). The machine's stack is on the heap:
+ * no `PullBudget` any more.
  */
-private object Erased {
-  /**
-   * The argument a bind's continuation expects.
-   *
-   * Every remaining use is on the WRITER side, and that is the whole
-   * explanation. `Take` is a GADT — `Await() extends Take[V,
-   * Option[V]]` — so matching it refines the bind's intermediate and
-   * sixteen of these disappeared without replacement when that was
-   * checked. `Writer` has no constructor to match: it is
-   * `opaque type Writer[W, +A] = W`, an operation IS its element, and
-   * there is no case whose pattern could carry the equation.
-   *
-   * A type-level existential package does not help either, and the
-   * reason is sharper than "it would allocate" — the path-dependent
-   * encoding (`type Kind[K[_]] = { type A; type T = K[A] }`) is
-   * purely type-level and allocates nothing at all.
-   *
-   * It does not help because `Bind` is ALREADY that package.
-   * `Bind[F, X, A](op: F[X], k: X => Free[F, A])` relates the
-   * operation and its continuation through one coherent `X`; nothing
-   * needs relating. What is missing is the other thing, and reduced
-   * to two lines the compiler says it exactly:
-   *
-   *     Found:    W
-   *     Required: X
-   *
-   * That is `W =:= X`, which the identity signature's only injector
-   * (`Writer(w): Writer[W, W]`) makes true and no pattern can
-   * witness, because the operation HAS no constructor to match. A
-   * Both of the article's encodings were tried here — the
-   * path-dependent `type Kind[K[_]] = { type A; type T = K[A] }` and
-   * the newtype `type Type[+F[_]] <: (Any { type T })` with its
-   * `wrap`/`unwrap` — and both give exactly those two lines, because
-   * they encode the same thing: an existential package NAMES an
-   * unknown type so two things sharing it line up, and never reveals
-   * it. That is what it is for.
-   *
-   * The positive half was checked too, so this is not a dismissal:
-   * given a `Pair[F, G, A]` packed, `unwrap` hands both sides back at
-   * one `v.T` and a natural transformation goes under it — `mapK`
-   * works, exactly as the article says.
-   *
-   * It does not help HERE because `Free.Bind[F, X, A](op: F[X], k: X
-   * => Free[F, A])` is that package already: two things sharing one
-   * unknown `X`, related by an ordinary type parameter, and the
-   * compiler does give a coherent `X`. Nothing needs packing. What is
-   * missing is the opposite operation — revealing that the unknown
-   * equals a known one — which an existential encoding exists
-   * precisely NOT to do. A constructor to match supplies it, and an
-   * identity signature has none.
-   */
-  def resumeWith[X](a: Any): X = a.asInstanceOf[X]
+private[okay] object Pulling:
+  /** a pure upstream, stepped one tell a pull; ended, every pull answers None */
+  final class PureUp[W, A](p: A ! Writer % W):
+    private var rest = p
+    private var ended = false
+    def next(): Option[W] =
+      if ended then None
+      else Writer.uncons(rest) match
+        case Right((w, r)) => rest = r; Some(w)
+        case Left(_) => ended = true; None
 
-  /** an operation re-injected into a row at the answer type the
-   * caller needs — sound because the identity signatures
-   * (`Take % I`, `Writer % O`) fix that type by their only injector */
-  def reinject[E](e: Any): E = e.asInstanceOf[E]
+  /** an effectful upstream: a pull steps it to its next tell, its other operations performed on the way */
+  final class Up[W, A, G[_]](p: A ! Writer % W + G):
+    private var rest = p
+    private var ended = false
+    def next: Option[W] ! G =
+      if ended then pure(None)
+      else Writer.uncons[W, A, G](rest).map:
+        case Right((w, r)) => rest = r; Some(w)
+        case Left(_) => ended = true; None
 
-  /** a position that exists only to have a type: the upstream has
-   * ended, and reading it would be the machine's bug — so it throws,
-   * named, rather than handing out a null dressed as an A */
-  def unreachable[A]: A = throw IllegalStateException("unreachable: the upstream has ended")
-}
+  /** tell each of `os`, in order — trampolined through flatMap */
+  def tellAll[I, O](os: Vector[O], i: Int): Stage[I, O, Unit] =
+    if i >= os.length then pure(())
+    else Stage.tell[I, O](os(i)).flatMap(_ => tellAll[I, O](os, i + 1))
 
-/**
- * How deep the producer/stage handshake may recurse before it unwinds
- * itself (chunk-stack-safety, 2026-09-03).
- *
- * `through` drives a stage by calling into the producer and back, and
- * a stage that ACCUMULATES — `chunked`, a fold, a window — takes that
- * path once per element WITHOUT emitting, because only an emission
- * goes through a `flatMap` and lets the stack unwind. So the chain is
- * as deep as the run between two emissions: `chunked(16)` never came
- * near it, `chunked(4096)` overflowed, and so did a smaller chunk on
- * a stream too short to fill it (reproduced on b8c65c7, so it long
- * predates the combinator that made it easy to reach).
- *
- * Past the budget the loop answers with a DEFERRED program instead of
- * recursing: `resume` rotates that node away and the Scala stack
- * unwinds. The cost is one extra node per `PullBudget` elements
- * rather than per element — the latter being exactly what
- * writer-of-resume-fix removed from this same hot path, which is why
- * this is a budget and not an unconditional defer.
- */
-private inline val PullBudget = 256
-
-/**
- * THE DRIVE STARTS WHEN THE PROGRAM RUNS, NOT WHEN IT IS BUILT
- * (windows-stage-rerun-loses-pane, 2026-09-23). Every `through` and
- * the effectful `pipe` below answer `Free.delay(() => loop(...))`
- * rather than `loop(...)`: the loop's first step resumes the
- * downstream, and resuming it runs the stage up to its first await or
- * tell — at CONSTRUCTION. A stage that allocates mutable state on its
- * first element (`Windows.stage`, `Stage.chunked`, `Gather.stage`,
- * `Transducers.stage`) then had that state captured inside the built
- * program's continuation, and running the built program a second
- * time fed the spent state again: `Windows.stage` lost a whole pane
- * without a word, a JDK gatherer NPE'd inside its own finisher.
- * Deferred, a built program is a VALUE like any other: each run
- * starts the stage from its first node, so each run makes its own
- * state. One `Delay` node per RUN, not per element — the `PullBudget`
- * deferral above already pays the same node every 256 elements.
- */
-def through[I, M, O, A, B](up: Stage[I, M, A])(down: Stage[M, O, B]): Stage[I, O, B] = {
-  type Res = Take % I + Writer % O
-
-  // drive the upstream until it tells (Some(m) + rest) or ends (None);
-  // its own awaits surface as OUR awaits, in CPS to stay a program
-  def pull(u: Stage[I, M, A])(cont: (Option[M], Stage[I, M, A]) => B ! Res): B ! Res =
-    (u.resume: @unchecked) match
-      case Return(_) => cont(None, u)
-      case Inject(e) => split[Take % I, Writer % M](e)
-        // a final await tells nothing more: the upstream is done
-        { case Take.Await() => cont(None, u) }
-        { w0 => (w0: @unchecked) match { case Writer.Say(w) => cont(Some(w), Free.Return(())) } }
-      case Bind(Inject(e), k) => split[Take % I, Writer % M](e)
-        { case Take.Await() => effect[Res, Option[I]](Take.Await()).flatMap(oi => pull(k(oi))(cont)) }
-        { w0 => (w0: @unchecked) match
-            case Writer.Say(w) => cont(Some(w), k(())) }
-
-  def loop(u: Stage[I, M, A], d: Stage[M, O, B], depth: Int = 0): B ! Res =
-    (d.resume: @unchecked) match
-      case Return(b) => pure(b)
-      case Inject(e) => split[Take % M, Writer % O](e)
-        { case Take.Await() => pull(u)((om, _) => pure(om)) }
-        (o => effect[Res, B](Erased.reinject[Res[B]](o)))
-      case Bind(Inject(e), k) => split[Take % M, Writer % O](e)
-        { case Take.Await() =>
-          if depth >= PullBudget
-          then pull(u)((om, u2) => pure[Res, Unit](()).flatMap(_ => loop(u2, k(om))))
-          else pull(u)((om, u2) => loop(u2, k(om), depth + 1)) }
-        (o =>
-          effect[Res, Any](Erased.reinject[Res[Any]](o)).flatMap(x => loop(u, k(Erased.resumeWith(x)))))
-
-  Free.delay(() => loop(up, down))
-}
+def through[I, M, O, A, B](up: Stage[I, M, A])(down: Stage[M, O, B]): Stage[I, O, B] =
+  defer:
+    val u = Pulling.Up[M, A, Take % I](up.at[Writer % M + Take % I])
+    down.translate[Take % M, Take % I]([X] => (op: Take[M, X]) => op match
+      case Take.Await() => u.next)
 
 /** run a plain producer through a stage: its tells feed the stage's
  * awaits, the stage's tells are the result stream */
 @scala.annotation.targetName("throughProducer")
-def through[W, M, A, B](p: A ! Writer % W)(s: Stage[W, M, B]): B ! Writer % M = {
-  // a call from inside flatMap cannot be a jump; `again` takes it, so
-  // the walk itself stays a checked loop
-  def again(rest: A ! Writer % W, d: Stage[W, M, B]): B ! Writer % M = loop(rest, d)
-  @tailrec def loop(rest: A ! Writer % W, d: Stage[W, M, B], depth: Int = 0): B ! Writer % M =
-    (d.resume: @unchecked) match
-      case Return(b) => pure(b)
-      case Inject(e) => split[Take % W, Writer % M](e)
-        { case Take.Await() => pure(Erased.resumeWith[B](Writer.uncons(rest).toOption.map(_._1))) }
-        (m => effect[Writer % M, B](Erased.reinject[(Writer % M)[B]](m)))
-      case Bind(Inject(e), k) => split[Take % W, Writer % M](e)
-        { case Take.Await() =>
-          if depth >= PullBudget then
-            pure[Writer % M, Unit](()).flatMap: _ =>
-              Writer.uncons(rest) match
-                case Right((w, r)) => again(r, k(Erased.resumeWith(Some(w))))
-                case Left(_) => again(rest, k(None))
-          else Writer.uncons(rest) match
-            case Right((w, r)) => loop(r, k(Erased.resumeWith(Some(w))), depth + 1)
-            case Left(_) => loop(rest, k(None), depth + 1) }
-        (m =>
-          effect[Writer % M, Any](Erased.reinject[(Writer % M)[Any]](m)).flatMap(x => again(rest, k(Erased.resumeWith(x)))))
-
-  Free.delay(() => loop(p, s))
-}
+def through[W, M, A, B](p: A ! Writer % W)(s: Stage[W, M, B]): B ! Writer % M =
+  defer:
+    val u = Pulling.PureUp[W, A](p)
+    s.handle(Handler.answering[Take % W]([X] => (op: Take[W, X]) => op match
+      case Take.Await() => u.next()))
 
 /**
  * Compose two EFFECTFUL stages: both sides may perform arbitrary
  * effects G (Async above all) between their awaits and tells; the G
- * operations of either side forward into the composed row in the
- * order they are reached. Same demand-driven pairing as the pure
- * through — nothing runs until the final consumer pulls, and a G op
- * runs only when the pull actually crosses it.
+ * operations of either side are performed in the order they are
+ * reached. Same demand-driven pairing as the pure through — nothing
+ * runs until the final consumer pulls, and a G op runs only when the
+ * pull actually crosses it.
  */
 @scala.annotation.targetName("throughG")
-def through[I, M, O, G[+_], A, B](up: A ! (Take % I + (Writer % M + G)))
-                                             (down: B ! (Take % M + (Writer % O + G)))
-                                             : B ! (Take % I + (Writer % O + G)) = {
-  type Up = Take % I + (Writer % M + G)
-  type Res = Take % I + (Writer % O + G)
-
-  // drive the upstream to its next tell, re-emitting its awaits as
-  // OUR awaits and forwarding its G ops on the way
-  def pull(u: A ! Up)(cont: (Option[M], A ! Up) => B ! Res): B ! Res =
-    (u.resume: @unchecked) match
-      case Return(_) => cont(None, u)
-      case Inject(e) => split[Take % I, Writer % M + G](e)
-        { case Take.Await() => cont(None, u) }
-        (rest => split[Writer % M, G](rest)
-          { w0 => (w0: @unchecked) match { case Writer.Say(w) => cont(Some(w), Free.Return(())) } }
-          (g => effect[Res, Any](Erased.reinject[Res[Any]](g))
-            .flatMap(_ => cont(None, Free.Return(Erased.unreachable[A])))))
-      case Bind(Inject(e), k) => split[Take % I, Writer % M + G](e)
-        { case Take.Await() => effect[Res, Option[I]](Take.Await()).flatMap(oi => pull(k(oi))(cont)) }
-        (rest => split[Writer % M, G](rest)
-          { w0 => (w0: @unchecked) match
-              case Writer.Say(w) => cont(Some(w), k(())) }
-          (g => effect[Res, Any](Erased.reinject[Res[Any]](g))
-            .flatMap(x => pull(k(Erased.resumeWith(x)))(cont))))
-
-  def loop(u: A ! Up, d: B ! (Take % M + (Writer % O + G)), depth: Int = 0): B ! Res =
-    (d.resume: @unchecked) match
-      case Return(b) => pure(b)
-      case Inject(e) => split[Take % M, Writer % O + G](e)
-        { case Take.Await() => pull(u)((om, _) => pure(om)) }
-        (o => effect[Res, B](Erased.reinject[Res[B]](o)))
-      case Bind(Inject(e), k) => split[Take % M, Writer % O + G](e)
-        { case Take.Await() =>
-          if depth >= PullBudget
-          then pull(u)((om, u2) => pure[Res, Unit](()).flatMap(_ => loop(u2, k(om))))
-          else pull(u)((om, u2) => loop(u2, k(om), depth + 1)) }
-        (o =>
-          effect[Res, Any](Erased.reinject[Res[Any]](o)).flatMap(x => loop(u, k(Erased.resumeWith(x)))))
-
-  Free.delay(() => loop(up, down))
-}
+def through[I, M, O, G[_], A, B](up: A ! (Take % I + (Writer % M + G)))
+                                (down: B ! (Take % M + (Writer % O + G)))
+                                : B ! (Take % I + (Writer % O + G)) =
+  defer:
+    val u = Pulling.Up[M, A, Take % I + G](up.at[Writer % M + (Take % I + G)])
+    down.translate[Take % M, Take % I + G]([X] => (op: Take[M, X]) => op match
+      case Take.Await() => u.next).at[Take % I + (Writer % O + G)]
 
 /**
  * An effectful producer through an effectful stage: the producer's
- * tells feed the stage's awaits, everyone's G ops forward, the
+ * tells feed the stage's awaits, everyone's G ops are performed, the
  * stage's tells are the result stream — the generalization the LLM
  * client walks by hand (SSE lines ! Async through the event stage).
  */
 @scala.annotation.targetName("throughProducerG")
-def through[W, M, G[+_], A, B](p: A ! Writer % W + G)
-                                          (s: B ! (Take % W + (Writer % M + G)))
-                                          : B ! Writer % M + G = {
-  type Src = Writer % W + G
-  type Res = Writer % M + G
-
-  def pull(rest: A ! Src)(cont: (Option[W], A ! Src) => B ! Res): B ! Res =
-    (rest.resume: @unchecked) match
-      case Return(_) => cont(None, rest)
-      // Writer tested first, for Writer.map's reason (distinct-on-handlers)
-      case Inject(e) => split[Writer % W, G](e)
-        { w0 => (w0: @unchecked) match { case Writer.Say(w) => cont(Some(w), Free.Return(())) } }
-        (g => effect[Res, Any](Erased.reinject[Res[Any]](g))
-          .flatMap(_ => cont(None, Free.Return(Erased.unreachable[A]))))
-      case Bind(Inject(e), k) => split[Writer % W, G](e)
-        { w0 => (w0: @unchecked) match
-            case Writer.Say(w) => cont(Some(w), k(())) }
-        (g => effect[Res, Any](Erased.reinject[Res[Any]](g))
-          .flatMap(x => pull(k(Erased.resumeWith(x)))(cont)))
-
-  def loop(rest: A ! Src, d: B ! (Take % W + (Writer % M + G)), depth: Int = 0): B ! Res =
-    (d.resume: @unchecked) match
-      case Return(b) => pure(b)
-      case Inject(e) => split[Take % W, Writer % M + G](e)
-        { case Take.Await() => pull(rest)((ow, _) => pure(ow)) }
-        (o => effect[Res, B](Erased.reinject[Res[B]](o)))
-      case Bind(Inject(e), k) => split[Take % W, Writer % M + G](e)
-        { case Take.Await() =>
-          if depth >= PullBudget
-          then pull(rest)((ow, r2) => pure[Res, Unit](()).flatMap(_ => loop(r2, k(ow))))
-          else pull(rest)((ow, r2) => loop(r2, k(ow), depth + 1)) }
-        (o =>
-          effect[Res, Any](Erased.reinject[Res[Any]](o)).flatMap(x => loop(rest, k(Erased.resumeWith(x)))))
-
-  Free.delay(() => loop(p, s))
-}
+def through[W, M, G[_], A, B](p: A ! Writer % W + G)
+                             (s: B ! (Take % W + (Writer % M + G)))
+                             : B ! Writer % M + G =
+  defer:
+    val u = Pulling.Up[W, A, G](p)
+    s.translate[Take % W, G]([X] => (op: Take[W, X]) => op match
+      case Take.Await() => u.next).at[Writer % M + G]
 
 /**
  * The same pipe for a producer performing arbitrary effects G: the
  * consumer still drives, and the G-operations met between elements
  * are carried into the answer — the result is a program in G.
- * (Structured effects are handled over the producer first — handlers
- * are stream transformers; the Answers-able residue is what remains.)
  */
-def pipe[W, A, B, G[+_] : TypeableK](p: A ! Writer % W + G)(c: B ! Take % W): B ! G = {
-  def loop(p: A ! Writer % W + G, c: B ! Take % W): B ! G = (c.resume: @unchecked) match
-    case Return(b) => pure(b)
-    case Inject(Take.Await()) => Writer.uncons(p).map(_.toOption.map(_._1))
-    case Bind(Inject(Take.Await()), k) => Writer.uncons(p).flatMap:
-      case Right((w, rest)) => loop(rest, k(Some(w)))
-      case Left(_) => loop(p, k(None))
-
-  Free.delay(() => loop(p, c))
-}
-
-/** by class only: `Await()` carries no trace of V, so a row may hold
- * ONE Take — see typeableK */
+def pipe[W, A, B, G[_]](p: A ! Writer % W + G)(c: B ! Take % W): B ! G =
+  defer:
+    val u = Pulling.Up[W, A, G](p)
+    c.translate[Take % W, G]([X] => (op: Take[W, X]) => op match
+      case Take.Await() => u.next).at[G]

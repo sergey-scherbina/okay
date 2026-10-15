@@ -1,12 +1,7 @@
 package okay
 
-
-import okay.freer.*
-
-
+import okay.freer.{Aggregator}
 import okay.std.*
-import okay.freer.given
-import okay.freer.Row.{In, at, plus}
 import Chunks.elements
 
 /**
@@ -206,7 +201,7 @@ object Tables:
   extension (t: Table[okay.Csv.Row])
     /** keep these columns — structural, so the rewrite can push it into the read */
     inline def columns(names: String*): Table[okay.Csv.Row] ! Tables = effect(Columns(t, names.toSet))
-  extension [F[+_]](p: Table[okay.Csv.Row] ! F)(using In[Tables, F])
+  extension [F[_]](p: Table[okay.Csv.Row] ! F)(using Within[Tables, F])
     def columns(names: String*): Table[okay.Csv.Row] ! F = p.flatMap(t => t.columns(names*).at[F])
 
   // ------------------------------------------- on a handle: ! Tables
@@ -226,14 +221,14 @@ object Tables:
     inline def assumeSortedByKey(using ord: Ordering[K]): Table[(K, A)] ! Tables = effect(OrderedByKey(l, ord))
 
   // ------------------------- on a program: any row that has Tables
-  extension [A, F[+_]](p: Table[A] ! F)(using In[Tables, F])
+  extension [A, F[_]](p: Table[A] ! F)(using Within[Tables, F])
     def select[B](f: A => B): Table[B] ! F = p.flatMap(t => t.select(f).at[F])
     def expand[B](f: A => IterableOnce[B]): Table[B] ! F = p.flatMap(t => t.expand(f).at[F])
     def where(q: A => Boolean): Table[A] ! F = p.flatMap(t => t.where(q).at[F])
     def cache: Table[A] ! F = p.flatMap(t => t.cache.at[F])
     def aggregate[Acc, Out](agg: Aggregator[A, Acc, Out]): Out ! F = p.flatMap(t => t.aggregate(agg).at[F])
     def collect: Chunks[A] ! F = p.flatMap(t => t.collect.at[F])
-  extension [K, A, F[+_]](l: Table[(K, A)] ! F)(using In[Tables, F])
+  extension [K, A, F[_]](l: Table[(K, A)] ! F)(using Within[Tables, F])
     def join[B](r: Table[(K, B)] ! F): Table[(K, (A, B))] ! F =
       l.flatMap(lt => r.flatMap(rt => lt.join(rt).at[F]))
     def join[B](r: Table[(K, B)] ! F, how: JoinStrategy[K]): Table[(K, (A, B))] ! F =
@@ -252,30 +247,30 @@ object Tables:
    * translating into the same state, with no hook in this handler and
    * no knowledge of it here. `log` sees every plan as it is forced.
    */
-  def via[A, D[_], F[+_]](B: Bulk[D], log: Plan[?] => Unit = _ => (), rewrite: Boolean = true)(p: A ! Tables + F)
+  def via[A, D[_], F[_]](B: Bulk[D], log: Plan[?] => Unit = _ => (), rewrite: Boolean = true)(p: A ! Tables + F)
   : A ! State % Heap[D] + F =
     def forced[X](h: Heap[D], t: Table[X]): D[X] =
       val plan = if rewrite then Plan.optimize(h.plan(t), B.size) else h.plan(t)
       log(plan)
       h.compile(B)(plan)
-    !.interpret(p):
+    p.translate[Tables, State % Heap[D]]:
       [X] => (e: Tables[X]) => e match
-        case Of(xs) => State.update[Heap[D], X](_.put(Plan.Of(xs))).plus[F]
-        case Read(path) => State.update[Heap[D], X](_.put(Plan.Read(path, None))).plus[F]
-        case Columns(t, cs) => State.update[Heap[D], X](h => h.put(Plan.Columns(h.plan(t), cs))).plus[F]
-        case Select(t, f) => State.update[Heap[D], X](h => h.put(Plan.Select(h.plan(t), f))).plus[F]
-        case Expand(t, f) => State.update[Heap[D], X](h => h.put(Plan.Expand(h.plan(t), f))).plus[F]
-        case Where(t, q) => State.update[Heap[D], X](h => h.put(Plan.Where(h.plan(t), q))).plus[F]
-        case Join(l, r, how) => State.update[Heap[D], X](h => h.put(Plan.Join(h.plan(l), h.plan(r), how))).plus[F]
-        case SortByKey(t, o) => State.update[Heap[D], X](h => h.put(Plan.SortByKey(h.plan(t), o))).plus[F]
-        case OrderedByKey(t, o) => State.update[Heap[D], X](h => h.put(Plan.OrderedByKey(h.plan(t), o))).plus[F]
-        case Cache(t) => State.update[Heap[D], X](h => h.hold(B.cache(forced(h, t)))).plus[F]
-        case Aggregate(t, agg) => State.get[Heap[D]].map(h => B.aggregate(forced(h, t))(agg)).plus[F]
-        case Collect(t) => State.get[Heap[D]].map(h => B.toChunks(forced(h, t))).plus[F]
+        case Of(xs) => State.update[Heap[D], X](_.put(Plan.Of(xs)))
+        case Read(path) => State.update[Heap[D], X](_.put(Plan.Read(path, None)))
+        case Columns(t, cs) => State.update[Heap[D], X](h => h.put(Plan.Columns(h.plan(t), cs)))
+        case Select(t, f) => State.update[Heap[D], X](h => h.put(Plan.Select(h.plan(t), f)))
+        case Expand(t, f) => State.update[Heap[D], X](h => h.put(Plan.Expand(h.plan(t), f)))
+        case Where(t, q) => State.update[Heap[D], X](h => h.put(Plan.Where(h.plan(t), q)))
+        case Join(l, r, how) => State.update[Heap[D], X](h => h.put(Plan.Join(h.plan(l), h.plan(r), how)))
+        case SortByKey(t, o) => State.update[Heap[D], X](h => h.put(Plan.SortByKey(h.plan(t), o)))
+        case OrderedByKey(t, o) => State.update[Heap[D], X](h => h.put(Plan.OrderedByKey(h.plan(t), o)))
+        case Cache(t) => State.update[Heap[D], X](h => h.hold(B.cache(forced(h, t))))
+        case Aggregate(t, agg) => State.get[Heap[D]].map(h => B.aggregate(forced(h, t))(agg))
+        case Collect(t) => State.get[Heap[D]].map(h => B.toChunks(forced(h, t)))
 
   /** run a program of tables, and nothing else, on a platform */
   def run[A, D[_]](B: Bulk[D])(p: A ! Tables): A =
-    State.run(Heap.empty[D])(via[A, D, okay.freer.Pure](B)(p))._2
+    State.run(Heap.empty[D])(via[A, D, Pure](B)(p))._2
 
 /**
  * An operation `Bulk` does not have, added WITHOUT touching it: a new
@@ -292,17 +287,17 @@ object Sort:
 
   extension [A](t: Table[A])
     inline def sortBy[K](key: A => K)(using ord: Ordering[K]): Table[A] ! Sort = effect(By(t, key, ord))
-  extension [A, F[+_]](p: Table[A] ! F)(using In[Sort, F])
+  extension [A, F[_]](p: Table[A] ! F)(using Within[Sort, F])
     def sortBy[K](key: A => K)(using ord: Ordering[K]): Table[A] ! F = p.flatMap(t => t.sortBy(key).at[F])
 
   /** the default: through the primitives, so it runs on any platform */
-  def viaTables[A, G[+_]](p: A ! Sort + G): A ! Tables + G =
-    !.interpret(p):
+  def viaTables[A, Es[_]](p: A ! Es)(using s: okay.core.Split[Es, Sort]): A ! Tables + s.Rest =
+    p.translate[Sort, Tables]:
       [X] => (e: Sort[X]) => e match
         case By(t, key, ord) =>
           // `X >: Table[A]` is what the match refines under covariance; `!` is
           // invariant in its answer, so the widening is spelled as a map
-          t.collect.plus[G].flatMap(c => Tables.of(c.elements.toVector.sortBy(key)(using ord)).plus[G].map(t => t: X))
+          t.collect.flatMap(c => Tables.of(c.elements.toVector.sortBy(key)(using ord)).map(t => t: X))
 
 /**
  * HOW A JOIN RUNS (join-strategy-auto): `Auto` — the default — lets the

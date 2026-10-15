@@ -4,7 +4,6 @@ package okay
 
 
 import okay.std.*
-import okay.freer.given
 import okay.std.given
 /**
  * The chunked buffered producer: the same elements in the same order

@@ -1,11 +1,9 @@
 package okay
 
 
-import okay.freer.*
 
 
 import okay.std.*
-import okay.freer.given
 /** Coroutine pipelines: tell meets await, one element at a time. */
 class TestPipe extends munit.FunSuite {
 
@@ -48,7 +46,7 @@ class TestPipe extends munit.FunSuite {
 
   test("transduce: state, conditional emission, and the flush") {
     val told: Int ! Writer % Int =
-      (1 to 6).foldLeft(pure[Writer % Int, Int](0))((m, i) => m.flatMap(_ => Writer.tell(i).map(_ => i)))
+      (1 to 6).foldLeft(pure[Int, Writer % Int](0))((m, i) => m.flatMap(_ => Writer.tell(i).map(_ => i)))
 
     // tell the running total, but only on even inputs — and tell the
     // final total once the input ends. Nothing is allocated to say
@@ -59,7 +57,7 @@ class TestPipe extends munit.FunSuite {
       if i % 2 == 0 then Stage.tell[Int, Int](s2).map(_ => s2) else pure(s2)
     }, s => Stage.tell[Int, Int](-s).map(_ => s))
 
-    val (out, answer) = !.run(Writer.run(through(told)(evens)))
+    val (out, answer) = (Writer.run(through(told)(evens))).run
     assertEquals(out, Seq(3, 10, 21, -21))   // 1+2, +3+4, +5+6, then the flush
     assertEquals(answer, 21)                 // the state is the stage's answer
   }
@@ -71,15 +69,15 @@ class TestPipe extends munit.FunSuite {
     val id: Stage[Int, Int, Unit] =
       Stage.transduce(())((_, i) => Stage.tell[Int, Int](i), pure)
     val told: Int ! Writer % Int = Writer.tell(1).flatMap(_ => Writer.tell(2).map(_ => 2))
-    assertEquals(!.run(Writer.run(through(told)(id)))._1, Seq(1, 2))
+    assertEquals((Writer.run(through(told)(id))).run._1, Seq(1, 2))
   }
 
   test("mapAccumulate: fs2's 1:1 special case, and where it stops paying") {
     val told: Int ! Writer % Int =
-      (1 to 4).foldLeft(pure[Writer % Int, Int](0))((m, i) => m.flatMap(_ => Writer.tell(i).map(_ => i)))
+      (1 to 4).foldLeft(pure[Int, Writer % Int](0))((m, i) => m.flatMap(_ => Writer.tell(i).map(_ => i)))
 
     val runningTotal: Stage[Int, Int, Int] = Stage.mapAccumulate(0)((sum, i) => (sum + i, sum + i))
-    assertEquals(!.run(Writer.run(through(told)(runningTotal)))._1, Seq(1, 3, 6, 10))
+    assertEquals((Writer.run(through(told)(runningTotal))).run._1, Seq(1, 3, 6, 10))
 
     // conditional emission is what it cannot say: one output per input
     // is the contract, so "nothing here" has to BE a value — which is
@@ -87,7 +85,7 @@ class TestPipe extends munit.FunSuite {
     // Option[Output] and filters downstream.
     val evensOnly: Stage[Int, Option[Int], Int] = Stage.mapAccumulate(0)((sum, i) =>
       (sum + i, if i % 2 == 0 then Some(sum + i) else None))
-    val out = !.run(Writer.run(through(told)(evensOnly)))._1
+    val out = (Writer.run(through(told)(evensOnly))).run._1
     assertEquals(out,
       Seq(None, Some(3), None, Some(10)))   // two Nones nobody wanted
   }
@@ -106,8 +104,8 @@ class TestPipe extends munit.FunSuite {
   test("an effectful producer pipes into a program of its effects") {
     type F = Writer % Int + Async
     def ticks(n: Int): Unit ! F =
-      effect[F, Unit](Async.Run(() => Thread.sleep(1))).flatMap: _ =>
-        effect[F, Unit](Writer(n)).flatMap(_ => ticks(n + 1))
+      effect[Async, Unit](Async.Run(() => Thread.sleep(1))).at[F].flatMap: _ =>
+        Writer.tell(n).at[F].flatMap(_ => ticks(n + 1))
     val result: Int ! Async = pipe[Int, Unit, Int, Async](ticks(7))(sums(3, 0))
     assertEquals(result.runWith, 7 + 8 + 9)
   }
@@ -117,10 +115,10 @@ class TestPipe extends munit.FunSuite {
     var effects = 0
     // an effectful stage: an Async op before every doubled output
     def double: Unit ! Row =
-      effect[Row, Option[Int]](Take.Await()).flatMap {
+      effect[Take % Int, Option[Int]](Take.Await()).at[Row].flatMap {
         case Some(x) =>
-          effect[Row, Unit](Async.Run(() => effects += 1)).flatMap(_ =>
-            effect[Row, Unit](Writer(x * 2)).flatMap(_ => double))
+          effect[Async, Unit](Async.Run(() => effects += 1)).at[Row].flatMap(_ =>
+            Writer.tell(x * 2).at[Row].flatMap(_ => double))
         case None => pure(())
       }
     // a pure stage widened into the row (union ACI lets the ascription)
@@ -129,14 +127,14 @@ class TestPipe extends munit.FunSuite {
         case Some(x) => Stage.tell[Int, Int](x + 1).flatMap(_ => incPure)
         case None => pure(())
       }
-    val inc: Unit ! Row = !.widen[Unit, Take % Int + Writer % Int, Async](incPure)
+    val inc: Unit ! Row = (incPure).at[Row]
 
     type Src = Writer % Int + Async
     var told = 0
     def src(n: Int): Unit ! Src =
       if n == 0 then pure(())
-      else effect[Src, Unit](Async.Run(() => told += 1)).flatMap(_ =>
-        effect[Src, Unit](Writer(n)).flatMap(_ => src(n - 1)))
+      else effect[Async, Unit](Async.Run(() => told += 1)).at[Src].flatMap(_ =>
+        Writer.tell(n).at[Src].flatMap(_ => src(n - 1)))
 
     // stage∘stage, then the producer through the composite
     val composed = through[Int, Int, Int, Async, Unit, Unit](double)(inc)
@@ -160,17 +158,17 @@ class TestPipe extends munit.FunSuite {
     // mutable stage state and a second run fed that state again.
     // A stage that counts its starts sees the difference at once.
     var starts = 0
-    def counting: Stage[Int, Int, Unit] = Free.delay { () => starts += 1; Stage.id[Int] }
+    def counting: Stage[Int, Int, Unit] = defer { starts += 1; Stage.id[Int] }
     val told: Int ! Writer % Int =
-      (1 to 3).foldLeft(pure[Writer % Int, Int](0))((m, i) => m.flatMap(_ => Writer.tell(i).map(_ => i)))
+      (1 to 3).foldLeft(pure[Int, Writer % Int](0))((m, i) => m.flatMap(_ => Writer.tell(i).map(_ => i)))
 
     // 1. stage through stage; 2. producer through stage
     val s1 = through(counting)(Stage.id[Int])
     assertEquals(starts, 0, "through(stage)(stage) builds, runs nothing")
     val p2 = through(told)(s1)
     assertEquals(starts, 0, "through(producer)(stage) builds, runs nothing")
-    assertEquals(!.run(Writer.run(p2))._1, Seq(1, 2, 3))
-    assertEquals(!.run(Writer.run(p2))._1, Seq(1, 2, 3))
+    assertEquals((Writer.run(p2)).run._1, Seq(1, 2, 3))
+    assertEquals((Writer.run(p2)).run._1, Seq(1, 2, 3))
     assertEquals(starts, 2, "one start per run")
 
     // 3. effectful stage through effectful stage; 4. effectful producer through it
@@ -179,12 +177,12 @@ class TestPipe extends munit.FunSuite {
     // `!.widen` is a WALK; it used to force a deferred head (the
     // sixth door, TestWidenDelay pins the fix), and the delay sits
     // outside it here so that this test measures `through` alone
-    val countingG: Unit ! Row = Free.delay { () =>
-      starts += 1; !.widen[Unit, Take % Int + Writer % Int, Async](Stage.id[Int]) }
-    val idG: Unit ! Row = !.widen[Unit, Take % Int + Writer % Int, Async](Stage.id[Int])
+    val countingG: Unit ! Row = defer {
+      starts += 1; (Stage.id[Int]).at[Row] }
+    val idG: Unit ! Row = (Stage.id[Int]).at[Row]
     val s3 = through[Int, Int, Int, Async, Unit, Unit](countingG)(idG)
     assertEquals(starts, 0, "the effectful through(stage)(stage) builds, runs nothing")
-    val toldG: Int ! Writer % Int + Async = !.widen[Int, Writer % Int, Async](told)
+    val toldG: Int ! Writer % Int + Async = (told).at[Writer % Int + Async]
     val p4 = through[Int, Int, Async, Int, Unit](toldG)(s3)
     assertEquals(starts, 0, "the effectful through(producer)(stage) builds, runs nothing")
     assertEquals(Writer.run(p4).runWith._1, Seq(1, 2, 3))
@@ -193,7 +191,7 @@ class TestPipe extends munit.FunSuite {
 
     // 5. an effectful producer piped into a consumer
     starts = 0
-    val consumer: Int ! Take % Int = Free.delay { () => starts += 1; sums(3, 0) }
+    val consumer: Int ! Take % Int = defer { starts += 1; sums(3, 0) }
     val p5 = pipe[Int, Int, Int, Async](toldG)(consumer)
     assertEquals(starts, 0, "pipe builds, runs nothing")
     assertEquals(p5.runWith, 6)

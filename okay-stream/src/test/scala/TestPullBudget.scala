@@ -2,12 +2,10 @@ package okay
 
 
 
-import okay.freer.*
 
 
 
 import okay.std.*
-import okay.freer.given
 import okay.std.given
 /**
  * chunk-stack-safety: a stage that accumulates without emitting takes
@@ -42,12 +40,12 @@ class TestPullBudget extends munit.FunSuite {
   // abstract here — the trusted kernel's warning (Effects.scala), not
   // a cast this file adds
   def runChunks(told: Int ! Writer % Int, k: Int): Seq[Chunk[Int]] =
-    !.run(Writer.run(through(told)(Stage.chunked[Int](k))))._1
+    (Writer.run(through(told)(Stage.chunked[Int](k)))).run._1
 
   test("a plain producer through an accumulating stage overflows no more") {
     // the Writer-only overload, which has no channel and no Async
     val told: Int ! Writer % Int =
-      (1 to 5000).foldLeft(pure[Writer % Int, Int](0))((m, i) =>
+      (1 to 5000).foldLeft(pure[Int, Writer % Int](0))((m, i) =>
         m.flatMap(_ => Writer.tell(i).map(_ => i)))
     assertEquals(runChunks(told, 8192).map(_.length).sum, 5000)
   }

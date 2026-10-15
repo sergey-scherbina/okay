@@ -1,11 +1,7 @@
 package okay
 
-
-import okay.freer.*
-
-
+import okay.freer.{FoldUntil}
 import okay.std.*
-import okay.freer.given
 import okay.std.given
 import scala.collection.immutable.ArraySeq
 
@@ -23,15 +19,15 @@ class TestFoldUntilStreams extends munit.FunSuite:
   /** 1, perform, 2, perform, 3, perform, ... — an Async op after every tell */
   private def counted(n: Int, performed: () => Unit): Source[Int] =
     def go(i: Int): Source[Int] =
-      if i > n then okay.freer.pure(())
-      else okay.freer.effect[R, Unit](Writer(i))
-        .flatMap(_ => okay.freer.effect[R, Unit](Async.Run(() => performed())))
+      if i > n then pure(())
+      else Writer.tell(i).at[R]
+        .flatMap(_ => effect[Async, Unit](Async.Run(() => performed())).at[R])
         .flatMap(_ => go(i + 1))
-    okay.freer.pure[R, Unit](()).flatMap(_ => go(1))
+    pure[Unit, R](()).flatMap(_ => go(1))
 
   private def chunked(xs: List[Int], size: Int): Chunks[Int] =
     def go(rest: List[Int]): Chunks[Int] =
-      if rest.isEmpty then okay.freer.pure(())
+      if rest.isEmpty then pure(())
       else Writer.tell(ArraySeq.from(rest.take(size))).flatMap(_ => go(rest.drop(size)))
     go(xs)
 
@@ -40,7 +36,7 @@ class TestFoldUntilStreams extends munit.FunSuite:
     def check[S, X](fo: FoldUntil[Int, S, X], name: String): Unit =
       val expected = Stream.foldUntil(xs)(using fo)
       assertEquals(Chunks.foldUntil(chunked(xs, 4))(using fo), expected, s"Chunks $name")
-      assertEquals(Writer.foldUntil[Int, S, Unit, X, Async](counted(20, () => ()))(using summon)(using summon, fo).runWith, expected, s"Writer $name")
+      assertEquals(Writer.foldUntil[Int, S, Unit, X, Writer % Int + Async](counted(20, () => ()))(using summon, fo).runWith, expected, s"Writer $name")
       assertEquals(Source.of(xs).runFoldUntil(using fo).runWith, expected, s"Source $name")
     check(FoldUntil.take(3), "take(3)")
     check(FoldUntil.take(0), "take(0)")
@@ -106,12 +102,12 @@ class TestFoldUntilStreams extends munit.FunSuite:
    * continuation as it hands the element over, so the count after a
    * tell is the count of elements a consumer has taken */
   private def lines(xs: List[String], told: () => Unit): Unit ! Writer % String =
-    xs.foldRight(okay.freer.pure[Writer % String, Unit](()))((l, rest) => Writer.tell(l).flatMap(_ => { told(); rest }))
+    xs.foldRight(pure[Unit, Writer % String](()))((l, rest) => Writer.tell(l).flatMap(_ => { told(); rest }))
 
   /** a header parser: tell each `k: v` as (k, v), answer the count at the first blank line */
   private val header: Stage[String, (String, String), Either[Int, Int]] =
     Stage.transduceUntil[String, (String, String), Int, Either[Int, Int]](0)((n, line) =>
-      if line.isEmpty then okay.freer.pure(Right(Right(n)))
+      if line.isEmpty then pure(Right(Right(n)))
       else
         val Array(k, v) = line.split(": ", 2)
         Stage.tell[String, (String, String)]((k.trim, v.trim)).map(_ => Left(n + 1)),
@@ -120,28 +116,30 @@ class TestFoldUntilStreams extends munit.FunSuite:
   test("transduceUntil stops the upstream: pulled up to the blank line, not one tell more") {
     var told = 0
     val doc = List("host: a", "port: 1", "", "body 1", "body 2", "body 3")
-    val (out, answer) = !.run(Writer.run(through(lines(doc, () => told += 1))(header)))
+    val (out, answer) = (Writer.run(through(lines(doc, () => told += 1))(header))).run
     assertEquals(out, Seq(("host", "a"), ("port", "1")))
     assertEquals(answer, Right(2))
-    assertEquals(told, 3, "host, port and the blank line were pulled; body 1 never was")
+    // on the kernel the producer is STEPPED: the code after a tell runs at the NEXT pull, not at the
+    // handover (specs/freer-on-core.md, Known changes) — so the blank line's own `told()` never runs
+    assertEquals(told, 2, "host and port were pulled past; the blank line handed over, body 1 never was")
     // the instrument's control: a stage that never stops pulls all six
     told = 0
-    val all = !.run(Writer.run(through(lines(doc, () => told += 1))(Stage.id[String])))
+    val all = (Writer.run(through(lines(doc, () => told += 1))(Stage.id[String]))).run
     assertEquals(all._1.size, 6)
     assertEquals(told, 6)
   }
 
   test("transduceUntil ends honestly when the input ends first") {
-    val (out, answer) = !.run(Writer.run(through(lines(List("host: a"), () => ()))(header)))
+    val (out, answer) = (Writer.run(through(lines(List("host: a"), () => ()))(header))).run
     assertEquals(out, Seq(("host", "a")))
     assertEquals(answer, Left(1))
   }
 
   test("transduceUntil composes under through on both sides") {
-    val upper: Stage[String, String, Unit] = Stage.transduce(())((_, l) => Stage.tell[String, String](l.toUpperCase), okay.freer.pure)
-    val keys: Stage[(String, String), String, Unit] = Stage.transduce(())((_, kv) => Stage.tell[(String, String), String](kv._1), okay.freer.pure)
+    val upper: Stage[String, String, Unit] = Stage.transduce(())((_, l) => Stage.tell[String, String](l.toUpperCase), pure)
+    val keys: Stage[(String, String), String, Unit] = Stage.transduce(())((_, kv) => Stage.tell[(String, String), String](kv._1), pure)
     val doc = List("host: a", "port: 1", "", "body")
-    val (out, answer) = !.run(Writer.run(through(through(through(lines(doc, () => ()))(upper))(header))(keys)))
+    val (out, answer) = (Writer.run(through(through(through(lines(doc, () => ()))(upper))(header))(keys))).run
     assertEquals(out, Seq("HOST", "PORT"))
     assertEquals(answer, ())
   }
@@ -149,10 +147,10 @@ class TestFoldUntilStreams extends munit.FunSuite:
   test("transduce is transduceUntil with a step that never answers Right") {
     val step = (sum: Int, i: Int) => Stage.tell[Int, Int](sum + i).map(_ => sum + i)
     def told: Unit ! Writer % Int =
-      (1 to 5).foldRight(okay.freer.pure[Writer % Int, Unit](()))((i, r) => Writer.tell(i).flatMap(_ => r))
-    val a = !.run(Writer.run(through(told)(Stage.transduce(0)(step, okay.freer.pure))))
-    val b = !.run(Writer.run(through(told)(
-      Stage.transduceUntil[Int, Int, Int, Int](0)((s, i) => step(s, i).map(Left(_)), identity))))
+      (1 to 5).foldRight(pure[Unit, Writer % Int](()))((i, r) => Writer.tell(i).flatMap(_ => r))
+    val a = (Writer.run(through(told)(Stage.transduce(0)(step, pure)))).run
+    val b = (Writer.run(through(told)(
+      Stage.transduceUntil[Int, Int, Int, Int](0)((s, i) => step(s, i).map(Left(_)), identity)))).run
     assertEquals(a, b)
     assertEquals(a, (Seq(1, 3, 6, 10, 15), 15))
   }
@@ -160,7 +158,7 @@ class TestFoldUntilStreams extends munit.FunSuite:
   test("pipe(producer)(Take.foldUntil) is Writer.foldUntil by the coroutine road, and stops the producer") {
     var told = 0
     def nums(n: Int): Unit ! Writer % Int =
-      (1 to n).foldRight(okay.freer.pure[Writer % Int, Unit](()))((i, r) => Writer.tell(i).flatMap(_ => { told += 1; r }))
+      (1 to n).foldRight(pure[Unit, Writer % Int](()))((i, r) => Writer.tell(i).flatMap(_ => { told += 1; r }))
     def check[S, X](fo: FoldUntil[Int, S, X], name: String): Unit =
       told = 0
       val viaPipe = pipe(nums(50))(Take.foldUntil[Int, S, X](using fo))

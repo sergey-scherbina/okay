@@ -1,11 +1,6 @@
 package okay
 
-
-
-import okay.freer.*
-
-
-
+import okay.freer.{Fold}
 /** A fiber per chunk, and lineage recompute per chunk: the half of
  * `TestParallel` that moved with `parMap` and `retryChunks`
  * (core-modules stage 1). */

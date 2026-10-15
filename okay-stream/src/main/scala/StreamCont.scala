@@ -3,11 +3,9 @@ package okay
 import okay.AsyncCont.{awaitEither, fork, join}
 import okay.core.Eff
 import okay.std.Writer
-import okay.freer.Row.plus
 import java.util.concurrent.atomic.AtomicBoolean
 import scala.collection.immutable.ArraySeq
-import okay.Effects.machine.{effect, handle, value, run as runAt}
-import okay.core.{pure, defer}
+import okay.core.pure
 
 /**
  * THE STREAM ON THE MACHINE, A TWIN (stream-twin): beside the classic `Source[W] = Unit ! Writer % W + Async`, a
@@ -270,17 +268,33 @@ object StreamCont:
 
   /** the classic stream pulled from the machine: `Writer.uncons` per element, each one Await of the machine */
   def fromSource[W](s: Source[W]): Src[W] =
-    Src(AsyncCont.fromClassic(Writer.uncons[W, Unit, Async](s)).at[R].map {
+    Src(Writer.uncons[W, Unit, Async](s).fit(okay.core.Paths.One(okay.one.row.In.Here[Async, okay.core.Pure]())).map {
       case Left(()) => Step.Done
       case Right((w, rest)) => Step.Chunk(ArraySeq.untagged(w), fromSource(rest))
     })
 
-  /** the machine's stream as a classic one: each pull a classic program (`toClassic`), each element told */
   def toSource[W](s: Src[W]): Source[W] =
-    AsyncCont.toClassic(s.pull).plus[okay.freer.%[Writer, W]].flatMap {
-      case Step.Done => okay.freer.pure(())
+    lifted(s.pull).at[Writer % W + Async].flatMap {
+      case Step.Done => okay.pure(())
       case Step.Chunk(ws, r) =>
         def tells(it: Iterator[W]): Source[W] =
-          if !it.hasNext then toSource(r) else Writer.tell(it.next()).plus[Async].flatMap(_ => tells(it))
+          if !it.hasNext then toSource(r) else Writer.tell(it.next()).at[Writer % W + Async].flatMap(_ => tells(it))
         tells(ws.iterator)
     }
+
+  /** a program of the kernel at `R` as the platform's program needing `Async`: stepped (the machine's head), each
+   * of its operations performed at the place's `Async` */
+  def lifted[A](e: Eff[R, A]): A ! Async = new Run[Async, A]:
+    def on[T <: okay.core.Row](ps: okay.core.Paths[Async, T]): Eff[T, A] =
+      val at = ps.find(okay.core.Req.only)
+      okay.one.Cont.defer(replay(okay.one.machine.Machine.head(e), at))
+
+  private def replay[T <: okay.core.Row, A](h: okay.one.machine.Machine.Head[R, A], at: okay.core.In[Async, T]): Eff[T, A] =
+    import okay.one.machine.Machine.Head
+    import okay.one.row.In
+    h match
+      case Head.Done(a) => pure(a)
+      case p: Head.Paused[?, ?, ?, ?, ?, ?, ?, ?, ?] => In.same(p.in, In.Here[Async, okay.core.Pure]()) match
+        case same: In.Same[f, Async] =>
+          okay.one.Cont.perform(same(p.op))(using at).flatMap(v => replay(p.resume(v), at))
+        case null => throw IllegalStateException("StreamCont: an operation of no effect of the row")

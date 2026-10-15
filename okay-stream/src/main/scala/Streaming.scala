@@ -1,11 +1,9 @@
 package okay
 
 import okay.std.Writer
-import okay.freer.Row.plus
 import okay.std.given
 import scala.concurrent.Future
-import okay.Effects.machine.{effect, handle, value, run as runAt}
-import okay.core.{pure, defer}
+import okay.core.pure
 
 /**
  * STREAMS, ONE FRONT, TWO BACKENDS (stream-twin; the operator: "если имплементация стримов очень зависит от
@@ -94,6 +92,7 @@ object streams:
         case StreamCont.Step.Chunk(ws, r) => Some((ws, r))
       }
       def unfoldP[Z, W](z: Z)(f: Z => P[Option[(Seq[W], Z)]]): Flow[W] = StreamCont.unfold(z)(f)
+      // NB: inside this block a program's `flatMap` is the stream's (Flow is Source here): binds are `>>`/`Run.flatMap`
       extension [W](s: Flow[W])
         def map[V](f: W => V): Flow[V] = s.map(f)
         def filter(p: W => Boolean): Flow[W] = s.filter(p)
@@ -118,26 +117,26 @@ object streams:
     def fromSource[W](s: Source[W]): Flow[W] = s
     extension [W](f: Flow[W]) def toSource: Source[W] = f
 
-    private def tell[W](w: W): Source[W] = Writer.tell(w).plus[Async]
-    private def done[W]: Source[W] = okay.freer.pure(())
-    private def unconsed[W](s: Source[W]): okay.freer.![Either[Unit, (W, Source[W])], Async] =
+    private def tell[W](w: W): Source[W] = Writer.tell(w).at[Writer % W + Async]
+    private def done[W]: Source[W] = okay.pure(())
+    private def unconsed[W](s: Source[W]): Either[Unit, (W, Source[W])] ! Async =
       Writer.uncons[W, Unit, Async](s)
     private def walk[W, V](s: Source[W])(step: (W, Source[W]) => Source[V]): Source[V] =
-      unconsed(s).plus[okay.freer.%[Writer, V]].flatMap {
+      unconsed(s).at[Writer % V + Async].flatMap {
         case Left(()) => done[V]
         case Right((w, rest)) => step(w, rest)
       }
 
     given instance: Streaming[Flow] with
-      type P[A] = okay.freer.![A, Async]
+      type P[A] = A ! Async
       def empty[W]: Flow[W] = done[W]
       def emit[W](w: W): Flow[W] = tell(w)
       def fromList[W](ws: List[W]): Flow[W] = Source.of(ws)
       def range(from: Long, until: Long): Flow[Long] = Source.range(from, until)
-      def eval[W](p: P[W]): Flow[W] = p.plus[okay.freer.%[Writer, W]].flatMap(w => tell(w))
+      def eval[W](p: P[W]): Flow[W] = p.at[Writer % W + Async].flatMap(w => tell(w))
       def async[A](a: => A): P[A] = okay.async(a)
       def runAsync[A](p: P[A]): Future[A] = Async.runAsync(p)
-      def pureP[A](a: A): P[A] = okay.freer.pure(a)
+      def pureP[A](a: A): P[A] = okay.pure(a)
       extension [A](p: P[A]) def flatMapP[B](f: A => P[B]): P[B] = p.flatMap(f)
       def unconsChunk[W](s: Flow[W]): P[Option[(IndexedSeq[W], Flow[W])]] = unconsed(s).map {
         case Left(()) => None
@@ -146,31 +145,32 @@ object streams:
       def unfoldP[Z, W](z: Z)(f: Z => P[Option[(Seq[W], Z)]]): Flow[W] =
         def tells(ws: List[W], next: => Source[W]): Source[W] = ws match
           case Nil => next
-          case w :: more => tell(w).flatMap(_ => tells(more, next))
-        def go(z: Z): Source[W] = okay.freer.Free.delay { () =>
-          f(z).plus[okay.freer.%[Writer, W]].flatMap {
+          case w :: more => tell(w) >> tells(more, next)
+        def go(z: Z): Source[W] = okay.defer {
+          f(z).at[Writer % W + Async].flatMap {
             case None => done[W]
             case Some((ws, z2)) => tells(ws.toList, go(z2))
           }
         }
         go(z)
+      // NB: inside this block a program's `flatMap` is the stream's (Flow is Source here): binds are `>>`/`Run.flatMap`
       extension [W](s: Flow[W])
-        def map[V](f: W => V): Flow[V] = Writer.map[W, V, Unit, Async](s)(f)
+        def map[V](f: W => V): Flow[V] = Writer.map[W, V, Unit, Writer % W + Async](s)(f)
         def filter(p: W => Boolean): Flow[W] = walk(s)((w, rest) =>
-          if p(w) then tell(w).flatMap(_ => (rest: Flow[W]).filter(p)) else (rest: Flow[W]).filter(p))
+          if p(w) then tell(w) >> instance.filter(rest)(p) else instance.filter(rest)(p))
         def take(n: Int): Flow[W] =
-          if n <= 0 then done[W] else walk(s)((w, rest) => tell(w).flatMap(_ => (rest: Flow[W]).take(n - 1)))
-        def ++(t: => Flow[W]): Flow[W] = (s: Source[W]).flatMap(_ => t)
-        def flatMap[V](f: W => Flow[V]): Flow[V] = walk(s)((w, rest) => (f(w): Source[V]).flatMap(_ => (rest: Flow[W]).flatMap(f)))
+          if n <= 0 then done[W] else walk(s)((w, rest) => tell(w) >> instance.take(rest)(n - 1))
+        def ++(t: => Flow[W]): Flow[W] = (s: Source[W]) >> t
+        def flatMap[V](f: W => Flow[V]): Flow[V] = walk(s)((w, rest) => (f(w): Source[V]) >> instance.flatMap(rest)(f))
         def evalMap[V](f: W => P[V]): Flow[V] = walk(s)((w, rest) =>
-          f(w).plus[okay.freer.%[Writer, V]].flatMap(v => tell(v).flatMap(_ => (rest: Flow[W]).evalMap(f))))
+          Run.flatMap(f(w).at[Writer % V + Async])(v => tell(v) >> instance.evalMap(rest)(f)))
         def foldLeft[B](z: B)(f: (B, W) => B): P[B] = unconsed(s).flatMap {
-          case Left(()) => okay.freer.pure(z)
-          case Right((w, rest)) => (rest: Flow[W]).foldLeft(f(z, w))(f)
+          case Left(()) => okay.pure(z)
+          case Right((w, rest)) => instance.foldLeft(rest)(f(z, w))(f)
         }
         def toVector: P[Vector[W]] = (s: Source[W]).runCollect
         def merge(t: Flow[W])(using Scheduler): Flow[W] = (s: Source[W]).mergeReady(t)
-        def buffer(capacity: Int)(using sch: Scheduler): Flow[W] = okay.freer.Free.delay { () =>
+        def buffer(capacity: Int)(using sch: Scheduler): Flow[W] = okay.defer {
           val c = Channel[W](capacity)
           sch.fork(() => (s: Source[W]).runForeach(w => c.send(w).map(_ => ()))).onComplete { r =>
             r.left.foreach(c.fail)

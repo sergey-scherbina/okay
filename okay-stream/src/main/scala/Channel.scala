@@ -1,14 +1,11 @@
 package okay
 
 
-import okay.freer.*
 
 
 import okay.std.*
-import okay.freer.given
 import java.util.concurrent.atomic.AtomicInteger
 import scala.collection.immutable.Queue
-import okay.freer.!.*
 import scala.util.Try
 
 /**
@@ -537,7 +534,7 @@ extension [A](c: Channel[A])
    * Nothing is delayed for a batch: `receiveMany` takes only what is
    * already buffered and parks for a single element when nothing is.
    */
-  def drained: Source[A] = drainedThen(okay.freer.pure(()))
+  def drained: Source[A] = drainedThen(pure(()))
 
   /** `drained`, running `last` where the channel ends instead of
    * nothing. A join that entered a cancel scope passes its EXIT here,
@@ -563,12 +560,12 @@ extension [A](c: Channel[A])
       k => { c.receiveManyAsync(Drain.Batch)(k); () => () }
     val now: () => (Either[Throwable, Chunk[A]] | Null) = () => c.receiveManyNow(Drain.Batch)
     def pull: Source[A] =
-      okay.freer.effect[R, Chunk[A]](Async.Await[Chunk[A]](reg, now)).flatMap: got =>
+      effect[Async, Chunk[A]](Async.Await[Chunk[A]](reg, now)).at[R].flatMap: got =>
         if got.isEmpty then last else tellFrom(got, 0)
     def tellFrom(got: Chunk[A], i: Int): Source[A] =
-      okay.freer.effect[R, Unit](Writer(got(i))).flatMap: _ =>
+      Writer.tell(got(i)).at[R].flatMap: _ =>
         if i + 1 < got.length then tellFrom(got, i + 1) else pull
-    okay.freer.pure[R, Unit](()).flatMap(_ => pull)
+    defer(pull)
 
   /**
    * The channel as a source of CHUNKS: each `receiveMany` batch told
@@ -585,10 +582,10 @@ extension [A](c: Channel[A])
       k => { c.receiveManyAsync(Drain.Batch)(k); () => () }
     val now: () => (Either[Throwable, Chunk[A]] | Null) = () => c.receiveManyNow(Drain.Batch)
     def go: Source[Chunk[A]] =
-      okay.freer.effect[Writer % Chunk[A] + Async, Chunk[A]](Async.Await[Chunk[A]](reg, now)).flatMap: got =>
-        if got.isEmpty then okay.freer.pure(())
-        else okay.freer.effect[Writer % Chunk[A] + Async, Unit](Writer(got)).flatMap(_ => go)
-    okay.freer.pure[Writer % Chunk[A] + Async, Unit](()).flatMap(_ => go)
+      effect[Async, Chunk[A]](Async.Await[Chunk[A]](reg, now)).at[Writer % Chunk[A] + Async].flatMap: got =>
+        if got.isEmpty then pure(())
+        else Writer.tell(got).at[Writer % Chunk[A] + Async].flatMap(_ => go)
+    defer(go)
 
 given Stream[Channel, Async] with
   def uncons[A](c: Channel[A]): Option[(A, Channel[A])] ! Async =
@@ -805,7 +802,7 @@ object Channel {
 
   /** unfold a stream into the channel as an Async program; stops
    * early if the channel refuses (closed under the producer) */
-  private def feed[A, U[_], H[+_]](c: Channel[A], u: U[A])
+  private def feed[A, U[_], H[_]](c: Channel[A], u: U[A])
                                   (using St: Stream[U, H], HH: Answers[H]): Unit ! Async =
     // the linear view, for the same reason as `feedBatched` above
     val it = St.iterator(u)
@@ -835,7 +832,7 @@ object Channel {
     // producer's fiber, and from there as the consumer's failure
     // (TestChannelFailureCross). One Bind per full ring, not per element.
     def go: Unit ! Async =
-      pure(()).flatMap: _ =>
+      defer:
         if !it.hasNext then pure(())
         else
           var a = it.next()
@@ -882,7 +879,7 @@ object Channel {
    * `offer` against a consumer paying an effect per element. This is
    * that asymmetry, built.
    */
-  private def feedBatched[A, U[_], H[+_]](c: Channel[Chunk[A]], u: U[A], size: Int)
+  private def feedBatched[A, U[_], H[_]](c: Channel[Chunk[A]], u: U[A], size: Int)
                                          (using St: Stream[U, H], HH: Answers[H]): Unit ! Async =
     // THE LINEAR VIEW, not a recursion through uncons. Feeding a
     // channel is a consume-once walk, and `Stream.iterator` is
@@ -912,7 +909,7 @@ object Channel {
           c.send(buf.chunk).flatMap(ok => if ok then go(ChunkBuf[A](size), 0) else pure(()))
     go(ChunkBuf[A](size), 0)
 
-  private def feedChunked[A, U[_], H[+_]](c: Channel[Chunk[A]], u: U[A], size: Int,
+  private def feedChunked[A, U[_], H[_]](c: Channel[Chunk[A]], u: U[A], size: Int,
                                           buf: TRef[ChunkBuffer[A]])
                                          (using St: Stream[U, H], HH: Answers[H]): Unit ! Async =
     def take(full: Boolean): Option[Chunk[A]] = takeChunk(buf, size, full)
@@ -952,36 +949,32 @@ object Channel {
    */
   private def feedFlushing[A](c: Channel[Chunk[A]], p: Flushing[A], size: Int,
                               buf: TRef[ChunkBuffer[A]]): Unit ! Async =
-    // a step that sends nothing continues DIRECTLY into the next, one
-    // native frame each: a told element does that at most `size` times
-    // before a send's flatMap breaks the descent, but an EMPTY flush sends
-    // nothing and a poller that flushes after every empty poll descended
-    // once per poll (stack-safety-stream-stm, TestFlushDepth). `depth`
-    // counts the direct steps and FlushBudget of them go through a
-    // `pure(()).flatMap` node instead — Pipe's PullBudget, here.
-    def sendIf(o: Option[Chunk[A]], depth: Int)(rest: Int => Unit ! Async): Unit ! Async = o match
-      case Some(ch) => c.send(ch).flatMap(ok => if ok then rest(0) else okay.freer.pure(()))
-      case None =>
-        if depth >= FlushBudget then okay.freer.pure[Async, Unit](()).flatMap(_ => rest(0))
-        else rest(depth + 1)
-    def step[X](e: Flush[X] | (Writer % A + Async)[X], k: X => Flushing[A], depth: Int): Unit ! Async =
-      split[Flush, Writer % A + Async](e)
-        // the producer's own boundary: emit what is held, however short
-        { case Flush.Now => sendIf(takeChunk(buf, size, full = true), depth)(d => go(k(()), d)) }
-        (rest => split[Async, Writer % A](rest)
-          (a => Inject(a).flatMap(x => go(k(x), 0)))
-          { case Writer.Say(w) =>
-            buf.modify(b => (ChunkBuffer(b.pending :+ w), ()))
-            sendIf(takeChunk(buf, size, full = false), depth)(d => go(k(()), d)) })
-    def go(p: Flushing[A], depth: Int): Unit ! Async = (p.resume: @unchecked) match
-      case Return(_) => sendIf(takeChunk(buf, size, full = true), depth)(_ => okay.freer.pure(()))
-      case Inject(e) => step(e, _ => okay.freer.pure(()), depth)
-      case Bind(Inject(e), k) => step(e, k, depth)
-    go(p, 0)
+    // the producer WALKED (`Walk.next`): to its next flush, and that walk to its next tell — each the feed's,
+    // Async performed where the feed runs. A step that sends nothing goes on through the next walk's bind (the
+    // machine's, on the heap: no depth budget)
+    type R = Flush + (Writer % A + Async)
+    type Flushed = Walk.Step[Flush, Unit, R]
+    def sent(o: Option[Chunk[A]])(rest: => Unit ! Async): Unit ! Async = o match
+      case Some(ch) => c.send(ch).flatMap(ok => if ok then rest else pure(()))
+      case None => rest
+    def walk(q: Flushed ! Writer % A + Async): Unit ! Async =
+      Walk.next[Writer % A, Flushed, Writer % A + Async](q).flatMap {
+        case Walk.Done(fl) => fl match
+          case Walk.Done(_) => sent(takeChunk(buf, size, full = true))(pure(()))
+          // the producer's own boundary: emit what is held, however short
+          case o: Walk.Op[Flush, x, Unit, R] => o.op match
+            case Flush.Now => sent(takeChunk(buf, size, full = true))(go(o.resume(())))
+        case o: Walk.Op[Writer % A, x, Flushed, Writer % A + Async] =>
+          val (w, rest) = Channel.told(o)
+          buf.modify(b => (ChunkBuffer(b.pending :+ w), ()))
+          sent(takeChunk(buf, size, full = false))(walk(rest))
+      }
+    def go(q: Flushing[A]): Unit ! Async = walk(Walk.next[Flush, Unit, R](q))
+    go(p)
 
-  /** how many sending-nothing steps `feedFlushing` takes directly before
-   * a trampoline node (Pipe's `PullBudget`, which is file-private) */
-  private val FlushBudget = 256
+  /** a tell: its value, and the rest past it */
+  private def told[W, X, B, Es[_]](o: Walk.Op[Writer % W, X, B, Es]): (W, B ! Es) = o.op match
+    case Writer.Say(w) => (w, o.resume(()))
 
   /** what both chunking feeds do to the buffer: take a chunk if one
    * is due — `full` meaning "whatever is there, the input is over or
@@ -1138,7 +1131,7 @@ object Channel {
       case None => after
 
   /** a chunked side over an ordinary stream (`feedChunked`) */
-  private[okay] def chunkedSideOf[A, S[_], F[+_]](s: S[A], capacity: Int, size: Int, within: Option[Long])
+  private[okay] def chunkedSideOf[A, S[_], F[_]](s: S[A], capacity: Int, size: Int, within: Option[Long])
                                                  (using Stream[S, F], Answers[F])
                                                  (using Scheduler, Timer): Channel[Chunk[A]] =
     chunkedSide(capacity, size, within)((c, buf) => feedChunked(c, s, size, buf))
@@ -1151,7 +1144,7 @@ object Channel {
   /** the chunking merge for ordinary sources: the common path, fed
    * through `feedChunked` rather than the flushing walk because that
    * routing measured 11% dearer (see `feedFlushing`) */
-  def mergeChunked[A, S[_], F[+_], T[_], G[+_]](s: S[A], t: T[A], capacity: Int, size: Int,
+  def mergeChunked[A, S[_], F[_], T[_], G[_]](s: S[A], t: T[A], capacity: Int, size: Int,
                                                 within: Option[Long])
                                                (using Stream[S, F], Answers[F],
                                                 Stream[T, G], Answers[G])
@@ -1166,7 +1159,7 @@ object Channel {
    * strictly sequential. The channel closes when both sources end;
    * a source that fails is recorded (fail) and the other still feeds.
    */
-  def merge[A, S[_], F[+_], T[_], G[+_]](s: S[A], t: T[A], capacity: Int = Int.MaxValue)
+  def merge[A, S[_], F[_], T[_], G[_]](s: S[A], t: T[A], capacity: Int = Int.MaxValue)
                                         (using Stream[S, F], Answers[F], Stream[T, G], Answers[G])
                                         (using sch: Scheduler): Channel[A] =
     val c = forProducers[A](2, capacity)
@@ -1199,7 +1192,7 @@ object Channel {
    * Read it with `.drained` (a `Source[Chunk[A]]`) and fold the arrays,
    * or `.drained.unchunked` for elements again at the far end.
    */
-  def bufferChunked[A, S[_], F[+_]](capacity: Int, size: Int = Source.ChunkSize)(s: S[A])
+  def bufferChunked[A, S[_], F[_]](capacity: Int, size: Int = Source.ChunkSize)(s: S[A])
                                    (using Stream[S, F], Answers[F])
                                    (using sch: Scheduler): Channel[Chunk[A]] =
     val c = forProducers[Chunk[A]](1, capacity)
@@ -1209,7 +1202,7 @@ object Channel {
     }
     c
 
-  def buffer[A, S[_], F[+_]](capacity: Int)(s: S[A])
+  def buffer[A, S[_], F[_]](capacity: Int)(s: S[A])
                             (using Stream[S, F], Answers[F])(using sch: Scheduler): Channel[A] =
     val c = forProducers[A](1, capacity)
     // `fork`, not `forkLong`: the elementwise feed on `adaptive` read

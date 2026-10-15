@@ -1,11 +1,7 @@
 package okay
 
-
-import okay.freer.*
-
-
+import okay.freer.{Aggregator}
 import okay.std.*
-import okay.freer.given
 import okay.Chunks.elements
 import java.nio.file.Files
 import scala.jdk.CollectionConverters.*
@@ -69,7 +65,6 @@ class TestBulk extends munit.FunSuite {
 class TestTables extends munit.FunSuite {
   import okay.Tables.of
   import okay.Sort.sortBy
-  import okay.freer.Row.plus
 
   final case class Sale(shop: Int, amount: Long)
 
@@ -91,18 +86,19 @@ class TestTables extends munit.FunSuite {
   }
 
   test("a plan is data: tracing prints it before anything runs") {
-    val traced = Writer.tracing(revenue(sales, cities).plus[okay.freer.Pure])([X] => (e: Tables[X]) => e.productPrefix)
-    val handled = State.handle(Tables.Heap.empty[Chunks])(Tables.via(localBulk)(traced))
-    val (plan, (_, got)) = !.run(Writer.run(handled))
+    val traced = Writer.tracing[Map[String, Long], Tables, String, Tables](revenue(sales, cities))(
+      [X] => (e: Tables[X]) => e.productPrefix)
+    val handled = State.handle(Tables.Heap.empty[Chunks])(Tables.via(localBulk)(traced.at[Tables + Writer % String]))
+    val (plan, (_, got)) = (Writer.run(handled)).run
     assertEquals(plan, Seq("Of", "Select", "Of", "Join", "Select", "Aggregate"))
     assertEquals(got, sales.groupMapReduce(s => city(s.shop))(_.amount)(_ + _))
   }
 
   test("Sort is an operation Bulk does not have, answered through the primitives") {
     val prog: Vector[(Int, Long)] ! Tables + Sort =
-      of(sales).select(s => s.shop -> s.amount).plus[Sort]
+      of(sales).select(s => s.shop -> s.amount).at[Tables + Sort]
         .aggregate(Aggregator.groupBy((kv: (Int, Long)) => kv._1)(Aggregator.sum[Long].contramap(_._2)))
-        .flatMap(byShop => of(byShop.toVector).plus[Sort].sortBy(-_._2).collect.map(_.elements.toVector))
+        .flatMap(byShop => of(byShop.toVector).at[Tables + Sort].sortBy(-_._2).collect.map(_.elements.toVector))
     val got = Tables.run(localBulk)(Sort.viaTables(prog))
     assertEquals(got.map(_._1), sales.groupMapReduce(_.shop)(_.amount)(_ + _).toVector.sortBy(-_._2).map(_._1))
   }

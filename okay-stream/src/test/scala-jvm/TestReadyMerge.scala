@@ -1,11 +1,7 @@
 package okay
 
-
-import okay.freer.*
-
-
+import okay.freer.{FoldUntil}
 import okay.std.*
-import okay.freer.given
 import okay.std.given
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger}
@@ -23,7 +19,7 @@ class TestReadyMerge extends munit.FunSuite {
 
   private type R = Writer % Int + Async
 
-  private def say(x: Int): Unit ! R = okay.freer.effect[R, Unit](Writer(x))
+  private def say(x: Int): Unit ! R = Writer.tell(x).at[R]
 
   private def list(xs: Int*): Source[Int] = Source.of(xs.toList)
 
@@ -34,11 +30,11 @@ class TestReadyMerge extends munit.FunSuite {
     val cancelled = AtomicBoolean(false)
     /** counted down by the canceller, whichever thread calls it */
     val gone = CountDownLatch(1)
-    def await: Int ! R = okay.freer.effect[R, Int](Async.Await[Int] { k =>
+    def await: Int ! R = effect[Async, Int](Async.Await[Int] { k =>
       cb = k
       registered.countDown()
       () => { cancelled.set(true); gone.countDown() }
-    })
+    }).at[R]
     def fire(x: Int): Unit = cb.nn(Right(x))
     def fail(e: Throwable): Unit = cb.nn(Left(e))
     /** a source that waits on this gate, then tells what it was given */
@@ -97,8 +93,8 @@ class TestReadyMerge extends munit.FunSuite {
   test("an Await answered during its own registration is kept, and 10^5 of them do not grow the stack") {
     val n = 100000
     def syncs(i: Int): Source[Int] =
-      if i == n then okay.freer.pure(())
-      else okay.freer.effect[R, Int](Async.Await[Int] { k => k(Right(i)); () => () })
+      if i == n then pure(())
+      else effect[Async, Int](Async.Await[Int] { k => k(Right(i)); () => () }).at[R]
         .flatMap(x => say(x)).flatMap(_ => syncs(i + 1))
     val out = collect(Source.mergeReady(syncs(0), list(-1, -2)))
     assertEquals(out.filter(_ >= 0), Vector.range(0, n))
@@ -107,7 +103,7 @@ class TestReadyMerge extends munit.FunSuite {
 
   test("a Run is performed in its source's own turn") {
     val calls = AtomicInteger(0)
-    def ran(x: Int): Source[Int] = okay.freer.effect[R, Int](Async.Run(() => { calls.incrementAndGet(); x })).flatMap(say)
+    def ran(x: Int): Source[Int] = effect[Async, Int](Async.Run(() => { calls.incrementAndGet(); x })).at[R].flatMap(say)
     val a = ran(1).flatMap(_ => ran(2))
     val m = Source.mergeReady(a, list(10, 20))
     assertEquals(collect(m), Vector(1, 10, 2, 20))
@@ -135,7 +131,7 @@ class TestReadyMerge extends munit.FunSuite {
   }
 
   test("a throwing Run drops its source; the others drain first") {
-    val throwing: Source[Int] = okay.freer.effect[R, Int](Async.Run(() => throw RuntimeException("run")))
+    val throwing: Source[Int] = effect[Async, Int](Async.Run(() => throw RuntimeException("run"))).at[R]
       .flatMap(say)
     assertEquals(outAndFailure(Source.mergeReady(throwing, list(1, 2, 3))), (Vector(1, 2, 3), Some("run")))
   }
@@ -184,7 +180,7 @@ class TestReadyMerge extends munit.FunSuite {
       val a, b = Gate()
       val self = java.util.concurrent.CompletableFuture[Fiber[Unit]]()
       val m = ReadyMerge(Seq(list(1), a.source, b.source))
-      val f = sch.fork(() => m.runForeach(_ => okay.freer.effect[Async, Unit](Async.Run(() => self.get().cancel()))))
+      val f = sch.fork(() => m.runForeach(_ => effect[Async, Unit](Async.Run(() => self.get().cancel()))))
       self.complete(f): Unit
       assert(f.joinEither().isLeft, s"$name round $round: a cancelled merge answers with a failure")
       val seen = a.gone.await(5, java.util.concurrent.TimeUnit.SECONDS) && b.gone.await(5, java.util.concurrent.TimeUnit.SECONDS)
@@ -208,7 +204,7 @@ class TestReadyMerge extends munit.FunSuite {
       val self = java.util.concurrent.CompletableFuture[Fiber[Unit]]()
       val seen = java.util.concurrent.atomic.AtomicInteger(0)
       val m = ReadyMerge(Seq(Source.of(LazyList.range(0, 200000)), g.source))
-      val f = sch.fork(() => m.runForeach(_ => okay.freer.effect[Async, Unit](Async.Run(() =>
+      val f = sch.fork(() => m.runForeach(_ => effect[Async, Unit](Async.Run(() =>
         if seen.incrementAndGet() == 10 then self.get().cancel()))))
       self.complete(f): Unit
       val _ = f.joinEither()
@@ -329,7 +325,7 @@ class TestReadyMerge extends munit.FunSuite {
   test("the merged source is consumed by an iteratee") {
     def sum(acc: Int): Int ! Take % Int = Take.await[Int].flatMap:
       case Some(x) => sum(acc + x)
-      case None => okay.freer.pure(acc)
+      case None => pure(acc)
     val m = Source.mergeReady(list(1, 2, 3), list(10, 20))
     assertEquals(pipe(m)(sum(0)).runWith, 36)
   }
@@ -422,9 +418,9 @@ class TestReadyMerge extends munit.FunSuite {
     val polls = AtomicInteger(0)
     val registered = AtomicInteger(0)
     def source: Source[Int] =
-      okay.freer.effect[R, Int](Async.Await[Int](
+      effect[Async, Int](Async.Await[Int](
         k => { registered.incrementAndGet(); k(Right(x)); () => () },
-        () => if polls.incrementAndGet() > misses then Right(x) else null)).flatMap(say)
+        () => if polls.incrementAndGet() > misses then Right(x) else null)).at[R].flatMap(say)
 
   test("the hybrid wait: data arriving on the yield rung is told without a registration") {
     // 3 polls as the ready side's turns pass, then the dry ring's wait:
