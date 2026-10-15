@@ -69,10 +69,20 @@ object State {
   def run[S, A](s: S)(a: A ! State % S): (S, A) = handle(s)(a).run
 
   /** the handler as a value: a register of the machine, a `k` taken past it with the state as it was then */
-  def apply[S](s: S): Handler[State % S, [A] =>> (S, A)] =
-    Handler.state[State % S, S](s)([X] => (st: S, e: State[S, X]) => e match
-      case Get() => (st, st)
-      case Update(f) => { val (b, next) = f(st); (next, b) })
+  def apply[S](s: S): Handler[State % S, [A] =>> (S, A)] = new Handler[State % S, [A] =>> (S, A)]:
+    def kernel[T <: okay.core.Row, A]: okay.one.handler.Handler[State % S, T, A, (S, A)] = new Cell[S, T, A](s)
+
+  /** the kernel's `Stateful`, written out: a `Get` its value the state, the state as it is; an `Update` its function
+   * applied ONCE, at `value`, its next state kept for `next`, which the machine asks right after — no tuple an
+   * operation beyond the function's own, no closure */
+  private final class Cell[S, T <: okay.core.Row, A](s0: S) extends okay.one.handler.Stateful[State % S, T, S, A, (S, A)]:
+    private var nextS: S = s0
+    def initial: S = s0
+    def ret(s: S, a: A) = okay.one.Cont.pure((s, a))
+    def value[X](s: S, op: State[S, X]): X = op match
+      case _: Get[s, a] => nextS = s; s.asInstanceOf[X]
+      case u: Update[s, b] => val (b, n) = u.f(s); nextS = n; b.asInstanceOf[X]
+    def next[X](s: S, op: State[S, X]): S = nextS
 
   /** `a`'s State from `s`, wherever it is among its effects: the last state and the value */
   def handle[S](s: S)[A, Es[_]](a: A ! Es)(using sp: Split[Es, State % S]): (S, A) ! sp.Rest = a.handle(State(s))

@@ -135,45 +135,131 @@ object Handler:
       def ret(a: A) = okay.one.Cont.pure(ret0(a))
       def abort[X](op: E[X]) = okay.one.Cont.pure(stop[A, X](op))
 
-/** `Es` AMONG `Es2`: the paths of `Es` from the paths of `Es2` — each effect found by its `Req` */
-trait Within[Es[_], Es2[_]]:
+/** `Es` AMONG `Es2`: the paths of `Es` from the paths of `Es2`. Made where it is needed, at COMPILE time: the place
+ * of an effect in a sum is a constant, a path of left and right steps (`Code`, interned — no object a use); a sum's
+ * a pair of its sides'. So a bind, a widening, a program placed in a bigger row allocate no evidence */
+abstract class Within[Es[_], Es2[_]]:
   def paths[R <: okay.core.Row](ps: Paths[Es2, R]): Paths[Es, R]
-object Within extends WithinTwo:
-  given same[Es[_]]: Within[Es, Es] with
-    def paths[R <: okay.core.Row](ps: Paths[Es, R]): Paths[Es, R] = ps
-  /** no effects are among any */
-  given none[Es2[_]]: Within[Pure, Es2] with
-    def paths[R <: okay.core.Row](ps: Paths[Es2, R]): Paths[Pure, R] = Paths.none
-trait WithinTwo extends WithinOne:
-  given two[F[_], G[_], Es2[_]](using f: Within[F, Es2], g: Within[G, Es2]): Within[okay.core.+[F, G], Es2] with
-    def paths[R <: okay.core.Row](ps: Paths[Es2, R]): Paths[okay.core.+[F, G], R] = Paths.Both(f.paths(ps), g.paths(ps))
-trait WithinOne:
-  given one[E[_], Es2[_]](using r: Req[E, Es2]): Within[E, Es2] with
-    def paths[R <: okay.core.Row](ps: Paths[Es2, R]): Paths[E, R] = Sides.sub(ps, r)
+object Within:
+  private type K[x] = Any
+  /** the same effects */
+  private object Same extends Within[K, K]:
+    def paths[R <: okay.core.Row](ps: Paths[K, R]): Paths[K, R] = ps
+  /** no effects, among any */
+  private object NoneW extends Within[K, K]:
+    def paths[R <: okay.core.Row](ps: Paths[K, R]): Paths[K, R] = Paths.none.asInstanceOf[Paths[K, R]]
+  /** one effect at the path `code`: its steps from the high bit down, below a leading 1; 0 left, 1 right */
+  private final class Code(val code: Long) extends Within[K, K]:
+    private val top = 62 - java.lang.Long.numberOfLeadingZeros(code)
+    def paths[R <: okay.core.Row](ps: Paths[K, R]): Paths[K, R] =
+      var p: Paths[?, R] = ps
+      var i = top
+      while i >= 0 do
+        p = (if ((code >>> i) & 1L) == 0L then Sides.left(p.asInstanceOf[Paths[okay.core.+[K, K], R]])
+             else Sides.right(p.asInstanceOf[Paths[okay.core.+[K, K], R]]))
+        i -= 1
+      p.asInstanceOf[Paths[K, R]]
+  private final class Pair(f: Within[K, K], g: Within[K, K]) extends Within[K, K]:
+    def paths[R <: okay.core.Row](ps: Paths[K, R]): Paths[K, R] =
+      Paths.Both(f.paths(ps), g.paths(ps)).asInstanceOf[Paths[K, R]]
+  private val codes: Array[Code] = Array.tabulate(1024)(i => Code(i.toLong))
+
+  def same[Es[_]]: Within[Es, Es] = Same.asInstanceOf[Within[Es, Es]]
+  def none[Es2[_]]: Within[Pure, Es2] = NoneW.asInstanceOf[Within[Pure, Es2]]
+  def code[E[_], Es2[_]](c: Long): Within[E, Es2] =
+    (if c < 1024 then codes(c.toInt) else Code(c)).asInstanceOf[Within[E, Es2]]
+  def pair[F[_], G[_], Es2[_]](f: Within[F, Es2], g: Within[G, Es2]): Within[okay.core.+[F, G], Es2] =
+    Pair(f.asInstanceOf[Within[K, K]], g.asInstanceOf[Within[K, K]]).asInstanceOf[Within[okay.core.+[F, G], Es2]]
+
+  /** made at compile time where it is asked for */
+  inline given derived[Es[_], Es2[_]]: Within[Es, Es2] = Evidence.within[Es, Es2]
 
 /** the effects of a bind: the continuation's if it has the program's among them, else the two summed */
-trait Join[Es[_], Es3[_]]:
+sealed abstract class Join[Es[_], Es3[_]]:
   type Out[_]
   def left[R <: okay.core.Row](ps: Paths[Out, R]): Paths[Es, R]
   def right[R <: okay.core.Row](ps: Paths[Out, R]): Paths[Es3, R]
-object Join extends JoinWithin:
+object Join extends JoinSum:
   private type K[x] = Any
   private object SameJ extends Join[K, K]:
     type Out[x] = Any
     def left[R <: okay.core.Row](ps: Paths[Out, R]): Paths[K, R] = ps
     def right[R <: okay.core.Row](ps: Paths[Out, R]): Paths[K, R] = ps
-  /** the same effects: one shared instance */
-  given same[Es[_]]: (Join[Es, Es] { type Out[x] = Es[x] }) = SameJ.asInstanceOf[Join[Es, Es] { type Out[x] = Es[x] }]
-trait JoinWithin extends JoinSum:
-  given within[Es[_], Es3[_]](using w: Within[Es, Es3]): (Join[Es, Es3] { type Out[x] = Es3[x] }) = new Join[Es, Es3]:
-    type Out[x] = Es3[x]
-    def left[R <: okay.core.Row](ps: Paths[Es3, R]): Paths[Es, R] = w.paths(ps)
-    def right[R <: okay.core.Row](ps: Paths[Es3, R]): Paths[Es3, R] = ps
+  private object SumJ extends Join[K, K]:
+    type Out[x] = Both[K, K, x]
+    def left[R <: okay.core.Row](ps: Paths[Out, R]): Paths[K, R] = Sides.left(ps)
+    def right[R <: okay.core.Row](ps: Paths[Out, R]): Paths[K, R] = Sides.right(ps)
+  private final class WithinJ(w: Within[K, K]) extends Join[K, K]:
+    type Out[x] = Any
+    def left[R <: okay.core.Row](ps: Paths[Out, R]): Paths[K, R] = w.paths(ps)
+    def right[R <: okay.core.Row](ps: Paths[Out, R]): Paths[K, R] = ps
+  private val withins = new java.util.concurrent.ConcurrentHashMap[Within[?, ?], WithinJ]()
+
+  def same[Es[_]]: Join[Es, Es] { type Out[x] = Es[x] } = SameJ.asInstanceOf[Join[Es, Es] { type Out[x] = Es[x] }]
+  def sum[Es[_], Es3[_]]: Join[Es, Es3] { type Out[x] = Both[Es, Es3, x] } =
+    SumJ.asInstanceOf[Join[Es, Es3] { type Out[x] = Both[Es, Es3, x] }]
+  /** `Es` among `Es3`: the continuation's effects — one per evidence, kept */
+  def within[Es[_], Es3[_]](w: Within[Es, Es3]): Join[Es, Es3] { type Out[x] = Es3[x] } =
+    withins.computeIfAbsent(w, ww => WithinJ(ww.asInstanceOf[Within[K, K]])).asInstanceOf[Join[Es, Es3] { type Out[x] = Es3[x] }]
+
+  /** the same effects, the same tree */
+  given sameGiven[Es[_]]: (Join[Es, Es] { type Out[x] = Es[x] }) = same[Es]
+  /** the program's effects among the continuation's: the evidence made at compile time, the `Join` kept per evidence */
+  given withinGiven[Es[_], Es3[_]](using a: Evidence.All[Es, Es3], w: Within[Es, Es3]): (Join[Es, Es3] { type Out[x] = Es3[x] }) =
+    within(w)
+
 trait JoinSum:
-  given sum[Es[_], Es3[_]]: (Join[Es, Es3] { type Out[x] = Both[Es, Es3, x] }) = new Join[Es, Es3]:
-    type Out[x] = Both[Es, Es3, x]
-    def left[R <: okay.core.Row](ps: Paths[okay.core.+[Es, Es3], R]): Paths[Es, R] = Sides.left(ps)
-    def right[R <: okay.core.Row](ps: Paths[okay.core.+[Es, Es3], R]): Paths[Es3, R] = Sides.right(ps)
+  /** else the two summed */
+  given sumGiven[Es[_], Es3[_]]: (Join[Es, Es3] { type Out[x] = Both[Es, Es3, x] }) = Join.sum[Es, Es3]
+
+/** THE EVIDENCE OF ROWS, decided at compile time: membership by givens of no value (`Among`, `Sum`), the place of an
+ * effect a constant (`code`) */
+object Evidence:
+  import scala.compiletime.summonFrom
+  /** `E` among the effects `Es`: decided, nothing at run time */
+  sealed trait Among[E[_], Es[_]]
+  object Among extends AmongLeft:
+    inline given here[E[_]]: Among[E, E] = null
+  trait AmongLeft extends AmongRight:
+    inline given left[E[_], F[_], G[_]](using inline a: Among[E, F]): Among[E, okay.core.+[F, G]] = null
+  trait AmongRight:
+    inline given right[E[_], F[_], G[_]](using inline a: Among[E, G]): Among[E, okay.core.+[F, G]] = null
+  /** every effect of `Es` among `Es2`, as an ordinary given — found or not, so a priority can fall through */
+  sealed trait All[Es[_], Es2[_]]
+  object All extends AllSum:
+    given same[Es[_]]: All[Es, Es] = null
+    given none[Es2[_]]: All[Pure, Es2] = null
+  trait AllSum extends AllOne:
+    given sum[F[_], G[_], Es2[_]](using All[F, Es2], All[G, Es2]): All[okay.core.+[F, G], Es2] = null
+  trait AllOne:
+    given one[E[_], Es2[_]](using Among[E, Es2]): All[E, Es2] = null
+  /** a sum taken apart: its sides, as types */
+  sealed trait Sum[Es[_]]:
+    type L[_]
+    type R[_]
+  object Sum:
+    inline given both[F[_], G[_]]: (Sum[okay.core.+[F, G]] { type L[x] = F[x]; type R[x] = G[x] }) = null
+
+  /** every effect of `Es` among `Es2` */
+  transparent inline def among[Es[_], Es2[_]]: Boolean = summonFrom {
+    case _: (Es[Any] =:= Es2[Any]) => true
+    case _: (Es[Any] =:= NoEffects[Any]) => true
+    case s: Sum[Es] => among[s.L, Es2] && among[s.R, Es2]
+    case _: Among[Es, Es2] => true
+    case _ => false
+  }
+  /** the path of `E` in `Es`, `acc` the steps so far */
+  inline def code[E[_], Es[_]](acc: Long): Long = summonFrom {
+    case _: (Es[Any] =:= E[Any]) => acc
+    case s: Sum[Es] => inline if among[E, s.L] then code[E, s.L](acc << 1) else code[E, s.R]((acc << 1) | 1L)
+  }
+  inline def within[Es[_], Es2[_]]: Within[Es, Es2] = summonFrom {
+    case _: (Es[Any] =:= Es2[Any]) => Within.same[Es].asInstanceOf[Within[Es, Es2]]
+    case _: (Es[Any] =:= NoEffects[Any]) => Within.none[Es2].asInstanceOf[Within[Es, Es2]]
+    case s: Sum[Es] => Within.pair[s.L, s.R, Es2](within[s.L, Es2], within[s.R, Es2]).asInstanceOf[Within[Es, Es2]]
+    case _ => inline if among[Es, Es2] then Within.code[Es, Es2](code[Es, Es2](1L))
+              else scala.compiletime.error("an effect of the program is not among the effects expected")
+  }
 
 /** THE PATHS OF A PART of the effects, by the sides of `Both` itself. Not `ps.sub(r)` alone: that ends by asking the
  * part for itself by `Req.Only`, and a part of no effects (`Paths.None`: a program needing nothing, a runner's rest
