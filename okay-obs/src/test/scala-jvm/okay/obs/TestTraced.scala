@@ -1,9 +1,8 @@
 package okay.obs
 
 import okay.Async
-import okay.freer.{!, pure}
+import okay.{!, pure}
 import okay.given
-import okay.freer.given
 import okay.codec.Cbor
 import okay.http.{Http, Method, Request, Response}
 import okay.persist.{MemoryStore, Policy, Topic}
@@ -12,7 +11,7 @@ import okay.persist.{MemoryStore, Policy, Topic}
  * ambient children, and the stored route self-wiring twice */
 class TestTraced extends munit.FunSuite {
 
-  def run[A](p: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](p))
+  def run[A](p: A ! Async): A = Async.run(p).run
 
   def spansOf(topic: Topic): Vector[Span] =
     topic.read(0, 0, 100) match

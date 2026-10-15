@@ -1,9 +1,7 @@
 package okay.obs
 
-import okay.{Async, async}
-import okay.freer.{!}
+import okay.{!, Async, async}
 import okay.given
-import okay.freer.given
 import okay.http.{Request, Response}
 
 /**
@@ -57,7 +55,7 @@ object Traced {
           t.root(name(req), h("traceparent"), h("tracestate")) {
             t.context.foreach(here.set)
             try
-              val res = okay.freer.!.run(Async.run[Response, okay.freer.Pure](r(using t)(req)))
+              val res = Async.run(r(using t)(req)).run
               t.annotate(Attr("http.status", res.status.toString))
               if res.status >= 500 then t.fail()
               res

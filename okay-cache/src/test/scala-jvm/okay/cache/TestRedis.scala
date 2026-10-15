@@ -1,6 +1,6 @@
 package okay.cache
 
-import okay.{!, +:, Async, AsyncCont, Op, Pure}
+import okay.{!, Async, async}
 import okay.given
 import okay.codec.Schema
 
@@ -25,8 +25,8 @@ class TestRedis extends munit.FunSuite {
   final case class Quote(sym: String, price: Double, tags: Vector[String] = Vector.empty)
   given Schema[Quote] = Schema.derived
 
-  def run[A](p: A ! (Async +: Pure)): A = AsyncCont.run(p)
-  def runOp[A](op: Op[Async, A]): A = run(op.at[Async +: Pure])
+  def run[A](p: A ! Async): A = Async.run(p).run
+  def runOp[A](op: A ! Async): A = run(op)
 
   private var n = 0
   def fresh(regime: Regime): Cache[String, Quote] =
@@ -47,7 +47,7 @@ class TestRedis extends munit.FunSuite {
   test("getOrLoad: a miss loads once and caches; a hit does not load") {
     val c = fresh(Regime.Invalidated)
     var loaded = 0
-    def load(k: String): Quote ! (Async +: Pure) = AsyncCont.async { loaded += 1; Quote(k, 1.0) }.at
+    def load(k: String): Quote ! Async = async { loaded += 1; Quote(k, 1.0) }
     assertEquals(run(c.getOrLoad("x")(load)), Quote("x", 1.0))
     assertEquals(run(c.getOrLoad("x")(load)), Quote("x", 1.0))
     assertEquals(loaded, 1)

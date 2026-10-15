@@ -2,11 +2,9 @@ package okay.obs
 
 import okay.{Async}
 
-import okay.freer.{Pure}
-import okay.freer.{!}
+import okay.!
 import okay.std.{Resource}
 import okay.given
-import okay.freer.given
 import okay.codec.{Cbor, Schema}
 import okay.http.{Http, Request, Response, Server, Transports}
 import okay.jdbc.JdbcSql
@@ -50,7 +48,7 @@ class TestCrossing extends munit.FunSuite {
           val n = tracer.root("GET /q", h("traceparent"), h("tracestate")) {
             tracer.span("sql update", Attr("db.system", "h2")) {
               val db: Sql = JdbcSql(conn)
-              okay.freer.!.run(Async.run[Long, okay.freer.Pure](Typed.update[Row](db, "update t set n = ?")(Row(7))))
+              Async.run(Typed.update[Row](db, "update t set n = ?")(Row(7))).run
             }
           }
           Response(200, Nil, Http.one(n.toString.getBytes("UTF-8")))
@@ -59,11 +57,11 @@ class TestCrossing extends munit.FunSuite {
 
     val inbound = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
     val http = Transports.http()
-    Resource.run[Unit, Pure](Server.serve(0)(route).map { s =>
-      val resp = Async.run[Response, Pure](http.send(
-        Request.get(s"http://127.0.0.1:${Server.port(s)}/q", Seq("traceparent" -> inbound)))).runWith
+    Resource.run(Server.serve(0)(route).map { s =>
+      val resp = Async.run(http.send(
+        Request.get(s"http://127.0.0.1:${Server.port(s)}/q", Seq("traceparent" -> inbound)))).run
       assertEquals(resp.status, 200)
-    }).runWith
+    }).run
 
     val spans = topic.read(0, 0, 100) match
       case Topic.Read.Records(rs) => rs.flatMap(r => Cbor.read[Span](r.value).toOption)

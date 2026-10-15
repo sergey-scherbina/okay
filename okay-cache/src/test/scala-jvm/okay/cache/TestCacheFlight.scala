@@ -1,6 +1,6 @@
 package okay.cache
 
-import okay.{!, +:, Async, AsyncCont, Op, Pure}
+import okay.{!, Async, async}
 import okay.given
 import java.util.concurrent.{CountDownLatch, TimeUnit}
 import java.util.concurrent.atomic.AtomicInteger
@@ -12,19 +12,19 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 class TestCacheFlight extends munit.FunSuite {
 
-  def run[A](prog: A ! (Async +: Pure)): A = AsyncCont.run(prog)
-  def runOp[A](op: Op[Async, A]): A = run(op.at[Async +: Pure])
+  def run[A](prog: A ! Async): A = Async.run(prog).run
+  def runOp[A](op: A ! Async): A = run(op)
 
   test("N concurrent misses on one key: one load, N answers; another key independent") {
     val c = Cache.memory[String, String](Regime.Invalidated, 100)
     val loads = AtomicInteger(0)
     val gate = CountDownLatch(1)
 
-    def slow(k: String): String ! (Async +: Pure) = AsyncCont.async {
+    def slow(k: String): String ! Async = async {
       loads.incrementAndGet()
       gate.await(2, TimeUnit.SECONDS)
       s"v-$k"
-    }.at
+    }
 
     val n = 8
     val results = new Array[String](n)
@@ -38,7 +38,7 @@ class TestCacheFlight extends munit.FunSuite {
     }
     // while the hot key's single load is parked on the gate, an
     // INDEPENDENT key loads freely — no global lock
-    val other = new Thread(() => { run(c.getOrLoad("cold")(k => AsyncCont.async(s"v-$k").at)): Unit })
+    val other = new Thread(() => { run(c.getOrLoad("cold")(k => async(s"v-$k"))): Unit })
     other.start(); other.join(2000)
     assertEquals(runOp(c.get("cold")), Some("v-cold"))
 
@@ -53,10 +53,10 @@ class TestCacheFlight extends munit.FunSuite {
   test("a failing flight fails every waiter, then the key recovers") {
     val c = Cache.memory[String, String](Regime.Invalidated, 100)
     val gate = CountDownLatch(1)
-    def failing(@scala.annotation.unused k: String): String ! (Async +: Pure) = AsyncCont.async {
+    def failing(@scala.annotation.unused k: String): String ! Async = async {
       gate.await(2, TimeUnit.SECONDS)
       throw RuntimeException("boom")
-    }.at
+    }
     val n = 4
     val failures = AtomicInteger(0)
     val done = CountDownLatch(n)
@@ -71,6 +71,6 @@ class TestCacheFlight extends munit.FunSuite {
     gate.countDown()
     assert(done.await(5, TimeUnit.SECONDS), "waiters hung on the failed flight")
     assertEquals(failures.get(), n)
-    assertEquals(run(c.getOrLoad("k")(_ => AsyncCont.async("fine").at)), "fine")
+    assertEquals(run(c.getOrLoad("k")(_ => async("fine"))), "fine")
   }
 }

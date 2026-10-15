@@ -1,6 +1,6 @@
 package okay.cache
 
-import okay.{!, +:, Async, AsyncCont, Op, Pure, Source}
+import okay.{!, Async, Source}
 import okay.given
 import okay.jdbc.JdbcSql
 import okay.sql.{Sql, SqlValue, Typed}
@@ -19,8 +19,8 @@ class TestWriteThrough extends munit.FunSuite {
   final case class Row(price: Long)
   given Schema[Row] = Schema.derived
 
-  def run[A](p: A ! (Async +: Pure)): A = AsyncCont.run(p)
-  def runOp[A](op: Op[Async, A]): A = run(op.at[Async +: Pure])
+  def run[A](p: A ! Async): A = Async.run(p).run
+  def runOp[A](op: A ! Async): A = run(op)
 
   private var n = 0
   def fixture(): (Sql, Cache[String, Long]) =
@@ -34,15 +34,15 @@ class TestWriteThrough extends munit.FunSuite {
     (JdbcSql(conn), Cache.memory[String, Long](Regime.Invalidated, 64))
 
   /** okay-sql is classic: its programs enter the machine as one operation each (`fromClassic`) */
-  def load(db: Sql)(k: String): Long ! (Async +: Pure) =
-    AsyncCont.fromClassic(Source.concat(db.query("select price from price where id = ?",
+  def load(db: Sql)(k: String): Long ! Async =
+    (Source.concat(db.query("select price from price where id = ?",
         Vector(SqlValue.Text(k)))).map(_.headOption match
       case Some(Vector(SqlValue.I64(p))) => p
       case Some(other) => fail(other.toString)
-      case None => fail("no row"))).at
+      case None => fail("no row")))
 
-  def commitUpdate(db: Sql, price: Long): Long ! (Async +: Pure) =
-    AsyncCont.fromClassic(Typed.update[Row](db, "update price set price = ? where id = 'okay'")(Row(price))).at
+  def commitUpdate(db: Sql, price: Long): Long ! Async =
+    (Typed.update[Row](db, "update price set price = ? where id = 'okay'")(Row(price)))
 
   test("write-through: commit, then invalidate — the next read loads the new truth") {
     val (db, cache) = fixture()
@@ -58,7 +58,7 @@ class TestWriteThrough extends munit.FunSuite {
       def get(k: String) = cache.get(k)
       def put(k: String, v: Long) = cache.put(k, v)
       def invalidate(k: String) = { events += "invalidate"; cache.invalidate(k) }
-      def getOrLoad[R <: okay.Row](k: String)(l: String => Long ! (Async +: Pure))(using okay.Member[Async, R]) = cache.getOrLoad[R](k)(l)
+      def getOrLoad(k: String)(l: String => Long ! Async) = cache.getOrLoad(k)(l)
       def stats = cache.stats
     val _ = run(WriteThrough.write(probing, "okay")(
       commitUpdate(db, 150).map { n => events += "commit"; n }))

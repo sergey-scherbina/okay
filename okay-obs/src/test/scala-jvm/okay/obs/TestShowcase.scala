@@ -1,10 +1,9 @@
 package okay.obs
 
 import okay.Async
-import okay.freer.{!}
+import okay.!
 import okay.std.{provide, providing, wire}
 import okay.given
-import okay.freer.given
 import okay.codec.Json
 import okay.http.{Http, Method, Request, Response}
 import okay.persist.{MemoryStore, Policy as TopicPolicy}
@@ -28,7 +27,7 @@ class TestShowcase extends munit.FunSuite {
       }
   }
 
-  def run[A](p: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](p))
+  def run[A](p: A ! Async): A = Async.run(p).run
 
   // ---- world one: the production edge ---------------------------
   // the doors install the capabilities from the wire — a verified

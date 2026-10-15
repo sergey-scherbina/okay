@@ -1,7 +1,6 @@
 package okay.cache
 
-import okay.{!, +:, Async, AsyncCont, Member, Op, Pure, Row, pure}
-import okay.AsyncCont.{async, await}
+import okay.{!, Async, async, await, pure}
 import scala.collection.mutable
 
 /**
@@ -19,17 +18,16 @@ enum Regime:
   case Invalidated
 
 trait Cache[K, V]:
-  // ON THE MACHINE (cont-first-module): an operation is an `Op`, a program over ANY row that has Async — the
-  // caller's program declares its row, the cache does not; a program of several steps takes the row as a
-  // parameter. The loader is a program of Async alone: it runs under its own drive (single-flight, below)
-  def get(k: K): Op[Async, Option[V]]
-  def put(k: K, v: V): Op[Async, Unit]
-  def invalidate(k: K): Op[Async, Unit]
+  // a program needing Async: it fits wherever Async is among a caller's effects. The loader is a program of
+  // Async alone: it runs under its own drive (single-flight, below)
+  def get(k: K): Option[V] ! Async
+  def put(k: K, v: V): Unit ! Async
+  def invalidate(k: K): Unit ! Async
 
   /** the only read most callers should use: on a miss ONE load per
    * key runs (single-flight, per process); concurrent callers await
    * that load's result instead of dogpiling the source */
-  def getOrLoad[R <: Row](k: K)(load: K => V ! (Async +: Pure))(using Member[Async, R]): V ! R
+  def getOrLoad(k: K)(load: K => V ! Async): V ! Async
 
   /** hits, misses, loads, evictions, size — plain values, the
    * persist Stats precedent: an endpoint, a log line and a test
@@ -122,16 +120,16 @@ object Cache:
         evictions += 1
     }
 
-    def get(k: K): Op[Async, Option[V]] = async(lookup(k))
+    def get(k: K): Option[V] ! Async = async(lookup(k))
 
-    def put(k: K, v: V): Op[Async, Unit] = async(store(k, v))
+    def put(k: K, v: V): Unit ! Async = async(store(k, v))
 
-    def invalidate(k: K): Op[Async, Unit] = async {
+    def invalidate(k: K): Unit ! Async = async {
       synchronized { entries.remove(k) }: Unit
       ()
     }
 
-    def getOrLoad[R <: Row](k: K)(load: K => V ! (Async +: Pure))(using Member[Async, R]): V ! R =
+    def getOrLoad(k: K)(load: K => V ! Async): V ! Async =
       // claim under the lock: a hit answers, the FIRST miss owns the
       // load, everyone else subscribes to its flight
       async[Either[V, (Flight[V], Boolean)]] {
@@ -146,16 +144,16 @@ object Cache:
                 loads += 1
                 Right((f, true))
         }
-      }.flatMap[R, V] {
-        case Left(v) => pure(v)
+      }.flatMap {
+        case Left(v) => pure[V, Async](v)
         case Right((flight, owns)) =>
-          val loaded: Unit ! R =
+          val loaded: Unit ! Async =
             if !owns then pure(())
             else async {
               // the loader runs under its own drive, so a failure
               // ANYWHERE in it (a thrown step, a failed Await)
               // completes the flight instead of stranding waiters
-              AsyncCont.runAsync(load(k)).onComplete { t =>
+              Async.runAsync(load(k)).onComplete { t =>
                 val r = t.toEither
                 synchronized {
                   flights.remove(k): Unit
@@ -163,8 +161,8 @@ object Cache:
                 }
                 flight.complete(r)
               }(using scala.concurrent.ExecutionContext.parasitic)
-            }.at[R]
-          loaded.flatMap(_ => await[Either[Throwable, V]](flight.subscribe).map[R, V](_.fold(t => throw t, identity)))
+            }
+          loaded.flatMap(_ => await[Either[Throwable, V]](flight.subscribe).map(_.fold(t => throw t, identity)))
       }
 
     def stats: Cache.Stats = synchronized {

@@ -2,11 +2,9 @@ package okay.obs
 
 import okay.{Async}
 
-import okay.freer.{Pure}
-import okay.freer.{!, pure}
+import okay.{!, pure}
 import okay.std.{Resource}
 import okay.given
-import okay.freer.given
 import okay.codec.Json
 import okay.http.{Http, Request, Response, Server, Transports}
 import okay.persist.{MemoryStore, Policy}
@@ -27,7 +25,7 @@ class TestOtlp extends munit.FunSuite {
     super.munitTests().map(_.tag(new munit.Tag("Live")))
 
 
-  def run[A](p: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](p))
+  def run[A](p: A ! Async): A = Async.run(p).run
 
   def fixture(): (okay.persist.Topic, Tracer) =
     val topic = MemoryStore().topic("__trace", 1, Policy())
@@ -44,8 +42,8 @@ class TestOtlp extends munit.FunSuite {
         seen = seen :+ String(r.body.bytes, "UTF-8")
         pure(Response(status, Nil, Http.one(Array.empty)))
     }
-    Resource.run[A, Pure](Server.serve(0)(route).map(s =>
-      body(Server.port(s), () => seen))).runWith
+    Resource.run(Server.serve(0)(route).map(s =>
+      body(Server.port(s), () => seen))).run
 
   val http = Transports.http()
 

@@ -1,6 +1,6 @@
 package okay.cache
 
-import okay.{!, +:, Async, AsyncCont, Op, Pure}
+import okay.{!, Async}
 import okay.persist.{Ack, MemoryStore, Policy, Record}
 
 /**
@@ -11,11 +11,11 @@ import okay.persist.{Ack, MemoryStore, Policy, Record}
  */
 class TestView extends munit.FunSuite {
 
-  def run[A](prog: A ! (Async +: Pure)): A =
-    AsyncCont.runAsync(prog).value match
+  def run[A](prog: A ! Async): A =
+    Async.runAsync(prog).value match
       case Some(t) => t.get
       case None => fail("the test program did not complete synchronously")
-  def runOp[A](op: Op[Async, A]): A = run(op.at[Async +: Pure])
+  def runOp[A](op: A ! Async): A = run(op)
 
   private def bytes(s: String): Array[Byte] = s.getBytes("UTF-8")
   private def str(b: Array[Byte]): String = new String(b, "UTF-8")

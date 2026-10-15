@@ -1,9 +1,8 @@
 package okay.obs
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.{Answers}
 
-import okay.freer.given
 
 import okay.codec.{Cbor, Json}
 import okay.persist.{MemoryStore, Topic}
@@ -43,7 +42,7 @@ class TestLog extends munit.FunSuite:
     val (h, lines) = collecting(clock = clock)
     given Answers[Says] = h
     val boom = intercept[RuntimeException](
-      run(info("before the fall").flatMap(_ => okay.freer.pure[Says, Unit](throw RuntimeException("fell")))))
+      run(info("before the fall").flatMap(_ => okay.pure[Unit, Says](throw RuntimeException("fell")))))
     assertEquals(boom.getMessage, "fell")
     assertEquals(lines().map(_.message), Vector("before the fall"))
   }
@@ -157,7 +156,7 @@ class TestLog extends munit.FunSuite:
   }
 
   test("the Writer algebra still owns the program: run collects the same lines the handler would write") {
-    val told = Writer.run[Line, Int, Pure](
+    val told = Writer.run[Line, Int, Says](
       info("a").flatMap(_ => warn("b")).map(_ => 7))
     val (lines, answer) = !.run(told)
     assertEquals(answer, 7)

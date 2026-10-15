@@ -1,9 +1,8 @@
 package okay.obs
 
 import okay.Async
-import okay.freer.{!}
+import okay.!
 import okay.given
-import okay.freer.given
 import okay.codec.{Cbor, Json}
 import okay.http.{Http, Method, Request, Response}
 import okay.persist.{MemoryStore, Policy as TopicPolicy, Topic}
@@ -26,7 +25,7 @@ class TestComposed extends munit.FunSuite {
   val verify: String => Verified =
     t => Jwt.verify(t, _ => Some(Jwt.Key.Hmac(secret)), Some("api"), now)
 
-  def run[A](p: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](p))
+  def run[A](p: A ! Async): A = Async.run(p).run
 
   /** the stored value: needs BOTH capabilities, uses both */
   val api: (Principal, Tracer) ?=> Traced.Route = {

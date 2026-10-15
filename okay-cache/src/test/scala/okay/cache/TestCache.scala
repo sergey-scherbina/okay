@@ -1,6 +1,6 @@
 package okay.cache
 
-import okay.{!, +:, Async, AsyncCont, Op, Pure}
+import okay.{!, Async, async}
 /**
  * The cross-platform half of the contract (specs/cache.md,
  * Behavior): budgets, invalidation, LRU eviction, negative caching,
@@ -19,17 +19,17 @@ class TestCache extends munit.FunSuite {
    * flight await, which completes during registration when the
    * loader is synchronous), so the drive finishes inline — no
    * CanBlock, which is what lets this suite run on JS */
-  def run[A](prog: A ! (Async +: Pure)): A =
-    AsyncCont.runAsync(prog).value match
+  def run[A](prog: A ! Async): A =
+    Async.runAsync(prog).value match
       case Some(t) => t.get
       case None => fail("the test program did not complete synchronously")
-  def runOp[A](op: Op[Async, A]): A = run(op.at[Async +: Pure])
+  def runOp[A](op: A ! Async): A = run(op)
 
   test("a budget expires: within N the value serves, after N it is a miss and reloads") {
     now = 0
     val c = mk(Regime.Budget(1000))
     var loaded = 0
-    def load(k: String): String ! (Async +: Pure) = AsyncCont.async { loaded += 1; s"v-$k" }.at
+    def load(k: String): String ! Async = async { loaded += 1; s"v-$k" }
 
     assertEquals(run(c.getOrLoad("a")(load)), "v-a")
     assertEquals(loaded, 1)
@@ -52,7 +52,7 @@ class TestCache extends munit.FunSuite {
     runOp(c.invalidate("a"))
     assertEquals(runOp(c.get("a")), None)
     var loaded = 0
-    assertEquals(run(c.getOrLoad("a") { _ => AsyncCont.async { loaded += 1; "three" }.at }), "three")
+    assertEquals(run(c.getOrLoad("a") { _ => async { loaded += 1; "three" } }), "three")
     assertEquals(loaded, 1, "the read after invalidate did not reload")
   }
 
@@ -74,7 +74,7 @@ class TestCache extends munit.FunSuite {
     now = 0
     val c = Cache.memory[String, Option[String]](Regime.Budget(500), 10, () => clock())
     var loads = 0
-    def look(@scala.annotation.unused k: String): Option[String] ! (Async +: Pure) = AsyncCont.async { loads += 1; None }.at
+    def look(@scala.annotation.unused k: String): Option[String] ! Async = async { loads += 1; None }
 
     assertEquals(run(c.getOrLoad("missing")(look)), None)
     assertEquals(run(c.getOrLoad("missing")(look)), None)
@@ -87,7 +87,7 @@ class TestCache extends munit.FunSuite {
 
   test("stats match the scenario: hits, misses, loads") {
     val c = mk(Regime.Invalidated)
-    def load(k: String): String ! (Async +: Pure) = AsyncCont.async { k }.at
+    def load(k: String): String ! Async = async { k }
     run(c.getOrLoad("x")(load)): Unit // miss + load
     run(c.getOrLoad("x")(load)): Unit // hit
     run(c.getOrLoad("y")(load)): Unit // miss + load
@@ -102,9 +102,9 @@ class TestCache extends munit.FunSuite {
   test("a failing loader propagates and does not poison the key") {
     val c = mk(Regime.Invalidated)
     intercept[RuntimeException](
-      run(c.getOrLoad("k")(_ => AsyncCont.async[String](throw RuntimeException("boom")).at))): Unit
+      run(c.getOrLoad("k")(_ => async[String](throw RuntimeException("boom"))))): Unit
     // the claim is released: the next load succeeds
-    assertEquals(run(c.getOrLoad("k")(_ => AsyncCont.async("fine").at)), "fine")
+    assertEquals(run(c.getOrLoad("k")(_ => async("fine"))), "fine")
   }
 
   test("construction demands a bound") {
