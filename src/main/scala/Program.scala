@@ -21,6 +21,50 @@ abstract class Run[Es[_], +A]:
   /** the program at the paths of a place */
   def on[R <: okay.core.Row](ps: Paths[Es, R]): Eff[R, A]
 
+/** the words on a program, found with it (its implicit scope): no import */
+object Run:
+  extension [A, Es[_]](p: A ! Es)
+    /** fitted to a place: the program at its row */
+    inline def fit[R <: okay.core.Row](ps: Paths[Es, R]): Eff[R, A] = p.on(ps)
+    /** the bind: the continuation's effects joined to these (`Join`) */
+    def flatMap[B, Es3[_]](f: A => B ! Es3)(using j: Join[Es, Es3]): B ! j.Out = new Run[j.Out, B]:
+      def on[R <: okay.core.Row](ps: Paths[j.Out, R]): Eff[R, B] =
+        val rs = j.right(ps)
+        p.fit(j.left(ps)).flatMap(a => f(a).fit(rs))
+    def map[B](f: A => B): B ! Es = new Run[Es, B]:
+      def on[R <: okay.core.Row](ps: Paths[Es, R]): Eff[R, B] = p.fit(ps).map(f)
+    /** `p` then `q`, `p`'s value dropped */
+    def >>[B, Es3[_]](q: => B ! Es3)(using j: Join[Es, Es3]): B ! j.Out = p.flatMap(_ => q)
+    /** the same program needing more effects: `Es` among `Es2` */
+    def at[Es2[_]](using w: Within[Es, Es2]): A ! Es2 = new Run[Es2, A]:
+      def on[R <: okay.core.Row](ps: Paths[Es2, R]): Eff[R, A] = p.fit(w.paths(ps))
+    /** `h`'s effect taken off wherever it is among `Es`: a program needing the rest */
+    def handle[E[_], O[_]](h: Handler[E, O])(using s: Split[Es, E]): O[A] ! s.Rest = new Run[s.Rest, O[A]]:
+      def on[R <: okay.core.Row](ps: Paths[s.Rest, R]): Eff[R, O[A]] = okay.one.Cont.handle(p.fit(s.paths(ps)))(h.kernel[R, A])
+    /** `h` INTERCEPTING `E` for this program: `E` among `Es` and kept there — `h` answers the program's operations of
+     * `E`, its own clauses' go to the handler of `E` outside (okay-core's `Removed.again`: `local`, `handleWith`) */
+    def intercept[E[_]](h: Handler[E, [x] =>> x])(using w: Within[E, Es]): A ! Es = new Run[Es, A]:
+      def on[R <: okay.core.Row](ps: Paths[Es, R]): Eff[R, A] =
+        okay.one.Cont.handle(p.fit(ps))(h.kernel[R, A])(using okay.one.row.Removed.again(w.paths(ps).find(Req.only)))
+    /** `E` TRANSLATED: each of `p`'s operations of `E` a program needing `F`, run where it is performed, the rest
+     * resumed with its value — wherever `E` is among `Es` (the kernel's `Translating`) */
+    def translate[E[_], F[_]](f: [X] => E[X] => X ! F)(using s: Split[Es, E]): A ! okay.core.+[F, s.Rest] =
+      new Run[okay.core.+[F, s.Rest], A]:
+        def on[R <: okay.core.Row](ps: Paths[okay.core.+[F, s.Rest], R]): Eff[R, A] =
+          val fps = ps.sub(Req.Left[F, F, s.Rest](Req.Only[F]()))
+          val rps = ps.sub(Req.Right[s.Rest, F, s.Rest](Req.Only[s.Rest]()))
+          okay.one.Cont.handle(p.fit(s.paths(rps)))(new okay.one.handler.Translating[E, R, A, A]:
+            def ret(a: A) = okay.one.Cont.pure(a)
+            def apply[X](op: E[X]): Eff[R, X] = f(op).fit(fps))
+    /** the facade's form of the same program */
+    def ctx: A !! Es = (c: Needs[Es]) ?=> p.fit(c.paths)
+
+  extension [A](p: A ! Pure)
+    /** a program needing nothing: its value */
+    def run: A = p.fit[okay.core.Pure](Paths.none).run
+
+
+
 /** `A ! Es`: a program of `A` needing `Es` — a value */
 infix type ![+A, Es[_]] = Run[Es, A]
 
@@ -31,34 +75,13 @@ infix type !![+A, Es[_]] = okay.core.![A, Es]
 type Pure[X] = NoEffects[X]
 
 object Program:
+  /** a program of the kernel at a row, seen as needing nothing more than that row holds — a `k`'s answer inside a
+   * clause, which the clause only binds and returns */
+  private[okay] def lift[A, T <: okay.core.Row](e: Eff[T, A]): A ! Pure = new Run[Pure, A]:
+    def on[R <: okay.core.Row](ps: Paths[Pure, R]): Eff[R, A] = e.asInstanceOf[Eff[R, A]]
   /** from the facade's form: the same program, a value */
   def of[A, Es[_]](q: A !! Es): A ! Es = new Run[Es, A]:
     def on[R <: okay.core.Row](ps: Paths[Es, R]): Eff[R, A] = q(using Needs.of(ps))
-
-extension [A, Es[_]](p: A ! Es)
-  /** fitted to a place: the program at its row */
-  inline def fit[R <: okay.core.Row](ps: Paths[Es, R]): Eff[R, A] = p.on(ps)
-  /** the bind: the continuation's effects joined to these (`Join`) */
-  def flatMap[B, Es3[_]](f: A => B ! Es3)(using j: Join[Es, Es3]): B ! j.Out = new Run[j.Out, B]:
-    def on[R <: okay.core.Row](ps: Paths[j.Out, R]): Eff[R, B] =
-      val rs = j.right(ps)
-      p.fit(j.left(ps)).flatMap(a => f(a).fit(rs))
-  def map[B](f: A => B): B ! Es = new Run[Es, B]:
-    def on[R <: okay.core.Row](ps: Paths[Es, R]): Eff[R, B] = p.fit(ps).map(f)
-  /** `p` then `q`, `p`'s value dropped */
-  def >>[B, Es3[_]](q: => B ! Es3)(using j: Join[Es, Es3]): B ! j.Out = p.flatMap(_ => q)
-  /** the same program needing more effects: `Es` among `Es2` */
-  def at[Es2[_]](using w: Within[Es, Es2]): A ! Es2 = new Run[Es2, A]:
-    def on[R <: okay.core.Row](ps: Paths[Es2, R]): Eff[R, A] = p.fit(w.paths(ps))
-  /** `h`'s effect taken off wherever it is among `Es`: a program needing the rest */
-  def handle[E[_], O[_]](h: Handler[E, O])(using s: Split[Es, E]): O[A] ! s.Rest = new Run[s.Rest, O[A]]:
-    def on[R <: okay.core.Row](ps: Paths[s.Rest, R]): Eff[R, O[A]] = okay.one.Cont.handle(p.fit(s.paths(ps)))(h.kernel[R, A])
-  /** the facade's form of the same program */
-  def ctx: A !! Es = (c: Needs[Es]) ?=> p.fit(c.paths)
-
-extension [A](p: A ! Pure)
-  /** a program needing nothing: its value */
-  def run: A = p.fit[okay.core.Pure](Paths.none).run
 
 /** a value, needing nothing — at any effects */
 def pure[A, Es[_]](a: A): A ! Es = new Run[Es, A]:
@@ -74,6 +97,34 @@ def tailcall[A, Es[_]](p: => A ! Es): A ! Es = defer(p)
 /** A HANDLER AS A VALUE, of `E`, polymorphic in the body's value: its answer `O[A]` — the kernel's form at a row */
 trait Handler[E[_], O[_]]:
   def kernel[T <: okay.core.Row, A]: OneHandler[E, T, A, O[A]]
+
+object Handler:
+  /** each operation ANSWERED in place by `value`: nothing captured (the kernel's `Answering`) */
+  def answering[E[_]](answer: [X] => E[X] => X): Handler[E, [A] =>> A] = new Handler[E, [A] =>> A]:
+    def kernel[T <: okay.core.Row, A]: OneHandler[E, T, A, A] = new okay.one.handler.Answering[E, T, A, A]:
+      def ret(a: A) = okay.one.Cont.pure(a)
+      def value[X](op: E[X]): X = answer(op)
+  /** a STATE from `s0`: each operation its value and the next state; the answer the last state and the value — a
+   * register of the machine, a `k` taken past it with the state as it was then (the kernel's `Stateful`) */
+  def state[E[_], S](s0: S)(step: [X] => (S, E[X]) => (S, X)): Handler[E, [A] =>> (S, A)] = new Handler[E, [A] =>> (S, A)]:
+    def kernel[T <: okay.core.Row, A]: OneHandler[E, T, A, (S, A)] = new okay.one.handler.Stateful[E, T, S, A, (S, A)]:
+      def initial = s0
+      def ret(s: S, a: A) = okay.one.Cont.pure((s, a))
+      def value[X](s: S, op: E[X]): X = step(s, op)._2
+      def next[X](s: S, op: E[X]): S = step(s, op)._1
+  /** a clause given `k`, the rest under the handler — dropped, resumed, resumed again (the kernel's `Deep`); its
+   * programs need nothing but the rest of the row */
+  def deep[E[_], O[_]](ret0: [A] => A => O[A])(clause: [A, X] => (E[X], X => O[A] ! Pure) => O[A] ! Pure): Handler[E, O] =
+    new Handler[E, O]:
+      def kernel[T <: okay.core.Row, A]: OneHandler[E, T, A, O[A]] = new okay.one.handler.Deep[E, T, A, O[A]]:
+        def ret(a: A) = okay.one.Cont.pure(ret0(a))
+        def apply[X](op: E[X], k: X => okay.one.![O[A], T]) =
+          clause[A, X](op, x => Program.lift(k(x))).fit(Paths.none.asInstanceOf[Paths[Pure, T]])
+  /** an operation ENDS the body: its answer in the body's place, the rest dropped (the kernel's `Aborting`) */
+  def aborting[E[_], O[_]](ret0: [A] => A => O[A])(stop: [A, X] => E[X] => O[A]): Handler[E, O] = new Handler[E, O]:
+    def kernel[T <: okay.core.Row, A]: OneHandler[E, T, A, O[A]] = new okay.one.handler.Aborting[E, T, A, O[A]]:
+      def ret(a: A) = okay.one.Cont.pure(ret0(a))
+      def abort[X](op: E[X]) = okay.one.Cont.pure(stop[A, X](op))
 
 /** `Es` AMONG `Es2`: the paths of `Es` from the paths of `Es2` — each effect found by its `Req` */
 trait Within[Es[_], Es2[_]]:

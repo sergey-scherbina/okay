@@ -169,6 +169,20 @@ is called from the program's own effects; over `E + F` with `F` abstract its `Re
 `def run[Es[_]](p: A ! Es)(using s: Split[Es, E]): B ! s.Rest`; `p.handle(h)` is one. A chain of runners infers
 with nothing named (`TestRestRow`). The platform's ≈340 rest-polymorphic signatures move to this form.
 
+## Known changes of behaviour, as the conversion goes
+
+Recorded as met; behaviour regressions are accepted where the speed is the point (2026-10-15).
+
+- `Logic.msplit`: a rest handed out is tied to the place where the split ran; run under extra handlers (observe,
+  interleave, fairBind, `runChoice(rest)`) or under fresh handlers of the same shape it works, under a new handler
+  inserted in the middle it throws — the union routed it.
+- `Choose.all`, `msplit`: a forked branch point is abandoned through the kernel's `recover`, which an abort or a
+  cancel passes (`Exit`); okay-freer's catch frame abandoned it for those too.
+- `Maybe.option` captures `k` for `Some` (a `Deep`), where okay-freer answered in place: the same result, a capture
+  more.
+- `Once.memo` calls its step twice an operation (the kernel's `Stateful` asks `value` and `next` apart): pure, so the
+  same.
+
 ## Two packages, not a flag
 
 `okay.freer` is FROZEN: the classic road as it is, its own JMH lanes, nothing in it changed. The kernel's words

@@ -1,9 +1,8 @@
 package okay.std
 
-import okay.freer.*
-import okay.freer.given
-
-import okay.{Effect, MonadPlus, TypeableK, typeableK}
+import okay.{!, +, Effect, Handler, MonadPlus, Pure, Run, TypeableK, effect, typeableK}
+import okay.core.{Eff, Paths, Row, Split}
+import scala.collection.immutable.ArraySeq
 
 
 /**
@@ -65,63 +64,55 @@ object Forked:
       case _ => acc.reverse
     go(as, Nil)
 
-/** The class IS the whole identity: Choose has no parameter but its
- * (erased) answer type, so splitting a row on it is a TOTAL test —
- * said once here, rather than as a "cannot be checked at runtime"
- * warning at every use site of a test that is in fact complete. */
-
-
 /** one of the given alternatives */
-inline def choose[A](as: A*): A ! Choose = effect(Choose(as))
+inline def choose[A](as: A*): A ! Choose = effect[Choose, A](Choose(as))
 
 /**
  * Nondeterminism is the canonical MonadPlus: no alternatives is
  * failure (the handler prunes the branch), append chooses between two
- * whole computations. Note the overlap: Monad[Free[F, *]] also covers
- * Choose programs — summon MonadPlus explicitly where empty/append
- * are needed.
+ * whole computations. A program's own `flatMap` is found with it (no
+ * import); summon MonadPlus where empty/append are needed.
  */
-given MonadPlus[[A] =>> A ! Choose] with
-  override def pure[A](a: A): A ! Choose = okay.freer.pure(a)
-  override def empty[A]: A ! Choose = effect(Choose(Seq.empty))
+given chooseMonadPlus: MonadPlus[[A] =>> A ! Choose] with
+  override def pure[A](a: A): A ! Choose = okay.pure[A, Choose](a)
+  override def empty[A]: A ! Choose = effect[Choose, A](Choose(Seq.empty))
   extension [A](x: A ! Choose)
-    override def flatMap[B](f: A => B ! Choose): B ! Choose = x.flatMap(f)
+    // the program's own bind, by its object: `x.flatMap` here would be this extension
+    override def flatMap[B](f: A => B ! Choose): B ! Choose = Run.flatMap(x)(f)
     override def append(y: A ! Choose): A ! Choose =
-      effect[Choose, A ! Choose](Choose(Seq(x, y))).flatMap(identity)
+      Run.flatMap(effect[Choose, A ! Choose](Choose(Seq(x, y))))(identity)
 
 /**
  * A row CONTAINING Choose is a MonadPlus too — which is what lets
  * `guard` prune inside an effectful search (the model is asked, the
  * answer is judged, the branch dies or lives).
  */
-given [F[+_]]: MonadPlus[[A] =>> A ! Choose + F] with
-  override def pure[A](a: A): A ! Choose + F = okay.freer.pure(a)
-  override def empty[A]: A ! Choose + F = effect(Choose(Seq.empty))
+given chooseRowMonadPlus[F[_]]: MonadPlus[[A] =>> A ! Choose + F] with
+  override def pure[A](a: A): A ! Choose + F = okay.pure[A, Choose + F](a)
+  override def empty[A]: A ! Choose + F = effect[Choose, A](Choose(Seq.empty)).at[Choose + F]
   extension [A](x: A ! Choose + F)
-    override def flatMap[B](f: A => B ! Choose + F): B ! Choose + F = x.flatMap(f)
+    override def flatMap[B](f: A => B ! Choose + F): B ! Choose + F = Run.flatMap(x)(f)
     override def append(y: A ! Choose + F): A ! Choose + F =
-      effect[Choose + F, A ! Choose + F](Choose(Seq(x, y))).flatMap(identity)
+      Run.flatMap(effect[Choose, A ! Choose + F](Choose(Seq(x, y))).at[Choose + F])(identity)
 
 object Choose:
   /** a handler that will start no more of `c`'s alternatives says so: what they share is released when nothing
    * else can use it (logic-cut-releases). A handler that stops early without saying so keeps it open */
   def abandon(c: Choose[?]): Unit = Forked.sharedOf(c.as).foreach(_.abandon())
 
-  /** the handler as a value: `p.handle(Choose.all)` answers every branch's result, in order */
-  def all: Handler[Choose, Seq] = new Handler[Choose, Seq]:
-    def run[A, F[+_]](p: A ! Choose + F)(using A <:< Any, Distinct[Choose + F], Handler.Nothing[F]): Seq[A] ! F =
-      runChoice(p)
-
-/** all the results of all the branches, forwarding the effects F */
-def runChoice[A, F[+_]](a: A ! Choose + F): Seq[A] ! F =
-  val E = Classic[Free]
-  E.handle[Choose, F](a)(x => pure(Seq(x))):
-    [X] => c => E.control.shift: k =>
-      val all = okay.freer.!.foldM(c.as)(Seq.empty[A])((s, x) => k(x).map(s ++ _))
+  /** the handler as a value: `p.handle(Choose.all)` answers every branch's result, in order — the rest resumed
+   * once per alternative (the kernel's `Deep`) */
+  def all: Handler[Choose, Seq] = Handler.deep[Choose, Seq]([A] => (a: A) => Seq(a))(
+    [A, X] => (c: Choose[X], k: X => Seq[A] ! Pure) =>
+      val all = foldM[X, Seq[A], Pure](c.as)(Seq.empty[A])((s, x) => k(x).map(s ++ _))
       // a branch point something is shared through: a throw that leaves the search abandons it (logic-cut-releases)
       c.as match
-        case _: Forked[?] => HandleFrames.unwinding[Seq[A], F](() => Choose.abandon(c))(all)
-        case _ => all
+        case _: Forked[?] => unwinding(() => Choose.abandon(c))(all)
+        case _ => all)
+
+/** all the results of all the branches, wherever Choose is among the program's effects: the rest of them
+ * forwarded */
+def runChoice[A, Es[_]](a: A ! Es)(using s: Split[Es, Choose]): Seq[A] ! s.Rest = a.handle(Choose.all)
 
 /**
  * A COLLECTION IS ALREADY A SIGNATURE, and this is the sharpest
@@ -131,11 +122,11 @@ def runChoice[A, F[+_]](a: A ! Choose + F): Seq[A] ! F =
  *
  *     val pairs: (Int, Int) ! List =
  *       for
- *         x <- List(1, 2).perform
- *         y <- List(10, 20).perform
+ *         x <- effect(List(1, 2))
+ *         y <- effect(List(10, 20))
  *       yield (x, y)
  *
- *     runSeq[List, (Int, Int), Pure](pairs)
+ *     runSeq[List, (Int, Int), List](pairs).run
  *     // List((1,10), (1,20), (2,10), (2,20))
  *
  * The handler is `runChoice`'s, unchanged, because there was never
@@ -146,14 +137,30 @@ def runChoice[A, F[+_]](a: A ! Choose + F): Seq[A] ! F =
  * means whatever the reader guesses — but seeing that the two are the
  * same handler is the point.
  */
-def runSeq[S[+X] <: Seq[X], A, F[+_]](p: A ! S + F)(using TypeableK[S]): Seq[A] ! F =
-  val E = Classic[Free]
-  E.handle[S, F](p)(x => pure(Seq(x))):
-    [X] => (s: S[X]) => E.control.shift: k =>
-      okay.freer.!.foldM(s)(Seq.empty[A])((prev, x) => k(x).map(prev ++ _))
+def runSeq[S[+X] <: Seq[X], A, Es[_]](p: A ! Es)(using sp: Split[Es, S]): Seq[A] ! sp.Rest =
+  p.handle(Handler.deep[S, Seq]([A] => (a: A) => Seq(a))(
+    [A, X] => (s: S[X], k: X => Seq[A] ! Pure) =>
+      foldM[X, Seq[A], Pure](s)(Seq.empty[A])((prev, x) => k(x).map(prev ++ _))))
 
-/** the class IS the identity for a collection too: the element type
- * is erased, so the test is total for exactly the reason `Choose`'s
- * is */
+/**
+ * A FOLD IN A PROGRAM: `f` on each element in order, from `z` — each step's continuation builds the next, so the
+ * build is right-nested and runs in constant stack; the elements copied once, at the call (an `ArraySeq` passes
+ * through), `f` run when the program is.
+ */
+private[std] def foldM[X, B, Es[_]](xs: Iterable[X])(z: B)(f: (B, X) => B ! Es): B ! Es =
+  val v = ArraySeq.untagged.from(xs)
+  val n = v.length
+  def go(i: Int, acc: B): B ! Es =
+    if i >= n then okay.pure[B, Es](acc) else Run.flatMap(f(acc, v(i)))(b => go(i + 1, b))
+  okay.defer(go(0, z))
+
+/** `x` with `onUnwind` called when an error thrown in it leaves it — rethrown (the kernel's `recover`) */
+private[std] def unwinding[A, Es[_]](onUnwind: () => Unit)(x: A ! Es): A ! Es = new Run[Es, A]:
+  def on[R <: Row](ps: Paths[Es, R]): Eff[R, A] =
+    okay.one.Cont.recover(x.fit(ps))(t => { onUnwind(); throw t })
+
+/** the class IS the identity for a collection: the element type is
+ * erased, so the test is total for exactly the reason `Choose`'s is —
+ * the evidence for code that still splits by class (okay-freer) */
 given TypeableK[List] = typeableK(classOf[List[?]])
 given TypeableK[Vector] = typeableK(classOf[Vector[?]])

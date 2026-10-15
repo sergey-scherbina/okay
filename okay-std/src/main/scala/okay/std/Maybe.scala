@@ -1,12 +1,7 @@
 package okay.std
 
-import okay.freer.*
-import okay.freer.given
-
-import okay.{Effect, TypeableK}
-
-
-import okay.freer.Row.at
+import okay.{!, +, Effect, Handler, Join, Pure, Run, Within, effect, pure}
+import okay.core.{Eff, Paths, Row, Split}
 
 /**
  * A VALUE THAT MAY NOT BE THERE, as an effect of its own
@@ -19,19 +14,20 @@ import okay.freer.Row.at
  * signature along the way and into the handler at the end.
  *
  * WHY NOT `Abort`. `Abort` is `Throws % Unit`: a failure with nothing
- * to say. Operations are identified by class, so a row holds ONE
- * `Throws` — and a program that can both find nothing and fail with a
- * reason (`Abort + Throws % E`) was refused by `Distinct`. `Maybe` is
- * its own class, so `Maybe + Throws % E` is a good row, and "was it
- * not there, or did it break?" has two answers, from two handlers.
+ * to say. A program that can both find nothing and fail with a reason
+ * was `Abort + Throws % E`, two of one class, which okay-freer's union
+ * refused (`Distinct`); on the kernel's rows they would be two places,
+ * but "nothing there" and "it broke" are still two MEANINGS, and a
+ * signature should say one: `Maybe + Throws % E`, and "was it not
+ * there, or did it break?" has two answers, from two handlers.
  *
  * WHY NOT `Option` ITSELF as the signature. It could be, the way a
  * `List` is nondeterminism (Choice.scala) — and Choice.scala gives the
  * reason not to: a row wants a signature that means ONE thing. The
  * box costs one allocation per operation, `Choose`'s price.
  *
- * The class IS the whole identity: `Maybe` has no parameter but its
- * erased answer type, so splitting a row on it is a TOTAL test.
+ * An operation goes to its handler by its path among the program's
+ * effects (`Split`), not by a test of its class.
  */
 final case class Maybe[+A](value: Option[A]) extends Final derives Effect:
   /** nothing there: no handler resumes it */
@@ -39,26 +35,22 @@ final case class Maybe[+A](value: Option[A]) extends Final derives Effect:
 
 extension [A](o: Option[A])
   /** the value, or stop: `None` ends the program at `Maybe.run` */
-  inline def maybe: A ! Maybe = effect(Maybe(o))
+  inline def maybe: A ! Maybe = effect[Maybe, A](Maybe(o))
 
 object Maybe:
   /** stop: nothing is there */
-  inline def none[A]: A ! Maybe = effect(Maybe(None))
+  inline def none[A]: A ! Maybe = effect[Maybe, A](Maybe(None))
 
-  /** handle Maybe into Option, forwarding the effects F. `Some` is
-   * answered in place (tail-resumptive, nothing captured); `None`
-   * drops the rest of the program. */
-  /** the handler as a value: `p.handle(Maybe.option)` answers `Option[A]` */
-  def option: Handler[Maybe, Option] = new Handler[Maybe, Option]:
-    def run[A, F[+_]](p: A ! Maybe + F)(using A <:< Any, Distinct[Maybe + F], Handler.Nothing[F]): Option[A] ! F =
-      Maybe.run(p)
+  /** the handler as a value: `p.handle(Maybe.option)` answers `Option[A]` — `Some` resumes the rest with its
+   * value, `None` drops it (the kernel's `Deep`) */
+  def option: Handler[Maybe, Option] = Handler.deep[Maybe, Option]([A] => (a: A) => Some(a))(
+    [A, X] => (m: Maybe[X], k: X => Option[A] ! Pure) => m.value match
+      case Some(x) => k(x)
+      case None => pure[Option[A], Pure](None))
 
-  def run[A, F[+_]](p: A ! Maybe + F): Option[A] ! F =
-    val E = Classic[Free]
-    E.handle[Maybe, F](p)(a => pure[F, Option[A]](Some(a))):
-      [X] => m => m.value match
-        case Some(x) => E.control.pure(x)
-        case None => E.control.shift(_ => pure[F, Option[A]](None))
+  /** handle Maybe into Option, wherever it is among the program's effects, the rest of them forwarded. `Some` is
+   * answered with the rest of the program; `None` drops it. */
+  def run[A, Es[_]](p: A ! Es)(using s: Split[Es, Maybe]): Option[A] ! s.Rest = p.handle(option)
 
   /**
    * SKIP INSTEAD OF STOP. `run` answers a whole program's absence;
@@ -72,8 +64,9 @@ object Maybe:
    * are forwarded in element order, including those of an element that
    * then turned out empty.
    */
-  def collect[X, B, F[+_]](xs: Iterable[X])(f: X => B ! Maybe + F): Vector[B] ! F =
-    okay.freer.!.foldM(xs)(Vector.empty[B])((v, x) => run[B, F](f(x)).map(o => if o.isEmpty then v else v :+ o.get))
+  def collect[X, B, Es[_]](xs: Iterable[X])(f: X => B ! Es)(using s: Split[Es, Maybe]): Vector[B] ! s.Rest =
+    foldM[X, Vector[B], s.Rest](xs)(Vector.empty[B])((v, x) =>
+      run[B, Es](f(x))(using s).map(o => if o.isEmpty then v else v :+ o.get))
 
   /**
    * An absence as a PRUNED BRANCH: every `Maybe` becomes a `Choose` —
@@ -81,36 +74,26 @@ object Maybe:
    * branch that found nothing dies and the others go on, and the
    * answers are exactly the branches where everything was there.
    *
-   * A walk of its own rather than `Effects.interpret`: the row being
-   * pruned usually carries `Choose` ALREADY (that is why it is pruned),
-   * and `interpret`'s `Distinct[Maybe + Choose + H]` refuses a second
-   * `Choose`. Here `Maybe` is tested first and everything else is
-   * forwarded as it is, so `H` may hold `Choose` — the new alternatives
-   * join the ones already there, which is the point.
+   * The row being pruned usually carries `Choose` ALREADY (that is why
+   * it is pruned): then the new alternatives join the ones already
+   * there, at that `Choose`'s place — the rest's effects as they are
+   * (`Join`: `Choose` found among them); else `Choose` is added. Each
+   * `Maybe` is TRANSLATED to its `Choose` where it is performed (the
+   * kernel's `Translating`).
    */
-  def prune[A, H[+_]](p: A ! Maybe + H): A ! Choose + H =
-    // the walk as a frame (handle-frames-loops): an absence is a choice among what it holds
-    def frame(x: A ! Maybe + H): Shift.U[Choose + H, A] =
-      HandleFrames.statefulOver[Maybe, Unit, A, A, Choose + H, Maybe + H](summon[TypeableK[Maybe]], (_, a) => Free.Return(a))(
-        (_, op, resume) => Free.Inject[Choose + H, Any](Choose(op.asInstanceOf[Maybe[Any]].value.toList)).flatMap(x => resume((), x)))((), x)
-    def go(d: Int)(p: A ! Maybe + H): A ! Choose + H = (p.resumeRun: @unchecked) match
-      case Free.Return(a) => Free.Return(a)
-      case Free.Inject(e) => split[Maybe, H](e)
-        (m => Free.Inject(Choose(m.value.toList)): A ! Choose + H)
-        (h => Free.Inject(h): A ! Choose + H)
-      case Free.Bind(Free.Inject(e), k) => split[Maybe, H](e)
-        (m => Free.Inject(Choose(m.value.toList)).flatMap(x => go(d)(k(x))): A ! Choose + H)
-        (h => Free.Inject(h).flatMap(x => go(d)(k(x))): A ! Choose + H)
-      case y => go(d)(HandleFrames.shallow(y, d))
-    HandleFrames.run[A, Choose + H](d => go(d)(p), frame(p))
+  def prune[A, Es[_]](p: A ! Es)(using s: Split[Es, Maybe], j: Join[Choose, s.Rest]): A ! j.Out =
+    val q: A ! Choose + s.Rest =
+      p.translate[Maybe, Choose]([X] => (m: Maybe[X]) => effect[Choose, X](Choose(m.value.toList)))
+    new Run[j.Out, A]:
+      def on[R <: Row](ps: Paths[j.Out, R]): Eff[R, A] = q.fit(Paths.Both(j.left(ps), j.right(ps)))
 
-  extension [A, F[+_]](p: A ! Maybe + F)
+  extension [A, Es[_]](p: A ! Es)
     /** where p found nothing, try q — a handler installed over p alone,
-     * so the row comes out unchanged (Throws' `orElse`, for absence) */
-    def orElse(q: => A ! Maybe + F): A ! Maybe + F =
-      run[A, F](p).at[Maybe + F].flatMap:
-        case Some(a) => pure(a)
+     * so the effects come out unchanged (Throws' `orElse`, for absence) */
+    def orElse(using s: Split[Es, Maybe], w: Within[s.Rest, Es])(q: => A ! Es): A ! Es =
+      run[A, Es](p)(using s).at[Es].flatMap:
+        case Some(a) => pure[A, Es](a)
         case None => q
 
     /** the value, or the default where p found nothing */
-    def getOrElse(a: => A): A ! F = run[A, F](p).map(_.getOrElse(a))
+    def getOrElse(a: => A)(using s: Split[Es, Maybe]): A ! s.Rest = run[A, Es](p)(using s).map(_.getOrElse(a))

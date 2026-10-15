@@ -1,13 +1,10 @@
 package okay.std
 
-import okay.freer.*
-import okay.freer.given
-
-import okay.{Effect, TypeableK}
-
-
+import okay.{!, +, %, Effect, Handler, effect, pure}
+import okay.core.Split
+import okay.freer.{Freer, TypeableI, Unary, +~, splitI, forwardedI, Indexed, Cps, Replayable}
 import scala.annotation.tailrec
-import okay.freer.!.*
+
 
 /**
  * The State effect: the signature is fixed at one state type S, and
@@ -46,182 +43,47 @@ extension [A](a: A)
   inline def state[S]: A ! State % S = pure(a)
 
 object State {
-  /** the current state — ONE shared node (specs/effect-op-cost.md):
-   * `Get` carries no data, so every `get` is the same `Inject(Get())`
-   * rather than a fresh pair, 32 B a call */
-  // THE CAST, and the only one: `Get` has no fields, so after erasure
-  // every `Get[S, S]` is the same object, and a program node is an
-  // immutable value its handlers only read — sharing one across every
-  // S changes nothing a program can observe. Inline, so the staging
-  // macro sees `SharedOps.getNode` itself (DirectRow's shared-node table).
-  inline def get[S]: S ! State % S = SharedOps.getNode.asInstanceOf[S ! State % S]
+  /** the state */
+  def get[S]: S ! State % S = effect(Get[S, S]())
+  /** replace the state, answering the new one */
+  def set[S](s: S): S ! State % S = effect(Update[S, S](Put(s)))
 
-
-
-  /** replace the state */
-  inline def set[S](s: S): S ! State % S = effect(Update[S, S](Put(s)))
-
-  /** `set`'s transition, as DATA: two sets of one value are equal operations (Bisim compares them so), and it
-   * reads as `Update(Put(5))` where a lambda would print its address */
+  /** `set`'s function, a value: its `toString` reads in a trace */
   final case class Put[S](s: S) extends (S => (S, S)):
     def apply(old: S): (S, S) = (s, s)
-    // Function1's own toString would win over the case class's
     override def toString: String = s"Put($s)"
 
-  /** `modify`'s transition, as data: equal when its function is the same one */
+  /** `modify`'s function, a value */
   final case class Modified[S](f: S => S) extends (S => (S, S)):
     def apply(old: S): (S, S) = { val n = f(old); (n, n) }
     override def toString: String = s"Modified($f)"
 
-  /**
-   * apply f to the state, as ONE operation (an `Update`). It means a get
-   * then a set, and until effect-row-recursion-cost (2026-09-26) it was
-   * exactly that — two operations, a closure between them, and two
-   * forwards through every handler standing between it and State's:
-   * 240 B a level of a counting recursion against 96 now, measured
-   * exact (specs/effect-row-cost.md).
-   *
-   * It answers the NEW state, as both operations do — the file's one
-   * convention, and worth keeping over the statement-shaped `Unit`
-   * other libraries return: a caller who wants unit writes
-   * `.map(_ => ())`, and one who wants the state would otherwise have
-   * to ask for it again.
-   */
-  inline def modify[S](f: S => S): S ! State % S = effect(Update[S, S](Modified(f)))
+  /** the state through `f`, answering the new one */
+  def modify[S](f: S => S): S ! State % S = effect(Update[S, S](Modified(f)))
+  /** the state through `f`, answering `f`'s value — one operation */
+  def update[S, B](f: S => (B, S)): B ! State % S = effect(Update[S, B](f))
+  /** the state through `f`, answering the old and the new */
+  def swap[S](f: S => S): (S, S) ! State % S = update(s => { val next = f(s); ((s, next), next) })
 
-  /**
-   * a transition that ANSWERS something computed from the old state:
-   * `f` sees the state and returns what to answer and what to leave
-   * behind.
-   *
-   * `modify` cannot do this. It answers the new state, and what a
-   * caller usually wants back is something the write destroys — the
-   * value that WAS there. Spelt out, that is get, then set the
-   * modified store, then answer out of the store already read; here
-   * it is one step, and the answer type is whatever `f`'s first
-   * component is.
-   */
-  inline def update[S, B](f: S => (B, S)): B ! State % S = effect(Update[S, B](f))
+  /** a program of State alone, run from `s`: the last state and the value */
+  def run[S, A](s: S)(a: A ! State % S): (S, A) = handle(s)(a).run
 
-  /**
-   * both states — what it was and what it is.
-   *
-   * The three answer three different questions, and the cost is the
-   * reason there are three rather than one:
-   *
-   *   modify(f) : S          the new state — the common case, and it
-   *                          allocates nothing
-   *   update(f) : B          anything computed from the OLD state, in
-   *                          one pass over it: the form that answers
-   *                          what the write is about to destroy
-   *   swap(f)   : (S, S)     both, for when the caller wants to
-   *                          compare them
-   *
-   * `swap` is `update` with a pair for an answer, and a pair per call
-   * is why `modify` does not simply answer one: most callers want the
-   * new state or nothing at all, and they should not pay for a tuple
-   * to say so.
-   */
-  inline def swap[S](f: S => S): (S, S) ! State % S =
-    update(s => { val next = f(s); ((s, next), next) })
-
-  /** run from an initial state to (final state, value) */
-  inline def run[S, A](s: S)(a: A ! State % S): (S, A) = !.run(handle(s)(a))
-
-  /** the handler as a value: `p.handle(State(s))` answers `(S, A)` */
-  // ONE implementation (builtins-through-forms): State's handler IS the author's form 2, its clause expanding
-  // into the loop `Handler.stateOf` writes
+  /** the handler as a value: a register of the machine, a `k` taken past it with the state as it was then */
   def apply[S](s: S): Handler[State % S, [A] =>> (S, A)] =
-    Handler.stateOf[State % S, S](s)([X] => (st: S, e: State[S, X]) => e match
+    Handler.state[State % S, S](s)([X] => (st: S, e: State[S, X]) => e match
       case Get() => (st, st)
       case Update(f) => { val (b, next) = f(st); (next, b) })
 
-  /**
-   * the handler: a bespoke tail-recursive loop that threads the state
-   * through itself. It cannot be a relay handler — the answer-
-   * polymorphic ∀Y shape has nowhere to hold s — and a mutable cell
-   * would break the purity of the residual tree, so the loop is the
-   * honest form. A forwarded F-effect suspends with the current state
-   * captured immutably, which keeps the residual re-runnable.
-   *
-   * TWO TYPE CLAUSES, separated by the state itself
-   * (generalized-method-syntax, 2026-09-11): `S` has to be written at
-   * most call sites, `A` and the forwarded row `F` are read off the
-   * program. `State.handle[Int](0)(p)` rather than the three
-   * arguments every call site used to spell out.
-   */
-  def handle[S](s: S)[A, F[+_]](a: A ! State % S + F)(using Distinct[State % S + F]): (S, A) ! F =
-    State(s).run(a)
+  /** `a`'s State from `s`, wherever it is among its effects: the last state and the value */
+  def handle[S](s: S)[A, Es[_]](a: A ! Es)(using sp: Split[Es, State % S]): (S, A) ! sp.Rest = a.handle(State(s))
 
+  /** a program over a PART of the state, run over the whole: `look` reads the part, `put` writes it back */
+  def zoomWith[S, A, X, Es[_]](look: S => A, put: A => S => S)(p: X ! Es)(using sp: Split[Es, State % A])
+  : X ! State % S + sp.Rest =
+    p.translate[State % A, State % S]([Y] => (op: State[A, Y]) => (op match
+      case Get() => update[S, A](s => (look(s), s))
+      case Update(g) => update[S, Y](s => { val (b, a2) = g(look(s)); (b, put(a2)(s)) })): Y ! State % S)
 
-  /**
-   * A program written against a PART of the state, run against the
-   * whole (specs/optics.md stage 3): the two functions say which
-   * part, and nothing else about the state is touched.
-   *
-   * Not a handler — an INTERPRETATION of one effect into another, the
-   * shape `docs/your-own-effect.md` names: every `Get` on the part
-   * becomes a `Get` on the whole read through `look`, every `Update`
-   * a read, a `put` and a write. The forwarded arm carries
-   * the rest of the row untouched, as `handle`'s does.
-   *
-   * WHY TWO FUNCTIONS AND NOT A LENS (core-modules stage 4). This was
-   * `zoom(l: Lens[S, S, A, A])`, and it was the CORE's only reference
-   * to optics — the one edge that kept `Optic.scala` from becoming a
-   * module. Reading it settled what to do: of the whole lens it used
-   * exactly `l.get` and `l.set`, so the interpretation was never
-   * about optics at all. It says so now, and okay-optics gives back
-   * the lens SPELLING as an extension, so `State.zoom(lens)(prog)`
-   * still compiles character for character wherever that module is on
-   * the classpath.
-   */
-  def zoomWith[S, A, X, F[+_]](look: S => A, put: A => S => S)(p: X ! State % A + F)(using Distinct[State % A + F]): X ! State % S + F = {
-    // the part, read and written through the two functions, as a
-    // program over the whole — what this interpretation is made of
-    // every operation on the part is ONE `Update` on the whole
-    // (op-map-constructors): it was a get or a modify followed by a map
-    def readPart: A ! State % S + F = !.widen[A, State % S, F](update[S, A](s => (look(s), s)))
-    def updatePart[B](g: A => (B, A)): B ! State % S + F =
-      !.widen[B, State % S, F](update[S, B](s => { val (b, a2) = g(look(s)); (b, put(a2)(s)) }))
-
-    def _loop(d: Int)(x: X ! State % A + F): X ! State % S + F = loop(d)(x)
-    // the walk as a frame (handle-frames-loops): each operation on the part, its program on the whole
-    def frame(x: X ! State % A + F): Shift.U[State % S + F, X] =
-      HandleFrames.statefulOver[State[A, *], Unit, X, X, State % S + F, State % A + F](summon[TypeableK[State[A, *]]], (_, v) => Return(v))(
-        (_, op, resume) => (op.asInstanceOf[State[A, Any]]: @unchecked) match
-          case Get() => readPart.flatMap(a => resume((), a))
-          case Update(g) => updatePart(g).flatMap(x => resume((), x)))((), x)
-    @tailrec def loop(d: Int)(x: X ! State % A + F): X ! State % S + F = (x.resumeRun: @unchecked) match
-      case Return(v) => Return(v)
-      // A LONE OPERATION IS A BIND WITH A PURE CONTINUATION, and the
-      // arm below already knows that case. Written out here it would
-      // need `A ! row <: X ! row` from the GADT refinement — Free is
-      // invariant in its answer, so that is a cast, and this costs one
-      // node instead of one.
-      case Inject(e) => loop(d)(Inject(e).flatMap(x => Return(x)))
-      case Bind(Inject(e), k) => split[State[A, *], F](e) {
-          case Get() => readPart.flatMap(a => _loop(d)(k(a)))
-          case Update(g) => updatePart(g).flatMap(x => _loop(d)(k(x)))
-        } { e => Inject(e).flatMap(x => _loop(d)(k(x))) }
-      case y => loop(d)(HandleFrames.shallow(y, d))
-
-    HandleFrames.run[X, State % S + F](d => loop(d)(p), frame(p))
-  }
-
-  /**
-   * THE STATE HANDLER OVER AN INDEXED ROW (specs/indexed-effects.md,
-   * stage 3): the reference shape of a unary handler beside a
-   * typestate. The row is `F +~ Unary[State[S, *]]` — an indexed
-   * signature `F` that moves the index, and this effect on the
-   * diagonal (Indexed.scala says why the member is a match type). Its
-   * own operations are answered from the threaded `s` and the program
-   * continues at the SAME indexes (a unary operation moves nothing —
-   * `Indexed.onDiagonal` says so — so the loop is one `@tailrec` method
-   * at fixed `T`, `R`); an `F` operation is forwarded WITH THE INDEX IT
-   * CAME WITH, its `(T', R)` and the continuation closing `(T, T')`,
-   * which is why that arm recurses through `flatMap` at other indexes
-   * (trampolined, not a frame).
-   */
   def handleIndexed[S](s: S)[F[_, _, +_], T, R, A](p: Freer[F +~ Unary[State[S, *]], T, R, A])(using TypeableI[F]): Freer[F, T, R, (S, A)] = {
     type Row = F +~ Unary[State[S, *]]
     type Un = Unary[State[S, *]]
@@ -251,7 +113,7 @@ object State {
   /** number the elements of a sequence, as a State program */
   def index[A](seq: Seq[A], from: Long = 0): (Long, Seq[(Long, A)]) = run(from):
     seq.foldLeft(Seq[(Long, A)]().state[Long]): (c, a) =>
-      for xs <- c; n <- get; _ <- set(n + 1) yield (n, a) +: xs
+      for xs <- c; n <- get[Long]; _ <- set[Long](n + 1) yield (n, a) +: xs
 }
 
 /**

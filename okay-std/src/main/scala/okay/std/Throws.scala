@@ -1,14 +1,13 @@
 package okay.std
 
-import okay.freer.*
-
-import okay.{Effect}
+import okay.{!, %, Effect, Handler, Within, effect, pure}
+import okay.freer.Replayable
+import okay.core.Split
 
 
 import scala.reflect.*
 import scala.util.*
 import scala.annotation.implicitNotFound
-import okay.freer.Row.{In, at}
 
 /**
  * Errors on two levels, with the bridges between them.
@@ -24,35 +23,32 @@ import okay.freer.Row.{In, at}
 
 /** the effect of failing with E */
 /**
- * PARAMETERISED, so the derived test is by CLASS only: the operations
- * carry no runtime trace of E, and a row may therefore hold ONE
- * Throws. Two — `Throws % A + Throws % B` — misroute, loudly
- * (TestRowIdentity): the first handler answers both asks and the
- * second continuation gets a ClassCastException, rather than a
- * plausible wrong answer.
+ * PARAMETERISED, and the operations carry no runtime trace of E. On the
+ * kernel's rows that does not matter: an operation goes to its handler
+ * by its PATH, so `Throws % A + Throws % B` are two places, each raise
+ * going to its own handler — no misroute to forbid (okay-freer's
+ * `Distinct` and `TestRowIdentity` were the union's).
  */
 case class Throws[E, +A](e: E) extends Final, Replayable.Safe derives Effect
 
 object Throws:
-  /** the handler as a value: `p.handle(Throws.either)` answers `Either[E, A]` */
-  def either[E]: Handler[Throws % E, [A] =>> Either[E, A]] = new Handler[Throws % E, [A] =>> Either[E, A]]:
-    def run[A, F[+_]](p: A ! Throws % E + F)(using A <:< Any, Distinct[Throws % E + F], Handler.Nothing[F]): Either[E, A] ! F =
-      runEither(p)
+  /** the handler as a value: `p.handle(Throws.either)` answers `Either[E, A]` — a raise ENDS the body, its
+   * `Left` in the body's place, the rest dropped (the kernel's `Aborting`) */
+  def either[E]: Handler[Throws % E, [A] =>> Either[E, A]] =
+    Handler.aborting[Throws % E, [A] =>> Either[E, A]]([A] => (a: A) => Right(a))(
+      [A, X] => (t: Throws[E, X]) => Left(t.e))
 
 /** perform the failure */
-inline def raise[E, A](e: E): A ! Throws % E = effect(Throws(e))
+inline def raise[E, A](e: E): A ! Throws % E = effect[Throws % E, A](Throws[E, A](e))
 
-/** handle Throws by aborting into Either, forwarding the effects F */
-inline def runEither[A, F[+_], E](a: A ! Throws % E + F)(using Distinct[Throws % E + F]): Either[E, A] ! F =
-  // `B` pinned: with `Free[F, +A]` the first lambda alone would infer
-  // it as `Right[E, A]` (free-answer-variance, 2026-09-23). The instance by its object, not `Classic[Free]`: in
-  // an inline body the summon is deferred and the carrier abstract, and the clause is written at `Cps`
-  FreeEffects.handle[Throws % E, F](a)(a => pure[F, Either[E, A]](Right(a))):
-    [X] => e => FreeEffects.control.shift(_ => pure[F, Either[E, A]](Left(e.e)))
+/** handle Throws by aborting into Either, wherever Throws is among the program's effects: the rest of them
+ * forwarded */
+def runEither[A, Es[_], E](a: A ! Es)(using s: Split[Es, Throws % E]): Either[E, A] ! s.Rest =
+  a.handle(Throws.either[E])
 
 /** handle Throws into the throws union (an Either already is one) */
-inline def runThrows[A, F[+_], E <: Unsafe](a: A ! Throws % E + F)(using Distinct[Throws % E + F]): (A throws E) ! F =
-  runEither(a).map(e => e)
+def runThrows[A, Es[_], E <: Unsafe](a: A ! Es)(using s: Split[Es, Throws % E]): (A throws E) ! s.Rest =
+  runEither[A, Es, E](a)(using s).map(e => e)
 
 /**
  * FAILURE WITH NOTHING TO SAY. Not every failure carries a reason: a
@@ -72,9 +68,9 @@ type Abort = Throws % Unit
 /** stop: nothing to answer with */
 inline def abort[A]: A ! Abort = raise[Unit, A](())
 
-/** handle Abort into Option, forwarding the effects F */
-inline def runOption[A, F[+_]](a: A ! Abort + F): Option[A] ! F =
-  runEither[A, F, Unit](a).map(_.toOption)
+/** handle Abort into Option, wherever it is among the program's effects: the rest of them forwarded */
+def runOption[A, Es[_]](a: A ! Es)(using s: Split[Es, Abort]): Option[A] ! s.Rest =
+  runEither[A, Es, Unit](a)(using s).map(_.toOption)
 
 /**
  * AN EITHER INTO THE EFFECT: the `Right` is the answer, the `Left` is
@@ -86,13 +82,13 @@ inline def runOption[A, F[+_]](a: A ! Abort + F): Option[A] ! F =
  */
 extension [E, A](e: Either[E, A])
   inline def orRaise: A ! Throws % E = e match
-    case Right(a) => pure(a)
-    case Left(err) => raise(err)
+    case Right(a) => pure[A, Throws % E](a)
+    case Left(err) => raise[E, A](err)
 
-/** handle Throws by actually throwing: the JVM is the handler */
-inline def runUnsafe[A, F[+_], E <: Unsafe](a: A ! Throws % E + F)(using Distinct[Throws % E + F]): A ! F =
-  FreeEffects.handle[Throws % E, F](a)(a => pure(a)):
-    [X] => e => FreeEffects.control.shift(_ => throw e.e)
+/** handle Throws by actually throwing: the JVM is the handler — the raise ends the body, thrown where the handler
+ * is reached (the kernel's `Aborting`) */
+def runUnsafe[A, Es[_], E <: Unsafe](a: A ! Es)(using s: Split[Es, Throws % E]): A ! s.Rest =
+  a.handle(Handler.aborting[Throws % E, [A] =>> A]([A] => (a: A) => a)([A, X] => (t: Throws[E, X]) => throw t.e))
 
 /**
  * RECOVERY, in the row rather than around it: run the alternative
@@ -113,26 +109,25 @@ inline def runUnsafe[A, F[+_], E <: Unsafe](a: A ! Throws % E + F)(using Distinc
  *
  * This is the Alternative structure of a failing row (`empty` is
  * `abort`, `append` is this), spelled as methods rather than as an
- * instance. An instance would not be FOUND: matching
- * `Alternative[[A] =>> A ! Throws % E + F]` against a concrete row
- * is the higher-order unification the compiler declines (see
- * CanFail below). A method's receiver is unified, not searched for, and
- * that does work — including with the row written in the other order.
+ * instance. The receiver is any program; `Throws % E` is found among
+ * its effects wherever it is (`Split`, which names `E` too — so the
+ * evidence comes FIRST, before the handler or the alternative is
+ * typed), and the rest of them come back in place (`Within`).
  */
-extension [A, E, F[+_]](p: A ! Throws % E + F)
+extension [A, Es[_]](p: A ! Es)
   /** answer the failure, seeing the error */
-  def recover(h: E => A ! Throws % E + F): A ! Throws % E + F =
-    runEither[A, F, E](p).at[Throws % E + F].flatMap(_.fold(h, pure))
+  def recover[E](using s: Split[Es, Throws % E], w: Within[s.Rest, Es])(h: E => A ! Es): A ! Es =
+    runEither[A, Es, E](p)(using s).at[Es].flatMap(_.fold(h, pure[A, Es]))
 
   /** answer the failure, ignoring the error */
-  inline def orElse(q: => A ! Throws % E + F)(using Distinct[Throws % E + F]): A ! Throws % E + F =
-    recover(_ => q)
+  def orElse[E](using s: Split[Es, Throws % E], w: Within[s.Rest, Es])(q: => A ! Es): A ! Es =
+    recover[E](using s, w)(_ => q)
 
 /** reflect a direct-style computation into the effect */
 inline def catching[A, E <: Unsafe : Typeable](a: => A throws E): A ! Throws % (E | Unsafe) =
   unsafe(a).wrap match
-    case Left(e) => raise(e)
-    case Right(x) => pure(x)
+    case Left(e) => raise[E | Unsafe, A](e)
+    case Right(x) => pure[A, Throws % (E | Unsafe)](x)
 
 /** no error: A throws Safe always holds a value */
 type Safe = Nothing
@@ -285,9 +280,6 @@ inline def unsafe[A, E <: Unsafe : Typeable](a: => A throws E): A throws E =
     case e => Failure(e)
   }
 
-/** by class only: the payload `e: E` is erased in the type, so a row
- * may hold ONE Throws — see typeableKByClass */
-
 /**
  * A step a program may DECLINE — which is what a refutable pattern on
  * the left of `<-` asks for, and what an `if` guard asks for too.
@@ -298,8 +290,8 @@ inline def unsafe[A, E <: Unsafe : Typeable](a: => A throws E): A throws E =
  *
  * Scala desugars both into `withFilter`, so neither is about patterns
  * or about booleans: the question each one asks is whether this
- * program may stop early. A plain `A ! F` may not — nothing in `Free`
- * declines to answer — and it must not pretend to, because a silently
+ * program may stop early. A plain `A ! Es` may not — nothing in a
+ * program declines to answer — and it must not pretend to, because a silently
  * skipped step is a bug that reads like a feature. So the witness
  * below is the whole design, and everything else follows from which
  * effect supplies it.
@@ -329,40 +321,41 @@ inline def unsafe[A, E <: Unsafe : Typeable](a: => A throws E): A throws E =
  * patterns in the bare `Choose` row and nowhere else, which is the
  * row nobody writes.
  *
- * What DOES resolve is membership by shape, the witness `.at` already
- * uses. So the evidence for "this row may drop a step" is that the row
- * CONTAINS an effect that can fail, and nothing larger.
+ * What DOES resolve is membership, the witness `.at` already uses
+ * (`Within`: the effect found among the program's, by its `Req`). So
+ * the evidence for "these effects may drop a step" is that they
+ * CONTAIN an effect that can fail, and nothing larger.
  */
-@implicitNotFound("""this row cannot drop a step, so a refutable pattern (`case Some(x) <- p`) and an `if` guard have no meaning in it: ${F}
+@implicitNotFound("""this row cannot drop a step, so a refutable pattern (`case Some(x) <- p`) and an `if` guard have no meaning in it: ${Es}
 Both desugar to withFilter, which needs somewhere for the dropped step to GO.
 Put a failing effect in the row and it works: Maybe (nothing is there, Maybe.run answers None), Abort (the program stops, runOption answers None) or Choose (the branch dies, the search goes on).
 Or keep the row as it is and write the branch yourself: `old.fold(pure(()))(...)` says the same thing and hides nothing""")
-trait CanFail[F[+_]]:
-  def fail[A]: A ! F
+trait CanFail[Es[_]]:
+  def fail[A]: A ! Es
 
 trait CanFailLow:
   /** stop: the rest of the program does not run */
-  given viaAbort: [F[+_]] => In[Abort, F] => CanFail[F] = new:
-    def fail[A]: A ! F = abort[A].at[F]
+  given viaAbort: [Es[_]] => Within[Abort, Es] => CanFail[Es] = new:
+    def fail[A]: A ! Es = abort[A].at[Es]
 
 trait CanFailMid extends CanFailLow:
   /** nothing is there: a refuted `case Some(x) <-` IS an absence, so
    * where a row carries both Maybe and Abort, Maybe answers it
    * (specs/core-gaps.md) */
-  given viaMaybe: [F[+_]] => In[Maybe, F] => CanFail[F] = new:
-    def fail[A]: A ! F = Maybe.none[A].at[F]
+  given viaMaybe: [Es[_]] => Within[Maybe, Es] => CanFail[Es] = new:
+    def fail[A]: A ! Es = Maybe.none[A].at[Es]
 
 object CanFail extends CanFailMid:
   /** prune: this branch dies, the search continues — and it wins over
    * Abort where a row carries both, because in a searching row `guard`
    * already means prune */
-  given viaChoose: [F[+_]] => In[Choose, F] => CanFail[F] = new:
-    def fail[A]: A ! F = effect[Choose, A](Choose(Seq.empty)).at[F]
+  given viaChoose: [Es[_]] => Within[Choose, Es] => CanFail[Es] = new:
+    def fail[A]: A ! Es = effect[Choose, A](Choose(Seq.empty)).at[Es]
 
-extension [A, F[+_]](p: A ! F)
+extension [A, Es[_]](p: A ! Es)
   /** the desugaring target of a pattern bind and of an `if` guard */
-  def withFilter(q: A => Boolean)(using C: CanFail[F]): A ! F =
-    p.flatMap(a => if q(a) then pure[F, A](a) else C.fail[A])
+  def withFilter(q: A => Boolean)(using C: CanFail[Es]): A ! Es =
+    p.flatMap(a => if q(a) then pure[A, Es](a) else C.fail[A])
 
 /**
  * The same demand as an `if` guard, outside a for-comprehension: hold
@@ -377,5 +370,5 @@ extension [A, F[+_]](p: A ! F)
  * the row searches, stop where it can abort, a compile error where it
  * can do neither.
  */
-inline def ensure[F[+_]](p: Boolean)(using C: CanFail[F]): Unit ! F =
-  if p then pure[F, Unit](()) else C.fail[Unit]
+inline def ensure[Es[_]](p: Boolean)(using C: CanFail[Es]): Unit ! Es =
+  if p then pure[Unit, Es](()) else C.fail[Unit]

@@ -1,9 +1,8 @@
 package okay.std
 
-import okay.freer.*
-
-import okay.{Effect, TypeableK}
-
+import okay.{!, Effect, Handler, Join, Within, defer, effect, pure}
+import okay.core.{Paths, Row, Split}
+import okay.one.handler.{Stateful, Handler as OneHandler}
 
 
 /**
@@ -17,8 +16,8 @@ import okay.{Effect, TypeableK}
  * is observable. So the cell is not hidden in the tree (a mutable
  * field would make the same program answer differently on its second
  * run, and a handler that replays would replay a stale value) — it is
- * an effect, and the cells live in the handler as state threaded
- * through its own loop, exactly as `State.handle` threads `S`.
+ * an effect, and the cells live in the handler as its state — a
+ * register of the machine, exactly as `State.handle` holds `S`.
  *
  * Two operations, one handle:
  *
@@ -36,8 +35,9 @@ import okay.{Effect, TypeableK}
  * a `lazy val` is per declaration, not per right-hand side.
  *
  * MULTI-SHOT is decided by handler ORDER, not by a flag the macro
- * could not check. The cells are the handler's state, so under a
- * search they behave exactly as State does:
+ * could not check. The cells are the handler's state — a `k` taken
+ * past it has them as they were then — so under a search they behave
+ * exactly as State does:
  *
  *   runChoice(Once.run(p))   the cells backtrack with the search: each
  *                            branch has its own "once", nothing leaks
@@ -68,37 +68,45 @@ object Once:
   /**
    * p, run at most once: the first demand runs it and stores the
    * answer under a fresh handle, every later demand of THIS value
-   * answers from the store. `Free.delay` keeps p unbuilt until that
+   * answers from the store. `defer` keeps p unbuilt until that
    * first demand — construction must do no work.
    *
    * Two calls make two handles: `once(p).flatMap(_ => once(p))` runs p
    * twice. Share the VALUE to share the cell.
+   *
+   * The effects are p's with `Once` among them: p's own if it has
+   * `Once` already, else `Once` added (`Join`).
    */
-  def once[A, F[+_]](p: => A ! Once + F): A ! Once + F =
-    at[A, Once + F](new Handle[A])(h => effect(Force(h)))((h, a) => effect(Store(h, a)))(() => p)
+  def once[A, Es[_]](p: => A ! Es)(using j: Join[Once, Es]): A ! j.Out =
+    // `Once` and p's effects among the joined ones: each by its side of the join
+    given Within[Once, j.Out] = new Within[Once, j.Out]:
+      def paths[R <: Row](ps: Paths[j.Out, R]): Paths[Once, R] = j.left(ps)
+    val inP: Within[Es, j.Out] = new Within[Es, j.Out]:
+      def paths[R <: Row](ps: Paths[j.Out, R]): Paths[Es, R] = j.right(ps)
+    at[A, j.Out](new Handle[A])(h => effect[Once, Option[A]](Force(h)).at[j.Out])(
+      (h, a) => effect[Once, A](Store(h, a)).at[j.Out])(() => p.at[j.Out](using inP))
 
   /**
    * The same over the WHOLE row R, with the two operations already
    * injected by the caller — what the `direct` macro emits for a
-   * `lazy val` with a mark, since it holds the block's row as one type
-   * and has no need to split `Once` out of it. `once` is this at
-   * `Once + F`.
+   * `lazy val` with a mark, since it holds the block's effects as one
+   * type and has no need to split `Once` out of them. `once` is this at
+   * its joined effects.
    */
-  def at[A, R[+_]](h: Handle[A])
-                  (force: Handle[A] => Option[A] ! R)
-                  (store: (Handle[A], A) => A ! R)
-                  (p: () => A ! R): A ! R =
+  def at[A, Es[_]](h: Handle[A])
+                  (force: Handle[A] => Option[A] ! Es)
+                  (store: (Handle[A], A) => A ! Es)
+                  (p: () => A ! Es): A ! Es =
     // an EXPLICIT thunk, not a by-name parameter: the `direct` macro
     // builds this call, and a by-name argument's thunk is synthesized
     // by the compiler AFTER the macro, leaving any definition inside
     // the program (an inline call's proxy val, say) owned by the
     // enclosing method rather than by the thunk — `Could not find proxy
     // for val a$proxy1` out of LambdaLift (direct-colourless-val,
-    // 2026-09-16). The macro builds the lambda under the right owner,
-    // exactly as it does for `Free.delay`.
+    // 2026-09-16). The macro builds the lambda under the right owner.
     force(h).flatMap:
-      case Some(a) => pure(a)
-      case None => Free.delay(p).flatMap(a => store(h, a))
+      case Some(a) => pure[A, Es](a)
+      case None => defer(p()).flatMap(a => store(h, a))
 
   /** a cell whose program is in flight */
   private object Running
@@ -127,22 +135,15 @@ object Once:
       case None | Some(Running) => (c + (h -> a), a)
       case Some(v) => (c, stored(v))
 
-  /** the handler as a value: `p.handle(Once.memo)` — each `once` runs at most once, its answer shared */
-  def memo: Handler[Once, [A] =>> A] = new Handler.Stepped[Once, Cells, [A] =>> A]:
-    def run[A, F[+_]](p: A ! Once + F)(using A <:< Any, Distinct[Once + F], Handler.Nothing[F]): A ! F = Once.run(p)
-    // the step `run` walks with, exposed for a walk over a stack of handlers (handler-single-pass)
-    def takes: TypeableK[Once] = summon[TypeableK[Once]]
-    def init: Cells = Map.empty
-    def step(c: Cells, op: Any): (Cells, Any) | Handler.Halt[Cells] = Once.step(c, op.asInstanceOf[Once[Any]])
-    def ret[A, F[+_]](c: Cells, a: A): A ! F = pure(a)
+  /** the handler as a value: `p.handle(Once.memo)` — each `once` runs at most once, its answer shared. The cells
+   * its state, a register of the machine (the kernel's `Stateful`): immutable, so a `k` taken past it — a branch
+   * of a search, a replay — has them as they were then */
+  def memo: Handler[Once, [A] =>> A] = new Handler[Once, [A] =>> A]:
+    def kernel[T <: Row, A]: OneHandler[Once, T, A, A] = new Stateful[Once, T, Cells, A, A]:
+      def initial: Cells = Map.empty
+      def ret(c: Cells, a: A) = okay.one.Cont.pure(a)
+      def value[X](c: Cells, op: Once[X]): X = step(c, op)._2
+      def next[X](c: Cells, op: Once[X]): Cells = step(c, op)._1
 
-  /**
-   * the handler: a bespoke tail-recursive loop threading the cells,
-   * like `State.handle` — a relay's ∀Y shape has nowhere to hold
-   * them, and a mutable map would make the residual tree unreplayable.
-   * A forwarded F-effect suspends with the cells captured immutably.
-   */
-  def run[A, F[+_]](a: A ! Once + F): A ! F =
-    // one step, both faces (handler-one-step): the cells are the state
-    HandleFrames.stateRun[Once, Cells, A, A, F](summon[TypeableK[Once]], (_, a) => pure(a))(
-      (c, op) => step(c, op.asInstanceOf[Once[Any]]))(Map.empty, a)
+  /** the handler, wherever `Once` is among the program's effects: the rest of them forwarded */
+  def run[A, Es[_]](a: A ! Es)(using s: Split[Es, Once]): A ! s.Rest = a.handle(memo)
