@@ -1,5 +1,7 @@
 # 12 · One machine, one prompt stack
 
+> **The classic road.** This chapter describes okay-freer, the frozen classic road (its tests stay at the tag `classic-freer`); on the kernel's words the counterpart is [okay-core's delimited control](../../okay-core/docs/guide.md#delimited-control).
+
 > Compiled in `okay-direct/src/test/scala/TestBookOneMachine.scala`,
 > including the shape this chapter used to call a **hole** in the
 > guard — and the test that shows it is closed.
@@ -49,6 +51,7 @@ chapter:
 The suite pins the third, with the nested `delimited` and an `abort`
 aimed past it:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val p = Shift.prompt[String]
 val inner: Int ! Row = Shift.delimited[Int, Row](Shift.abort[String, Int, Row](p)("escaped"))
@@ -74,6 +77,7 @@ def run[R, F[+_]](prog: R ! Shift % ? + F)(using m: Machine[F]): R ! F =
 compile time, and the door acts on it. Outermost, it runs its own
 machine. Inside one, it pushes on that one.
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 assert(summon[Shift.Machine[Shift % ? + Pure]].inner)
 assert(summon[Shift.Machine[Shift % Int + Pure]].inner)
@@ -90,6 +94,7 @@ always nested on one machine.
 An earlier version of this chapter had a section titled *What the guard
 does NOT catch*:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 def runAnything[A, F[+_]](p: A ! Shift % ? + F): A ! F =
   Shift.run(p)
@@ -115,6 +120,7 @@ Pass the obligation on to the caller, who knows the row: take `(using Shift.Mach
 
 Written that way, the helper works at both kinds of row:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 def runAnything[A, F[+_]](p: A ! Shift % ? + F)(using Shift.Machine[F]): A ! F =
   Shift.run(p)

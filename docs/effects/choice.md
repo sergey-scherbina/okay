@@ -31,7 +31,7 @@ val sums: Int ! Choose =
 
 val all = sums.handle(Choose.all).run   // every branch: 11, 21, 12, 22
 
-val firstTwo = !.run(Logic.observe(2)(sums))   // the first two: 11, 21
+val firstTwo = Logic.observe(2)(sums).run   // the first two: 11, 21
 ```
 
 ## Notes

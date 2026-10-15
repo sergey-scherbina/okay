@@ -1,5 +1,7 @@
 # Effects and continuations: the whole API on one page
 
+> **The classic road.** This page describes okay-freer, the frozen classic road (its tests stay at the tag `classic-freer`); on the kernel's words the counterpart is [okay-core's delimited control](../okay-core/docs/guide.md#delimited-control).
+
 This page is everything a USER of okay needs: one type, `A ! F`, and six words, `pure`, `perform`, `shift`,
 `reset`, `handle` and `run`. They work the same in the monadic and the direct style, and the same through the
 `Classic[M]` typeclass, in any encoding of the tree.
@@ -34,6 +36,7 @@ val a = counter.handle(State(5)).run   // (6, 50)
 `handle` takes ONE effect off the row, with a ready handler that is a plain value. `run` gives the value once no
 effect is left. Two effects come off one at a time, in either order, and the order is the meaning:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val checked: Int ! State % Int + Throws % String =
   for
@@ -56,6 +59,7 @@ union, so its order does not matter.)
 what to do with it: call it once, call it twice, or drop it. It is an effect like any other: `Shift % R` in
 the row, where `R` is the answer of its `reset`. And `reset` is its handler, `Reset[R]`:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val twice: Int ! Pure = reset {
   shift[Int](k => for a <- k(1); b <- k(10) yield a + b).map(_ * 2)
@@ -75,6 +79,7 @@ outside any block, like `built`, names all three: the answer, the value, and the
 `k` returns a program, so the body is written like any other program, and continuations mix with effects with
 nothing added. Here the rest of the program, which reads and writes the state, runs twice:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val both: Int ! State % Int = reset {
   for
@@ -95,6 +100,7 @@ Two captures:
 For a body that does not capture again, the two answer the same. `shift0` is the cheaper of the two. Dropping
 `k` is an early exit:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val early: Int ! Pure = reset(shift0[Int](_ => pure(42)).map(_ + 1))
 val g = early.run   // 42: the continuation was dropped
@@ -104,6 +110,7 @@ Each answer type is its own effect, so `reset`s of different answer types nest. 
 `reset` OF ITS TYPE, crossing the others. The short form answers the innermost block, so a capture that
 crosses one names its `reset`'s types in full:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val crossing: String ! Shift % Int =
   reset[String, Shift % Int](
@@ -123,6 +130,7 @@ The answer type's key is made at compile time. A `reset` or `shift` over an abst
 The captures most programs want have names (`import okay.freer.Shift.{collect, emit, exit}`). `exit(v)` leaves
 the nearest `reset` block with `v`:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 def firstOver(limit: Int, xs: List[Int]): Int ! Pure = reset {
   !.foldM(xs)(0)((_, x) => if x > limit then exit[Int](x) else pure[Shift % Int, Int](x)).map(_ => -1)
@@ -134,6 +142,7 @@ val found = firstOver(10, List(3, 12, 40)).run   // 12: the rest is never looked
 `collect { … }` runs a body and answers everything it `emit`ted, in order. It is a generator with no thread
 and no buffer:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 def evens(n: Int)(using Shift.Emitting.Aux[Int, Pure]): Unit ! Shift % ? =
   if n == 0 then pure(()) else (if n % 2 == 0 then emit(n) else pure[Shift % ?, Unit](())).flatMap(_ => evens(n - 1))
@@ -146,6 +155,7 @@ val listed = collect(evens(6)).run   // List(6, 4, 2)
 The same programs as plain code, with `okay-direct`'s `direct` block. A program marked with `.?` is its
 value. The body of `shift` is a block too:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val both: Int ! State % Int = reset(direct {
   val x = shift[Int](k => direct { k(1).? + k(10).? }).?
@@ -158,6 +168,7 @@ val i = both.handle(State(5)).run   // (5, 32)
 With `import scala.language.implicitConversions` the marks go too, and an ascribed program colours to its
 value ([direct-style.md](direct-style.md), Layer 3):
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val quiet: Int ! State % Int = reset(direct {
   val x: Int = shift[Int](k => direct { (k(1): Int) + (k(10): Int) })
@@ -174,6 +185,7 @@ typeclass (`okay.freer`): the same words as the top level — `pure`, `perform`,
 `shift`, `shift0`, `reset`, `handle(m, h)` and `run(m)`. `Free`, the tree, is the default. `Eager` applies
 pure binds as it builds. One program answers the same in both:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 def program[M[_[+_], _]](using E: Classic[M]): M[State % Int, Int] =
   E.reset[Int, State % Int](

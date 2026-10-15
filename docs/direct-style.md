@@ -86,8 +86,10 @@ its monad. `reflect(m)` captures the whole rest of the block as the
 continuation `k` and hands it to the monad's own `flatMap`; the monad
 decides everything else. `None` drops `k` (short-circuit). `List`
 calls `k` once per element (multi-shot). `reify` settles the debt
-with `pure`.
+with `pure`. (`Monadic` is okay-freer's `Cps`, the frozen classic road; on the kernel's words a monad's
+block is `direct[M] { … }`, `TestDirect`.)
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 import okay.freer.Cps.Monadic.*
 
@@ -194,8 +196,10 @@ one-shot and JVM-only.
 **In a `direct` block the mark is enough.** Inside a layer, `.?` on the
 monad's own value IS its reflect: the macro finds the layer in scope by
 the value's type, so an `if` whose branches are `None` and `Some(…)`
-reaches `Option`'s layer too (direct-layers-instances):
+reaches `Option`'s layer too (direct-layers-instances). Layers are okay-freer's `Shift`, the frozen
+classic road:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val x = List(1, 2, 3).?
 val y = (if x == 2 then None else Some(x * 10)).?
@@ -333,7 +337,7 @@ val prog: Int ! F = direct {          // F inferred from the expected type
   env + 1                             // plain code
 }
 // then the ordinary handlers:
-!.run(Writer.run(Reader.run(41)(prog)))  // (Seq("env=41"), 42)
+(Writer.run(Reader.run(41)(prog))).run  // (Seq("env=41"), 42)
 ```
 
 **One mark, three spellings** — all the same dispatch-by-type, so
@@ -582,6 +586,10 @@ mistake.
 
 ## `reset` and `shift` without `direct`
 
+This section describes okay-freer, the frozen classic road (`Direct.reset`/`Direct.shift` stay at the tag
+`classic-freer`); on the kernel's words the counterpart is
+[okay-core's delimited control](../okay-core/docs/guide.md#delimited-control).
+
 A delimited capture written in direct style used to need `direct` twice —
 around the `reset`'s body and around the `shift`'s:
 `reset(direct { … shift(k => direct { … }) … })`. `Direct.reset` and
@@ -591,6 +599,7 @@ direct style and goes through the same compiler `direct` uses; a body that
 is already a program — a `for`, a `flatMap`, a `direct { … }` written by
 hand — is taken as the program it is.
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val q: Int ! S = Direct.reset[Int, S] {
   val x = Direct.shift[Int](k => k(1).? + k(10).?).?
@@ -600,6 +609,7 @@ val q: Int ! S = Direct.reset[Int, S] {
 
 The same door, monadic:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val q: Int ! S = Direct.reset[Int, S](
   for
@@ -645,7 +655,7 @@ def count(xs: List[Int], acc: Long): Long ! Pure = direct:
     case Nil => acc
     case h :: t => count(t, acc + h)
 
-!.run(sum(1_000_000))   // 1000000, on the default stack
+(sum(1_000_000)).run   // 1000000, on the default stack
 ```
 
 **Mutual recursion needs nothing either.** By default a call at the
@@ -658,7 +668,7 @@ def isEven(n: Int): Boolean ! Pure = direct:
 def isOdd(n: Int): Boolean ! Pure = direct:
   if n == 0 then false else isEven(n - 1)
 
-!.run(isEven(1_000_001))   // false, on the default stack
+(isEven(1_000_001)).run   // false, on the default stack
 ```
 
 The macro expanding `isEven` cannot know that `isOdd` calls back — a
@@ -738,8 +748,8 @@ enum Once[+A] derives Effect:
   /** fill the cell; answers what it holds after — the first store wins */
   case Store[A](h: Once.Handle[A], a: A) extends Once[A]
 
-def once[A, F[+_]](p: => A ! Once + F): A ! Once + F =
-def run[A, F[+_]](a: A ! Once + F): A ! F =
+def once[A, Es[_]](p: => A ! Es)(using j: Join[Once, Es]): A ! j.Out =
+def run[A, Es[_]](a: A ! Es)(using s: Split[Es, Once]): A ! s.Rest = a.handle(memo)
 ```
 
 `once` is the word behind `Once.once`, `run` behind `Once.run`. `Once.once(p)`
@@ -984,7 +994,7 @@ val prog: Int ! Op = direct {
   steps :+= s"after($v)"               // ... and this line runs
   v + 1
 }
-!.run(Condition.run[Int, Pure]((_, _) => Resume(41))(prog))   // 42; before, after(41)
+(Condition.run((_, _) => Resume(41))(prog)).run   // 42; before, after(41)
 ```
 
 Restart frames take a direct body through the `frame` door (two
@@ -1025,7 +1035,7 @@ def told: Env ?=> Int ! Writer % String = direct {
   Writer(s"hello ${wire[Env].user}"): Unit
   wire[Env].uid
 }
-provide(Env("ada", 7)) { !.run(Writer.run(told)) }
+provide(Env("ada", 7)) { (Writer.run(told)).run }
 ```
 
 A `direct` block is itself a context function (`DirectCtx[F] ?=> A`

@@ -1,5 +1,7 @@
 # 26 · Cancellable flows in a UI
 
+> **The classic road.** This chapter describes okay-freer, the frozen classic road (its tests stay at the tag `classic-freer`); on the kernel's words the counterpart is [okay-core's delimited control](../../okay-core/docs/guide.md#delimited-control).
+
 > **Part VI is production.** Compiled in
 > `okay-ui/src/test/scala/okay/ui/TestScope.scala`; the thing itself is
 > `okay-ui/.../Scope.scala`, and it is about forty lines. The smallest
@@ -33,6 +35,7 @@ fragments of it.
 
 A prompt delimits a cancellable sub-flow:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 def push[A](body: okay.freer.Prompt[A] => A ! Row): A ! Row =
   val p = Shift.prompt[A]

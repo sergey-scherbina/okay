@@ -1,5 +1,7 @@
 # Typestate: effects with the state's type on the tree
 
+> **The classic road.** This page describes okay-freer, the frozen classic road: `Freer[G, S, R, A]` and its indexed row are okay-freer's tree (their tests stay at the tag `classic-freer`; `PState.Threaded` still runs on it). The kernel has no indexed program word yet (specs/freer-on-core-followups.md).
+
 A protocol is an order of operations. `begin` before `commit`, `open`
 before `read`, a state that is an `Int` now and a `String` after the
 next step. Okay's program tree, `Freer[G, S, R, A]`, carries two type
@@ -76,6 +78,7 @@ diagonal and nothing off it — so a `State` operation can only enter
 through `Indexed.unary`, the door that moves no index, and
 `Indexed.effect` at a moving index refuses it by the compiler:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
   type Row = PSt +~ Unary[State[Int, *]]
   given TypeableI[PSt] = TypeableI.derived
@@ -95,6 +98,7 @@ three parameters.
 okay-sql's `Tx.Data` is the transaction protocol as data. The
 transitions are on the signature, said once:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
   enum TxOp[S, R, +X]:       // the tree's order: `R` the state before, `S` after
     case Begin(isolation: Isolation, readOnly: Boolean) extends TxOp[Open, Idle, Granted]
@@ -117,6 +121,7 @@ moves it only in the arm that runs the driver's own `begin`, `commit`
 or `rollback`. A `commit` from an idle connection does not type even
 inside the handler. Against a recording driver:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
     val n = interpret(
       begin().flatMap { g =>

@@ -23,7 +23,7 @@ are ours, versioned by `Migrate` like any other script.
 val outbox = Outbox()                       // table okay_outbox
 // once, in a migration: Script(3, "outbox", outbox.ddl(Dialect.Postgres))
 
-Typed.transact[Unit, Async](db) { _ =>
+Typed.transact[Unit, okay.Pure](db) { _ =>
   for
     _  <- widen(Typed.update[Order](db, "insert into orders ...")(order))
     id <- widen(outbox.enqueue(db, topic = "orders", value = Cbor.write(OrderPlaced(order))))

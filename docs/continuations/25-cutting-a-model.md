@@ -1,5 +1,7 @@
 # 25 · Cutting a model mid-sentence
 
+> **The classic road.** This chapter describes okay-freer, the frozen classic road (its tests stay at the tag `classic-freer`); on the kernel's words the counterpart is [okay-core's delimited control](../../okay-core/docs/guide.md#delimited-control).
+
 > **Part VI is production.** Compiled in
 > `okay-llm/src/test/scala/okay/llm/TestCut.scala`; the thing itself is
 > `okay-llm/.../Cut.scala`. The smallest useful non-local exit in this
@@ -26,6 +28,7 @@ or throw, and lose the streaming boundary's structure.
 A validator stands **in** the token stream and, on a violation, aborts
 to a **named prompt** installed over the generation:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 def guarded[A](gen: Prompt[Either[Violation, A]] => A ! (Writer % String + (Shift % ? + Async)))
     : Either[Violation, A] ! Writer % String + Async =

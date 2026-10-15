@@ -1,5 +1,7 @@
 # 16b · Two monads at once
 
+> **The classic road.** This chapter describes okay-freer, the frozen classic road (its tests stay at the tag `classic-freer`); on the kernel's words the counterpart is [okay-core's delimited control](../../okay-core/docs/guide.md#delimited-control).
+
 > **Part IV is about building.** Compiled in
 > `okay-direct/src/test/scala/TestBookTwoMonads.scala` and
 > `okay-cats/src/test/scala/bookcats/TestBookTwoMonadsCats.scala`. Chapter 16
@@ -16,6 +18,7 @@
 
 Two ordinary effects. A lookup that can fail:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 def lookup(x: Int): Option[Int] = if x == 2 then None else Some(x * 10)
 ```
@@ -23,6 +26,7 @@ def lookup(x: Int): Option[Int] = if x == 2 then None else Some(x * 10)
 and a computation that has several answers, a `List`. Each on its own
 is easy, because each is a monad and a for-comprehension handles it:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val opt = for { a <- lookup(1); b <- lookup(3) } yield a + b
 val lst = for { x <- List(1, 2); y <- List(10, 20) } yield x + y
@@ -34,6 +38,7 @@ answer is a `List[Option[Int]]` — one result per element, some of them
 missing. And the for-comprehension no longer helps, because its
 `flatMap` belongs to ONE monad. So the plumbing is written by hand:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val byHand: List[Option[Int]] =
   List(1, 2, 3).map { x =>
@@ -79,6 +84,7 @@ INSIDE, and parameterise over the outside. A transformer is "monad
 `N`, living inside any monad `F`". The one everybody writes first is
 Option inside something else:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 final case class OptionT[F[_], A](run: F[Option[A]]):
   def flatMap[B](f: A => OptionT[F, B])(using F: Monad[F]): OptionT[F, B] =
@@ -96,6 +102,7 @@ That `match` is the swap from the previous section, written by hand for
 makes it reusable. Values of the outer monad get into the stack with a
 `lift`:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 def lift[F[_], A](fa: F[A])(using F: Monad[F]): OptionT[F, A] =
   OptionT(fa.flatMap(a => F.pure(Some(a))))
@@ -103,6 +110,7 @@ def lift[F[_], A](fa: F[A])(using F: Monad[F]): OptionT[F, A] =
 
 And the program is one for-comprehension again:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val viaT: OptionT[List, Int] =
   for
@@ -119,6 +127,7 @@ and "an optional list of answers" are different programs. The second
 one — one `None` anywhere empties the whole result — is `List` living
 inside `Option`, and that is a second class with its own `flatMap`:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 final case class ListT[F[_], A](run: F[List[A]]):
   def flatMap[B](f: A => ListT[F, B])(using F: Monad[F]): ListT[F, B] =
@@ -129,6 +138,7 @@ final case class ListT[F[_], A](run: F[List[A]]):
     })
 ```
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val viaT: ListT[Option, Int] =
   for
@@ -391,6 +401,7 @@ for {
 } yield p1 + p2
 ```
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val checked = runEither[Int, Choose + Writer % String, String](trip(from))
 val logged  = Writer.collect[String, Either[String, Int], Choose](checked)
@@ -483,6 +494,7 @@ written against the effects IT uses, and the union is nothing but the
 row of the program that uses it — a price helper and a log helper widen
 into the basket's row with `.at`, no conversion, no stack to agree on:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 def priceOf(shop: String, item: String): Int ! Throws % String =
   prices(shop).get(item) match
@@ -493,6 +505,7 @@ def note(msg: String): Unit ! Writer % String =
   Writer.tell(msg)
 ```
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 _     <- note(s"shop $shop").at[Basket]
 ps    <- items.foldLeft(pure[Basket, List[Int]](Nil))((acc, item) => acc.flatMap(xs => priceOf(shop, item).at[Basket].map(xs :+ _)))
@@ -527,6 +540,7 @@ monad runs in direct style — `reflect` takes the rest of the block as a
 function `k` and hands it to the monad's `flatMap`, and `reify` is the
 delimiter that collects the answer. Applied to our problem:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val viaFilinski: OptionT[List, Int] =
   reify:
@@ -670,6 +684,7 @@ In a `direct` block the marks find each layer by the value's type, so
 a small two-layer program reads like plain code
 (`okay-direct/src/test/scala/TestBookTwoMonads.scala`):
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val marked = reify[List, Option[Int], Pure]:
   reify[Option, Int, Pure]:
@@ -691,6 +706,7 @@ how it is done. The row lists them:
 type Basket = Choose + Writer % String + Throws % String
 ```
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 def price(shop: String, item: String): Int ! Basket =
   prices(shop).get(item) match
@@ -712,6 +728,7 @@ positions), and no layers anywhere in the program. The MEANING comes
 from HANDLERS, applied where the program runs, one effect at a time,
 innermost first:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val checked = runEither[Int, Choose + Writer % String, String](basket(items))
 val logged  = Writer.collect[String, Either[String, Int], Choose](checked)
@@ -726,6 +743,7 @@ and the error handled inside it are handled per shop.
 whole basket" is the SAME `basket`, untouched, under the handlers in
 another order:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val logged  = Writer.collect[String, Int, Choose + Throws % String](basket(items))
 val chosen  = runChoice[(Vector[String], Int), Throws % String](logged)

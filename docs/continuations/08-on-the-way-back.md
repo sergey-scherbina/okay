@@ -1,5 +1,7 @@
 # 8 · Do something on the way back
 
+> **The classic road.** This chapter describes okay-freer, the frozen classic road (its tests stay at the tag `classic-freer`); on the kernel's words the counterpart is [okay-core's delimited control](../../okay-core/docs/guide.md#delimited-control).
+
 > Compiled in `src/test/scala/TestBookOnTheWayBack.scala`. The
 > smallest of the four shapes, and the one with the sharpest edge:
 > two of its tests were written as *questions* and answered by running
@@ -23,6 +25,7 @@ so the code gets written twice.
 Register a function on the boundary. Whatever comes back passes
 through it.
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 def handle(fail: Boolean, clock: () => Long): Outcome ! Pure =
   Shift.delimited[Outcome, Pure]:
@@ -48,6 +51,7 @@ test.
 
 ### An early exit DOES pass through the hook
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val r = !.run(Shift.delimited[Int, Pure]:
   direct:
@@ -64,6 +68,7 @@ still be timed, logged, or compensated.
 
 ### A thrown exception does NOT
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 intercept[RuntimeException](
   !.run(Shift.delimited[Int, Pure]:
@@ -114,6 +119,7 @@ means two answers rather than an answer and a throw.
 
 ## Hooks nest, last registered applied first
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 !Shift.onReturn(s => s"outer($s)")
 !Shift.onReturn(s => s"inner($s)")
@@ -134,6 +140,7 @@ This is what people actually reach for it for. Halfway through a
 procedure, once you know a thing has happened, register what to do
 about the outcome:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 def charge(amount: Int, ok: Boolean): String ! Pure =
   Shift.delimited[String, Pure]:

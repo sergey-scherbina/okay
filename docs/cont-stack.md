@@ -1,5 +1,7 @@
 # Cont and the stack: what nests, what does not, and what it costs
 
+> **The classic road.** This page describes okay-freer, the frozen classic road (its tests stay at the tag `classic-freer`); on the kernel's words the counterpart is [okay-core's stack safety](../okay-core/docs/stack-safety.md).
+
 `Cont` is direct style: a shift's body receives its continuation `k` as an
 ordinary function and calls it whenever it likes — `k(1) + k(10)`,
 `a :: k(x)`, `s"answer: ${k(20)}"`. Calling `k` runs the *rest of the
@@ -38,6 +40,7 @@ body becomes `pure(v)` evaluated when the runner reaches it. No frame,
 no bookkeeping, no switch, on any platform. A million of them run on a
 128 KB stack:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val deep = (1 to 1_000_000).foldLeft(Cps.Pure[Int, Int](0): Int />> Int)((m, _) => m.flatMap(x => Cps.shift[Int, Int, Int](k => k(x + 1))))
 Cps.reset(deep) // 1000000 — no frame per level: the body is the value it passes
@@ -59,6 +62,7 @@ What it buys is that such a program never touches the stack: on a
 small thread, and on Scala.js, where there is no fresh stack to switch
 to.
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val used = (1 to 1_000_000).foldLeft(Cps.Pure[Int, Int](0): Int />> Int)((m, _) => m.flatMap(x => Cps.shift[Int, Int, Int](k => k(x + 1) + 1)))
 Cps.reset(used) // 2000000 — no frame per level either: the pending `+ 1`s live on the runner's own stack
@@ -125,6 +129,7 @@ call `k` in the body yourself (`k(helper(x))` rather than
 `helper(k, x)`). Reading a non-inline `def` from its TASTy tree would
 need `-Yretain-trees` in every caller's build; it was not done.
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val opaque = (1 to 20_000).foldLeft(Cps.Pure[Int, Int](0): Int />> Int)((m, _) => m.flatMap(x => Cps.shift[Int, Int, Int](k => try k(x + 1) catch { case _: ArithmeticException => 0 })))
 Cps.reset(opaque) // 20000 — `k` under `try`: each level a frame; past the room the rest runs on a fresh stack

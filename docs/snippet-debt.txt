@@ -158,16 +158,13 @@ docs/continuations/01-four-programs.md	val res = route(req)
 docs/continuations/01-four-programs.md	val started = now()
 docs/continuations/05-leave-early.md	...                                 // 2. ordinary code, however deep
 docs/continuations/05-leave-early.md	Shift.delimited[Answer, Row]:          // 1. name the boundary and its type
-docs/continuations/05-leave-early.md	assertEquals(seen, 4)          // the fifth allocation was never reached
 docs/continuations/05-leave-early.md	fallback                            // 4. what it means to finish normally
 docs/continuations/05-leave-early.md	if condition then !Shift.exit(a)    // 3. leave, with the answer
 docs/continuations/06-push-as-pull.md	!Shift.emit(item)
-docs/continuations/06-push-as-pull.md	case Entry.Dir(n, es) => es.foreach(walkCallback(_, here)(onFile))
 docs/continuations/06-push-as-pull.md	def produce(...)(using Shift.Emitting[A]): Unit ! (Shift % ? + F) =
 docs/continuations/06-push-as-pull.md	val files = !.run(Shift.collect[String, Pure](walk(tree)))
 docs/continuations/06-push-as-pull.md	val items: List[A] = !.run(Shift.collect[A, F](produce(...)))
 docs/continuations/07-stop-in-the-middle.md	def prog(using Shift.Asking[Q, A, R, Row]): R ! Row = direct:
-docs/continuations/07-stop-in-the-middle.md	p = !.run(Shift.answer(p, Nil)(()))._1     // hand back an answer, get the next stop
 docs/continuations/07-stop-in-the-middle.md	val (next, _) = !.run(Shift.answer(p, Nil)(answer))
 docs/continuations/07-stop-in-the-middle.md	val p = !.run(Shift.resumable[Q, A, R, F](prog))
 docs/continuations/07-stop-in-the-middle.md	val result = !.run(Shift.drive(p)(q => okay.freer.pure(answerFor(q))))
@@ -177,29 +174,18 @@ docs/continuations/08-on-the-way-back.md	...                                    
 docs/continuations/08-on-the-way-back.md	Shift.delimited[Answer, Row]:
 docs/continuations/08-on-the-way-back.md	answer                                   // 4. leaves through the hook
 docs/continuations/08-on-the-way-back.md	val context = ...                        // 1. whatever the hook needs
-docs/continuations/09-composing.md	!Shift.exit(using outer)("straight out")   // not this boundary — that one
-docs/continuations/09-composing.md	Shift.delimited[Int, Pure]:
-docs/continuations/09-composing.md	Shift.delimited[String, Pure]:              // runs
-docs/continuations/09-composing.md	Shift.delimited[String, Pure]: outer ?=>
-docs/continuations/09-composing.md	val inner = !Shift.scope[Int, Pure]:    // installs
-docs/continuations/10-prompts.md	Shift.delimited[String, Pure]: outer ?=>
-docs/continuations/10-prompts.md	assert(a ne b)
 docs/continuations/10-prompts.md	assert(e.getMessage.contains("Installed here"))
 docs/continuations/10-prompts.md	assert(e.getMessage.contains("delimited @"))
 docs/continuations/10-prompts.md	assert(e.getMessage.contains("is not on the stack"))
 docs/continuations/10-prompts.md	p.label      // "prompt @ TestBookPrompts.scala:29"
 docs/continuations/10-prompts.md	val e = intercept[NoPrompt](...)
-docs/continuations/10-prompts.md	val n = !Shift.scope[Int, Pure]:      // an Int boundary inside a String one
 docs/continuations/11-four-captures.md	Shift.push(p)(
 docs/continuations/11-four-captures.md	Shift.push(p)(capture(c, p)(k => k("a")).map(s => s"[$s]"))
 docs/continuations/11-four-captures.md	capture(c, p)(_ => capture("shift", p)(_ => okay.freer.pure("inner-caught"))))
 docs/continuations/11-four-captures.md	capture(c, p)(k => k("a").flatMap(x => k("b").map(y => x + y)))
 docs/continuations/12-one-machine.md	Shift.collect[Int, F]:          // ...and also collect
 docs/continuations/12-one-machine.md	Shift.resumable[Q, A, R, F]:        // I want to pause...
-docs/continuations/13-multi-shot.md	Shift.delimited[List[Int], Pure]:
-docs/continuations/13-multi-shot.md	log = log :+ s"ran with $x"        // IN the continuation
 docs/continuations/13-multi-shot.md	opened += 1                        // NOT in the continuation
-docs/continuations/13-multi-shot.md	ran = true                                       // never happens
 docs/continuations/13-multi-shot.md	val x = !Shift.shift[Int](k => ...)
 docs/continuations/14-a-new-effect.md	Budget.within[String, Pure](100)("over budget")(shop)
 docs/continuations/14-a-new-effect.md	final class Budget[R] private (val left: AtomicInteger,
@@ -208,34 +194,20 @@ docs/continuations/14-a-new-effect.md	val prompt: Prompt[R]):
 docs/continuations/15-resumable-exceptions.md	assertEquals(parsed, 3)      // rows 1,2 not re-parsed; row 4 still reached
 docs/continuations/15-resumable-exceptions.md	case (Malformed(line, _), _) =>
 docs/continuations/15-resumable-exceptions.md	if line > 2 then Resume(-1) else Invoke("skip", ())
-docs/continuations/16-continuations-and-monads.md	State.run[Int, Int](1)(p)   // (11, 12) — the same answer
-docs/continuations/16-continuations-and-monads.md	def sGet[S, R]: Cps[S, S => R, S => R]           = Cps.shift(k => s => k(s)(s))
 docs/continuations/16-continuations-and-monads.md	sRun(7) { sGet.flatMap(s => sSet(s)) }              // (7, ())
 docs/continuations/16-continuations-and-monads.md	sRun(7) { sSet(9).flatMap(_ => sGet) }              // (9, 9)
-docs/continuations/17-in-the-effect-system.md	!.run(Shift.delimited[(Int, Int), P](State.handle[Int](0)(inside)))
-docs/continuations/17-in-the-effect-system.md	State.run[Int, Int](0)(Shift.delimited[Int, State % Int](outside))
-docs/continuations/17-in-the-effect-system.md	type Row = Shift % ? + State % Int          // inside the delimiter
 docs/continuations/18-what-belongs-in-a-library.md	*  `Wf.Runtime`, and it is journalled. These two must not be
 docs/continuations/18-what-belongs-in-a-library.md	*  confused -- one is operational, the other is state. */
 docs/continuations/18-what-belongs-in-a-library.md	/** wall time, for the lease only: the PROGRAM's clock is
 docs/continuations/18-what-belongs-in-a-library.md	def attempt[A](times: Int)(f: () => A): Either[Throwable, A]
 docs/continuations/18-what-belongs-in-a-library.md	stamped("hi").runWith        // "hi@7"     -- exactly, every time
 docs/continuations/19-what-a-capture-does.md	!Shift.exit(r * 2)          // log: acquire, release
-docs/continuations/19-what-a-capture-does.md	Shift.delimited[Int, P]:
-docs/continuations/19-what-a-capture-does.md	cleaned = true      // never runs
 docs/continuations/19-what-a-capture-does.md	okay.std.bracket[Int, Int, okay.freer.Shift % ? + okay.Pure](1)(_ => ())(r => okay.freer.pure(r))
 docs/continuations/20-the-costs-measured.md	s"$what @ $where"
 docs/continuations/21-the-disciplines.md	Shift.delimited[Int, Pure](…)      // At("Booking.scala:31")
 docs/continuations/21-the-disciplines.md	def delimited[R, F[+_]](body: …)(using At): R ! F
-docs/continuations/21-the-disciplines.md	door    // "TestDelimDiagnostics.scala:36" -- the CALLER's line
 docs/continuations/21-the-disciplines.md	given union[F, G](using Replayable[F], Replayable[G]): Replayable[F + G]
 docs/continuations/22-checkpoints.md	"the snapshot changed how much the PROGRAM ran")
-docs/continuations/23-durable-workflows.md	!w.sleep(24 * 3600 * 1000L)              // the run ENDS here, resumes tomorrow
-docs/continuations/23-durable-workflows.md	if !w.patch("promo") then s"$city/promo" else city
-docs/continuations/23-durable-workflows.md	val city  = !w.pause("which city?")      // the WORLD answers
-docs/continuations/23-durable-workflows.md	val ok    = !w.awaitSignal("payment")    // somebody sends this, whenever
-docs/continuations/23-durable-workflows.md	val start = !w.now                       // the RUNTIME answers, once
-docs/continuations/25-cutting-a-model.md	def cut[A, X](p: Prompt[Either[Violation, A]])(v: Violation): X ! ... =
 docs/continuations/26-cancellable-flows-in-a-ui.md	def confirm(d: Details): Option[Confirmed]
 docs/continuations/26-cancellable-flows-in-a-ui.md	def details(plan: Plan): Option[Details]
 docs/continuations/26-cancellable-flows-in-a-ui.md	def pay(c: Confirmed): Option[Receipt]
@@ -437,16 +409,11 @@ docs/frontend-guide.md	Ui.Row(Vector(Ui.Button("-", "dec"), Ui.Button("+", "inc"
 docs/frontend-guide.md	Wire.serve(init)(view)(update): Stage[String, String, S]
 docs/many-instances.md	Instances.exhausted[State % Int, ...](done)   // asserts none survived
 docs/many-instances.md	State.run(0)(Tag.untag["small", State % Int](twice))
-docs/many-instances.md	a <- Tag.tag["small", State % Int](count).plus[Big]
-docs/many-instances.md	b <- Tag.tag["big",   State % Int][Int, Pure](count).at[Small + Big]
-docs/many-instances.md	given writerK[W](using t: Typeable[W]): TypeableK.ByValue[Writer % W]
 docs/many-instances.md	summon[Distinct[Reader % Int + Reader % String]]        // refused
 docs/many-instances.md	summon[Distinct[Reader % Int + Writer % String]]        // fine
 docs/many-instances.md	summon[Distinct[Tag.Of["a", Reader % Int] + Tag.Of["b", Reader % Int]]]  // fine
-docs/many-instances.md	type B = Tag.Of["same", Reader % String]   // same key: back to square one
 docs/many-instances.md	val afterSmall = State.handle(1)(Instances.only[State % Int](small)(p))
 docs/many-instances.md	val done       = State.handle(10)(Instances.only[State % Int](big)(afterSmall))
-docs/many-instances.md	val tenants = List("alpha", "beta", "gamma")      // data, not literals
 docs/modules/okay-actor.md	Actor.spawn(0, Queues.strong[Msg].adaptive.each(256).build, Supervise.Stop)(behaviour)
 docs/modules/okay-actor.md	Actor.spawn(0, Queues.strong[Msg].bounded(1024, singleConsumer = true).build, Supervise.Stop)(behaviour)
 docs/modules/okay-actor.md	Actor.spawn(0, Queues.strong[Msg].unbounded.build, Supervise.Stop)(behaviour)
@@ -948,9 +915,6 @@ docs/theory/01-monads.md	inline def map[B](f: A => B): Free[F, B] = flatMap(a =>
 docs/theory/01-monads.md	inline def pure[F[+_], A](a: A): A ! F
 docs/theory/01-monads.md	m >>= pure       ==  m
 docs/theory/01-monads.md	pure(a) >>= f    ==  f(a)
-docs/theory/02-continuations.md	Cps.reset(c)    // "<one> <two>" — the rest of the block ran once per k
-docs/theory/02-continuations.md	type Str = [X] =>> Cps[X, String, String]        // the diagonal at String
-docs/theory/02-continuations.md	val greeting: String => Int => String = Cps.reset[String, Out]:
 docs/theory/03-parameterised.md	extends Monad[[A] =>> M[A, R, R]]
 docs/theory/03-parameterised.md	given [M[_, _, _] : ParaMonad as P, R]: Monad[[A] =>> M[A, R, R]] = ...
 docs/theory/05-effects-handlers.md	@tailrec private def step[A, S, R](c: Rep[A, S, R])(k: A => S): R = c match
@@ -1029,9 +993,6 @@ docs/theory/13-rows-without-unions.md	def run[A](e: Eff[Any, A]): A             
 docs/theory/13-rows-without-unions.md	def run[S, R, A](s: S)(e: Eff[State[S] & R, A]): Eff[R, (S, A)]   // Eff.scala:88
 docs/theory/13-rows-without-unions.md	final class Eff[-R, A] private (private val body: EffBody[A])      // okay-scala2 Eff.scala:26
 docs/theory/13-rows-without-unions.md	infix type +[F[+_], G[+_]] = [A] =>> F[A] | G[A]     // Effects.scala:69
-docs/tutorial.md	!.run(Shift.collectUntil[Int, Boolean, Boolean, Pure](using FoldUntil.exists[Int](_ > 2))(walk(tree)))  // true, after three leaves
-docs/tutorial.md	!.run(Shift.collectUntil[Int, Vector[Int], Vector[Int], Pure](using FoldUntil.take(2))(walk(tree)))    // Vector(1, 2) — the walk stops at its second leaf
-docs/tutorial.md	!.run(Shift.collect[Int, Pure](walk(tree)))                                                          // List(1, 2, 3, 4)
 docs/tutorial.md	(base and providing[Principal](bob)) { api }    // answers for:Bob
 docs/tutorial.md	.map(_ * 2).filter(_ % 3 == 0).take(1000))(using Fold.sum[Int])
 docs/tutorial.md	.toLazyList)
@@ -1184,9 +1145,7 @@ docs/your-own-effect.md	/** replace, ANSWERING what was there — the two above 
 docs/your-own-effect.md	Refs.run(p)   // (2, ada)
 docs/your-own-effect.md	State.get[S].at[R]                // into a row known only by membership
 docs/your-own-effect.md	Users.find(id).plus[Abort]        // Option[String] ! (Users + Abort)
-docs/your-own-effect.md	b <- Tag.tag["big",   State % Int](bump(10)).at[Small + Big]
 docs/your-own-effect.md	case Get(k: K) extends Cache[K, Option[String]]
-docs/your-own-effect.md	def tracked[A, S : Store, F[+_]](prog: A ! (Users + F)): A ! (State % S + Writer % String + F) =
 docs/your-own-effect.md	enum Cache[K, +A] derives Effect:     // Cache % K is the row member
 docs/your-own-effect.md	pureRun(Map(7L -> "ada"))
 docs/your-own-effect.md	pureRun(Vector(7L -> "ada"))

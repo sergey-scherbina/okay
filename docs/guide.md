@@ -66,7 +66,7 @@ never on the caller's stack — a million rounds at the `Pure` row run
 on the default stack, and every iteration may perform `F`:
 
 ```scala
-val steps: Int ! Nothing = !.loop[(Int, Int), Int, Nothing]((27, 0)) { (n, k) =>
+val steps: Int ! Pure = !.loop[(Int, Int), Int, Pure]((27, 0)) { (n, k) =>
   pure(if n == 1 then Right(k) else Left((if n % 2 == 0 then n / 2 else 3 * n + 1, k + 1)))
 }
 !.run(steps)   // 111 — the Collatz steps from 27, the count carried in the state
@@ -120,7 +120,7 @@ val wetGrass: Boolean ! Dist =
     sprinkler <- dist(true -> 0.4, false -> 0.6)
     _ <- observe(rain || sprinkler)
   yield rain
-!.run(runExact[Boolean, Pure](wetGrass)).posterior(true)   // 15.0/29.0
+runExact(wetGrass).run.posterior(true)   // 15.0/29.0
 ```
 
 `Prob.runRejection` is the other reading of the same program — single-
@@ -210,8 +210,8 @@ what happened:
 ```scala
 def rename(id: Long, to: String): Option[String] ! Users = runOption {
   for
-    case Some(old) <- Users.find(id).plus[Abort]
-    _              <- Users.save(id, to).plus[Abort]
+    case Some(old) <- Users.find(id).at[Users + Abort]
+    _              <- Users.save(id, to).at[Users + Abort]
   yield old
 }
 ```
@@ -252,9 +252,9 @@ each element under its own handler and keeps the ones that were there.
 `runChoice` answers the branches where everything was found:
 
 ```scala
-assertEquals(!.run(Maybe.collect(List("ann", "eve", "bob"))(age)), Vector(31, 42))
-val known: Int ! Maybe + Choose = for n <- choose("ann", "eve", "bob").plus[Maybe]; a <- age(n).plus[Choose] yield a
-assertEquals(!.run(runChoice(Maybe.prune(known))), Seq(31, 42))
+assertEquals(Maybe.collect(List("ann", "eve", "bob"))(age).run, Vector(31, 42))
+val known: Int ! Maybe + Choose = for n <- choose("ann", "eve", "bob").at[Maybe + Choose]; a <- age(n).at[Maybe + Choose] yield a
+assertEquals(runChoice(Maybe.prune(known)).run, Seq(31, 42))
 ```
 
 `p.orElse(q)` tries `q` where `p` found nothing, `p.getOrElse(a)` ends
@@ -279,7 +279,7 @@ some fail, then reports all their errors in order (arrow-kt's
 
 ```scala
 def port(s: String): Int ! C = s.toIntOption.fold(Chronicle.confess[String, Int](s"port: '$s' is not a number"))(pure)
-val ports = Chronicle.all[String, String, Int, Pure](List("80", "x", "443", "y"))(port)
+val ports = Chronicle.all[String, String, Int, C](List("80", "x", "443", "y"))(port)
 // Chronicle.run(ports) == Failed(Vector("port: 'x' is not a number", "port: 'y' is not a number"))
 ```
 
@@ -317,7 +317,7 @@ each branch continues from where it was captured:
 
 ```scala
 val three = for a <- Fresh.next; b <- Fresh.next; c <- Fresh.next yield List(a, b, c)
-assertEquals(!.run(Fresh.run(three)), List(0L, 1L, 2L))
+assertEquals(Fresh.run(three).run, List(0L, 1L, 2L))
 ```
 
 **Scoped effects — `recover`×`State`'s order, and `Reader.local`**
@@ -344,7 +344,7 @@ overrides `ask` for one block the same way `recover` answers `raise`
 for one block — built on the same tool, `Effects.handle`:
 
 ```scala
-val p = Reader.local[Int, Int, Pure](_ * 10)(Reader.ask[Int])
+val p = Reader.local[Int, Int, Reader % Int](_ * 10)(Reader.ask[Int])
 // Reader.run(5)(p) == 50; asking OUTSIDE the local still sees 5
 ```
 
@@ -358,7 +358,7 @@ use `Writer.map` or `Writer.expand` over the same scope:
 
 ```scala
 val step: Int ! W = for _ <- say("parse"); _ <- say("check") yield 42
-val p = for _ <- say("start"); heard <- Writer.listen[String, Int, Pure](step); _ <- say("end") yield heard
+val p = for _ <- say("start"); heard <- Writer.listen(step).at[W]; _ <- say("end") yield heard
 // Writer.run: told start, parse, check, end; heard == (42, List(parse, check))
 ```
 
@@ -393,16 +393,15 @@ the pair is two operations, two forwards, and a closure between them.
 
 **Handling.** `runWith(using h)` for a per-operation `Answers[F]`;
 `h.tracing(log)` makes any handler a recording one, since the
-operations are already data; `!.translate` interprets each operation
-into a PROGRAM in another row (a `Answers` answers with a value, so it
-cannot itself tell or get), and `!.interpret` is the same with the
-widening done for you, for when the target row is BIGGER than the
-source's:
+operations are already data; `p.translate[E, F]` interprets each
+operation of `E` into a PROGRAM in another row `F` (a `Answers` answers
+with a value, so it cannot itself tell or get), wherever `E` stands in
+`p`'s row, and the rest of the row (`s.Rest`) rides through:
 
 ```scala
-def tracked[A, F[+_]](p: A ! (Users + F)): A ! (State % Store + Writer % String + F) =
-  type R = State % Store + Writer % String + F
-  !.interpret(p):
+def tracked[A, Es[_]](p: A ! Es)(using s: Split[Es, Users]): A ! (State % Store + Writer % String + s.Rest) =
+  type R = State % Store + Writer % String
+  p.translate[Users, R]:
     [X] => (e: Users[X]) => e match
       case Find(id) =>
         for
@@ -412,8 +411,8 @@ def tracked[A, F[+_]](p: A ! (Users + F)): A ! (State % Store + Writer % String 
       ...
 ```
 
-The expected type solves every row, so there is no type argument and
-`F` — whatever the caller was already doing — rides through untouched.
+The rest, `s.Rest` — whatever the caller was already doing — rides through
+untouched.
 
 Interpreters compose, and are better small. `Writer.tracing(p)(show)`
 records every operation into a `Writer` and then performs it exactly
@@ -422,8 +421,8 @@ beyond `show` — so the storage half can be written without a Writer
 anywhere in it:
 
 ```scala
-def tracked[A, F[+_]](p: A ! (Users + F)): A ! (State % Store + Writer % String + F) =
-  stored[A, Writer % String + F](Writer.tracing(p)([X] => (e: Users[X]) => e.toString))
+def tracked[A, Es[_]](p: A ! Es)(using s: Split[Es, Users]): A ! (State % Store + Writer % String + s.Rest) =
+  stored(Writer.tracing[A, Users, String, Es](p)([X] => (e: Users[X]) => e.toString))
 ```
 
 Order is the meaning: recording happens BEFORE interpretation, so the
@@ -435,8 +434,11 @@ State + Writer, and a trace of any of them — is
 **Several instances of one effect.** A row is split by a RUNTIME test,
 so two members of the same signature are told apart exactly when the
 operation carries something to compare. `Tag` is that, for any
-signature: a key, and a test that reads it.
+signature: a key, and a test that reads it. (That is okay-freer, the
+frozen classic road, whose rows were split by a runtime test; a kernel
+row finds a member by its place.)
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 type Small = Tag.Of["small", State % Int]
 type Big   = Tag.Of["big",   State % Int]
@@ -777,8 +779,10 @@ that a step ending at `R` joins only one starting at `R`. The
 transitions are said ONCE, on the signature's cases, and the handler
 holds the state typed by the index: nothing is claimed at a call site,
 and nothing is erased. okay-sql's transaction is written this way, over
-any `Sql`:
+any `Sql` (on okay-freer, the frozen classic road: the kernel has no
+indexed program word yet):
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 import Tx.{begin, commit, update, async, interpret}
 val n = interpret(

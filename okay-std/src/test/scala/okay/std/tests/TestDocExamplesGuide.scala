@@ -76,3 +76,15 @@ class TestDocExamplesGuide extends munit.FunSuite:
     assertEquals(Reader.run(5)(p).run, 50)
   }
 
+
+  test("guide: !.each and !.foldM, a loop that performs on every element") {
+    type W = Writer % String
+    locally {
+      val p: Unit ! W = !.each(List("a", "b", "c"))(s => Writer.tell(s))
+      assertEquals(Writer.run(p).run, (Seq("a", "b", "c"), ()))
+    }
+    locally {
+      val p: Int ! State % Int = !.foldM(1 to 3)(0)((acc, x) => State.modify[Int](_ + x).map(acc + _))
+      assertEquals(State.handle[Int](0)(p).run._1, 6)
+    }
+  }

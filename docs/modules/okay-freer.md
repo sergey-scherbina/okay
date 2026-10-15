@@ -1,5 +1,7 @@
 # okay-freer
 
+> **The classic road.** This module describes okay-freer, the frozen classic road (its tests stay at the tag `classic-freer`); on the kernel's words the counterpart is [okay-core](okay-core.md).
+
 THE CLASSIC: the effect library over the freer tree as it was in the core, now a module of its own, package
 `okay.freer`, ABOVE the core — one `Effects` instance of the core's interface, chosen at compile time by the
 given in scope, knowing nothing of the machine (okay-cont) but through that interface. It depends on the core
@@ -39,6 +41,7 @@ val j = p.handle(State(41)).run   // (41, 42)
 
 Code written over any encoding of the tree takes `Classic[M]`:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 def program[M[_[+_], _]](using E: Classic[M]): M[State % Int, Int] =
   E.reset[Int, State % Int](

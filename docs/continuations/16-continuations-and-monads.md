@@ -1,5 +1,7 @@
 # 16 · Continuations and monads
 
+> **The classic road.** This chapter describes okay-freer, the frozen classic road (its tests stay at the tag `classic-freer`); on the kernel's words the counterpart is [okay-core's delimited control](../../okay-core/docs/guide.md#delimited-control).
+
 > **Part IV is about building.** Compiled in
 > `src/test/scala/TestBookMonads.scala`. This chapter is about a
 > result from 1994 that most working programmers have never heard of,
@@ -58,6 +60,7 @@ it survives the translation intact.
 To make "any monad" more than a figure of speech, the test file
 invents one on the spot — a monad that counts its own binds:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 final case class Counted[A](value: A, steps: Int)
 
@@ -71,6 +74,7 @@ given Monad[Counted] with
 
 and runs it in direct style:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val inDirect = direct[Counted] {
   val a: Int = step(2)
@@ -97,6 +101,7 @@ implementation, and rebuild it out of nothing but `shift`.
 
 The state monad, in full:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 def sGet[S, R]: Cps[S, S => R, S => R]           = Cps.shift(k => s => k(s)(s))
 def sSet[S, R](s2: S): Cps[Unit, S => R, S => R] = Cps.shift(k => _ => k(())(s2))
@@ -116,6 +121,7 @@ continuation's argument. That is the whole trick.
 
 It works:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val r = sRun(1) {
   for
@@ -153,6 +159,7 @@ move. That is Filinski's theorem, from the bottom.
 The library ships a `State` *effect*, with a row and a tail-recursive
 handler. Same program:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val p: Int ! State % Int = for
   a <- State.get[Int]

@@ -120,9 +120,9 @@ and `E` off the whole row by subtyping, which is what ZIO's own `flatMap`
 bounds do, and `toZIO` answers the type ZIO's own `for` would:
 
 ```scala
-val p: Int ! (ZIO[Db, DbErr, *] + ZIO[Log, LogErr, *]) = z1.perform.bind(a => z2.perform.map(_ + a))
+val p: Int ! (ZIO[Db, DbErr, *] + ZIO[Log, LogErr, *]) = z1.perform.flatMap(a => z2.perform.map(_ + a))
 val ours: ZIO[Db & Log, AppErr, Int] = p.toZIO
-val q: Int ! ZIO[Any, AppErr, *] = p.provideEnvironment(env)
+val q: Int ! ZIO[Any, DbErr | LogErr, *] = p.provideEnvironment(env)
 val q: Int ! ZIO[Db & Log, String, *] = failing.mapError(_.toString)
 ```
 
@@ -245,7 +245,7 @@ val p: Int ! Row = direct {
   val a = nope.?
   a + 1
 }
-assertEquals(runEither[Int, Async, String](p).runWith, Left("nope"))
+assertEquals(runEither[Int, Row, String](p).runWith, Left("nope"))
 ```
 
 A ZIO whose effect the block's row cannot hold is a COMPILE error naming

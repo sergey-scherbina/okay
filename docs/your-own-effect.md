@@ -106,8 +106,8 @@ row is noise.
 ```scala
 def rename(id: Long, to: String): Option[String] ! Users = runOption {
   for
-    case Some(old) <- Users.find(id).plus[Abort]
-    _              <- Users.save(id, to).plus[Abort]
+    case Some(old) <- Users.find(id).at[Users + Abort]
+    _              <- Users.save(id, to).at[Users + Abort]
   yield old
 }
 ```
@@ -204,69 +204,55 @@ final class InMemory[S](init: S)(using St: Store[S]) extends Answers[Users]:
 
 An `Answers[Users]` is run with `runWith`, so it must answer the whole row. The constructors on `Handler`
 make a VALUE that takes ONE effect off any program's row, whatever else is in the row, the same way the
-built-in effects do (`p.handle(State(5))`). They are ordered by power. Each form sits on the machinery that
-is already fastest for its case. The examples use `Accounts`, an effect shaped like `Users`
-(`Find`, `Save`), from the test that pins them.
+built-in effects do (`p.handle(State(5))`). They are ordered by power, and each is one of the kernel's handler
+forms, answered in place where it can be. The examples use `Accounts`, an effect shaped like `Users`
+(`Find`, `Save`), from the test that pins them (okay-std, `TestDocExamplesYourOwnEffect`).
 
-**1. Answer each operation**, and the program goes on:
+**1. Answer each operation** (`Handler.answering`), and the program goes on:
 
 ```scala
-val live: Handler[Accounts, [A] =>> A] = Handler[Accounts] {
-  case Find(id) => db.get(id)
-  case Save(id, name) => db.put(id, name)
-}
+val live: Handler[Accounts, [A] =>> A] = Handler.answering[Accounts]:
+  [X] => (e: Accounts[X]) => e match
+    case Find(id) => db.get(id)
+    case Save(id, name) => db.put(id, name)
 ```
 
-**2. Thread a state** through the operations: each case answers `(state', answer)`, and the result
-carries the last state:
+**2. Thread a state** through the operations (`Handler.state`): each case answers `(state', answer)`, and
+the result carries the last state:
 
 ```scala
-val store = Handler[Accounts].state(Map(7L -> "ada")) {
-  case (m, Find(id)) => (m, m.get(id))
-  case (m, Save(id, name)) => (m.updated(id, name), m.get(id))
-}
+val store = Handler.state[Accounts, Map[Long, String]](Map(7L -> "ada")):
+  [X] => (m: Map[Long, String], e: Accounts[X]) => e match
+    case Find(id) => (m, m.get(id))
+    case Save(id, name) => (m.updated(id, name), m.get(id))
 val renamed = rename(7, "grace").handle(store).run   // (Map(7 -> grace), Some(ada))
 ```
 
-**3. Interpret into other effects**: each operation becomes a program in `G`, which the rest of the row
-must hold:
+**3. Interpret into other effects** (`p.translate`): each operation becomes a program in another row, which
+takes the effect's place:
 
 ```scala
-val stored = Handler[Accounts].into[State % Map[Long, String]] {
-  case Find(id) => State.get[Map[Long, String]].map(_.get(id))
-  case Save(id, name) => State.update[Map[Long, String], Option[String]](m => (m.get(id), m.updated(id, name)))
-}
+def stored[A, Es[_]](p: A ! Es)(using s: Split[Es, Accounts]): A ! (State % Map[Long, String] + s.Rest) =
+  p.translate[Accounts, State % Map[Long, String]]:
+    [X] => (e: Accounts[X]) => e match
+      case Find(id) => State.get[Map[Long, String]].map(_.get(id))
+      case Save(id, name) => State.update[Map[Long, String], Option[String]](m => (m.get(id), m.updated(id, name)))
 ```
 
-**4. Hold the continuation**: call `resume` once, twice or not at all. This is Maybe written by hand:
+**4. Hold the continuation** (`Handler.deep`): call `resume` once, twice or not at all. This is Maybe
+written by hand:
 
 ```scala
-val asMaybe = Handler[Maybe].control[Option]([A] => (a: A) => Some(a)):
-  [X, A, G[+_]] => (e: Maybe[X], resume: X => Option[A] ! G) => e.value match
+val asMaybe = Handler.deep[Maybe, Option]([A] => (a: A) => Some(a)):
+  [A, X] => (e: Maybe[X], resume: X => Option[A] ! Pure) => e.value match
     case Some(x) => resume(x)
-    case None => pure[G, Option[A]](None)
+    case None => pure[Option[A], Pure](None)
 ```
 
-**The cases are checked at compile time.** A case answering the wrong type is an error that names the
-operation ("Find answers Option[String], but this case gives Int"). So is a missing operation ("not every
-operation of Accounts is handled: Save") and a `case _` that answers anything but a `throw`.
-
-An operation whose answer its CALLER chooses (`Reader`'s `Asks[R, A](f: R => A)`, `State`'s `Update`) is
-seen at an abstract `Answer`. Only the operation's own data can produce one: `case Asks(g) => g(40)` passes,
-and `case Asks(g) => "oops"` is refused. One shape is beyond the cases: an operation whose answer is the
-type one of its own fields has, like `State`'s `Set(s: S)`. Each case must give its own type to the
-answer, and only a polymorphic function can do that. The macro names the operation and points to `.poly`.
-The effect is named first, `Handler[Accounts]`, because it is the effect the handler takes off, and form
-1 is what `Handler[Accounts] { … }` means. The others name the effect the same way:
-`Handler[Accounts].state(s0) { … }` and `Handler[Accounts].into[State % M] { … }`. Each also takes a
-polymorphic function in place of the cases, which the compiler checks with no macro:
-`Handler[Accounts].answer.poly { [X] => (e: Accounts[X]) => … }`. `Handler[Accounts]` is only a helper for
-type inference. Each form has one implementation, `Handler.answer[F]`, `Handler.state[F, S](s0)`,
-`Handler.into[F, G]` and `Handler.control[F, O](ret)`, and the helper calls it with the types filled in.
-
-Measured against the built-ins they re-express (specs/handler-forms.md): `answer` is at parity with
-`Reader(r)`, `state` is 1.04x of `State(s)`, `control` is 1.26x of `Maybe.option`. The cases cost what the
-polymorphic form costs.
+A fifth, `Handler.aborting`, stops at an operation without a continuation (`Throws`, a refuted `Maybe`).
+Each case is a polymorphic function the compiler checks with no macro: the operation's GADT case refines `X`,
+so a case answering the wrong type does not compile. (okay-freer, the frozen classic road, had a macro form,
+`Handler[Accounts] { case … }`, with its own messages; the kernel's words do not need it.)
 
 ### Which one: the whole list
 
@@ -276,16 +262,14 @@ effect author does not need them.
 
 | what the handler must do | write | it runs on |
 |---|---|---|
-| answer every operation of a whole row with a value, the program fixed | `Answers[F]`, run with `runWith` (§5) | a fold, no tree |
-| answer each operation with a value, one effect off any row | `Handler[F] { case … }` (form 1) | `!.relay` |
-| answer and carry a state, the last state in the result | `Handler[F].state(s0) { … }` (form 2) | `HandleFrames.stateRun` |
-| answer with a program in effects the row already holds | `Handler[F].into[G] { … }` (form 3) | `!.translate` |
-| the same into effects the row does NOT hold yet | `!.interpret(p)` (§7): `p.plus[G]`, then `translate` | `!.translate` |
-| record what is asked and answer nothing | `Writer.tracing(p)` (§6) | `!.interpret` |
-| abort, resume twice, keep the continuation | `Handler[F].control[O](ret)` (form 4) | `Effects.handle` |
-| two instances of one effect, told apart by name | `Lexical.deep` / `tail` / `walk` ([many-instances.md](many-instances.md)) | a prompt per installation |
-| *(library)* a built-in's fold that threads a state | `HandleFrames.stateRun`, `stateRunUntil` (stops when the state is done), `stateRunOr` (a step may stop the run) | one step, as a loop and as a machine frame |
-| *(library)* the general clause, `k` in hand | `Effects.handle(m)(ret)(clause)`, `!.relay`, `!.translate` | the forms above |
+| answer every operation of a whole row with a value, the program fixed | `Answers[F]`, run with `runWith` (§5) | each effect answered in place |
+| answer each operation with a value, one effect off any row | `Handler.answering[F]` (form 1) | the kernel's `Answering` |
+| answer and carry a state, the last state in the result | `Handler.state[F, S](s0)` (form 2) | the kernel's `Stateful` |
+| answer with a program in other effects | `p.translate[F, G]` (form 3, §7); `p.translateInto[F, G]` when `G` is in the row already | the kernel's `Translating` |
+| record what is asked and answer nothing | `Writer.tracing(p)` (§6) | `translate` |
+| resume twice, keep the continuation | `Handler.deep[F, O](ret)` (form 4) | the kernel's `Deep` |
+| stop, no continuation | `Handler.aborting[F, O](ret)` | the kernel's `Aborting` |
+| *(library)* walk the program yourself | `okay.Walk.view` / `Walk.next` | the root's one walk |
 
 What is still a hand-written walk is a different kind of thing, not another handler form. `State.zoomWith`,
 `Maybe.prune`, `Writer.map` and okay-stream's `Source` re-tell one effect as another. `Resource` runs
@@ -314,19 +298,18 @@ An interpreter can: it turns each operation into a PROGRAM in another
 row, where `State` and `Writer` are ordinary members.
 
 ```scala
-def stored[A, S : Store as S, F[+_]](prog: A ! Users + F): A ! State % S + F =
-  !.interpret(prog):
+def stored[A, S : Store as S, F[_]](prog: A ! Users + F): A ! State % S + F =
+  prog.translate[Users, State % S]:
     [X] => (e: Users[X]) => e match
       case Users.Find(id) =>
-        State.get[S].plus[F].map(S.get(id))
+        State.get[S].map(S.get(id))
       case Users.Save(id, name) =>
-        State.update[S, X](S.replace(id, name)).plus[F]
+        State.update[S, X](S.replace(id, name))
 ```
 
-`!.interpret` is `!.translate` with the widening done for you, for
-when the target row is BIGGER than the source's; `F` — whatever the
-caller was already doing — rides through untouched, and the expected
-type solves every row, so there is no type argument to write.
+`translate` puts each operation's program in place of the operation:
+the branch answers in `State % S` alone, and `F` — whatever the caller
+was already doing — rides through untouched.
 
 `State.update(f)` is the transition that ANSWERS something the write
 is about to destroy: `f` sees the state and returns what to answer and
@@ -336,10 +319,13 @@ both.
 Two layers, one job each, composed:
 
 ```scala
-def tracked[A, S : Store, F[+_]](prog: A ! (Users + F)): A ! (State % S + Writer % String + F) =
+def tracked[A, S : Store, F[_]](prog: A ! Users + F): A ! Tracked[S] + F =
   stored[A, S, Writer % String + F](
-    Writer.tracing(prog)([X] => (e: Users[X]) => e.toString))
+    Writer.tracing[A, Users, String, Users + F](prog)([X] => (e: Users[X]) => e.toString)
+      .at[Users + (Writer % String + F)]).at[Tracked[S] + F]
 ```
+
+(`type Tracked[S] = State % S + Writer % String`.)
 
 `stored` answers and could not log if it wanted to — it knows nothing
 about a Writer being in the row. `Writer.tracing` logs and answers nothing.
@@ -353,8 +339,8 @@ own runners, innermost first:
 ```scala
 def pureRun[S : Store](init: S): (S, (Seq[String], Option[String])) =
   State.run[S, (Seq[String], Option[String])](init)(
-    Writer.run[String, Option[String], State % S](
-      tracked[Option[String], S, Pure](rename(7L, "grace"))))
+    Writer.run[String, Option[String], Tracked[S] + Pure](
+      tracked[Option[String], S, Pure](rename(7L, "grace").at[Users + Pure])).at[State % S])
 
 pureRun(Map(7L -> "ada"))
 // (Map(7 -> grace), (Seq(Find(7), Save(7,grace)), Some(ada)))
@@ -370,10 +356,14 @@ the program.
 
 ## 8. Several instances of one effect
 
+This section describes okay-freer, the frozen classic road (its tests stay at the tag `classic-freer`); a
+kernel row finds a member by its place, not by a runtime test.
+
 A row is split by a runtime test, so two members of the same signature
 are told apart exactly when the operation carries something to
 compare. `Tag` is that, for any signature:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 type Small = Tag.Of["small", State % Int]
 type Big   = Tag.Of["big",   State % Int]

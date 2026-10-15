@@ -21,7 +21,7 @@ Nothing ran until `run`: `handle` takes `State` off with its handler, `State(0)`
 ```scala
 type F = State % Int + Throws % String
 def risky(n: Int): Int ! F =
-  if n < 0 then effect(Throws("negative")) else effect(State.Update[Int, Int](_ => (n, n)))
+  if n < 0 then raise[String, Int]("negative").at[F] else effect[State % Int, Int](State.Update[Int, Int](_ => (n, n))).at[F]
 
 val both = risky(5).handle(State(0)).handle(Throws.either).run   // handle State, then Throws: Right((5, 5))
 ```
@@ -384,6 +384,10 @@ combOp that Spark and Flink call merge.
 
 ## 13. Your own control operator
 
+This section's `Shift` describes okay-freer, the frozen classic road (its tests stay at the tag
+`classic-freer`); on the kernel's words the counterpart is
+[okay-core's delimited control](../okay-core/docs/guide.md#delimited-control).
+
 Delimited control is an effect too, so a new control structure — or a
 whole new effect — is user code, not a library change:
 
@@ -411,6 +415,7 @@ list, and stays an ordinary recursion that knows nothing about lists.
 `collectUntil` reads the SAME producer until a `FoldUntil` (§2) has
 seen enough, and the rest of the walk never runs:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 enum Tree[+A]:
   case Leaf(a: A)
@@ -602,7 +607,7 @@ def told: Env ?=> Int ! Writer % String = direct {
   wire[Env].uid                        // the capability, inside the block
 }
 
-provide(Env("ada", 7)) { !.run(Writer.run(told)) }
+provide(Env("ada", 7)) { (Writer.run(told)).run }
 // Vector(hello ada, bye) -> 7
 ```
 

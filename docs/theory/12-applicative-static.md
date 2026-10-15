@@ -94,13 +94,13 @@ argument for Haxl \[[2014](#ref-marlow-2014)\] — a paper whose title,
 the user's program, taken from the applicative structure that was
 already there.
 
-`Par` (Par.scala:53) is that reading of `A ! Async`. It is an opaque
+`Par` (Par.scala:56) is that reading of `A ! Async`. It is an opaque
 carrier over the same programs, whose `app` joins two leaves with
-`Async.par` (Par.scala:90):
+`Async.par` (Par.scala:102):
 
 ```scala
 extension [A, B](f: Rep[A => B])
-  def app(a: Rep[A]): Rep[B] = Async.par(f, a).map((g, x) => g(x))
+  def app(a: Rep[A]): Rep[B] = okay.Run.map(Async.par(f, a))((g, x) => g(x))
 ```
 
 Nothing else changes. Generic code written against `Applicative[F]` —
@@ -274,8 +274,10 @@ A batching interpretation is a natural transformation into a carrier
 whose `app` *accumulates* its leaves' requests and whose run answers
 them together. Nothing in the program changes; the carrier changes.
 In Okay that is `foldMap` with a `Selective` instance the consumer
-writes:
+writes (`Static`'s `foldMap`, on okay-freer, the frozen classic road;
+its test stays at the tag `classic-freer`):
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 final case class Batch[A](keys: Vector[String], run: Map[String, Int] => A)
 given Selective[Batch] with

@@ -1,5 +1,7 @@
 # 10 · Prompts, and why they are first class
 
+> **The classic road.** This chapter describes okay-freer, the frozen classic road (its tests stay at the tag `classic-freer`); on the kernel's words the counterpart is [okay-core's delimited control](../../okay-core/docs/guide.md#delimited-control).
+
 > **Part III opens the machine.** Parts I and II can be read by
 > somebody who only wants to use this; from here on the audience is
 > whoever wants to build with it, or to review somebody who did.
@@ -27,6 +29,7 @@ Three properties, and each one buys something specific.
 
 `Prompt[R]` says: **what leaves through this boundary is an `R`.**
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 Shift.delimited[String, Pure]:
   direct:
@@ -43,6 +46,7 @@ reading `catch` blocks.
 Different types are different boundaries, and they nest without
 interference:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 Shift.delimited[String, Pure]:
   direct:
@@ -61,6 +65,7 @@ about the outer `String` is involved.
 
 Two prompts of the same type are two different boundaries:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val a = Shift.prompt[Int]
 val b = Shift.prompt[Int]
@@ -115,6 +120,7 @@ assert(e.getMessage.contains("delimited @"))
 A prompt is an ordinary value, so it can be passed like one. That is
 not a curiosity — it is what crossing a boundary requires:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 def deep(n: Int)(using p: Shift.Prompted[String]): Int ! Row = direct:
   if n == 0 then

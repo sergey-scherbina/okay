@@ -1,5 +1,7 @@
 # 2. Continuations and delimited control
 
+> **The classic road.** This chapter's `Cps` examples describe okay-freer, the frozen classic road (its tests stay at the tag `classic-freer`); on the kernel's words the counterpart is [okay-core's delimited control](../../okay-core/docs/guide.md#delimited-control).
+
 ## The continuation, and why undelimited is not enough
 
 A continuation is "the rest of the computation", reified as a function.
@@ -137,6 +139,7 @@ but one theorem, specialized twice.
 has the same word, and since cont-in-direct (2026-09-17) it can be
 written in a direct block too:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 import okay.freer.Cps.direct.*
 
@@ -226,6 +229,7 @@ MOVES the answer type — `str` turns "the delimiter answers `T`" into
 "it answers `String => T`" — and the format is their composition, so
 it can be a `for`-comprehension with nothing annotated inside it:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 def lit[T](s: String): Cps[String, T, T] = Cps.shift(k => k(s))
 def str[T]: Cps[String, T, String => T] = Cps.shift(k => (x: String) => k(x))

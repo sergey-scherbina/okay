@@ -1,5 +1,7 @@
 # 13 · Multi-shot: a continuation is a value
 
+> **The classic road.** This chapter describes okay-freer, the frozen classic road (its tests stay at the tag `classic-freer`); on the kernel's words the counterpart is [okay-core's delimited control](../../okay-core/docs/guide.md#delimited-control).
+
 > Compiled in `src/test/scala/TestBookMultiShot.scala`. The chapter
 > that closes Part III, and the one whose consequences are easiest to
 > get wrong — so every claim about what happens twice is a test.
@@ -10,6 +12,7 @@
 
 `k` is an ordinary value. Nothing stops you calling it more than once:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 Shift.delimited[List[Int], Pure]:
   direct:
@@ -31,6 +34,7 @@ why chapter 3 put "call it twice" in the table beside "don't call it".
 **Nondeterminism, for free.** Two captures, each resumed twice, and
 the cross product appears with no backtracking machinery anywhere:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val n = !Shift.shift[Int](k => k(1).flatMap(a => k(2).map(b => a ++ b)))
 val s = !Shift.shift[String](k => k("a").flatMap(a => k("b").map(b => a ++ b)))
@@ -59,6 +63,7 @@ bugs.
 
 ### One · Effects in the captured part run once per call
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val x = !Shift.shift[Int](k => k(1).flatMap(a => k(2).map(b => a ++ b)))
 log = log :+ s"ran with $x"        // IN the continuation
@@ -88,6 +93,7 @@ it, once. Below it, once per resumption.
 
 ### Two · A `var` below the line is written by every branch
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val x = !Shift.shift[Int](k => k(1).flatMap(a => k(2).map(b => a ++ b)))
 last = x
@@ -108,6 +114,7 @@ cell: that is what the handler's `flatMap` is doing when it combines
 Calling `k` **zero** times is the early exit of chapter 5, and nothing
 below the line runs at all:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val _ = !Shift.shift[Int](_ => okay.freer.pure(99))   // k dropped
 ran = true                                       // never happens

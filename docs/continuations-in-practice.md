@@ -1,5 +1,7 @@
 # Continuations in practice
 
+> **The classic road.** This page describes okay-freer, the frozen classic road (its tests stay at the tag `classic-freer`); on the kernel's words the counterpart is [okay-core's delimited control](../okay-core/docs/guide.md#delimited-control).
+
 The literature examples in [theory/2](theory/02-continuations.md) prove
 that delimited control *works*. They do not prove it is *useful* — they
 are all from papers. This page is the other half: the four shapes that
@@ -37,6 +39,7 @@ of it: leaving early, coming back later, running the rest twice.
 **Wrap it in a name.** A `shift` at a call site makes the reader stop
 and reconstruct what the continuation is. A name does not:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 if r(t) then !Shift.exit(Some(t))              // obvious
 if r(t) then !Shift.shift[Unit](_ => pure(Some(t)))   // a puzzle
@@ -78,6 +81,7 @@ without the outer `Shift`:
 | `Shift.collect` | `Shift.collecting` |
 | `Shift.resumable` | `Shift.pausing` |
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 def half(using Shift.Asking[String, Int, List[Int], Shift % ? + Pure]) =
   Shift.collecting[Int, Pure]:        // nested: installs only
@@ -128,6 +132,7 @@ body a handle `d`, the body is typed at `Shift % d.type` plus the row
 outside, and a `shift` to `d` is an operation of that key, which the
 `reset` handles:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val r = !.run(reset[Int, P] { p =>
   shift(p)[Int](k => k(5).map(_ * 2))
@@ -188,6 +193,7 @@ it.
 **The shape:** you are deep in nested loops, or inside a lambda, and
 you have the answer. You want out, with it.
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 Shift.delimited[Option[Int], Pure]:
   direct:
@@ -199,6 +205,7 @@ Shift.delimited[Option[Int], Pure]:
 **How it is usually written** — the loops become a fold, and "am I
 done already" is now a question every iteration has to ask:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 txs.foldLeft(Option.empty[Int]): (acc, t) =>
   if acc.isDefined then acc
@@ -220,6 +227,7 @@ block.
 
 **The shape:** the producer wants to call you; you want a sequence.
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 def walk(t: Tree[Int])(using Shift.Emitting[Int]): Unit ! R = direct:
   t match
@@ -244,6 +252,7 @@ wanted to pull.
 `collectUntil` reads it until a `FoldUntil` says it has seen enough,
 and the rest of the producer never runs — the same `walk`, unchanged:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 Shift.collectUntil[Int, Vector[Int], Vector[Int], Pure](using FoldUntil.take(2))(walk(t))   // Vector(1, 2) — the third leaf is never visited
 Shift.collectUntil[Int, Option[Int], Option[Int], Pure](using FoldUntil.find[Int](_ > 1))(walk(t))  // Some(2)
@@ -264,6 +273,7 @@ what `collect` answers. `collectingUntil` is the nested half, as
 **The shape:** the program needs an answer from outside — a person, a
 different service, the next HTTP request.
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 def booking(using Shift.Asking[String, String, String, R]): String ! R = direct:
   val city   = !Shift.pause("Which city?")
@@ -298,6 +308,7 @@ So the thing you persist is not the `Paused` — it is the **journal**,
 the answers given so far, in order. Where the dialogue stands is then
 re-derived:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val (p1, j1) = !.run(Shift.answer(p0, Nil)("Kyiv"))
 val (p2, j2) = !.run(Shift.answer(p1, j1)("3"))    // j2 = List("Kyiv", "3")
@@ -384,6 +395,7 @@ production run replays on a laptop.
 
 ### A durable program, as it actually reads
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 def booking(using w: Wf.Asks[String, String, String, Pure]): String ! Shift % ? + Pure = direct:
   val city = !w.pause("city?")          // the world answers
@@ -427,6 +439,7 @@ this should plan for that difference rather than discover it.
 **The shape:** from somewhere in the middle, you want to act on what
 the *rest* of the block produces.
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 Shift.delimited[String, Pure]:
   direct:

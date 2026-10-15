@@ -1,5 +1,7 @@
 # 24 · A debugger for agents
 
+> **The classic road.** This chapter describes okay-freer, the frozen classic road (its tests stay at the tag `classic-freer`); on the kernel's words the counterpart is [okay-core's delimited control](../../okay-core/docs/guide.md#delimited-control).
+
 > **Part VI is production.** Compiled in
 > `okay-agent/src/test/scala/okay/agent/TestStepper.scala`, and the
 > thing itself is `okay-agent/.../Stepper.scala`. This is the chapter
@@ -41,6 +43,7 @@ Four properties, each pinned:
 
 ## Multi-shot pays for itself
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 case Shift.Paused.Ask(_, resume, _) =>
   Shift.run(resume("first world")).flatMap { a =>

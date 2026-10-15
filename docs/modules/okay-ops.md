@@ -100,7 +100,7 @@ own release stops the server, and the shutdown hook holds the JVM
 open until that has happened:
 
 ```scala
-Resource.run[Unit, Pure](
+Resource.run(
   Jetty.serve(port)(Ops.routes(store, lifecycle = Some(l)).orElse(l.route(app)))().map { s =>
     val drained = Signals.awaitSignal(l)   // SIGTERM → ready=false → delay → drain
   }).runWith                               // → the region stops Jetty

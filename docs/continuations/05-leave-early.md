@@ -1,5 +1,7 @@
 # 5 · Leave early with an answer
 
+> **The classic road.** This chapter describes okay-freer, the frozen classic road (its tests stay at the tag `classic-freer`); on the kernel's words the counterpart is [okay-core's delimited control](../../okay-core/docs/guide.md#delimited-control).
+
 > **Part II is the recipes.** Four chapters, one shape each, and a
 > fifth on making them nest. Every runnable snippet from here on is
 > compiled: this chapter's code lives in `src/test/scala/TestBookLeaveEarly.scala`,
@@ -14,6 +16,7 @@ Chapter 1 left this one unfinished. An invoice has lines; lines have
 allocations; allocations name a cost centre. **If any cost centre is
 closed, the whole invoice is rejected, naming that centre.**
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 final case class Alloc(centre: String, amount: Int)
 final case class Line(sku: String, allocations: List[Alloc])
@@ -26,6 +29,7 @@ to travel out.
 
 ## The shape
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 def check(inv: Invoice): Option[Rejected] ! Pure =
   Shift.delimited[Option[Rejected], Pure]:
@@ -60,6 +64,7 @@ without nesting lambdas.
 The usual version — and this is the honest comparison, not a straw
 man, because it is what the same test asserts agrees with it:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 def checkThreaded(inv: Invoice): Option[Rejected] =
   def line(l: Line): Option[Rejected] =
@@ -88,6 +93,7 @@ learn to see.
 
 Worth checking rather than assuming, and the suite checks it:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 var seen = 0
 // ...count each allocation as it is examined...
@@ -107,6 +113,7 @@ not appear in a stack trace. It is an ordinary value leaving through a
 boundary you declared. The suite pins the consequence that surprises
 people:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val r = Shift.delimited[Int, Pure]:
   direct:

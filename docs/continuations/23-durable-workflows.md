@@ -1,5 +1,7 @@
 # 23 · Durable workflows
 
+> **The classic road.** This chapter describes okay-freer, the frozen classic road (its tests stay at the tag `classic-freer`); on the kernel's words the counterpart is [okay-core's delimited control](../../okay-core/docs/guide.md#delimited-control).
+
 > **Part VI is production.** The operator's guide is
 > [docs/durable-workflows.md](../durable-workflows.md) and the
 > architecture with every refuted alternative is
@@ -24,6 +26,7 @@ lines that somebody must keep in step by hand.
 
 ## The shape
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 def booking(using w: Wf.Asks[String, String, String, Pure]): String ! Shift % ? + Pure = direct:
   val city  = !w.pause("which city?")      // the WORLD answers

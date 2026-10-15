@@ -1,5 +1,7 @@
 # 6 · A push producer, read as a pull
 
+> **The classic road.** This chapter describes okay-freer, the frozen classic road (its tests stay at the tag `classic-freer`); on the kernel's words the counterpart is [okay-core's delimited control](../../okay-core/docs/guide.md#delimited-control).
+
 > This chapter's code is compiled in `src/test/scala/TestBookPushAsPull.scala`.
 > It is also the chapter with the clearest ceiling: the shape here
 > solves half of chapter 1's second problem, and says so. The other
@@ -12,6 +14,7 @@
 Something produces items by calling you: a tree walk, a parser, a
 scanner, a visitor. It holds the loop; you hold a function it calls.
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 def walkCallback(e: Entry, prefix: String = "")(onFile: String => Unit): Unit =
   e match
@@ -42,6 +45,7 @@ people pay it without noticing.
 
 The producer says `emit` and nothing else; the boundary collects:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 def walk(e: Entry, prefix: String = "")(using Shift.Emitting[String]): Unit ! Row =
   direct:
@@ -80,6 +84,7 @@ rather than threading a function through every level.
 The suite asserts the callback version and this one produce the same
 list. Not an implication — a test:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val buf = List.newBuilder[String]
 walkCallback(tree)(buf += _)
@@ -94,6 +99,7 @@ about which one leaves the consumer able to be ordinary code.
 **`collect` runs the producer to the end.** Every item, always. The
 suite pins it with a counter:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val all = !.run(Shift.collect[String, Pure](counting(tree)))
 assertEquals(all.size, 4)

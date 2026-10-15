@@ -1,5 +1,7 @@
 # Continuations: a working book
 
+> **The classic road.** This book describes okay-freer, the frozen classic road (its tests stay at the tag `classic-freer`); on the kernel's words the counterpart is [okay-core's delimited control](../../okay-core/docs/guide.md#delimited-control).
+
 **The plan, the theses, and the reading order.** All 28 chapters are
 written; this page is the contract each of them was written against,
 and the place to start. Every runnable snippet in the book compiles —

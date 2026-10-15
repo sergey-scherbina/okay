@@ -1,5 +1,7 @@
 # 7 · Stop in the middle, carry on later
 
+> **The classic road.** This chapter describes okay-freer, the frozen classic road (its tests stay at the tag `classic-freer`); on the kernel's words the counterpart is [okay-core's delimited control](../../okay-core/docs/guide.md#delimited-control).
+
 > Compiled in `src/test/scala/TestBookStopInTheMiddle.scala`. This is
 > the shape with the largest consequences: everything in Part VI is
 > built from it, and chapter 6's ceiling is removed here.
@@ -19,6 +21,7 @@ producer **pauses** with it — and hands back *the rest of itself*.
 
 Chapter 6's directory walk, with `emit` replaced by `pause`:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 def walk(e: Entry, prefix: String = "")
         (using Shift.Asking[String, Unit, Unit, Row]): Unit ! Row =
@@ -37,6 +40,7 @@ produces nothing (`Unit`) — a pure producer.
 
 Starting it gives you a value:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 var p = !.run(Shift.resumable[String, Unit, Unit, Pure](walk(tree)))
 ```
@@ -47,6 +51,7 @@ the walk from this point on.
 
 ## Taking two, and not walking the rest
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 p match
   case Shift.Paused.Ask(q, _, _) if got.size < n =>
@@ -57,6 +62,7 @@ p match
 
 and the suite checks the thing that matters:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val (files, pulls) = take(2)
 assertEquals(files, List("/a.txt", "/src/Main.scala"))
@@ -80,6 +86,7 @@ no thread, no queue, and no buffer of everything.
 
 This is the one a callback simply cannot do:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 (a, b) match
   case (Shift.Paused.Ask(qa, _, _), Shift.Paused.Ask(qb, _, _)) =>
@@ -98,6 +105,7 @@ between them; here both are values in local variables and the
 The claim deserves its own test, because it is the one that surprises
 people:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val start = !.run(Shift.resumable[String, String, String, Pure](booking))
 
@@ -127,6 +135,7 @@ answered by something outside it — an operator, another service, a
 test harness. The program reads as straight-line code; the questions
 and answers are data:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 def booking(using Shift.Asking[String, String, String, Row]): String ! Row = direct:
   val city   = !Shift.pause("Which city?")

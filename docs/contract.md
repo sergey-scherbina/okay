@@ -1,5 +1,7 @@
 # What okay is: the contract in three parts
 
+> **The classic road.** Part 1's `Effects[M]` and its `foldCont` describe okay-freer, the frozen classic road (its tests stay at the tag `classic-freer`); on the kernel's words the counterpart is [okay-core's guide](../okay-core/docs/guide.md).
+
 Most of this repository is libraries built ON okay: HTTP, SQL, streams,
 agents, UI. This page is about what is underneath all of them, the part
 a user's code actually depends on. It has three parts, and the list is
@@ -84,6 +86,7 @@ you get is an `S`, and `S` is your choice. It decides what the
 interpretation PRODUCES. One program, three answers
 (`src/test/scala/TestFoldCont.scala`):
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 enum Op[+A]:
   case Pick(xs: List[Int]) extends Op[Int]
@@ -97,6 +100,7 @@ yield (a, b)
 **`S` is the answer.** The handler resumes `k` once, and `/ identity`
 closes it. That is exactly what `runWith` is:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val first: Op !> (Int, Int) = [X] => (e: Op[X]) => e match
   case Op.Pick(xs) => Cps.shift[X, (Int, Int), (Int, Int)](k => k(xs.head))
@@ -107,6 +111,7 @@ assertEquals(pair.foldCont(first) / identity, (1, 10))
 **`S` is every answer.** The handler resumes `k` once per choice and
 concatenates. The last continuation wraps the one final answer:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val all: Op !> List[(Int, Int)] = [X] => (e: Op[X]) => e match
   case Op.Pick(xs) => Cps.shift[X, List[(Int, Int)], List[(Int, Int)]](k => xs.flatMap(k))
@@ -118,6 +123,7 @@ assertEquals(pair.foldCont(all) / (p => List(p)), List((1, 10), (1, 20), (2, 10)
 cell and passes the next one on. The last continuation pairs the answer
 with the final cell, and the result is applied to the starting state:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 type St = Int => (Int, Int)
 val counter: Int ! State % Int = for
@@ -148,16 +154,19 @@ extension [F[+_], A](m: M[F, A])
     ...
 ```
 
-Folding a program into cats-effect's `IO` (okay-cats, `TestCatsClasses`):
+Folding a program into cats-effect's `IO` (okay-cats, `TestCatsClasses`). On the kernel's words the program
+crosses as cats' free monad and folds there:
 
 ```scala
 val p: Int ! Ask = for
-  a <- okay.freer.effect(Ask.Num("a"))
-  b <- okay.freer.effect(Ask.Num("bb"))
+  a <- okay.effect(Ask.Num("a"))
+  b <- okay.effect(Ask.Num("bb"))
 yield a * 10 + b
 val toIO: Ask ==> IO = [X] => (e: Ask[X]) => e match
   case Ask.Num(k) => IO(k.length)
-assertEquals(p.foldMap(toIO).unsafeRunSync(), 12)
+val nt = new _root_.cats.arrow.FunctionK[Ask, IO]:
+  def apply[X](e: Ask[X]): IO[X] = toIO(e)
+assertEquals(CatsInterop.toCats(p).foldMap(nt).unsafeRunSync(), 12)
 ```
 
 It is `G`'s own loop, `TailRecM[G]`, as cats' `Free.foldMap` is. Each

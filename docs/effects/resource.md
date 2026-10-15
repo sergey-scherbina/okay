@@ -31,6 +31,10 @@ val three = Resource.scoped(sum)   // 3, and log is Vector(open a, open b, close
 
 ## Through a capture: `abort`, and a `k` that is dropped
 
+This section describes okay-freer, the frozen classic road: `Shift`'s `abort` and `discontinue` (their tests
+stay at the tag `classic-freer`). On the kernel's words, a scope whose rest a handler outside drops (a
+`Maybe.none`, a `halt`, a choice of none) releases before it goes, once (okay-std, `TestResourceDropped`).
+
 A scope can sit inside a delimited continuation: a `shift` or an `abort`
 to a prompt OUTSIDE the scope captures the scope along with everything
 else up to the prompt. When that continuation is resumed, the scope goes
@@ -46,6 +50,7 @@ of the code there, and recovering from it would run on in a continuation
 that nobody resumes. If a release fails, the `abort` fails with that
 failure.
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 def scope[A](log: scala.collection.mutable.ArrayBuffer[String], name: String)(body: String => A ! Resource + D): A ! D =
   Resource.run[A, D](Resource.acquire(name)(x => log += s"release $x").at[Resource + D].flatMap(body))
@@ -63,6 +68,7 @@ generator, a dialogue). Releasing at the capture would break the second,
 so the body says which it is: `Shift.discontinue(k)` drops `k` the way
 `abort` does.
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 scope(log, "a")(_ => Shift.shift[String, Int, Pure](p)(k =>
   Shift.discontinue(k).map(_ => "dropped")).at[Resource + D].map(_.toString)))))
@@ -91,17 +97,17 @@ when the search crosses it.
 
 ```scala
 def shared(log: Log)(xs: Seq[Int]): Int ! R =
-  Resource.run[Int, R](Resource.acquire("a")(x => log += s"release $x").at[Resource + R].flatMap(_ =>
+  Resource.run(Resource.acquire("a")(x => log += s"release $x").at[Resource + R].flatMap(_ =>
     effect[Choose, Int](Choose(xs)).at[Resource + R].map { x => log += s"use $x"; x }))
 
-assertEquals(!.run(runChoice[Int, Pure](shared(log)(Seq(1, 2, 3)))), Seq(1, 2, 3))
+assertEquals(runChoice(shared(log)(Seq(1, 2, 3))).run, Seq(1, 2, 3))
 assertEquals(log.toList, List("use 1", "use 2", "use 3", "release a"))
 ```
 
 A search that stops early still releases it once:
 
 ```scala
-assertEquals(!.run(runChoice[Int, Pure](cut[Int, Pure](shared(log)(Seq(1, 2, 3))))), Seq(1))
+assertEquals(runChoice(cut[Int, R](shared(log)(Seq(1, 2, 3)))).run, Seq(1))
 assertEquals(log.toList, List("use 1", "release a"))
 ```
 

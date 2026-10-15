@@ -1,5 +1,7 @@
 # 9 · Composing the shapes
 
+> **The classic road.** This chapter describes okay-freer, the frozen classic road (its tests stay at the tag `classic-freer`); on the kernel's words the counterpart is [okay-core's delimited control](../../okay-core/docs/guide.md#delimited-control).
+
 > Compiled in `okay-direct/src/test/scala/TestBookComposing.scala`.
 > This is the chapter that matters most in a real codebase, because a
 > real codebase never wants exactly one shape.
@@ -10,6 +12,7 @@
 
 Here is the obvious thing to write:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 Shift.delimited[String, Pure]:
   direct:
@@ -58,6 +61,7 @@ to run.
 
 The example above, with the right column:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 Shift.delimited[String, Pure]:              // runs
   direct:
@@ -78,6 +82,7 @@ Nested boundaries are not just isolation. Because a prompt is a
 first-class value, an inner scope can leave through an **outer**
 boundary — the thing nested handlers cannot express:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 Shift.delimited[String, Pure]: outer ?=>
   direct:
@@ -103,6 +108,7 @@ default is the nearest.
 
 The common case. A walk that emits, and stops early:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 def upToBig(x: Tree)(using Shift.Emitting[Int], Shift.Prompted[Unit]): Unit ! Row =
   direct:
@@ -120,6 +126,7 @@ otherwise ordinary.
 Assembling it: `collect` is outermost (it runs), and a `scope` inside
 it provides the boundary the exit aims at.
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val got = !.run(Shift.collect[Int, Pure](
   direct:
@@ -145,6 +152,7 @@ documented rather than described.
 
 Chapter 8 promised this, and here it is composed:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 Shift.delimited[Int, Pure]:
   direct:

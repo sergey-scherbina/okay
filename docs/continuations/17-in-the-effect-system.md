@@ -1,5 +1,7 @@
 # 17 · In the effect system
 
+> **The classic road.** This chapter describes okay-freer, the frozen classic road (its tests stay at the tag `classic-freer`); on the kernel's words the counterpart is [okay-core's delimited control](../../okay-core/docs/guide.md#delimited-control).
+
 > **Part IV is about building.** Compiled in
 > `src/test/scala/TestBookInTheSystem.scala`. Every chapter so far put
 > a capture *somewhere*. This one is about what "somewhere" means when
@@ -25,6 +27,7 @@ question having been answered by accident.
 A program that captures, invokes the continuation **twice**, and adds
 to a state in between. Handler outside the delimiter:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 def outside(using Shift.Prompted[Int]): Int ! Row = direct:
   val x = !Shift.shift[Int, Int, State % Int](k => direct { !k(1) + !k(10) })
@@ -42,6 +45,7 @@ that happens to be written as a fork.
 
 Now the handler inside:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 def inside(using Shift.Prompted[(Int, Int)]): Int ! Row = direct:
   val x = !Shift.shift[(Int, Int), Int, State % Int]: k =>
@@ -99,6 +103,7 @@ So the rule has a corollary worth remembering:
 
 The row is where this is written down. In `outside`:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 type Row = Shift % ? + State % Int          // inside the delimiter
 val prog: Int ! State % Int = Shift.delimited[Int, State % Int](outside)

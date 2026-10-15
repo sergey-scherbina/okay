@@ -1,5 +1,7 @@
 # Several instances of one effect in a row
 
+> **The classic road.** This page describes okay-freer, the frozen classic road (its tests stay at the tag `classic-freer`); on the kernel's words the counterpart is [okay-core's rows](../okay-core/docs/guide.md#rows).
+
 A row lists the effects a program may perform: `State % Int + Writer %
 String + Async`. A natural question follows almost immediately — **can
 it list the same effect twice?** Two counters. A cache in front of a
@@ -59,6 +61,7 @@ its own scaladoc.
 If you can name the instances when you write the type, give each
 operation a key and the test has something to compare:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 type Small = Tag.Of["small", State % Int]
 type Big   = Tag.Of["big",   State % Int]
@@ -70,6 +73,7 @@ is already erased, so the key is the only thing worth testing.
 
 What makes this worth having is not the wrapper but `tag`:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val twice: (Int, Int) ! (Small + Big) =
   for
@@ -104,6 +108,7 @@ row.** The test is by key and by key alone — that is what lets one
 signature appear twice — so two members sharing a key have nothing
 left to compare:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 type A = Tag.Of["same", Reader % Int]
 type B = Tag.Of["same", Reader % String]   // same key: back to square one
@@ -177,6 +182,7 @@ compile time.
 
 `Instances` is `Tag` with the key read at run time:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val tenants = List("alpha", "beta", "gamma")      // data, not literals
 val handles = tenants.map(Instances.handle)
@@ -372,6 +378,7 @@ two writers collect the right elements — but only under
 `Writer.byValue.writerK`, which reads the told VALUE with a
 `Typeable[W]` rather than testing the class, and is an OPT-IN:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 import okay.std.Writer.byValue.given
 given writerK[W](using t: Typeable[W]): TypeableK.ByValue[Writer % W]

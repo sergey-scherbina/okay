@@ -1,5 +1,7 @@
 # `Delimited`: the continuation machine as an interface
 
+> **The classic road.** This page describes okay-freer, the frozen classic road (its tests stay at the tag `classic-freer`); on the kernel's words the counterpart is [okay-core's delimited control](../okay-core/docs/guide.md#delimited-control).
+
 Every control operator in okay — `reset`, `shift`, `shift0`, `abort`,
 `$`, the handlers of `Lexical`, `Cps` — is built from four
 primitives. They are a trait, `Delimited[M]`, and the frame machine is
@@ -45,6 +47,7 @@ A program that only needs delimited control can be written against
 `Delimited[M]` and run on any instance. Here `k` is called twice, and
 the delimiter's `ret` runs once per call:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val body: Str = D.shift0[String, String, String, String, String](p)(k => k("a").flatMap(x => k("b").map(y => x + y))).map(_ + "!")
 assertEquals(D.run(D.dollar[String, String, String, String](p)(s => D.pure(s"<$s>"))(body)), "<a!><b!>")
@@ -63,6 +66,7 @@ carries. Below, `q` is installed inside the captured context; nothing
 outside names it, yet the computation handed to `resume` captures to
 it and resumes that inner continuation twice:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val inside: Str =
   D.shift0[String, String, String, String, String](q)(k2 => k2("y").flatMap(a => k2("z").map(b => a + b)))

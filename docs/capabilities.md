@@ -249,8 +249,8 @@ deletion:
 ```scala
 // the row spelling: environment as an effect, handled at run
 def viaReader: Int ! Reader % Int + W = direct {
-  val env = effect[Reader % Int + W, Int](Reader.Ask()).?
-  effect[Reader % Int + W, Unit](Writer(s"env=$env")).?
+  val env = Reader.ask[Int].?
+  Writer.tell(s"env=$env").?
   env + 1
 }
 // the elimination: environment as a capability — Reader is GONE
@@ -335,7 +335,7 @@ def told: Env ?=> Int ! Writer % String = direct {
   wire[Env].uid                        // the door, inside the block
 }
 
-provide(Env("ada", 7)) { !.run(Writer.run(told)) }
+provide(Env("ada", 7)) { (Writer.run(told)).run }
 // Vector(hello ada, bye) -> 7
 ```
 

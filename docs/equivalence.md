@@ -18,11 +18,10 @@ and it is equality of interaction trees \[[Xia et al. 2020](#ref-itrees-2020)\].
 
 `Bisim.check` walks both trees in lockstep. The one practical change is
 that the answers come from a finite **sample** you give per operation,
-instead of from every possible value:
+instead of from every possible value, a function of the operation:
 
 ```scala
-trait Answers[F[+_]]:
-  def apply[X](op: F[X]): List[X]
+def of[F[_]](f: [X] => F[X] => List[X]): Answers[F] = new Answers[F]:
 ```
 
 ## A difference is found, with its path
@@ -50,8 +49,8 @@ The two verdicts carry different weight:
 ## Rows of several effects
 
 `+` combines answers for each member of a row. Each operation is
-answered by the member whose runtime test accepts it, the same test a
-runner uses:
+answered by the member at its place in the row (the path, not a class
+test), the same place a runner finds:
 
 ```scala
 given Answers[Gen.Row[Int]] = Answers.writer[Int] + Answers.stop
@@ -86,6 +85,10 @@ measured against deliberate mutants of the library's own stage code
 
 ## Coherence: two roads to a wider row
 
+This section and the next describe okay-freer, the frozen classic road, whose rows were unions routed by a
+runtime test (their suites stay at the tag `classic-freer`); a kernel row finds a member by its place, so neither
+road exists there.
+
 A program at row `F` reaches `F + G` by a coercion, `!.widen`, or by a
 walk that rebuilds the tree, `!.normalize`. What the program means must
 not depend on which road it took. That property is coherence of effect
@@ -96,6 +99,7 @@ exactly when neither changes an operation. `TestRowCoherence` states it
 as a law over every core signature and over mixed rows, including two
 `Tag` keys over one signature:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
     Bisim.check(!.widen[A, F, Added](p), !.normalize[A, F, Added](p), depth) match
       case Verdict.Same(paths, _) => assert(paths > 0, s"$name: no sampled path ended")
@@ -116,6 +120,7 @@ perform each foreign operation once, in place, and hand the answer back.
 that does exactly that and nothing else, under a spy row the handler has
 no business with:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
     Bisim.check(left, right, depth) match
       case Verdict.Same(paths, _) => assert(paths > 0, s"$name: no sampled path ended")

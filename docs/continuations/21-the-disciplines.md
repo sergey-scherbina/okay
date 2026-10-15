@@ -1,5 +1,7 @@
 # 21 · The disciplines that make it safe
 
+> **The classic road.** This chapter describes okay-freer, the frozen classic road (its tests stay at the tag `classic-freer`); on the kernel's words the counterpart is [okay-core's delimited control](../../okay-core/docs/guide.md#delimited-control).
+
 > **Part V is the limits.** Compiled in
 > `src/test/scala/TestReplayable.scala`,
 > `src/test/scala/TestDelimDiagnostics.scala` and
@@ -106,6 +108,7 @@ that detail is the whole trick: implicit search runs at the *call
 site*, so a method taking `(using At)` gets the line of whoever called
 it. A library then needs no inline wrapper per door.
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 def door(using at: At): String = at.where
 door    // "TestDelimDiagnostics.scala:36" -- the CALLER's line

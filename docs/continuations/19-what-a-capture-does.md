@@ -1,5 +1,7 @@
 # 19 · What a capture does to everything else
 
+> **The classic road.** This chapter describes okay-freer, the frozen classic road (its tests stay at the tag `classic-freer`); on the kernel's words the counterpart is [okay-core's delimited control](../../okay-core/docs/guide.md#delimited-control).
+
 > **Part V is the limits** — the half that makes the rest
 > trustworthy. Compiled in `src/test/scala/TestDelimLimits.scala`,
 > which is this chapter's real text, plus
@@ -32,6 +34,7 @@ it. Reread that chapter if this is news. It is first here because most
 
 The contrast that makes chapter 17 land:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 var seen = List.empty[Int]
 Shift.delimited[Int, P]:
@@ -85,6 +88,7 @@ the single most expensive surprise in the chapter.
 
 And the pair that explains both:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 !Shift.exit(1)
 cleaned = true      // never runs
@@ -111,6 +115,7 @@ okay.std.bracket[Int, Int, okay.freer.Shift % ? + okay.Pure](1)(_ => ())(r => ok
 exactly what a capture breaks. It needs a `Answers` for the row, and
 `Shift` has none.
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 try { !okay.freer.Shift.exit(1); 0 } finally { closed = true }
 // error, mentioning: finalizer
@@ -124,6 +129,7 @@ and warned about, it is unwritable.
 
 The trap that survives review, so read it twice:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val prog: Int ! Async = direct:
   try !okay.async[Int](throw new RuntimeException("boom"))
@@ -142,6 +148,7 @@ raises instead of resuming leaves the rest of the block unrun.
 
 ## A second machine does not happen, and an unread row is refused
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 Shift.delimited[Int, Shift % ? + P](Shift.abort[Int, Int, Shift % ? + P](outer)(7)).map(_ + 1000)))
 // 7: the abort crossed the inner block to `outer`
@@ -154,6 +161,7 @@ it, so the capture crosses.
 
 The old hole, stated by its own test and named `THE LIMIT`:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 def generic[F[+_]](p: Int ! Shift % ? + F): Int ! F = Shift.run(p)
 ```
@@ -163,6 +171,7 @@ compile, because `NotGiven` reads an unknown `F` as "absent".
 Instantiated at a `Shift` row it threw `NoPrompt` at run time. Now the
 row cannot be read, so it is a compile error that names the fix:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 def generic[F[+_]](p: Int ! Shift % ? + F)(using Shift.Machine[F]): Int ! F = Shift.run(p)
 ```
@@ -185,6 +194,7 @@ and chapter 20 prices it.
 
 ## Shapes that do work, and are worth knowing
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val xs = List(1, 2, 3).map(n => if n == 2 then !Shift.exit(n * 100) else ())
 // the whole block answers 200
@@ -193,6 +203,7 @@ val xs = List(1, 2, 3).map(n => if n == 2 then !Shift.exit(n * 100) else ())
 `exit` leaves from inside a lambda the block does not own. Chapter 5
 promised that; here it is pinned.
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 val a = !Shift.pause("q1")
 val b = !okay.async(a * 2).at[Row]

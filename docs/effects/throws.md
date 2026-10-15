@@ -28,7 +28,7 @@ def parse(s: String): Int ! Throws % String =
 val good = parse("42").handle(Throws.either).run   // Right(42)
 val bad  = parse("x").handle(Throws.either).run    // Left(not a number: x)
 
-val nothing = !.run(runOption(abort[Int]))   // None
+val nothing = runOption(abort[Int]).run   // None
 ```
 
 ## Which error effect

@@ -1,5 +1,7 @@
 # 14 · A new effect from a prompt
 
+> **The classic road.** This chapter describes okay-freer, the frozen classic road (its tests stay at the tag `classic-freer`); on the kernel's words the counterpart is [okay-core's delimited control](../../okay-core/docs/guide.md#delimited-control).
+
 > **Part IV is about building.** Compiled in
 > `src/test/scala/TestBookNewEffect.scala`. This chapter pays off the
 > promise made in chapter 4: *if it can be an effect it should be —
@@ -17,6 +19,7 @@ and the rest is discarded.
 The call sites should read like this, and this is the whole test of
 whether the exercise worked:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 def shop(using Budget[String]): String ! Row = direct:
   !Budget.spend[Pure](30)
@@ -52,6 +55,7 @@ version instead.
 
 **The boundary** — installs the prompt, makes the evidence, runs:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 def within[R, F[+_]](limit: Int)(orElse: => R)
                     (body: Budget[R] ?=> R ! Shift % ? + F)
@@ -69,6 +73,7 @@ compiler asks for it.
 
 **The operation** — the only thing users write:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 def spend[F[+_]](n: Int)(using b: Budget[?], at: At): Unit ! Shift % ? + F =
   if b.left.addAndGet(-n) >= 0 then okay.freer.pure(())
@@ -83,6 +88,7 @@ the sort of thing a type member exists to remove.
 And a read-only question, to show that not everything has to be a
 capture:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 def remaining(using b: Budget[?]): Int = b.left.get
 ```
@@ -96,6 +102,7 @@ Budget.within[String, Pure](100)("over budget")(shop)
 
 and over the limit, with a flag proving the tail did not run:
 
+<!-- not-a-test: okay-freer, the classic road (frozen) -->
 ```scala
 def greedy(using Budget[String]): String ! Row = direct:
   !Budget.spend[Pure](60)

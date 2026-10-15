@@ -27,7 +27,7 @@ val greet: String ! Reader % String =
 
 val hello = greet.handle(Reader("ada")).run   // "hello, ada"
 
-val shout = Reader.local[String, String, Pure](_.toUpperCase)(greet).handle(Reader("ada")).run   // "hello, ADA"
+val shout = Reader.local[String, String, Reader % String](_.toUpperCase)(greet).handle(Reader("ada")).run   // "hello, ADA"
 ```
 
 ## When to use it
