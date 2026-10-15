@@ -1,5 +1,4 @@
 package okay.cluster.foreign
-import okay.freer.given
 import okay.given
 
 import okay.cluster.{Flow, Flows}

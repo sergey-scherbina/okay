@@ -1,9 +1,6 @@
 package okay.cluster.foreign
 
-import okay.freer.{+}
-import okay.freer.{!, pure}
-import okay.freer.given
-import okay.freer.Row.plus
+import okay.{!, +, pure}
 import okay.codec.Schema
 import okay.frege.Prog.TProg
 import okay.foreign.{Jvm, Foreign, Shape}
@@ -24,16 +21,16 @@ final case class CljModule(ns: String)
 
 object CljModule:
   given programs: Programs[CljModule] = new:
-    type Op[+A] = Nothing
+    type Op[A] = Nothing
     def name = "clojure"
-    def program[Arg: Schema, Out: Schema, F[+_]](module: CljModule, fn: String, cbs: Vector[Cb[F]])(a: Arg)
+    def program[Arg: Schema, Out: Schema, F[_]](module: CljModule, fn: String, cbs: Vector[Cb[F]])(a: Arg)
     : Either[Batcher.Failed, Out] ! (F + Op) =
       okay.clojure.Clj.fn(module.ns, fn) match
-        case Left(why) => pure[F + Op, Either[Batcher.Failed, Out]](Left(Batcher.Failed("LookupError", why)))
+        case Left(why) => pure[Either[Batcher.Failed, Out], F + Op](Left(Batcher.Failed("LookupError", why)))
         case Right(f) =>
-          given okay.freer.Member[F] = JvmPrograms.callbacksOnly[F]
+          given okay.Foreign.Member[F] = JvmPrograms.callbacksOnly[F]
           okay.clojure.Program.run[F, AnyRef](f.invoke(JvmPrograms.arg(a)), s"clojure ${module.ns}/$fn",
-            JvmPrograms.calls(cbs)).map(JvmPrograms.answer[Out]).plus[Op]
+            JvmPrograms.calls(cbs)).map(JvmPrograms.answer[Out]).at[F + Op]
     def run[A](module: CljModule)(prog: A ! Op): A = prog.runWith(using JvmPrograms.none)
 
 /**
@@ -49,16 +46,16 @@ object FregeModule:
   def apply(name: String): FregeModule = new FregeModule(name, Map.empty)
 
   given programs: Programs[FregeModule] = new:
-    type Op[+A] = Nothing
+    type Op[A] = Nothing
     def name = "frege"
-    def program[Arg: Schema, Out: Schema, F[+_]](module: FregeModule, fn: String, cbs: Vector[Cb[F]])(a: Arg)
+    def program[Arg: Schema, Out: Schema, F[_]](module: FregeModule, fn: String, cbs: Vector[Cb[F]])(a: Arg)
     : Either[Batcher.Failed, Out] ! (F + Op) =
       module.get(fn) match
-        case None => pure[F + Op, Either[Batcher.Failed, Out]](Left(Batcher.Failed("LookupError", s"no program named '$fn' in the Frege module ${module.name}")))
+        case None => pure[Either[Batcher.Failed, Out], F + Op](Left(Batcher.Failed("LookupError", s"no program named '$fn' in the Frege module ${module.name}")))
         case Some(make) =>
-          given okay.freer.Member[F] = JvmPrograms.callbacksOnly[F]
+          given okay.Foreign.Member[F] = JvmPrograms.callbacksOnly[F]
           okay.frege.Frege.run[F, AnyRef](make(JvmPrograms.arg(a)), s"frege ${module.name}.$fn",
-            JvmPrograms.calls(cbs)).map(JvmPrograms.answer[Out]).plus[Op]
+            JvmPrograms.calls(cbs)).map(JvmPrograms.answer[Out]).at[F + Op]
     def run[A](module: FregeModule)(prog: A ! Op): A = prog.runWith(using JvmPrograms.none)
 
 private[foreign] object JvmPrograms:
@@ -68,13 +65,15 @@ private[foreign] object JvmPrograms:
   def arg[A: Schema](a: A): AnyRef = Jvm.jvm(summon[Shape].encode(a))
 
   /** the facade's callbacks, as the walker asks them */
-  def calls[F[+_]](cbs: Vector[Cb[F]]): okay.Foreign.Calls[F] =
+  def calls[F[_]](cbs: Vector[Cb[F]]): okay.Foreign.Calls[F] =
     Jvm.calls(Foreign.callbacks[F](cbs.map(c => Foreign.callback[c.Arg, c.Res](c.name)(using c.arg, c.res)(c.run))*))
 
   /** a row whose own operations a facade program does not perform: through
    * the facade a program performs its CALLBACKS, as a wire language's does,
    * so an operation of the row is refused by name, never cast */
-  def callbacksOnly[F[+_]]: okay.freer.Member[F] = _ => false
+  def callbacksOnly[F[_]]: okay.Foreign.Member[F] = new:
+    def test(x: Any): Boolean = false
+    def perform(x: AnyRef): AnyRef ! F = throw IllegalArgumentException(s"not an operation of a facade program: $x")
 
   /** the handler of a row with no operations: what is left once the
    * caller has handled its callbacks' effects */

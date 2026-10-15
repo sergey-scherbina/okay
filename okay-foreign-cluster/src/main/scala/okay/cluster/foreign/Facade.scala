@@ -3,9 +3,7 @@ package okay.cluster.foreign
 import okay.codec.Schema
 import okay.arrow.{Rows, Table}
 import okay.cluster.Flow
-import okay.freer.{+}
-import okay.freer.{!}
-import okay.freer.given
+import okay.{!, +}
 /**
  * THE FACADE OVER EVERY FOREIGN LANGUAGE (specs/foreign-facade.md): one
  * typeclass per CAPABILITY, by the module's type — the shape
@@ -146,7 +144,7 @@ object Streams:
  * this one says it once, and each `Programs` instance turns it into its
  * language's (specs/foreign-facade.md, Decision 3).
  */
-trait Cb[F[+_]]:
+trait Cb[F[_]]:
   type Arg
   type Res
   def name: String
@@ -155,7 +153,7 @@ trait Cb[F[+_]]:
   def run: Arg => Res ! F
 
 object Cb:
-  def apply[F[+_], A, B](name0: String)(f: A => B ! F)(using sa: Schema[A], sb: Schema[B]): Cb[F] { type Arg = A; type Res = B } = new Cb[F]:
+  def apply[F[_], A, B](name0: String)(f: A => B ! F)(using sa: Schema[A], sb: Schema[B]): Cb[F] { type Arg = A; type Res = B } = new Cb[F]:
     type Arg = A
     type Res = B
     val name = name0
@@ -179,9 +177,9 @@ object Cb:
  * `Programs[JvmModule]` gives is the honest answer (Decision 7).
  */
 trait Programs[-M]:
-  type Op[+A]
+  type Op[A]
   def name: String
-  def program[Arg: Schema, Out: Schema, F[+_]](module: M, fn: String, cbs: Vector[Cb[F]])(a: Arg): Either[Batcher.Failed, Out] ! (F + Op)
+  def program[Arg: Schema, Out: Schema, F[_]](module: M, fn: String, cbs: Vector[Cb[F]])(a: Arg): Either[Batcher.Failed, Out] ! (F + Op)
   def run[A](module: M)(prog: A ! Op): A
 
 object Programs:
@@ -189,12 +187,12 @@ object Programs:
    * rules, and the whole walk on the one pool, which routes a program by its
    * run so its continuations stay on one worker */
   def of[M](lang: Language[M]): Programs[M] = new:
-    type Op[+A] = okay.foreign.ForeignEval[A]
+    type Op[A] = okay.foreign.ForeignEval[A]
     def name = lang.name
     private given okay.foreign.Shape = lang.shape
-    private def cb[F[+_]](c: Cb[F]): okay.foreign.Foreign.Callback[F] =
+    private def cb[F[_]](c: Cb[F]): okay.foreign.Foreign.Callback[F] =
       okay.foreign.Foreign.callback[c.Arg, c.Res](c.name)(using c.arg, c.res)(c.run)
-    def program[Arg: Schema, Out: Schema, F[+_]](module: M, fn: String, cbs: Vector[Cb[F]])(a: Arg): Either[Batcher.Failed, Out] ! (F + Op) =
+    def program[Arg: Schema, Out: Schema, F[_]](module: M, fn: String, cbs: Vector[Cb[F]])(a: Arg): Either[Batcher.Failed, Out] ! (F + Op) =
       okay.foreign.Foreign.program[Out](lang.address(module, fn)).calling(okay.foreign.Foreign.callbacks[F](cbs.map(cb[F])*))(a).program
         .map(_.left.map(Language.failed))
     def run[A](module: M)(prog: A ! Op): A =

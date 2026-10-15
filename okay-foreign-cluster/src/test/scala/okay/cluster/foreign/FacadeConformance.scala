@@ -5,9 +5,8 @@ import okay.codec.Schema
 import okay.arrow.Rows
 import okay.cluster.{Flow, Flows}
 import okay.given
-import okay.freer.given
-import okay.freer.{%}
-import okay.freer.{!, effect}
+import okay.%
+import okay.effect
 import okay.std.{Choose, Reader, runChoice}
 /**
  * THE CONFORMANCE SUITE (specs/foreign-facade.md): one body per

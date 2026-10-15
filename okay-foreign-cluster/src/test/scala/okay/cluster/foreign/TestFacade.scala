@@ -1,7 +1,7 @@
 package okay.cluster.foreign
 
 import okay.codec.Schema
-import okay.freer.%
+import okay.%
 import FacadeConformance.Rec
 
 /** a module type with `Calls` and nothing else: the typeclass is open */

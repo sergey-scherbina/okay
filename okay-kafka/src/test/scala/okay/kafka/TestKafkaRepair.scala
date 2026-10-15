@@ -2,7 +2,7 @@ package okay.kafka
 
 import munit.FunSuite
 import okay.Condition
-import okay.freer.{!}
+import okay.!
 import okay.Condition.Decision.*
 import okay.codec.Schema
 import okay.persist.{Ack, Policy, Repair, Typed}
@@ -56,7 +56,7 @@ class TestKafkaRepair extends FunSuite:
     assume(available, s"no Kafka at $bootstrap — the live suite skips")
     val store = KafkaStore(bootstrap)
     try
-      val out = !.run(Condition.run[Vector[(Long, Ev)], okay.freer.Pure] {
+      val out = !.run(Condition.run {
         case (Repair.Damaged(off, _, _), _) => Resume(Ev("patched", off.toInt))
         case _ => Fail
       }(road(seeded(store))))
@@ -68,7 +68,7 @@ class TestKafkaRepair extends FunSuite:
     assume(available, s"no Kafka at $bootstrap — the live suite skips")
     val store = KafkaStore(bootstrap)
     try
-      val out = !.run(Condition.run[Vector[(Long, Ev)], okay.freer.Pure] {
+      val out = !.run(Condition.run {
         case (_: Repair.Damaged, menu) =>
           assertEquals(menu, Vector("skip"))
           Invoke("skip", ())
@@ -83,7 +83,7 @@ class TestKafkaRepair extends FunSuite:
     val store = KafkaStore(bootstrap)
     try
       val e = intercept[Condition.Unhandled](
-        !.run(Condition.run[Vector[(Long, Ev)], okay.freer.Pure] { (_, _) => Fail }(
+        !.run(Condition.run { (_, _) => Fail }(
           road(seeded(store)))))
       e.condition match
         case Repair.Damaged(off, _, _) => assertEquals(off, 1L)

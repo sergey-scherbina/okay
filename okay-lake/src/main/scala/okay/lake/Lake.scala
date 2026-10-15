@@ -2,7 +2,7 @@ package okay.lake
 
 import okay.{Async, Chunks, given}
 
-import okay.freer.{!, given}
+import okay.!
 import okay.arrow.{Column, Rows, Table}
 import okay.blob.{Blob, Bytes}
 import okay.cluster.{Bounds, Flow, Wire}
@@ -90,7 +90,7 @@ object Manifest:
 
 /** blocking reads of a lake: a flow's partition runs on its own thread */
 private[lake] object Run:
-  def apply[A](p: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](p))
+  def apply[A](p: A ! Async): A = Async.run(p).run
 
 /**
  * A PARQUET OBJECT AS A `ReadAt`: its size from the listing (or a HEAD),

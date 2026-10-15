@@ -3,7 +3,7 @@ package okay.kafka
 import okay.given
 
 
-import okay.freer.{Aggregator, given}
+import okay.freer.Aggregator
 import okay.cluster.{Cluster, Feeds, Flow, Flows, Job, Jobs, Scope, Wire}
 import okay.codec.Schema
 import org.apache.kafka.clients.admin.{Admin, NewTopic}

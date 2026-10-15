@@ -2,8 +2,7 @@ package okay.kafka
 
 import okay.{Async, Source, async}
 
-import okay.freer.{+, %}
-import okay.freer.{!, effect}
+import okay.{!, +, %, effect}
 import okay.std.{Chunk, Writer}
 import org.apache.kafka.clients.consumer.{Consumer, ConsumerRecord, KafkaConsumer}
 import org.apache.kafka.clients.producer.{KafkaProducer, Producer as JProducer, ProducerRecord}
@@ -36,12 +35,12 @@ object KafkaInterop {
   def source[K, V](consumer: Consumer[K, V], pollMillis: Long = 1000): KafkaChunks[K, V] =
     type F = Writer % Chunk[ConsumerRecord[K, V]] + Async
     def go(): KafkaChunks[K, V] =
-      effect[F, Chunk[ConsumerRecord[K, V]]](Async.Run { () =>
+      effect(Async.Run { () =>
         val records = consumer.poll(java.time.Duration.ofMillis(pollMillis))
         okay.ChunkBuf.ofSpecialized(records.iterator.asScala)
-      }).flatMap { chunk =>
+      }).at[F].flatMap { chunk =>
         if chunk.isEmpty then go()
-        else effect[F, Unit](Writer(chunk)).flatMap(_ => go())
+        else effect(Writer(chunk)).at[F].flatMap(_ => go())
       }
 
     go()
