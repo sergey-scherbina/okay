@@ -1,6 +1,6 @@
-package okay.freer
+package okay.std
 
-import okay.{Selective, ==>}
+import okay.{!, ==>, Join, Run, Selective, defer, effect}
 
 
 import scala.annotation.tailrec
@@ -25,7 +25,7 @@ import scala.annotation.tailrec
  * What it buys, in one line each:
  *
  *   `leaves`   every operation the program MAY perform, before it runs
- *   `toFree`   the same program as `A ! F`, to run in the ordinary way
+ *   `toProgram` the same program as `A ! F`, to run in the ordinary way
  *   `foldMap`  the spine interpreted into any Selective — which is
  *              where batching lives: N leaves, one round trip
  *
@@ -42,9 +42,9 @@ import scala.annotation.tailrec
  * loops sit at the measured threshold — specs/core-cleanup.md), and
  * the guarantee this type sells is that NO `Bind` is present, which a
  * type that has one cannot make. The bridge is one-way and cheap:
- * `toFree`.
+ * `toProgram`.
  */
-enum Static[F[+_], A]:
+enum Static[F[_], A]:
   /** a value, no operation */
   case Pure(a: A)
 
@@ -53,11 +53,11 @@ enum Static[F[+_], A]:
 
   /** a function under effects, applied to an argument under effects:
    * the idiom bracket's `<*>`, as data */
-  case Ap[F[+_], A, B](f: Static[F, A => B], a: Static[F, A]) extends Static[F, B]
+  case Ap[F[_], A, B](f: Static[F, A => B], a: Static[F, A]) extends Static[F, B]
 
   /** the conditional with BOTH sides written down: run the scrutinee,
    * and on a `Left` run the handler too (Mokhov et al. 2019) */
-  case Select[F[+_], A, B](e: Static[F, Either[A, B]],
+  case Select[F[_], A, B](e: Static[F, Either[A, B]],
                            f: Static[F, A => B]) extends Static[F, B]
 
   /**
@@ -72,8 +72,13 @@ enum Static[F[+_], A]:
 
 object Static:
 
+  /** a leaf READ, never answered: THE CAST, and why it is sound — `leaves` hands operations out to be looked at
+   * (`_.need`, `_.name`), and nothing is ever given back at their answer type, which is all the cast forgets (an
+   * effect's kind is `F[_]` on the kernel, no longer covariant) */
+  private[std] def leafOf[F[_], X](fa: F[X]): F[Any] = fa.asInstanceOf[F[Any]]
+
   /** one operation as a program — the door in */
-  inline def op[F[+_], A](fa: F[A]): Static[F, A] = Op(fa)
+  inline def op[F[_], A](fa: F[A]): Static[F, A] = Op(fa)
 
   /**
    * The instance. `fmap` is `Ap(Pure(f), _)` rather than the trait's
@@ -81,7 +86,7 @@ object Static:
    * node instead of two lookups, and `traverse` calls it once per
    * element.
    */
-  given static[F[+_]]: Selective[[A] =>> Static[F, A]] with
+  given static[F[_]]: Selective[[A] =>> Static[F, A]] with
     def pure[A](a: A): Static[F, A] = Pure(a)
     override def fmap[A, B](a: Static[F, A], f: A => B): Static[F, B] = Ap(Pure(f), a)
     extension [A, B](f: Static[F, A => B])
@@ -107,9 +112,9 @@ object Static:
    * `Args[F, X => R, C]`. Matching on them refines the types, so the
    * fold back up is ordinary typed code.
    */
-  enum Args[F[+_], G[_], T, C]:
-    case Done[F[+_], G[_], C]() extends Args[F, G, C, C]
-    case More[F[+_], G[_], X, R, C](arg: Static[F, X], rest: Args[F, G, R, C])
+  enum Args[F[_], G[_], T, C]:
+    case Done[F[_], G[_], C]() extends Args[F, G, C, C]
+    case More[F[_], G[_], X, R, C](arg: Static[F, X], rest: Args[F, G, R, C])
       extends Args[F, G, X => R, C]
     /**
      * A PURE function to apply, and it is what makes the walk
@@ -129,7 +134,7 @@ object Static:
      * first component is `Pure`: it performs nothing, so running `a`
      * before it changes no order of effects.
      */
-    case Mapped[F[+_], G[_], X, R, C](f: X => R, rest: Args[F, G, R, C])
+    case Mapped[F[_], G[_], X, R, C](f: X => R, rest: Args[F, G, R, C])
       extends Args[F, G, X, C]
     /**
      * The function side is folded; fold the ARGUMENT next, then apply
@@ -137,20 +142,20 @@ object Static:
      * by an ordinary call, one host frame per level of nesting inside
      * an argument, and a Select's two sides the same way.
      */
-    case AppTo[F[+_], G[_], X, R, C](gf: G[X => R], rest: Args[F, G, R, C])
+    case AppTo[F[_], G[_], X, R, C](gf: G[X => R], rest: Args[F, G, R, C])
       extends Args[F, G, X, C]
     /** a Select's condition is folded; fold its function side next */
-    case SelectE[F[+_], G[_], X, Y, C](f: Static[F, X => Y], rest: Args[F, G, Y, C])
+    case SelectE[F[_], G[_], X, Y, C](f: Static[F, X => Y], rest: Args[F, G, Y, C])
       extends Args[F, G, Either[X, Y], C]
     /** both sides of a Select are folded: select */
-    case SelectF[F[+_], G[_], X, Y, C](ge: G[Either[X, Y]], rest: Args[F, G, Y, C])
+    case SelectF[F[_], G[_], X, Y, C](ge: G[Either[X, Y]], rest: Args[F, G, Y, C])
       extends Args[F, G, X => Y, C]
 
   /** the walk's two directions, each with the rest of the work: DOWN a
    * program to fold, or UP with a folded value to hand to `args` */
-  private enum Step[F[+_], G[_], C]:
-    case Down[F[+_], G[_], T, C](s: Static[F, T], args: Args[F, G, T, C]) extends Step[F, G, C]
-    case Up[F[+_], G[_], T, C](g: G[T], args: Args[F, G, T, C]) extends Step[F, G, C]
+  private enum Step[F[_], G[_], C]:
+    case Down[F[_], G[_], T, C](s: Static[F, T], args: Args[F, G, T, C]) extends Step[F, G, C]
+    case Up[F[_], G[_], T, C](g: G[T], args: Args[F, G, T, C]) extends Step[F, G, C]
 
   /**
    * Down the left spine, collecting arguments; then back up,
@@ -167,7 +172,7 @@ object Static:
    * folding only builds a `G`. The difference is that a `G` whose
    * `select` never reads that side still receives it folded.
    */
-  @tailrec private def fold[F[+_], G[_], C](step: Step[F, G, C], nt: F ==> G)(using G: Selective[G]): G[C] =
+  @tailrec private def fold[F[_], G[_], C](step: Step[F, G, C], nt: F ==> G)(using G: Selective[G]): G[C] =
     step match
       case d: Step.Down[F, G, t, C] => d.s match
         // the shape every fold builds: a pure function applied to a
@@ -180,7 +185,7 @@ object Static:
         case Select(e, f) => fold(Step.Down(e, Args.SelectE(f, d.args)), nt)
       case u: Step.Up[F, G, t, C] => u.args match
         // `@unchecked` on the TYPE ARGUMENTS, and it is the same claim
-        // `Free.resume`'s callers make: the class test is total over
+        // a GADT's callers make: the class test is total over
         // this enum's cases, and the type arguments are the ones each
         // case was built with — `Done` exists only at
         // `Args[F, G, C, C]`, `More` only at `Args[F, G, X => R, C]`,
@@ -208,7 +213,7 @@ object Static:
           val gf: G[x => y] = u.g
           fold(Step.Up(m.ge.select(gf), m.rest), nt)
 
-  extension [F[+_], A](s: Static[F, A])
+  extension [F[_], A](s: Static[F, A])
 
     /**
      * Every operation this program MAY perform, in program order.
@@ -236,34 +241,33 @@ object Static:
         todo = todo.tail
         head match
           case Pure(_) => ()
-          case Op(fa) => out += fa
+          case Op(fa) => out += Static.leafOf(fa)
           case Ap(f, a) => todo = f :: a :: todo
           case Select(e, f) => todo = e :: f :: todo
       out.result()
 
     /**
      * The same program, monadic — to RUN it with everything the
-     * library already has: handlers, rows, `runWith`, `foldCont`.
+     * library already has: handlers, runners, `runWith`.
      *
-     * `Ap` becomes a right-nested `Bind`, which is the shape
-     * `Free.resume` is fastest on, and `Select` runs its scrutinee
+     * `Ap` becomes a right-nested bind, and `Select` runs its scrutinee
      * and then AT MOST ONE side — the difference from `leaves`, made
      * good at run time.
      *
-     * DEFERRED, because the spine is left-nested: `Free.defer` puts
-     * the recursive step behind a `Delay` the interpreter's own loop
+     * DEFERRED, because the spine is left-nested: `defer` puts
+     * the recursive step behind a thunk the machine's own loop
      * forces, so converting a spine of any depth costs no host stack.
      * Each node earns its `Delay` (a bare `delay(t)` where there is
      * nothing to do afterwards — defer-with-pure-left-nests).
      */
-    def toFree: A ! F = s match
-      case Pure(a) => Free.Return(a)
-      case Op(fa) => Free.Inject(fa)
-      case Ap(f, a) => Free.defer(() => f.toFree)(g => a.now.map(g))
-      case Select(e, f) =>
-        Free.defer(() => e.toFree):
-          case Left(x) => f.now.map(_(x))
-          case Right(b) => Free.Return(b)
+    def toProgram: A ! F = s match
+      case Pure(a) => okay.pure[A, F](a)
+      case Op(fa) => effect(fa)
+      case Ap(f, a) => Run.flatMap(defer(f.toProgram))(g => Run.map(a.now)(g))(using Join.same[F])
+      case sel: Select[F, x, A] =>
+        Run.flatMap(defer(sel.e.toProgram))((v: Either[x, A]) => v match
+          case Left(l) => Run.map(sel.f.now)(_(l))
+          case Right(b) => okay.pure[A, F](b))(using Join.same[F])
 
     /**
      * The right-hand side of an `Ap`, converted — and the `Delay`
@@ -272,7 +276,7 @@ object Static:
      * The left spine is what grows: `traverse`'s `foldLeft` nests on
      * the first component, so only THAT recursion needs deferring.
      * The right component is a leaf in every spine a fold builds, and
-     * a leaf needs no trampoline — `Free.delay(() => Inject(fa))` is
+     * a leaf needs no trampoline — `defer(effect(fa))` is
      * a node and a closure to arrive at a node. MEASURED 2026-09-17
      * at 1000 leaves, prebuilt against prebuilt: deferring both sides
      * cost 84.3 µs and 899 105 B/op; earning the node costs 80.7 µs
@@ -285,9 +289,9 @@ object Static:
      * depth (TestStatic has the 10 000-deep right-nested spine).
      */
     private def now: A ! F = s match
-      case Pure(a) => Free.Return(a)
-      case Op(fa) => Free.Inject(fa)
-      case _ => Free.delay(() => s.toFree)
+      case Pure(a) => okay.pure[A, F](a)
+      case Op(fa) => effect(fa)
+      case _ => defer(s.toProgram)
 
     /**
      * The spine interpreted into another Selective — the natural

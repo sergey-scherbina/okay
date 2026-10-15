@@ -151,7 +151,7 @@ The
 rung below the monad is worth reaching for on purpose: a program
 written as a `Static` (the free selective — `Pure | Op | Ap | Select`,
 no `Bind`) can be READ before it runs — `leaves` lists the operations
-it may perform, `toFree` runs it the ordinary way, and `foldMap` into
+it may perform, `toProgram` runs it the ordinary way, and `foldMap` into
 an accumulating carrier turns N leaves into one round trip.
 
 ### Your own effect

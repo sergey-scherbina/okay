@@ -1,7 +1,7 @@
 package okay.cats
 
 import okay.{!, Async, Par, Scheduler}
-import okay.freer.Static
+import okay.std.Static
 import okay.std.{Choose, Validated}
 import okay.std.given
 import _root_.cats.{~>, Eval}

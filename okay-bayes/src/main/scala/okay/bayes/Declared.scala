@@ -1,7 +1,7 @@
 package okay.bayes
 
 import okay.{!, effect}
-import okay.freer.Static
+import okay.std.Static
 /**
  * A MODEL WHOSE STRUCTURE IS KNOWN BEFORE IT RUNS (specs/okay-bayes.md
  * stage 8). The parameters are a `Static[Model, P]` — the core's free

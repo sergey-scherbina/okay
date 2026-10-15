@@ -373,7 +373,7 @@ object Proc:
 
     /**
      * The same term as an ordinary program of the signature's row —
-     * `Static.toFree`'s counterpart, and the bridge every runtime in
+     * `Static.toProgram`'s counterpart, and the bridge every runtime in
      * this library already knows how to drive.
      */
     def toProgram(x: X): Y ! F = p.foldMap[[Z] =>> Z ! F]([Z] => (fz: F[Z]) => effect(fz))(using Programs.monad[F])(x)

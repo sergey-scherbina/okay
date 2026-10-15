@@ -806,7 +806,7 @@ them all in one round trip.
 ```scala
 val plan = eachLine.traverseOf(priceLine)(order)
 plan.leaves        // Vector(Of("pen"), Of("ink"), Of("pad"))
-plan.toFree.runWith  // and the same value, run the ordinary way
+val same = plan.toProgram.runWith  // and the same value, run the ordinary way
 plan.foldMap(toBatch)  // or answered in ONE call
 ```
 
@@ -857,13 +857,13 @@ the structure stays readable:
 val plan = traverse(keys)(k => Static.op(Get(k)))   // the same traverse
 
 plan.leaves                 // every operation it MAY perform, before running
-plan.toFree.runWith         // the ordinary program, run the ordinary way
+val ran = plan.toProgram.runWith         // the ordinary program, run the ordinary way
 plan.foldMap(toBatch)       // N leaves, ONE round trip
 ```
 
 `Static` is the free selective: `Ap` for application, `Select` for a
 conditional whose both sides are written down, so `leaves` is an upper
-bound that is exact when there is no branch. `toFree` makes the
+bound that is exact when there is no branch. `toProgram` makes the
 difference good at run time — a program that DECLARES three operations
 performs two, because a `Select` runs at most one side.
 

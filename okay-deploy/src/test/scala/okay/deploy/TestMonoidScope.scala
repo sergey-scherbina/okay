@@ -10,9 +10,9 @@ package okay.deploy
  * passed while proving nothing. That is the vacuity this repository
  * has a name for, met again.
  *
- * What is pinned here: `import okay.*` does NOT bring givens, the base
- * monoids are not all reachable the same way, and the import the guide
- * shows is the one that works.
+ * What is pinned here: the base monoids (Vector, String, List, numbers)
+ * live in `okay.Monoid`'s companion since the algebras moved to the root,
+ * so a `Fact` over any of them needs no import at all.
  */
 class TestMonoidScope extends munit.FunSuite:
 
@@ -20,13 +20,11 @@ class TestMonoidScope extends munit.FunSuite:
     assertEquals(compileErrors("object V extends okay.std.Fact[Vector[Int]]"), "")
   }
 
-  test("a Fact over String needs `import okay.given`, and `import okay.*` is not enough") {
-    val starOnly = compileErrors("import okay.*; object N extends okay.std.Fact[String]")
-    assert(starOnly.contains("No given instance of type okay.Monoid[String]"), starOnly)
-    assertEquals(compileErrors("import okay.freer.given; object N2 extends okay.std.Fact[String]"), "")
+  test("a Fact over String needs no import either: the base monoids are in Monoid's companion") {
+    assertEquals(compileErrors("object N extends okay.std.Fact[String]"), "")
+    assertEquals(compileErrors("import okay.*; object N2 extends okay.std.Fact[List[Int]]"), "")
   }
 
-  test("nothing at all: the message names the given to import") {
-    val bare = compileErrors("object N3 extends okay.std.Fact[String]")
-    assert(bare.contains("okay.Monoid[String]"), bare)
+  test("a number's monoid too: a Group's, found where a Monoid is asked") {
+    assertEquals(compileErrors("object N3 extends okay.std.Fact[Int]"), "")
   }

@@ -7,7 +7,7 @@ import _root_.cats.laws.discipline.ApplicativeTests
 import _root_.cats.syntax.all.*
 import okay.{Async, async}
 import okay.!
-import okay.freer.Static
+import okay.std.Static
 import okay.std.{Choose, Validated, choose, runChoice}
 import okay.given
 import okay.==>
@@ -54,7 +54,7 @@ class TestCatsClasses extends munit.ScalaCheckSuite with okay.testkit.Munit.Diag
     assertEquals((a, b).mapN(_ + _), Validated.invalid("ab"))
   }
 
-  // ---- okay.freer.Static under cats
+  // ---- okay.std.Static under cats
 
   enum Op[+A]:
     case Get(key: String) extends Op[Int]

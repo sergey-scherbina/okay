@@ -1,6 +1,6 @@
 package okay
 
-import okay.freer.Static
+import okay.std.Static
 import okay.Semigroup
 
 
@@ -105,8 +105,7 @@ class TestOpticCarriers extends munit.FunSuite {
       def handle[A](e: Prices[A]): A = e match
         case Prices.Of(sku) => sku.length
     // `Static` is okay-freer's still: its program is the classic road's, run by that road's words
-    import okay.freer.given
-    assertEquals(spine.toFree.runWith,
+    assertEquals(spine.toProgram.runWith,
       Order("A-1", Vector(Line("pen", 3), Line("ink", 3), Line("pad", 3))))
   }
 

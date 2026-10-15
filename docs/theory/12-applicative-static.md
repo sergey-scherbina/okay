@@ -202,16 +202,16 @@ performing them.
 signature:
 
 ```scala
-enum Static[F[+_], A]:
+enum Static[F[_], A]:
   case Pure(a: A)
   case Op(fa: F[A])
-  case Ap[F[+_], A, B](f: Static[F, A => B], a: Static[F, A]) extends Static[F, B]
+  case Ap[F[_], A, B](f: Static[F, A => B], a: Static[F, A]) extends Static[F, B]
   case Select[F[+_], A, B](e: Static[F, Either[A, B]], f: Static[F, A => B]) extends Static[F, B]
 ```
 
 Three doors come off it. `leaves` (Static.scala:97) answers *what may
 this program do*, in program order, before anything runs.
-`toFree` (Static.scala:125) turns the spine into an ordinary
+`toProgram` (Static.scala:125) turns the spine into an ordinary
 `A ! F` so every handler, row and runner in the library applies
 unchanged. `foldMap` (Static.scala:159) interprets the spine into any
 other `Selective` — which is where consequence three lives.
@@ -220,11 +220,11 @@ The approximation is named rather than hidden: `leaves` reports *both*
 sides of every `Select`, because which side runs is decided by a value
 that does not exist yet. It is an upper bound, exact for a spine with
 no `Select` — and an upper bound is what a batcher, a capability list
-and a dry run all want. `toFree` is where the difference is made good:
+and a dry run all want. `toProgram` is where the difference is made good:
 at run time a `Select` performs its scrutinee and then at most one
 side. The test that pins this pair is worth reading as the chapter's
 one-line summary: a program declares three operations and performs two
-(TestStatic, "leaves names both branches before running; toFree runs
+(TestStatic, "leaves names both branches before running; toProgram runs
 at most one").
 
 Why `Static` is not simply four more cases inside `Free` is a design
@@ -253,7 +253,7 @@ prediction of 1.3× written before measuring, and refuted. The error
 in that prediction is worth naming because it is the kind that sounds
 right: it said "each `Ap` becomes a right-nested `Bind`, the shape
 `resume` is fastest on", and treated the conversion itself as free.
-It is not. `toFree` materialises a second tree, and the residue is
+It is not. `toProgram` materialises a second tree, and the residue is
 that tree's nodes and closures, about 368 bytes per leaf.
 
 Reading those bytes did find one node that was not earned. The first

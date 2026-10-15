@@ -1075,8 +1075,6 @@ docs/tutorial.md	plan.foldMap(toBatch)       // N leaves, ONE round trip
 docs/tutorial.md	plan.foldMap(toBatch)  // or answered in ONE call
 docs/tutorial.md	plan.leaves                 // every operation it MAY perform, before running
 docs/tutorial.md	plan.leaves        // Vector(Of("pen"), Of("ink"), Of("pad"))
-docs/tutorial.md	plan.toFree.runWith         // the ordinary program, run the ordinary way
-docs/tutorial.md	plan.toFree.runWith  // and the same value, run the ordinary way
 docs/tutorial.md	provide(ada, tracer)(api)                       // no token anywhere
 docs/tutorial.md	re.tree == Parse.full(JsonLex.scan, JsonParse.instrs)(edited).tree  // exact
 docs/tutorial.md	retry(Retry.exponential(100).take(5))(fetch)   // the policy is a stream
@@ -1115,7 +1113,6 @@ docs/tutorial.md	val o = fetchOrders(id).reflect   // so both run at once
 docs/tutorial.md	val order: Validated[Errors, Order] = direct:
 docs/tutorial.md	val p = Person("ann", 41, List("a"), None)
 docs/tutorial.md	val plan = eachLine.traverseOf(priceLine)(order)
-docs/tutorial.md	val plan = traverse(keys)(k => Static.op(Get(k)))   // the same traverse
 docs/tutorial.md	val profile: Profile ! Async = direct:
 docs/tutorial.md	val repo = RepoAgent.index(RepoAgent.load(File(".")))   // parse, don't regex
 docs/tutorial.md	val retriever = Retrieve.hybrid(Seq(

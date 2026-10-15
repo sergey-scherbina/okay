@@ -1,7 +1,7 @@
 package okay.deploy
 
 import okay.*
-import okay.freer.Static
+import okay.std.Static
 
 import okay.std.*
 import Needs.needs

@@ -430,7 +430,7 @@ same material with the measurements attached.
   be read before it runs. **`leaves`** lists every operation it MAY
   perform (both sides of every `Select` — an upper bound, exact
   without branches; an explicit stack, so a traverse-built spine of
-  50 000 walks), **`toFree`** converts to `A ! F` for the ordinary
+  50 000 walks), **`toProgram`** converts to `A ! F` for the ordinary
   runners (`Free.defer`, so no host stack at any depth) and makes the
   approximation good at run time (a `Select` performs at most one
   side), **`foldMap`** interprets the spine into any other

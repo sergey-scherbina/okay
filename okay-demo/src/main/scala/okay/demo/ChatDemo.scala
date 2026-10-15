@@ -3,7 +3,7 @@ import okay.*
 import okay.std.*
 import okay.{Async, Channel, Source, Timer}
 import okay.given
-import okay.freer.Static
+import okay.std.Static
 import okay.http.{Http, McpHttp, Request, Response}
 import okay.mcp.{Mcp, Server as McpServer}
 import okay.jetty.Jetty

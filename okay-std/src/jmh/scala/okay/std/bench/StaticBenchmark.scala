@@ -1,5 +1,8 @@
-package okay.freer
-import okay.{Answers, traverse}
+package okay.std.bench
+
+import okay.{!, Answers, effect, traverse}
+import okay.Programs.given
+import okay.std.Static
 
 import org.openjdk.jmh.annotations.*
 import java.util.concurrent.TimeUnit
@@ -52,7 +55,7 @@ class StaticBenchmark {
   private val prog: Seq[Int] ! Fetch = traverse(1 to N)(i => effect[Fetch, Int](Get(i)))
 
   @Benchmark
-  def staticToFree(): Int = spine.toFree.runWith.sum
+  def staticToFree(): Int = spine.toProgram.runWith.sum
 
   @Benchmark
   def monadicPrebuilt(): Int = prog.runWith.sum

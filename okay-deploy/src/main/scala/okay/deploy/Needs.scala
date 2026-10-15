@@ -2,7 +2,7 @@ package okay.deploy
 
 import okay.{!, Answers, effect}
 import okay.Programs.given
-import okay.freer.Static
+import okay.std.Static
 import okay.std.{Fact, Module, moduleAs}
 import scala.quoted.*
 import scala.annotation.tailrec
