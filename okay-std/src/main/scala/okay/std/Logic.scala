@@ -4,7 +4,7 @@ import okay.{!, Run, Within, defer, effect, pure}
 import okay.core.{+:, Eff, Paths, Row, Split}
 import okay.one.Cont
 import okay.one.row.In
-import okay.one.step.Step
+import okay.one.machine.Machine.Head
 import scala.annotation.tailrec
 
 /**
@@ -42,11 +42,13 @@ object Logic {
    * choice points (Choose over a LazyList of alternatives) stay
    * unforced.
    *
-   * THE SEARCH STEPPED (the kernel's `Step`): the program is run to
-   * its next operation and given back with its rest, `k` as data. A
-   * `Choose` puts its alternatives, each that `k` resumed with one, at
-   * the front of the worklist; another effect's operation is performed
-   * at the place the split runs and its `k` resumed with the answer;
+   * THE SEARCH STEPPED (the kernel's `Machine.Head`): the program is
+   * run to its next operation and handed over paused, its rest `k` the
+   * machine's own. A `Choose` puts its alternatives, the paused program
+   * resumed with each (a paused program resumes any number of times),
+   * at the front of the worklist; another effect's operation is
+   * performed at the place the split runs and the program resumed with
+   * the answer;
    * the first value is the answer, and THE WORKLIST LEFT IS THE REST —
    * one value, the remaining search, resumed where it stopped (`Rest`).
    * Split again at the same place, the rest is that worklist taken up
@@ -74,7 +76,7 @@ object Logic {
           case _ => new Search[A, Es, T](template).next(LazyList(() => Stepping.start(m, template)), Nil))
 
   /** a pending branch of a search: its `k` resumed, stepped to its next operation */
-  private type Branch[T <: Row, A] = () => Step[Choose +: T, A]
+  private type Branch[T <: Row, A] = () => Head[Choose +: T, A]
 
   /**
    * THE REST OF A SEARCH: the branches not yet run of a split at the place `template` — data, a worklist — and the
@@ -104,18 +106,18 @@ object Logic {
       case b #:: more => walk(b(), more, held)
 
     // a forwarded operation resumes the walk from inside flatMap, a call that cannot be a jump; `again` takes it
-    private def again(st: Step[Choose +: T, A], bs: LazyList[Branch[T, A]], held: List[Shared]): Eff[T, O] =
+    private def again(st: Head[Choose +: T, A], bs: LazyList[Branch[T, A]], held: List[Shared]): Eff[T, O] =
       walk(st, bs, held)
 
-    @tailrec private def walk(st: Step[Choose +: T, A], bs: LazyList[Branch[T, A]], held: List[Shared]): Eff[T, O] =
+    @tailrec private def walk(st: Head[Choose +: T, A], bs: LazyList[Branch[T, A]], held: List[Shared]): Eff[T, O] =
       st match
-        case Step.Done(a) => Cont.pure(Some((a, new Rest[Es, T, A](template, bs, held))))
-        case y: Step.Yield[?, ?, f, x] => Stepping.own(y.in) match
+        case Head.Done(a) => Cont.pure(Some((a, new Rest[Es, T, A](template, bs, held))))
+        case p: Head.Paused[?, ?, f, x, ?, ?, ?, ?, ?] => Stepping.own(p.in) match
           case null =>
-            Cont.perform[f, T, x](y.op)(using Stepping.outside(y.in)).flatMap(v => again(y.resume(v), bs, held))
+            Cont.perform[f, T, x](p.op)(using Stepping.outside(p.in)).flatMap(v => again(p.resume(v), bs, held))
           case same: In.Same[f, Choose] =>
-            val c = same(y.op)
-            val front = c.as.to(LazyList).map(v => () => y.resume(v))
+            val c = same(p.op)
+            val front = c.as.to(LazyList).map(v => () => Stepping.resume(p, v))
             Forked.sharedOf(c.as) match
               case Nil => front #::: bs match
                 case LazyList() => Cont.pure(None)
@@ -123,8 +125,6 @@ object Logic {
               // a branch point something is shared through (logic-cut-releases): a throw out of the search abandons it
               case shared =>
                 Cont.recover(Cont.defer(next(front #::: bs, shared ::: held)))(t => { shared.foreach(_.abandon()); throw t })
-        case Step.Failed(e) => throw e
-        case Step.Cancelled() => Stepping.cancelled()
 
   /** the branch points a rest `msplit` handed out holds */
   private def sharedIn[A, Es[_]](rest: A ! Es): List[Shared] = rest match

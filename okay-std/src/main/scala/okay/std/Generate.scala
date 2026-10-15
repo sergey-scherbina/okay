@@ -14,7 +14,7 @@ import okay.one.row.In
  * LazyList materializes the stream by laziness (the continuation is
  * captured in the #:: tail, no effect runtime at all), and Producer
  * materializes it by effects (each put is an operation of the
- * program, stepped by the kernel's `Step` and interpreted by an
+ * program, stepped by the kernel's `Machine.Head` and interpreted by an
  * Answers, e.g. Producer.log).
  */
 
@@ -189,7 +189,7 @@ object Producer {
 
   /**
    * `fold` with a stop (specs/fold-until.md): the program STEPPED (the
-   * kernel's `Step`), the moment the state is done its rest dropped —
+   * kernel's `Machine.Head`), the moment the state is done its rest dropped —
    * nothing past the satisfying production runs, and an operation that
    * would have followed it is never performed. Answers `R` alone: a
    * fold that stopped early never saw the producer's answer
@@ -229,7 +229,7 @@ object Producer {
 
 /**
  * A producer is a stream: it observes by stepping its next operation
- * (the kernel's `Step`) — one op per element, on demand, no further
+ * (the kernel's `Machine.Head`) — one op per element, on demand, no further
  * than the observer asks (the eager fronts crash here, see
  * compare/TestLaziness). The end is its value, observed as None. The
  * element is the operation itself: Produce is the identity signature,

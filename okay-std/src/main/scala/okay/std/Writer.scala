@@ -6,8 +6,8 @@ import okay.freer.{Cps, Fold, FoldUntil, />>}
 import okay.one.Cont
 import okay.one.handler.{Stateful, Handler as OneHandler}
 import okay.one.row.In
-import okay.one.step.Step
-import okay.one.step.Step.step
+import okay.one.machine.Machine
+import okay.one.machine.Machine.Head
 import scala.annotation.tailrec
 
 
@@ -131,8 +131,8 @@ object Writer {
 
   /**
    * A fold that STOPS (specs/fold-until.md): the program STEPPED (the
-   * kernel's `Step`), each tell added to the state, the moment the
-   * state is done the step's rest dropped — which is what stops the
+   * kernel's `Machine.Head`), each tell added to the state, the moment
+   * the state is done the paused program dropped — which is what stops the
    * producer: nothing past the satisfying tell runs, and an operation
    * that would have followed it is never performed. The other effects'
    * operations met on the way are performed where the fold is, the
@@ -322,8 +322,8 @@ object Writer {
    * has already been observed). run/fold are this loop with a Fold
    * accumulating the Rights.
    *
-   * The program is STEPPED (the kernel's `Step`) to its next tell; the
-   * rest is the step's `k`, data — resumed when the rest is next
+   * The program is STEPPED (the kernel's `Machine.Head`) to its next
+   * tell; the rest is the paused program, data — resumed when the rest is next
    * observed, not when this value is handed over, so a throw after the
    * tell comes at the next pull (TestWriterToldBeforeThrow) and nothing
    * past a value is computed before it is asked for.
@@ -336,13 +336,13 @@ object Writer {
    * The same observation for a writer program performing ARBITRARY
    * effects G alongside its telling: the next told value arrives
    * inside G — the G-operations met on the way performed where the
-   * observation runs, the step's rest resumed with their answers. Any
+   * observation runs, the paused program resumed with their answers. Any
    * structured effect handler (State, Reader, Throws, ...) forwards the
    * telling, so it can be run over the program FIRST — handlers are
    * stream transformers — and the Answers-able residue (Async, say) is
    * what the consumer pays at each pull.
    *
-   * The rest handed out is the step's `k`, tied to the place the
+   * The rest handed out is the paused program, tied to the place the
    * observation ran at: observed again there, or anywhere its effects
    * are at the same paths, it goes on from where it was; run elsewhere,
    * its operations are re-placed by the paths read side by side, and
@@ -388,13 +388,23 @@ private[std] final class Telling[W] extends Stepping.Told[Writer % W, W]:
   def answer[X](op: Writer[W, X]): X = op match { case Writer.Say(_) => () }
 
 /**
- * A PROGRAM STEPPED (the kernel's `Step`): the views that peel the next element off a program — a writer's told
- * value, a producer's production — and the folds that stop. `p.step` runs the program to its first operation and
- * gives it back with the rest, `k` as data: an operation of the effect viewed (`E`, at the head of the row) is an
- * element; one of the others is performed where the view runs, or answered here, and the rest resumed with its
- * answer. What okay-freer's `resume`-based walks were, with the machine's frames: no rotation, constant stack.
+ * A PROGRAM AT ITS HEAD (the kernel's `Machine.Head`): the views that peel the next element off a program — a
+ * writer's told value, a producer's production — and the folds that stop. `Machine.head(p)` runs the program to its
+ * first operation and hands it over PAUSED, one object, the rest the machine's own frames: an operation of the
+ * effect viewed (`E`, at the head of the row) is an element; one of the others is performed where the view runs,
+ * or answered here, and the paused program resumed with its answer. What okay-freer's `resume`-based walks were,
+ * with the machine's frames: no rotation, constant stack. No view here cancels a program: one not resumed is
+ * dropped (a guard's finalizer inside it does not run).
  */
 private[std] object Stepping:
+  /** a program paused at an operation of `R`, its machine-side types unnamed */
+  type Paused[R <: Row, A] = Head.Paused[R, A, ?, ?, ?, ?, ?, ?, ?]
+
+  /** `at` resumed with `v`. THE CAST, and why it is sound: `v` is the paused operation's answer, of its type —
+   * the caller read the operation and answered it */
+  def resume[R <: Row, A](at: Paused[R, A], v: Any): Head[R, A] =
+    at.asInstanceOf[Head.Paused[R, A, [X] =>> Any, Any, Any, Any, Any, Any, Any]].resume(v)
+
   /** what an operation of the viewed effect hands over, and what it answers */
   abstract class Told[E[_], W]:
     def element[X](op: E[X]): W
@@ -423,32 +433,29 @@ private[std] object Stepping:
     case at: In.At[f, ?] => at.again[T]
     case _ => throw IllegalStateException("Stepping: an operation of the viewed effect where another was expected")
 
-  def cancelled(): Nothing = throw IllegalStateException("Stepping: a stepped program was cancelled")
-
   def moved(): Nothing = throw IllegalStateException(
     "Stepping: the rest of a stepped program run where its effects are not as they were where it was stepped — " +
       "an effect of it not among those of the place; run the rest where the view's answer is used")
 
   /**
    * THE REST of a program stepped at the place `template`, past an operation it handed over: a program again —
-   * `next` the step's `k` resumed with that operation's answer, run when the rest is. Viewed again at the same
-   * paths (`start`), it goes on from where it was; run anywhere else, its operations are performed at the place's
-   * paths, each re-placed by reading the two side by side (`relocate`).
+   * `next` the paused program resumed with that operation's answer, run when the rest is (as often as it is: a
+   * paused program resumes any number of times). Viewed again at the same paths (`start`), it goes on from where it
+   * was; run anywhere else, its operations are performed at the place's paths, each re-placed by reading the two
+   * side by side (`relocate`).
    */
-  final class Rest[Es[_], E[_], T <: Row, A](val template: Paths[Es, E +: T], next: () => Step[E +: T, A])
+  final class Rest[Es[_], E[_], T <: Row, A](val template: Paths[Es, E +: T], next: () => Head[E +: T, A])
       extends Run[Es, A]:
     /** the rest stepped on at a place whose paths are the template's. THE CAST, and why it is sound: the program
      * reads its row only through its operations' paths, and those are the template's at the new place as well */
-    def resumed[T2 <: Row]: Step[E +: T2, A] = next().asInstanceOf[Step[E +: T2, A]]
+    def resumed[T2 <: Row]: Head[E +: T2, A] = next().asInstanceOf[Head[E +: T2, A]]
 
     def on[R <: Row](ps: Paths[Es, R]): Eff[R, A] = Cont.defer(replay(next(), ps))
 
-    private def replay[R <: Row](st: Step[E +: T, A], ps: Paths[Es, R]): Eff[R, A] = st match
-      case Step.Done(a) => Cont.pure(a)
-      case y: Step.Yield[?, ?, f, x] =>
-        Cont.perform[f, R, x](y.op)(using relocate(y.in, template, ps)).flatMap(v => replay(y.resume(v), ps))
-      case Step.Failed(e) => throw e
-      case Step.Cancelled() => cancelled()
+    private def replay[R <: Row](st: Head[E +: T, A], ps: Paths[Es, R]): Eff[R, A] = st match
+      case Head.Done(a) => Cont.pure(a)
+      case p: Head.Paused[?, ?, f, x, ?, ?, ?, ?, ?] =>
+        Cont.perform[f, R, x](p.op)(using relocate(p.in, template, ps)).flatMap(v => replay(p.resume(v), ps))
 
   /** the same paths, leaf for leaf: a walk as deep as the sum of effects written in the program's type, a bound of
    * the source text */
@@ -476,80 +483,79 @@ private[std] object Stepping:
       case null => moved()
       case f => f.asInstanceOf[In[F, R]]
 
-  /** `p` stepped at the place `template`: a rest stepped at the same paths before, on from where it was; any other
-   * program from its start */
-  def start[Es[_], E[_], T <: Row, A](p: A ! Es, template: Paths[Es, E +: T]): Step[E +: T, A] = p match
+  /** `p` at its head at the place `template`: a rest stepped at the same paths before, on from where it was; any
+   * other program from its start */
+  def start[Es[_], E[_], T <: Row, A](p: A ! Es, template: Paths[Es, E +: T]): Head[E +: T, A] = p match
     // unchecked: a `Rest` that is this `A ! Es` has its `Es` and `A`; its `E` is the template's head, which the
     // paths compared say
     case r: Rest[Es, E, ?, A] @unchecked if samePaths(r.template, template) => r.resumed[T]
-    case _ => p.fit(template).step
+    case _ => Machine.head(p.fit(template))
 
   /** the next element and the rest, of a program with no other effect */
-  def nextPure[Es[_], E[_], A, W](st: Step[E +: okay.core.Pure, A], template: Paths[Es, E +: okay.core.Pure],
+  def nextPure[Es[_], E[_], A, W](st: Head[E +: okay.core.Pure, A], template: Paths[Es, E +: okay.core.Pure],
       told: Told[E, W]): Either[A, (W, A ! Es)] = st match
-    case Step.Done(a) => Left(a)
-    case y: Step.Yield[?, ?, ?, ?] => own(y.in) match
-      case null => In.absurd(outside(y.in))
+    case Head.Done(a) => Left(a)
+    case p: Head.Paused[?, ?, ?, ?, ?, ?, ?, ?, ?] => own(p.in) match
+      case null => In.absurd(outside(p.in))
       case same: In.Same[f, E] =>
-        val op = same(y.op)
-        Right((told.element(op), Rest[Es, E, okay.core.Pure, A](template, () => y.resume(told.answer(op)))))
-    case Step.Failed(e) => throw e
-    case Step.Cancelled() => cancelled()
+        val op = same(p.op)
+        Right((told.element(op), Rest[Es, E, okay.core.Pure, A](template, () => resume(p, told.answer(op)))))
 
   /** the next element and the rest, the other effects' operations met on the way performed at `T` */
-  def next[Es[_], E[_], T <: Row, A, W](st: Step[E +: T, A], template: Paths[Es, E +: T], told: Told[E, W])
+  def next[Es[_], E[_], T <: Row, A, W](st: Head[E +: T, A], template: Paths[Es, E +: T], told: Told[E, W])
   : Eff[T, Either[A, (W, A ! Es)]] = st match
-    case Step.Done(a) => Cont.pure(Left(a))
-    case y: Step.Yield[?, ?, f, x] => own(y.in) match
-      case null => Cont.perform[f, T, x](y.op)(using outside(y.in)).flatMap(v => next(y.resume(v), template, told))
+    case Head.Done(a) => Cont.pure(Left(a))
+    case p: Head.Paused[?, ?, f, x, ?, ?, ?, ?, ?] => own(p.in) match
+      case null => Cont.perform[f, T, x](p.op)(using outside(p.in)).flatMap(v => next(p.resume(v), template, told))
       case same: In.Same[f, E] =>
-        val op = same(y.op)
-        Cont.pure(Right((told.element(op), Rest[Es, E, T, A](template, () => y.resume(told.answer(op))))))
-    case Step.Failed(e) => throw e
-    case Step.Cancelled() => cancelled()
+        val op = same(p.op)
+        Cont.pure(Right((told.element(op), Rest[Es, E, T, A](template, () => resume(p, told.answer(op))))))
 
-  /** a fold that stops: each element added, the rest dropped once the state is done; the other effects'
-   * operations performed at `T` */
-  def until[E[_], T <: Row, A, W, S, R](st0: Step[E +: T, A], s0: S, told: Told[E, W], K: FoldUntil[W, S, R]): Eff[T, R] =
-    def again(st: Step[E +: T, A], s: S): Eff[T, R] = loop(st, s)
-    @tailrec def loop(st: Step[E +: T, A], s: S): Eff[T, R] = st match
-      case Step.Done(_) => Cont.pure(K.end(s))
-      case y: Step.Yield[?, ?, f, x] => own(y.in) match
-        case null => Cont.perform[f, T, x](y.op)(using outside(y.in)).flatMap(v => again(y.resume(v), s))
+  /** a fold that stops: each element added, the paused program dropped once the state is done; the other
+   * effects' operations performed at `T` */
+  def until[E[_], T <: Row, A, W, S, R](st0: Head[E +: T, A], s0: S, told: Told[E, W], K: FoldUntil[W, S, R]): Eff[T, R] =
+    def again(st: Head[E +: T, A], s: S): Eff[T, R] = loop(st, s)
+    @tailrec def loop(st: Head[E +: T, A], s: S): Eff[T, R] = st match
+      case Head.Done(_) => Cont.pure(K.end(s))
+      case p: Head.Paused[?, ?, f, x, ?, ?, ?, ?, ?] => own(p.in) match
+        case null => Cont.perform[f, T, x](p.op)(using outside(p.in)).flatMap(v => again(p.resume(v), s))
         case same: In.Same[f, E] =>
-          val op = same(y.op)
+          val op = same(p.op)
           val s2 = K.add(s, told.element(op))
-          if K.done(s2) then Cont.pure(K.end(s2)) else loop(y.resume(told.answer(op)), s2)
-      case Step.Failed(e) => throw e
-      case Step.Cancelled() => cancelled()
+          if K.done(s2) then Cont.pure(K.end(s2)) else loop(resume(p, told.answer(op)), s2)
     loop(st0, s0)
 
   /**
    * THE LINEAR VIEW: the program stepped element by element — no `Option`, no `Either`, no program built per
-   * element; an operation of the row outside answered by `other` in place. The rest after an element is resumed
-   * when the next one is asked for.
+   * element, one object (the paused program) a step; an operation of the row outside answered by `other` in place.
+   * The paused program after an element is resumed when the next one is asked for. A throw — the program's, or
+   * `other`'s — ends the iterator.
    */
-  final class Iter[E[_], W, T <: Row, A](first: () => Step[E +: T, A], told: Told[E, W], other: Other[T])
+  final class Iter[E[_], W, T <: Row, A](first: () => Head[E +: T, A], told: Told[E, W], other: Other[T])
       extends Iterator[W]:
-    private var pending: () => Step[E +: T, A] = first
+    // the element last handed over, paused, and its answer: resumed for the next; `null` before the first
+    private var at: Paused[E +: T, A] | Null = null
+    private var answer: Any = null
     private var ready = false
     private var ended = false
     private var elem: W = scala.compiletime.uninitialized
 
-    @tailrec private def advance(st: Step[E +: T, A]): Unit = st match
-      case Step.Done(_) => ended = true
-      case y: Step.Yield[?, ?, ?, ?] => own(y.in) match
-        case null => advance(y.resume(other(y.op, outside(y.in))))
+    @tailrec private def advance(st: Head[E +: T, A]): Unit = st match
+      case Head.Done(_) => ended = true; at = null
+      case p: Head.Paused[?, ?, ?, ?, ?, ?, ?, ?, ?] => own(p.in) match
+        case null => advance(resume(p, other(p.op, outside(p.in))))
         case same: In.Same[f, E] =>
-          val op = same(y.op)
+          val op = same(p.op)
           elem = told.element(op)
           ready = true
-          pending = () => y.resume(told.answer(op))
-      case Step.Failed(e) => ended = true; throw e
-      case Step.Cancelled() => ended = true; cancelled()
+          at = p
+          answer = told.answer(op)
 
     def hasNext: Boolean =
-      if !ready && !ended then advance(pending())
+      if !ready && !ended then
+        val p = at
+        try advance(if p == null then first() else resume(p, answer))
+        catch case e: Throwable => { ended = true; at = null; throw e }
       ready
 
     def next(): W =

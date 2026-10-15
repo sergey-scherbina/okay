@@ -3,8 +3,8 @@ package okay.std
 import okay.{!, effect}
 import okay.core.+:
 import okay.one.row.In
-import okay.one.step.Step
-import okay.one.step.Step.step
+import okay.one.machine.Machine
+import okay.one.machine.Machine.Head
 import scala.collection.mutable
 import scala.util.Random
 
@@ -18,7 +18,7 @@ import scala.util.Random
  *
  * The mechanism is delimited control, used as the PRIMARY road (the
  * operator's rule: primary where nothing else serves): a fiber is a
- * program STEPPED (okay-core's `Step`), and the rest `k` it hands back
+ * program STEPPED (okay-core's `Machine.Head`), and the rest `k` it hands back
  * at every operation IS the captured delimited continuation, as data
  * — made scheduler food. Blocking primitives become OPERATIONS
  * (`SimChannel` send/receive suspend to the scheduler, as the real
@@ -52,8 +52,8 @@ object Sim {
     /** the parked receivers and senders of THIS channel, typed by
      * its element — the queues live on the channel so the scheduler
      * never holds an erased payload */
-    private[Sim] val recvWait = mutable.Queue.empty[(Int, Option[A] => Step[Fibers, Unit])]
-    private[Sim] val sendWait = mutable.Queue.empty[(Int, A, Unit => Step[Fibers, Unit])]
+    private[Sim] val recvWait = mutable.Queue.empty[(Int, Option[A] => Head[Fibers, Unit])]
+    private[Sim] val sendWait = mutable.Queue.empty[(Int, A, Unit => Head[Fibers, Unit])]
 
   /** the simulation's operations — the scheduling points */
   enum Op[+A]:
@@ -113,7 +113,7 @@ object Sim {
     // next is a THUNK: a continuation is resumed when its fiber is
     // SCHEDULED, never when it is merely enqueued — side effects in
     // a map's closure belong to the step that runs them
-    final case class Task(fiber: Int, next: () => Step[Fibers, Unit])
+    final case class Task(fiber: Int, next: () => Head[Fibers, Unit])
     val runnable = mutable.ArrayBuffer.empty[Task]
     val sleeping = mutable.ArrayBuffer.empty[(Long, Task)]
     val chans = mutable.ArrayBuffer.empty[SimChannel[?]]
@@ -125,7 +125,7 @@ object Sim {
     def spawn(prog: Unit ! Op): Fiber =
       val f = new Fiber(nextFiber)
       nextFiber += 1
-      runnable += Task(f.id, () => prog.fit(place).step)
+      runnable += Task(f.id, () => Machine.head(prog.fit(place)))
       f
 
     val _ = spawn(main)
@@ -150,19 +150,17 @@ object Sim {
 
     def step(t: Task): Unit =
       t.next() match
-        case Step.Done(_) =>
+        case Head.Done(_) =>
           steps += s"${t.fiber}:done"
-        case y: Step.Yield[?, ?, ?, ?] =>
-          // the step's rest IS the captured delimited continuation, as
+        case p: Head.Paused[?, ?, ?, x, ?, ?, ?, ?, ?] =>
+          // the paused program IS the captured delimited continuation, as
           // data; the operation's place in the row types it — the head
-          Stepping.own(y.in) match
-            case null => In.absurd(Stepping.outside(y.in))
-            case same: In.Same[f, Op] => perform(t.fiber, same(y.op), y.resume(_), y)
-        case Step.Failed(e) => throw e
-        case Step.Cancelled() => Stepping.cancelled()
+          Stepping.own(p.in) match
+            case null => In.absurd(Stepping.outside(p.in))
+            case same: In.Same[f, Op] => perform[x](t.fiber, same(p.op), p.resume(_), p)
 
     /** `op` performed for fiber `fid`; `k` its rest, `at` the step it came in (to hand back as it was) */
-    def perform[Y](fid: Int, op: Op[Y], k: Y => Step[Fibers, Unit], at: Step[Fibers, Unit]): Unit = op match
+    def perform[Y](fid: Int, op: Op[Y], k: Y => Head[Fibers, Unit], at: Head[Fibers, Unit]): Unit = op match
       case Op.Fork(prog) =>
         val f = spawn(prog)
         steps += s"$fid:fork(${f.id})"

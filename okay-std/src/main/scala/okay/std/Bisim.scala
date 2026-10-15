@@ -3,8 +3,8 @@ package okay.std
 import okay.{!, +, %}
 import okay.core.{Paths, Row}
 import okay.one.row.In
-import okay.one.step.Step
-import okay.one.step.Step.step
+import okay.one.machine.Machine
+import okay.one.machine.Machine.Head
 
 import scala.annotation.tailrec
 
@@ -13,8 +13,8 @@ import scala.annotation.tailrec
  * the rewrites this library makes of its own programs (specs/handler-
  * equivalence-oracle.md).
  *
- * A program here is STEPPED (okay-core's `Step`): it stops at every
- * operation and hands back the rest, `k` as data, so two
+ * A program here is STEPPED (okay-core's `Machine.Head`): it stops at
+ * every operation and hands it over paused, the rest `k` as data, so two
  * programs can be compared the way normal-form bisimilarity compares
  * terms (Biernacki, Lenglet & Polesiuk, "A complete normal-form
  * bisimilarity for algebraic effects and handlers", FSCD 2020): walk
@@ -23,7 +23,7 @@ import scala.annotation.tailrec
  * agree on every path are indistinguishable by ANY handler, because a
  * handler sees nothing but the operations and chooses nothing but the
  * answers. It is equivalence of interaction trees in the sense of Xia
- * et al. (POPL 2020), without the silent steps: `step` has
+ * et al. (POPL 2020), without the silent steps: `Machine.head` has
  * already run them.
  *
  * WHAT MAKES IT EXECUTABLE is that the answers are a SAMPLE, not a
@@ -154,7 +154,7 @@ object Bisim:
   def check[Es[_], A](p: A ! Es, q: A ! Es, depth: Int = 32, budget: Int = 100_000)
                       (using ans: Answers[Es]): Verdict =
     val at = ans.paths(0)
-    def start(r: A ! Es): () => Step[Row, A] = () => r.fit(at).step
+    def start(r: A ! Es): () => Head[Row, A] = () => Machine.head(r.fit(at))
     @tailrec def go(todo: List[Frame[A]], paths: Int, cut: Int): Verdict = todo match
       case Nil => Verdict.Same(paths, cut)
       case _ if paths + cut >= budget => Verdict.Same(paths, cut + todo.size)
@@ -183,22 +183,20 @@ object Bisim:
   /** one pending comparison: the path so far (newest first), the two
    * programs from there — stepped when the walk gets to them — and how
    * many operations the path has */
-  private final case class Frame[A](path: List[String], l: () => Step[Row, A], r: () => Step[Row, A], d: Int)
+  private final case class Frame[A](path: List[String], l: () => Head[Row, A], r: () => Head[Row, A], d: Int)
 
   /** an operation at its place, and the rest — `k` as data, resumed once an answer (multi-shot) */
-  private final class Met[A, X](op: X, at: Int, k: Step.Resume[?, Row, A]):
+  private final class Met[A, X](op: X, at: Int, k: Stepping.Paused[Row, A]):
     def show: String = String.valueOf(op)
     def sameOp(that: Met[A, ?]): Boolean = that.is(op, at)
     private def is(other: Any, place: Int): Boolean = op == other && at == place
     /** each sampled answer, rendered, with where it leads */
-    def next[Es[_]](ans: Answers[Es]): List[(String, () => Step[Row, A])] =
+    def next[Es[_]](ans: Answers[Es]): List[(String, () => Head[Row, A])] =
       ans.answer(at, op).map(x => (String.valueOf(x), () => resume(x)))
-    // THE CAST, and why it is sound: the answers to an operation are its member's, of the operation's answer type
-    private def resume(x: Any): Step[Row, A] = k.asInstanceOf[Step.Resume[Any, Row, A]](x)
+    // the answers to an operation are its member's, of the operation's answer type: `Stepping.resume`'s cast sound
+    private def resume(x: Any): Head[Row, A] = Stepping.resume(k, x)
 
   /** the head form a step leaves: a value, or an operation to answer */
-  private def view[A](st: () => Step[Row, A]): Either[A, Met[A, ?]] = st() match
-    case Step.Done(a) => Left(a)
-    case y: Step.Yield[?, ?, ?, ?] => Right(Met(y.op, placeOf(y.in), y.resume))
-    case Step.Failed(e) => throw e
-    case Step.Cancelled() => throw IllegalStateException("Bisim: a program was cancelled")
+  private def view[A](st: () => Head[Row, A]): Either[A, Met[A, ?]] = st() match
+    case Head.Done(a) => Left(a)
+    case p: Head.Paused[?, ?, ?, ?, ?, ?, ?, ?, ?] => Right(Met(p.op, placeOf(p.in), p))

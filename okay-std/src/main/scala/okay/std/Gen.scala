@@ -5,8 +5,8 @@ import okay.core.{+:, Eff, Paths, Req, Row as KRow}
 import okay.freer.FoldUntil
 import okay.one.Cont
 import okay.one.row.In
-import okay.one.step.Step
-import okay.one.step.Step.step
+import okay.one.machine.Machine
+import okay.one.machine.Machine.Head
 
 import scala.annotation.tailrec
 
@@ -24,8 +24,8 @@ enum Stop[+A] derives Effect:
  * Python's `yield` hands a value to whoever asked and does not run
  * again until asked again; the body ends when it returns; the reader
  * may stop asking at any point. Every piece of that is what a
- * `Writer` program already is: stepped (okay-core's `Step`), a tell
- * comes out with the rest `k` and suspends until a reader resumes it
+ * `Writer` program already is: stepped (okay-core's `Machine.Head`), a
+ * tell comes out paused with its rest and suspends until a reader resumes it
  * (nothing past the tell runs until then), the program's value is the
  * end, and a reader that does not resume has stopped the body. okay-stream's
  * `Source[W]` is this plus `Async`; `Gen[W]` is the synchronous one,
@@ -348,35 +348,41 @@ object Gen:
   // ---- the walks, over programs
 
   /**
-   * THE ROW A GENERATOR IS STEPPED AT (okay-core's `Step`): its two
-   * effects and nothing else — a `Gen`'s program performs no other —
-   * `Writer % W` first. `p.step` runs the body to its next operation
-   * and hands it back with the rest, `k` as data: a tell, or the end.
+   * THE ROW A GENERATOR IS STEPPED AT (okay-core's `Machine.Head`): its
+   * two effects and nothing else — a `Gen`'s program performs no other
+   * — `Writer % W` first. `Machine.head(p)` runs the body to its next
+   * operation and hands it over paused, one object, the rest the
+   * machine's own: a tell, or the end. A paused tell a reader does not
+   * resume is dropped — the body stopped there.
    */
   private type Stepped[W] = Writer % W +: Stop +: okay.core.Pure
-  private type St[W] = Step[Stepped[W], Unit]
+  private type St[W] = Head[Stepped[W], Unit]
+  /** a tell paused: resumed (with `()`) for the rest */
+  private type At[W] = Stepping.Paused[Stepped[W], Unit]
 
   private def template[W]: Paths[Row[W], Stepped[W]] =
     Paths.Both(Paths.One(In.Here[Writer % W, Stop +: okay.core.Pure]()),
       Paths.One(In.There[Stop, Writer % W, Stop +: okay.core.Pure](In.Here[Stop, okay.core.Pure]())))
 
   /** the program from its start, stepped to its first operation */
-  private def started[W](g: Unit ! Row[W]): St[W] = g.fit(template[W]).step
+  private def started[W](g: Unit ! Row[W]): St[W] = Machine.head(g.fit(template[W]))
 
-  /** what a step came to: a tell, with the rest resumed when asked for; the end; a `Stop` */
+  /** the body stepped on: from its start (`at` null), or from the paused tell `at`, resumed */
+  private def stepped[W](g: Unit ! Row[W], at: At[W] | Null): St[W] =
+    if at == null then started(g) else Stepping.resume(at, ())
+
+  /** what a step came to: a tell, paused — its rest resumed when asked for; the end; a `Stop` */
   private enum Next[+W]:
-    case Tell(w: W, rest: () => St[W @scala.annotation.unchecked.uncheckedVariance])
+    case Tell(w: W, rest: At[W @scala.annotation.unchecked.uncheckedVariance])
     case End
     case Stopped
 
   private def nextOf[W](st: St[W]): Next[W] = st match
-    case Step.Done(_) => Next.End
-    case y: Step.Yield[?, ?, ?, ?] => Stepping.own(y.in) match
+    case Head.Done(_) => Next.End
+    case p: Head.Paused[?, ?, ?, ?, ?, ?, ?, ?, ?] => Stepping.own(p.in) match
       case null => Next.Stopped
-      case same: In.Same[f, Writer % W] => same(y.op) match
-        case Writer.Say(w) => Next.Tell(w, () => y.resume(()))
-    case Step.Failed(e) => throw e
-    case Step.Cancelled() => Stepping.cancelled()
+      case same: In.Same[f, Writer % W] => same(p.op) match
+        case Writer.Say(w) => Next.Tell(w, p)
 
   /**
    * Every told `w` replaced by `f(w)`'s tells, in place — each tell
@@ -399,27 +405,27 @@ object Gen:
   /** the walks that keep a count or end early: the body STEPPED, each
    * tell told again, the rest stepped when the reader resumes past it */
   private def indexed[W](g: Unit ! Row[W]): Unit ! Row[(W, Int)] =
-    def loop(i: Int, st: () => St[W]): Unit ! Row[(W, Int)] = defer(nextOf(st()) match
+    def loop(i: Int, at: At[W] | Null): Unit ! Row[(W, Int)] = defer(nextOf(stepped(g, at)) match
       case Next.Tell(w, rest) => say((w, i)).flatMap(_ => loop(i + 1, rest))
       case Next.End => pure(())
       case Next.Stopped => ended[(W, Int)])
-    loop(0, () => started(g))
+    loop(0, null)
 
   private def taking[W](n: Int)(g: Unit ! Row[W]): Unit ! Row[W] =
-    def loop(n: Int, st: () => St[W]): Unit ! Row[W] = defer(
+    def loop(n: Int, at: At[W] | Null): Unit ! Row[W] = defer(
       if n <= 0 then pure(())
-      else nextOf(st()) match
+      else nextOf(stepped(g, at)) match
         case Next.Tell(w, rest) => if n == 1 then say(w) else say(w).flatMap(_ => loop(n - 1, rest))
         case Next.End => pure(())
         case Next.Stopped => ended[W])
-    loop(n, () => started(g))
+    loop(n, null)
 
   private def takingWhile[W](p: W => Boolean)(g: Unit ! Row[W]): Unit ! Row[W] =
-    def loop(st: () => St[W]): Unit ! Row[W] = defer(nextOf(st()) match
+    def loop(at: At[W] | Null): Unit ! Row[W] = defer(nextOf(stepped(g, at)) match
       case Next.Tell(w, rest) => if p(w) then say(w).flatMap(_ => loop(rest)) else pure(())
       case Next.End => pure(())
       case Next.Stopped => ended[W])
-    loop(() => started(g))
+    loop(null)
 
   /** the first `n` tells skipped — stepped through in a loop, constant
    * stack — and the rest of the body as it is, from where it stands */
@@ -427,11 +433,11 @@ object Gen:
     @tailrec def skip(n: Int, st: St[W]): Unit ! Row[W] =
       if n <= 0 then rest(st)
       else nextOf(st) match
-        case Next.Tell(_, r) => skip(n - 1, r())
+        case Next.Tell(_, r) => skip(n - 1, Stepping.resume(r, ()))
         case Next.End => pure(())
         case Next.Stopped => ended[W]
     def rest(st: St[W]): Unit ! Row[W] = nextOf(st) match
-      case Next.Tell(w, r) => say(w).flatMap(_ => defer(rest(r())))
+      case Next.Tell(w, r) => say(w).flatMap(_ => defer(rest(Stepping.resume(r, ()))))
       case Next.End => pure(())
       case Next.Stopped => ended[W]
     if n <= 0 then g else defer(skip(n, started(g)))
@@ -440,7 +446,7 @@ object Gen:
    * `zip`, as a walk: one element from EACH side, stepped, and the
    * pair told, stopping the moment either ends. A side is stepped
    * whatever built it — `Gen.from`, a `flatMap`'s translation, a
-   * `Cat`, another `zip`: `p.step` runs ONE program to its next tell,
+   * `Cat`, another `zip`: `Machine.head` runs ONE program to its next tell,
    * which is exactly what makes this zip work through a flatMap with
    * no special case, the shape strymonas's paper names as the hard one
    * (a `zip` whose side was built by `flatMap`, needing the fused inner
@@ -450,18 +456,18 @@ object Gen:
    * when the zipped program runs, each time it does.
    */
   private[okay] def zipping[A, B](pa: Unit ! Row[A], pb: Unit ! Row[B]): Unit ! Row[(A, B)] =
-    def loop(x: () => St[A], y: () => St[B]): Unit ! Row[(A, B)] = defer(nextOf(x()) match
-      case Next.Tell(a, xRest) => nextOf(y()) match
+    def loop(x: At[A] | Null, y: At[B] | Null): Unit ! Row[(A, B)] = defer(nextOf(stepped(pa, x)) match
+      case Next.Tell(a, xRest) => nextOf(stepped(pb, y)) match
         case Next.Tell(b, yRest) => say((a, b)).flatMap(_ => loop(xRest, yRest))
         case _ => ended[(A, B)]
       case _ => ended[(A, B)])
-    loop(() => started(pa), () => started(pb))
+    loop(null, null)
 
   /** the walk, from a state: where it ended and whether a `Stop` did */
   private[okay] def readState[W, S, R](g: Unit ! Row[W])(K: FoldUntil[W, S, R])(s0: S): Halt[S] =
-    @tailrec def loop(s: S, st: () => St[W]): Halt[S] =
+    @tailrec def loop(s: S, at: At[W] | Null): Halt[S] =
       if K.done(s) then Halt(s, false)
-      else nextOf(st()) match
+      else nextOf(stepped(g, at)) match
         case Next.Tell(w, rest) =>
           // `done` BEFORE the rest — resuming it runs the body between
           // this yield and the next; a reader that has read enough must not
@@ -469,7 +475,7 @@ object Gen:
           if K.done(s2) then Halt(s2, false) else loop(s2, rest)
         case Next.End => Halt(s, false)
         case Next.Stopped => Halt(s, true)
-    loop(s0, () => started(g))
+    loop(s0, null)
 
   /** collect everything told, never done */
   private def collecting[W]: FoldUntil[W, List[W], List[W]] = new:
@@ -485,7 +491,8 @@ object Gen:
     def end(s: Unit): Unit = ()
 
   private final class Stepper[W](start: Unit ! Row[W]) extends Iterator[W]:
-    private var pending: () => St[W] = () => started(start)
+    // the tell last handed over, paused — resumed for the next; `null` before the first
+    private var at: At[W] | Null = null
     private var head: W | Null = null
     private var has = false
     private var ended = false
@@ -494,9 +501,9 @@ object Gen:
       if !has && !ended then
         // the rest held from the previous element is resumed NOW —
         // this is where the body between two yields runs
-        nextOf(pending()) match
-          case Next.Tell(w, rest) => head = w; has = true; pending = rest
-          case _ => ended = true
+        nextOf(stepped(start, at)) match
+          case Next.Tell(w, rest) => head = w; has = true; at = rest
+          case _ => ended = true; at = null
 
     def hasNext: Boolean = { advance(); has }
     def next(): W =

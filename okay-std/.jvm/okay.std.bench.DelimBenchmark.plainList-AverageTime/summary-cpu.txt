@@ -1,0 +1,334 @@
+--- Execution profile ---
+Total samples       : 312
+
+--- 1750000000 ns (56.09%), 175 samples
+  [ 0] scala.runtime.BoxesRunTime.boxToInteger
+  [ 1] okay.std.bench.DelimBenchmark.plainList
+  [ 2] okay.std.bench.jmh_generated.DelimBenchmark_plainList_jmhTest.plainList_avgt_jmhStub
+  [ 3] okay.std.bench.jmh_generated.DelimBenchmark_plainList_jmhTest.plainList_AverageTime
+  [ 4] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 5] java.lang.invoke.LambdaForm$MH.0x0000080001061400.invoke
+  [ 6] java.lang.invoke.LambdaForm$MH.0x0000080001061800.invokeExact_MT
+  [ 7] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [ 8] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [ 9] java.lang.reflect.Method.invoke
+  [10] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [11] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [12] java.util.concurrent.FutureTask.run
+  [13] java.util.concurrent.Executors$RunnableAdapter.call
+  [14] java.util.concurrent.FutureTask.run
+  [15] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [16] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [17] java.lang.Thread.runWith
+  [18] java.lang.Thread.run
+
+--- 720000000 ns (23.08%), 72 samples
+  [ 0] scala.collection.immutable.List.length
+  [ 1] okay.std.bench.DelimBenchmark.plainList
+  [ 2] okay.std.bench.jmh_generated.DelimBenchmark_plainList_jmhTest.plainList_avgt_jmhStub
+  [ 3] okay.std.bench.jmh_generated.DelimBenchmark_plainList_jmhTest.plainList_AverageTime
+  [ 4] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 5] java.lang.invoke.LambdaForm$MH.0x0000080001061400.invoke
+  [ 6] java.lang.invoke.LambdaForm$MH.0x0000080001061800.invokeExact_MT
+  [ 7] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [ 8] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [ 9] java.lang.reflect.Method.invoke
+  [10] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [11] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [12] java.util.concurrent.FutureTask.run
+  [13] java.util.concurrent.Executors$RunnableAdapter.call
+  [14] java.util.concurrent.FutureTask.run
+  [15] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [16] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [17] java.lang.Thread.runWith
+  [18] java.lang.Thread.run
+
+--- 340000000 ns (10.90%), 34 samples
+  [ 0] scala.collection.immutable.$colon$colon.<init>
+  [ 1] scala.collection.immutable.List.$colon$colon
+  [ 2] okay.std.bench.DelimBenchmark.plainList
+  [ 3] okay.std.bench.jmh_generated.DelimBenchmark_plainList_jmhTest.plainList_avgt_jmhStub
+  [ 4] okay.std.bench.jmh_generated.DelimBenchmark_plainList_jmhTest.plainList_AverageTime
+  [ 5] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 6] java.lang.invoke.LambdaForm$MH.0x0000080001061400.invoke
+  [ 7] java.lang.invoke.LambdaForm$MH.0x0000080001061800.invokeExact_MT
+  [ 8] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [ 9] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [10] java.lang.reflect.Method.invoke
+  [11] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [12] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [13] java.util.concurrent.FutureTask.run
+  [14] java.util.concurrent.Executors$RunnableAdapter.call
+  [15] java.util.concurrent.FutureTask.run
+  [16] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [17] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [18] java.lang.Thread.runWith
+  [19] java.lang.Thread.run
+
+--- 80000000 ns (2.56%), 8 samples
+  [ 0] java.lang.Integer.valueOf
+  [ 1] scala.runtime.BoxesRunTime.boxToInteger
+  [ 2] okay.std.bench.DelimBenchmark.plainList
+  [ 3] okay.std.bench.jmh_generated.DelimBenchmark_plainList_jmhTest.plainList_avgt_jmhStub
+  [ 4] okay.std.bench.jmh_generated.DelimBenchmark_plainList_jmhTest.plainList_AverageTime
+  [ 5] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 6] java.lang.invoke.LambdaForm$MH.0x0000080001061400.invoke
+  [ 7] java.lang.invoke.LambdaForm$MH.0x0000080001061800.invokeExact_MT
+  [ 8] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [ 9] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [10] java.lang.reflect.Method.invoke
+  [11] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [12] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [13] java.util.concurrent.FutureTask.run
+  [14] java.util.concurrent.Executors$RunnableAdapter.call
+  [15] java.util.concurrent.FutureTask.run
+  [16] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [17] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [18] java.lang.Thread.runWith
+  [19] java.lang.Thread.run
+
+--- 60000000 ns (1.92%), 6 samples
+  [ 0] semaphore_wait_trap
+  [ 1] WorkerThread::run
+  [ 2] Thread::call_run
+  [ 3] thread_native_entry
+  [ 4] _pthread_start
+  [ 5] thread_start
+
+--- 30000000 ns (0.96%), 3 samples
+  [ 0] scala.collection.immutable.List.length
+  [ 1] okay.std.bench.DelimBenchmark.plainList
+  [ 2] okay.std.bench.jmh_generated.DelimBenchmark_plainList_jmhTest.plainList_avgt_jmhStub
+  [ 3] okay.std.bench.jmh_generated.DelimBenchmark_plainList_jmhTest.plainList_AverageTime
+  [ 4] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 5] java.lang.invoke.LambdaForm$MH.0x0000080001061400.invoke
+  [ 6] java.lang.invoke.LambdaForm$MH.0x0000080001061800.invokeExact_MT
+  [ 7] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [ 8] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [ 9] java.lang.reflect.Method.invoke
+  [10] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [11] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [12] java.util.concurrent.FutureTask.run
+  [13] java.util.concurrent.Executors$RunnableAdapter.call
+  [14] java.util.concurrent.FutureTask.run
+  [15] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [16] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [17] java.lang.Thread.runWith
+  [18] java.lang.Thread.run
+
+--- 20000000 ns (0.64%), 2 samples
+  [ 0] scala.collection.immutable.List.length
+  [ 1] okay.std.bench.DelimBenchmark.plainList
+  [ 2] okay.std.bench.jmh_generated.DelimBenchmark_plainList_jmhTest.plainList_avgt_jmhStub
+  [ 3] okay.std.bench.jmh_generated.DelimBenchmark_plainList_jmhTest.plainList_AverageTime
+  [ 4] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 5] java.lang.invoke.LambdaForm$MH.0x0000080001061400.invoke
+  [ 6] java.lang.invoke.LambdaForm$MH.0x0000080001061800.invokeExact_MT
+  [ 7] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [ 8] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [ 9] java.lang.reflect.Method.invoke
+  [10] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [11] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [12] java.util.concurrent.FutureTask.run
+  [13] java.util.concurrent.Executors$RunnableAdapter.call
+  [14] java.util.concurrent.FutureTask.run
+  [15] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [16] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [17] java.lang.Thread.runWith
+  [18] java.lang.Thread.run
+
+--- 20000000 ns (0.64%), 2 samples
+  [ 0] __psynch_cvwait
+  [ 1] PlatformMonitor::wait
+  [ 2] Monitor::wait_without_safepoint_check
+  [ 3] SuspendibleThreadSet::join
+  [ 4] G1MonotonicArenaFreeMemoryTask::execute
+  [ 5] G1ServiceThread::run_task
+  [ 6] G1ServiceThread::run_service
+  [ 7] ConcurrentGCThread::run
+  [ 8] Thread::call_run
+  [ 9] thread_native_entry
+  [10] _pthread_start
+  [11] thread_start
+
+--- 10000000 ns (0.32%), 1 sample
+  [ 0] ciObjectFactory::get_metadata
+  [ 1] ciEnv::get_method_from_handle
+  [ 2] CompileBroker::invoke_compiler_on_method
+  [ 3] CompileBroker::compiler_thread_loop
+  [ 4] JavaThread::thread_main_inner
+  [ 5] Thread::call_run
+  [ 6] thread_native_entry
+  [ 7] _pthread_start
+  [ 8] thread_start
+
+--- 10000000 ns (0.32%), 1 sample
+  [ 0] ChunkPool::clean
+  [ 1] PeriodicTask::real_time_tick
+  [ 2] WatcherThread::run
+  [ 3] Thread::call_run
+  [ 4] thread_native_entry
+  [ 5] _pthread_start
+  [ 6] thread_start
+
+--- 10000000 ns (0.32%), 1 sample
+  [ 0] semaphore_signal_trap
+  [ 1] WorkerThreads::run_task
+  [ 2] G1RemSet::merge_heap_roots
+  [ 3] G1YoungCollector::evacuate_initial_collection_set
+  [ 4] G1YoungCollector::collect
+  [ 5] G1CollectedHeap::do_collection_pause_at_safepoint
+  [ 6] VM_G1CollectForAllocation::doit
+  [ 7] VM_Operation::evaluate
+  [ 8] VMThread::evaluate_operation
+  [ 9] VMThread::inner_execute
+  [10] VMThread::run
+  [11] Thread::call_run
+  [12] thread_native_entry
+  [13] _pthread_start
+  [14] thread_start
+
+--- 10000000 ns (0.32%), 1 sample
+  [ 0] scala.collection.immutable.List.$colon$colon
+  [ 1] okay.std.bench.DelimBenchmark.plainList
+  [ 2] okay.std.bench.jmh_generated.DelimBenchmark_plainList_jmhTest.plainList_avgt_jmhStub
+  [ 3] okay.std.bench.jmh_generated.DelimBenchmark_plainList_jmhTest.plainList_AverageTime
+  [ 4] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 5] java.lang.invoke.LambdaForm$MH.0x0000080001061400.invoke
+  [ 6] java.lang.invoke.LambdaForm$MH.0x0000080001061800.invokeExact_MT
+  [ 7] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [ 8] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [ 9] java.lang.reflect.Method.invoke
+  [10] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [11] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [12] java.util.concurrent.FutureTask.run
+  [13] java.util.concurrent.Executors$RunnableAdapter.call
+  [14] java.util.concurrent.FutureTask.run
+  [15] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [16] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [17] java.lang.Thread.runWith
+  [18] java.lang.Thread.run
+
+--- 10000000 ns (0.32%), 1 sample
+  [ 0] pthread_jit_write_protect_np
+  [ 1] C2 Runtime new_instance_blob
+  [ 2] scala.collection.immutable.List.$colon$colon
+  [ 3] okay.std.bench.DelimBenchmark.plainList
+  [ 4] okay.std.bench.jmh_generated.DelimBenchmark_plainList_jmhTest.plainList_avgt_jmhStub
+  [ 5] okay.std.bench.jmh_generated.DelimBenchmark_plainList_jmhTest.plainList_AverageTime
+  [ 6] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 7] java.lang.invoke.LambdaForm$MH.0x0000080001061400.invoke
+  [ 8] java.lang.invoke.LambdaForm$MH.0x0000080001061800.invokeExact_MT
+  [ 9] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [11] java.lang.reflect.Method.invoke
+  [12] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] java.util.concurrent.FutureTask.run
+  [15] java.util.concurrent.Executors$RunnableAdapter.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [18] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [19] java.lang.Thread.runWith
+  [20] java.lang.Thread.run
+
+--- 10000000 ns (0.32%), 1 sample
+  [ 0] okay.std.bench.DelimBenchmark.plainList
+  [ 1] okay.std.bench.jmh_generated.DelimBenchmark_plainList_jmhTest.plainList_avgt_jmhStub
+  [ 2] okay.std.bench.jmh_generated.DelimBenchmark_plainList_jmhTest.plainList_AverageTime
+  [ 3] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 4] java.lang.invoke.LambdaForm$MH.0x0000080001061400.invoke
+  [ 5] java.lang.invoke.LambdaForm$MH.0x0000080001061800.invokeExact_MT
+  [ 6] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [ 7] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [ 8] java.lang.reflect.Method.invoke
+  [ 9] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [10] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [11] java.util.concurrent.FutureTask.run
+  [12] java.util.concurrent.Executors$RunnableAdapter.call
+  [13] java.util.concurrent.FutureTask.run
+  [14] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [15] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [16] java.lang.Thread.runWith
+  [17] java.lang.Thread.run
+
+--- 10000000 ns (0.32%), 1 sample
+  [ 0] MemoryPool::record_peak_memory_usage
+  [ 1] TraceMemoryManagerStats::TraceMemoryManagerStats
+  [ 2] G1YoungGCMonitoringScope::G1YoungGCMonitoringScope
+  [ 3] G1YoungCollector::collect
+  [ 4] G1CollectedHeap::do_collection_pause_at_safepoint
+  [ 5] VM_G1CollectForAllocation::doit
+  [ 6] VM_Operation::evaluate
+  [ 7] VMThread::evaluate_operation
+  [ 8] VMThread::inner_execute
+  [ 9] VMThread::run
+  [10] Thread::call_run
+  [11] thread_native_entry
+  [12] _pthread_start
+  [13] thread_start
+
+--- 10000000 ns (0.32%), 1 sample
+  [ 0] jdk.internal.misc.Unsafe.getAndBitwiseAndInt
+  [ 1] java.util.concurrent.locks.AbstractQueuedSynchronizer$Node.getAndUnsetStatus
+  [ 2] java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.doSignal
+  [ 3] java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.signal
+  [ 4] java.util.concurrent.LinkedBlockingQueue.signalNotEmpty
+  [ 5] java.util.concurrent.LinkedBlockingQueue.offer
+  [ 6] java.util.concurrent.ThreadPoolExecutor.execute
+  [ 7] java.util.concurrent.ExecutorCompletionService.submit
+  [ 8] org.openjdk.jmh.runner.BenchmarkHandler.runIteration
+  [ 9] org.openjdk.jmh.runner.BaseRunner.runBenchmark
+  [10] org.openjdk.jmh.runner.BaseRunner.runBenchmark
+  [11] org.openjdk.jmh.runner.BaseRunner.doSingle
+  [12] org.openjdk.jmh.runner.BaseRunner.runBenchmarksForked
+  [13] org.openjdk.jmh.runner.ForkedRunner.run
+  [14] org.openjdk.jmh.runner.ForkedMain.main
+
+--- 10000000 ns (0.32%), 1 sample
+  [ 0] __psynch_mutexwait
+  [ 1] _pthread_mutex_firstfit_lock_slow
+  [ 2] Mutex::lock_without_safepoint_check
+  [ 3] TaskTerminator::offer_termination
+  [ 4] G1ParEvacuateFollowersClosure::offer_termination
+  [ 5] G1ParEvacuateFollowersClosure::do_void
+  [ 6] G1EvacuateRegionsTask::evacuate_live_objects
+  [ 7] G1EvacuateRegionsBaseTask::work
+  [ 8] WorkerThread::run
+  [ 9] Thread::call_run
+  [10] thread_native_entry
+  [11] _pthread_start
+  [12] thread_start
+
+--- 10000000 ns (0.32%), 1 sample
+  [ 0] __psynch_cvwait
+  [ 1] PlatformMonitor::wait
+  [ 2] Monitor::wait_without_safepoint_check
+  [ 3] TaskTerminator::offer_termination
+  [ 4] G1ParEvacuateFollowersClosure::offer_termination
+  [ 5] G1ParEvacuateFollowersClosure::do_void
+  [ 6] G1EvacuateRegionsTask::evacuate_live_objects
+  [ 7] G1EvacuateRegionsBaseTask::work
+  [ 8] WorkerThread::run
+  [ 9] Thread::call_run
+  [10] thread_native_entry
+  [11] _pthread_start
+  [12] thread_start
+
+          ns  percent  samples  top
+  ----------  -------  -------  ---
+  1750000000   56.09%      175  scala.runtime.BoxesRunTime.boxToInteger
+   770000000   24.68%       77  scala.collection.immutable.List.length
+   340000000   10.90%       34  scala.collection.immutable.$colon$colon.<init>
+    80000000    2.56%        8  java.lang.Integer.valueOf
+    60000000    1.92%        6  semaphore_wait_trap
+    30000000    0.96%        3  __psynch_cvwait
+    10000000    0.32%        1  ChunkPool::clean
+    10000000    0.32%        1  MemoryPool::record_peak_memory_usage
+    10000000    0.32%        1  __psynch_mutexwait
+    10000000    0.32%        1  ciObjectFactory::get_metadata
+    10000000    0.32%        1  jdk.internal.misc.Unsafe.getAndBitwiseAndInt
+    10000000    0.32%        1  okay.std.bench.DelimBenchmark.plainList
+    10000000    0.32%        1  pthread_jit_write_protect_np
+    10000000    0.32%        1  scala.collection.immutable.List.$colon$colon
+    10000000    0.32%        1  semaphore_signal_trap

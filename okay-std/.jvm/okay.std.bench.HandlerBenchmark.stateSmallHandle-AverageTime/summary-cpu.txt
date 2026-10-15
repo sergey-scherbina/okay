@@ -1,0 +1,1901 @@
+--- Execution profile ---
+Total samples       : 311
+
+--- 570000000 ns (18.33%), 57 samples
+  [ 0] scala.runtime.BoxesRunTime.boxToLong
+  [ 1] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 2] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 3] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 4] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 5] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [ 6] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [ 7] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [ 8] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [ 9] java.lang.reflect.Method.invoke
+  [10] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [11] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [12] java.util.concurrent.FutureTask.run
+  [13] java.util.concurrent.Executors$RunnableAdapter.call
+  [14] java.util.concurrent.FutureTask.run
+  [15] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [16] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [17] java.lang.Thread.runWith
+  [18] java.lang.Thread.run
+
+--- 210000000 ns (6.75%), 21 samples
+  [ 0] scala.runtime.BoxesRunTime.boxToLong
+  [ 1] okay.std.bench.HandlerBenchmark.stateSmallHandle$$anonfun$1
+  [ 2] okay.std.bench.HandlerBenchmark.stateSmallHandle$$anonfun$adapted$1
+  [ 3] okay.std.bench.HandlerBenchmark$$Lambda.0x000007fc010eb000.apply
+  [ 4] okay.Run$$anon$1.$anonfun$1
+  [ 5] okay.Run$$anon$1$$Lambda.0x000007fc010f6718.apply
+  [ 6] okay.one.machine.Machine$.eval
+  [ 7] okay.one.machine.Machine$.run
+  [ 8] okay.one.Cont$.run
+  [ 9] okay.Run$.run
+  [10] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [11] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [12] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [13] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [14] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [15] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [16] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [17] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [18] java.lang.reflect.Method.invoke
+  [19] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [20] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [21] java.util.concurrent.FutureTask.run
+  [22] java.util.concurrent.Executors$RunnableAdapter.call
+  [23] java.util.concurrent.FutureTask.run
+  [24] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [25] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [26] java.lang.Thread.runWith
+  [27] java.lang.Thread.run
+
+--- 190000000 ns (6.11%), 19 samples
+  [ 0] okay.one.machine.Machine$.eval
+  [ 1] okay.one.machine.Machine$.run
+  [ 2] okay.one.Cont$.run
+  [ 3] okay.Run$.run
+  [ 4] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 5] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 6] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 7] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 8] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [ 9] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [12] java.lang.reflect.Method.invoke
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] java.util.concurrent.FutureTask.run
+  [16] java.util.concurrent.Executors$RunnableAdapter.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [19] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [20] java.lang.Thread.runWith
+  [21] java.lang.Thread.run
+
+--- 180000000 ns (5.79%), 18 samples
+  [ 0] okay.one.machine.Machine$.eval
+  [ 1] okay.one.machine.Machine$.run
+  [ 2] okay.one.Cont$.run
+  [ 3] okay.Run$.run
+  [ 4] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 5] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 6] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 7] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 8] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [ 9] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [12] java.lang.reflect.Method.invoke
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] java.util.concurrent.FutureTask.run
+  [16] java.util.concurrent.Executors$RunnableAdapter.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [19] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [20] java.lang.Thread.runWith
+  [21] java.lang.Thread.run
+
+--- 130000000 ns (4.18%), 13 samples
+  [ 0] okay.one.machine.Machine$.eval
+  [ 1] okay.one.machine.Machine$.drive
+  [ 2] okay.one.machine.Machine$.run
+  [ 3] okay.one.Cont$.run
+  [ 4] okay.Run$.run
+  [ 5] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 6] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 7] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 110000000 ns (3.54%), 11 samples
+  [ 0] okay.one.machine.Machine$.eval
+  [ 1] okay.one.machine.Machine$.run
+  [ 2] okay.one.Cont$.run
+  [ 3] okay.Run$.run
+  [ 4] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 5] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 6] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 7] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 8] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [ 9] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [12] java.lang.reflect.Method.invoke
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] java.util.concurrent.FutureTask.run
+  [16] java.util.concurrent.Executors$RunnableAdapter.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [19] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [20] java.lang.Thread.runWith
+  [21] java.lang.Thread.run
+
+--- 110000000 ns (3.54%), 11 samples
+  [ 0] okay.one.machine.Machine$.run
+  [ 1] okay.one.Cont$.run
+  [ 2] okay.Run$.run
+  [ 3] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 4] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 5] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 6] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 7] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [ 8] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [ 9] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [11] java.lang.reflect.Method.invoke
+  [12] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] java.util.concurrent.FutureTask.run
+  [15] java.util.concurrent.Executors$RunnableAdapter.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [18] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [19] java.lang.Thread.runWith
+  [20] java.lang.Thread.run
+
+--- 90000000 ns (2.89%), 9 samples
+  [ 0] scala.Tuple2$.apply
+  [ 1] okay.std.State$Cell.ret
+  [ 2] okay.one.machine.Machine$.eval
+  [ 3] okay.one.machine.Machine$.run
+  [ 4] okay.one.Cont$.run
+  [ 5] okay.Run$.run
+  [ 6] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 7] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 8] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 9] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [10] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [11] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [14] java.lang.reflect.Method.invoke
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.Executors$RunnableAdapter.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [21] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [22] java.lang.Thread.runWith
+  [23] java.lang.Thread.run
+
+--- 80000000 ns (2.57%), 8 samples
+  [ 0] okay.one.machine.Machine$Meta$UnderState.k
+  [ 1] okay.one.machine.Machine$.eval
+  [ 2] okay.one.machine.Machine$.run
+  [ 3] okay.one.Cont$.run
+  [ 4] okay.Run$.run
+  [ 5] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 6] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 7] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 80000000 ns (2.57%), 8 samples
+  [ 0] okay.one.machine.Machine$.drive
+  [ 1] okay.one.machine.Machine$.run
+  [ 2] okay.one.Cont$.run
+  [ 3] okay.Run$.run
+  [ 4] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 5] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 6] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 7] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 8] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [ 9] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [12] java.lang.reflect.Method.invoke
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] java.util.concurrent.FutureTask.run
+  [16] java.util.concurrent.Executors$RunnableAdapter.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [19] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [20] java.lang.Thread.runWith
+  [21] java.lang.Thread.run
+
+--- 70000000 ns (2.25%), 7 samples
+  [ 0] okay.std.State$Put$.apply
+  [ 1] okay.std.State$.set
+  [ 2] okay.std.bench.HandlerBenchmark.stateSmallHandle$$anonfun$1
+  [ 3] okay.std.bench.HandlerBenchmark.stateSmallHandle$$anonfun$adapted$1
+  [ 4] okay.std.bench.HandlerBenchmark$$Lambda.0x000007fc010eb000.apply
+  [ 5] okay.Run$$anon$1.$anonfun$1
+  [ 6] okay.Run$$anon$1$$Lambda.0x000007fc010f6718.apply
+  [ 7] okay.one.machine.Machine$.eval
+  [ 8] okay.one.machine.Machine$.run
+  [ 9] okay.one.Cont$.run
+  [10] okay.Run$.run
+  [11] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [12] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [13] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [14] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [15] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [16] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [17] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [18] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [19] java.lang.reflect.Method.invoke
+  [20] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [21] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [22] java.util.concurrent.FutureTask.run
+  [23] java.util.concurrent.Executors$RunnableAdapter.call
+  [24] java.util.concurrent.FutureTask.run
+  [25] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [26] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [27] java.lang.Thread.runWith
+  [28] java.lang.Thread.run
+
+--- 60000000 ns (1.93%), 6 samples
+  [ 0] okay.std.State$Get$.apply
+  [ 1] okay.std.State$.get
+  [ 2] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 3] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 4] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 5] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 6] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [ 7] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [ 8] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [ 9] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [10] java.lang.reflect.Method.invoke
+  [11] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [12] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [13] java.util.concurrent.FutureTask.run
+  [14] java.util.concurrent.Executors$RunnableAdapter.call
+  [15] java.util.concurrent.FutureTask.run
+  [16] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [17] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [18] java.lang.Thread.runWith
+  [19] java.lang.Thread.run
+
+--- 50000000 ns (1.61%), 5 samples
+  [ 0] okay.Program$package$.effect
+  [ 1] okay.std.State$.get
+  [ 2] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 3] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 4] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 5] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 6] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [ 7] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [ 8] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [ 9] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [10] java.lang.reflect.Method.invoke
+  [11] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [12] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [13] java.util.concurrent.FutureTask.run
+  [14] java.util.concurrent.Executors$RunnableAdapter.call
+  [15] java.util.concurrent.FutureTask.run
+  [16] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [17] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [18] java.lang.Thread.runWith
+  [19] java.lang.Thread.run
+
+--- 50000000 ns (1.61%), 5 samples
+  [ 0] okay.one.machine.Machine$.eval
+  [ 1] okay.one.machine.Machine$.run
+  [ 2] okay.one.Cont$.run
+  [ 3] okay.Run$.run
+  [ 4] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 5] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 6] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 7] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 8] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [ 9] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [12] java.lang.reflect.Method.invoke
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] java.util.concurrent.FutureTask.run
+  [16] java.util.concurrent.Executors$RunnableAdapter.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [19] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [20] java.lang.Thread.runWith
+  [21] java.lang.Thread.run
+
+--- 50000000 ns (1.61%), 5 samples
+  [ 0] okay.one.row.In$Here$.apply
+  [ 1] okay.core.Split$$anon$1.paths
+  [ 2] okay.Run$$anon$4.on
+  [ 3] okay.Run$.run
+  [ 4] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 5] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 6] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 7] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 8] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [ 9] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [12] java.lang.reflect.Method.invoke
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] java.util.concurrent.FutureTask.run
+  [16] java.util.concurrent.Executors$RunnableAdapter.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [19] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [20] java.lang.Thread.runWith
+  [21] java.lang.Thread.run
+
+--- 40000000 ns (1.29%), 4 samples
+  [ 0] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 1] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 2] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 3] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 4] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [ 5] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [ 6] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [ 7] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [ 8] java.lang.reflect.Method.invoke
+  [ 9] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [10] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [11] java.util.concurrent.FutureTask.run
+  [12] java.util.concurrent.Executors$RunnableAdapter.call
+  [13] java.util.concurrent.FutureTask.run
+  [14] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [15] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [16] java.lang.Thread.runWith
+  [17] java.lang.Thread.run
+
+--- 40000000 ns (1.29%), 4 samples
+  [ 0] okay.one.Cont$Return$.apply
+  [ 1] okay.one.Cont$.pure
+  [ 2] okay.std.State$Cell.ret
+  [ 3] okay.one.machine.Machine$.eval
+  [ 4] okay.one.machine.Machine$.run
+  [ 5] okay.one.Cont$.run
+  [ 6] okay.Run$.run
+  [ 7] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 8] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 9] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [10] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [11] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [12] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [15] java.lang.reflect.Method.invoke
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.Executors$RunnableAdapter.call
+  [20] java.util.concurrent.FutureTask.run
+  [21] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [22] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [23] java.lang.Thread.runWith
+  [24] java.lang.Thread.run
+
+--- 40000000 ns (1.29%), 4 samples
+  [ 0] okay.one.machine.Machine$.rare
+  [ 1] okay.one.machine.Machine$.eval
+  [ 2] okay.one.machine.Machine$.run
+  [ 3] okay.one.Cont$.run
+  [ 4] okay.Run$.run
+  [ 5] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 6] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 7] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 40000000 ns (1.29%), 4 samples
+  [ 0] scala.runtime.BoxesRunTime.boxToLong
+  [ 1] okay.std.bench.HandlerBenchmark.stateSmallHandle$$anonfun$1
+  [ 2] okay.std.bench.HandlerBenchmark.stateSmallHandle$$anonfun$adapted$1
+  [ 3] okay.std.bench.HandlerBenchmark$$Lambda.0x000007fc010eb000.apply
+  [ 4] okay.Run$$anon$1.$anonfun$1
+  [ 5] okay.Run$$anon$1$$Lambda.0x000007fc010f6718.apply
+  [ 6] okay.one.machine.Machine$.eval
+  [ 7] okay.one.machine.Machine$.drive
+  [ 8] okay.one.machine.Machine$.run
+  [ 9] okay.one.Cont$.run
+  [10] okay.Run$.run
+  [11] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [12] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [13] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [14] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [15] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [16] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [17] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [18] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [19] java.lang.reflect.Method.invoke
+  [20] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [21] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [22] java.util.concurrent.FutureTask.run
+  [23] java.util.concurrent.Executors$RunnableAdapter.call
+  [24] java.util.concurrent.FutureTask.run
+  [25] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [26] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [27] java.lang.Thread.runWith
+  [28] java.lang.Thread.run
+
+--- 30000000 ns (0.96%), 3 samples
+  [ 0] okay.one.Cont$Return$.apply
+  [ 1] okay.one.machine.Machine$.bottom
+  [ 2] okay.one.machine.Machine$.eval
+  [ 3] okay.one.machine.Machine$.drive
+  [ 4] okay.one.machine.Machine$.run
+  [ 5] okay.one.Cont$.run
+  [ 6] okay.Run$.run
+  [ 7] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 8] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 9] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [10] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [11] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [12] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [15] java.lang.reflect.Method.invoke
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.Executors$RunnableAdapter.call
+  [20] java.util.concurrent.FutureTask.run
+  [21] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [22] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [23] java.lang.Thread.runWith
+  [24] java.lang.Thread.run
+
+--- 30000000 ns (0.96%), 3 samples
+  [ 0] okay.one.machine.Machine$.drive
+  [ 1] okay.one.machine.Machine$.run
+  [ 2] okay.one.Cont$.run
+  [ 3] okay.Run$.run
+  [ 4] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 5] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 6] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 7] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 8] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [ 9] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [12] java.lang.reflect.Method.invoke
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] java.util.concurrent.FutureTask.run
+  [16] java.util.concurrent.Executors$RunnableAdapter.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [19] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [20] java.lang.Thread.runWith
+  [21] java.lang.Thread.run
+
+--- 30000000 ns (0.96%), 3 samples
+  [ 0] okay.core.Paths$One.head
+  [ 1] okay.core.Paths$One.find
+  [ 2] okay.Program$package$$anon$19.on
+  [ 3] okay.Run$$anon$1.on
+  [ 4] okay.Run$$anon$4.on
+  [ 5] okay.Run$.run
+  [ 6] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 7] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 8] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 9] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [10] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [11] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [14] java.lang.reflect.Method.invoke
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.Executors$RunnableAdapter.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [21] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [22] java.lang.Thread.runWith
+  [23] java.lang.Thread.run
+
+--- 30000000 ns (0.96%), 3 samples
+  [ 0] okay.one.machine.Machine$Out$None$.apply
+  [ 1] okay.one.machine.Machine$Out$.none
+  [ 2] okay.one.machine.Machine$.run
+  [ 3] okay.one.Cont$.run
+  [ 4] okay.Run$.run
+  [ 5] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 6] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 7] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 30000000 ns (0.96%), 3 samples
+  [ 0] okay.one.machine.Machine$Eff.<init>
+  [ 1] okay.one.machine.Machine$.bottom
+  [ 2] okay.one.machine.Machine$.eval
+  [ 3] okay.one.machine.Machine$.drive
+  [ 4] okay.one.machine.Machine$.run
+  [ 5] okay.one.Cont$.run
+  [ 6] okay.Run$.run
+  [ 7] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 8] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 9] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [10] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [11] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [12] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [15] java.lang.reflect.Method.invoke
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.Executors$RunnableAdapter.call
+  [20] java.util.concurrent.FutureTask.run
+  [21] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [22] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [23] java.lang.Thread.runWith
+  [24] java.lang.Thread.run
+
+--- 30000000 ns (0.96%), 3 samples
+  [ 0] okay.core.Split$$anon$1.paths
+  [ 1] okay.Run$$anon$4.on
+  [ 2] okay.Run$.run
+  [ 3] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 4] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 5] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 6] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 7] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [ 8] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [ 9] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [11] java.lang.reflect.Method.invoke
+  [12] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] java.util.concurrent.FutureTask.run
+  [15] java.util.concurrent.Executors$RunnableAdapter.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [18] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [19] java.lang.Thread.runWith
+  [20] java.lang.Thread.run
+
+--- 30000000 ns (0.96%), 3 samples
+  [ 0] okay.std.State$Update.f
+  [ 1] okay.std.State$Cell.value
+  [ 2] okay.std.State$Cell.value
+  [ 3] okay.one.machine.Machine$.eval
+  [ 4] okay.one.machine.Machine$.run
+  [ 5] okay.one.Cont$.run
+  [ 6] okay.Run$.run
+  [ 7] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 8] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 9] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [10] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [11] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [12] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [15] java.lang.reflect.Method.invoke
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.Executors$RunnableAdapter.call
+  [20] java.util.concurrent.FutureTask.run
+  [21] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [22] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [23] java.lang.Thread.runWith
+  [24] java.lang.Thread.run
+
+--- 30000000 ns (0.96%), 3 samples
+  [ 0] okay.std.State$$anon$1.kernel
+  [ 1] okay.Run$$anon$4.on
+  [ 2] okay.Run$.run
+  [ 3] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 4] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 5] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 6] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 7] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [ 8] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [ 9] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [11] java.lang.reflect.Method.invoke
+  [12] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] java.util.concurrent.FutureTask.run
+  [15] java.util.concurrent.Executors$RunnableAdapter.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [18] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [19] java.lang.Thread.runWith
+  [20] java.lang.Thread.run
+
+--- 30000000 ns (0.96%), 3 samples
+  [ 0] okay.one.machine.Machine$Frame$End$.apply
+  [ 1] okay.one.machine.Machine$.run
+  [ 2] okay.one.Cont$.run
+  [ 3] okay.Run$.run
+  [ 4] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 5] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 6] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 7] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 8] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [ 9] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [12] java.lang.reflect.Method.invoke
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] java.util.concurrent.FutureTask.run
+  [16] java.util.concurrent.Executors$RunnableAdapter.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [19] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [20] java.lang.Thread.runWith
+  [21] java.lang.Thread.run
+
+--- 30000000 ns (0.96%), 3 samples
+  [ 0] okay.Run$$anon$1$$Lambda.0x000007fc010f6718.apply
+  [ 1] okay.one.machine.Machine$.eval
+  [ 2] okay.one.machine.Machine$.run
+  [ 3] okay.one.Cont$.run
+  [ 4] okay.Run$.run
+  [ 5] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 6] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 7] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 30000000 ns (0.96%), 3 samples
+  [ 0] okay.Program$package$.effect
+  [ 1] okay.std.State$.get
+  [ 2] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 3] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 4] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 5] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 6] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [ 7] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [ 8] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [ 9] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [10] java.lang.reflect.Method.invoke
+  [11] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [12] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [13] java.util.concurrent.FutureTask.run
+  [14] java.util.concurrent.Executors$RunnableAdapter.call
+  [15] java.util.concurrent.FutureTask.run
+  [16] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [17] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [18] java.lang.Thread.runWith
+  [19] java.lang.Thread.run
+
+--- 20000000 ns (0.64%), 2 samples
+  [ 0] okay.std.State$Cell.value
+  [ 1] okay.one.machine.Machine$.eval
+  [ 2] okay.one.machine.Machine$.run
+  [ 3] okay.one.Cont$.run
+  [ 4] okay.Run$.run
+  [ 5] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 6] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 7] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 20000000 ns (0.64%), 2 samples
+  [ 0] okay.one.machine.Machine$.eval
+  [ 1] okay.one.machine.Machine$.drive
+  [ 2] okay.one.machine.Machine$.run
+  [ 3] okay.one.Cont$.run
+  [ 4] okay.Run$.run
+  [ 5] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 6] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 7] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 20000000 ns (0.64%), 2 samples
+  [ 0] okay.one.machine.Machine$.bottom
+  [ 1] okay.one.machine.Machine$.eval
+  [ 2] okay.one.machine.Machine$.drive
+  [ 3] okay.one.machine.Machine$.run
+  [ 4] okay.one.Cont$.run
+  [ 5] okay.Run$.run
+  [ 6] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 7] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 8] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 9] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [10] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [11] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [14] java.lang.reflect.Method.invoke
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.Executors$RunnableAdapter.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [21] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [22] java.lang.Thread.runWith
+  [23] java.lang.Thread.run
+
+--- 20000000 ns (0.64%), 2 samples
+  [ 0] okay.one.machine.Machine$.rare
+  [ 1] okay.one.machine.Machine$.eval
+  [ 2] okay.one.machine.Machine$.run
+  [ 3] okay.one.Cont$.run
+  [ 4] okay.Run$.run
+  [ 5] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 6] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 7] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 20000000 ns (0.64%), 2 samples
+  [ 0] okay.one.machine.Machine$Done.z
+  [ 1] okay.one.machine.Machine$.drive
+  [ 2] okay.one.machine.Machine$.run
+  [ 3] okay.one.Cont$.run
+  [ 4] okay.Run$.run
+  [ 5] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 6] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 7] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 20000000 ns (0.64%), 2 samples
+  [ 0] __psynch_mutexwait
+  [ 1] _pthread_mutex_firstfit_lock_slow
+  [ 2] Mutex::lock_without_safepoint_check
+  [ 3] TaskTerminator::offer_termination
+  [ 4] G1ParEvacuateFollowersClosure::offer_termination
+  [ 5] G1ParEvacuateFollowersClosure::do_void
+  [ 6] G1EvacuateRegionsTask::evacuate_live_objects
+  [ 7] G1EvacuateRegionsBaseTask::work
+  [ 8] WorkerThread::run
+  [ 9] Thread::call_run
+  [10] thread_native_entry
+  [11] _pthread_start
+  [12] thread_start
+
+--- 20000000 ns (0.64%), 2 samples
+  [ 0] okay.std.State$Cell.value
+  [ 1] okay.one.machine.Machine$.eval
+  [ 2] okay.one.machine.Machine$.run
+  [ 3] okay.one.Cont$.run
+  [ 4] okay.Run$.run
+  [ 5] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 6] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 7] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 20000000 ns (0.64%), 2 samples
+  [ 0] okay.std.State$Cell.value
+  [ 1] okay.one.machine.Machine$.eval
+  [ 2] okay.one.machine.Machine$.run
+  [ 3] okay.one.Cont$.run
+  [ 4] okay.Run$.run
+  [ 5] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 6] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 7] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 20000000 ns (0.64%), 2 samples
+  [ 0] okay.one.machine.Machine$.run
+  [ 1] okay.one.Cont$.run
+  [ 2] okay.Run$.run
+  [ 3] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 4] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 5] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 6] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 7] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [ 8] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [ 9] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [11] java.lang.reflect.Method.invoke
+  [12] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] java.util.concurrent.FutureTask.run
+  [15] java.util.concurrent.Executors$RunnableAdapter.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [18] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [19] java.lang.Thread.runWith
+  [20] java.lang.Thread.run
+
+--- 20000000 ns (0.64%), 2 samples
+  [ 0] okay.one.Cont$HandleState.k
+  [ 1] okay.one.machine.Machine$.eval
+  [ 2] okay.one.machine.Machine$.run
+  [ 3] okay.one.Cont$.run
+  [ 4] okay.Run$.run
+  [ 5] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 6] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 7] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 20000000 ns (0.64%), 2 samples
+  [ 0] __mmap
+  [ 1] os::pd_uncommit_memory
+  [ 2] os::uncommit_memory
+  [ 3] G1PageBasedVirtualSpace::uncommit
+  [ 4] G1RegionsLargerThanCommitSizeMapper::uncommit_regions
+  [ 5] G1HeapRegionManager::uncommit_regions
+  [ 6] G1HeapRegionManager::uncommit_inactive_regions
+  [ 7] G1UncommitRegionTask::execute
+  [ 8] G1ServiceThread::run_task
+  [ 9] G1ServiceThread::run_service
+  [10] ConcurrentGCThread::run
+  [11] Thread::call_run
+  [12] thread_native_entry
+  [13] _pthread_start
+  [14] thread_start
+
+--- 20000000 ns (0.64%), 2 samples
+  [ 0] semaphore_wait_trap
+  [ 1] WorkerThread::run
+  [ 2] Thread::call_run
+  [ 3] thread_native_entry
+  [ 4] _pthread_start
+  [ 5] thread_start
+
+--- 10000000 ns (0.32%), 1 sample
+  [ 0] scala.Tuple2.<init>
+  [ 1] scala.Tuple2$.apply
+  [ 2] okay.std.State$Cell.ret
+  [ 3] okay.one.machine.Machine$.eval
+  [ 4] okay.one.machine.Machine$.run
+  [ 5] okay.one.Cont$.run
+  [ 6] okay.Run$.run
+  [ 7] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 8] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 9] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [10] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [11] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [12] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [15] java.lang.reflect.Method.invoke
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.Executors$RunnableAdapter.call
+  [20] java.util.concurrent.FutureTask.run
+  [21] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [22] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [23] java.lang.Thread.runWith
+  [24] java.lang.Thread.run
+
+--- 10000000 ns (0.32%), 1 sample
+  [ 0] __psynch_cvbroad
+  [ 1] CompileBroker::compile_method_base
+  [ 2] CompileBroker::compile_method
+  [ 3] CompileBroker::compile_method
+  [ 4] CompilationPolicy::event
+  [ 5] InterpreterRuntime::frequency_counter_overflow_inner
+  [ 6] InterpreterRuntime::frequency_counter_overflow
+  [ 7] java.util.concurrent.locks.AbstractOwnableSynchronizer.setExclusiveOwnerThread
+  [ 8] java.util.concurrent.locks.ReentrantLock$NonfairSync.initialTryLock
+  [ 9] java.util.concurrent.locks.ReentrantLock$Sync.lock
+  [10] java.util.concurrent.locks.ReentrantLock.lock
+  [11] java.util.concurrent.LinkedBlockingQueue.signalNotEmpty
+  [12] java.util.concurrent.LinkedBlockingQueue.offer
+  [13] java.util.concurrent.ThreadPoolExecutor.execute
+  [14] java.util.concurrent.ExecutorCompletionService.submit
+  [15] org.openjdk.jmh.runner.BenchmarkHandler.runIteration
+  [16] org.openjdk.jmh.runner.BaseRunner.runBenchmark
+  [17] org.openjdk.jmh.runner.BaseRunner.runBenchmark
+  [18] org.openjdk.jmh.runner.BaseRunner.doSingle
+  [19] org.openjdk.jmh.runner.BaseRunner.runBenchmarksForked
+  [20] org.openjdk.jmh.runner.ForkedRunner.run
+  [21] org.openjdk.jmh.runner.ForkedMain.main
+
+--- 10000000 ns (0.32%), 1 sample
+  [ 0] pthread_jit_write_protect_np
+  [ 1] OptoRuntime::new_instance_C
+  [ 2] C2 Runtime new_instance_blob
+  [ 3] okay.one.Cont$Return$.apply
+  [ 4] okay.one.machine.Machine$.eval
+  [ 5] okay.one.machine.Machine$.run
+  [ 6] okay.one.Cont$.run
+  [ 7] okay.Run$.run
+  [ 8] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 9] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [10] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [11] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [12] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [13] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [15] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [16] java.lang.reflect.Method.invoke
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.Executors$RunnableAdapter.call
+  [21] java.util.concurrent.FutureTask.run
+  [22] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [23] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [24] java.lang.Thread.runWith
+  [25] java.lang.Thread.run
+
+--- 10000000 ns (0.32%), 1 sample
+  [ 0] okay.one.Cont$Return.<init>
+  [ 1] okay.one.Cont$Return$.apply
+  [ 2] okay.one.machine.Machine$.bottom
+  [ 3] okay.one.machine.Machine$.eval
+  [ 4] okay.one.machine.Machine$.drive
+  [ 5] okay.one.machine.Machine$.run
+  [ 6] okay.one.Cont$.run
+  [ 7] okay.Run$.run
+  [ 8] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 9] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [10] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [11] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [12] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [13] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [15] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [16] java.lang.reflect.Method.invoke
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.Executors$RunnableAdapter.call
+  [21] java.util.concurrent.FutureTask.run
+  [22] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [23] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [24] java.lang.Thread.runWith
+  [25] java.lang.Thread.run
+
+--- 10000000 ns (0.32%), 1 sample
+  [ 0] semaphore_wait_trap
+  [ 1] WorkerThreads::run_task
+  [ 2] G1HeapRegionManager::rebuild_free_list
+  [ 3] G1CollectedHeap::rebuild_free_region_list
+  [ 4] G1YoungCollector::post_evacuate_collection_set
+  [ 5] G1YoungCollector::collect
+  [ 6] G1CollectedHeap::do_collection_pause_at_safepoint
+  [ 7] VM_G1CollectForAllocation::doit
+  [ 8] VM_Operation::evaluate
+  [ 9] VMThread::evaluate_operation
+  [10] VMThread::inner_execute
+  [11] VMThread::run
+  [12] Thread::call_run
+  [13] thread_native_entry
+  [14] _pthread_start
+  [15] thread_start
+
+--- 10000000 ns (0.32%), 1 sample
+  [ 0] okay.one.machine.Machine$Meta$Lifted.<init>
+  [ 1] okay.one.machine.Machine$.rare
+  [ 2] okay.one.machine.Machine$.eval
+  [ 3] okay.one.machine.Machine$.run
+  [ 4] okay.one.Cont$.run
+  [ 5] okay.Run$.run
+  [ 6] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 7] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 8] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 9] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [10] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [11] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [14] java.lang.reflect.Method.invoke
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.Executors$RunnableAdapter.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [21] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [22] java.lang.Thread.runWith
+  [23] java.lang.Thread.run
+
+--- 10000000 ns (0.32%), 1 sample
+  [ 0] okay.one.machine.Machine$.eval
+  [ 1] okay.one.machine.Machine$.run
+  [ 2] okay.one.Cont$.run
+  [ 3] okay.Run$.run
+  [ 4] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 5] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 6] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 7] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 8] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [ 9] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [12] java.lang.reflect.Method.invoke
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] java.util.concurrent.FutureTask.run
+  [16] java.util.concurrent.Executors$RunnableAdapter.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [19] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [20] java.lang.Thread.runWith
+  [21] java.lang.Thread.run
+
+--- 10000000 ns (0.32%), 1 sample
+  [ 0] okay.one.machine.Machine$.eval
+  [ 1] okay.one.machine.Machine$.run
+  [ 2] okay.one.Cont$.run
+  [ 3] okay.Run$.run
+  [ 4] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 5] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 6] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 7] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 8] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [ 9] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [12] java.lang.reflect.Method.invoke
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] java.util.concurrent.FutureTask.run
+  [16] java.util.concurrent.Executors$RunnableAdapter.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [19] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [20] java.lang.Thread.runWith
+  [21] java.lang.Thread.run
+
+--- 10000000 ns (0.32%), 1 sample
+  [ 0] __psynch_cvwait
+  [ 1] PlatformMonitor::wait
+  [ 2] Monitor::wait_without_safepoint_check
+  [ 3] TaskTerminator::offer_termination
+  [ 4] G1ParEvacuateFollowersClosure::offer_termination
+  [ 5] G1ParEvacuateFollowersClosure::do_void
+  [ 6] G1EvacuateRegionsTask::evacuate_live_objects
+  [ 7] G1EvacuateRegionsBaseTask::work
+  [ 8] WorkerThread::run
+  [ 9] Thread::call_run
+  [10] thread_native_entry
+  [11] _pthread_start
+  [12] thread_start
+
+--- 10000000 ns (0.32%), 1 sample
+  [ 0] java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.awaitNanos
+  [ 1] java.util.concurrent.LinkedBlockingQueue.poll
+  [ 2] java.util.concurrent.ExecutorCompletionService.poll
+  [ 3] org.openjdk.jmh.runner.BenchmarkHandler.runIteration
+  [ 4] org.openjdk.jmh.runner.BaseRunner.runBenchmark
+  [ 5] org.openjdk.jmh.runner.BaseRunner.runBenchmark
+  [ 6] org.openjdk.jmh.runner.BaseRunner.doSingle
+  [ 7] org.openjdk.jmh.runner.BaseRunner.runBenchmarksForked
+  [ 8] org.openjdk.jmh.runner.ForkedRunner.run
+  [ 9] org.openjdk.jmh.runner.ForkedMain.main
+
+--- 10000000 ns (0.32%), 1 sample
+  [ 0] __psynch_cvwait
+  [ 1] PlatformMonitor::wait
+  [ 2] Monitor::wait_without_safepoint_check
+  [ 3] MonitorDeflationThread::monitor_deflation_thread_entry
+  [ 4] JavaThread::thread_main_inner
+  [ 5] Thread::call_run
+  [ 6] thread_native_entry
+  [ 7] _pthread_start
+  [ 8] thread_start
+
+--- 10000000 ns (0.32%), 1 sample
+  [ 0] okay.one.machine.Machine$.eval
+  [ 1] okay.one.machine.Machine$.run
+  [ 2] okay.one.Cont$.run
+  [ 3] okay.Run$.run
+  [ 4] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 5] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 6] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 7] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 8] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [ 9] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [12] java.lang.reflect.Method.invoke
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] java.util.concurrent.FutureTask.run
+  [16] java.util.concurrent.Executors$RunnableAdapter.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [19] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [20] java.lang.Thread.runWith
+  [21] java.lang.Thread.run
+
+--- 10000000 ns (0.32%), 1 sample
+  [ 0] ObjAllocator::initialize
+  [ 1] MemAllocator::allocate
+  [ 2] InstanceKlass::allocate_instance
+  [ 3] OptoRuntime::new_instance_C
+  [ 4] C2 Runtime new_instance_blob
+  [ 5] scala.Tuple2$.apply
+  [ 6] okay.std.State$Cell.ret
+  [ 7] okay.one.machine.Machine$.eval
+  [ 8] okay.one.machine.Machine$.run
+  [ 9] okay.one.Cont$.run
+  [10] okay.Run$.run
+  [11] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [12] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [13] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [14] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [15] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [16] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [17] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [18] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [19] java.lang.reflect.Method.invoke
+  [20] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [21] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [22] java.util.concurrent.FutureTask.run
+  [23] java.util.concurrent.Executors$RunnableAdapter.call
+  [24] java.util.concurrent.FutureTask.run
+  [25] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [26] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [27] java.lang.Thread.runWith
+  [28] java.lang.Thread.run
+
+--- 10000000 ns (0.32%), 1 sample
+  [ 0] scala.runtime.BoxesRunTime.unboxToLong
+  [ 1] okay.std.bench.HandlerBenchmark.stateSmallHandle$$anonfun$adapted$1
+  [ 2] okay.std.bench.HandlerBenchmark$$Lambda.0x000007fc010eb000.apply
+  [ 3] okay.Run$$anon$1.$anonfun$1
+  [ 4] okay.Run$$anon$1$$Lambda.0x000007fc010f6718.apply
+  [ 5] okay.one.machine.Machine$.eval
+  [ 6] okay.one.machine.Machine$.run
+  [ 7] okay.one.Cont$.run
+  [ 8] okay.Run$.run
+  [ 9] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [10] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [11] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [12] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [13] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [14] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [15] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [16] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [17] java.lang.reflect.Method.invoke
+  [18] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [19] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [20] java.util.concurrent.FutureTask.run
+  [21] java.util.concurrent.Executors$RunnableAdapter.call
+  [22] java.util.concurrent.FutureTask.run
+  [23] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [24] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [25] java.lang.Thread.runWith
+  [26] java.lang.Thread.run
+
+--- 10000000 ns (0.32%), 1 sample
+  [ 0] okay.one.machine.Machine$.bottom
+  [ 1] okay.one.machine.Machine$.eval
+  [ 2] okay.one.machine.Machine$.drive
+  [ 3] okay.one.machine.Machine$.run
+  [ 4] okay.one.Cont$.run
+  [ 5] okay.Run$.run
+  [ 6] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 7] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 8] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 9] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [10] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [11] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [14] java.lang.reflect.Method.invoke
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.Executors$RunnableAdapter.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [21] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [22] java.lang.Thread.runWith
+  [23] java.lang.Thread.run
+
+--- 10000000 ns (0.32%), 1 sample
+  [ 0] okay.one.machine.Machine$.rare
+  [ 1] okay.one.machine.Machine$.eval
+  [ 2] okay.one.machine.Machine$.run
+  [ 3] okay.one.Cont$.run
+  [ 4] okay.Run$.run
+  [ 5] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 6] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 7] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 10000000 ns (0.32%), 1 sample
+  [ 0] pthread_jit_write_protect_np
+  [ 1] C2 Runtime new_instance_blob
+  [ 2] okay.one.machine.Machine$Out$None$.apply
+  [ 3] okay.one.machine.Machine$Out$.none
+  [ 4] okay.one.machine.Machine$.run
+  [ 5] okay.one.Cont$.run
+  [ 6] okay.Run$.run
+  [ 7] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 8] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 9] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [10] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [11] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [12] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [15] java.lang.reflect.Method.invoke
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.Executors$RunnableAdapter.call
+  [20] java.util.concurrent.FutureTask.run
+  [21] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [22] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [23] java.lang.Thread.runWith
+  [24] java.lang.Thread.run
+
+--- 10000000 ns (0.32%), 1 sample
+  [ 0] okay.one.machine.Machine$.run
+  [ 1] okay.one.Cont$.run
+  [ 2] okay.Run$.run
+  [ 3] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 4] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 5] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 6] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 7] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [ 8] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [ 9] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [11] java.lang.reflect.Method.invoke
+  [12] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] java.util.concurrent.FutureTask.run
+  [15] java.util.concurrent.Executors$RunnableAdapter.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [18] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [19] java.lang.Thread.runWith
+  [20] java.lang.Thread.run
+
+--- 10000000 ns (0.32%), 1 sample
+  [ 0] okay.one.Cont$InjectHere.g
+  [ 1] okay.one.machine.Machine$.eval
+  [ 2] okay.one.machine.Machine$.run
+  [ 3] okay.one.Cont$.run
+  [ 4] okay.Run$.run
+  [ 5] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 6] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 7] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 10000000 ns (0.32%), 1 sample
+  [ 0] okay.one.machine.Machine$.eval
+  [ 1] okay.one.machine.Machine$.drive
+  [ 2] okay.one.machine.Machine$.run
+  [ 3] okay.one.Cont$.run
+  [ 4] okay.Run$.run
+  [ 5] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 6] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 7] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 10000000 ns (0.32%), 1 sample
+  [ 0] okay.one.Cont$Return$.apply
+  [ 1] okay.one.machine.Machine$.bottom
+  [ 2] okay.one.machine.Machine$.eval
+  [ 3] okay.one.machine.Machine$.drive
+  [ 4] okay.one.machine.Machine$.run
+  [ 5] okay.one.Cont$.run
+  [ 6] okay.Run$.run
+  [ 7] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 8] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 9] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [10] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [11] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [12] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [15] java.lang.reflect.Method.invoke
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.Executors$RunnableAdapter.call
+  [20] java.util.concurrent.FutureTask.run
+  [21] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [22] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [23] java.lang.Thread.runWith
+  [24] java.lang.Thread.run
+
+--- 10000000 ns (0.32%), 1 sample
+  [ 0] okay.one.Cont$HandleState.body
+  [ 1] okay.one.machine.Machine$.eval
+  [ 2] okay.one.machine.Machine$.run
+  [ 3] okay.one.Cont$.run
+  [ 4] okay.Run$.run
+  [ 5] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 6] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 7] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 10000000 ns (0.32%), 1 sample
+  [ 0] okay.one.Cont$Return.<init>
+  [ 1] okay.one.Cont$Return$.apply
+  [ 2] okay.one.Cont$.pure
+  [ 3] okay.std.State$Cell.ret
+  [ 4] okay.one.machine.Machine$.eval
+  [ 5] okay.one.machine.Machine$.run
+  [ 6] okay.one.Cont$.run
+  [ 7] okay.Run$.run
+  [ 8] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 9] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [10] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [11] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [12] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [13] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [15] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [16] java.lang.reflect.Method.invoke
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.Executors$RunnableAdapter.call
+  [21] java.util.concurrent.FutureTask.run
+  [22] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [23] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [24] java.lang.Thread.runWith
+  [25] java.lang.Thread.run
+
+--- 10000000 ns (0.32%), 1 sample
+  [ 0] okay.Run$$anon$1.$anonfun$1
+  [ 1] okay.Run$$anon$1$$Lambda.0x000007fc010f6718.apply
+  [ 2] okay.one.machine.Machine$.eval
+  [ 3] okay.one.machine.Machine$.run
+  [ 4] okay.one.Cont$.run
+  [ 5] okay.Run$.run
+  [ 6] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 7] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 8] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 9] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [10] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [11] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [14] java.lang.reflect.Method.invoke
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.Executors$RunnableAdapter.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [21] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [22] java.lang.Thread.runWith
+  [23] java.lang.Thread.run
+
+--- 10000000 ns (0.32%), 1 sample
+  [ 0] okay.one.machine.Machine$Frame$End$.apply
+  [ 1] okay.one.machine.Machine$.rare
+  [ 2] okay.one.machine.Machine$.eval
+  [ 3] okay.one.machine.Machine$.run
+  [ 4] okay.one.Cont$.run
+  [ 5] okay.Run$.run
+  [ 6] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 7] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 8] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 9] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [10] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [11] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [14] java.lang.reflect.Method.invoke
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.Executors$RunnableAdapter.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [21] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [22] java.lang.Thread.runWith
+  [23] java.lang.Thread.run
+
+--- 10000000 ns (0.32%), 1 sample
+  [ 0] okay.one.machine.Machine$.bottom
+  [ 1] okay.one.machine.Machine$.eval
+  [ 2] okay.one.machine.Machine$.drive
+  [ 3] okay.one.machine.Machine$.run
+  [ 4] okay.one.Cont$.run
+  [ 5] okay.Run$.run
+  [ 6] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 7] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 8] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 9] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [10] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [11] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [14] java.lang.reflect.Method.invoke
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.Executors$RunnableAdapter.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [21] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [22] java.lang.Thread.runWith
+  [23] java.lang.Thread.run
+
+--- 10000000 ns (0.32%), 1 sample
+  [ 0] okay.one.machine.Machine$.eval
+  [ 1] okay.one.machine.Machine$.run
+  [ 2] okay.one.Cont$.run
+  [ 3] okay.Run$.run
+  [ 4] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 5] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 6] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 7] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 8] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [ 9] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [12] java.lang.reflect.Method.invoke
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] java.util.concurrent.FutureTask.run
+  [16] java.util.concurrent.Executors$RunnableAdapter.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [19] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [20] java.lang.Thread.runWith
+  [21] java.lang.Thread.run
+
+--- 10000000 ns (0.32%), 1 sample
+  [ 0] G1Allocator::unsafe_max_tlab_alloc
+  [ 1] MemAllocator::mem_allocate_inside_tlab_slow
+  [ 2] MemAllocator::allocate
+  [ 3] InstanceKlass::allocate_instance
+  [ 4] OptoRuntime::new_instance_C
+  [ 5] C2 Runtime new_instance_blob
+  [ 6] okay.one.Cont$Return$.apply
+  [ 7] okay.one.machine.Machine$.eval
+  [ 8] okay.one.machine.Machine$.run
+  [ 9] okay.one.Cont$.run
+  [10] okay.Run$.run
+  [11] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [12] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [13] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [14] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [15] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [16] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [17] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [18] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [19] java.lang.reflect.Method.invoke
+  [20] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [21] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [22] java.util.concurrent.FutureTask.run
+  [23] java.util.concurrent.Executors$RunnableAdapter.call
+  [24] java.util.concurrent.FutureTask.run
+  [25] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [26] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [27] java.lang.Thread.runWith
+  [28] java.lang.Thread.run
+
+--- 10000000 ns (0.32%), 1 sample
+  [ 0] __psynch_mutexwait
+  [ 1] _pthread_mutex_firstfit_lock_slow
+  [ 2] _pthread_cond_wait
+  [ 3] PlatformMonitor::wait
+  [ 4] Monitor::wait
+  [ 5] CompileQueue::get
+  [ 6] CompileBroker::compiler_thread_loop
+  [ 7] JavaThread::thread_main_inner
+  [ 8] Thread::call_run
+  [ 9] thread_native_entry
+  [10] _pthread_start
+  [11] thread_start
+
+--- 10000000 ns (0.32%), 1 sample
+  [ 0] okay.one.Cont$Return$.apply
+  [ 1] okay.one.machine.Machine$.eval
+  [ 2] okay.one.machine.Machine$.run
+  [ 3] okay.one.Cont$.run
+  [ 4] okay.Run$.run
+  [ 5] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 6] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 7] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 10000000 ns (0.32%), 1 sample
+  [ 0] okay.one.machine.Machine$.bottom
+  [ 1] okay.one.machine.Machine$.eval
+  [ 2] okay.one.machine.Machine$.drive
+  [ 3] okay.one.machine.Machine$.run
+  [ 4] okay.one.Cont$.run
+  [ 5] okay.Run$.run
+  [ 6] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 7] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 8] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 9] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [10] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [11] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [14] java.lang.reflect.Method.invoke
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.Executors$RunnableAdapter.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [21] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [22] java.lang.Thread.runWith
+  [23] java.lang.Thread.run
+
+--- 10000000 ns (0.32%), 1 sample
+  [ 0] okay.one.machine.Machine$Eff.<init>
+  [ 1] okay.one.machine.Machine$.bottom
+  [ 2] okay.one.machine.Machine$.eval
+  [ 3] okay.one.machine.Machine$.drive
+  [ 4] okay.one.machine.Machine$.run
+  [ 5] okay.one.Cont$.run
+  [ 6] okay.Run$.run
+  [ 7] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 8] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 9] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [10] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [11] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [12] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [15] java.lang.reflect.Method.invoke
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.Executors$RunnableAdapter.call
+  [20] java.util.concurrent.FutureTask.run
+  [21] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [22] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [23] java.lang.Thread.runWith
+  [24] java.lang.Thread.run
+
+--- 10000000 ns (0.32%), 1 sample
+  [ 0] __psynch_mutexwait
+  [ 1] _pthread_mutex_firstfit_lock_slow
+  [ 2] _pthread_cond_wait
+  [ 3] PlatformMonitor::wait
+  [ 4] Monitor::wait_without_safepoint_check
+  [ 5] TaskTerminator::offer_termination
+  [ 6] G1ParEvacuateFollowersClosure::offer_termination
+  [ 7] G1ParEvacuateFollowersClosure::do_void
+  [ 8] G1EvacuateRegionsTask::evacuate_live_objects
+  [ 9] G1EvacuateRegionsBaseTask::work
+  [10] WorkerThread::run
+  [11] Thread::call_run
+  [12] thread_native_entry
+  [13] _pthread_start
+  [14] thread_start
+
+--- 10000000 ns (0.32%), 1 sample
+  [ 0] okay.one.Cont$Return.<init>
+  [ 1] okay.one.Cont$Return$.apply
+  [ 2] okay.one.machine.Machine$.eval
+  [ 3] okay.one.machine.Machine$.run
+  [ 4] okay.one.Cont$.run
+  [ 5] okay.Run$.run
+  [ 6] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 7] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 8] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 9] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [10] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [11] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [14] java.lang.reflect.Method.invoke
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.Executors$RunnableAdapter.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [21] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [22] java.lang.Thread.runWith
+  [23] java.lang.Thread.run
+
+--- 10000000 ns (0.32%), 1 sample
+  [ 0] okay.one.machine.Machine$Eff.<init>
+  [ 1] okay.one.machine.Machine$.rare
+  [ 2] okay.one.machine.Machine$.eval
+  [ 3] okay.one.machine.Machine$.run
+  [ 4] okay.one.Cont$.run
+  [ 5] okay.Run$.run
+  [ 6] okay.std.bench.HandlerBenchmark.stateSmallHandle
+  [ 7] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_avgt_jmhStub
+  [ 8] okay.std.bench.jmh_generated.HandlerBenchmark_stateSmallHandle_jmhTest.stateSmallHandle_AverageTime
+  [ 9] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [10] java.lang.invoke.LambdaForm$MH.0x000007fc01061400.invoke
+  [11] java.lang.invoke.LambdaForm$MH.0x000007fc01061800.invokeExact_MT
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [14] java.lang.reflect.Method.invoke
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.Executors$RunnableAdapter.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [21] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [22] java.lang.Thread.runWith
+  [23] java.lang.Thread.run
+
+          ns  percent  samples  top
+  ----------  -------  -------  ---
+   820000000   26.37%       82  scala.runtime.BoxesRunTime.boxToLong
+   730000000   23.47%       73  okay.one.machine.Machine$.eval
+   140000000    4.50%       14  okay.one.machine.Machine$.run
+   110000000    3.54%       11  okay.one.machine.Machine$.drive
+    90000000    2.89%        9  scala.Tuple2$.apply
+    90000000    2.89%        9  okay.one.Cont$Return$.apply
+    80000000    2.57%        8  okay.Program$package$.effect
+    80000000    2.57%        8  okay.one.machine.Machine$Meta$UnderState.k
+    70000000    2.25%        7  okay.std.State$Put$.apply
+    70000000    2.25%        7  okay.one.machine.Machine$.rare
+    60000000    1.93%        6  okay.std.State$Get$.apply
+    60000000    1.93%        6  okay.std.State$Cell.value
+    50000000    1.61%        5  okay.one.row.In$Here$.apply
+    50000000    1.61%        5  okay.one.machine.Machine$Eff.<init>
+    50000000    1.61%        5  okay.one.machine.Machine$.bottom
+    40000000    1.29%        4  okay.std.bench.HandlerBenchmark.stateSmallHandle
+    40000000    1.29%        4  __psynch_mutexwait
+    40000000    1.29%        4  okay.one.machine.Machine$Frame$End$.apply
+    30000000    0.96%        3  semaphore_wait_trap
+    30000000    0.96%        3  okay.one.Cont$Return.<init>
+    30000000    0.96%        3  okay.core.Split$$anon$1.paths
+    30000000    0.96%        3  okay.core.Paths$One.head
+    30000000    0.96%        3  okay.one.machine.Machine$Out$None$.apply
+    30000000    0.96%        3  okay.std.State$$anon$1.kernel
+    30000000    0.96%        3  okay.Run$$anon$1$$Lambda.0x000007fc010f6718.apply
+    30000000    0.96%        3  okay.std.State$Update.f
+    20000000    0.64%        2  okay.one.Cont$HandleState.k
+    20000000    0.64%        2  okay.one.machine.Machine$Done.z
+    20000000    0.64%        2  __psynch_cvwait
+    20000000    0.64%        2  pthread_jit_write_protect_np
+    20000000    0.64%        2  __mmap
+    10000000    0.32%        1  okay.one.Cont$InjectHere.g
+    10000000    0.32%        1  okay.one.Cont$HandleState.body
+    10000000    0.32%        1  okay.one.machine.Machine$Meta$Lifted.<init>
+    10000000    0.32%        1  okay.Run$$anon$1.$anonfun$1
+    10000000    0.32%        1  java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.awaitNanos
+    10000000    0.32%        1  __psynch_cvbroad
+    10000000    0.32%        1  scala.Tuple2.<init>
+    10000000    0.32%        1  ObjAllocator::initialize
+    10000000    0.32%        1  scala.runtime.BoxesRunTime.unboxToLong
+    10000000    0.32%        1  G1Allocator::unsafe_max_tlab_alloc

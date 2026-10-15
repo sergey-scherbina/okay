@@ -1,0 +1,2500 @@
+--- Execution profile ---
+Total samples       : 307
+
+--- 500000000 ns (16.29%), 50 samples
+  [ 0] scala.collection.immutable.List.$colon$colon$colon
+  [ 1] scala.collection.immutable.List.appendedAll
+  [ 2] scala.collection.immutable.List.appendedAll
+  [ 3] scala.collection.AbstractSeq.concat
+  [ 4] scala.collection.AbstractIterable.$plus$plus
+  [ 5] okay.std.Choose$.$anonfun$1$$anonfun$1
+  [ 6] okay.std.Choose$$$Lambda.0x0000700001102ee0.apply
+  [ 7] okay.one.machine.Machine$.eval
+  [ 8] okay.one.machine.Machine$.drive
+  [ 9] okay.one.machine.Machine$.run
+  [10] okay.one.Cont$.run
+  [11] okay.Run$.run
+  [12] okay.std.bench.LogicBenchmark.shared_scope
+  [13] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [14] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [15] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [16] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [17] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [18] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [19] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [20] java.lang.reflect.Method.invoke
+  [21] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [22] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [23] java.util.concurrent.FutureTask.run
+  [24] java.util.concurrent.Executors$RunnableAdapter.call
+  [25] java.util.concurrent.FutureTask.run
+  [26] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [27] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [28] java.lang.Thread.runWith
+  [29] java.lang.Thread.run
+
+--- 490000000 ns (15.96%), 49 samples
+  [ 0] scala.collection.immutable.$colon$colon.<init>
+  [ 1] scala.collection.immutable.List.$colon$colon$colon
+  [ 2] scala.collection.immutable.List.appendedAll
+  [ 3] scala.collection.immutable.List.appendedAll
+  [ 4] scala.collection.AbstractSeq.concat
+  [ 5] scala.collection.AbstractIterable.$plus$plus
+  [ 6] okay.std.Choose$.$anonfun$1$$anonfun$1
+  [ 7] okay.std.Choose$$$Lambda.0x0000700001102ee0.apply
+  [ 8] okay.one.machine.Machine$.eval
+  [ 9] okay.one.machine.Machine$.drive
+  [10] okay.one.machine.Machine$.run
+  [11] okay.one.Cont$.run
+  [12] okay.Run$.run
+  [13] okay.std.bench.LogicBenchmark.shared_scope
+  [14] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [15] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [16] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [17] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [18] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [19] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [20] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [21] java.lang.reflect.Method.invoke
+  [22] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [23] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [24] java.util.concurrent.FutureTask.run
+  [25] java.util.concurrent.Executors$RunnableAdapter.call
+  [26] java.util.concurrent.FutureTask.run
+  [27] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [28] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [29] java.lang.Thread.runWith
+  [30] java.lang.Thread.run
+
+--- 230000000 ns (7.49%), 23 samples
+  [ 0] okay.std.Choose$.$anonfun$1$$anonfun$1
+  [ 1] okay.std.Choose$$$Lambda.0x0000700001102ee0.apply
+  [ 2] okay.one.machine.Machine$.eval
+  [ 3] okay.one.machine.Machine$.drive
+  [ 4] okay.one.machine.Machine$.run
+  [ 5] okay.one.Cont$.run
+  [ 6] okay.Run$.run
+  [ 7] okay.std.bench.LogicBenchmark.shared_scope
+  [ 8] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [ 9] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [10] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [11] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [12] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [15] java.lang.reflect.Method.invoke
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.Executors$RunnableAdapter.call
+  [20] java.util.concurrent.FutureTask.run
+  [21] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [22] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [23] java.lang.Thread.runWith
+  [24] java.lang.Thread.run
+
+--- 220000000 ns (7.17%), 22 samples
+  [ 0] scala.collection.immutable.$colon$colon.next_$eq
+  [ 1] scala.collection.immutable.List.$colon$colon$colon
+  [ 2] scala.collection.immutable.List.appendedAll
+  [ 3] scala.collection.immutable.List.appendedAll
+  [ 4] scala.collection.AbstractSeq.concat
+  [ 5] scala.collection.AbstractIterable.$plus$plus
+  [ 6] okay.std.Choose$.$anonfun$1$$anonfun$1
+  [ 7] okay.std.Choose$$$Lambda.0x0000700001102ee0.apply
+  [ 8] okay.one.machine.Machine$.eval
+  [ 9] okay.one.machine.Machine$.drive
+  [10] okay.one.machine.Machine$.run
+  [11] okay.one.Cont$.run
+  [12] okay.Run$.run
+  [13] okay.std.bench.LogicBenchmark.shared_scope
+  [14] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [15] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [16] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [17] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [18] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [19] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [20] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [21] java.lang.reflect.Method.invoke
+  [22] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [23] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [24] java.util.concurrent.FutureTask.run
+  [25] java.util.concurrent.Executors$RunnableAdapter.call
+  [26] java.util.concurrent.FutureTask.run
+  [27] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [28] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [29] java.lang.Thread.runWith
+  [30] java.lang.Thread.run
+
+--- 120000000 ns (3.91%), 12 samples
+  [ 0] scala.collection.immutable.$colon$colon.<init>
+  [ 1] scala.collection.immutable.List.$colon$colon$colon
+  [ 2] scala.collection.immutable.List.appendedAll
+  [ 3] scala.collection.immutable.List.appendedAll
+  [ 4] scala.collection.AbstractSeq.concat
+  [ 5] scala.collection.AbstractIterable.$plus$plus
+  [ 6] okay.std.Choose$.$anonfun$1$$anonfun$1
+  [ 7] okay.std.Choose$$$Lambda.0x0000700001102ee0.apply
+  [ 8] okay.one.machine.Machine$.eval
+  [ 9] okay.one.machine.Machine$.drive
+  [10] okay.one.machine.Machine$.run
+  [11] okay.one.Cont$.run
+  [12] okay.Run$.run
+  [13] okay.std.bench.LogicBenchmark.shared_scope
+  [14] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [15] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [16] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [17] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [18] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [19] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [20] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [21] java.lang.reflect.Method.invoke
+  [22] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [23] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [24] java.util.concurrent.FutureTask.run
+  [25] java.util.concurrent.Executors$RunnableAdapter.call
+  [26] java.util.concurrent.FutureTask.run
+  [27] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [28] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [29] java.lang.Thread.runWith
+  [30] java.lang.Thread.run
+
+--- 100000000 ns (3.26%), 10 samples
+  [ 0] okay.one.machine.Machine$.eval
+  [ 1] okay.one.machine.Machine$.drive
+  [ 2] okay.one.machine.Machine$.run
+  [ 3] okay.one.Cont$.run
+  [ 4] okay.Run$.run
+  [ 5] okay.std.bench.LogicBenchmark.shared_scope
+  [ 6] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [ 7] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 90000000 ns (2.93%), 9 samples
+  [ 0] okay.one.machine.Machine$.eval
+  [ 1] okay.one.machine.Machine$.drive
+  [ 2] okay.one.machine.Machine$.run
+  [ 3] okay.one.Cont$.run
+  [ 4] okay.Run$.run
+  [ 5] okay.std.bench.LogicBenchmark.shared_scope
+  [ 6] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [ 7] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 90000000 ns (2.93%), 9 samples
+  [ 0] scala.collection.immutable.List.$colon$colon$colon
+  [ 1] scala.collection.immutable.List.appendedAll
+  [ 2] scala.collection.immutable.List.appendedAll
+  [ 3] scala.collection.AbstractSeq.concat
+  [ 4] scala.collection.AbstractIterable.$plus$plus
+  [ 5] okay.std.Choose$.$anonfun$1$$anonfun$1
+  [ 6] okay.std.Choose$$$Lambda.0x0000700001102ee0.apply
+  [ 7] okay.one.machine.Machine$.eval
+  [ 8] okay.one.machine.Machine$.drive
+  [ 9] okay.one.machine.Machine$.run
+  [10] okay.one.Cont$.run
+  [11] okay.Run$.run
+  [12] okay.std.bench.LogicBenchmark.shared_scope
+  [13] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [14] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [15] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [16] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [17] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [18] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [19] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [20] java.lang.reflect.Method.invoke
+  [21] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [22] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [23] java.util.concurrent.FutureTask.run
+  [24] java.util.concurrent.Executors$RunnableAdapter.call
+  [25] java.util.concurrent.FutureTask.run
+  [26] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [27] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [28] java.lang.Thread.runWith
+  [29] java.lang.Thread.run
+
+--- 70000000 ns (2.28%), 7 samples
+  [ 0] scala.collection.immutable.List.$colon$colon$colon
+  [ 1] scala.collection.immutable.List.appendedAll
+  [ 2] scala.collection.immutable.List.appendedAll
+  [ 3] scala.collection.AbstractSeq.concat
+  [ 4] scala.collection.AbstractIterable.$plus$plus
+  [ 5] okay.std.Choose$.$anonfun$1$$anonfun$1
+  [ 6] okay.std.Choose$$$Lambda.0x0000700001102ee0.apply
+  [ 7] okay.one.machine.Machine$.eval
+  [ 8] okay.one.machine.Machine$.drive
+  [ 9] okay.one.machine.Machine$.run
+  [10] okay.one.Cont$.run
+  [11] okay.Run$.run
+  [12] okay.std.bench.LogicBenchmark.shared_scope
+  [13] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [14] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [15] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [16] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [17] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [18] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [19] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [20] java.lang.reflect.Method.invoke
+  [21] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [22] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [23] java.util.concurrent.FutureTask.run
+  [24] java.util.concurrent.Executors$RunnableAdapter.call
+  [25] java.util.concurrent.FutureTask.run
+  [26] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [27] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [28] java.lang.Thread.runWith
+  [29] java.lang.Thread.run
+
+--- 60000000 ns (1.95%), 6 samples
+  [ 0] scala.collection.immutable.$colon$colon.<init>
+  [ 1] scala.collection.immutable.List.$colon$colon$colon
+  [ 2] scala.collection.immutable.List.appendedAll
+  [ 3] scala.collection.immutable.List.appendedAll
+  [ 4] scala.collection.AbstractSeq.concat
+  [ 5] scala.collection.AbstractIterable.$plus$plus
+  [ 6] okay.std.Choose$.$anonfun$1$$anonfun$1
+  [ 7] okay.std.Choose$$$Lambda.0x0000700001102ee0.apply
+  [ 8] okay.one.machine.Machine$.eval
+  [ 9] okay.one.machine.Machine$.drive
+  [10] okay.one.machine.Machine$.run
+  [11] okay.one.Cont$.run
+  [12] okay.Run$.run
+  [13] okay.std.bench.LogicBenchmark.shared_scope
+  [14] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [15] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [16] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [17] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [18] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [19] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [20] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [21] java.lang.reflect.Method.invoke
+  [22] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [23] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [24] java.util.concurrent.FutureTask.run
+  [25] java.util.concurrent.Executors$RunnableAdapter.call
+  [26] java.util.concurrent.FutureTask.run
+  [27] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [28] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [29] java.lang.Thread.runWith
+  [30] java.lang.Thread.run
+
+--- 40000000 ns (1.30%), 4 samples
+  [ 0] okay.one.machine.Machine$Eff.<init>
+  [ 1] okay.one.machine.Machine$.resumed
+  [ 2] okay.one.machine.Machine$.eval
+  [ 3] okay.one.machine.Machine$.drive
+  [ 4] okay.one.machine.Machine$.run
+  [ 5] okay.one.Cont$.run
+  [ 6] okay.Run$.run
+  [ 7] okay.std.bench.LogicBenchmark.shared_scope
+  [ 8] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [ 9] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [10] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [11] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [12] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [15] java.lang.reflect.Method.invoke
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.Executors$RunnableAdapter.call
+  [20] java.util.concurrent.FutureTask.run
+  [21] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [22] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [23] java.lang.Thread.runWith
+  [24] java.lang.Thread.run
+
+--- 30000000 ns (0.98%), 3 samples
+  [ 0] okay.one.machine.Machine$.eval
+  [ 1] okay.one.machine.Machine$.drive
+  [ 2] okay.one.machine.Machine$.run
+  [ 3] okay.one.Cont$.run
+  [ 4] okay.Run$.run
+  [ 5] okay.std.bench.LogicBenchmark.shared_scope
+  [ 6] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [ 7] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 30000000 ns (0.98%), 3 samples
+  [ 0] okay.one.Cont$Map$.apply
+  [ 1] okay.one.Cont.map
+  [ 2] okay.Run$$anon$2.on
+  [ 3] okay.Run$$anon$1.on
+  [ 4] okay.Run$$anon$1.$anonfun$1
+  [ 5] okay.Run$$anon$1$$Lambda.0x00007000010deb18.apply
+  [ 6] okay.one.machine.Machine$.eval
+  [ 7] okay.one.machine.Machine$.drive
+  [ 8] okay.one.machine.Machine$.run
+  [ 9] okay.one.Cont$.run
+  [10] okay.Run$.run
+  [11] okay.std.bench.LogicBenchmark.shared_scope
+  [12] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [13] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [14] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [15] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [16] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [17] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [18] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [19] java.lang.reflect.Method.invoke
+  [20] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [21] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [22] java.util.concurrent.FutureTask.run
+  [23] java.util.concurrent.Executors$RunnableAdapter.call
+  [24] java.util.concurrent.FutureTask.run
+  [25] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [26] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [27] java.lang.Thread.runWith
+  [28] java.lang.Thread.run
+
+--- 30000000 ns (0.98%), 3 samples
+  [ 0] java.lang.invoke.DirectMethodHandle.allocateInstance
+  [ 1] java.lang.invoke.LambdaForm$DMH.0x0000700001104800.newInvokeSpecial
+  [ 2] java.lang.invoke.LambdaForm$MH.0x0000700001105000.linkToTargetMethod
+  [ 3] okay.std.Choice$package$.go$2
+  [ 4] okay.std.Choice$package$.go$2$$anonfun$1
+  [ 5] okay.std.Choice$package$$$Lambda.0x00007000011032b8.apply
+  [ 6] okay.Run$$anon$1.$anonfun$1
+  [ 7] okay.Run$$anon$1$$Lambda.0x00007000010deb18.apply
+  [ 8] okay.one.machine.Machine$.eval
+  [ 9] okay.one.machine.Machine$.drive
+  [10] okay.one.machine.Machine$.run
+  [11] okay.one.Cont$.run
+  [12] okay.Run$.run
+  [13] okay.std.bench.LogicBenchmark.shared_scope
+  [14] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [15] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [16] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [17] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [18] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [19] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [20] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [21] java.lang.reflect.Method.invoke
+  [22] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [23] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [24] java.util.concurrent.FutureTask.run
+  [25] java.util.concurrent.Executors$RunnableAdapter.call
+  [26] java.util.concurrent.FutureTask.run
+  [27] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [28] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [29] java.lang.Thread.runWith
+  [30] java.lang.Thread.run
+
+--- 30000000 ns (0.98%), 3 samples
+  [ 0] okay.one.machine.Machine$.eval
+  [ 1] okay.one.machine.Machine$.drive
+  [ 2] okay.one.machine.Machine$.run
+  [ 3] okay.one.Cont$.run
+  [ 4] okay.Run$.run
+  [ 5] okay.std.bench.LogicBenchmark.shared_scope
+  [ 6] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [ 7] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 30000000 ns (0.98%), 3 samples
+  [ 0] okay.one.Cont$Resume$.apply
+  [ 1] okay.one.machine.Machine$Rest.apply
+  [ 2] okay.one.machine.Machine$Rest.apply
+  [ 3] okay.one.machine.Machine$.resumed
+  [ 4] okay.one.machine.Machine$.eval
+  [ 5] okay.one.machine.Machine$.drive
+  [ 6] okay.one.machine.Machine$.run
+  [ 7] okay.one.Cont$.run
+  [ 8] okay.Run$.run
+  [ 9] okay.std.bench.LogicBenchmark.shared_scope
+  [10] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [11] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [12] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [13] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [14] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [15] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [16] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [17] java.lang.reflect.Method.invoke
+  [18] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [19] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [20] java.util.concurrent.FutureTask.run
+  [21] java.util.concurrent.Executors$RunnableAdapter.call
+  [22] java.util.concurrent.FutureTask.run
+  [23] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [24] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [25] java.lang.Thread.runWith
+  [26] java.lang.Thread.run
+
+--- 30000000 ns (0.98%), 3 samples
+  [ 0] semaphore_wait_trap
+  [ 1] WorkerThread::run
+  [ 2] Thread::call_run
+  [ 3] thread_native_entry
+  [ 4] _pthread_start
+  [ 5] thread_start
+
+--- 20000000 ns (0.65%), 2 samples
+  [ 0] okay.one.machine.Machine$Rest$Under.k
+  [ 1] okay.one.machine.Machine$.eval
+  [ 2] okay.one.machine.Machine$.drive
+  [ 3] okay.one.machine.Machine$.run
+  [ 4] okay.one.Cont$.run
+  [ 5] okay.Run$.run
+  [ 6] okay.std.bench.LogicBenchmark.shared_scope
+  [ 7] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [ 8] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [ 9] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [10] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [11] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [14] java.lang.reflect.Method.invoke
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.Executors$RunnableAdapter.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [21] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [22] java.lang.Thread.runWith
+  [23] java.lang.Thread.run
+
+--- 20000000 ns (0.65%), 2 samples
+  [ 0] okay.one.Cont$Return$.apply
+  [ 1] okay.one.Cont$.pure
+  [ 2] okay.Handler$$anon$14$$anon$15.ret
+  [ 3] okay.one.machine.Machine$.eval
+  [ 4] okay.one.machine.Machine$.drive
+  [ 5] okay.one.machine.Machine$.run
+  [ 6] okay.one.Cont$.run
+  [ 7] okay.Run$.run
+  [ 8] okay.std.bench.LogicBenchmark.shared_scope
+  [ 9] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [10] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [11] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [12] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [13] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [15] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [16] java.lang.reflect.Method.invoke
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.Executors$RunnableAdapter.call
+  [21] java.util.concurrent.FutureTask.run
+  [22] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [23] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [24] java.lang.Thread.runWith
+  [25] java.lang.Thread.run
+
+--- 20000000 ns (0.65%), 2 samples
+  [ 0] okay.one.Cont$Resume.<init>
+  [ 1] okay.one.Cont$Resume$.apply
+  [ 2] okay.one.machine.Machine$Rest.apply
+  [ 3] okay.one.machine.Machine$Rest.apply
+  [ 4] okay.Handler$.okay$Handler$$anon$14$$anon$15$$_$_$$anonfun$2
+  [ 5] okay.Handler$$anon$14$$anon$15$$Lambda.0x00007000010ea518.apply
+  [ 6] okay.std.Choose$.$anonfun$1
+  [ 7] okay.std.Choose$$$Lambda.0x00007000010ea8f0.apply
+  [ 8] okay.std.Choice$package$.go$2
+  [ 9] okay.std.Choice$package$.go$2$$anonfun$1
+  [10] okay.std.Choice$package$$$Lambda.0x00007000011032b8.apply
+  [11] okay.Run$$anon$1.$anonfun$1
+  [12] okay.Run$$anon$1$$Lambda.0x00007000010deb18.apply
+  [13] okay.one.machine.Machine$.eval
+  [14] okay.one.machine.Machine$.drive
+  [15] okay.one.machine.Machine$.run
+  [16] okay.one.Cont$.run
+  [17] okay.Run$.run
+  [18] okay.std.bench.LogicBenchmark.shared_scope
+  [19] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [20] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [21] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [22] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [23] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [24] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [25] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [26] java.lang.reflect.Method.invoke
+  [27] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [28] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [29] java.util.concurrent.FutureTask.run
+  [30] java.util.concurrent.Executors$RunnableAdapter.call
+  [31] java.util.concurrent.FutureTask.run
+  [32] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [33] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [34] java.lang.Thread.runWith
+  [35] java.lang.Thread.run
+
+--- 20000000 ns (0.65%), 2 samples
+  [ 0] okay.one.machine.Machine$.resumed
+  [ 1] okay.one.machine.Machine$.eval
+  [ 2] okay.one.machine.Machine$.drive
+  [ 3] okay.one.machine.Machine$.run
+  [ 4] okay.one.Cont$.run
+  [ 5] okay.Run$.run
+  [ 6] okay.std.bench.LogicBenchmark.shared_scope
+  [ 7] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [ 8] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [ 9] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [10] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [11] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [14] java.lang.reflect.Method.invoke
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.Executors$RunnableAdapter.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [21] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [22] java.lang.Thread.runWith
+  [23] java.lang.Thread.run
+
+--- 20000000 ns (0.65%), 2 samples
+  [ 0] okay.one.machine.Machine$.eval
+  [ 1] okay.one.machine.Machine$.drive
+  [ 2] okay.one.machine.Machine$.run
+  [ 3] okay.one.Cont$.run
+  [ 4] okay.Run$.run
+  [ 5] okay.std.bench.LogicBenchmark.shared_scope
+  [ 6] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [ 7] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 20000000 ns (0.65%), 2 samples
+  [ 0] okay.one.machine.Machine$Eff.<init>
+  [ 1] okay.one.machine.Machine$.bottom
+  [ 2] okay.one.machine.Machine$.eval
+  [ 3] okay.one.machine.Machine$.drive
+  [ 4] okay.one.machine.Machine$.run
+  [ 5] okay.one.Cont$.run
+  [ 6] okay.Run$.run
+  [ 7] okay.std.bench.LogicBenchmark.shared_scope
+  [ 8] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [ 9] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [10] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [11] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [12] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [15] java.lang.reflect.Method.invoke
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.Executors$RunnableAdapter.call
+  [20] java.util.concurrent.FutureTask.run
+  [21] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [22] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [23] java.lang.Thread.runWith
+  [24] java.lang.Thread.run
+
+--- 20000000 ns (0.65%), 2 samples
+  [ 0] scala.collection.immutable.List.$colon$colon$colon
+  [ 1] scala.collection.immutable.List.appendedAll
+  [ 2] scala.collection.immutable.List.appendedAll
+  [ 3] scala.collection.AbstractSeq.concat
+  [ 4] scala.collection.AbstractIterable.$plus$plus
+  [ 5] okay.std.Choose$.$anonfun$1$$anonfun$1
+  [ 6] okay.std.Choose$$$Lambda.0x0000700001102ee0.apply
+  [ 7] okay.one.machine.Machine$.eval
+  [ 8] okay.one.machine.Machine$.drive
+  [ 9] okay.one.machine.Machine$.run
+  [10] okay.one.Cont$.run
+  [11] okay.Run$.run
+  [12] okay.std.bench.LogicBenchmark.shared_scope
+  [13] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [14] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [15] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [16] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [17] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [18] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [19] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [20] java.lang.reflect.Method.invoke
+  [21] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [22] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [23] java.util.concurrent.FutureTask.run
+  [24] java.util.concurrent.Executors$RunnableAdapter.call
+  [25] java.util.concurrent.FutureTask.run
+  [26] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [27] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [28] java.lang.Thread.runWith
+  [29] java.lang.Thread.run
+
+--- 20000000 ns (0.65%), 2 samples
+  [ 0] okay.one.machine.Machine$Eff.<init>
+  [ 1] okay.one.machine.Machine$.resumed
+  [ 2] okay.one.machine.Machine$.eval
+  [ 3] okay.one.machine.Machine$.drive
+  [ 4] okay.one.machine.Machine$.run
+  [ 5] okay.one.Cont$.run
+  [ 6] okay.Run$.run
+  [ 7] okay.std.bench.LogicBenchmark.shared_scope
+  [ 8] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [ 9] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [10] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [11] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [12] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [15] java.lang.reflect.Method.invoke
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.Executors$RunnableAdapter.call
+  [20] java.util.concurrent.FutureTask.run
+  [21] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [22] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [23] java.lang.Thread.runWith
+  [24] java.lang.Thread.run
+
+--- 20000000 ns (0.65%), 2 samples
+  [ 0] okay.one.machine.Machine$Meta$Under.<init>
+  [ 1] okay.one.machine.Machine$.eval
+  [ 2] okay.one.machine.Machine$.drive
+  [ 3] okay.one.machine.Machine$.run
+  [ 4] okay.one.Cont$.run
+  [ 5] okay.Run$.run
+  [ 6] okay.std.bench.LogicBenchmark.shared_scope
+  [ 7] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [ 8] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [ 9] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [10] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [11] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [14] java.lang.reflect.Method.invoke
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.Executors$RunnableAdapter.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [21] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [22] java.lang.Thread.runWith
+  [23] java.lang.Thread.run
+
+--- 20000000 ns (0.65%), 2 samples
+  [ 0] scala.collection.immutable.$colon$colon.next
+  [ 1] scala.collection.immutable.$colon$colon.tail
+  [ 2] scala.collection.immutable.$colon$colon.tail
+  [ 3] scala.collection.immutable.List.$colon$colon$colon
+  [ 4] scala.collection.immutable.List.appendedAll
+  [ 5] scala.collection.immutable.List.appendedAll
+  [ 6] scala.collection.AbstractSeq.concat
+  [ 7] scala.collection.AbstractIterable.$plus$plus
+  [ 8] okay.std.Choose$.$anonfun$1$$anonfun$1
+  [ 9] okay.std.Choose$$$Lambda.0x0000700001102ee0.apply
+  [10] okay.one.machine.Machine$.eval
+  [11] okay.one.machine.Machine$.drive
+  [12] okay.one.machine.Machine$.run
+  [13] okay.one.Cont$.run
+  [14] okay.Run$.run
+  [15] okay.std.bench.LogicBenchmark.shared_scope
+  [16] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [17] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [18] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [19] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [20] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [21] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [22] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [23] java.lang.reflect.Method.invoke
+  [24] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [25] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [26] java.util.concurrent.FutureTask.run
+  [27] java.util.concurrent.Executors$RunnableAdapter.call
+  [28] java.util.concurrent.FutureTask.run
+  [29] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [30] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [31] java.lang.Thread.runWith
+  [32] java.lang.Thread.run
+
+--- 20000000 ns (0.65%), 2 samples
+  [ 0] okay.Run$.flatMap
+  [ 1] okay.std.Choice$package$.go$2
+  [ 2] okay.std.Choice$package$.go$2$$anonfun$1
+  [ 3] okay.std.Choice$package$$$Lambda.0x00007000011032b8.apply
+  [ 4] okay.Run$$anon$1.$anonfun$1
+  [ 5] okay.Run$$anon$1$$Lambda.0x00007000010deb18.apply
+  [ 6] okay.one.machine.Machine$.eval
+  [ 7] okay.one.machine.Machine$.drive
+  [ 8] okay.one.machine.Machine$.run
+  [ 9] okay.one.Cont$.run
+  [10] okay.Run$.run
+  [11] okay.std.bench.LogicBenchmark.shared_scope
+  [12] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [13] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [14] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [15] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [16] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [17] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [18] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [19] java.lang.reflect.Method.invoke
+  [20] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [21] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [22] java.util.concurrent.FutureTask.run
+  [23] java.util.concurrent.Executors$RunnableAdapter.call
+  [24] java.util.concurrent.FutureTask.run
+  [25] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [26] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [27] java.lang.Thread.runWith
+  [28] java.lang.Thread.run
+
+--- 20000000 ns (0.65%), 2 samples
+  [ 0] okay.Run$$anon$1.$anonfun$1
+  [ 1] okay.Run$$anon$1$$Lambda.0x00007000010deb18.apply
+  [ 2] okay.one.machine.Machine$.eval
+  [ 3] okay.one.machine.Machine$.drive
+  [ 4] okay.one.machine.Machine$.run
+  [ 5] okay.one.Cont$.run
+  [ 6] okay.Run$.run
+  [ 7] okay.std.bench.LogicBenchmark.shared_scope
+  [ 8] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [ 9] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [10] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [11] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [12] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [15] java.lang.reflect.Method.invoke
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.Executors$RunnableAdapter.call
+  [20] java.util.concurrent.FutureTask.run
+  [21] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [22] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [23] java.lang.Thread.runWith
+  [24] java.lang.Thread.run
+
+--- 20000000 ns (0.65%), 2 samples
+  [ 0] okay.one.Cont$Return.a
+  [ 1] okay.one.Cont$Return._1
+  [ 2] okay.one.machine.Machine$.eval
+  [ 3] okay.one.machine.Machine$.drive
+  [ 4] okay.one.machine.Machine$.run
+  [ 5] okay.one.Cont$.run
+  [ 6] okay.Run$.run
+  [ 7] okay.std.bench.LogicBenchmark.shared_scope
+  [ 8] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [ 9] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [10] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [11] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [12] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [15] java.lang.reflect.Method.invoke
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.Executors$RunnableAdapter.call
+  [20] java.util.concurrent.FutureTask.run
+  [21] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [22] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [23] java.lang.Thread.runWith
+  [24] java.lang.Thread.run
+
+--- 20000000 ns (0.65%), 2 samples
+  [ 0] itable stub
+  [ 1] okay.one.machine.Machine$.eval
+  [ 2] okay.one.machine.Machine$.drive
+  [ 3] okay.one.machine.Machine$.run
+  [ 4] okay.one.Cont$.run
+  [ 5] okay.Run$.run
+  [ 6] okay.std.bench.LogicBenchmark.shared_scope
+  [ 7] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [ 8] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [ 9] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [10] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [11] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [14] java.lang.reflect.Method.invoke
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.Executors$RunnableAdapter.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [21] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [22] java.lang.Thread.runWith
+  [23] java.lang.Thread.run
+
+--- 20000000 ns (0.65%), 2 samples
+  [ 0] okay.one.machine.Machine$.eval
+  [ 1] okay.one.machine.Machine$.drive
+  [ 2] okay.one.machine.Machine$.run
+  [ 3] okay.one.Cont$.run
+  [ 4] okay.Run$.run
+  [ 5] okay.std.bench.LogicBenchmark.shared_scope
+  [ 6] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [ 7] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 20000000 ns (0.65%), 2 samples
+  [ 0] okay.Run$$anon$1.on
+  [ 1] okay.Run$$anon$1.$anonfun$1
+  [ 2] okay.Run$$anon$1$$Lambda.0x00007000010deb18.apply
+  [ 3] okay.one.machine.Machine$.eval
+  [ 4] okay.one.machine.Machine$.drive
+  [ 5] okay.one.machine.Machine$.run
+  [ 6] okay.one.Cont$.run
+  [ 7] okay.Run$.run
+  [ 8] okay.std.bench.LogicBenchmark.shared_scope
+  [ 9] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [10] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [11] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [12] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [13] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [15] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [16] java.lang.reflect.Method.invoke
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.Executors$RunnableAdapter.call
+  [21] java.util.concurrent.FutureTask.run
+  [22] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [23] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [24] java.lang.Thread.runWith
+  [25] java.lang.Thread.run
+
+--- 20000000 ns (0.65%), 2 samples
+  [ 0] okay.one.machine.Machine$.eval
+  [ 1] okay.one.machine.Machine$.drive
+  [ 2] okay.one.machine.Machine$.run
+  [ 3] okay.one.Cont$.run
+  [ 4] okay.Run$.run
+  [ 5] okay.std.bench.LogicBenchmark.shared_scope
+  [ 6] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [ 7] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] java.lang.invoke.DirectMethodHandle.allocateInstance
+  [ 1] java.lang.invoke.DirectMethodHandle$Holder.newInvokeSpecial
+  [ 2] java.lang.invoke.Invokers$Holder.linkToTargetMethod
+  [ 3] okay.Run$$anon$1.on
+  [ 4] okay.Run$$anon$1.$anonfun$1
+  [ 5] okay.Run$$anon$1$$Lambda.0x00007000010deb18.apply
+  [ 6] okay.one.machine.Machine$.eval
+  [ 7] okay.one.machine.Machine$.drive
+  [ 8] okay.one.machine.Machine$.run
+  [ 9] okay.one.Cont$.run
+  [10] okay.Run$.run
+  [11] okay.std.bench.LogicBenchmark.shared_scope
+  [12] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [13] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [14] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [15] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [16] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [17] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [18] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [19] java.lang.reflect.Method.invoke
+  [20] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [21] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [22] java.util.concurrent.FutureTask.run
+  [23] java.util.concurrent.Executors$RunnableAdapter.call
+  [24] java.util.concurrent.FutureTask.run
+  [25] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [26] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [27] java.lang.Thread.runWith
+  [28] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] okay.one.Cont.bound
+  [ 1] okay.one.Cont.down
+  [ 2] okay.one.Cont.okay$one$Cont$$inline$down
+  [ 3] okay.Run$$anon$1.on
+  [ 4] okay.Run$$anon$1.$anonfun$1
+  [ 5] okay.Run$$anon$1$$Lambda.0x00007000010deb18.apply
+  [ 6] okay.one.machine.Machine$.eval
+  [ 7] okay.one.machine.Machine$.drive
+  [ 8] okay.one.machine.Machine$.run
+  [ 9] okay.one.Cont$.run
+  [10] okay.Run$.run
+  [11] okay.std.bench.LogicBenchmark.shared_scope
+  [12] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [13] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [14] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [15] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [16] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [17] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [18] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [19] java.lang.reflect.Method.invoke
+  [20] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [21] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [22] java.util.concurrent.FutureTask.run
+  [23] java.util.concurrent.Executors$RunnableAdapter.call
+  [24] java.util.concurrent.FutureTask.run
+  [25] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [26] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [27] java.lang.Thread.runWith
+  [28] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] okay.one.machine.Machine$.eval
+  [ 1] okay.one.machine.Machine$.drive
+  [ 2] okay.one.machine.Machine$.run
+  [ 3] okay.one.Cont$.run
+  [ 4] okay.Run$.run
+  [ 5] okay.std.bench.LogicBenchmark.shared_scope
+  [ 6] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [ 7] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] java.lang.Integer.valueOf
+  [ 1] scala.runtime.BoxesRunTime.boxToInteger
+  [ 2] scala.math.Numeric$IntIsIntegral$.plus
+  [ 3] scala.collection.IterableOnceOps.sum$$anonfun$1
+  [ 4] scala.collection.IterableOnceOps$$Lambda.0x000070000110cbd8.apply
+  [ 5] scala.collection.immutable.List.foldLeft
+  [ 6] scala.collection.IterableOnceOps.sum
+  [ 7] scala.collection.IterableOnceOps.sum$
+  [ 8] scala.collection.AbstractIterable.sum
+  [ 9] okay.std.bench.LogicBenchmark.shared_scope
+  [10] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [11] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [12] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [13] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [14] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [15] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [16] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [17] java.lang.reflect.Method.invoke
+  [18] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [19] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [20] java.util.concurrent.FutureTask.run
+  [21] java.util.concurrent.Executors$RunnableAdapter.call
+  [22] java.util.concurrent.FutureTask.run
+  [23] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [24] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [25] java.lang.Thread.runWith
+  [26] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] okay.one.Cont$Return$.apply
+  [ 1] okay.one.Cont$.pure
+  [ 2] okay.std.Resource$Releasing.ret$$anonfun$1
+  [ 3] okay.std.Resource$Releasing$$Lambda.0x0000700001107cd8.apply
+  [ 4] okay.one.machine.Machine$.eval
+  [ 5] okay.one.machine.Machine$.drive
+  [ 6] okay.one.machine.Machine$.run
+  [ 7] okay.one.Cont$.run
+  [ 8] okay.Run$.run
+  [ 9] okay.std.bench.LogicBenchmark.shared_scope
+  [10] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [11] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [12] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [13] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [14] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [15] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [16] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [17] java.lang.reflect.Method.invoke
+  [18] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [19] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [20] java.util.concurrent.FutureTask.run
+  [21] java.util.concurrent.Executors$RunnableAdapter.call
+  [22] java.util.concurrent.FutureTask.run
+  [23] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [24] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [25] java.lang.Thread.runWith
+  [26] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] okay.Program$.lift
+  [ 1] okay.Handler$.okay$Handler$$anon$14$$anon$15$$_$_$$anonfun$2
+  [ 2] okay.Handler$$anon$14$$anon$15$$Lambda.0x00007000010ea518.apply
+  [ 3] okay.std.Choose$.$anonfun$1
+  [ 4] okay.std.Choose$$$Lambda.0x00007000010ea8f0.apply
+  [ 5] okay.std.Choice$package$.go$2
+  [ 6] okay.std.Choice$package$.go$2$$anonfun$1
+  [ 7] okay.std.Choice$package$$$Lambda.0x00007000011032b8.apply
+  [ 8] okay.Run$$anon$1.$anonfun$1
+  [ 9] okay.Run$$anon$1$$Lambda.0x00007000010deb18.apply
+  [10] okay.one.machine.Machine$.eval
+  [11] okay.one.machine.Machine$.drive
+  [12] okay.one.machine.Machine$.run
+  [13] okay.one.Cont$.run
+  [14] okay.Run$.run
+  [15] okay.std.bench.LogicBenchmark.shared_scope
+  [16] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [17] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [18] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [19] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [20] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [21] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [22] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [23] java.lang.reflect.Method.invoke
+  [24] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [25] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [26] java.util.concurrent.FutureTask.run
+  [27] java.util.concurrent.Executors$RunnableAdapter.call
+  [28] java.util.concurrent.FutureTask.run
+  [29] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [30] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [31] java.lang.Thread.runWith
+  [32] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] java.lang.invoke.VarHandle.releaseFence
+  [ 1] scala.runtime.Statics.releaseFence
+  [ 2] scala.collection.immutable.List.prependedAll
+  [ 3] scala.collection.immutable.List$.apply
+  [ 4] scala.collection.SeqFactory$Delegate.apply
+  [ 5] okay.std.Choose$.all$$anonfun$1
+  [ 6] okay.std.Choose$$$Lambda.0x00007000010d2eb0.apply
+  [ 7] okay.Handler$$anon$14$$anon$15.ret
+  [ 8] okay.one.machine.Machine$.eval
+  [ 9] okay.one.machine.Machine$.drive
+  [10] okay.one.machine.Machine$.run
+  [11] okay.one.Cont$.run
+  [12] okay.Run$.run
+  [13] okay.std.bench.LogicBenchmark.shared_scope
+  [14] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [15] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [16] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [17] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [18] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [19] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [20] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [21] java.lang.reflect.Method.invoke
+  [22] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [23] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [24] java.util.concurrent.FutureTask.run
+  [25] java.util.concurrent.Executors$RunnableAdapter.call
+  [26] java.util.concurrent.FutureTask.run
+  [27] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [28] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [29] java.lang.Thread.runWith
+  [30] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] okay.Run$$anon$1.$anonfun$1
+  [ 1] okay.Run$$anon$1$$Lambda.0x00007000010deb18.apply
+  [ 2] okay.one.machine.Machine$.eval
+  [ 3] okay.one.machine.Machine$.drive
+  [ 4] okay.one.machine.Machine$.run
+  [ 5] okay.one.Cont$.run
+  [ 6] okay.Run$.run
+  [ 7] okay.std.bench.LogicBenchmark.shared_scope
+  [ 8] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [ 9] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [10] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [11] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [12] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [15] java.lang.reflect.Method.invoke
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.Executors$RunnableAdapter.call
+  [20] java.util.concurrent.FutureTask.run
+  [21] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [22] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [23] java.lang.Thread.runWith
+  [24] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] okay.one.machine.Machine$.eval
+  [ 1] okay.one.machine.Machine$.drive
+  [ 2] okay.one.machine.Machine$.run
+  [ 3] okay.one.Cont$.run
+  [ 4] okay.Run$.run
+  [ 5] okay.std.bench.LogicBenchmark.shared_scope
+  [ 6] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [ 7] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] scala.runtime.BoxesRunTime.boxToInteger
+  [ 1] scala.math.Numeric$IntIsIntegral$.fromInt
+  [ 2] scala.math.Numeric$IntIsIntegral$.zero
+  [ 3] scala.collection.IterableOnceOps.sum
+  [ 4] scala.collection.IterableOnceOps.sum$
+  [ 5] scala.collection.AbstractIterable.sum
+  [ 6] okay.std.bench.LogicBenchmark.shared_scope
+  [ 7] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [ 8] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [ 9] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [10] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [11] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [14] java.lang.reflect.Method.invoke
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.Executors$RunnableAdapter.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [21] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [22] java.lang.Thread.runWith
+  [23] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] okay.one.Cont$Bind$.apply
+  [ 1] okay.one.Cont.bound
+  [ 2] okay.one.Cont.down
+  [ 3] okay.one.Cont.okay$one$Cont$$inline$down
+  [ 4] okay.Run$$anon$1.on
+  [ 5] okay.Run$$anon$1.$anonfun$1
+  [ 6] okay.Run$$anon$1$$Lambda.0x00007000010deb18.apply
+  [ 7] okay.one.machine.Machine$.eval
+  [ 8] okay.one.machine.Machine$.drive
+  [ 9] okay.one.machine.Machine$.run
+  [10] okay.one.Cont$.run
+  [11] okay.Run$.run
+  [12] okay.std.bench.LogicBenchmark.shared_scope
+  [13] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [14] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [15] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [16] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [17] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [18] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [19] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [20] java.lang.reflect.Method.invoke
+  [21] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [22] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [23] java.util.concurrent.FutureTask.run
+  [24] java.util.concurrent.Executors$RunnableAdapter.call
+  [25] java.util.concurrent.FutureTask.run
+  [26] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [27] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [28] java.lang.Thread.runWith
+  [29] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] okay.one.Cont.map
+  [ 1] okay.Run$$anon$2.on
+  [ 2] okay.Run$$anon$1.on
+  [ 3] okay.Run$$anon$1.$anonfun$1
+  [ 4] okay.Run$$anon$1$$Lambda.0x00007000010deb18.apply
+  [ 5] okay.one.machine.Machine$.eval
+  [ 6] okay.one.machine.Machine$.drive
+  [ 7] okay.one.machine.Machine$.run
+  [ 8] okay.one.Cont$.run
+  [ 9] okay.Run$.run
+  [10] okay.std.bench.LogicBenchmark.shared_scope
+  [11] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [12] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [13] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [14] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [15] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [16] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [17] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [18] java.lang.reflect.Method.invoke
+  [19] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [20] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [21] java.util.concurrent.FutureTask.run
+  [22] java.util.concurrent.Executors$RunnableAdapter.call
+  [23] java.util.concurrent.FutureTask.run
+  [24] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [25] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [26] java.lang.Thread.runWith
+  [27] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] okay.one.machine.Machine$.bottom
+  [ 1] okay.one.machine.Machine$.eval
+  [ 2] okay.one.machine.Machine$.drive
+  [ 3] okay.one.machine.Machine$.run
+  [ 4] okay.one.Cont$.run
+  [ 5] okay.Run$.run
+  [ 6] okay.std.bench.LogicBenchmark.shared_scope
+  [ 7] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [ 8] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [ 9] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [10] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [11] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [14] java.lang.reflect.Method.invoke
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.Executors$RunnableAdapter.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [21] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [22] java.lang.Thread.runWith
+  [23] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] okay.one.machine.Machine$.eval
+  [ 1] okay.one.machine.Machine$.drive
+  [ 2] okay.one.machine.Machine$.run
+  [ 3] okay.one.Cont$.run
+  [ 4] okay.Run$.run
+  [ 5] okay.std.bench.LogicBenchmark.shared_scope
+  [ 6] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [ 7] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] okay.one.machine.Machine$Frame$Bind.<init>
+  [ 1] okay.one.machine.Machine$Frame$Bind$.apply
+  [ 2] okay.one.machine.Machine$.eval
+  [ 3] okay.one.machine.Machine$.drive
+  [ 4] okay.one.machine.Machine$.run
+  [ 5] okay.one.Cont$.run
+  [ 6] okay.Run$.run
+  [ 7] okay.std.bench.LogicBenchmark.shared_scope
+  [ 8] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [ 9] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [10] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [11] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [12] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [15] java.lang.reflect.Method.invoke
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.Executors$RunnableAdapter.call
+  [20] java.util.concurrent.FutureTask.run
+  [21] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [22] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [23] java.lang.Thread.runWith
+  [24] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] okay.one.Cont$Resume$.apply
+  [ 1] okay.one.machine.Machine$Rest.apply
+  [ 2] okay.one.machine.Machine$Rest.apply
+  [ 3] okay.one.machine.Machine$.eval
+  [ 4] okay.one.machine.Machine$.drive
+  [ 5] okay.one.machine.Machine$.run
+  [ 6] okay.one.Cont$.run
+  [ 7] okay.Run$.run
+  [ 8] okay.std.bench.LogicBenchmark.shared_scope
+  [ 9] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [10] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [11] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [12] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [13] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [15] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [16] java.lang.reflect.Method.invoke
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.Executors$RunnableAdapter.call
+  [21] java.util.concurrent.FutureTask.run
+  [22] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [23] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [24] java.lang.Thread.runWith
+  [25] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] okay.one.machine.Machine$.eval
+  [ 1] okay.one.machine.Machine$.drive
+  [ 2] okay.one.machine.Machine$.run
+  [ 3] okay.one.Cont$.run
+  [ 4] okay.Run$.run
+  [ 5] okay.std.bench.LogicBenchmark.shared_scope
+  [ 6] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [ 7] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] scala.collection.immutable.$colon$colon.next_$eq
+  [ 1] scala.collection.immutable.List.$colon$colon$colon
+  [ 2] scala.collection.immutable.List.appendedAll
+  [ 3] scala.collection.immutable.List.appendedAll
+  [ 4] scala.collection.AbstractSeq.concat
+  [ 5] scala.collection.AbstractIterable.$plus$plus
+  [ 6] okay.std.Choose$.$anonfun$1$$anonfun$1
+  [ 7] okay.std.Choose$$$Lambda.0x0000700001102ee0.apply
+  [ 8] okay.one.machine.Machine$.eval
+  [ 9] okay.one.machine.Machine$.drive
+  [10] okay.one.machine.Machine$.run
+  [11] okay.one.Cont$.run
+  [12] okay.Run$.run
+  [13] okay.std.bench.LogicBenchmark.shared_scope
+  [14] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [15] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [16] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [17] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [18] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [19] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [20] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [21] java.lang.reflect.Method.invoke
+  [22] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [23] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [24] java.util.concurrent.FutureTask.run
+  [25] java.util.concurrent.Executors$RunnableAdapter.call
+  [26] java.util.concurrent.FutureTask.run
+  [27] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [28] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [29] java.lang.Thread.runWith
+  [30] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] okay.one.machine.Machine$.eval
+  [ 1] okay.one.machine.Machine$.drive
+  [ 2] okay.one.machine.Machine$.run
+  [ 3] okay.one.Cont$.run
+  [ 4] okay.Run$.run
+  [ 5] okay.std.bench.LogicBenchmark.shared_scope
+  [ 6] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [ 7] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] okay.Run$$anon$1$$Lambda.0x00007000010deb18.apply
+  [ 1] okay.one.machine.Machine$.eval
+  [ 2] okay.one.machine.Machine$.drive
+  [ 3] okay.one.machine.Machine$.run
+  [ 4] okay.one.Cont$.run
+  [ 5] okay.Run$.run
+  [ 6] okay.std.bench.LogicBenchmark.shared_scope
+  [ 7] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [ 8] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [ 9] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [10] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [11] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [14] java.lang.reflect.Method.invoke
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.Executors$RunnableAdapter.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [21] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [22] java.lang.Thread.runWith
+  [23] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] os::javaTimeNanos
+  [ 1] os::elapsed_counter
+  [ 2] CompositeElapsedCounterSource::now
+  [ 3] WeakProcessorParTimeTracker::~WeakProcessorParTimeTracker
+  [ 4] void WeakProcessor::Task::work<G1STWIsAliveClosure, G1KeepAliveClosure>
+  [ 5] WorkerThread::run
+  [ 6] Thread::call_run
+  [ 7] thread_native_entry
+  [ 8] _pthread_start
+  [ 9] thread_start
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] AccessInternal::PostRuntimeDispatch<G1BarrierSet::AccessBarrier<401510ull, G1BarrierSet>, (AccessInternal::BarrierType)1, 401510ull>::oop_access_barrier
+  [ 1] jdk.internal.misc.Unsafe.putReference
+  [ 2] java.util.concurrent.locks.AbstractQueuedSynchronizer$Node.setPrevRelaxed
+  [ 3] java.util.concurrent.locks.AbstractQueuedSynchronizer.enqueue
+  [ 4] java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.doSignal
+  [ 5] java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.signal
+  [ 6] java.util.concurrent.LinkedBlockingQueue.signalNotEmpty
+  [ 7] java.util.concurrent.LinkedBlockingQueue.offer
+  [ 8] java.util.concurrent.ThreadPoolExecutor.execute
+  [ 9] java.util.concurrent.ExecutorCompletionService.submit
+  [10] org.openjdk.jmh.runner.BenchmarkHandler.runIteration
+  [11] org.openjdk.jmh.runner.BaseRunner.runBenchmark
+  [12] org.openjdk.jmh.runner.BaseRunner.runBenchmark
+  [13] org.openjdk.jmh.runner.BaseRunner.doSingle
+  [14] org.openjdk.jmh.runner.BaseRunner.runBenchmarksForked
+  [15] org.openjdk.jmh.runner.ForkedRunner.run
+  [16] org.openjdk.jmh.runner.ForkedMain.main
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] scala.reflect.ManifestFactory$AnyManifest.newArray
+  [ 1] scala.reflect.ManifestFactory$AnyManifest.newArray
+  [ 2] scala.collection.AbstractIterable.toArray
+  [ 3] scala.collection.immutable.ArraySeq$.from
+  [ 4] scala.collection.immutable.ArraySeq$.from
+  [ 5] scala.collection.ClassTagIterableFactory$AnyIterableDelegate.from
+  [ 6] okay.std.Choice$package$.foldM
+  [ 7] okay.std.Choose$.all$$anonfun$2
+  [ 8] okay.std.Choose$$$Lambda.0x00007000010d3988.apply
+  [ 9] okay.Handler$$anon$14$$anon$15.apply
+  [10] okay.one.machine.Machine$.clausing
+  [11] okay.one.machine.Machine$.outE
+  [12] okay.one.machine.Machine$.inline$outE
+  [13] okay.one.machine.Machine$.eval
+  [14] okay.one.machine.Machine$.drive
+  [15] okay.one.machine.Machine$.run
+  [16] okay.one.Cont$.run
+  [17] okay.Run$.run
+  [18] okay.std.bench.LogicBenchmark.shared_scope
+  [19] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [20] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [21] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [22] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [23] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [24] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [25] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [26] java.lang.reflect.Method.invoke
+  [27] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [28] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [29] java.util.concurrent.FutureTask.run
+  [30] java.util.concurrent.Executors$RunnableAdapter.call
+  [31] java.util.concurrent.FutureTask.run
+  [32] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [33] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [34] java.lang.Thread.runWith
+  [35] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] stringStream::write
+  [ 1] outputStream::print
+  [ 2] G1CollectedHeap::print_heap_on
+  [ 3] GCLog::log_gc
+  [ 4] CollectedHeap::print_relative_to_gc
+  [ 5] G1HeapPrinterMark::G1HeapPrinterMark
+  [ 6] G1YoungCollector::collect
+  [ 7] G1CollectedHeap::do_collection_pause_at_safepoint
+  [ 8] VM_G1CollectForAllocation::doit
+  [ 9] VM_Operation::evaluate
+  [10] VMThread::evaluate_operation
+  [11] VMThread::inner_execute
+  [12] VMThread::run
+  [13] Thread::call_run
+  [14] thread_native_entry
+  [15] _pthread_start
+  [16] thread_start
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] okay.Handler$$anon$14$$anon$15$$Lambda.0x00007000010ea518.apply
+  [ 1] okay.std.Choose$.$anonfun$1
+  [ 2] okay.std.Choose$$$Lambda.0x00007000010ea8f0.apply
+  [ 3] okay.std.Choice$package$.go$2
+  [ 4] okay.std.Choice$package$.go$2$$anonfun$1
+  [ 5] okay.std.Choice$package$$$Lambda.0x00007000011032b8.apply
+  [ 6] okay.Run$$anon$1.$anonfun$1
+  [ 7] okay.Run$$anon$1$$Lambda.0x00007000010deb18.apply
+  [ 8] okay.one.machine.Machine$.eval
+  [ 9] okay.one.machine.Machine$.drive
+  [10] okay.one.machine.Machine$.run
+  [11] okay.one.Cont$.run
+  [12] okay.Run$.run
+  [13] okay.std.bench.LogicBenchmark.shared_scope
+  [14] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [15] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [16] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [17] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [18] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [19] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [20] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [21] java.lang.reflect.Method.invoke
+  [22] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [23] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [24] java.util.concurrent.FutureTask.run
+  [25] java.util.concurrent.Executors$RunnableAdapter.call
+  [26] java.util.concurrent.FutureTask.run
+  [27] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [28] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [29] java.lang.Thread.runWith
+  [30] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] scala.collection.immutable.$colon$colon.<init>
+  [ 1] scala.collection.immutable.List.$colon$colon$colon
+  [ 2] scala.collection.immutable.List.appendedAll
+  [ 3] scala.collection.immutable.List.appendedAll
+  [ 4] scala.collection.AbstractSeq.concat
+  [ 5] scala.collection.AbstractIterable.$plus$plus
+  [ 6] okay.std.Choose$.$anonfun$1$$anonfun$1
+  [ 7] okay.std.Choose$$$Lambda.0x0000700001102ee0.apply
+  [ 8] okay.one.machine.Machine$.eval
+  [ 9] okay.one.machine.Machine$.drive
+  [10] okay.one.machine.Machine$.run
+  [11] okay.one.Cont$.run
+  [12] okay.Run$.run
+  [13] okay.std.bench.LogicBenchmark.shared_scope
+  [14] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [15] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [16] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [17] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [18] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [19] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [20] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [21] java.lang.reflect.Method.invoke
+  [22] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [23] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [24] java.util.concurrent.FutureTask.run
+  [25] java.util.concurrent.Executors$RunnableAdapter.call
+  [26] java.util.concurrent.FutureTask.run
+  [27] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [28] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [29] java.lang.Thread.runWith
+  [30] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] okay.one.machine.Machine$.eval
+  [ 1] okay.one.machine.Machine$.drive
+  [ 2] okay.one.machine.Machine$.run
+  [ 3] okay.one.Cont$.run
+  [ 4] okay.Run$.run
+  [ 5] okay.std.bench.LogicBenchmark.shared_scope
+  [ 6] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [ 7] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] okay.one.Cont$Resume.y
+  [ 1] okay.one.machine.Machine$.eval
+  [ 2] okay.one.machine.Machine$.drive
+  [ 3] okay.one.machine.Machine$.run
+  [ 4] okay.one.Cont$.run
+  [ 5] okay.Run$.run
+  [ 6] okay.std.bench.LogicBenchmark.shared_scope
+  [ 7] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [ 8] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [ 9] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [10] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [11] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [14] java.lang.reflect.Method.invoke
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.Executors$RunnableAdapter.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [21] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [22] java.lang.Thread.runWith
+  [23] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] okay.one.machine.Machine$.resumed
+  [ 1] okay.one.machine.Machine$.eval
+  [ 2] okay.one.machine.Machine$.drive
+  [ 3] okay.one.machine.Machine$.run
+  [ 4] okay.one.Cont$.run
+  [ 5] okay.Run$.run
+  [ 6] okay.std.bench.LogicBenchmark.shared_scope
+  [ 7] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [ 8] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [ 9] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [10] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [11] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [14] java.lang.reflect.Method.invoke
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.Executors$RunnableAdapter.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [21] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [22] java.lang.Thread.runWith
+  [23] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] okay.one.Cont$Resume.c
+  [ 1] okay.one.machine.Machine$.resumed
+  [ 2] okay.one.machine.Machine$.eval
+  [ 3] okay.one.machine.Machine$.drive
+  [ 4] okay.one.machine.Machine$.run
+  [ 5] okay.one.Cont$.run
+  [ 6] okay.Run$.run
+  [ 7] okay.std.bench.LogicBenchmark.shared_scope
+  [ 8] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [ 9] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [10] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [11] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [12] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [15] java.lang.reflect.Method.invoke
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.Executors$RunnableAdapter.call
+  [20] java.util.concurrent.FutureTask.run
+  [21] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [22] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [23] java.lang.Thread.runWith
+  [24] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] okay.one.machine.Machine$.eval
+  [ 1] okay.one.machine.Machine$.run
+  [ 2] okay.one.Cont$.run
+  [ 3] okay.Run$.run
+  [ 4] okay.std.bench.LogicBenchmark.shared_scope
+  [ 5] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [ 6] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [ 7] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 8] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [ 9] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [12] java.lang.reflect.Method.invoke
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] java.util.concurrent.FutureTask.run
+  [16] java.util.concurrent.Executors$RunnableAdapter.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [19] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [20] java.lang.Thread.runWith
+  [21] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] scala.math.Numeric$IntIsIntegral$.plus
+  [ 1] scala.math.Numeric$IntIsIntegral$.plus
+  [ 2] scala.collection.IterableOnceOps.sum$$anonfun$1
+  [ 3] scala.collection.IterableOnceOps$$Lambda.0x000070000110cbd8.apply
+  [ 4] scala.collection.immutable.List.foldLeft
+  [ 5] scala.collection.IterableOnceOps.sum
+  [ 6] scala.collection.IterableOnceOps.sum$
+  [ 7] scala.collection.AbstractIterable.sum
+  [ 8] okay.std.bench.LogicBenchmark.shared_scope
+  [ 9] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [10] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [11] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [12] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [13] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [15] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [16] java.lang.reflect.Method.invoke
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.Executors$RunnableAdapter.call
+  [21] java.util.concurrent.FutureTask.run
+  [22] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [23] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [24] java.lang.Thread.runWith
+  [25] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] okay.one.Cont$Resume.c
+  [ 1] okay.one.machine.Machine$.eval
+  [ 2] okay.one.machine.Machine$.drive
+  [ 3] okay.one.machine.Machine$.run
+  [ 4] okay.one.Cont$.run
+  [ 5] okay.Run$.run
+  [ 6] okay.std.bench.LogicBenchmark.shared_scope
+  [ 7] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [ 8] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [ 9] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [10] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [11] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [14] java.lang.reflect.Method.invoke
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.Executors$RunnableAdapter.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [21] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [22] java.lang.Thread.runWith
+  [23] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] scala.collection.immutable.List.$colon$colon$colon
+  [ 1] scala.collection.immutable.List.appendedAll
+  [ 2] scala.collection.immutable.List.appendedAll
+  [ 3] scala.collection.AbstractSeq.concat
+  [ 4] scala.collection.AbstractIterable.$plus$plus
+  [ 5] okay.std.Choose$.$anonfun$1$$anonfun$1
+  [ 6] okay.std.Choose$$$Lambda.0x0000700001102ee0.apply
+  [ 7] okay.one.machine.Machine$.eval
+  [ 8] okay.one.machine.Machine$.drive
+  [ 9] okay.one.machine.Machine$.run
+  [10] okay.one.Cont$.run
+  [11] okay.Run$.run
+  [12] okay.std.bench.LogicBenchmark.shared_scope
+  [13] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [14] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [15] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [16] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [17] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [18] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [19] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [20] java.lang.reflect.Method.invoke
+  [21] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [22] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [23] java.util.concurrent.FutureTask.run
+  [24] java.util.concurrent.Executors$RunnableAdapter.call
+  [25] java.util.concurrent.FutureTask.run
+  [26] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [27] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [28] java.lang.Thread.runWith
+  [29] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] okay.one.machine.Machine$.resumed
+  [ 1] okay.one.machine.Machine$.eval
+  [ 2] okay.one.machine.Machine$.drive
+  [ 3] okay.one.machine.Machine$.run
+  [ 4] okay.one.Cont$.run
+  [ 5] okay.Run$.run
+  [ 6] okay.std.bench.LogicBenchmark.shared_scope
+  [ 7] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [ 8] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [ 9] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [10] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [11] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [14] java.lang.reflect.Method.invoke
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.Executors$RunnableAdapter.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [21] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [22] java.lang.Thread.runWith
+  [23] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] okay.std.Choice$package$$$Lambda.0x00007000011032b8.apply
+  [ 1] okay.Run$$anon$1.$anonfun$1
+  [ 2] okay.Run$$anon$1$$Lambda.0x00007000010deb18.apply
+  [ 3] okay.one.machine.Machine$.eval
+  [ 4] okay.one.machine.Machine$.drive
+  [ 5] okay.one.machine.Machine$.run
+  [ 6] okay.one.Cont$.run
+  [ 7] okay.Run$.run
+  [ 8] okay.std.bench.LogicBenchmark.shared_scope
+  [ 9] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [10] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [11] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [12] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [13] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [15] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [16] java.lang.reflect.Method.invoke
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.Executors$RunnableAdapter.call
+  [21] java.util.concurrent.FutureTask.run
+  [22] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [23] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [24] java.lang.Thread.runWith
+  [25] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] _xzm_chunk_list_pop
+  [ 1] _xzm_xzone_find_and_malloc_from_freelist_chunk
+  [ 2] _xzm_xzone_malloc_freelist_outlined
+  [ 3] os::malloc
+  [ 4] os::strdup
+  [ 5] Symbol::print_symbol_on
+  [ 6] Method::print_short_name
+  [ 7] CompileTask::print_impl
+  [ 8] CompileTask::print
+  [ 9] CompilationLog::log_compile
+  [10] CompileBroker::invoke_compiler_on_method
+  [11] CompileBroker::compiler_thread_loop
+  [12] JavaThread::thread_main_inner
+  [13] Thread::call_run
+  [14] thread_native_entry
+  [15] _pthread_start
+  [16] thread_start
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] scala.runtime.BoxesRunTime.boxToInteger
+  [ 1] scala.collection.immutable.RangeIterator.next
+  [ 2] scala.collection.IterableOnceOps.copyToArray
+  [ 3] scala.collection.IterableOnceOps.copyToArray$
+  [ 4] scala.collection.AbstractIterable.copyToArray
+  [ 5] scala.collection.AbstractIterable.copyToArray
+  [ 6] scala.collection.AbstractIterable.toArray
+  [ 7] scala.collection.immutable.ArraySeq$.from
+  [ 8] scala.collection.immutable.ArraySeq$.from
+  [ 9] scala.collection.ClassTagIterableFactory$AnyIterableDelegate.from
+  [10] okay.std.Choice$package$.foldM
+  [11] okay.std.Choose$.all$$anonfun$2
+  [12] okay.std.Choose$$$Lambda.0x00007000010d3988.apply
+  [13] okay.Handler$$anon$14$$anon$15.apply
+  [14] okay.one.machine.Machine$.clausing
+  [15] okay.one.machine.Machine$.outE
+  [16] okay.one.machine.Machine$.inline$outE
+  [17] okay.one.machine.Machine$.eval
+  [18] okay.one.machine.Machine$.drive
+  [19] okay.one.machine.Machine$.run
+  [20] okay.one.Cont$.run
+  [21] okay.Run$.run
+  [22] okay.std.bench.LogicBenchmark.shared_scope
+  [23] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [24] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [25] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [26] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [27] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [28] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [29] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [30] java.lang.reflect.Method.invoke
+  [31] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [32] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [33] java.util.concurrent.FutureTask.run
+  [34] java.util.concurrent.Executors$RunnableAdapter.call
+  [35] java.util.concurrent.FutureTask.run
+  [36] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [37] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [38] java.lang.Thread.runWith
+  [39] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] okay.Run$$anon$1.on
+  [ 1] okay.Run$$anon$1.$anonfun$1
+  [ 2] okay.Run$$anon$1$$Lambda.0x00007000010deb18.apply
+  [ 3] okay.one.machine.Machine$.eval
+  [ 4] okay.one.machine.Machine$.drive
+  [ 5] okay.one.machine.Machine$.run
+  [ 6] okay.one.Cont$.run
+  [ 7] okay.Run$.run
+  [ 8] okay.std.bench.LogicBenchmark.shared_scope
+  [ 9] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [10] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [11] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [12] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [13] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [15] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [16] java.lang.reflect.Method.invoke
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.Executors$RunnableAdapter.call
+  [21] java.util.concurrent.FutureTask.run
+  [22] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [23] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [24] java.lang.Thread.runWith
+  [25] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] okay.std.Choice$package$$$Lambda.0x00007000011032b8.<init>
+  [ 1] java.lang.invoke.LambdaForm$DMH.0x0000700001104800.newInvokeSpecial
+  [ 2] java.lang.invoke.LambdaForm$MH.0x0000700001105000.linkToTargetMethod
+  [ 3] okay.std.Choice$package$.go$2
+  [ 4] okay.std.Choice$package$.go$2$$anonfun$1
+  [ 5] okay.std.Choice$package$$$Lambda.0x00007000011032b8.apply
+  [ 6] okay.Run$$anon$1.$anonfun$1
+  [ 7] okay.Run$$anon$1$$Lambda.0x00007000010deb18.apply
+  [ 8] okay.one.machine.Machine$.eval
+  [ 9] okay.one.machine.Machine$.drive
+  [10] okay.one.machine.Machine$.run
+  [11] okay.one.Cont$.run
+  [12] okay.Run$.run
+  [13] okay.std.bench.LogicBenchmark.shared_scope
+  [14] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [15] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [16] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [17] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [18] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [19] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [20] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [21] java.lang.reflect.Method.invoke
+  [22] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [23] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [24] java.util.concurrent.FutureTask.run
+  [25] java.util.concurrent.Executors$RunnableAdapter.call
+  [26] java.util.concurrent.FutureTask.run
+  [27] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [28] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [29] java.lang.Thread.runWith
+  [30] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] scala.collection.immutable.List.foldLeft
+  [ 1] scala.collection.IterableOnceOps.sum
+  [ 2] scala.collection.IterableOnceOps.sum$
+  [ 3] scala.collection.AbstractIterable.sum
+  [ 4] okay.std.bench.LogicBenchmark.shared_scope
+  [ 5] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [ 6] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [ 7] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 8] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [ 9] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [12] java.lang.reflect.Method.invoke
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] java.util.concurrent.FutureTask.run
+  [16] java.util.concurrent.Executors$RunnableAdapter.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [19] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [20] java.lang.Thread.runWith
+  [21] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] okay.one.machine.Machine$Frame$Bind$.apply
+  [ 1] okay.one.machine.Machine$.eval
+  [ 2] okay.one.machine.Machine$.drive
+  [ 3] okay.one.machine.Machine$.run
+  [ 4] okay.one.Cont$.run
+  [ 5] okay.Run$.run
+  [ 6] okay.std.bench.LogicBenchmark.shared_scope
+  [ 7] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [ 8] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [ 9] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [10] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [11] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [14] java.lang.reflect.Method.invoke
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.Executors$RunnableAdapter.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [21] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [22] java.lang.Thread.runWith
+  [23] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] okay.std.Choose$.$anonfun$1$$anonfun$1
+  [ 1] okay.std.Choose$$$Lambda.0x0000700001102ee0.apply
+  [ 2] okay.one.machine.Machine$.eval
+  [ 3] okay.one.machine.Machine$.drive
+  [ 4] okay.one.machine.Machine$.run
+  [ 5] okay.one.Cont$.run
+  [ 6] okay.Run$.run
+  [ 7] okay.std.bench.LogicBenchmark.shared_scope
+  [ 8] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [ 9] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [10] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [11] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [12] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [15] java.lang.reflect.Method.invoke
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.Executors$RunnableAdapter.call
+  [20] java.util.concurrent.FutureTask.run
+  [21] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [22] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [23] java.lang.Thread.runWith
+  [24] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] okay.std.Choose$.$anonfun$1$$anonfun$1
+  [ 1] okay.std.Choose$$$Lambda.0x0000700001102ee0.apply
+  [ 2] okay.one.machine.Machine$.eval
+  [ 3] okay.one.machine.Machine$.drive
+  [ 4] okay.one.machine.Machine$.run
+  [ 5] okay.one.Cont$.run
+  [ 6] okay.Run$.run
+  [ 7] okay.std.bench.LogicBenchmark.shared_scope
+  [ 8] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [ 9] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [10] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [11] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [12] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [15] java.lang.reflect.Method.invoke
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.Executors$RunnableAdapter.call
+  [20] java.util.concurrent.FutureTask.run
+  [21] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [22] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [23] java.lang.Thread.runWith
+  [24] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] scala.collection.immutable.List.$colon$colon$colon
+  [ 1] scala.collection.immutable.List.appendedAll
+  [ 2] scala.collection.immutable.List.appendedAll
+  [ 3] scala.collection.AbstractSeq.concat
+  [ 4] scala.collection.AbstractIterable.$plus$plus
+  [ 5] okay.std.Choose$.$anonfun$1$$anonfun$1
+  [ 6] okay.std.Choose$$$Lambda.0x0000700001102ee0.apply
+  [ 7] okay.one.machine.Machine$.eval
+  [ 8] okay.one.machine.Machine$.drive
+  [ 9] okay.one.machine.Machine$.run
+  [10] okay.one.Cont$.run
+  [11] okay.Run$.run
+  [12] okay.std.bench.LogicBenchmark.shared_scope
+  [13] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [14] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [15] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [16] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [17] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [18] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [19] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [20] java.lang.reflect.Method.invoke
+  [21] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [22] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [23] java.util.concurrent.FutureTask.run
+  [24] java.util.concurrent.Executors$RunnableAdapter.call
+  [25] java.util.concurrent.FutureTask.run
+  [26] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [27] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [28] java.lang.Thread.runWith
+  [29] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] okay.Handler$.okay$Handler$$anon$14$$anon$15$$_$_$$anonfun$2
+  [ 1] okay.Handler$$anon$14$$anon$15$$Lambda.0x00007000010ea518.apply
+  [ 2] okay.std.Choose$.$anonfun$1
+  [ 3] okay.std.Choose$$$Lambda.0x00007000010ea8f0.apply
+  [ 4] okay.std.Choice$package$.go$2
+  [ 5] okay.std.Choice$package$.go$2$$anonfun$1
+  [ 6] okay.std.Choice$package$$$Lambda.0x00007000011032b8.apply
+  [ 7] okay.Run$$anon$1.$anonfun$1
+  [ 8] okay.Run$$anon$1$$Lambda.0x00007000010deb18.apply
+  [ 9] okay.one.machine.Machine$.eval
+  [10] okay.one.machine.Machine$.drive
+  [11] okay.one.machine.Machine$.run
+  [12] okay.one.Cont$.run
+  [13] okay.Run$.run
+  [14] okay.std.bench.LogicBenchmark.shared_scope
+  [15] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [16] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [17] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [18] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [19] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [20] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [21] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [22] java.lang.reflect.Method.invoke
+  [23] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [24] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [25] java.util.concurrent.FutureTask.run
+  [26] java.util.concurrent.Executors$RunnableAdapter.call
+  [27] java.util.concurrent.FutureTask.run
+  [28] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [29] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [30] java.lang.Thread.runWith
+  [31] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] semaphore_signal_trap
+  [ 1] WorkerThreads::run_task
+  [ 2] G1YoungCollector::post_evacuate_collection_set
+  [ 3] G1YoungCollector::collect
+  [ 4] G1CollectedHeap::do_collection_pause_at_safepoint
+  [ 5] VM_G1CollectForAllocation::doit
+  [ 6] VM_Operation::evaluate
+  [ 7] VMThread::evaluate_operation
+  [ 8] VMThread::inner_execute
+  [ 9] VMThread::run
+  [10] Thread::call_run
+  [11] thread_native_entry
+  [12] _pthread_start
+  [13] thread_start
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] okay.one.Cont$Bind.m
+  [ 1] okay.one.machine.Machine$.eval
+  [ 2] okay.one.machine.Machine$.drive
+  [ 3] okay.one.machine.Machine$.run
+  [ 4] okay.one.Cont$.run
+  [ 5] okay.Run$.run
+  [ 6] okay.std.bench.LogicBenchmark.shared_scope
+  [ 7] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [ 8] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [ 9] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [10] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [11] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [14] java.lang.reflect.Method.invoke
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.Executors$RunnableAdapter.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [21] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [22] java.lang.Thread.runWith
+  [23] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] okay.one.Cont$Map.m
+  [ 1] okay.one.machine.Machine$.eval
+  [ 2] okay.one.machine.Machine$.drive
+  [ 3] okay.one.machine.Machine$.run
+  [ 4] okay.one.Cont$.run
+  [ 5] okay.Run$.run
+  [ 6] okay.std.bench.LogicBenchmark.shared_scope
+  [ 7] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [ 8] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [ 9] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [10] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [11] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [14] java.lang.reflect.Method.invoke
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.Executors$RunnableAdapter.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [21] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [22] java.lang.Thread.runWith
+  [23] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] okay.one.machine.Machine$Frame$Map.<init>
+  [ 1] okay.one.machine.Machine$Frame$Map$.apply
+  [ 2] okay.one.machine.Machine$.eval
+  [ 3] okay.one.machine.Machine$.drive
+  [ 4] okay.one.machine.Machine$.run
+  [ 5] okay.one.Cont$.run
+  [ 6] okay.Run$.run
+  [ 7] okay.std.bench.LogicBenchmark.shared_scope
+  [ 8] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [ 9] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [10] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [11] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [12] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [15] java.lang.reflect.Method.invoke
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.Executors$RunnableAdapter.call
+  [20] java.util.concurrent.FutureTask.run
+  [21] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [22] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [23] java.lang.Thread.runWith
+  [24] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] okay.one.Cont$Resume$.apply
+  [ 1] okay.one.machine.Machine$Rest.apply
+  [ 2] okay.one.machine.Machine$Rest.apply
+  [ 3] okay.one.machine.Machine$.eval
+  [ 4] okay.one.machine.Machine$.drive
+  [ 5] okay.one.machine.Machine$.run
+  [ 6] okay.one.Cont$.run
+  [ 7] okay.Run$.run
+  [ 8] okay.std.bench.LogicBenchmark.shared_scope
+  [ 9] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [10] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [11] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [12] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [13] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [15] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [16] java.lang.reflect.Method.invoke
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.Executors$RunnableAdapter.call
+  [21] java.util.concurrent.FutureTask.run
+  [22] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [23] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [24] java.lang.Thread.runWith
+  [25] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] okay.one.machine.Machine$$$Lambda.0x00007000010e9810.apply
+  [ 1] okay.one.machine.Machine$.eval
+  [ 2] okay.one.machine.Machine$.drive
+  [ 3] okay.one.machine.Machine$.run
+  [ 4] okay.one.Cont$.run
+  [ 5] okay.Run$.run
+  [ 6] okay.std.bench.LogicBenchmark.shared_scope
+  [ 7] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [ 8] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [ 9] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [10] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [11] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [14] java.lang.reflect.Method.invoke
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.Executors$RunnableAdapter.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [21] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [22] java.lang.Thread.runWith
+  [23] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] okay.one.machine.Machine$.eval
+  [ 1] okay.one.machine.Machine$.drive
+  [ 2] okay.one.machine.Machine$.run
+  [ 3] okay.one.Cont$.run
+  [ 4] okay.Run$.run
+  [ 5] okay.std.bench.LogicBenchmark.shared_scope
+  [ 6] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [ 7] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 10000000 ns (0.33%), 1 sample
+  [ 0] okay.one.machine.Machine$Eff.<init>
+  [ 1] okay.one.machine.Machine$.bottom
+  [ 2] okay.one.machine.Machine$.eval
+  [ 3] okay.one.machine.Machine$.drive
+  [ 4] okay.one.machine.Machine$.run
+  [ 5] okay.one.Cont$.run
+  [ 6] okay.Run$.run
+  [ 7] okay.std.bench.LogicBenchmark.shared_scope
+  [ 8] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_avgt_jmhStub
+  [ 9] okay.std.bench.jmh_generated.LogicBenchmark_shared_scope_jmhTest.shared_scope_AverageTime
+  [10] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [11] java.lang.invoke.LambdaForm$MH.0x0000700001061400.invoke
+  [12] java.lang.invoke.LambdaForm$MH.0x0000700001061800.invokeExact_MT
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [15] java.lang.reflect.Method.invoke
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.Executors$RunnableAdapter.call
+  [20] java.util.concurrent.FutureTask.run
+  [21] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [22] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [23] java.lang.Thread.runWith
+  [24] java.lang.Thread.run
+
+          ns  percent  samples  top
+  ----------  -------  -------  ---
+   700000000   22.80%       70  scala.collection.immutable.List.$colon$colon$colon
+   680000000   22.15%       68  scala.collection.immutable.$colon$colon.<init>
+   390000000   12.70%       39  okay.one.machine.Machine$.eval
+   250000000    8.14%       25  okay.std.Choose$.$anonfun$1$$anonfun$1
+   230000000    7.49%       23  scala.collection.immutable.$colon$colon.next_$eq
+    90000000    2.93%        9  okay.one.machine.Machine$Eff.<init>
+    50000000    1.63%        5  okay.one.Cont$Resume$.apply
+    40000000    1.30%        4  java.lang.invoke.DirectMethodHandle.allocateInstance
+    40000000    1.30%        4  okay.one.machine.Machine$.resumed
+    30000000    0.98%        3  semaphore_wait_trap
+    30000000    0.98%        3  okay.Run$$anon$1.$anonfun$1
+    30000000    0.98%        3  okay.Run$$anon$1.on
+    30000000    0.98%        3  okay.one.Cont$Map$.apply
+    30000000    0.98%        3  okay.one.Cont$Return$.apply
+    20000000    0.65%        2  itable stub
+    20000000    0.65%        2  scala.runtime.BoxesRunTime.boxToInteger
+    20000000    0.65%        2  scala.collection.immutable.$colon$colon.next
+    20000000    0.65%        2  okay.Run$.flatMap
+    20000000    0.65%        2  okay.one.machine.Machine$Rest$Under.k
+    20000000    0.65%        2  okay.one.machine.Machine$Meta$Under.<init>
+    20000000    0.65%        2  okay.one.Cont$Resume.<init>
+    20000000    0.65%        2  okay.one.Cont$Resume.c
+    20000000    0.65%        2  okay.one.Cont$Return.a
+    10000000    0.33%        1  AccessInternal::PostRuntimeDispatch<G1BarrierSet::AccessBarrier<401510ull, G1BarrierSet>, (AccessInternal::BarrierType)1, 401510ull>::oop_access_barrier
+    10000000    0.33%        1  stringStream::write
+    10000000    0.33%        1  okay.one.machine.Machine$$$Lambda.0x00007000010e9810.apply
+    10000000    0.33%        1  okay.one.machine.Machine$.bottom
+    10000000    0.33%        1  okay.one.Cont.bound
+    10000000    0.33%        1  okay.one.Cont$Resume.y
+    10000000    0.33%        1  okay.one.Cont$Map.m
+    10000000    0.33%        1  okay.one.machine.Machine$Frame$Bind$.apply
+    10000000    0.33%        1  okay.one.machine.Machine$Frame$Bind.<init>
+    10000000    0.33%        1  okay.one.machine.Machine$Frame$Map.<init>
+    10000000    0.33%        1  okay.one.Cont$Bind.m
+    10000000    0.33%        1  okay.one.Cont$Bind$.apply
+    10000000    0.33%        1  okay.std.Choice$package$$$Lambda.0x00007000011032b8.<init>
+    10000000    0.33%        1  okay.std.Choice$package$$$Lambda.0x00007000011032b8.apply
+    10000000    0.33%        1  okay.Run$$anon$1$$Lambda.0x00007000010deb18.apply
+    10000000    0.33%        1  os::javaTimeNanos
+    10000000    0.33%        1  okay.Program$.lift
+    10000000    0.33%        1  okay.Handler$.okay$Handler$$anon$14$$anon$15$$_$_$$anonfun$2
+    10000000    0.33%        1  okay.Handler$$anon$14$$anon$15$$Lambda.0x00007000010ea518.apply
+    10000000    0.33%        1  java.lang.invoke.VarHandle.releaseFence
+    10000000    0.33%        1  scala.collection.immutable.List.foldLeft
+    10000000    0.33%        1  scala.math.Numeric$IntIsIntegral$.plus
+    10000000    0.33%        1  scala.reflect.ManifestFactory$AnyManifest.newArray
+    10000000    0.33%        1  java.lang.Integer.valueOf
+    10000000    0.33%        1  semaphore_signal_trap
+    10000000    0.33%        1  _xzm_chunk_list_pop
+    10000000    0.33%        1  okay.one.Cont.map
