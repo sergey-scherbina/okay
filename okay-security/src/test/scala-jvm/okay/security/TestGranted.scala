@@ -1,9 +1,8 @@
 package okay.security
 
 import okay.Async
-import okay.freer.{!, pure}
+import okay.{!, pure}
 import okay.given
-import okay.freer.given
 import okay.codec.Json
 import okay.http.{Http, Method, Request, Response}
 
@@ -20,7 +19,7 @@ class TestGranted extends munit.FunSuite {
   val verify: String => Verified =
     t => Jwt.verify(t, _ => Some(Jwt.Key.Hmac(secret)), Some("api"), now)
 
-  def run[A](p: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](p))
+  def run[A](p: A ! Async): A = !.run(Async.run(p))
 
   val route = Secure.granted(verify, Policy.scoped("read")) {
     // no lambda parameter: the principal is ambient

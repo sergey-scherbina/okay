@@ -1,10 +1,8 @@
 package okay.security
 
-import okay.{Async}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.http.{Body, Http, Method, Request, Response, Server, Transports}
 
 /**
@@ -33,10 +31,10 @@ class TestFlows extends munit.FunSuite {
   val http = Transports.http()
 
   def served[A](route: PartialFunction[Request, Response ! Async])(body: Int => A): A =
-    Resource.run[A, Pure](Server.serve(0)(route).map(s => body(Server.port(s)))).runWith
+    Resource.run(Server.serve(0)(route).map(s => body(Server.port(s)))).runWith
 
   def get(port: Int, path: String, headers: (String, String)*): Response =
-    Async.run[Response, Pure](http.send(
+    Async.run(http.send(
       Request.get(s"http://127.0.0.1:$port$path", headers))).runWith
 
   test("a protected route: 401 with a challenge, 401, 403, and through") {
@@ -58,7 +56,7 @@ class TestFlows extends munit.FunSuite {
 
       val ok = get(port, "/hello", ("authorization", s"Bearer ${token(Set("read"))}"))
       assertEquals(ok.status, 200)
-      assertEquals(Async.run[String, Pure](Http.text(ok)).runWith, "hello u1")
+      assertEquals(Async.run(Http.text(ok)).runWith, "hello u1")
     }
   }
 
@@ -105,7 +103,7 @@ class TestFlows extends munit.FunSuite {
       assert(url.contains("code_challenge=" + challenge), url)
       assert(url.contains("code_challenge_method=S256"))
 
-      def run[A](p: A ! Async): A = Async.run[A, Pure](p).runWith
+      def run[A](p: A ! Async): A = Async.run(p).runWith
 
       val tokens = run(OAuth2.exchange(http, client, "c0de", verifier))
       assertEquals(tokens.map(_.access), Right("at1"))

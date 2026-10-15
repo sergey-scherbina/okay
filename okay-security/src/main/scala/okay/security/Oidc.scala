@@ -2,10 +2,9 @@ package okay.security
 
 import okay.{Async}
 
-import okay.freer.{+, %}
-import okay.freer.{!, pure}
+import okay.{+, %}
+import okay.{!, pure}
 import okay.std.{Throws, raise, runEither}
-import okay.freer.Row.at
 import okay.codec.Json
 import okay.http.{Http, Request}
 

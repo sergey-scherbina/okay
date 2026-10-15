@@ -1,17 +1,16 @@
 package okay.security
 
 import okay.Async
-import okay.freer.{!, pure}
+import okay.{!, pure}
 import okay.std.{provide}
 import okay.given
-import okay.freer.given
 import okay.http.{Http, Request, Response}
 
 /** each door delegates to its explicit form — one assertion per
  * door, against stubs where a wire would be */
 class TestDoors extends munit.FunSuite {
 
-  def run[A](p: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](p))
+  def run[A](p: A ! Async): A = !.run(Async.run(p))
 
   /** an Http stub answering a fixed response — the wire, removed */
   def stub(status: Int, body: String): Http = new Http:

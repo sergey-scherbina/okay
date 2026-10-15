@@ -1,10 +1,7 @@
 package okay.security
 
-import okay.{Async}
-import okay.freer.*
-import okay.std.*
+import okay.*
 import okay.given
-import okay.freer.given
 import okay.agent.{Agent, Compact, Context, Handlers, Model, Reply, Tool, ToolCall, ToolSpec}
 import okay.codec.{Json, Schema}
 import okay.http.{Http, Request, Response, Server, Transports}
@@ -41,14 +38,14 @@ class TestReadmes extends munit.FunSuite {
       expires = Some(now + 600), scopes = Set("read")), Jwt.Key.Hmac(secret))
     val ok = Request.get("/api/data", Seq(("authorization", s"Bearer $token")))
     assert(route.isDefinedAt(ok))
-    assertEquals(Async.run[Response, Pure](route(ok)).runWith.status, 200)
+    assertEquals(Async.run(route(ok)).runWith.status, 200)
 
     // and the two refusals the readme claims
     val none = Request.get("/api/data")
-    assertEquals(Async.run[Response, Pure](route(none)).runWith.status, 401)
+    assertEquals(Async.run(route(none)).runWith.status, 401)
     val thin = Jwt.sign(Claims(subject = Some("ann"), audience = Vector("api"),
       expires = Some(now + 600), scopes = Set("write")), Jwt.Key.Hmac(secret))
-    assertEquals(Async.run[Response, Pure](route(
+    assertEquals(Async.run(route(
       Request.get("/api/data", Seq(("authorization", s"Bearer $thin"))))).runWith.status, 403)
   }
 
@@ -90,7 +87,7 @@ class TestReadmes extends munit.FunSuite {
     given okay.Answers[Model] = model
     given okay.Answers[Tool] = tool
     given okay.Answers[Context] = ctx
-    given rowAll: okay.Answers[Agent] = okay.freer.Row.flat[Agent]
+    given rowAll: okay.Answers[Agent] = okay.Answers.sum
     prog.runWith
 
   // ── okay-http/README.md ────────────────────────────────────────
@@ -102,8 +99,8 @@ class TestReadmes extends munit.FunSuite {
     }
     val client = Transports.http()
 
-    val answer = okay.std.Resource.run[String, Pure](Server.serve(0)(route).map { s =>
-      Async.run[String, Pure](
+    val answer = okay.std.Resource.run(Server.serve(0)(route).map { s =>
+      Async.run(
         client.send(Request.get(s"http://127.0.0.1:${Server.port(s)}/hello"))
           .flatMap(Http.text)).runWith
     }).runWith

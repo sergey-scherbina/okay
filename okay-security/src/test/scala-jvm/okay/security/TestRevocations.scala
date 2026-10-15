@@ -1,9 +1,7 @@
 package okay.security
 
-import okay.{Async}
-import okay.freer.*
+import okay.*
 import okay.given
-import okay.freer.given
 /**
  * The list is somebody else's, which changes nothing about the check
  * and everything about what can go wrong. So the tests that matter
@@ -19,7 +17,7 @@ class TestRevocations extends munit.FunSuite {
   private def source(answer: Either[String, Set[String]]): Revocations.Source =
     () => pure(answer)
 
-  private def run[A](p: A ! Async): A = Async.run[A, Pure](p).runWith
+  private def run[A](p: A ! Async): A = Async.run(p).runWith
 
   test("a refreshed snapshot revokes what it holds, and nothing else") {
     val r = Revocations(Fresh, Revocations.Stale.Allow)
