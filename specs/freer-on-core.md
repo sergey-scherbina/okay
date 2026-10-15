@@ -1,6 +1,6 @@
 # The platform on the kernel's words: `A ! F + G` resolved to a row where it is placed
 
-Status: proposed, 2026-10-15. Follows the decision of 2026-10-14 (okay-core's docs/okay.md): the one monad
+Status: in progress, 2026-10-15 (steps 1–2 landed the same day: `RowEffects`' words are the facade's, the root's `+` the sum of effects). Follows the decision of 2026-10-14 (okay-core's docs/okay.md): the one monad
 is the machine, `Effects[M]` is `RowEffects[M]`, okay-cont is gone, "the platform's body on okay-freer is the
 phase after". This is that phase, done so that nothing of the platform's body is rewritten.
 
@@ -132,46 +132,49 @@ row. What the platform's `Distinct` forbade — two members of one signature —
 
 ## Checks and measures
 
-- The platform's suites are the specification: 6937 + 184, every module, every platform, on the new words. A
-  flag chooses the road while both exist: `-Dokay.freer.road=core|classic` picks which `okay.freer` the modules
-  see (the classic road the current files, the core road the aliases); the flag goes when the classic road does.
+- The platform's suites are the specification: 6937 + 184, every module, every platform — each module's on the
+  kernel's words once it has moved (two packages, above).
 - okay-std's 60 JMH lanes, A/B against the carrier road (the last run: neutral within noise against okay-cont,
   `delimDollarResume` −20%, `handleCapture` +9%). Expected: `handle*` and `dispatch*` down (no `resume` loop, no
   `TypeableK` per level, no `HandleFrames`), `pure`/`bind` even (the same `Cont`), captures as the kernel's.
 - okay-bench's `core` lane (223 µs on the mixed program) is the bar the platform's own program should meet on the
   new road; the `kernel` lane (286) its program over the protocol.
 
-## Finding regressions of behaviour
+## Two packages, not a flag
 
-Four layers, cheapest first; a module is switched only when all four hold for it.
+`okay.freer` is FROZEN: the classic road as it is, its own JMH lanes, nothing in it changed. The kernel's words
+come from the root, `okay.*` — `export Effects.machine.{given, *}`, the interface's instance on the one monad —
+and a module moves by changing what it imports: `import okay.freer.*` and `.given` (555 and 548 files) become
+`import okay.*`; the few named imports (`{!, pure}`, `{+, %}`, `{!, Shift}`) the same. The classic road lives
+until the last module has left it, then stays for the lanes' comparison alone, or goes with them.
 
-1. **Every suite on both roads.** The flag changes what `import okay.freer` means, not a test: the platform's
-   6937 + 184 tests are written against the classic behaviour, so a run on the core road is the search — red on
-   core, green on classic is a regression with a module and a line. Modules switched bottom-up by the dependency
-   graph (`scripts/gate.sh "<module>/test"`), so the first red is in the module just switched.
-2. **Differential testing, where the suites are silent.** A generator of random programs in the platform's words —
-   `effect`, `pure`, `flatMap`, handlers nested in any order, `shift`, aborts, multi-shot `k` — run on both roads,
-   the VALUE and the TRACE compared (the order of observed effects, a writer's log, counts of calls and of
-   resumptions). The kernel has the pattern (`TestReference`: random programs against the meaning; okay-java's
-   `AgreeTest`, 1 000 programs). The classic road is the oracle while it exists: this is why both roads live at
-   once until the last module is over.
-3. **Targeted tests on the known differences of the two semantics**, written BEFORE a switch, red on core first,
-   to pin the present behaviour:
-   - two handlers of one effect: `Distinct` forbade it, the kernel takes the nearest by path — nothing in the
-     platform may have relied on the refusal;
-   - a forwarded operation under an abort: okay-freer commits it (`TestHandleForward`: "a later abort cannot
-     un-perform"); the kernel unwinds through the levels with their finalizers — the same, checked explicitly;
-   - multi-shot `k` over a state: `state` (each path its own) against `cell` — both exist on both roads, the same
-     tests on each;
-   - exceptions: classic lets a JVM exception through its loop; the kernel makes a `Raise`, `run` rethrows it,
-     `Step` gives `Failed` — code catching around `run` must see the same exception;
-   - when a `Delay`/`defer` is forced: the order of side effects in lazy programs (`Static`, generators, `stream`);
-   - depth: 100 000 nested handlers and operations on `-Xss512k`, as the kernel's suites do, in the platform's words;
-   - `Resource`/finalizers under an abort and a cancel (`transact`, `Async`): the platform's own tests
-     (resource-async-failure) are the check.
-4. **The protocol as an outside oracle.** okay-kernel's TCK and integration run programs through `OnCore`; a
-   platform program on the core road is a kernel program, so the TCK applies to it as it is — `Steps`, the
-   reference machine, judges, independent of both roads.
+Regressions of behaviour are the module's own suite: red on the kernel's words, green on the classic's, is the
+list. Nothing more elaborate: a module is switched when its suite is green and its lanes are not worse (below).
+
+## `Effects[M]`: kept, the words its members
+
+The interface over encodings stays, and the kernel's words are its members, so every word a program is written in
+names one encoding: the one monad with no import, any other by its instance — an analyser that runs nothing
+(counts operations, proves a program never touches `Payments`), a selective (`Static`: the effects known before
+the run), the reference (`TestReference`'s meaning as an `Effects[Norm]`), a journal, the protocol's `OnCore`.
+Code over `Effects[M]` — `direct`, streams, `okay-tx`, the std's handlers — runs on each.
+
+What was added for that (okay-core 291dd33): `A ! Es` in the interface is the facade's — `(c: Needs[Es]) ?=>
+M[c.R, A]`, a program NEEDING its effects, fitted to the row of its place; `Under`, `effect`/`op.perform` with
+`Path` (the place first), `handle(h)(body)` at the head of the row outside, `run` at the empty row. The row-named
+primitive is `handleAt(h)(m)(using Removed)`. `Needs`, `Paths`, `Place` are machinery of rows, not of `Eff`, so the
+interface takes them as they are. An analysing instance names its own `Place`: a program is fitted to the row it
+proposes.
+
+## `+`: the sum of effects, and only that
+
+`A ! F + G` is `Both[F, G]`: what the program needs, in any order, among any others. The list a row is, `E +: T`,
+is written by handler authors (`T`, the row outside) and in `at[R]` — never in a program's type. The root's other
+`+` — `Pure + E1 + E2`, a row written left to right (`RowEffects.+`) — is gone: it was one name for two kinds, and
+a program wrote a concrete row where it should write its needs. (The platform's `Pure + Pure` in okay-persist and
+TestDistinct is okay-freer's union, untouched until those modules move.) In the kernel the row-as-a-set (`F + G`
+in `!`) and the row-as-a-list (`+:` at a handler) are one thing seen from two sides; `Needs` takes the first to the
+second at the place.
 
 ## Measuring: Freer against Cont
 
@@ -184,7 +187,7 @@ Three levels, the tools in place:
 2. **The same microbenchmarks, two roads — okay-std, okay2.** The ~60 lanes of `okay-std/src/jmh` (`handle*`,
    `relay*`, `state*`, `writer*`, `shift*`/`cont`/`delim*`, `step*`, `stateLex*`, `fused*`/`nested*`) and okay2's
    (`HandlerBenchmark`, `HandlerFormsBenchmark`, `DelimBenchmark`) are not rewritten: they compile against the
-   words the flag picks. Interleaved A/B (classic, core, classic, core), one JDK, `-prof gc`, the JMH lock waited
+   words each is on. Interleaved A/B (classic, core, classic, core), one JDK, `-prof gc`, the JMH lock waited
    for — as the carrier was measured against okay-cont (within noise; `delimDollarResume` −20%, `handleCapture`
    +9%). Expected by group: `handle*`/`relay*`/`stepOneByOne` down (no `resume` loop, no `TypeableK` a level, no
    `HandleFrames`); `fib*`/`tailcall*`/`buildOnly` even (the same `Cont`); `*Cps`/`delim*`/`shift*` the kernel's
@@ -209,12 +212,13 @@ with no change to okay-sql; the protocol (okay-kernel) for every program, throug
 
 ## Order
 
-1. `okay.freer`'s `!`, `+`, `%`, `effect`, `pure`, `flatMap`, `handle`, `run` as the kernel's, behind the flag;
-   the four handler forms mapped. Compile the platform: the list of places holding a tree as a value.
+1. The root's words the kernel's (done: `RowEffects`' `!` with `Needs`, `+` the sum, the root's test on them);
+   the four handler forms mapped as modules need them. A module moves by its imports; its compiler lists the
+   places holding a tree as a value.
 2. Those places, each the smallest change (`at[R]`, `Place`); the suites green on the core road.
 3. The walkers, one file with its tests at a time: `Cps`, `Delimited`/`Shift`, `Indexed`, `Static`, `Lexical`.
 4. The lanes; `Head` in the kernel if the stepping shows in them.
-5. The classic road removed with its flag: `Freer`, `Classic`, `HandleFrames`, `ShiftMachine`, `Bang`, `Eager`,
+5. The classic road removed: `Freer`, `Classic`, `HandleFrames`, `ShiftMachine`, `Bang`, `Eager`,
    the carrier, `Row.at`, `TypeableK`, `Distinct` — to git's history.
 
 ## Decided (2026-10-15)

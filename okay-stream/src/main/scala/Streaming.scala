@@ -77,7 +77,7 @@ object streams:
   object machine:
     opaque type Flow[W] = StreamCont.Src[W]
     given instance: Streaming[Flow] with
-      type P[A] = A ! StreamCont.R
+      type P[A] = okay.core.Eff[StreamCont.R, A]
       def empty[W]: Flow[W] = StreamCont.empty
       def emit[W](w: W): Flow[W] = StreamCont.emit(w)
       def fromList[W](ws: List[W]): Flow[W] = StreamCont.fromList(ws)

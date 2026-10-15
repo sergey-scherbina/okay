@@ -1,5 +1,6 @@
 package okay
 
+import okay.core.Eff
 import okay.AsyncCont.{async, attempt, await, awaitEither, enter, exit, fork, join, sleep}
 
 /** Async on the machine (cont-first-module): the callback drive, one source for the JVM, JS and Native suites */
@@ -7,7 +8,7 @@ class TestAsyncCont extends munit.FunSuite {
 
   given scala.concurrent.ExecutionContext = munitExecutionContext
 
-  type P[A] = A ! (Async +: Pure)
+  type P[A] = Eff[Async +: Pure, A]
 
   test("a long chain of Run operations drives in constant stack") {
     def go(n: Int): P[Int] =

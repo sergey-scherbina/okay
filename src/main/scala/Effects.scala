@@ -24,9 +24,10 @@ import scala.quoted.*
  * facade's (`export machine.*`) resolve against each other and the compiler drops both (stage 48) */
 type Row = okay.core.Row
 infix type +:[E[_], T <: Row] = okay.core.+:[E, T]
-/** the same row, written left to right: `Pure + State % Int + Throws % String` is `Throws % String +: State % Int
- * +: Pure` — `+` adds an effect to the row on its left, `+:` puts one in front of the row on its right */
-infix type +[R <: Row, E[_]] = okay.core.+:[E, R]
+/** EFFECTS JOINED, what a program needs: `A ! State % Int + Throws % String` — in any order, among any others; the
+ * row is the place's, the program fitted to it (okay-core's `Needs`). A row written out, `Throws % String +:
+ * State % Int +: Pure`, is a handler's business (the row outside it), never a program's */
+infix type +[F[_], G[_]] = okay.core.+[F, G]
 infix type %[F[_, _], S] = okay.core.%[F, S]
 type Pure = okay.core.Pure
 /** `E` in the row `R`: its place, the compiler builds it (okay-core's `In`) */

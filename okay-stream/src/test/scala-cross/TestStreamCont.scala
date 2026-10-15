@@ -8,7 +8,7 @@ class TestStreamCont extends munit.FunSuite {
   given scala.concurrent.ExecutionContext = munitExecutionContext
 
   /** the synchronous ones finish inline: no Await is ever pending */
-  def now[A](p: A ! StreamCont.R): A = AsyncCont.runAsync(p).value match
+  def now[A](p: okay.core.Eff[StreamCont.R, A]): A = AsyncCont.runAsync(p).value match
     case Some(t) => t.get
     case None => fail("did not complete synchronously")
 
@@ -65,7 +65,7 @@ class TestStreamCont extends munit.FunSuite {
 
   test("channels: send and receive as operations; a channel read as a stream; a stream pumped into a channel") {
     val c = Channel[Int](4)
-    val prog: Vector[Int] ! StreamCont.R = for
+    val prog: okay.core.Eff[StreamCont.R, Vector[Int]] = for
       _ <- StreamCont.send(c, 1)
       _ <- StreamCont.send(c, 2)
       x <- StreamCont.receive(c)

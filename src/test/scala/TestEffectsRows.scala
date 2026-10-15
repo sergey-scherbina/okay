@@ -35,23 +35,24 @@ class TestEffectsRows extends munit.FunSuite:
 
   test("the one monad is the instance found with no import; handlers apply in any order"):
     val E = Effects[Eff]
-    assertEquals(E.run(E.handle(writer[Int])(E.handle(reader[Int](41))(prog[Eff]))), (List("41"), 42))
-    assertEquals(E.run(E.handle(reader[(List[String], Int)](41))(E.handle(writer[Int])(prog[Eff]))), (List("41"), 42))
+    assertEquals(E.run(E.handleAt(writer[Int])(E.handleAt(reader[Int](41))(prog[Eff]))), (List("41"), 42))
+    assertEquals(E.run(E.handleAt(reader[(List[String], Int)](41))(E.handleAt(writer[Int])(prog[Eff]))), (List("41"), 42))
 
   test("the facade: A ! R is the one monad's program, an operation at the row expected, handle wherever the effect is"):
-    val counting: Int ! (State % Int +: Say +: Pure) =
+    // a program needing its effects, in any order: fitted where it is handled
+    val counting: Int ! State % Int + Say =
       for
         n <- effect[State % Int, Int](State.Get[Int]())   // an effect of two parameters names its effect
         _ <- effect[State % Int, Unit](State.Put(n + 1))
         _ <- effect(Say.Line(s"$n"))
         m <- effect[State % Int, Int](State.Get[Int]())
       yield m
-    assertEquals(counting.handle(cell[Int, Int](41)).handle(writer[(Int, Int)]).value, (List("41"), (42, 42)))
-    assertEquals(counting.handle(writer[Int]).handle(cell[Int, (List[String], Int)](41)).value, (42, (List("41"), 42)))
+    assertEquals(run(handle(writer[(Int, Int)])(handle(cell[Int, Int](41))(counting))), (List("41"), (42, 42)))
+    assertEquals(run(handle(cell[Int, (List[String], Int)](41))(handle(writer[Int])(counting))), (42, (List("41"), 42)))
 
-  test("Pure + A + B and A +: B +: Pure are one row; a tail call costs no frame"):
-    def loop[M[_ <: Row, _]](n: Int, acc: Int)(using E: Effects[M]): M[Pure + Ask, Int] =
+  test("a row named, A +: Pure; a tail call costs no frame"):
+    def loop[M[_ <: Row, _]](n: Int, acc: Int)(using E: Effects[M]): M[Ask +: Pure, Int] =
       if n == 0 then E.pure(acc)
-      else E.perform[Ask, Pure + Ask, Int](Ask.Number).flatMap(x => E.tailcall(loop[M](n - 1, acc + x)))
+      else E.perform[Ask, Ask +: Pure, Int](Ask.Number).flatMap(x => E.tailcall(loop[M](n - 1, acc + x)))
     val E = Effects[Eff]
-    assertEquals(E.run(E.handle(reader[Int](1))(loop[Eff](100000, 0))), 100000)
+    assertEquals(E.run(E.handleAt(reader[Int](1))(loop[Eff](100000, 0))), 100000)

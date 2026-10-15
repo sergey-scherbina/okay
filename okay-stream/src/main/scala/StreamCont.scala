@@ -9,7 +9,7 @@ import scala.collection.immutable.ArraySeq
 
 /**
  * THE STREAM ON THE MACHINE, A TWIN (stream-twin): beside the classic `Source[W] = Unit ! Writer % W + Async`, a
- * stream of the machine's `A ! R` — to learn what streaming costs and looks like there before anything moves.
+ * stream of the machine's `Eff[R, A]` — to learn what streaming costs and looks like there before anything moves.
  *
  * A PULL, NOT A PUSH. The classic's stream is a program that TELLS (Writer), and a transformation is a handler
  * that tells again downstream. On the machine a handler's clause has no capability for the rest of the row, so a
@@ -79,7 +79,7 @@ object StreamCont:
     })
 
     /** an Async step per element, in order */
-    def evalMap[V](f: W => V ! R): Src[V] = Src(pull.flatMap {
+    def evalMap[V](f: W => Eff[R, V]): Src[V] = Src(pull.flatMap {
       case Step.Done => pure(Step.Done)
       case Step.Chunk(ws, r) =>
         def each(it: Iterator[W], acc: Vector[V]): Eff[R, Vector[V]] =
@@ -88,7 +88,7 @@ object StreamCont:
     })
 
     /** `inline`: the fold of a chunk is a loop at the call site, handed to the recursion as a value */
-    inline def foldLeft[B](z: B)(inline f: (B, W) => B): B ! R =
+    inline def foldLeft[B](z: B)(inline f: (B, W) => B): Eff[R, B] =
       foldWith(z)((acc, c) =>
         var a = acc
         var i = 0
@@ -99,22 +99,22 @@ object StreamCont:
         a)
 
     /** the recursion behind the inline `foldLeft` */
-    def foldWith[B](z: B)(g: (B, ArraySeq[W]) => B): B ! R = pull.flatMap {
+    def foldWith[B](z: B)(g: (B, ArraySeq[W]) => B): Eff[R, B] = pull.flatMap {
       case Step.Done => pure(z)
       case Step.Chunk(ws, r) => r.foldWith(g(z, ws))(g)
     }
 
-    def toVector: Vector[W] ! R = foldLeft(Vector.newBuilder[W])((b, w) => b += w).map(_.result())
+    def toVector: Eff[R, Vector[W]] = foldLeft(Vector.newBuilder[W])((b, w) => b += w).map(_.result())
 
-    def runForeach(f: W => Unit ! R): Unit ! R = pull.flatMap {
+    def runForeach(f: W => Eff[R, Unit]): Eff[R, Unit] = pull.flatMap {
       case Step.Done => pure(())
       case Step.Chunk(ws, r) =>
-        def each(it: Iterator[W]): Unit ! R = if !it.hasNext then r.runForeach(f) else f(it.next()).flatMap(_ => each(it))
+        def each(it: Iterator[W]): Eff[R, Unit] = if !it.hasNext then r.runForeach(f) else f(it.next()).flatMap(_ => each(it))
         each(ws.iterator)
     }
 
     /** `eff` once the stream has ended (not if its consumer stopped before) */
-    def onDone(eff: Unit ! R): Src[W] = Src(pull.flatMap {
+    def onDone(eff: Eff[R, Unit]): Src[W] = Src(pull.flatMap {
       case Step.Done => eff.map(_ => Step.Done)
       case Step.Chunk(ws, r) => pure(Step.Chunk(ws, r.onDone(eff)))
     })
@@ -138,7 +138,7 @@ object StreamCont:
     })
 
     /** pumped into `c`, an element a send (waiting while `c` is full); `c` closed at the end, failed by a failure */
-    def toChannel[V >: W](c: Channel[V]): Unit ! R =
+    def toChannel[V >: W](c: Channel[V]): Eff[R, Unit] =
       AsyncCont.attempt(runForeach(w => StreamCont.send(c, w).at[R].map(_ => ()))).flatMap {
         case Right(()) => AsyncCont.async(c.close()).at
         case Left(e) => AsyncCont.async(c.fail(e)).at
@@ -187,7 +187,7 @@ object StreamCont:
     })
 
   /** which of two fibers answers first: its answer, the winner, and the other fiber */
-  private def first[W](fa: Fiber[Step[W]], fb: Fiber[Step[W]]): (Step[W], Fiber[Step[W]], Fiber[Step[W]]) ! R =
+  private def first[W](fa: Fiber[Step[W]], fb: Fiber[Step[W]]): Eff[R, (Step[W], Fiber[Step[W]], Fiber[Step[W]])] =
     awaitEither[(Step[W], Fiber[Step[W]], Fiber[Step[W]])] { k =>
       val won = AtomicBoolean(false)
       fa.onComplete(r => if !won.getAndSet(true) then k(r.map(s => (s, fa, fb))))
@@ -239,7 +239,7 @@ object StreamCont:
       Src(pure(Step.Chunk(ArraySeq.unsafeWrapArray(arr), defer(range(from + n, until)))))
 
   /** one Async step as a stream of its answer */
-  def eval[W](op: W ! R): Src[W] = Src(op.map(w => Step.Chunk(ArraySeq.untagged(w), empty)))
+  def eval[W](op: Eff[R, W]): Src[W] = Src(op.map(w => Step.Chunk(ArraySeq.untagged(w), empty)))
 
   // ---- channels (stream-channels): the classic Channel is backend-neutral at its callbacks
 
