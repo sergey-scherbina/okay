@@ -1,7 +1,7 @@
 package okay.codec
 
 import okay.{Lens, Prism, get, modify, preview, set, toVector, Traversal}
-import okay.freer.*
+import okay.*
 import okay.given
 
 

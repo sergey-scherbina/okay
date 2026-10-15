@@ -1,7 +1,7 @@
 package okay.codec
 
 import okay.{toVector}
-import okay.freer.*
+import okay.*
 import okay.given
 
 
