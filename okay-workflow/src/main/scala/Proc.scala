@@ -1,11 +1,5 @@
 package okay
 
-
-
-import okay.freer.*
-
-
-
 /**
  * A PROCEDURE WHOSE EVERY STEP IS KNOWN BEFORE IT RUNS — the free
  * arrow over a signature (specs/static-workflow.md, with the shape
@@ -382,7 +376,7 @@ object Proc:
      * `Static.toFree`'s counterpart, and the bridge every runtime in
      * this library already knows how to drive.
      */
-    def toProgram(x: X): Y ! F = p.foldMap[[Z] =>> Z ! F]([Z] => (fz: F[Z]) => Free.Inject(fz))(x)
+    def toProgram(x: X): Y ! F = p.foldMap[[Z] =>> Z ! F]([Z] => (fz: F[Z]) => effect(fz))(using Programs.monad[F])(x)
 
     /**
      * THE TERM, DRAWN, with a position optionally marked.

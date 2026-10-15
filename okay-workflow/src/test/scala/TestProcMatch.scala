@@ -1,5 +1,5 @@
 import okay.{Proc, Wf}
-import okay.freer.*
+import okay.*
 import okay.Direct.*
 import scala.language.implicitConversions
 
@@ -11,7 +11,7 @@ import scala.language.implicitConversions
  */
 class TestProcMatch extends munit.FunSuite:
 
-  type P = okay.freer.Pure
+  type P = okay.Pure
   type Sig = Wf.Asked[String, String]
 
   def ask(q: String): Wf.Question[String, String, String] = Wf.Question.Ask(q)
@@ -28,7 +28,7 @@ class TestProcMatch extends munit.FunSuite:
     val (st, j) = !.run(Wf.drive(
       !.run(Wf.resumable[String, String, R, P](Wf.Proc.program(p)(())))): q =>
         asked = asked :+ q
-        okay.freer.pure(oracle(q)))
+        okay.pure(oracle(q)))
     (done(st), asked, j)
 
   /** the block's answer is a match: three cases, a guard, binders used AFTER a question */

@@ -1,5 +1,5 @@
 import okay.{Monad, ==>, Optic, Proc, Wf}
-import okay.freer.*
+import okay.*
 import okay.Direct.*
 import okay.laws.{ArrowLaws, ArrowLawsSuite}
 import scala.language.implicitConversions
@@ -58,8 +58,8 @@ object TestProcLaws:
  */
 class TestProc extends munit.FunSuite:
 
-  type P = okay.freer.Pure
-  type Row = Shift % ? + P
+  type P = okay.Pure
+  type Row = Wf.Durable[String, String, P]
   type Sig = Wf.Asked[String, String]
 
   val A: Optic.Arrow[[X, Y] =>> Proc[Sig, X, Y]] & Optic.Choice[[X, Y] =>> Proc[Sig, X, Y]] =
@@ -103,7 +103,7 @@ class TestProc extends munit.FunSuite:
 
   test("the static booking runs on the landed engine, and answers"):
     val start = !.run(Wf.resumable[String, String, String, P](bookingStatic))
-    val (st, j) = !.run(Wf.drive(start)(_ => okay.freer.pure("Kyiv")))
+    val (st, j) = !.run(Wf.drive(start)(_ => okay.pure("Kyiv")))
     assertEquals(done(st), "Kyiv/id-1")
     assertEquals(j, List(Right("Kyiv"), Left(Wf.SysA.Millis(1_700_000_000_000L)),
       Left(Wf.SysA.Text("id-1"))))
@@ -111,13 +111,13 @@ class TestProc extends munit.FunSuite:
   test("ONE JOURNAL: the static and the monadic booking write the same records"):
     def journalOf(body: Wf.Asks[String, String, String, P] ?=> String ! Row) =
       val start = !.run(Wf.resumable[String, String, String, P](body))
-      !.run(Wf.drive(start)(_ => okay.freer.pure("Kyiv")))._2
+      !.run(Wf.drive(start)(_ => okay.pure("Kyiv")))._2
     assertEquals(journalOf(bookingStatic), journalOf(bookingMonadic),
       "the two front ends must be interchangeable over one topic")
 
   test("an existing monadic journal is accepted by the static term"):
     val monadic = !.run(Wf.drive(
-      !.run(Wf.resumable[String, String, String, P](bookingMonadic)))(_ => okay.freer.pure("Kyiv")))._2
+      !.run(Wf.resumable[String, String, String, P](bookingMonadic)))(_ => okay.pure("Kyiv")))._2
     assert(Wf.Proc.accepts(bookingTerm)((), monadic),
       "a term that asks the same questions must read the other front end's journal")
     assertEquals(Wf.Proc.walk(bookingTerm)((), monadic),
@@ -157,7 +157,7 @@ class TestProc extends munit.FunSuite:
 
   test("walk and Wf.replay agree on EVERY prefix of the journal"):
     val full = !.run(Wf.drive(
-      !.run(Wf.resumable[String, String, String, P](bookingStatic)))(_ => okay.freer.pure("Kyiv")))._2
+      !.run(Wf.resumable[String, String, String, P](bookingStatic)))(_ => okay.pure("Kyiv")))._2
     for n <- 0 to full.length do
       val prefix = full.take(n)
       val byTerm = Wf.Proc.walk(bookingTerm)((), prefix) match
@@ -176,7 +176,7 @@ class TestProc extends munit.FunSuite:
 
   test("walk counts the records it accepted, and stops where the journal runs out"):
     val full = !.run(Wf.drive(
-      !.run(Wf.resumable[String, String, String, P](bookingStatic)))(_ => okay.freer.pure("Kyiv")))._2
+      !.run(Wf.resumable[String, String, String, P](bookingStatic)))(_ => okay.pure("Kyiv")))._2
     Wf.Proc.walk(bookingTerm)((), full.take(2)) match
       case Right(Wf.Proc.Standing.Asking(_, q, accepted)) =>
         assertEquals(Wf.Proc.tag(q), Left(Wf.Sys.Uuid))
@@ -208,7 +208,7 @@ class TestProc extends munit.FunSuite:
     val (st, j) = !.run(Wf.drive(
       !.run(Wf.resumable[String, String, List[String], P](roomsProgram))): q =>
         asked = asked :+ q
-        okay.freer.pure(if q == "nights?" then "3" else s"r${asked.length - 1}"))
+        okay.pure(if q == "nights?" then "3" else s"r${asked.length - 1}"))
     assertEquals(done(st), List("r1", "r2", "r3"))
     assertEquals(asked, List("nights?", "room 1?", "room 2?", "room 3?"))
     // and the term agrees, folded over the same journal
@@ -268,7 +268,7 @@ class TestProc extends munit.FunSuite:
       case other => fail(s"expected to stand at the patch, got $other")
     val (st, j) = !.run(Wf.drive(
       !.run(Wf.resumable[String, String, String, P](v2Program))): q =>
-        okay.freer.pure(if q == "city?" then "Kyiv" else "3"))
+        okay.pure(if q == "city?" then "Kyiv" else "3"))
     assertEquals(done(st), "Kyiv/promo/3")
     assertEquals(j, List(Right("Kyiv"), Left(Wf.SysA.Flag(true)), Right("3")))
 

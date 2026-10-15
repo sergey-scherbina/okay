@@ -1,5 +1,5 @@
 import okay.{Proc, Wf}
-import okay.freer.*
+import okay.*
 import okay.Direct.*
 import okay.Proc.given
 import scala.language.implicitConversions
@@ -18,8 +18,8 @@ import scala.language.implicitConversions
  */
 class TestProcColour extends munit.FunSuite:
 
-  type P = okay.freer.Pure
-  type Row = Shift % ? + P
+  type P = okay.Pure
+  type Row = Wf.Durable[String, String, P]
   type Sig = Wf.Asked[String, String]
 
   def ask(q: String): Wf.Question[String, String, String] = Wf.Question.Ask(q)
@@ -40,7 +40,7 @@ class TestProcColour extends munit.FunSuite:
     val (st, _) = !.run(Wf.drive(
       !.run(Wf.resumable[String, String, R, P](Wf.Proc.program(p)(x)))): q =>
         asked = asked :+ q
-        okay.freer.pure(oracle(q)))
+        okay.pure(oracle(q)))
     (done(st), asked)
 
   /** THE BLOCK, with no `!` anywhere */

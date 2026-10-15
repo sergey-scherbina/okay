@@ -1,5 +1,5 @@
 import okay.{Wf, Proc}
-import okay.freer.*
+import okay.*
 import okay.Direct.*
 import scala.language.implicitConversions
 
@@ -16,8 +16,8 @@ import scala.language.implicitConversions
  */
 class TestProcDirect extends munit.FunSuite:
 
-  type P = okay.freer.Pure
-  type Row = Shift % ? + P
+  type P = okay.Pure
+  type Row = Wf.Durable[String, String, P]
   type Sig = Wf.Asked[String, String]
 
   // the doors, as OPERATIONS: what a block marks is a question of the
@@ -54,7 +54,7 @@ class TestProcDirect extends munit.FunSuite:
 
   def journalOf(body: Wf.Asks[String, String, String, P] ?=> String ! Row) =
     val start = !.run(Wf.resumable[String, String, String, P](body))
-    !.run(Wf.drive(start)(_ => okay.freer.pure("Kyiv")))
+    !.run(Wf.drive(start)(_ => okay.pure("Kyiv")))
 
   test("a block compiles to a term whose leaves are its questions, in order"):
     assertEquals(booking.leaves.map(_.name), Vector("ask", "now", "uuid"))
@@ -99,7 +99,7 @@ class TestProcDirect extends munit.FunSuite:
     val (st, _) = !.run(Wf.drive(
       !.run(Wf.resumable[String, String, String, P](Wf.Proc.program(chained)(())))): q =>
         asked = asked :+ q
-        okay.freer.pure(if q == "city?" then "Kyiv" else "Opera"))
+        okay.pure(if q == "city?" then "Kyiv" else "Opera"))
     assertEquals(asked, List("city?", "hotel in Kyiv?"),
       "the second question did not see the first answer")
     assertEquals(done(st), "Kyiv/Opera")
@@ -111,7 +111,7 @@ class TestProcDirect extends munit.FunSuite:
         s"$who@$where"
     val (st, _) = !.run(Wf.drive(
       !.run(Wf.resumable[String, String, String, P](Wf.Proc.program(greet)("ada")))
-    )(_ => okay.freer.pure("Kyiv")))
+    )(_ => okay.pure("Kyiv")))
     assertEquals(done(st), "ada@Kyiv")
 
   test("a PURE val between two questions emits no leaf, and the Arrs fold"):
@@ -133,7 +133,7 @@ class TestProcDirect extends munit.FunSuite:
     val (st, _) = !.run(Wf.drive(
       !.run(Wf.resumable[String, String, String, P](Wf.Proc.program(summed)(())))): q =>
         asked = asked :+ q
-        okay.freer.pure(q.take(1)))
+        okay.pure(q.take(1)))
     assertEquals(asked, List("left?", "right?"), "the marks ran out of order")
     assertEquals(done(st), "l|r")
 
@@ -166,7 +166,7 @@ class TestProcDirect extends munit.FunSuite:
 
   test("a block that SLEEPS stops the drive, at a deadline read from the journal"):
     val p = !.run(Wf.resumable[String, String, String, P](Wf.Proc.program(fullBooking)(())))
-    val (st, j) = !.run(Wf.drive(p)(_ => okay.freer.pure("Kyiv")))
+    val (st, j) = !.run(Wf.drive(p)(_ => okay.pure("Kyiv")))
     assertEquals(st, Wf.Step.Waiting(Wf.Wait.Until(1_700_000_000_000L + 24 * 3600 * 1000L)),
       "the run must stop at the timer rather than block or finish")
     // and the walk agrees about where it stopped, without running

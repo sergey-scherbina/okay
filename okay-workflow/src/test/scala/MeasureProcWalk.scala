@@ -30,7 +30,7 @@ import okay.Optic.arrows.*
  */
 class MeasureProcWalk extends munit.FunSuite:
 
-  type P = okay.freer.Pure
+  type P = okay.Pure
   type Sig = Wf.Asked[String, String]
 
   val A: Optic.Arrow[[X, Y] =>> Proc[Sig, X, Y]] & Optic.Choice[[X, Y] =>> Proc[Sig, X, Y]] =

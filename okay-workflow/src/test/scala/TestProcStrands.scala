@@ -1,5 +1,5 @@
 import okay.{Proc, Wf}
-import okay.freer.*
+import okay.*
 import okay.Proc.given
 import scala.language.implicitConversions
 
@@ -17,8 +17,8 @@ import scala.language.implicitConversions
  */
 class TestProcStrands extends munit.FunSuite:
 
-  type P = okay.freer.Pure
-  type Row = Shift % ? + P
+  type P = okay.Pure
+  type Row = Wf.Durable[String, String, P]
   type Sig = Wf.Asked[String, String]
 
   def ask(q: String): Wf.Question[String, String, String] = Wf.Question.Ask(q)

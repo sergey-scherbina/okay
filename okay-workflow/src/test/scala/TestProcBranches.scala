@@ -1,5 +1,5 @@
 import okay.{Proc, Wf}
-import okay.freer.*
+import okay.*
 import okay.Direct.*
 import scala.language.implicitConversions
 
@@ -19,8 +19,8 @@ import scala.language.implicitConversions
  */
 class TestProcBranches extends munit.FunSuite:
 
-  type P = okay.freer.Pure
-  type Row = Shift % ? + P
+  type P = okay.Pure
+  type Row = Wf.Durable[String, String, P]
   type Sig = Wf.Asked[String, String]
 
   def ask(q: String): Wf.Question[String, String, String] = Wf.Question.Ask(q)
@@ -38,7 +38,7 @@ class TestProcBranches extends munit.FunSuite:
     val (st, j) = !.run(Wf.drive(
       !.run(Wf.resumable[String, String, R, P](Wf.Proc.program(p)(())))): q =>
         asked = asked :+ q
-        okay.freer.pure(oracle(q)))
+        okay.pure(oracle(q)))
     (done(st), asked, j)
 
   // ── the branch ───────────────────────────────────────────────────
