@@ -1,7 +1,7 @@
 package okay.graphql.http
 
 import okay.{Channel, Source, Stage, drained}
-import okay.freer.*
+import okay.*
 import okay.graphql.{GraphQLParser, Limits, Schema, TransportWs}
 import okay.http.{Frame, Request}
 

@@ -178,6 +178,12 @@ object Program:
     okay.one.Cont.handle(e)(new okay.one.handler.Answering[E, T, A, A]:
       def ret(x: A) = okay.one.Cont.pure(x)
       def value[X](op: E[X]): X = a.handle(op))
+  /** A PROGRAM OF THE KERNEL at the row `E` alone, as the root's value needing `E`: run by the machine to each
+   * operation, which is performed at the place it is fitted to (the walk's rest, re-placed) — the bridge for code
+   * written at a kernel row (`okay.one`) where a root program is wanted */
+  def fromKernel[E[_], A](e: Eff[E +: okay.core.Pure, A]): A ! E =
+    Walk.Rest[E, E, okay.core.Pure, A](Paths.One(okay.one.row.In.Here[E, okay.core.Pure]()),
+      () => okay.one.machine.Machine.head(e))
   /** from the facade's form: the same program, a value */
   def of[A, Es[_]](q: A !! Es): A ! Es = new Run[Es, A]:
     def on[R <: okay.core.Row](ps: Paths[Es, R]): Eff[R, A] = q(using Needs.of(ps))

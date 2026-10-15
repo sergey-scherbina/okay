@@ -3,7 +3,7 @@ package okay.foreign
 import java.util.concurrent.LinkedBlockingQueue
 
 import okay.{Channel, Source, Stage, drained}
-import okay.freer.*
+import okay.*
 import okay.http.{Frame, Request}
 
 /**

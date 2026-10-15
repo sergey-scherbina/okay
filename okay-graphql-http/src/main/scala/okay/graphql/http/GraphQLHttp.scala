@@ -1,6 +1,6 @@
 package okay.graphql.http
 
-import okay.{Async, AsyncCont}
+import okay.Async
 import okay.codec.Json
 import okay.codec.Json.*
 import okay.graphql.*
@@ -22,8 +22,8 @@ object GraphQLHttp:
   /** `POST` and `GET` of `path` answered by `schema` */
   def router(schema: Schema, path: String = "graphql", limits: Limits = Limits())(using GraphQLParser): Router =
     Router.empty
-      .at(Method.Post, Route / path)((_, r) => AsyncCont.toClassic(answer(schema, r, limits)))
-      .at(Method.Get, Route / path)((_, r) => AsyncCont.toClassic(answer(schema, r, limits)))
+      .at(Method.Post, Route / path)((_, r) => okay.Program.fromKernel(answer(schema, r, limits)))
+      .at(Method.Get, Route / path)((_, r) => okay.Program.fromKernel(answer(schema, r, limits)))
 
   /** a request answered: what the route runs, for a server of another shape too */
   def answer(schema: Schema, r: Request, limits: Limits = Limits())(using GraphQLParser)

@@ -1,6 +1,6 @@
 package okay.graphql.http
 
-import okay.{Async, AsyncCont}
+import okay.Async
 import okay.codec.Json
 import okay.graphql.*
 import okay.http.{Body, Http, Method, Request}
@@ -20,9 +20,8 @@ class TestGraphQLHttp extends okay.testkit.Munit.Diagnosed:
 
   /** the request through the router, in memory: its status, content type and body */
   private def call(r: Request): Future[(Int, String, String)] =
-    AsyncCont.runAsync(AsyncCont.fromClassic(router.routes(r)).at[Async +: Pure].flatMap { res =>
-      AsyncCont.fromClassic(Http.text(res)).at[Async +: Pure]
-        .map(t => (res.status, res.header("content-type").getOrElse(""), t))
+    Async.runAsync(router.routes(r).flatMap { res =>
+      Http.text(res).map(t => (res.status, res.header("content-type").getOrElse(""), t))
     }).map { out => note(s"${r.method} ${r.url} => $out"); out }
 
   private def post(body: String, headers: Seq[(String, String)] = Seq("content-type" -> "application/json")) =

@@ -6,8 +6,8 @@ import java.util.concurrent.{CompletionStage, LinkedBlockingQueue, TimeUnit}
 
 import okay.Async
 import okay.given
-import okay.freer.*
-import okay.freer.given
+import okay.*
+import okay.foreign.Foreign
 import okay.http.{Request, Response}
 import okay.jetty.Jetty
 import okay.std.*
@@ -71,7 +71,7 @@ class TestForeignWs extends okay.testkit.Munit.Diagnosed {
 
   private def serving[A](session: ForeignWorker => Unit, failed: Throwable => Unit = _ => ())(body: Int => A): A =
     val ws = ForeignWs.route("/okay", failed)(session)
-    Resource.run[A, Pure](Jetty.serve(0)(routes)(ws.sessions, ws.pushes).map(s => body(Jetty.port(s)))).runWith
+    Resource.run(Jetty.serve(0)(routes)(ws.sessions, ws.pushes).map(s => body(Jetty.port(s)))).runWith
 
   test("a far side over a WebSocket: a program to done, a rest continued twice — every branch of two choices") {
     val got = LinkedBlockingQueue[List[Either[Condition, Long]]]()
@@ -123,7 +123,7 @@ class TestOkayTsWs extends WireConformance:
   private lazy val port: Int =
     val ready = LinkedBlockingQueue[Int]()
     val t = Thread(() =>
-      Resource.run[Unit, Pure](server.map { s =>
+      Resource.run(server.map { s =>
         ready.put(Jetty.port(s))
         done.await()
       }).runWith)

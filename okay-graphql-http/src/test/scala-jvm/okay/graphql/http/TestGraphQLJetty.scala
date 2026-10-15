@@ -1,10 +1,9 @@
 package okay.graphql.http
 
 import okay.{Async, Stage, StreamCont}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.codec.Json
 import okay.graphql.*
 import okay.http.{Body, Frame, Http, Method, Request, Ws}
@@ -22,12 +21,12 @@ class TestGraphQLJetty extends okay.testkit.Munit.Diagnosed:
   test("POST /graphql and a subscription over the WebSocket, the subprotocol negotiated") {
     val http = GraphQLHttp.router(schema)
     val ws = GraphQLWs.route(schema, "/graphql")
-    val (answer, frames) = Resource.run[(String, Seq[Frame]), Pure](
+    val (answer, frames) = Resource.run(
       Jetty.serve(0)(http.routes)(ws.sessions, ws.pushes, subprotocol = ws.subprotocol).flatMap { server =>
         val base = s"127.0.0.1:${Jetty.port(server)}/graphql"
         Jetty.http().flatMap { client =>
           Jetty.sockets().map { sockets =>
-            val answer = Async.run[String, Pure](client.send(Request(Method.Post, s"http://$base",
+            val answer = Async.run(client.send(Request(Method.Post, s"http://$base",
               Seq("content-type" -> "application/json"), Body.Text("""{"query":"{ hello }"}""")))
               .flatMap(Http.text)).runWith
             def next(n: Int, acc: Seq[Frame]): Stage[Frame, Frame, Seq[Frame]] =
@@ -42,7 +41,7 @@ class TestGraphQLJetty extends okay.testkit.Munit.Diagnosed:
                   Stage.tell[Frame, Frame](Frame.Text(
                     """{"id":"c","type":"subscribe","payload":{"query":"subscription { count(to: 3) }"}}""")).flatMap(_ =>
                     next(4, ack))))
-            val frames = Async.run[Seq[Frame], Pure](
+            val frames = Async.run(
               sockets.connect(s"ws://$base", Nil, Seq("graphql-transport-ws")).flatMap(sock =>
                 Ws.over(sock)(session).flatMap(fs => sock.close().map(_ => fs)))).runWith
             (answer, frames)

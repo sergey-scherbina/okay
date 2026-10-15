@@ -1,9 +1,8 @@
 package okay.graphql.http
 
 import okay.{Stage, through}
-import okay.freer.*
+import okay.*
 import okay.std.*
-import okay.freer.given
 import okay.std.given
 import okay.graphql.*
 import okay.http.{Frame, Request}
@@ -13,7 +12,7 @@ class TestGraphQLWs extends okay.testkit.Munit.Diagnosed:
 
   /** frames into a session, the frames it tells: the pure part, no socket */
   private def talk(session: Stage[Frame, Frame, Unit])(fs: Frame*): Seq[Frame] =
-    !.run(Writer.run(through(Writer.of(fs.toList))(session)))._1
+    !.run(Writer.run(through(Writer.of(fs.toList).at[Writer % Frame])(session)))._1
 
   test("the route: its path's sessions, the subprotocol, nothing elsewhere") {
     val ws = GraphQLWs.route(schema, "/graphql")
