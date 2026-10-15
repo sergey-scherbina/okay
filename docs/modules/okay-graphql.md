@@ -88,9 +88,54 @@ Nesting — selections, values, types, fragments inside fragments (a cycle is th
 64 by default: past it, an error, not a stack overflow. The executor is a loop over a run queue: a list of 100 000
 items and 100 000 fetches in one round run in constant stack.
 
-Supported: queries and mutations, variables with defaults, aliases, arguments, named and inline fragments,
-`@skip`/`@include`, `__typename`. Not yet (backlog `okay-graphql-next`): introspection, interfaces and unions,
-subscriptions, an HTTP route, validation beyond fields and arguments, an adapter over graphql-java behind
-`GraphQLParser`, sources answering with a program (async).
+## Interfaces and unions
 
-Tests: `TestGraphQL` (the shop: every item of the spec's behavior list).
+An abstract type holds its MEMBERS: an object type and how a value is told to be of it, typed — no type test of a
+class, no cast. Fragments on an interface or a union apply to their members; `__typename` is the member's:
+
+```scala
+  lazy val mediumT: InterfaceType[Medium] = InterfaceType[Medium]("Medium")(
+    List(Field("id", Scalar.id)(_.ident), Field("title", Scalar.string)(_.name)),
+    List(Member[Medium, Book](bookT) { case b: Book => b }, Member[Medium, Film](filmT) { case f: Film => f }))
+```
+
+`Schema.check` refuses a member missing a field of its interface. Fields take `describe` and `deprecate`; both reach
+the SDL and introspection.
+
+## Introspection, validation, prepared documents
+
+`__schema` and `__type(name:)` answer on every schema — ordinary object types over the schema value, run by the same
+executor; GraphiQL's query (`Introspection.query`) answers. Before running, a document is checked as the spec's §5
+says — operations, fields, arguments and their literals, fragments (unused, unknown, cycles, impossible spreads),
+variables (defined, used, of compatible types), directives, fields that cannot merge — every error with its
+`locations`. Variables are coerced to their declared types.
+
+`Executor.prepare` parses and checks once; the `Prepared` executes with any variables; a `QueryCache` keeps them by
+text. `Limits.fields` bounds the fields an operation selects, fragments expanded, without expanding past the bound:
+
+```scala
+    val p = Executor.prepare(schema, """query($q: String!) { search(q: $q) { ... on Medium { id } } }""").toOption.get
+    assertEquals(p.execute(json("""{"q": "Dune"}""")), json("""{"data":{"search":[{"id":"b1"}]}}"""))
+```
+
+## Async sources and subscriptions
+
+An `AsyncSource` answers with a program of `Async`; `Executor.executeAsync` is then a program itself, and each
+round calls ALL its sources at once, going on when the last answered. A subscription field resolves to a stream
+(`StreamCont.Src`); `Executor.subscribe` gives the stream of responses, each value executed as the selection.
+`TransportWs.Connection` is the `graphql-transport-ws` protocol's server side, for any socket (a frame in is
+`receive`, a frame out `send`); okay-graphql-http puts it on okay-http's server seam.
+
+## The parser, ours or graphql-java's
+
+`GraphQLParser` is a facade: ours the default; `GraphQLJava` (JVM) reads with graphql-java, an optional dependency
+refused by name when absent. Both read every document of the tests to the same value, positions included, and each
+reads the other's output (`Document.print`):
+
+```scala
+    given GraphQLParser = GraphQLJava()
+```
+
+Tests: `TestGraphQL` (the shop), `TestGraphQLNext` (abstract types, introspection, validation, prepared documents,
+the cost bound, async sources, subscriptions, the printer), `TestTransportWs`, `TestGraphQLJava` (JVM). Over HTTP
+and WebSocket: [okay-graphql-http](okay-graphql-http.md).

@@ -65,19 +65,36 @@ ours parsed by ours.
 
 ## Behavior
 
-- [ ] interfaces and unions: fragments on abstract types, `__typename`, a value no member picks
-- [ ] `Schema.check`: a missing interface field, a member not implementing
-- [ ] introspection: `__schema`, `__type`, GraphiQL's query; descriptions and deprecation; SDL with them
-- [ ] validation: each rule refuses its document, with locations
-- [ ] variables coerced to their declared types
-- [ ] errors with locations; `prepare` once, execute many; the cache
-- [ ] `Limits.fields`: a fragment bomb refused
-- [ ] async sources: one round's sources called in parallel
-- [ ] HTTP: POST, GET, a mutation over GET, a bad body
-- [ ] subscriptions: a stream of responses; graphql-transport-ws in memory
-- [ ] graphql-java: parses as ours does; refused by name when absent
+- [x] interfaces and unions: fragments on abstract types, `__typename`, a value no member picks
+- [x] `Schema.check`: a missing interface field, a member not implementing
+- [x] introspection: `__schema`, `__type`, GraphiQL's query; descriptions and deprecation; SDL with them
+- [x] validation: each rule refuses its document, with locations
+- [x] variables coerced to their declared types
+- [x] errors with locations; `prepare` once, execute many; the cache
+- [x] `Limits.fields`: a fragment bomb refused
+- [x] async sources: one round's sources called in parallel
+- [x] HTTP: POST, GET, a mutation over GET, a bad body
+- [x] subscriptions: a stream of responses; graphql-transport-ws in memory
+- [x] graphql-java: parses as ours does; refused by name when absent
 
 ## Decisions
 
 - Abstract types by MEMBERS with a typed `pick`, not by a `resolveType` naming an object: a name gives back no
   value of the object's type without a cast.
+- Async: a round's async sources each run by `AsyncCont.runAsync` and joined by one `await` — no `Scheduler`
+  needed, every platform; their answers kept and delivered on the executor's thread after the last, so the run
+  queue is never touched from another thread. Measured in TestGraphQLNext: two sources that answer only once both
+  were called — sequential calls would never finish.
+- Field merging (§5.3.2) by response key with the same name and arguments, recursively through merged selections;
+  two fields of one key on different OBJECT types may differ. SameResponseShape's type comparison is not checked.
+- okay-http has no Native build: the HTTP and WebSocket half is its own module (okay-graphql-http, JVM and JS);
+  `TransportWs.Connection` lives in okay-graphql, socket-free, every platform.
+- okay-jetty's server took no subprotocol: a graphql-ws client refuses a server that names none. `Jetty.serve` gains
+  `subprotocol: Request => Option[String]`, default none — the old behavior; its suites (19, Live) green.
+- graphql-java 22.3 (the one in the local cache, JDK 11+); both parsers give the same `Document` for every test
+  document, positions included.
+
+## Results
+
+- okay-graphql: 33 tests on JVM (TestGraphQL 14, TestGraphQLNext 15, TestTransportWs 4) + TestGraphQLJava 5; 33
+  on JS and Native. okay-graphql-http: 7 on JVM and JS, TestGraphQLJetty 1 (Live).
