@@ -1,7 +1,7 @@
 package okay.ui
 
 import okay.{Async, Source, async}
-import okay.freer.*
+import okay.*
 import okay.std.*
 /**
  * The terminal as a Host, and it is thin because everything that can
@@ -101,27 +101,27 @@ object Terminal {
       // that wants to lay itself out differently on a narrow terminal
       // can — `Resized` had been an event no host ever sent
       def first: Source[Event] = measured match
-        case Some((w, h)) => effect[Writer % Event + Async, Unit](Writer(Event.Resized(w, h)))
+        case Some((w, h)) => Writer.tell(Event.Resized(w, h)).at[Writer % Event + Async]
         case None => pure(())
 
       def go: Source[Event] =
-        effect[Writer % Event + Async, Int](Async.Run(() => System.in.read()))
+        effect(Async.Run(() => System.in.read())).at[Writer % Event + Async]
           .flatMap { b =>
             if b < 0 then pure(())                   // stdin ended
             else if b == 3 || b == 17 then           // Ctrl-C, Ctrl-Q
-              effect[Writer % Event + Async, Unit](Writer(Event.Closed))
+              Writer.tell(Event.Closed).at[Writer % Event + Async]
             else
               val (st, keys) = Frame.feed(keyState, b)
               keyState = st
               // one byte can complete no key (mid-sequence) or two (a
               // lone ESC and the byte after it), so this folds
-              val emit = okay.freer.!.each(keys) { key =>
+              val emit = okay.!.each(keys) { key =>
                 {
                   // the view keys are the HOST's: they move no focus
                   // and say nothing to the application
                   if key == Frame.Key.PageUp || key == Frame.Key.PageDown then
-                    effect[Writer % Event + Async, Unit](Async.Run(() =>
-                      page(if key == Frame.Key.PageUp then -1 else 1)))
+                    effect(Async.Run(() =>
+                      page(if key == Frame.Key.PageUp then -1 else 1))).at[Writer % Event + Async]
                   else
                     // a click names a cell of the SCREEN; the frame
                     // may be scrolled under it, so the row is the
@@ -134,12 +134,12 @@ object Terminal {
                     focus = nf
                     caret = nc
                     ev match
-                      case Some(e) => effect[Writer % Event + Async, Unit](Writer(e))
+                      case Some(e) => Writer.tell(e).at[Writer % Event + Async]
                       case None =>
                         // a focus move re-renders the SAME tree, which
                         // the loop would skip — so the host repaints
                         // itself, and the view follows the focus
-                        if moved then effect[Writer % Event + Async, Unit](Async.Run(() => paint()))
+                        if moved then effect(Async.Run(() => paint())).at[Writer % Event + Async]
                         else pure(())
                 }
               }

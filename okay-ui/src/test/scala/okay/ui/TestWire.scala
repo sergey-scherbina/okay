@@ -1,10 +1,9 @@
 package okay.ui
 
 import okay.{Async, Channel, Source, async, through}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.std.given
 /**
  * Server-driven UI over no transport at all — the stage tested pure —
@@ -55,7 +54,7 @@ class TestWire extends munit.FunSuite {
 
   /** drive the pure serve stage with lines, collect its lines */
   def talk(lines: String*): (Seq[String], Int) =
-    val (out, s) = !.run(Writer.run(through(Writer.of(lines.toList))(
+    val (out, s) = !.run(Writer.run(through(Writer.of(lines.toList).at[Writer % String])(
       Wire.serve(0)(view)(update))))
     (out, s)
 
@@ -84,7 +83,7 @@ class TestWire extends munit.FunSuite {
   }
 
   test("a reconnecting client: a fresh serve of the SAME state leads with the full tree") {
-    val (out, _) = !.run(Writer.run(through(Writer.of(List(Protocol.line(Protocol.hello(Set.empty)))))(
+    val (out, _) = !.run(Writer.run(through(Writer.of(List(Protocol.line(Protocol.hello(Set.empty)))).at[Writer % String])(
       Wire.serve(41)(view)(update)))): @unchecked
     assertEquals(Protocol.treeOf(out.head), Some(view(41)))
   }

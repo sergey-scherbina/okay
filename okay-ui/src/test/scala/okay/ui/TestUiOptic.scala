@@ -1,5 +1,5 @@
 package okay.ui
-import okay.freer.*
+import okay.*
 import okay.{modify, Traversal, preview, toVector}
 import okay.given
 

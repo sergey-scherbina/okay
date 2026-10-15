@@ -1,7 +1,7 @@
 package okay.ui
 
 import okay.{Async, CanBlock, Scheduler, Source}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import scala.annotation.tailrec
 
@@ -29,7 +29,7 @@ enum Nav:
   /** the effect slot: stay on `s`, LAUNCH `prog` — its Event answer
    * re-enters the fold like any other event (specs/ui.md, "The
    * effect slot"). The program is data; the loop runs it. */
-  case Run(prog: okay.freer.![Event, okay.Async], s: Screen)
+  case Run(prog: okay.![Event, okay.Async], s: Screen)
   /** exit to the NAMED boundary (nav-pop-to-screen): every frame
    * above it is dropped untouched, and the boundary routes the
    * typed answer. The key's identity carries its type — the Prompt
@@ -98,7 +98,7 @@ object Nav {
 
   /** the same step, commands out: `Run` stays on its screen and
    * hands the loop the program to launch */
-  def updateCmd(stack: List[Screen], e: Event): (List[Screen], Vector[okay.freer.![Event, okay.Async]]) =
+  def updateCmd(stack: List[Screen], e: Event): (List[Screen], Vector[okay.![Event, okay.Async]]) =
     stack match
       case Nil => (Nil, Vector.empty)
       case top :: rest => top.step(e) match
@@ -113,7 +113,7 @@ object Nav {
    * changes nothing (total, like every fold here) — the stack is
    * data, and a name not on it names nothing */
   @tailrec private def popTo[A](stack: List[Screen], k: Key[A], a: A)
-  : (List[Screen], Vector[okay.freer.![Event, okay.Async]]) =
+  : (List[Screen], Vector[okay.![Event, okay.Async]]) =
     // the boundary whose key IS k — and by Same's witness, a Boundary[A]
     def boundaryFor(s: Screen): Option[Boundary[A]] = s match
       case b: Boundary[x] => ((b.k: Key[x]) === k).map(ev => ev.liftCo[Boundary](b))

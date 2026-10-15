@@ -2,9 +2,8 @@ package okay.ui
 
 
 import okay.{Source, through, Async, Take}
-import okay.freer.*
+import okay.*
 import okay.std.*
-import okay.freer.given
 import okay.std.given
 import okay.codec.{Json, Schema}
 import okay.persist.{Ack, Record, Topic}
@@ -124,7 +123,7 @@ object Sessions {
       out.result()
     val replayed = segments(tail.map(_._2).toList).foldLeft(start) { (st, seg) =>
       if seg.isEmpty then st
-      else !.run(Writer.run(through(Writer.of(seg))(Wire.serve(st)(view)(update))))._2
+      else Writer.run[String, S, Writer % String](through(Writer.of(seg).at[Writer % String])(Wire.serve(st)(view)(update))).run._2
     }
     (replayed, tail.lastOption.fold(from)(_._1 + 1))
 
@@ -141,11 +140,11 @@ object Sessions {
               (using Schema[S]): S ! Async =
     type Row = Take % String + (Writer % String + Async)
     def tee: Unit ! Row =
-      effect[Row, Option[String]](Take.Await()).flatMap {
+      effect[Take % String, Option[String]](Take.Await()).at[Row].flatMap {
         case None => pure(())
         case Some(line) =>
-          effect[Row, Long](Async.Run(() => append(sess, line)))
-            .flatMap(_ => effect[Row, Unit](Writer(line)))
+          effect(Async.Run(() => append(sess, line))).at[Row]
+            .flatMap(_ => Writer.tell(line).at[Row])
             .flatMap(_ => tee)
       }
 
@@ -153,8 +152,7 @@ object Sessions {
     val journaled: Source[String] = through[String, String, Async, Unit, Unit](lines)(tee)
     val served: S ! Writer % String + Async =
       through[String, String, Async, Unit, S](journaled)(
-        !.widen[S, Take % String + Writer % String, Async](
-          Wire.serve(recovered)(view)(update)))
+        Wire.serve(recovered)(view)(update).at[Take % String + (Writer % String + Async)])
 
     def drain(p: S ! Writer % String + Async): S ! Async =
       Writer.uncons[String, S, Async](p).flatMap {

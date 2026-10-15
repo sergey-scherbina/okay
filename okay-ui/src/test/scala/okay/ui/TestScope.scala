@@ -1,9 +1,8 @@
 package okay.ui
 
 import okay.{Async, Source, async}
-import okay.freer.*
+import okay.*
 import okay.given
-import okay.freer.given
 import okay.std.given
 import okay.codec.Schema
 import Scope.*
@@ -42,13 +41,13 @@ class TestScope extends munit.FunSuite {
     val ok = Scripted(Seq(
       Event.Edited("first", "ada"), Event.Pressed("$ok"),
       Event.Edited("years", "36"), Event.Pressed("$ok")))
-    assertEquals(Async.run[Option[Option[(Name, Age)]], Pure](
+    assertEquals(Async.run(
       Dialog.run(ok)(subFlow)).runWith, Some(Some((Name("ada"), Age(36)))))
     // cancel at the SECOND step aborts the whole scope with one line
     val bail = Scripted(Seq(
       Event.Edited("first", "ada"), Event.Pressed("$ok"),
       Event.Pressed("$cancel")))
-    assertEquals(Async.run[Option[Option[(Name, Age)]], Pure](
+    assertEquals(Async.run(
       Dialog.run(bail)(subFlow)).runWith, Some(None))
   }
 
@@ -72,18 +71,18 @@ class TestScope extends munit.FunSuite {
 
     // inner abort: the outer continues to its own step
     val innerBail = Scripted(Seq(Event.Pressed("$abort-inner"), Event.Pressed("x")))
-    assertEquals(Async.run[Option[String], Pure](
+    assertEquals(Async.run(
       Dialog.run(innerBail)(flow)).runWith, Some("completed"))
     // abort-all: the OUTER answers immediately; its second step never shows
     val all = Scripted(Seq(Event.Pressed("$abort-all")))
-    assertEquals(Async.run[Option[String], Pure](
+    assertEquals(Async.run(
       Dialog.run(all)(flow)).runWith, Some("aborted-everything"))
     assertEquals(all.frames.length, 1, "the outer step must not have rendered")
   }
 
   test("Dialog itself is untouched: a plain scenario still runs beside the scoped one") {
     val host = Scripted(Seq(Event.Edited("first", "ada"), Event.Pressed("$ok")))
-    assertEquals(Async.run[Option[Option[Name]], Pure](
+    assertEquals(Async.run(
       Dialog.run(host)(Form.ask[Name]("who?"))).runWith, Some(Some(Name("ada"))))
   }
 }

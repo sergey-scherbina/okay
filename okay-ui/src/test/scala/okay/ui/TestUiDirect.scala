@@ -1,9 +1,8 @@
 package okay.ui
 
 import okay.{Async, Source, async}
-import okay.freer.*
+import okay.*
 import okay.given
-import okay.freer.given
 import okay.std.given
 import okay.Direct.*
 import okay.codec.Schema
@@ -39,7 +38,7 @@ class TestUiDirect extends munit.FunSuite {
     val host = Scripted(Seq(
       Event.Edited("first", "ada"), Event.Pressed("$ok"),
       Event.Edited("years", "36"), Event.Pressed("$ok")))
-    assertEquals(Async.run[Option[(Option[Name], Option[Age])], Pure](
+    assertEquals(Async.run(
       Dialog.run(host)(wizard)).runWith,
       Some((Some(Name("ada")), Some(Age(36)))))
   }
@@ -49,14 +48,14 @@ class TestUiDirect extends munit.FunSuite {
     val h1 = Scripted(Seq(
       Event.Edited("years", "nope"), Event.Pressed("$ok"),
       Event.Edited("years", "36"), Event.Pressed("$ok")))
-    assertEquals(Async.run[Option[Option[Age]], Pure](
+    assertEquals(Async.run(
       Dialog.run(h1)(Form.askWith[Age]("age?")(Form.forgiving))).runWith,
       Some(Some(Age(36))))
     // patience(1): the first invalid submit gives up — None
     val h2 = Scripted(Seq(
       Event.Edited("years", "nope"), Event.Pressed("$ok"),
       Event.Edited("years", "36"), Event.Pressed("$ok")))
-    assertEquals(Async.run[Option[Option[Age]], Pure](
+    assertEquals(Async.run(
       Dialog.run(h2)(Form.askWith[Age]("age?")(Form.patience(1)))).runWith,
       Some(None))
     // a repairing policy resumes with a forced value at the signal point
@@ -64,21 +63,21 @@ class TestUiDirect extends munit.FunSuite {
     val force: (Any, Vector[String]) => okay.Condition.Decision =
       case (_: Form.InvalidSubmit, _) => okay.Condition.Decision.Resume(Age(99))
       case _ => okay.Condition.Decision.Fail
-    assertEquals(Async.run[Option[Option[Age]], Pure](
+    assertEquals(Async.run(
       Dialog.run(h3)(Form.askWith[Age]("age?")(force))).runWith,
       Some(Some(Age(99))))
     // a VALID submit never consults the policy
     val h4 = Scripted(Seq(Event.Edited("years", "36"), Event.Pressed("$ok")))
     val paranoid: (Any, Vector[String]) => okay.Condition.Decision =
       (_, _) => throw new AssertionError("must not be consulted")
-    assertEquals(Async.run[Option[Option[Age]], Pure](
+    assertEquals(Async.run(
       Dialog.run(h4)(Form.askWith[Age]("age?")(paranoid))).runWith,
       Some(Some(Age(36))))
   }
 
   test("the ambient-Host doors: hosted equals run(host)") {
     given Host = Scripted(Seq(Event.Edited("first", "ada"), Event.Pressed("$ok")))
-    assertEquals(Async.run[Option[Option[Name]], Pure](
+    assertEquals(Async.run(
       Dialog.hosted(Form.ask[Name]("who?"))).runWith, Some(Some(Name("ada"))))
   }
 }

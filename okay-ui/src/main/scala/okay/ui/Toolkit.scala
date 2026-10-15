@@ -1,6 +1,6 @@
 package okay.ui
 
-import okay.freer.!
+import okay.!
 
 /**
  * The composed dialogs (specs/ui-toolkit.md): the four questions

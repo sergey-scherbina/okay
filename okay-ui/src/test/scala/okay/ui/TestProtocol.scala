@@ -1,10 +1,9 @@
 package okay.ui
 
 import okay.{Async, Channel, Source, async, through}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.std.given
 import okay.codec.Json
 import Protocol.Msg
@@ -26,7 +25,7 @@ class TestProtocol extends munit.FunSuite {
 
   def talk(vocab: Option[Set[String]], lines: String*): Seq[String] =
     val hello = vocab.map(v => Protocol.line(Protocol.hello(v))).toList
-    !.run(Writer.run(through(Writer.of(hello ++ lines.toList))(Wire.serve(0)(view)(update))))._1
+    !.run(Writer.run(through(Writer.of(hello ++ lines.toList).at[Writer % String])(Wire.serve(0)(view)(update))))._1
 
   test("every message shape round-trips through JSON lines and CBOR bytes, and the enumerations spell themselves short") {
     val msgs = Vector[Msg](Protocol.hello(Set("table", "form")),

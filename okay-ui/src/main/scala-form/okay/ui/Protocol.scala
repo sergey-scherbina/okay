@@ -198,9 +198,8 @@ ${describe(Vector(summon[Schema[Msg]], summon[Schema[Ui]], summon[Schema[Event]]
    * `out` speaks the protocol. */
   def conformance: Vector[String] =
     import okay.through
-    import okay.freer.{!}
+    import okay.%
     import okay.std.{Writer}
-    import okay.freer.given
     import okay.std.given
     def view(n: Int): Ui = Ui.Box(Vector(
       Ui.Text(s"count: $n", Style(tone = Tone.Emphasis)),
@@ -216,7 +215,7 @@ ${describe(Vector(summon[Schema[Msg]], summon[Schema[Ui]], summon[Schema[Event]]
       Msg.Event(Event.Submitted("f", Vector(Event.Edited("name", "ada"), Event.Toggled("even", true)))),
       Msg.Event(Event.Pressed("dec")), Msg.Event(Event.Closed))
       .map(line)
-    val (received, _) = !.run(Writer.run(through(Writer.of(sent.toList))(Wire.serve(0)(view)(update))))
+    val (received, _) = Writer.run[String, Int, Writer % String](through(Writer.of(sent.toList).at[Writer % String])(Wire.serve(0)(view)(update))).run
     // interleave as the client sees them: hello, tree, then each event and its patches
     var tree: Ui = Ui.Text("")
     def record(l: String): String =

@@ -1,9 +1,8 @@
 package okay.ui
 
 import okay.{through}
-import okay.freer.*
+import okay.*
 import okay.std.*
-import okay.freer.given
 import okay.std.given
 /**
  * Stage 0 of specs/frontend.md: two vocabulary levels in one tree.
@@ -144,7 +143,7 @@ class TestVocab extends munit.FunSuite {
   test("Wire.serve lowers for the client's vocabulary: a level-L client never sees a semantic node") {
     val view: Int => Ui = n => Items(Vector(Text(n.toString)), "l")
     def first(vocab: Set[String]): String =
-      val (out, _) = !.run(Writer.run(through(Writer.of(List(Protocol.line(Protocol.hello(vocab)))))(
+      val (out, _) = !.run(Writer.run(through(Writer.of(List(Protocol.line(Protocol.hello(vocab)))).at[Writer % String])(
         Wire.serve(0)(view)((s, _) => s))))
       out.head
     assert(!first(Set.empty).contains("\"Items\""), first(Set.empty))

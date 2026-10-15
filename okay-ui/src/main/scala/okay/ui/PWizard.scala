@@ -1,7 +1,8 @@
 package okay.ui
 
 
-import okay.freer.*
+import okay.*
+import okay.freer.Freer
 
 
 /**

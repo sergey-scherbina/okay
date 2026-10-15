@@ -1,10 +1,9 @@
 package okay.ui
 
 import okay.{Async, Channel, Source, async}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
-import okay.freer.given
 /**
  * The whole loop with no screen: a test HOST keeps frames as values
  * and feeds scripted events — which is the seam's point, and the

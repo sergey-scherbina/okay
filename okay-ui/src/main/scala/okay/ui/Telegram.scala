@@ -1,7 +1,7 @@
 package okay.ui
 
 import okay.{Async, Channel, Source, async}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
 
@@ -212,7 +212,7 @@ object Telegram {
     val lock = new Object
 
     def run(acts: Vector[Act]): Unit ! Async =
-      okay.freer.!.each(acts) { a =>
+      okay.!.each(acts) { a =>
         perform(a).map { id =>
           a match
             case Act.Send(_) => id.foreach(i => lock.synchronized { session = Session.sent(session, i) })
@@ -229,7 +229,7 @@ object Telegram {
     val hear: Update => Unit ! Async = u =>
       async { lock.synchronized { val (s, evs, acts) = Session.hear(session, u); session = s; (evs, acts) } }
         .flatMap { (evs, acts) =>
-          okay.freer.!.each(evs)(e => feed.send(e).map(_ => ()))
+          okay.!.each(evs)(e => feed.send(e).map(_ => ()))
             .flatMap(_ => run(acts))
         }
     (h, hear)

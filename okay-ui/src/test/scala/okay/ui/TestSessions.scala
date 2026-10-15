@@ -1,9 +1,8 @@
 package okay.ui
 
 import okay.{async}
-import okay.freer.*
+import okay.*
 import okay.given
-import okay.freer.given
 import okay.std.given
 import okay.codec.Schema
 import okay.persist.MemoryStore

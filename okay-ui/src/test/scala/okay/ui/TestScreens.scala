@@ -1,7 +1,7 @@
 package okay.ui
 
 import okay.{Async, Channel, Source, async}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
 

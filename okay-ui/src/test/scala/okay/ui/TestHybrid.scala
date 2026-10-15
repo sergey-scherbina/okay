@@ -1,10 +1,9 @@
 package okay.ui
 
 import okay.{Async, Channel, Source, async, through}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.std.given
 import okay.codec.{Json, Schema}
 import Protocol.Msg
@@ -124,7 +123,7 @@ class TestHybrid extends munit.FunSuite {
     var seen = Vector.empty[Event]
     def update(n: Int, e: Event): Int = { seen :+= e; n + 1 }
     def talk(lines: String*): Int =
-      !.run(Writer.run(through(Writer.of(lines.toList))(Wire.serve(0)(form)(update))))._2
+      !.run(Writer.run(through(Writer.of(lines.toList).at[Writer % String])(Wire.serve(0)(form)(update))))._2
     def sub(k: String, edits: Event*) = Protocol.eventLine(Event.Submitted(k, edits.toVector))
     val n = talk(
       sub("f", Event.Edited("name", "ada"), Event.Toggled("ok", true)),           // honest

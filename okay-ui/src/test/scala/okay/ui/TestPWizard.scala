@@ -1,9 +1,8 @@
 package okay.ui
 
 import okay.{Async, Source, async}
-import okay.freer.*
+import okay.*
 import okay.given
-import okay.freer.given
 import okay.std.given
 import PWizard.*
 
@@ -56,7 +55,7 @@ class TestPWizard extends munit.FunSuite {
     val host = Scripted(Seq(
       Event.Edited("name", "ada"),
       Event.Edited("age", "36")))
-    val got = Async.run[Option[((String, Int), Unit)], Pure](
+    val got = Async.run(
       Dialog.run(host)(toDialog(run(())(wizard)))).runWith
     assertEquals(got, Some((("ada", 36), ())))
   }

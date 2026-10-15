@@ -1,5 +1,5 @@
 package okay.ui
-import okay.freer.*
+import okay.*
 /**
  * The capability door on Scope (ctx-prompts): exit reaches the
  * NEAREST scope by nesting, a bound prompt still crosses, and the
@@ -33,23 +33,21 @@ class TestScopeCtx extends munit.FunSuite {
   /**
    * WHAT THE MOVE BOUGHT (delim-doors-are-prompted, 2026-09-18): the
    * mistake it prevents is not exotic. A caller who has no scope at
-   * all could summon `Shift.prompt[String]` — one line — hand it as
-   * the given, and `exit` would COMPILE and then die at runtime with
-   * `NoPrompt`. The evidence cannot be made outside `Shift`, so the
-   * same program is now refused by the compiler.
+   * all could make a prompt, hand it as the given, and `exit` would
+   * COMPILE and then die at runtime with `NoPrompt`. The evidence (and,
+   * on the root's words, the prompt too) cannot be made outside `Scope`,
+   * so the same program is refused by the compiler.
    */
   test("an exit with a forged prompt does not compile — and a real scope still does") {
     val forged = compileErrors("""
-      import okay.freer.*
-      import okay.std.*
+      import okay.*
       import okay.ui.*
-      given okay.freer.Prompt[String] = okay.freer.Shift.prompt[String]
+      given Scope.Prompted[String] = Scope.Prompted(Scope.Prompt[String]())
       val p: String ! Scope.Row = Scope.exit[String, String]("nowhere")
     """)
     assert(forged.nonEmpty, "a forged prompt still compiles")
     assertEquals(compileErrors("""
-      import okay.freer.*
-      import okay.std.*
+      import okay.*
       import okay.ui.*
       val p: String ! Dialog = Scope.bounded[String](Scope.exit[String, String]("ok"))
     """), "")
@@ -59,7 +57,7 @@ class TestScopeCtx extends munit.FunSuite {
     // the bound name is the EVIDENCE now (delim-doors-are-prompted):
     // a `Prompt` is one line to make and proves nothing, so binding
     // one here would have proved nothing either
-    val prog: String ! Dialog = Scope.bounded[String]: (outer: okay.freer.Shift.Prompted[String]) ?=>
+    val prog: String ! Dialog = Scope.bounded[String]: (outer: Scope.Prompted[String]) ?=>
       Scope.mark[String]:
         Scope.exit[String, String]("straight-out")(using outer)
       .map(inner => s"NEVER:$inner")

@@ -2,7 +2,7 @@ package okay.ui
 
 
 import okay.{Async, Source}
-import okay.freer.*
+import okay.*
 import okay.std.*
 /**
  * The imperative half of a UI, as an effect: show, await, validate,
@@ -28,24 +28,28 @@ object Dialog {
   /** show the tree; the answer is what the user did next */
   inline def show(ui: Ui): Event ! Dialog = effect(Show(ui))
 
-  import okay.freer.!.{Bind, Inject, Return}
-
   /**
    * A scenario, stepped to its next question: either it is done, or
    * it shows a tree and holds the continuation. `Closed` is not fed
    * to the continuation — a scenario that did not reach its ending
    * has no ending, which is why both runners answer Option.
+   *
+   * The step is the root's `okay.Walk.view` (the one walking machinery
+   * of the platform): the program run to its next `Show`, the rest of
+   * it a program again (`o.resume`). Not okay-workflow's `Wf.Dialogue`,
+   * though the shape is the same: that one walks a question AMONG other
+   * effects and answers `Dialogue ! F`; a scenario needs `Dialog` alone,
+   * so its step is plain data with no row to run.
    */
   enum Running[A]:
     case Showing(ui: Ui, k: Event => A ! Dialog)
     case Done(a: A)
 
-  def start[A](prog: A ! Dialog): Running[A] = (prog.resume: @unchecked) match
-    case Return(a) => Running.Done(a)
-    // Dialog is covariant: a bare Show's answer type is above Event,
-    // so resuming with the event itself is an upcast, not a cast
-    case Inject(Show(ui)) => Running.Showing(ui, e => pure((e: A)))
-    case Bind(Inject(Show(ui)), k) => Running.Showing(ui, k)
+  def start[A](prog: A ! Dialog): Running[A] = Walk.view(prog) match
+    case Walk.Done(a) => Running.Done(a)
+    // the GADT gives back that a Show answers an Event: `x` is Event here
+    case o: Walk.Op[Dialog, x, A, Dialog] => o.op match
+      case Show(ui) => Running.Showing(ui, e => o.resume(e))
 
   def step[A](r: Running[A], e: Event): Running[A] = r match
     case Running.Showing(_, k) => start(k(e))

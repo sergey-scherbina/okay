@@ -1,11 +1,10 @@
 package okay.ui
 
 
-import okay.freer.Pure
+import okay.{!, +, Pure}
 
 import okay.freer.{/>>}
-import okay.freer.{!, Cps}
-import okay.freer.given
+import okay.freer.Cps
 import okay.codec.{Codecs, Json, Schema}
 import scala.annotation.tailrec
 
@@ -836,12 +835,11 @@ object Form {
     // wrong type is BadResume at the point where it acts
     given ans: Condition.Answers[InvalidSubmit, A] = Condition.Answers.of[InvalidSubmit, A]
     def verdict(errs: Vector[(String, String)], n: Int): Outcome[A] =
-      Condition.run[Outcome[A], Pure](policy)(
+      Condition.run[Outcome[A], Condition.Op + Pure](policy)(
         Condition.within[Outcome[A], Pure]("giveup")(
           Condition.within[Outcome[A], Pure]("reask")(
-            !.widen[A, Condition.Op, Pure](
-              Condition.raiseC(InvalidSubmit(errs, n))(using ans)).map(Outcome.Done(_))
-          )(_ => Outcome.Retry()))(_ => Outcome.Gave())).runWith
+            Condition.raiseC(InvalidSubmit(errs, n))(using ans).map(Outcome.Done(_)).at[Condition.Op + Pure]
+          )(_ => Outcome.Retry()))(_ => Outcome.Gave())).run
 
     // the policy road has its own loop, and the same start: the state
     // carries the attempt number the policy is asked with

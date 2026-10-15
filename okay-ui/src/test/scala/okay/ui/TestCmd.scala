@@ -1,9 +1,8 @@
 package okay.ui
 
 import okay.{Async, Source, async}
-import okay.freer.*
+import okay.*
 import okay.given
-import okay.freer.given
 import okay.std.given
 /** specs/ui.md, "The effect slot" — one test per box */
 class TestCmd extends munit.FunSuite {
@@ -23,7 +22,7 @@ class TestCmd extends munit.FunSuite {
         (s"got $v", Vector(async(Event.Closed)))    // a command may end the app
       case _ => (s, Vector.empty)
     val host = Scripted(Seq(Event.Pressed("fetch")))
-    val end = Async.run[String, Pure](
+    val end = Async.run(
       Ui.runCmd("idle")(view)(update)(host)).runWith
     assertEquals(end, "got 42")
     // the interim state was SHOWN while the command ran
@@ -49,7 +48,7 @@ class TestCmd extends munit.FunSuite {
         case _ => Nav.Stay(this)
 
     val host = Scripted(Seq(Event.Pressed("go")))
-    Async.run[Unit, Pure](Nav.run(start)(host)).runWith
+    Async.run(Nav.run(start)(host)).runWith
     val shown = host.frames.map(f => Frame.render(f).mkString("\n"))
     assert(shown.exists(_.contains("loading")), shown.mkString("|"))
     assert(shown.exists(_.contains("done: fetched")), shown.mkString("|"))
@@ -87,7 +86,7 @@ class TestCmd extends munit.FunSuite {
       case Event.Pressed("after") => (s + 10, Vector(async(Event.Closed)))
       case _ => (s, Vector.empty)
     val host = Scripted(Seq(Event.Pressed("boom")))
-    val end = Async.run[Int, Pure](
+    val end = Async.run(
       Ui.runCmd(0)(_ => Ui.Text("x"))(update)(host)).runWith
     assertEquals(end, 11)   // boom counted, after counted, throw forfeited
   }

@@ -3,7 +3,7 @@ package okay.ui
 
 import okay.{Proc, Wf}
 import scala.annotation.unused
-import okay.freer.*
+import okay.*
 import okay.Proc.given
 import scala.language.implicitConversions
 
@@ -33,7 +33,7 @@ import scala.language.implicitConversions
  */
 class TestFormProc extends munit.FunSuite:
 
-  type P = okay.freer.Pure
+  type P = okay.Pure
 
   given Wf.Runtime = Wf.Runtime.scripted(millis = 7L, id = "id-1", dice = 0.25)
 
