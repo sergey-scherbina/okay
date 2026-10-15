@@ -99,6 +99,29 @@ Nesting — selections, values, types, fragments inside fragments (a cycle is th
 64 by default: past it, an error, not a stack overflow. The executor is a loop over a run queue: a list of 100 000
 items and 100 000 fetches in one round run in constant stack.
 
+## Types from case classes
+
+A case class already says its fields and their types; `ObjectType.derive` reads them — a field per parameter, of
+the output type its Scala type has (`Option` nullable, `List`/`Seq`/`Vector` a list, another derived type or enum
+nested), each read by its own selector, typed, no cast. The fields that fetch are added by hand, and replace a
+derived one of the same name. Enums and input objects the same:
+
+```scala
+  given EnumType[Tier] = EnumType.derive[Tier]
+  given userT: ObjectType[User] = ObjectType.derive[User](
+    Field.fetch("orders", ListOf(orderT))((u, _) => Fetch.get(ordersOf, u.id)),
+  given InObject[Filter] = InObject.derive[Filter]
+```
+
+## Errors with extensions
+
+An error may carry `extensions` for its client. Request errors carry a `code` — `GRAPHQL_PARSE_FAILED`,
+`GRAPHQL_VALIDATION_FAILED`, `BAD_USER_INPUT`, `OPERATION_RESOLUTION_FAILURE` — and a resolver fails with its own:
+
+```scala
+      FieldError.raise[Option[String]]("no such thing", "code" -> JStr("NOT_FOUND"), "id" -> JNum(7))),
+```
+
 ## Interfaces and unions
 
 An abstract type holds its MEMBERS: an object type and how a value is told to be of it, typed — no type test of a
@@ -147,6 +170,6 @@ reads the other's output (`Document.print`):
     given GraphQLParser = GraphQLJava()
 ```
 
-Tests: `TestGraphQL` (the shop), `TestGraphQLCache`, `TestGraphQLNext` (abstract types, introspection, validation, prepared documents,
+Tests: `TestGraphQL` (the shop), `TestGraphQLDerive`, `TestGraphQLCache`, `TestGraphQLNext` (abstract types, introspection, validation, prepared documents,
 the cost bound, async sources, subscriptions, the printer), `TestTransportWs`, `TestGraphQLJava` (JVM). Over HTTP
 and WebSocket: [okay-graphql-http](okay-graphql-http.md).

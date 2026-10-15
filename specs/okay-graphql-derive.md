@@ -28,14 +28,27 @@ A GraphQL error may carry `extensions`, a JSON object clients read (`code` above
 
 ## Behavior
 
-- [ ] a case class's object type: names, types, nullables, lists, nested, an enum; extra fields added and replacing
-- [ ] recursive and mutually recursive derived types
-- [ ] enums derived, out and in; an input object derived and decoded
-- [ ] SDL and introspection of derived types as of hand-written ones
-- [ ] request errors' codes; a resolver's FieldError extensions; a plain failure without
+- [x] a case class's object type: names, types, nullables, lists, nested, an enum; extra fields added and replacing
+- [x] recursive and mutually recursive derived types
+- [x] enums derived, out and in; an input object derived and decoded
+- [x] SDL and introspection of derived types as of hand-written ones
+- [x] request errors' codes; a resolver's FieldError extensions; a plain failure without
 
 ## Decisions
 
-- Inline recursion over `Tuple.fromProductTyped` rather than a macro: the getter's type is the compiler's, the
-  code stays ordinary inline Scala. Its price: a field read builds the tuple of the object (one allocation of the
-  object's arity per read); measured nowhere yet, noted.
+- A MACRO (quotes), not inline recursion over `Tuple.fromProductTyped`: the inline recursion cannot give a getter
+  its element's type without a type test on the tuple — the match on `erasedValue` refines nothing at run time. The
+  macro selects each field by its own symbol (`a.city`), summons `Output[T]` at the field's type, and builds the
+  `Field` — every getter typed by the compiler, no allocation per read. An enum's values are its cases' own
+  references; an input object is built by its `Mirror.fromProduct` from a typed tuple.
+- `Output[A]` carries `type B >: A`, the type its output type is of: `ListOf` is an `OutType[Seq[T]]`, and a
+  `List[T]` field's getter returns the `List` as it is, by subtyping — no conversion, no cast.
+- Recursive and mutually recursive types derive: a field's `Output` is summoned inside the type's lazy field list,
+  so `given userT = ObjectType.derive[User](...)` referring to `User` is read when the fields are, after the given.
+
+## Results
+
+- TestGraphQLDerive, 5 tests: a User of six parameters (a nested case class, an enum, a list, an optional
+  recursive friend), its `orders` fetched and its `name` replaced by hand; SDL and introspection as of written
+  types; an input object from a literal and from a variable; FieldError's extensions, a plain failure without,
+  the four request codes. okay-graphql 43 on JVM, JS and Native.

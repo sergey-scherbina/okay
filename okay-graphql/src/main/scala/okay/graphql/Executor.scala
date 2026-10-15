@@ -43,20 +43,22 @@ object Executor:
   def prepare(schema: Schema, query: String, operationName: Option[String] = None, limits: Limits = Limits())
       (using parser: GraphQLParser): Either[Json, Prepared] =
     parser.parse(query) match
-      case Left(e) => Left(errorsJson(List(GraphQLError(s"Syntax error: ${e.message}", List(Pos(e.line, e.column))))))
+      case Left(e) => Left(errorsJson(List(GraphQLError(s"Syntax error: ${e.message}", List(Pos(e.line, e.column)))
+        .coded(GraphQLError.ParseFailed))))
       case Right(doc) => prepare(schema, doc, operationName, limits)
 
   def prepare(schema: Schema, document: Document, operationName: Option[String], limits: Limits)
       : Either[Json, Prepared] =
     val problems = Validation(schema, document, limits).run()
-    if problems.nonEmpty then Left(errorsJson(problems))
+    if problems.nonEmpty then Left(errorsJson(problems.map(_.coded(GraphQLError.ValidationFailed))))
     else
       val chosen = operationName match
         case Some(n) => document.operations.find(_.name.contains(n)).toRight(s"no operation named $n")
         case None => document.operations match
           case List(o) => Right(o)
           case _ => Left("an operationName is required: the document has several operations")
-      chosen.left.map(m => errorsJson(List(GraphQLError(m)))).map(Prepared(schema, document, _, limits))
+      chosen.left.map(m => errorsJson(List(GraphQLError(m).coded(GraphQLError.OperationResolutionFailure))))
+        .map(Prepared(schema, document, _, limits))
 
   /** a request's subscription: the stream of its responses, or the response refusing it */
   def subscribe(schema: Schema, query: String, variables: Json = JObj(Vector.empty),
@@ -142,7 +144,7 @@ object Executor:
             case TypeRef.NonNull(_) => errs += GraphQLError(s"variable $$${d.name} of type ${d.tpe} is required", List(d.at))
             case _ => ()
       }
-      if errs.isEmpty then Right(out.toMap) else Left(errs.toList)
+      if errs.isEmpty then Right(out.toMap) else Left(errs.toList.map(_.coded(GraphQLError.BadUserInput)))
 
     /** `j` read as the type `t`: refused, or the value — a single value where a list is, a list of one. Bounded: the
      * type's nesting, as the document writes it (`Limits.depth`) */
@@ -357,7 +359,10 @@ object Executor:
 
     private def fieldError(slot: Slot, e: Throwable): Unit =
       slot.value = Res.Error
-      errors += GraphQLError(message(e), List(slot.at), slot.path.reverse)
+      val extensions = e match
+        case f: FieldError => f.extensions
+        case _ => Vector.empty
+      errors += GraphQLError(message(e), List(slot.at), slot.path.reverse, extensions)
 
     /** a field of `parent` (its selections merged under one key) resolved into `slot` */
     private def startField[A](o: ObjectType[A], parent: A, fs: List[Selection.Field], slot: Slot): Unit =
@@ -366,7 +371,7 @@ object Executor:
       else o.field.get(f.name) match
         case None => fieldError(slot, IllegalArgumentException(s"${o.name} has no field ${f.name}"))
         case Some(d: Field[A, b]) => Args.of(d.args, argumentsOf(f, vars)) match
-          case Left(e) => fieldError(slot, IllegalArgumentException(e))
+          case Left(e) => fieldError(slot, FieldError(e, "code" -> JStr(GraphQLError.BadUserInput)))
           case Right(args) =>
             val sub = fs.flatMap(_.selections)
             task[b](d.resolve(parent, args), b => complete(d.tpe, b, sub, slot), fieldError(slot, _))
