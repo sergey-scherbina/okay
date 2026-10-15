@@ -1,7 +1,7 @@
 package okay.cluster
 
 import okay.{Pane, Windows}
-import okay.freer.Aggregator
+import okay.Aggregator
 import scala.collection.mutable
 
 /**

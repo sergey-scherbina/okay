@@ -1,6 +1,6 @@
 package okay
 
-import okay.freer.Fold
+import okay.Fold
 
 import org.openjdk.jmh.annotations.{State, *}
 import java.util.concurrent.TimeUnit

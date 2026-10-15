@@ -2,7 +2,7 @@ package okay.rag
 
 import okay.{+}
 import okay.{!, pure}
-import okay.freer.Aggregator
+import okay.Aggregator
 import okay.parse.Parse
 
 /**

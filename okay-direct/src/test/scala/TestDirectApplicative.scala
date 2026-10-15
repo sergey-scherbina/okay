@@ -3,7 +3,7 @@ package okay
 
 import okay.std.*
 import okay.Direct.{*, given}
-import okay.freer.Semigroup
+import okay.Semigroup
 // The colourless-val spelling uses `selfColor`, which is an implicit
 // CONVERSION — so the file needs the language import, and without it
 // the nine uses raise feature warnings that no ordinary compile

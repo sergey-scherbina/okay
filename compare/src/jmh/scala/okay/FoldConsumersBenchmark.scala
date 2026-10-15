@@ -1,6 +1,6 @@
 package okay
 
-import okay.freer.Fold
+import okay.Fold
 
 import okay.std.*
 import okay.std.given

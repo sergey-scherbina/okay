@@ -4,7 +4,6 @@ package okay
 
 
 import okay.given
-import okay.freer.given
 /**
  * THE PAIRS ON docs/optics.md, RUN.
  *

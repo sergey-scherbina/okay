@@ -2,7 +2,7 @@ package okay
 
 import okay.Programs.given
 
-import okay.freer.Monoid
+import okay.Monoid
 
 
 

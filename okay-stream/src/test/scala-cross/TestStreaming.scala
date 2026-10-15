@@ -1,6 +1,6 @@
 package okay
 
-import okay.freer.{Aggregator}
+import okay.Aggregator
 /** ONE suite, written once over the front (`Streaming[S]`), run on both backends: the front is transparent when
  * the same program answers the same on each (stream-twin) */
 abstract class StreamingSuite[S[_]](backend: String)(using St: Streaming[S]) extends munit.FunSuite {

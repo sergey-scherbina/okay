@@ -1,8 +1,7 @@
 package okay.spark
 
 import okay.{Bulk, Chunks, localBulk}
-import okay.freer.{Aggregator, Monoid}
-import okay.freer.given
+import okay.{Aggregator, Monoid}
 import okay.std.{sliding}
 import okay.Chunks.elements
 import okay.std.given
@@ -192,6 +191,6 @@ class TestTaxiAlgebra extends munit.FunSuite:
 
   test("no inverse, no window — the compile error is the point") {
     val err = compileErrors("okay.std.sliding(LazyList(Peak(1.0), Peak(2.0)))(2)")
-    assert(err.contains("Group[Peak]") || err.contains("okay.freer.Group"), err)
+    assert(err.contains("Group[Peak]") || err.contains("okay.Group"), err)
     println(s"  refused, as it should be: ${err.linesIterator.find(_.contains("Group")).getOrElse(err)}")
   }

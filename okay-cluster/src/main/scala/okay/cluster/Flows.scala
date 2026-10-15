@@ -1,7 +1,7 @@
 package okay.cluster
 
 import okay.{Chunks, Pane, Async, Fiber, Scheduler, Streamed, Windows, async}
-import okay.freer.{Aggregator, Sequential}
+import okay.{Aggregator, Sequential}
 import okay.{!, pure}
 import okay.Chunks.elements
 import scala.collection.mutable

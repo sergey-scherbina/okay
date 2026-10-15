@@ -87,7 +87,7 @@ class MeasurePaneBytes extends munit.FunSuite:
 
     val rows = Vector(
       ("the source alone (count)", () =>
-        Flows.fold(Flow.slices(xs, 8), okay.freer.Aggregator.count[Ev]).runWith),
+        Flows.fold(Flow.slices(xs, 8), okay.Aggregator.count[Ev]).runWith),
       ("Flows.run, tumbling, 8 partitions", () =>
         Flows.run(Flow.slices(xs, 8).tumbling(Size, Late)(_.key)(_.ts)(value), paneSum).runWith),
       ("Flows.run, tumbling, 8 partitions, Shuffle(8)", () =>

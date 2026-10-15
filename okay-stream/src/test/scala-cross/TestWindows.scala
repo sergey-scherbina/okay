@@ -1,5 +1,5 @@
 import okay.{!, %, Pane, Stage, Windows, pure, through}
-import okay.freer.Aggregator
+import okay.Aggregator
 import okay.std.*
 import scala.collection.mutable
 

@@ -1,7 +1,7 @@
 package okay.java
 
 import okay.{Bulk, Chunks}
-import okay.freer.Aggregator
+import okay.Aggregator
 import okay.Bulk.*
 import java.util.List as JList
 

@@ -2,7 +2,7 @@ package okay.wroclaw
 
 import okay.cluster.Flows
 import okay.given
-import okay.freer.Aggregator
+import okay.Aggregator
 /**
  * WHAT THE ENGINE COSTS AGAINST THE HAND-WRITTEN LANE (specs/
  * dataflow.md, stage 3).

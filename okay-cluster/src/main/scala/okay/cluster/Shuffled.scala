@@ -2,7 +2,7 @@ package okay.cluster
 
 
 import okay.{Chunks}
-import okay.freer.Aggregator
+import okay.Aggregator
 import okay.codec.{Codecs, Schema}
 import scala.collection.mutable
 import scala.util.hashing.MurmurHash3

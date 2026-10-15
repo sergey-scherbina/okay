@@ -4,7 +4,7 @@ import okay.codec.Schema
 import okay.given
 import okay.persist.{Ack, Configs, Election, MemoryStore, Policy}
 import okay.Pane
-import okay.freer.Aggregator
+import okay.Aggregator
 import scala.collection.mutable
 
 /**

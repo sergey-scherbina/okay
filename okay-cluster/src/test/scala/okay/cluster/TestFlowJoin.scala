@@ -3,7 +3,7 @@ package okay.cluster
 
 import okay.{Pane, Streamed, Tables, Bulk}
 import okay.{!, +}
-import okay.freer.Aggregator
+import okay.Aggregator
 import okay.given
 import okay.Chunks.elements
 import okay.Row.plus

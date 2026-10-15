@@ -1,7 +1,7 @@
 package okay.zio
 
 import okay.{Async, Chunks, async}
-import okay.freer.Fold
+import okay.Fold
 import okay.given
 import ZioInterop.*
 import _root_.zio.{Runtime, Unsafe, ZIO}

@@ -46,7 +46,7 @@ final class Fs(root: Path, chunkSize: Int = 64 * 1024) extends Blob {
           Files.createDirectories(path.getParent)
           Files.newOutputStream(tmp)
         }.flatMap { out =>
-          val sink: okay.freer.Fold[Chunk[Byte], Unit] = okay.freer.Fold(())((_, c) => out.write(c.toArray))
+          val sink: okay.Fold[Chunk[Byte], Unit] = okay.Fold(())((_, c) => out.write(c.toArray))
           Writer.fold[Chunk[Byte], Unit, Unit, Writer % Chunk[Byte] + Async](bytes)(using summon, sink).flatMap { _ =>
             async {
               out.close()

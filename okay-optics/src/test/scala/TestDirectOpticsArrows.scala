@@ -1,6 +1,6 @@
 package okay
 
-import okay.freer.Semigroup
+import okay.Semigroup
 
 
 
@@ -108,7 +108,7 @@ class TestDirectOpticsArrows extends munit.FunSuite {
       final case class P(n: Int)
       val n = okay.Lens[P](_.n)
       type V[A] = okay.std.Validated[Vector[String], A]
-      given okay.freer.Semigroup[Vector[String]] with
+      given okay.Semigroup[Vector[String]] with
         def combine(x: Vector[String], y: Vector[String]): Vector[String] = x ++ y
       def one: V[Int] = okay.std.Validated.Valid(1)
       val out: V[P] = okay.direct[V]:

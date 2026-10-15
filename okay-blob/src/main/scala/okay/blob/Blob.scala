@@ -60,7 +60,7 @@ trait Blob:
   def getBytes(key: String, range: Option[(Long, Long)] = None)
   : Either[String, Array[Byte]] ! Async =
     async(java.io.ByteArrayOutputStream()).flatMap { out =>
-      val sink: okay.freer.Fold[Chunk[Byte], Unit] = okay.freer.Fold(())((_, c) => out.write(c.toArray))
+      val sink: okay.Fold[Chunk[Byte], Unit] = okay.Fold(())((_, c) => out.write(c.toArray))
       Writer.fold[Chunk[Byte], Unit, Either[String, Unit], Writer % Chunk[Byte] + Async](get(key, range))(using summon, sink)
         .map((_, outcome) => outcome.map(_ => out.toByteArray))
     }

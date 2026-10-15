@@ -1,7 +1,7 @@
 package okay.cluster
 
 import okay.Pane
-import okay.freer.Aggregator
+import okay.Aggregator
 import okay.given
 /**
  * NO WINDOW IS PRESENTED TWICE (specs/dataflow.md, stage 6a).

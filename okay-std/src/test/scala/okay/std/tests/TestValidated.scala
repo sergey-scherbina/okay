@@ -1,7 +1,7 @@
 package okay.std.tests
 
 import okay.std.*
-import okay.freer.Semigroup
+import okay.Semigroup
 import okay.{Applicative, Monad, traverse}
 
 /**

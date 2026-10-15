@@ -1,7 +1,7 @@
 package okay.wroclaw
 
 import okay.Pane
-import okay.freer.Aggregator
+import okay.Aggregator
 import okay.cluster.{Flows, Sink}
 import okay.given
 /**

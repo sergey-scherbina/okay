@@ -2,7 +2,7 @@ package okay.cluster
 
 import okay.{Answers, Chunks, Async, Bulk, Csv, Scheduler, Streamed, Tables}
 import okay.{!, %, +}
-import okay.freer.Aggregator
+import okay.Aggregator
 import okay.std.*
 import okay.Chunks.elements
 

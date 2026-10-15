@@ -1,7 +1,7 @@
 package okay.java
 
 import okay.{Chunks, Pane}
-import okay.freer.Aggregator
+import okay.Aggregator
 /**
  * An event-time window as a `Collector` (Windowed), against a brute
  * force that groups by (window, key) and sums — the same oracle

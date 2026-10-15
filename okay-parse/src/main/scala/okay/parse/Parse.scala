@@ -1,7 +1,7 @@
 package okay.parse
 
 import okay.Stage
-import okay.freer.Fold
+import okay.Fold
 import okay.lex.Token
 
 /**

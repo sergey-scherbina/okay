@@ -1,7 +1,7 @@
 package okay.spark
 
 import okay.*
-import okay.freer.Aggregator
+import okay.Aggregator
 
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{Dataset, Encoder, SparkSession}

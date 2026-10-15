@@ -1,7 +1,7 @@
 package okay.codec
 
 import Json.*
-import okay.freer.{/>>}
+import okay.freer./>>
 import okay.freer.Cps
 /**
  * The fast VALUE parser beside the lossless one (specs/codecs.md,

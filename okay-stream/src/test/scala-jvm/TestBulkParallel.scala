@@ -1,6 +1,6 @@
 package okay
 
-import okay.freer.{Aggregator}
+import okay.Aggregator
 import scala.util.Random
 import Chunks.elements
 

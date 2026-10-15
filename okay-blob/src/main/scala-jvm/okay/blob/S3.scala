@@ -87,7 +87,7 @@ final class S3(http: Http, endpoint: String, bucket: String, region: String,
       else if !r.ok then r.release.map(_ => throw IllegalStateException(s"read '$key': HTTP ${r.status}"))
       else
         val out = java.io.ByteArrayOutputStream()
-        val sink: okay.freer.Fold[Chunk[Byte], Unit] = okay.freer.Fold(()) { (_, c) =>
+        val sink: okay.Fold[Chunk[Byte], Unit] = okay.Fold(()) { (_, c) =>
           if c.length > maxBytes - out.size then throw IllegalStateException(s"read '$key': object exceeds limit")
           out.write(c.toArray)
         }

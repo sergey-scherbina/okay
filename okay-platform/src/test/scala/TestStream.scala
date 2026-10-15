@@ -7,8 +7,7 @@ import scala.language.implicitConversions
 
 import okay.std.*
 import okay.std.given
-import okay.freer.{Fold, foldTo}
-import okay.freer.given
+import okay.{Fold, foldTo}
 /** The stream combinators, uniformly over the carriers — a Producer,
  * a writer program (via toLazyList), a LazyList — all lazy. */
 class TestStream extends munit.FunSuite {
@@ -84,6 +83,7 @@ class TestStream extends munit.FunSuite {
   }
 
   test("Monoid: numbers, strings, alternatives — and every Monoid folds") {
+    import okay.Monoid.given // |+| is a Monoid's own syntax: its instances in scope
     assertEquals(1 |+| 2, 3)
     assertEquals("a" |+| "b", "ab")
     assertEquals((LazyList(1) |+| LazyList(2)).toList, List(1, 2))

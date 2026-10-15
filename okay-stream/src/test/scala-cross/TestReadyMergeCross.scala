@@ -1,6 +1,6 @@
 package okay
 
-import okay.freer.{FoldUntil}
+import okay.FoldUntil
 import okay.std.*
 import okay.std.given
 /** `Source.mergeReady` needs no fiber and no blocking, so it runs where

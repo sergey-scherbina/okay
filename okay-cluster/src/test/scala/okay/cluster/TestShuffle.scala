@@ -1,7 +1,7 @@
 package okay.cluster
 
 
-import okay.freer.Aggregator
+import okay.Aggregator
 
 
 import okay.given
@@ -120,13 +120,13 @@ class TestShuffle extends munit.FunSuite {
       def answer: okay.codec.Schema[Sum] = summon[okay.codec.Schema[Sum]]
       def flow(f: Feed, parts: Int): Flow[Ev] = Flow.slices(events(f), parts)
       def key(f: Feed): Ev => Long = ShuffleJob.slot
-      def agg(f: Feed): okay.freer.Aggregator[Ev, Long, Long] = value
+      def agg(f: Feed): okay.Aggregator[Ev, Long, Long] = value
       def keys: okay.codec.Schema[Long] = summon[okay.codec.Schema[Long]]
       def accs: okay.codec.Schema[Long] = summon[okay.codec.Schema[Long]]
       def andThen(f: Feed): Wire[(Long, Long), Sum] =
         Wire.tumbling(Size, Late, (kv: (Long, Long)) => kv._1.toInt, (kv: (Long, Long)) => kv._2,
-          okay.freer.Aggregator.sum[Long].contramap[(Long, Long)](_._2))(
-          okay.freer.Aggregator[okay.Pane[Int, Long], Sum, Sum](Sum(0, 0, 0))((s, _) => s)((a, _) => a)(identity))
+          okay.Aggregator.sum[Long].contramap[(Long, Long)](_._2))(
+          okay.Aggregator[okay.Pane[Int, Long], Sum, Sum](Sum(0, 0, 0))((s, _) => s)((a, _) => a)(identity))
     }
     val e = intercept[IllegalArgumentException](
       Cluster.shuffle(Windowed, feed, 4, 2, peers(cluster(2))).runWith)

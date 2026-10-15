@@ -1,6 +1,7 @@
 package okay
 
-import okay.freer.{Semigroup, Static}
+import okay.freer.Static
+import okay.Semigroup
 
 
 

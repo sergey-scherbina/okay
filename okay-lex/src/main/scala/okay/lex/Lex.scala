@@ -3,7 +3,7 @@ package okay.lex
 import scala.annotation.unused
 import scala.collection.mutable.Growable
 import okay.{Chunks, Stage}
-import okay.freer.Aggregator
+import okay.Aggregator
 import okay.pure
 import okay.std.{Writer}
 /** an exact source position; length in chars */

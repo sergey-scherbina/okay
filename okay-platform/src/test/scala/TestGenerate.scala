@@ -7,7 +7,7 @@ import scala.language.implicitConversions
 
 import okay.std.*
 import okay.std.given
-import okay.freer.Fold
+import okay.Fold
 import scala.util.chaining.*
 
 class TestGenerate extends munit.FunSuite {

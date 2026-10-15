@@ -5,7 +5,7 @@ import okay.given
 import scala.language.implicitConversions
 import okay.std.*
 import okay.std.given
-import okay.freer.{Fold, foldTo, given okay.freer.Foldable[?]}
+import okay.{Fold, foldTo}
 
 /** The standard effects (Reader, Writer, Choice), the Fold/Foldable
  * consumers, the Stream codata, and the streaming bridges. */

@@ -3,7 +3,7 @@ package okay.cluster.foreign
 import okay.given
 
 
-import okay.freer.Aggregator
+import okay.Aggregator
 import okay.cluster.{Cluster, Flow, Flows, Job, Jobs, Wire}
 import okay.codec.Schema
 import okay.r.{R, TestR}

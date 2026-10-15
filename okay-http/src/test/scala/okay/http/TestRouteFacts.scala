@@ -5,7 +5,7 @@ import okay.{Async}
 import okay.*
 import okay.std.*
 // okay-std's `Fact` still asks for okay-freer's Monoid (no root word for it yet)
-import okay.freer.Monoid
+import okay.Monoid
 /**
  * WHY A FACT AND NOT A CAPABILITY, on the case that motivates it
  * (di-facts-examples).

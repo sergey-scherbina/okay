@@ -4,7 +4,7 @@ package okay.pool
 import okay.{Async}
 import okay.*
 import okay.given
-import okay.freer.Aggregator
+import okay.Aggregator
 import okay.cluster.{Flow, Job, Jobs, Served, Wire}
 import okay.codec.{Json, Schema}
 import okay.resilience.{Discovery, Endpoint}

@@ -3,7 +3,7 @@ import okay.*
 import okay.std.*
 import okay.{Monad, traverseOf}
 import okay.given
-import okay.freer.Semigroup
+import okay.Semigroup
 
 
 /**

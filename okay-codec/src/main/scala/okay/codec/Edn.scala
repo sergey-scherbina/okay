@@ -1,6 +1,6 @@
 package okay.codec
 
-import okay.freer.{/>>}
+import okay.freer./>>
 import okay.freer.Cps
 import scala.collection.mutable
 import scala.annotation.tailrec

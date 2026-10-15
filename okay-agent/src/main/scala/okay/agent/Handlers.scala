@@ -1,7 +1,7 @@
 package okay.agent
 
 import okay.{!, +, Answers, Handler, pure}
-import okay.freer.Aggregator
+import okay.Aggregator
 import okay.lex.Scan
 import okay.lex.Bpe
 

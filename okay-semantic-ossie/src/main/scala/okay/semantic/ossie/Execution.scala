@@ -2,7 +2,7 @@ package okay.semantic.ossie
 
 import okay.{Async, Bulk, Source, Tables}
 import okay.{!, %, +}
-import okay.freer.Aggregator
+import okay.Aggregator
 import okay.std.{Chunk, Writer}
 import okay.codec.{Json, Schema}
 import okay.semantic.{Calculation, Dimension, Group, Kind, Model, Request, Result, Value}

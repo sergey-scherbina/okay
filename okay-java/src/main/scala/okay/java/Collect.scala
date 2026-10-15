@@ -1,6 +1,6 @@
 package okay.java
 
-import okay.freer.Aggregator
+import okay.Aggregator
 import java.util.stream.Collector
 
 /**

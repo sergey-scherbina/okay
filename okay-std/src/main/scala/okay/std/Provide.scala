@@ -1,7 +1,7 @@
 package okay.std
 
 import okay.{!, Monad, TailRecM, pure}
-import okay.freer.Monoid
+import okay.Monoid
 
 
 /**

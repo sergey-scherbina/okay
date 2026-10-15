@@ -1,7 +1,7 @@
 package okay
 
 import okay.std.*
-import okay.freer.FoldUntil
+import okay.FoldUntil
 
 /**
  * The consumer side of a pipeline: await the next element of type V.

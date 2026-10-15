@@ -1,7 +1,7 @@
 package okay.wroclaw
 
 import okay.Pane
-import okay.freer.{Aggregator, Sequential}
+import okay.{Aggregator, Sequential}
 import okay.codec.Schema
 import okay.cluster.{Flow, Job as Submitted, Jobs, Wire}
 import scala.collection.immutable.ArraySeq

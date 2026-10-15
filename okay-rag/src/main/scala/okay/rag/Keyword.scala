@@ -1,6 +1,6 @@
 package okay.rag
 
-import okay.freer.{Fold, Monoid}
+import okay.{Fold, Monoid}
 /**
  * Keyword retrieval (specs/rag.md, P10e): an inverted index is a
  * FOLD and a MONOID, which is the same property the symbol index and
@@ -150,7 +150,7 @@ object Fusion {
 
   /** the same, as the Aggregator the spec promised: ranked lists in,
    * one fused list out, mergeable across machines */
-  def aggregator(kConst: Double = 60.0): okay.freer.Aggregator[Seq[Scored], Seq[Seq[Scored]], Seq[Scored]] =
-    okay.freer.Aggregator[Seq[Scored], Seq[Seq[Scored]], Seq[Scored]](Seq.empty)(
+  def aggregator(kConst: Double = 60.0): okay.Aggregator[Seq[Scored], Seq[Seq[Scored]], Seq[Scored]] =
+    okay.Aggregator[Seq[Scored], Seq[Seq[Scored]], Seq[Scored]](Seq.empty)(
       (acc, l) => acc :+ l)((a, b) => a ++ b)(rrf(_, kConst))
 }

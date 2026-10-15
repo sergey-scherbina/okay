@@ -56,7 +56,7 @@ class TestAgentCross extends munit.FunSuite {
    */
   def drive[A](prog: A ! Agent)(transport: Transport,
                                 tools: Map[String, ToolCall => String],
-                                @scala.annotation.unused policy: okay.freer.Aggregator[Turn, ?, Seq[Turn]] = Compact.all)
+                                @scala.annotation.unused policy: okay.Aggregator[Turn, ?, Seq[Turn]] = Compact.all)
   : scala.concurrent.Future[A] =
     val noTools: A ! (Context + (Model + Async)) =
       Handlers.relayTools[A, Context + (Model + Async)](tools)(prog)

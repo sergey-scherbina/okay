@@ -1,7 +1,7 @@
 package okay.codec
 
 import scala.collection.mutable.ArrayBuffer
-import okay.freer.{/>>}
+import okay.freer./>>
 import okay.freer.Cps
 /**
  * CBOR (RFC 8949) as the second algebra over the SAME Schema: what

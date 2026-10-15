@@ -1,7 +1,7 @@
 package okay.cluster
 
 import okay.{Chunks, Pane}
-import okay.freer.Aggregator
+import okay.Aggregator
 /**
  * HOW A KEYED STAGE FINISHES (specs/dataflow.md, stage 2).
  *

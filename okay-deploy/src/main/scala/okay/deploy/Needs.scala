@@ -47,7 +47,7 @@ object Needs:
   object Declared extends Fact[Vector[Need]](
     // not the free monoid on Vector: two modules on one volume declare
     // one volume, not two
-    using okay.freer.Monoid.of(Vector.empty[Need])((a, b) => (a ++ b).distinct))
+    using okay.Monoid.of(Vector.empty[Need])((a, b) => (a ++ b).distinct))
 
   extension [F[_]](m: Module[F])
     /** what this module needs from the place, said where it opens the thing */

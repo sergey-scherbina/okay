@@ -1,7 +1,7 @@
 package okay.cluster
 
 import okay.Chunks
-import okay.freer.{Aggregator}
+import okay.Aggregator
 import okay.std.{Chunk}
 import okay.codec.Json
 import java.io.{BufferedReader, InputStreamReader, PrintWriter}
@@ -65,7 +65,7 @@ class TestCluster extends munit.FunSuite {
     val local: Cluster.Worker[Double, Double] = _.sum
 
     val total = Cluster.distribute(source, Vector(wire, local))(0.0, _ + _)
-    val expected = Chunks.fold(source)(using okay.freer.Fold.sum[Double])
+    val expected = Chunks.fold(source)(using okay.Fold.sum[Double])
     assert(math.abs(total - expected) < 1e-9,
       s"lost or doubled a chunk: $total vs $expected")
     remote.join()

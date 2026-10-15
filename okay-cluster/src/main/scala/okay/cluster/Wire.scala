@@ -1,7 +1,7 @@
 package okay.cluster
 
 import okay.Pane
-import okay.freer.Aggregator
+import okay.Aggregator
 import okay.codec.Schema
 import scala.collection.mutable
 

@@ -82,7 +82,7 @@ object Bayes:
     factor(bulk.aggregate(rows)(Bayes.sumOf(logLik)))
 
   /** Σ f(row), as an Aggregator */
-  private[bayes] def sumOf[R](f: R => Double): okay.freer.Aggregator[R, Double, Double] = new okay.freer.Aggregator[R, Double, Double]:
+  private[bayes] def sumOf[R](f: R => Double): okay.Aggregator[R, Double, Double] = new okay.Aggregator[R, Double, Double]:
     def init: Double = 0.0
     def add(acc: Double, r: R): Double = acc + f(r)
     def merge(a: Double, b: Double): Double = a + b

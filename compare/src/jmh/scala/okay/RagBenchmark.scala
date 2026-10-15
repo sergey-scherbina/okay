@@ -1,6 +1,6 @@
 package okay
 
-import okay.freer.Aggregator
+import okay.Aggregator
 
 import org.openjdk.jmh.annotations.{State, *}
 import java.util.concurrent.TimeUnit

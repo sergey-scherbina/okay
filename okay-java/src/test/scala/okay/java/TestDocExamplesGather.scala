@@ -3,7 +3,7 @@ package okay.java
 import okay.{Pane, Stage, through}
 
 import okay.{%, !, pure}
-import okay.freer.Aggregator
+import okay.Aggregator
 import okay.std.{Writer}
 import java.util.stream.{Gatherers, Stream}
 import scala.jdk.CollectionConverters.*

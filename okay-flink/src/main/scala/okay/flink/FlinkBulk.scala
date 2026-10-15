@@ -2,7 +2,7 @@ package okay.flink
 
 
 import okay.{Bulk, Chunks, Csv}
-import okay.freer.Aggregator
+import okay.Aggregator
 import okay.std.*
 import org.apache.flink.api.common.RuntimeExecutionMode
 import org.apache.flink.api.common.functions.{AggregateFunction, CoGroupFunction, FilterFunction, FlatMapFunction, MapFunction, OpenContext}

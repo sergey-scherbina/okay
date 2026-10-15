@@ -1,6 +1,6 @@
 package okay.r
 
-import okay.freer.{/>>}
+import okay.freer./>>
 import okay.freer.Cps
 import okay.codec.Codecs
 import okay.codec.Schema

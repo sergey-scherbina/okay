@@ -1,7 +1,7 @@
 package okay.rag
 
 import okay.{!, effect}
-import okay.freer.Aggregator
+import okay.Aggregator
 import okay.lex.Span
 import scala.collection.immutable.ArraySeq
 

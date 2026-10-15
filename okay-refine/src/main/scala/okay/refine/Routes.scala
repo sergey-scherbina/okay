@@ -4,7 +4,7 @@ import scala.collection.mutable
 import scala.reflect.TypeTest
 import okay.{Async, Channel, Scheduler, Source, runForeach}
 import okay.{!, effect, pure}
-import okay.freer.Aggregator
+import okay.Aggregator
 /**
  * A ROUTING TABLE AS A VALUE, run anywhere (specs/refine.md,
  * refine-bulk). Where `Router` binds each rule to a channel as it is

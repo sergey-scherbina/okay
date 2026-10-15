@@ -2,7 +2,7 @@ package okay.std
 
 import okay.{!, %, +, Answers, Handler, MonadPlus, Pure, pure}
 import okay.core.Split
-import okay.freer.{Fold, FoldUntil, Group}
+import okay.{Fold, FoldUntil, Group}
 
 /**
  * A stream is codata: defined not by its constructors but by the one

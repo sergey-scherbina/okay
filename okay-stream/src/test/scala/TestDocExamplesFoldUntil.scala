@@ -1,7 +1,7 @@
 package okay
 
 import okay.std.*
-import okay.freer.{FoldUntil, foldUntilTo, given_Foldable_F}
+import okay.{FoldUntil, foldUntilTo}
 /**
  * The examples docs/tutorial.md §2, docs/guide.md §2–3 and the
  * typepedia print for `FoldUntil` and `!.loop`, VERBATIM — a doc

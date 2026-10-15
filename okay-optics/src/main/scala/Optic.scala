@@ -1,7 +1,7 @@
 package okay
 
 
-import okay.freer.{Aggregator, Monoid}
+import okay.{Aggregator, Monoid}
 
 
 import scala.deriving.Mirror

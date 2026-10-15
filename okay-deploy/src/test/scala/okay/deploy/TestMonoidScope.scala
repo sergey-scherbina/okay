@@ -22,11 +22,11 @@ class TestMonoidScope extends munit.FunSuite:
 
   test("a Fact over String needs `import okay.given`, and `import okay.*` is not enough") {
     val starOnly = compileErrors("import okay.*; object N extends okay.std.Fact[String]")
-    assert(starOnly.contains("No given instance of type okay.freer.Monoid[String]"), starOnly)
+    assert(starOnly.contains("No given instance of type okay.Monoid[String]"), starOnly)
     assertEquals(compileErrors("import okay.freer.given; object N2 extends okay.std.Fact[String]"), "")
   }
 
   test("nothing at all: the message names the given to import") {
     val bare = compileErrors("object N3 extends okay.std.Fact[String]")
-    assert(bare.contains("okay.freer.Monoid[String]"), bare)
+    assert(bare.contains("okay.Monoid[String]"), bare)
   }

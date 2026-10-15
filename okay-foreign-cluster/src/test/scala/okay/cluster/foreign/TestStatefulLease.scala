@@ -2,7 +2,7 @@ package okay.cluster.foreign
 
 import java.util.concurrent.atomic.AtomicInteger
 import okay.Chunks
-import okay.freer.Aggregator
+import okay.Aggregator
 import okay.cluster.{Flow, Flows, Scope}
 import okay.given
 /**

@@ -1,7 +1,7 @@
 package okay.agent
 
 import okay.{!, +, Handler}
-import okay.freer.Aggregator
+import okay.Aggregator
 /**
  * The context handler that THREADS its state instead of holding it
  * (mirrors State.handle, and for the same reason): the compaction

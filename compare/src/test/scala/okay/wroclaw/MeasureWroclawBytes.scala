@@ -2,7 +2,7 @@ package okay.wroclaw
 
 import okay.cluster.Flows
 import okay.given
-import okay.freer.Aggregator
+import okay.Aggregator
 /**
  * WHAT THE WROCŁAW JOB ALLOCATES, EXACTLY
  * (BACKLOG: windows-packed-key).

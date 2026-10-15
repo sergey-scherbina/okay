@@ -14,7 +14,7 @@ class TestCombine extends munit.FunSuite with okay.testkit.Munit.Diagnosed {
   import _root_.cats.syntax.all.*
 
   final case class Peak(n: Int)
-  given okay.freer.Semigroup[Peak] with
+  given okay.Semigroup[Peak] with
     def combine(x: Peak, y: Peak): Peak = Peak(x.n max y.n)
 
   test("okay.std.Validated under cats' traverse, with only a cats Semigroup") {
@@ -32,7 +32,6 @@ class TestCombine extends munit.FunSuite with okay.testkit.Munit.Diagnosed {
   }
 
   test("a type both sides combine (String): okay's first, no ambiguity") {
-    import okay.freer.given
     val out = List(1, 2).traverse(i => okay.std.Validated.invalid[String, Int](s"<$i>"))
     assertEquals(out, okay.std.Validated.invalid("<1><2>"))
   }
@@ -51,7 +50,7 @@ class TestFromCatsKernel extends munit.FunSuite with okay.testkit.Munit.Diagnose
   }
 
   test("cats' Group arrives as okay's, inverse kept, for a type okay has none for") {
-    val G = summon[okay.freer.Group[(Int, Int)]]
+    val G = summon[okay.Group[(Int, Int)]]
     assertEquals(G.combine((5, 2), G.inverse((5, 2))), G.empty)
   }
 }
@@ -62,7 +61,7 @@ class TestToCatsKernel extends munit.ScalaCheckSuite with okay.testkit.Munit.Dia
 
   /** a combiner only okay defines: the maximum, with a floor */
   final case class Peak(n: Int)
-  given okay.freer.Monoid[Peak] with
+  given okay.Monoid[Peak] with
     def empty: Peak = Peak(Int.MinValue)
     def combine(x: Peak, y: Peak): Peak = Peak(x.n max y.n)
 

@@ -1,7 +1,7 @@
 package okay.cluster
 
 import okay.Pane
-import okay.freer.{Aggregator, Sequential}
+import okay.{Aggregator, Sequential}
 import okay.given
 /**
  * Stage 1 of specs/dataflow.md: the plan is a value, the executor

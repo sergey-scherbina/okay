@@ -1,6 +1,6 @@
 package okay
 
-import okay.freer.{Fold}
+import okay.Fold
 // the classic's `toLazyList` is a program's; a `Chunks` value takes `Chunks.toLazyList`, chunk by chunk
 import okay.std.{toLazyList as _, *}
 import okay.std.given

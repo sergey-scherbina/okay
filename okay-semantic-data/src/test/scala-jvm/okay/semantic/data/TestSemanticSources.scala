@@ -2,7 +2,7 @@ package okay.semantic.data
 
 
 import okay.{%, +, Source, Async, effect}
-import okay.freer.Aggregator
+import okay.Aggregator
 import okay.std.*
 import okay.given
 import okay.std.given

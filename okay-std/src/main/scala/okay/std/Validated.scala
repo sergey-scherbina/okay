@@ -1,6 +1,6 @@
 package okay.std
 
-import okay.freer.Semigroup
+import okay.Semigroup
 
 import okay.{Selective}
 

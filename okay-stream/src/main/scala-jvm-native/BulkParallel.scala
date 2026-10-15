@@ -1,6 +1,6 @@
 package okay
 
-import okay.freer.{Aggregator}
+import okay.Aggregator
 import okay.std.*
 import scala.annotation.tailrec
 import scala.collection.mutable

@@ -1,7 +1,7 @@
 package okay.parquet
 
 import okay.localBulk
-import okay.freer.Aggregator
+import okay.Aggregator
 import okay.Chunks.elements
 import okay.arrow.{Column, Rows, Table, TimeUnit}
 import okay.codec.Schema

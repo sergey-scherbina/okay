@@ -2,7 +2,7 @@ package okay.cluster
 
 import okay.{Chunks, given}
 
-import okay.freer.Aggregator
+import okay.Aggregator
 import okay.codec.Schema
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicInteger

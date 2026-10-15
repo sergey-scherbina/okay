@@ -3,7 +3,7 @@ package okay.java
 import okay.{Pane, Stage, through}
 
 import okay.{%, !, pure}
-import okay.freer.Aggregator
+import okay.Aggregator
 import okay.std.{Writer}
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.stream.{Gatherer, Gatherers, Stream}

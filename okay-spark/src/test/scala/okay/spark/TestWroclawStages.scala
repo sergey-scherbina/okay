@@ -4,7 +4,7 @@ package okay.spark
 
 import okay.{Bulk, Csv, Tables}
 import okay.*
-import okay.freer.Aggregator
+import okay.Aggregator
 import okay.std.*
 import okay.Tables.read
 import okay.Direct.{direct, unary_!}

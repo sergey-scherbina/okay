@@ -2,7 +2,7 @@ package okay.semantic.data
 
 
 import okay.{Bulk, Chunks, Csv, Tables}
-import okay.freer.Aggregator
+import okay.Aggregator
 import okay.codec.{Schema, Json}
 import okay.semantic.*
 

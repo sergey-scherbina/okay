@@ -3,7 +3,7 @@ package okay.std.bench
 
 import okay.std.*
 import okay.{Monad, traverse}
-import okay.freer.Semigroup // the classic file found it as a member of its package, okay.freer
+import okay.Semigroup // the classic file found it as a member of its package, okay.freer
 
 import org.openjdk.jmh.annotations.{State, *}
 import java.util.concurrent.TimeUnit

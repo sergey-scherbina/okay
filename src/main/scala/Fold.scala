@@ -1,6 +1,4 @@
-package okay.freer
-
-import okay.{Alternative}
+package okay
 
 import scala.compiletime.summonFrom
 
@@ -20,6 +18,8 @@ trait Fold[-A, S]:
   def add(s: S, a: A): S
 
 object Fold:
+  /** every Monoid folds on its own diagonal */
+  given diagonal[W](using M: Monoid[W]): Fold[W, W] = Fold(M.empty)(M.combine)
   /** the default option: collect in order (a Vector underneath) */
   given [A]: Fold[A, Seq[A]] = new:
     def init: Seq[A] = Vector.empty
@@ -415,6 +415,19 @@ object Monoid:
     def empty: Vector[A] = Vector.empty
     def combine(x: Vector[A], y: Vector[A]): Vector[A] = x ++ y
 
+  /** numbers add (a Group's monoid, found where a Monoid is asked) */
+  given numeric[N](using Numeric[N]): Monoid[N] = Group.numeric[N]
+  given string: Monoid[String] with
+    def empty: String = ""
+    def combine(x: String, y: String): String = x + y
+  given list[A]: Monoid[List[A]] = new:
+    def empty: List[A] = Nil
+    def combine(x: List[A], y: List[A]): List[A] = x ++ y
+  /** every Alternative is a family of monoids (e.g. LazyList) */
+  given alternative[F[_], A](using P: Alternative[F]): Monoid[F[A]] = new:
+    def empty: F[A] = P.empty
+    def combine(x: F[A], y: F[A]): F[A] = P.append(x)(y)
+
 /**
  * A Monoid that can also UN-combine: the inverse turns a sliding
  * window from recompute-from-scratch into subtract-what-aged-out.
@@ -427,27 +440,12 @@ trait Group[A] extends Monoid[A]:
   extension (x: A)
     inline def |-|(y: A): A = combine(x, inverse(y))
 
-/** numbers add, and addition inverts (the conventional default) */
-given [N](using N: Numeric[N]): Group[N] = new:
-  def empty: N = N.zero
-  def combine(x: N, y: N): N = N.plus(x, y)
-  def inverse(a: N): N = N.negate(a)
-
-given Monoid[String] with
-  def empty: String = ""
-  def combine(x: String, y: String): String = x + y
-
-given [A]: Monoid[List[A]] = new:
-  def empty: List[A] = Nil
-  def combine(x: List[A], y: List[A]): List[A] = x ++ y
-
-/** every Alternative is a family of monoids (e.g. LazyList) */
-given [F[_], A](using P: Alternative[F]): Monoid[F[A]] = new:
-  def empty: F[A] = P.empty
-  def combine(x: F[A], y: F[A]): F[A] = P.append(x)(y)
-
-/** every Monoid folds on its own diagonal */
-given [W](using M: Monoid[W]): Fold[W, W] = Fold(M.empty)(M.combine)
+object Group:
+  /** numbers add, and addition inverts (the conventional default) */
+  given numeric[N](using N: Numeric[N]): Group[N] = new:
+    def empty: N = N.zero
+    def combine(x: N, y: N): N = N.plus(x, y)
+    def inverse(a: N): N = N.negate(a)
 
 /**
  * The push side of consumption: a Foldable runs a Fold over all its
@@ -464,35 +462,36 @@ trait Foldable[F[_]]:
 /** every IterableOnce container runs a Fold by foldLeft, and a
  * FoldUntil by its iterator — which is left positioned after the
  * satisfying element, so an `Iterator` can be folded on in pieces */
-given [F[X] <: IterableOnce[X]]: Foldable[F] = new:
-  def fold[A, S](fa: F[A])(using f: Fold[A, S]): S =
-    fa.iterator.foldLeft(f.init)(f.add)
+object Foldable:
+  given iterableOnce[F[X] <: IterableOnce[X]]: Foldable[F] = new:
+    def fold[A, S](fa: F[A])(using f: Fold[A, S]): S =
+      fa.iterator.foldLeft(f.init)(f.add)
 
-  def foldUntil[A, S, R](fa: F[A])(using fo: FoldUntil[A, S, R]): R =
-    val it = fa.iterator
-    // the element type is erased, so these tests see only the shape —
-    // the same unavoidable `@unchecked` `Chunks.fold` carries
-    fo match
-      case l: FoldUntil.OfLong[A @unchecked, R @unchecked] =>
-        var s = l.initLong
-        while !l.doneLong(s) && it.hasNext do s = l.addLong(s, it.next())
-        l.endLong(s)
-      case i: FoldUntil.OfInt[A @unchecked, R @unchecked] =>
-        var s = i.initInt
-        while !i.doneInt(s) && it.hasNext do s = i.addInt(s, it.next())
-        i.endInt(s)
-      case d: FoldUntil.OfDouble[A @unchecked, R @unchecked] =>
-        var s = d.initDouble
-        while !d.doneDouble(s) && it.hasNext do s = d.addDouble(s, it.next())
-        d.endDouble(s)
-      case b: FoldUntil.OfBoolean[A @unchecked, R @unchecked] =>
-        var s = b.initBoolean
-        while !b.doneBoolean(s) && it.hasNext do s = b.addBoolean(s, it.next())
-        b.endBoolean(s)
-      case _ =>
-        var s = fo.init
-        while !fo.done(s) && it.hasNext do s = fo.add(s, it.next())
-        fo.end(s)
+    def foldUntil[A, S, R](fa: F[A])(using fo: FoldUntil[A, S, R]): R =
+      val it = fa.iterator
+      // the element type is erased, so these tests see only the shape —
+      // the same unavoidable `@unchecked` `Chunks.fold` carries
+      fo match
+        case l: FoldUntil.OfLong[A @unchecked, R @unchecked] =>
+          var s = l.initLong
+          while !l.doneLong(s) && it.hasNext do s = l.addLong(s, it.next())
+          l.endLong(s)
+        case i: FoldUntil.OfInt[A @unchecked, R @unchecked] =>
+          var s = i.initInt
+          while !i.doneInt(s) && it.hasNext do s = i.addInt(s, it.next())
+          i.endInt(s)
+        case d: FoldUntil.OfDouble[A @unchecked, R @unchecked] =>
+          var s = d.initDouble
+          while !d.doneDouble(s) && it.hasNext do s = d.addDouble(s, it.next())
+          d.endDouble(s)
+        case b: FoldUntil.OfBoolean[A @unchecked, R @unchecked] =>
+          var s = b.initBoolean
+          while !b.doneBoolean(s) && it.hasNext do s = b.addBoolean(s, it.next())
+          b.endBoolean(s)
+        case _ =>
+          var s = fo.init
+          while !fo.done(s) && it.hasNext do s = fo.add(s, it.next())
+          fo.end(s)
 
 extension [F[_], A](fa: F[A])(using F: Foldable[F])
   /** run any Fold over the elements */

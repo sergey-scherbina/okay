@@ -2,7 +2,7 @@ package okay.std.tests
 
 import okay.*
 import okay.std.*
-import okay.freer.{Monoid, given okay.freer.Monoid[?]}
+import okay.Monoid
 
 /** Modules: installers that acquire in a scope (specs/di.md, stage 0). */
 class TestModule extends munit.FunSuite {

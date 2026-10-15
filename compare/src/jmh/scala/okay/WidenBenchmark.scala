@@ -1,6 +1,6 @@
 package okay
 
-import okay.freer.FoldUntil
+import okay.FoldUntil
 
 import okay.std.*
 import org.openjdk.jmh.annotations.{State, *}

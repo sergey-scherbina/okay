@@ -58,7 +58,7 @@ class TestRetrieve extends munit.FunSuite {
     assertEquals(hits.head.segment.source, "Http.scala")
 
     // the index merges: halves combine into the whole
-    val M = summon[okay.freer.Monoid[Postings]]
+    val M = summon[okay.Monoid[Postings]]
     val (l, r) = segs.splitAt(segs.length / 2)
     val merged = M.combine(Keyword.index(l), Keyword.index(r))
     assertEquals(Keyword.search(merged, "network requests", 3).map(_.segment.source),

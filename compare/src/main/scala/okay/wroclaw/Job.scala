@@ -1,6 +1,6 @@
 package okay.wroclaw
 
-import okay.freer.Aggregator
+import okay.Aggregator
 
 /**
  * THE JOB, DEFINED ONCE — the part that must be the same in both

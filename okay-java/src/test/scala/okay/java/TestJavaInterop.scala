@@ -1,7 +1,7 @@
 package okay.java
 
 import okay.Chunks
-import okay.freer.{Aggregator}
+import okay.Aggregator
 import okay.std.{Chunk}
 import okay.given
 import scala.collection.immutable.ArraySeq

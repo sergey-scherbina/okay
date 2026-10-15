@@ -1,6 +1,6 @@
 package okay.intent
 
-import okay.freer.{Aggregator, Monoid}
+import okay.{Aggregator, Monoid}
 /**
  * Classifier evaluation (specs/intent-classify.md).
  *

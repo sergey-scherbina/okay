@@ -2,7 +2,7 @@ package okay.std
 
 import okay.{!, +, %, Effect, Run, Sides, defer, pure}
 import okay.core.{+:, Eff, Paths, Req, Row as KRow}
-import okay.freer.FoldUntil
+import okay.FoldUntil
 import okay.one.Cont
 import okay.one.row.In
 import okay.one.machine.Machine

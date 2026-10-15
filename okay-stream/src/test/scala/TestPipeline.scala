@@ -1,6 +1,6 @@
 package okay
 
-import okay.freer.Fold
+import okay.Fold
 import org.scalacheck.{Gen as G}
 import org.scalacheck.Prop.forAll
 

@@ -30,8 +30,8 @@ final class ValuedRunningJob[M](val name: String, mod: M, open: String = "vopen"
   def flow(p: Scale, parts: Int): Flow[Run] =
     Flow.slices(Rows.of(p.n), parts).statefulValueIn[Run, Long, Factor](mod, open, step, finish, Factor(0))
   def sink(p: Scale): Wire[Run, (Long, Long)] =
-    Wire.fold(okay.freer.Aggregator.sum[Long].contramap[Run](r => if r.key >= 0 then r.run else 0L))
-      .and(Wire.fold(okay.freer.Aggregator.sum[Long].contramap[Run](r => if r.key < 0 then r.run else 0L)))
+    Wire.fold(okay.Aggregator.sum[Long].contramap[Run](r => if r.key >= 0 then r.run else 0L))
+      .and(Wire.fold(okay.Aggregator.sum[Long].contramap[Run](r => if r.key < 0 then r.run else 0L)))
 
 object ValuedJobs:
   val running = ValuedRunningJob("test.valued.jvm", JvmValued.mod)

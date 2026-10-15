@@ -1,6 +1,6 @@
 package okay
 
-import okay.freer.{FoldUntil}
+import okay.FoldUntil
 import java.util.concurrent.{CompletableFuture, TimeUnit, TimeoutException}
 
 /**

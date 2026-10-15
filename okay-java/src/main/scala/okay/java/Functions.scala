@@ -2,7 +2,7 @@ package okay.java
 
 import okay.{Async, async}
 import okay.!
-import okay.freer.Fold
+import okay.Fold
 import java.util.function.{
   BiFunction, BinaryOperator, Consumer, Function as JFunction,
   Predicate, Supplier, UnaryOperator}

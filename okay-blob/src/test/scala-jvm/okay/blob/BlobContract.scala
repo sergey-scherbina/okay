@@ -4,7 +4,7 @@ import okay.{Async, Source}
 
 import okay.{+, %}
 import okay.!
-import okay.freer.Fold
+import okay.Fold
 import okay.std.{Chunk, Writer}
 import okay.Row.plus
 import okay.given

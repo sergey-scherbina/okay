@@ -1,7 +1,7 @@
 package okay.semantic.data
 
 import okay.{!, %, +, Async, Bulk, Source, Tables}
-import okay.freer.Aggregator
+import okay.Aggregator
 import okay.std.{Chunk, Writer}
 import okay.codec.{Json, Schema}
 import okay.semantic.*

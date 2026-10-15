@@ -105,7 +105,7 @@ class TestLex extends munit.FunSuite {
         all.count(_.channel == Channel.Syntax), input)
       // and the same through an Aggregator, which is where the
       // aggregation algebra meets lexing
-      assertEquals(Scan.aggregate(Json.scan)(input)(okay.freer.Aggregator.count[Token[K]]),
+      assertEquals(Scan.aggregate(Json.scan)(input)(okay.Aggregator.count[Token[K]]),
         all.length.toLong, input)
   }
 

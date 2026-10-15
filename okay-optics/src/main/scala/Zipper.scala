@@ -1,7 +1,7 @@
 package okay
 
 
-import okay.freer.{Monoid}
+import okay.Monoid
 
 
 import scala.annotation.tailrec

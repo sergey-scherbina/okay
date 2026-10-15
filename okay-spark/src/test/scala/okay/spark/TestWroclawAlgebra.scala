@@ -2,8 +2,7 @@ package okay.spark
 
 import okay.{Bulk, Chunks, Sort, Tables}
 import okay.*
-import okay.freer.{Aggregator, Group, Monoid}
-import okay.freer.given
+import okay.{Aggregator, Group, Monoid}
 import okay.std.*
 import okay.std.given
 import okay.Tables.{Table, read, of}
@@ -306,7 +305,7 @@ class TestWroclawAlgebra extends munit.FunSuite:
 
   test("no inverse, no window — the compile error is the point") {
     val err = compileErrors("okay.std.sliding(LazyList(Busiest(1.0), Busiest(2.0)))(2)")
-    assert(err.contains("Group[Busiest]") || err.contains("okay.freer.Group"), err)
+    assert(err.contains("Group[Busiest]") || err.contains("okay.Group"), err)
     println(s"  refused, as it should be: ${err.linesIterator.find(_.contains("Group")).getOrElse(err)}")
   }
 

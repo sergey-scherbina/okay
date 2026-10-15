@@ -1,6 +1,6 @@
 package okay.cluster
 
-import okay.freer.Aggregator
+import okay.Aggregator
 import okay.given
 import okay.codec.Schema
 import java.net.ServerSocket

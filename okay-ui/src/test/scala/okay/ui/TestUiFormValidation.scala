@@ -3,7 +3,7 @@ import okay.*
 import okay.std.*
 import okay.{modify, toVector, traverseOf}
 import okay.given
-import okay.freer.Semigroup
+import okay.Semigroup
 
 import okay.Direct.{*, given}
 // the colourless vals below go through selfColor, an implicit

@@ -1,7 +1,7 @@
 package okay.wroclaw
 
 import okay.{!, %, Async, Chunks, Pane, Windows, through, async, pure}
-import okay.freer.{Aggregator, Fold}
+import okay.{Aggregator, Fold}
 import okay.std.{Feed as _, *}
 import okay.given
 import scala.collection.mutable

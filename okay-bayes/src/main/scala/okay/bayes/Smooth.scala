@@ -95,8 +95,8 @@ object Smooth:
     score(Real.const(lp - at.indices.map(i => g(i) * at(i)).sum) + sum(params.indices.map(i => g(i) * params(i))))
 
   /** Σ over rows of (log density, its gradient at `at`) — commutative, so any platform may split and merge it */
-  private def gradientSum[R](at: Vector[Double], f: (Vector[Real], R) => Real): okay.freer.Aggregator[R, (Double, Vector[Double]), (Double, Vector[Double])] =
-    new okay.freer.Aggregator[R, (Double, Vector[Double]), (Double, Vector[Double])]:
+  private def gradientSum[R](at: Vector[Double], f: (Vector[Real], R) => Real): okay.Aggregator[R, (Double, Vector[Double]), (Double, Vector[Double])] =
+    new okay.Aggregator[R, (Double, Vector[Double]), (Double, Vector[Double])]:
       def init: (Double, Vector[Double]) = (0.0, Vector.fill(at.length)(0.0))
       def add(acc: (Double, Vector[Double]), r: R): (Double, Vector[Double]) =
         val tape = new Tape(16)   // one row's density: a few dozen nodes, grown by doubling if more

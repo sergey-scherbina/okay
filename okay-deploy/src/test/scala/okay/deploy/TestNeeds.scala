@@ -1,7 +1,7 @@
 package okay.deploy
 
 import okay.Answers
-import okay.freer.{Static}
+import okay.freer.Static
 import okay.std.{Module, module, moduleAs, wire}
 import Needs.needs
 

@@ -1,6 +1,6 @@
 package okay.codec
 
-import okay.freer.{/>>}
+import okay.freer./>>
 import okay.freer.Cps
 import okay.lex.Json as JsonLex
 import okay.lex.Json.K

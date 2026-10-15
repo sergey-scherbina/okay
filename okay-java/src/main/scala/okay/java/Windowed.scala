@@ -1,7 +1,7 @@
 package okay.java
 
 import okay.{Pane, Windows}
-import okay.freer.Aggregator
+import okay.Aggregator
 import java.util.function.{BiConsumer, BinaryOperator, Function as JFunction, Supplier}
 import java.util.stream.{Collector, Gatherer}
 

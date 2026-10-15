@@ -2,7 +2,7 @@ package okay.agent
 
 import okay.{==>, Answers}
 import okay.{!, pure}
-import okay.freer.Aggregator
+import okay.Aggregator
 import okay.rag.{Retriever, Scored}
 
 /**

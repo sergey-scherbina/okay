@@ -1,4 +1,4 @@
-package okay.freer
+package okay
 
 
 import scala.compiletime.summonFrom
