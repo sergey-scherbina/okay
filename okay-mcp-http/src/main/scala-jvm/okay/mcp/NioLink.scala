@@ -1,7 +1,7 @@
 package okay.mcp
 
 import okay.{Async, Source, Take, through}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.http.{Http, Nio}
 
@@ -22,4 +22,4 @@ object NioLink:
 
     def lines: Source[String] =
       through[Chunk[Byte], String, Async, Unit, Unit](c.bytes)(
-        !.widen[Unit, Take % Chunk[Byte] + Writer % String, Async](Http.framing))
+        Http.framing.at[Take % Chunk[Byte] + (Writer % String + Async)])

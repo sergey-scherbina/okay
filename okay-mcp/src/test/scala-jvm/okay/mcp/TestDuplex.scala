@@ -1,10 +1,9 @@
 package okay.mcp
 
 import okay.{Async, Channel, Source, Stage}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.agent.{Handlers, Reply, ToolCall, ToolSpec, Turn}
 import okay.codec.{Json, Schema}
 

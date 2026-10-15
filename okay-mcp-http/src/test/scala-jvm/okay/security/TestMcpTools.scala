@@ -1,9 +1,8 @@
 package okay.security
 
 import okay.{Async}
-import okay.freer.*
+import okay.*
 import okay.given
-import okay.freer.given
 import okay.codec.{Json, Schema}
 import okay.http.{Body, Http, McpHttp, Request, Response}
 import okay.mcp.{Mcp, Rpc, Server as McpServer}
@@ -75,7 +74,7 @@ class TestMcpTools extends munit.FunSuite {
 
   // ── talking to it ──────────────────────────────────────────────
 
-  private def run[A](p: A ! Async): A = Async.run[A, Pure](p).runWith
+  private def run[A](p: A ! Async): A = Async.run(p).runWith
 
   private def post(route: Request => Response ! Async, body: String,
                    headers: Seq[(String, String)]): (Int, Seq[(String, String)], String) =

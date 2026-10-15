@@ -1,10 +1,9 @@
 package okay.security
 
 import okay.{Async}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.codec.{Json, Schema}
 import okay.http.{Body, Http, McpHttp, Method, Request, Response, Server, Transports}
 import okay.mcp.{Client as McpClient, Mcp, Server as McpServer}
@@ -83,7 +82,7 @@ class TestMcpAuth extends munit.FunSuite {
             policy)(mcpRoute)(r) }
     // the metadata document needs its own port inside — re-route with
     // a late-bound base by patching the doc route after bind
-    Resource.run[A, Pure](Server.serve(0)({
+    Resource.run(Server.serve(0)({
       case r if r.url.startsWith(McpAuth.WellKnown) =>
         McpAuth.metadata("mcp", Seq(s"http://127.0.0.1:$port0"))(r)
       case r if route.isDefinedAt(r) => route(r)
@@ -93,7 +92,7 @@ class TestMcpAuth extends munit.FunSuite {
       body(port0)
     }).runWith
 
-  def run[A](p: A ! Async): A = Async.run[A, Pure](p).runWith
+  def run[A](p: A ! Async): A = Async.run(p).runWith
 
   test("a stranger is challenged, and the challenge teaches: 401 -> metadata -> AS") {
     world() { port =>

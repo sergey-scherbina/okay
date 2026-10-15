@@ -1,10 +1,9 @@
 package okay.mcp
 
 import okay.{Async, Channel, Source, through}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.std.given
 import okay.codec.Json
 
@@ -41,7 +40,7 @@ class TestTemplates extends munit.FunSuite {
     val serving = Server.Serving(Mcp.Info("t", "1"), templates = Seq(t))
     val out = !.run(Writer.run(through(Writer.of(List(
       Rpc.Request(Json.JNum(1), Mcp.Initialize, Json.JObj(Vector.empty)),
-      Rpc.Request(Json.JNum(2), Mcp.ResourcesTemplates, Json.JObj(Vector.empty)))))(
+      Rpc.Request(Json.JNum(2), Mcp.ResourcesTemplates, Json.JObj(Vector.empty)))).at[Writer % Rpc])(
       Server.serve(serving))))._1
     val Rpc.Answer(_, init) = out(0): @unchecked
     assert(Mcp.capability(init, "resources"), "templates alone did not declare resources")

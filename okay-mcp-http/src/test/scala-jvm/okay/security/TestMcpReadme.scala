@@ -1,8 +1,7 @@
 package okay.security
-import okay.freer.*
+import okay.*
 import okay.{Answers, Async}
 import okay.given
-import okay.freer.given
 import okay.agent.{Handlers, Tool, ToolCall, ToolSpec}
 import okay.codec.{Json, Schema}
 import okay.http.McpHttp
@@ -90,7 +89,7 @@ class TestMcpReadme extends munit.FunSuite {
     val list = Revocations(freshFor = 60_000, whileStale = Revocations.Stale.Allow)
     val source: Revocations.Source = () => pure(Right(Set("crawler-7")))
 
-    Async.run[Unit, Pure](list.refresh(source)(now)).runWith
+    Async.run(list.refresh(source)(now)).runWith
     assert(list.revoked(now)("crawler-7"))
 
     val _ = McpAuth.capabilities(rootKey, metadataUrl,

@@ -1,7 +1,7 @@
 package okay.mcp
 
 import okay.{Async, CanBlock, Channel, Scheduler, Source, Stage, Take, through, merge}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
 
@@ -98,10 +98,10 @@ object Server {
    * hole.
    */
   def serve(s: Serving): Stage[Rpc, Rpc, Unit] =
-    serveIn[Pure](s)(c => pure(run(s.call, c)))
+    serveIn[Pure](s)(c => pure(run(s.call, c))).at[Take % Rpc + Writer % Rpc]
 
   /** the row `serveIn` runs in: the protocol's two, and the tools' G */
-  type Row[G[+_]] = Take % Rpc + (Writer % Rpc + G)
+  type Row[G[_]] = Take % Rpc + (Writer % Rpc + G)
 
   /**
    * What stands AROUND every request (specs/x402.md stage 3): it sees a
@@ -118,15 +118,15 @@ object Server {
    * on (settle it), so `leave` is a closure over it rather than a
    * second callback that would need a table keyed by request id.
    */
-  trait Around[G[+_]]:
+  trait Around[G[_]]:
     def apply(r: Rpc.Request): Either[Rpc, Around.Pass[G]] ! G
 
   object Around:
     /** go on with `request`; `leave` turns the reply into what is sent */
-    final case class Pass[G[+_]](request: Rpc.Request, leave: Rpc => Rpc ! G)
+    final case class Pass[G[_]](request: Rpc.Request, leave: Rpc => Rpc ! G)
 
     /** nothing around: every request passes, every reply goes out as is */
-    def none[G[+_]]: Around[G] = r => pure(Right(Pass[G](r, out => pure(out))))
+    def none[G[_]]: Around[G] = r => pure(Right(Pass[G](r, out => pure(out))))
 
   /**
    * THE PROTOCOL, GENERIC IN THE TOOLS' EFFECT (specs/optics-outside.md
@@ -137,12 +137,12 @@ object Server {
    * answered. Written once so a tool that does I/O does not fork the
    * protocol into two copies that drift.
    */
-  def serveIn[G[+_]](s: Serving, around: Around[G] = Around.none[G])
+  def serveIn[G[_]](s: Serving, around: Around[G] = Around.none[G])
                      (runTool: ToolCall => Json ! G): Unit ! Row[G] =
     val info = s.info
-    def tell(m: Rpc): Unit ! Row[G] = !.widen[Unit, Take % Rpc + Writer % Rpc, G](Stage.tell[Rpc, Rpc](m))
-    def await: Option[Rpc] ! Row[G] = !.widen[Option[Rpc], Take % Rpc + Writer % Rpc, G](Stage.await[Rpc, Rpc])
-    def lift[X](p: X ! G): X ! Row[G] = !.widen[X, G, Take % Rpc + Writer % Rpc](p)
+    def tell(m: Rpc): Unit ! Row[G] = Stage.tell[Rpc, Rpc](m).at[Row[G]]
+    def await: Option[Rpc] ! Row[G] = Stage.await[Rpc, Rpc].at[Row[G]]
+    def lift[X](p: X ! G): X ! Row[G] = p.at[Row[G]]
     def tool(c: ToolCall): Json ! Row[G] = lift(runTool(c))
     // What a server DECLARES is exactly what it answers: a method of
     // a capability it does not have is `MethodNotFound`, not a polite
@@ -335,12 +335,12 @@ object Server {
    */
   def over(link: Link)(stage: Stage[Rpc, Rpc, Unit]): Unit ! Async =
     drain(link)(through[Rpc, Rpc, Async, Unit, Unit](framed(link))(
-      !.widen[Unit, Take % Rpc + Writer % Rpc, Async](stage)))
+      stage.at[Row[Async]]))
 
   /** the incoming lines, framed as messages */
   private def framed(link: Link): Source[Rpc] =
     through[String, Rpc, Async, Unit, Unit](link.lines)(
-      !.widen[Unit, Take % String + Writer % Rpc, Async](Rpc.messages))
+      Rpc.messages.at[Take % String + (Writer % Rpc + Async)])
 
   /** everything told, put on the wire */
   private def drain(link: Link)(p: Source[Rpc]): Unit ! Async =
@@ -390,6 +390,6 @@ object Server {
     val out = Channel[Rpc]()
     val answers: Source[Rpc] =
       through[Rpc, Rpc, Async, Unit, Unit](framed(link))(
-        !.widen[Unit, Take % Rpc + Writer % Rpc, Async](serve(serving)))
+        serve(serving).at[Row[Async]])
     (drain(link)(answers merge Writer.of(out)), Pushes(out, serving.subscriptions))
 }

@@ -1,9 +1,8 @@
 package okay.mcp
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.{Answers, ==>, Async, CanBlock, Channel, Fiber, Scheduler, Source, async}
 import okay.given
-import okay.freer.given
 import okay.agent.{Model, Reply, Tool, ToolCall, ToolSpec, Turn}
 import okay.codec.Json
 

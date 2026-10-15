@@ -1,10 +1,9 @@
 package okay.mcp
 
 import okay.{Async, through}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.std.given
 import okay.agent.{ToolCall, ToolSpec, Toolbox}
 import okay.codec.{Json, Schema}
@@ -26,7 +25,7 @@ class TestServer extends munit.FunSuite {
 
   /** drive the stage with a list of messages, collect what it tells */
   def talk(msgs: Rpc*): Seq[Rpc] =
-    !.run(Writer.run(through(Writer.of(msgs.toList))(Server.serve(info, box.specs, box.table))))._1
+    !.run(Writer.run(through(Writer.of(msgs.toList).at[Writer % Rpc])(Server.serve(info, box.specs, box.table))))._1
 
   val hello = Rpc.Request(Json.JNum(1), Mcp.Initialize,
     Mcp.initializeParams(Mcp.Info("client", "1")))
@@ -71,7 +70,7 @@ class TestServer extends munit.FunSuite {
     val bad = Map[String, ToolCall => String]("boom" -> (_ => throw RuntimeException("kaboom")))
     val out = !.run(Writer.run(through(Writer.of(List(hello,
       Rpc.Request(Json.JNum(5), Mcp.ToolsCall,
-        Mcp.callParams(ToolCall("x", "boom", Json.JObj(Vector.empty)))))))(
+        Mcp.callParams(ToolCall("x", "boom", Json.JObj(Vector.empty)))))).at[Writer % Rpc])(
       Server.serve(info, Nil, bad))))._1
     val Rpc.Answer(_, result) = out(1): @unchecked
     assertEquals(Mcp.textOf(result), "error: kaboom")
@@ -108,10 +107,10 @@ class TestServer extends munit.FunSuite {
       ToolCall("9", "slow", Json.JObj(Vector("a" -> Json.JNum(1), "b" -> Json.JNum(2))))))
     val askPure = Rpc.Request(Json.JNum(10), Mcp.ToolsCall, Mcp.callParams(
       ToolCall("10", "add", Json.JObj(Vector("a" -> Json.JNum(3), "b" -> Json.JNum(4))))))
-    val out: Seq[Rpc] = !.run(Async.run[Seq[Rpc], Nothing](
-      Writer.run[Rpc, Unit, Async](through[Rpc, Rpc, Async, Unit, Unit](
+    val out: Seq[Rpc] = Async.run(
+      Writer.run(through[Rpc, Rpc, Async, Unit, Unit](
         okay.Source.of(List(hello, ask, askPure)))(
-        Server.serveIn[Async](serving)(Server.answering(serving)))).map(_._1)))
+        Server.serveIn[Async](serving)(Server.answering(serving)))).map(_._1)).run
     assertEquals(performed, 1)
     val Rpc.Answer(_, r1) = out(1): @unchecked
     val Rpc.Answer(_, r2) = out(2): @unchecked

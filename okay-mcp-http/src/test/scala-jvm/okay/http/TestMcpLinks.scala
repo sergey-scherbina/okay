@@ -1,10 +1,9 @@
 package okay.http
 
 import okay.{Async}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.codec.Json
 import okay.mcp.{Mcp, NioLink, Rpc, WsLink}
 
@@ -35,7 +34,7 @@ class TestMcpLinks extends munit.FunSuite {
       val sent = Rpc.encode(Rpc.Request(Json.JNum(1), Mcp.Initialize,
         Mcp.initializeParams(Mcp.Info("client", "1"))))
 
-      val back = Async.run[Seq[String], Pure](
+      val back = Async.run(
         sockets.connect(echo.url).flatMap { sock =>
           val link = WsLink(sock)
           link.send(sent).flatMap(_ =>
@@ -56,7 +55,7 @@ class TestMcpLinks extends munit.FunSuite {
     val sent = Rpc.encode(Rpc.Request(Json.JNum(1), Mcp.Initialize,
       Mcp.initializeParams(Mcp.Info("client", "1"))))
 
-    val back = Resource.run[Seq[String], Pure](
+    val back = Resource.run(
       // the server end: read one line, send it back, close
       Nio.listen(0) { conn =>
         val link = NioLink(conn)
@@ -65,7 +64,7 @@ class TestMcpLinks extends munit.FunSuite {
           case Left(_) => conn.close()
         }
       }.map { server =>
-        Async.run[Seq[String], Pure](
+        Async.run(
           Nio.connect("127.0.0.1", Nio.port(server)).flatMap { c =>
             val link = NioLink(c)
             link.send(sent).flatMap(_ =>

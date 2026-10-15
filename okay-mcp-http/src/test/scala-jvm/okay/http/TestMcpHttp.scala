@@ -1,9 +1,8 @@
 package okay.http
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.{Async, Channel, Source}
 import okay.given
-import okay.freer.given
 import okay.codec.{Json, Schema}
 import okay.mcp.{Client, Duplex, Mcp, Rpc, Server as McpServer}
 import okay.agent.{ToolCall, Toolbox}
@@ -41,7 +40,7 @@ class TestMcpHttp extends munit.FunSuite {
 
   /** a server on a free port, for the body of the test */
   def served[A](route: Request => Response ! Async)(body: String => A): A =
-    Resource.run[A, Pure](Server.serve(0)(route).map(s =>
+    Resource.run(Server.serve(0)(route).map(s =>
       body(s"http://127.0.0.1:${Server.port(s)}/mcp"))).runWith
 
   test("the whole session over HTTP: handshake, list, call") {

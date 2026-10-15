@@ -1,7 +1,7 @@
 package okay.mcp
 
 import okay.{Async, Source, Take, through}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.http.{Frame, Socket, Ws}
 
@@ -24,4 +24,4 @@ object WsLink:
 
     def lines: Source[String] =
       through[Frame, String, Async, Unit, Unit](s.frames)(
-        !.widen[Unit, Take % Frame + Writer % String, Async](Ws.texts))
+        Ws.texts.at[Take % Frame + (Writer % String + Async)])

@@ -1,7 +1,7 @@
 package okay.mcp
 
 import okay.{Async, Source, async}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import java.io.{BufferedReader, InputStream, InputStreamReader, OutputStream, PrintWriter}
 import java.nio.charset.StandardCharsets.UTF_8
@@ -33,10 +33,10 @@ object Stdio {
      * looks like from here */
     def lines: Source[String] =
       def go: Source[String] =
-        effect[Writer % String + Async, String](Async.Run(() => reader.readLine()))
+        effect(Async.Run(() => reader.readLine())).at[Writer % String + Async]
           .flatMap(l =>
             if l == null then pure(())
-            else effect[Writer % String + Async, Unit](Writer(l)).flatMap(_ => go))
+            else effect(Writer(l)).at[Writer % String + Async].flatMap(_ => go))
 
       go
 

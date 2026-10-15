@@ -1,10 +1,9 @@
 package okay.mcp
 
 import okay.{Async, Channel, Source, Stage}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.codec.Json
 
 /** Elicitation: the server asks the human; the client's Peer answers. */

@@ -1,9 +1,8 @@
 package okay.mcp
 
 import okay.{through}
-import okay.freer.*
+import okay.*
 import okay.std.*
-import okay.freer.given
 import okay.std.given
 import okay.agent.{ToolCall, ToolSpec, Turn}
 import okay.codec.{Json, Schema}
@@ -38,7 +37,7 @@ class TestDocs extends munit.FunSuite {
         Turn.User(s"Review ${args.getOrElse("path", "?")}"))))
 
   def talk(serving: Server.Serving)(msgs: Rpc*): Seq[Rpc] =
-    !.run(Writer.run(through(Writer.of(msgs.toList))(Server.serve(serving))))._1
+    !.run(Writer.run(through(Writer.of(msgs.toList).at[Writer % Rpc])(Server.serve(serving))))._1
 
   val hello = Rpc.Request(Json.JNum(1), Mcp.Initialize, Json.JObj(Vector.empty))
 

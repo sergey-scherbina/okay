@@ -1,10 +1,9 @@
 package okay.http
 
 import okay.{Async}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.codec.Schema
 import okay.mcp.{Client, Mcp, Duplex, Server as McpServer}
 import okay.agent.ToolSpec
@@ -40,7 +39,7 @@ class TestMcpPushServer extends munit.FunSuite {
 
   /** a JDK server on a free port, for the body of the test */
   def served[A](route: Request => Response ! Async)(body: String => A): A =
-    Resource.run[A, Pure](Server.serve(0)(route)
+    Resource.run(Server.serve(0)(route)
       .map(s => body(s"http://127.0.0.1:${Server.port(s)}/mcp"))).runWith
 
   test("a subscription over HTTP delivers a push on the GET stream") {

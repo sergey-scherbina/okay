@@ -1,5 +1,5 @@
 package okay.http
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.{Async, Channel, Fiber, Scheduler, Source, async}
 import okay.given
@@ -307,21 +307,21 @@ object McpHttp {
         line.getBytes(java.nio.charset.StandardCharsets.UTF_8))
 
     def go(at: Long): Source[Chunk[Byte]] =
-      effect[Writer % Chunk[Byte] + Async, Topic.Read](
-        Async.Run(() => t.read(partition, at, 64))).flatMap {
+      effect(
+        Async.Run(() => t.read(partition, at, 64))).at[Writer % Chunk[Byte] + Async].flatMap {
         case Topic.Read.TooEarly(begin) => go(begin)   // compacted: resume at begin
         case Topic.Read.Records(rs) if rs.nonEmpty =>
           val mine = rs.filter(r => java.util.Arrays.equals(r.key, key))
           def tell(rest: Vector[okay.persist.Record]): Unit ! Writer % Chunk[Byte] + Async =
             rest match
-              case r +: more => effect[Writer % Chunk[Byte] + Async, Unit](
-                Writer(frame(r.offset, r.value))).flatMap(_ => tell(more))
+              case r +: more => effect(
+                Writer(frame(r.offset, r.value))).at[Writer % Chunk[Byte] + Async].flatMap(_ => tell(more))
               case _ => pure(())
           tell(mine).flatMap(_ => go(rs.last.offset + 1))
         case Topic.Read.Records(_) =>
           // the live end: poll — the budgeted interval until stage 1
-          effect[Writer % Chunk[Byte] + Async, Unit](
-            Async.Run(() => Thread.sleep(25))).flatMap(_ => go(at))
+          effect(
+            Async.Run(() => Thread.sleep(25))).at[Writer % Chunk[Byte] + Async].flatMap(_ => go(at))
       }
 
     go(from.getOrElse(t.end(partition)))
@@ -329,14 +329,14 @@ object McpHttp {
   /** a stream of messages as an SSE body */
   private def events(out: Channel[Rpc]): Source[Chunk[Byte]] =
     def go: Source[Chunk[Byte]] =
-      !.widen[Option[Rpc], Async, Writer % Chunk[Byte]](out.receive)
+      out.receive.at[Async + Writer % Chunk[Byte]]
         .flatMap {
           case None => pure(())
           case Some(m) =>
             val bytes = s"data: ${Rpc.encode(m)}\n\n"
               .getBytes(java.nio.charset.StandardCharsets.UTF_8)
-            effect[Writer % Chunk[Byte] + Async, Unit](
-              Writer(scala.collection.immutable.ArraySeq.unsafeWrapArray(bytes)))
+            effect(
+              Writer(scala.collection.immutable.ArraySeq.unsafeWrapArray(bytes))).at[Writer % Chunk[Byte] + Async]
               .flatMap(_ => go)
         }
 

@@ -1,5 +1,4 @@
 package okay.mcp
-import okay.freer.given
 import okay.given
 
 

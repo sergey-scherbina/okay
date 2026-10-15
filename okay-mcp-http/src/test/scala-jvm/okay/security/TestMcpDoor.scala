@@ -1,9 +1,8 @@
 package okay.security
 
 import okay.Async
-import okay.freer.{!, pure}
+import okay.{!, pure}
 import okay.given
-import okay.freer.given
 import okay.codec.Json
 import okay.http.{Method, Request, Response}
 
@@ -11,7 +10,7 @@ import okay.http.{Method, Request, Response}
  * moved to okay-mcp-http (http-mcp-agent-edge, 2026-09-25) */
 class TestMcpDoor extends munit.FunSuite {
 
-  def run[A](p: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](p))
+  def run[A](p: A ! Async): A = Async.run(p).run
 
   test("McpAuth.granted: the principal ambient, the ladder protect's") {
     val secret = "a-shared-secret-of-decent-length".getBytes("UTF-8")
