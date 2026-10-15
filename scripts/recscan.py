@@ -15,8 +15,8 @@ module that moved from 3.7.4 to 3.9.0 keeps both, and the old one
 reports rows for code that is gone."""
 import os, re, subprocess, sys, collections
 root = sys.argv[1]; skips = sys.argv[2:]
-DEFER_OWNER = re.compile(r'^(okay2?/Free|okay2?/Free\$.*|okay2?/Cont.*|okay2?/.*package\$\!|okay/package\$|okay2/package\$|okay2?/Thunk.*|okay/frege/Thunk.*|scala/collection/immutable/LazyList.*|scala/Function0|okay2?/Once.*|okay2?/Eval.*|okay2?/\$bang\$.*|okay2?/Row\$.*|okay/async/.*|okay/Effects.*|okay/cont/Free.*|okay/cont/Op.*|okay2/async/.*|fs2/Stream.*|zio/ZIO.*|cats/effect/IO.*)$')
-DEFER_NAME = re.compile(r'^(flatMap|map|andThen|defer|delay|suspend|onAnswer|foldCont|lazy|shared|bind|then|flatMap\w*|map\w*|resumeWith|tailcall|\$greater\$greater\$eq|\$times\$greater|as|void|attempt|handleWith|\$plus\$plus)$')
+DEFER_OWNER = re.compile(r'^(okay2?/Free|okay2?/Free\$.*|okay2?/Cont.*|okay/one/Cont.*|okay/Run\$|okay2?/.*package\$\!|okay/package\$|okay2/package\$|okay2?/Thunk.*|okay/frege/Thunk.*|scala/collection/immutable/LazyList.*|scala/Function0|okay2?/Once.*|okay2?/Eval.*|okay2?/\$bang\$.*|okay2?/Row\$.*|okay/async/.*|okay/Effects.*|okay/cont/Free.*|okay/cont/Op.*|okay2/async/.*|fs2/Stream.*|zio/ZIO.*|cats/effect/IO.*)$')
+DEFER_NAME = re.compile(r'^(okay\$one\$Cont\$\$inline\$(?:down|bound)|flatMap|map|andThen|defer|delay|suspend|onAnswer|foldCont|lazy|shared|bind|then|flatMap\w*|map\w*|resumeWith|tailcall|\$greater\$greater|\$greater\$greater\$eq|\$times\$greater|as|void|attempt|handleWith|\$plus\$plus)$')
 
 def module_of(d):
     """the module a class dir belongs to, as recscan's rows name it"""
@@ -119,7 +119,8 @@ for d in class_dirs(root):
                         # the consumer: the next call that is not boxing/runtime plumbing —
                         # nor an implicit EVIDENCE fetched between the thunk and the call it
                         # goes to (`NotGiven.default` before fs2's `++` read as the consumer)
-                        cons = next((y for kk, y in ins[j+1:] if kk == 'call' and not y[0].startswith(('scala/runtime/', 'java/lang/Integer', 'java/lang/Long', 'java/lang/Boolean', 'java/lang/Double', 'scala/util/NotGiven', 'fs2/compat/NotGiven', 'scala/$less$colon$less', 'scala/$eq$colon$eq', 'scala/Predef$'))), None)
+                        # (the root's `Join`/`Within`/`Evidence.All` before `Run.flatMap`)
+                        cons = next((y for kk, y in ins[j+1:] if kk == 'call' and not y[0].startswith(('scala/runtime/', 'java/lang/Integer', 'java/lang/Long', 'java/lang/Boolean', 'java/lang/Double', 'scala/util/NotGiven', 'fs2/compat/NotGiven', 'okay/Join$', 'okay/Evidence$', 'okay/Within$', 'scala/$less$colon$less', 'scala/$eq$colon$eq', 'scala/Predef$'))), None)
                         deferred = cons is not None and (
                             DEFER_OWNER.match(cons[0]) and DEFER_NAME.match(cons[1])
                             or cons[1] in ('delay', 'defer', 'suspend', 'lazy', 'shared', 'tailcall')

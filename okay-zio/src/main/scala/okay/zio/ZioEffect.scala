@@ -59,9 +59,10 @@ object ZioEffect:
         def to[One[_]]: Within[F + G, One] = Within.pair[F, G, One](f.to[One], g.to[One])
 
   /** the program into ZIO, each operation its own ZIO value: the root's `Walk.foldMap` with ZIO's monad (the walk on
-   * inside ZIO's own continuation, stack-safe as ZIO's loop is) */
+   * inside ZIO's own continuation, stack-safe as ZIO's loop is: `zioTailRecM`) */
   private[zio] def run[A, Env, E](p: A ! Z[Env, E]): ZIO[Env, E, A] =
-    Walk.foldMap[Z[Env, E], A, [X] =>> ZIO[Env, E, X]](p)([X] => (z: ZIO[Env, E, X]) => z)(using zioMonad[Env, E])
+    Walk.foldMap[Z[Env, E], A, [X] =>> ZIO[Env, E, X]](p)([X] => (z: ZIO[Env, E, X]) => z)(
+      using zioMonad[Env, E], zioTailRecM[Env, E])
 
   /** each step rebuilt by `f`, in place: the operation translated where it is performed */
   private[zio] def mapSteps[A, Env, E, G[_]](p: A ! Z[Env, E])(f: [X] => ZIO[Env, E, X] => G[X]): A ! G =

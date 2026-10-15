@@ -209,16 +209,14 @@ class TestWroclawAlgebra extends munit.FunSuite:
     r
   lazy val local =
     val t0 = System.nanoTime()
-    val r = Tables.run(localBulk)(Sort.viaTables(analysis(file)).at[Tables])
+    val r = Tables.run(localBulk)(Sort.viaTables(analysis(file)))
     println(f"  local: ${r._1}%,d departures from the same program, ${(System.nanoTime() - t0) / 1000000}%,d ms")
     r
 
   test("the plan, printed before anything runs") {
     val traced = okay.std.Writer.tracing[Table[Dep], Tables, String, Tables](Gtfs.departures(file))(
       [X] => (e: Tables[X]) => e.productPrefix)
-    // `via` takes `Tables` on the left of the row
-    val handled = State.handle(Tables.Heap.empty[Chunks])(
-      Tables.via[Table[Dep], Chunks, Writer % String](localBulk)(traced.at[Tables + Writer % String]))
+    val handled = State.handle(Tables.Heap.empty[Chunks])(Tables.via(localBulk)(traced))
     val (plan, _) = okay.!.run(okay.std.Writer.run(handled))
     println(s"  plan: ${plan.mkString(" ")}")
     assertEquals(plan.count(_ == "Join"), 3)

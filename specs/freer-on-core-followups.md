@@ -5,7 +5,6 @@ Companion of [freer-on-core.md](freer-on-core.md). Every module's main, tests an
 - Walk: Op "is last" (no frames after) → cats' onCancel law.
 - Condition 100k nested frames quadratic (kernel level walk).
 - Warnings pass (std Reader/State/Writer unused imports, AsyncCont, root test warnings, feature warnings).
-- Stack-safety inventory (recscan) rows.
 - Known changes in freer-on-core.md: Wf.replay/persist no compile-time replay refusal; ZIO error union; Chunks.dropWhile; Push Waiting.
 - okay.freer data types still imported: Aggregator, Fold, Monoid, Semigroup, Static, Cps, />> → a home outside okay-freer.
 - Member: okay.Foreign.Member (okay-stream) → root?
@@ -15,5 +14,4 @@ Companion of [freer-on-core.md](freer-on-core.md). Every module's main, tests an
 - An indexed-program word: okay-ui's PWizard and okay-std's PState.Threaded still on okay.freer.Freer.
 - widen conversion does not fire for an abstract rest (Writer % W + Users + F vs Users + (Writer % W + F)) nor for Users vs Users + Pure: explicit .at needed (okay-jdbc).
 - Writer.of returns Writer % A + Pure: every caller writes .at[Writer % A] (okay-http, okay-ui, okay-mcp) — make it Writer % A in okay-std.
-- Sort.viaTables / Streamed.viaTables (okay-stream) still translate (adding Tables): make them translateInto like Structured.viaTables; Tables.via with Tables fixed left → Split form.
 - `X ! E + Pure` should fit `X ! E` without .at (seen with abstract E args): Evidence/Within for a sum with Pure.

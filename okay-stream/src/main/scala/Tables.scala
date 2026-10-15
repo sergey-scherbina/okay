@@ -246,31 +246,44 @@ object Tables:
    * so a native extension (okay-spark's sort) can share it by
    * translating into the same state, with no hook in this handler and
    * no knowledge of it here. `log` sees every plan as it is forced.
+   * `Tables` is taken off wherever it is in the row (a runner, `Split`);
+   * the heap is a `State` of its own beside the rest — `viaInto` when the
+   * program has that heap already.
    */
-  def via[A, D[_], F[_]](B: Bulk[D], log: Plan[?] => Unit = _ => (), rewrite: Boolean = true)(p: A ! Tables + F)
-  : A ! State % Heap[D] + F =
+  def via[A, D[_], Es[_]](B: Bulk[D], log: Plan[?] => Unit = _ => (), rewrite: Boolean = true)(p: A ! Es)
+                         (using s: okay.core.Split[Es, Tables]): A ! State % Heap[D] + s.Rest =
+    p.translate[Tables, State % Heap[D]](onHeap(B, log, rewrite))
+
+  /** `via` into the heap the program has already (one place, not two): a
+   * program that also `load`s/`read`s into it, or a native extension's */
+  def viaInto[A, D[_], Es[_]](B: Bulk[D], log: Plan[?] => Unit = _ => (), rewrite: Boolean = true)(p: A ! Es)
+                             (using s: okay.core.Split[Es, Tables], w: Within[State % Heap[D], s.Rest]): A ! s.Rest =
+    p.translateInto[Tables, State % Heap[D]](onHeap(B, log, rewrite))
+
+  /** each operation of `Tables` as a step on the heap: a plan node, or a forced plan */
+  private def onHeap[D[_]](B: Bulk[D], log: Plan[?] => Unit, rewrite: Boolean)
+  : [X] => Tables[X] => X ! State % Heap[D] =
     def forced[X](h: Heap[D], t: Table[X]): D[X] =
       val plan = if rewrite then Plan.optimize(h.plan(t), B.size) else h.plan(t)
       log(plan)
       h.compile(B)(plan)
-    p.translate[Tables, State % Heap[D]]:
-      [X] => (e: Tables[X]) => e match
-        case Of(xs) => State.update[Heap[D], X](_.put(Plan.Of(xs)))
-        case Read(path) => State.update[Heap[D], X](_.put(Plan.Read(path, None)))
-        case Columns(t, cs) => State.update[Heap[D], X](h => h.put(Plan.Columns(h.plan(t), cs)))
-        case Select(t, f) => State.update[Heap[D], X](h => h.put(Plan.Select(h.plan(t), f)))
-        case Expand(t, f) => State.update[Heap[D], X](h => h.put(Plan.Expand(h.plan(t), f)))
-        case Where(t, q) => State.update[Heap[D], X](h => h.put(Plan.Where(h.plan(t), q)))
-        case Join(l, r, how) => State.update[Heap[D], X](h => h.put(Plan.Join(h.plan(l), h.plan(r), how)))
-        case SortByKey(t, o) => State.update[Heap[D], X](h => h.put(Plan.SortByKey(h.plan(t), o)))
-        case OrderedByKey(t, o) => State.update[Heap[D], X](h => h.put(Plan.OrderedByKey(h.plan(t), o)))
-        case Cache(t) => State.update[Heap[D], X](h => h.hold(B.cache(forced(h, t))))
-        case Aggregate(t, agg) => State.get[Heap[D]].map(h => B.aggregate(forced(h, t))(agg))
-        case Collect(t) => State.get[Heap[D]].map(h => B.toChunks(forced(h, t)))
+    [X] => (e: Tables[X]) => e match
+      case Of(xs) => State.update[Heap[D], X](_.put(Plan.Of(xs)))
+      case Read(path) => State.update[Heap[D], X](_.put(Plan.Read(path, None)))
+      case Columns(t, cs) => State.update[Heap[D], X](h => h.put(Plan.Columns(h.plan(t), cs)))
+      case Select(t, f) => State.update[Heap[D], X](h => h.put(Plan.Select(h.plan(t), f)))
+      case Expand(t, f) => State.update[Heap[D], X](h => h.put(Plan.Expand(h.plan(t), f)))
+      case Where(t, q) => State.update[Heap[D], X](h => h.put(Plan.Where(h.plan(t), q)))
+      case Join(l, r, how) => State.update[Heap[D], X](h => h.put(Plan.Join(h.plan(l), h.plan(r), how)))
+      case SortByKey(t, o) => State.update[Heap[D], X](h => h.put(Plan.SortByKey(h.plan(t), o)))
+      case OrderedByKey(t, o) => State.update[Heap[D], X](h => h.put(Plan.OrderedByKey(h.plan(t), o)))
+      case Cache(t) => State.update[Heap[D], X](h => h.hold(B.cache(forced(h, t))))
+      case Aggregate(t, agg) => State.get[Heap[D]].map(h => B.aggregate(forced(h, t))(agg))
+      case Collect(t) => State.get[Heap[D]].map(h => B.toChunks(forced(h, t)))
 
   /** run a program of tables, and nothing else, on a platform */
   def run[A, D[_]](B: Bulk[D])(p: A ! Tables): A =
-    State.run(Heap.empty[D])(via[A, D, Pure](B)(p))._2
+    State.handle(Heap.empty[D])(via(B)(p)).run._2
 
 /**
  * An operation `Bulk` does not have, added WITHOUT touching it: a new
@@ -290,9 +303,10 @@ object Sort:
   extension [A, F[_]](p: Table[A] ! F)(using Within[Sort, F])
     def sortBy[K](key: A => K)(using ord: Ordering[K]): Table[A] ! F = p.flatMap(t => t.sortBy(key).at[F])
 
-  /** the default: through the primitives, so it runs on any platform */
-  def viaTables[A, Es[_]](p: A ! Es)(using s: okay.core.Split[Es, Sort]): A ! Tables + s.Rest =
-    p.translate[Sort, Tables]:
+  /** the default: through the primitives, so it runs on any platform — into the `Tables` the program has
+   * already (one place, not two) */
+  def viaTables[A, Es[_]](p: A ! Es)(using s: okay.core.Split[Es, Sort], w: Within[Tables, s.Rest]): A ! s.Rest =
+    p.translateInto[Sort, Tables]:
       [X] => (e: Sort[X]) => e match
         case By(t, key, ord) =>
           // `X >: Table[A]` is what the match refines under covariance; `!` is

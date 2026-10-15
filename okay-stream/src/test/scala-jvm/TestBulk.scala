@@ -88,7 +88,7 @@ class TestTables extends munit.FunSuite {
   test("a plan is data: tracing prints it before anything runs") {
     val traced = Writer.tracing[Map[String, Long], Tables, String, Tables](revenue(sales, cities))(
       [X] => (e: Tables[X]) => e.productPrefix)
-    val handled = State.handle(Tables.Heap.empty[Chunks])(Tables.via(localBulk)(traced.at[Tables + Writer % String]))
+    val handled = State.handle(Tables.Heap.empty[Chunks])(Tables.via(localBulk)(traced))
     val (plan, (_, got)) = (Writer.run(handled)).run
     assertEquals(plan, Seq("Of", "Select", "Of", "Join", "Select", "Aggregate"))
     assertEquals(got, sales.groupMapReduce(s => city(s.shop))(_.amount)(_ + _))

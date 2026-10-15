@@ -50,12 +50,13 @@ object Walk:
 
   /**
    * `p` INTO ANOTHER MONAD, each operation by `nt` (okay-freer's `foldMap`): the one interop word — a program of `E`
-   * as a cats `IO`, a ZIO, a kyo computation, a `Future`. The recursion is in `G`'s `flatMap`: stack-safe where
-   * `G`'s bind is (every effect system's is; a strict `G` such as `Option` is not, for a long program).
+   * as a cats `IO`, a ZIO, a kyo computation, a `Future`. A loop in `G`'s `tailRecM` (okay-freer's foldMap took it
+   * too): stack-safe for any `G` that has one, a strict `Option` as a lazy `IO` (`TailRecM.deferring` for those).
    */
-  def foldMap[E[_], A, G[_]](p: A ! E)(nt: [X] => E[X] => G[X])(using G: Monad[G]): G[A] = view(p) match
-    case Done(a) => G.pure(a)
-    case o: Op[E, x, A, E] => G.flatMap(nt(o.op))((y: x) => foldMap(o.resume(y))(nt))
+  def foldMap[E[_], A, G[_]](p: A ! E)(nt: [X] => E[X] => G[X])(using G: Monad[G], R: TailRecM[G]): G[A] =
+    R.tailRecM[A ! E, A](p)(q => view(q) match
+      case Done(a) => G.pure(Right(a))
+      case o: Op[E, x, A, E] => G.fmap(nt(o.op), (y: x) => Left(o.resume(y))))
 
   // ---- the machinery (okay-std's Writer streams walk by it too)
 

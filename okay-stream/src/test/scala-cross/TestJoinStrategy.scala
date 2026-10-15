@@ -17,7 +17,7 @@ class TestJoinStrategy extends munit.FunSuite {
   /** run `p`, keeping the plans it forced */
   private def traced[A](p: A ! Tables): (A, List[String]) =
     val plans = scala.collection.mutable.ListBuffer.empty[String]
-    val a = State.run(Tables.Heap.empty[Chunks])(Tables.via[A, Chunks, Pure](B, p => plans += Plan.show(p))(p))._2
+    val a = State.handle(Tables.Heap.empty[Chunks])(Tables.via(B, p => plans += Plan.show(p))(p)).run._2
     (a, plans.toList)
 
   private def rows(seed: Int, n: Int, tag: String): Vector[(Int, String)] =

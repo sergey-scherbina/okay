@@ -7,7 +7,6 @@ import okay.*
 import okay.freer.Aggregator
 import okay.std.*
 import okay.Tables.read
-import okay.Row.plus
 import okay.Direct.{direct, unary_!}
 import org.apache.spark.sql.SparkSession
 import java.io.File
@@ -83,7 +82,7 @@ class TestWroclawStages extends munit.FunSuite:
         .join(read(file("trips.txt")).select(r => r("trip_id") -> (r("route_id"), r("service_id"))))
         .aggregate(Aggregator.count[Any])
     def run(p: Long ! Tables, rewrite: Boolean): Long =
-      State.run[Tables.Heap[D], Long](Tables.Heap.empty[D])(Tables.via[Long, D, Pure](B, rewrite = rewrite)(p.plus[Pure]).at[State % Tables.Heap[D]])._2
+      State.handle(Tables.Heap.empty[D])(Tables.via(B, rewrite = rewrite)(p)).run._2
     val a = timed("joins small-side-left, as written")(run(wrongWayRound, false))
     val b = timed("joins small-side-left, rewritten")(run(wrongWayRound, true))
     assertEquals(a, b)

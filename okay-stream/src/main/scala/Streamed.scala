@@ -94,9 +94,10 @@ object Streamed:
     w.close()(p => { out += p; () })
     out.result()
 
-  /** the default: through the primitives, so it runs on any platform */
-  def viaTables[A, Es[_]](p: A ! Es)(using s: okay.core.Split[Es, Streamed]): A ! Tables + s.Rest =
-    p.translate[Streamed, Tables]:
+  /** the default: through the primitives, so it runs on any platform — into the `Tables` the program has
+   * already (one place, not two) */
+  def viaTables[A, Es[_]](p: A ! Es)(using s: okay.core.Split[Es, Streamed], w: Within[Tables, s.Rest]): A ! s.Rest =
+    p.translateInto[Streamed, Tables]:
       [X] => (e: Streamed[X]) => e match
         case JoinSorted(l, r, ord) =>
           l.collect.flatMap(cl => r.collect.flatMap(cr =>

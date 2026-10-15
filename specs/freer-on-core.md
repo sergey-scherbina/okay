@@ -224,7 +224,9 @@ Recorded as met; behaviour regressions are accepted where the speed is the point
   `Tables + Tables` into one; on the kernel they stay two and a caller folds them with `.at[...]` (`Provider.relay`,
   okay-py's dialogue rows, okay-sql's `transact` with `G = Async` — pass `Pure`). The interpreters that answer into an
   effect the program already has take it from the program (`translateInto`): `Structured.viaTables`,
-  `FlowBulk.streamed`, `SparkFrames.structured`, `SparkBulk.sort` require that heap/Tables among the effects.
+  `Sort.viaTables`, `Streamed.viaTables` (their `Tables`), `FlowBulk.streamed`, `SparkFrames.structured`,
+  `SparkBulk.sort`, `Tables.viaInto` (their heap) require it among the effects. `Tables.via` takes `Tables` wherever
+  it is (`Split`) and adds a heap of its own; `viaInto` is the same translation into a heap the program has.
 - No compile-time replay discipline: `Wf.replay`, persist's durable dialogues and okay-agent's Stepper no longer refuse
   a row holding a non-replayable effect (okay-freer's `Replayable` read the union); a body with `Async` in its row
   re-performs it on replay.
