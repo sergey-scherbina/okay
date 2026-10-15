@@ -141,6 +141,32 @@ row. What the platform's `Distinct` forbade — two members of one signature —
 - okay-bench's `core` lane (223 µs on the mixed program) is the bar the platform's own program should meet on the
   new road; the `kernel` lane (286) its program over the protocol.
 
+## Measuring: Freer against Cont
+
+Three levels, the tools in place:
+
+1. **One program, two artifacts — okay-bench.** The platform's mixed program (the one every lane runs) written
+   once in the platform's words, built twice (`-Dokay.freer.road=classic|core`), published as two versions; two
+   lanes in okay-bench, each on its own classpath, one table with `core` (223 µs), `one` (169), `java` (103) and
+   `zero` (137) as the bars. The answer to "faster or not" on a program, not a microbenchmark.
+2. **The same microbenchmarks, two roads — okay-std, okay2.** The ~60 lanes of `okay-std/src/jmh` (`handle*`,
+   `relay*`, `state*`, `writer*`, `shift*`/`cont`/`delim*`, `step*`, `stateLex*`, `fused*`/`nested*`) and okay2's
+   (`HandlerBenchmark`, `HandlerFormsBenchmark`, `DelimBenchmark`) are not rewritten: they compile against the
+   words the flag picks. Interleaved A/B (classic, core, classic, core), one JDK, `-prof gc`, the JMH lock waited
+   for — as the carrier was measured against okay-cont (within noise; `delimDollarResume` −20%, `handleCapture`
+   +9%). Expected by group: `handle*`/`relay*`/`stepOneByOne` down (no `resume` loop, no `TypeableK` a level, no
+   `HandleFrames`); `fib*`/`tailcall*`/`buildOnly` even (the same `Cont`); `*Cps`/`delim*`/`shift*` the kernel's
+   capture (×2–3 against zero, the kernel's own sprint `capture-fixed-cost`); `stateLex*`/`fused*` an open
+   question — okay-freer's fusion has no counterpart in the kernel, a loss there is the honest list of what the
+   kernel still needs.
+3. **Why — the profile and the inline tree.** Where a Δ is outside the noise: `-XX:+LogCompilation` (eval's inline
+   tree against its budget, okay-core's AGENTS) and async-profiler, as for the 136 → 222 regression; okay-platform's
+   `AsyncDriveBenchmark`/`ParBenchmark` for the stepping driver, where one driver replaces `AsyncCont` and the
+   stream's twin.
+
+Acceptance of step 4: the platform's lane in okay-bench no worse than `core`; the microbenchmarks no worse than
+classic in sum; every loss beyond the noise either closed or named in okay-core's sprint.d.
+
 ## What the platform gets
 
 A program's `k` is the machine's `Rest`: stepping (`Step`) for the async driver — `AsyncCont`, the stream's machine
