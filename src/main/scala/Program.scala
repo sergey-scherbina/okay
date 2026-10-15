@@ -76,6 +76,18 @@ object Run:
     /** a program needing nothing: its value */
     def run: A = p.fit[okay.core.Pure](Paths.none).run
 
+  /** a program needing `Es` is a Monad (generic `traverse`, `sequence`): the bind keeps the effects */
+  given monad[Es[_]]: Monad[[A] =>> A ! Es] with
+    def pure[A](a: A): A ! Es = okay.pure(a)
+    extension [A](a: A ! Es)
+      def flatMap[B](f: A => B ! Es): B ! Es = Run.flatMap(a)(f)(using Join.same[Es])
+  /** a loop in the program: each turn deferred, the recursion in the run's binds, never on the caller's stack */
+  given tailRecM[Es[_]]: TailRecM[[A] =>> A ! Es] with
+    def tailRecM[A, B](a: A)(f: A => (Either[A, B] ! Es)): B ! Es =
+      Run.flatMap(f(a))(e => e match
+        case Left(a2) => defer(tailRecM(a2)(f))
+        case Right(b) => okay.pure[B, Es](b))(using Join.same[Es])
+
 
 
 /** `A ! Es`: a program of `A` needing `Es` — a value */
