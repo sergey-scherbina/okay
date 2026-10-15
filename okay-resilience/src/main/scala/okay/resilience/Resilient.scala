@@ -1,7 +1,7 @@
 package okay.resilience
 
-import okay.{TypeableK, Async, Scheduler, Timer}
-import okay.freer.*
+import okay.{Async, Scheduler, Timer}
+import okay.*
 import okay.http.{Http, Method, Request, Response}
 
 /**
@@ -117,22 +117,22 @@ object Resilient:
    * everything else, and the repo has three such seams already —
    * `okay.llm.Transport` (post, then tell the response lines),
    * `okay.mcp.Link`, `okay.cluster.Remote`. Their programs stream, so
-   * the row is `F + Async` and the guard has to walk it rather than
-   * just wrap it: `Attempt.in` passes every non-Async operation
-   * through untouched, which is what makes the permit span the WHOLE
-   * stream and not merely its first line (resilient-transport).
+   * the row is `F + Async`: `Attempt.in` guards the whole program,
+   * every operation left where it is, which is what makes the permit
+   * span the WHOLE stream and not merely its first line
+   * (resilient-transport).
    *
    * Deliberately NOT a dependency per seam: okay-resilience knows
    * nothing about llm or mcp, and a caller wires this at the edge in
    * three lines.
    */
-  def guarded[A, F[+_]](prog: => A ! F + Async,
-                        breaker: Option[Breaker] = None,
-                        bulkhead: Option[Bulkhead] = None,
-                        limiter: Option[Limiter] = None,
-                        key: String = "",
-                        failing: Either[Throwable, A] => Boolean = (r: Either[Throwable, A]) => r.isLeft)
-                       (using TypeableK[Async], Timer): A ! F + Async =
+  def guarded[A, F[_]](prog: => A ! F + Async,
+                       breaker: Option[Breaker] = None,
+                       bulkhead: Option[Bulkhead] = None,
+                       limiter: Option[Limiter] = None,
+                       key: String = "",
+                       failing: Either[Throwable, A] => Boolean = (r: Either[Throwable, A]) => r.isLeft)
+                      (using Timer): A ! F + Async =
     def call: A ! F + Async = limiter.fold(prog)(_.admitIn[A, F](key)(prog))
     def broken: A ! F + Async = breaker.fold(call)(_.protectIn[A, F](call)(failing))
     bulkhead.fold(broken)(_.limitIn[A, F](broken))

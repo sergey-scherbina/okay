@@ -2,7 +2,7 @@ package okay.resilience
 
 
 import okay.{Async, Scheduler, Timer}
-import okay.freer.*
+import okay.*
 import okay.http.Request
 
 /**

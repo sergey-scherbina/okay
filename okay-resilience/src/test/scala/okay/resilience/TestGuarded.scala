@@ -1,7 +1,6 @@
 package okay.resilience
 
-import okay.{Async}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
 
@@ -24,22 +23,22 @@ class TestGuarded extends munit.FunSuite:
   type Lines = Writer % String
 
   def run[A](prog: A ! Lines + Async): (Vector[String], A) =
-    val collected = Writer.run[String, A, Async](prog)
+    val collected = Writer.run[String, A, Lines + Async](prog)
     Async.runAsync(collected).value match
       case Some(t) => val (ls, a) = t.get; (ls.toVector, a)
       case None => fail("the test program did not complete synchronously")
 
   def refusal[A](prog: A ! Lines + Async): Refused =
-    Async.runAsync(Writer.run[String, A, Async](prog)).value match
+    Async.runAsync(Writer.run[String, A, Lines + Async](prog)).value match
       case Some(scala.util.Failure(r: Refused)) => r
       case Some(other) => fail(s"expected a Refused, got $other")
       case None => fail("the test program did not complete synchronously")
 
   /** lift each half into the row once, so the seams below read plainly */
-  def act(f: => Unit): Unit ! Lines + Async = !.widen[Unit, Async, Lines](okay.async(f))
-  def say(line: String): Unit ! Lines + Async = !.widen[Unit, Lines, Async](Writer.tell(line))
+  def act(f: => Unit): Unit ! Lines + Async = okay.async(f).at[Lines + Async]
+  def say(line: String): Unit ! Lines + Async = Writer.tell(line).at[Lines + Async]
   def park(register: (Either[Throwable, Unit] => Unit) => Unit): Unit ! Lines + Async =
-    !.widen[Unit, Async, Lines](Async.await[Unit] { k => register(k); () => () })
+    Async.await[Unit] { k => register(k); () => () }.at[Lines + Async]
 
   /** a seam that tells three lines, optionally failing part-way */
   def stream(failAfter: Int = -1): Unit ! Lines + Async =
@@ -76,7 +75,7 @@ class TestGuarded extends munit.FunSuite:
     val parking: Unit ! Lines + Async =
       say("first").flatMap(_ => park(k => release = k)).flatMap(_ => say("last"))
 
-    val inFlight = Async.runAsync(Writer.run[String, Unit, Async](
+    val inFlight = Async.runAsync(Writer.run[String, Unit, Lines + Async](
       Resilient.guarded(parking, bulkhead = Some(bulkhead))))
     assertEquals(bulkhead.stats.inFlight, 1, "the first line already came out; the permit must still be held")
 

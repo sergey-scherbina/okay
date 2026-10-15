@@ -2,9 +2,8 @@ package okay.resilience
 
 
 import okay.{Async}
-import okay.freer.*
+import okay.*
 import okay.given
-import okay.freer.given
 import okay.http.{Http, Request, Response}
 import java.util.concurrent.atomic.AtomicInteger
 

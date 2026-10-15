@@ -1,7 +1,7 @@
 package okay.resilience
 
 import okay.{Async, Timer}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.codec.Schema
 
@@ -50,12 +50,12 @@ final class Limiter(val name: String, ratePerSecond: Double, burst: Int,
     }
 
   /** the same token over a ROW */
-  def admitIn[A, F[+_]](key: String = "")(prog: => A ! F + Async)
-                       (using Timer): A ! F + Async =
-    okay.freer.effect[F + Async, Either[Long, Long]](Async.Run(() => take(key))).flatMap {
+  def admitIn[A, F[_]](key: String = "")(prog: => A ! F + Async)
+                      (using Timer): A ! F + Async =
+    okay.async(take(key)).at[F + Async].flatMap {
       case Left(wait) => throw Refused.Exhausted(name, key, Some(wait))
       case Right(0L) => prog
-      case Right(wait) => !.widen[Unit, Async, F](Async.sleep(wait)).flatMap(_ => prog)
+      case Right(wait) => Async.sleep(wait).at[F + Async].flatMap(_ => prog)
     }
 
   /**

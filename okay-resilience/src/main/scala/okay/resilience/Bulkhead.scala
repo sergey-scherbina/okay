@@ -2,7 +2,7 @@ package okay.resilience
 
 
 import okay.{Async}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.codec.Schema
 import java.util.concurrent.atomic.AtomicReference
@@ -47,8 +47,8 @@ final class Bulkhead(val name: String, permits: Int, queue: Int = 0)
     }
 
   /** the same permit over a ROW, held for the whole streaming call */
-  def limitIn[A, F[+_]](prog: => A ! F + Async)(using okay.TypeableK[Async]): A ! F + Async =
-    !.widen[Unit, Async, F](acquire).flatMap(_ => Attempt.in[A, F](prog)).map { r =>
+  def limitIn[A, F[_]](prog: => A ! F + Async): A ! F + Async =
+    acquire.at[F + Async].flatMap(_ => Attempt.in[A, F + Async](prog)).map { r =>
       release()
       r.fold(t => throw t, identity)
     }

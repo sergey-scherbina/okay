@@ -1,7 +1,7 @@
 package okay.resilience
 
 import okay.{Async}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.codec.Schema
 
@@ -56,13 +56,13 @@ final class Breaker(val name: String, failures: Int, openMillis: Long,
    * (`okay.llm.Transport` and friends), so the circuit sees the whole
    * call and not merely its first operation (resilient-transport).
    */
-  def protectIn[A, F[+_]](prog: => A ! F + Async)
-                         (failing: Either[Throwable, A] => Boolean = (r: Either[Throwable, A]) => r.isLeft)
-                         (using okay.TypeableK[Async]): A ! F + Async =
-    okay.freer.effect[F + Async, Option[Option[Long]]](Async.Run(() => admit())).flatMap {
+  def protectIn[A, F[_]](prog: => A ! F + Async)
+                        (failing: Either[Throwable, A] => Boolean = (r: Either[Throwable, A]) => r.isLeft)
+                        : A ! F + Async =
+    okay.async(admit()).at[F + Async].flatMap {
       case Some(wait) => throw Refused.BreakerOpen(name, wait)
       case None =>
-        Attempt.in[A, F](prog).map { r =>
+        Attempt.in[A, F + Async](prog).map { r =>
           record(failing(r))
           r.fold(t => throw t, identity)
         }

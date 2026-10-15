@@ -2,9 +2,8 @@ package okay.resilience
 
 
 import okay.{Async}
-import okay.freer.*
+import okay.*
 import okay.given
-import okay.freer.given
 /** the resolver: localhost is always there; an unknown name answers empty */
 class TestDiscoveryJvm extends munit.FunSuite:
 

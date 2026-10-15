@@ -1,11 +1,6 @@
 package okay.resilience
 
-import okay.{Async, TypeableK}
-
-import okay.freer.{+}
-import okay.freer.{!}
-import okay.freer.!.Inject
-import okay.freer.Free.{Bind, Return}
+import okay.{!, Async, defer, pure}
 
 /**
  * Five handlers around one operation (specs/resilience.md): a
@@ -49,96 +44,25 @@ trait Reporting[S]:
 
 /**
  * Observe how a closed Async program ends, as a value, on the fiber
- * it is already on — no spawn, no Scheduler. The walk is the one
- * `Async.Drive` makes: a `Run` is re-issued with its thunk guarded,
- * an `Await` with its callback's `Left` turned into an answer. It
- * costs one extra node per operation of the guarded program, which
- * is the price of not paying a fiber per call. Public because
+ * it is already on — no spawn, no Scheduler. No walk: the root's
+ * guard (`recover`) sees every way the program fails where it fails —
+ * a throwing `Run`, an `Await` whose callback answered `Left` (the
+ * drive fails the rest at that operation), a continuation that throws
+ * (the breaker's own refusal does), and building the program itself
+ * (`prog` is by name, deferred inside the guard). Public because
  * okay-ops's `Lifecycle` and `Red` need the same observation
  * (service-lifecycle); it is a building block, not a policy.
  */
 object Attempt:
-  def apply[A](p: A ! Async): Either[Throwable, A] ! Async =
-    // `resume` runs continuations (a `flatMap` body after `Pure`), and
-    // a continuation may throw — the breaker's own refusal does. That
-    // is a failure of the program like any other.
-    val head = try Right(p.resume) catch case t: Throwable => Left(t)
-    head match
-      case Left(t) => Return(Left(t))
-      case Right(h) => (h: @unchecked) match
-        case Return(a) => Return(Right(a))
-        case Inject(e) => step(e, (x: A) => Return(x))
-        case Bind(Inject(e), k) => step(e, k)
-
-  /** the continuation applied, its own throw made an answer */
-  private def continue[X, A](k: X => A ! Async, x: X): Either[Throwable, A] ! Async =
-    val next = try Right(k(x)) catch case t: Throwable => Left(t)
-    next match
-      case Right(p) => apply(p)
-      case Left(t) => Return(Left(t))
+  def apply[A](p: => A ! Async): Either[Throwable, A] ! Async = in[A, Async](p)
 
   /**
-   * The same observation over a ROW: guard the `Async` operations,
-   * pass every other one through untouched, and answer when the whole
-   * program ends. A streaming seam needs this — `okay.llm.Transport`
+   * The same observation over ANY row: every operation stays where it
+   * is, performed by whoever handles it, and the answer is how the
+   * whole program ended. A streaming seam needs this — `okay.llm.Transport`
    * posts and tells its response lines, so its program is
-   * `Unit ! Writer % String + Async` and the plain `apply` above
-   * cannot see it (resilient-transport).
-   *
-   * `Async` is tested rather than `F` because its erasure is a
-   * concrete enum; `F` is taken by exclusion, which is what `<|>`
-   * documents as the sound direction.
+   * `Unit ! Writer % String + Async`; the guard spans the WHOLE stream
+   * and not merely its first line (resilient-transport).
    */
-  def in[A, F[+_]](p: A ! F + Async)(using TypeableK[Async]): Either[Throwable, A] ! F + Async =
-    val head = try Right(p.resume) catch case t: Throwable => Left(t)
-    head match
-      case Left(t) => Return(Left(t))
-      case Right(h) => (h: @unchecked) match
-        case Return(a) => Return(Right(a))
-        case Inject(e) => split(e, (x: A) => Return(x))
-        case Bind(Inject(e), k) => split(e, k)
-
-  /** one operation of the row: ours to guard, or someone else's to relay */
-  private def split[X, A, F[+_]](e: Async[X] | F[X], k: X => A ! F + Async)
-                                (using TypeableK[Async]): Either[Throwable, A] ! F + Async =
-    okay.freer.<|>[Async, F][X](e) match
-      case Left(a) => stepIn(a, k)
-      case Right(f) =>
-        okay.freer.effect[F + Async, X](f).flatMap(x => continueIn(k, x))
-
-  private def continueIn[X, A, F[+_]](k: X => A ! F + Async, x: X)
-                                     (using TypeableK[Async]): Either[Throwable, A] ! F + Async =
-    val next = try Right(k(x)) catch case t: Throwable => Left(t)
-    next match
-      case Right(p) => in(p)
-      case Left(t) => Return(Left(t))
-
-  private def stepIn[X, A, F[+_]](e: Async[X], k: X => A ! F + Async)
-                                 (using TypeableK[Async]): Either[Throwable, A] ! F + Async = e match
-    case Async.Run(f) =>
-      okay.freer.effect[F + Async, Either[Throwable, X]](
-        Async.Run(() => try Right(f()) catch case t: Throwable => Left(t))).flatMap {
-        case Right(x) => continueIn(k, x)
-        case Left(t) => Return(Left(t))
-      }
-    case Async.Await(reg, _) =>
-      okay.freer.effect[F + Async, Either[Throwable, X]](
-        Async.Await(cb => reg(r => cb(Right(r))))).flatMap {
-        case Right(x) => continueIn(k, x)
-        case Left(t) => Return(Left(t))
-      }
-
-  // `k` is the continuation the GADT match typed at X
-  private def step[X, A](e: Async[X], k: X => A ! Async): Either[Throwable, A] ! Async = e match
-    case Async.Run(f) =>
-      okay.freer.effect[Async, Either[Throwable, X]](Async.Run(() => try Right(f()) catch case t: Throwable => Left(t)))
-        .flatMap {
-          case Right(x) => continue(k, x)
-          case Left(t) => Return(Left(t))
-        }
-    case Async.Await(reg, _) =>
-      okay.freer.effect[Async, Either[Throwable, X]](Async.Await(cb => reg(r => cb(Right(r)))))
-        .flatMap {
-          case Right(x) => continue(k, x)
-          case Left(t) => Return(Left(t))
-        }
+  def in[A, Es[_]](p: => A ! Es): Either[Throwable, A] ! Es =
+    defer(p).map(a => Right(a): Either[Throwable, A]).recover(t => pure[Either[Throwable, A], Es](Left(t)))
