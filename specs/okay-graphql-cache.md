@@ -15,11 +15,11 @@ caches per request; so does this, per execution — the same scope, nothing shar
   request, a clock).
 - The cache holds what the execution fetched, no more: it lives in the execution and ends with it.
 
-- [ ] a key in two rounds: one call
-- [ ] an error cached
-- [ ] a mutation's fields see fresh data
-- [ ] a source that opts out is asked each round
-- [ ] async sources cached the same
+- [x] a key in two rounds: one call
+- [x] an error cached
+- [x] a mutation's fields see fresh data
+- [x] a source that opts out is asked each round
+- [x] async sources cached the same
 
 ## Decisions
 
@@ -27,3 +27,9 @@ caches per request; so does this, per execution — the same scope, nothing shar
   still batch and cache as a query's do; only the serial boundary, where writes happen, forgets.
 - The cache and the round's waiting keys are one per-source state, found by identity — the one cast of `batchOf`
   stays the one cast.
+
+## Results
+
+- TestGraphQLCache, 5 tests: a key asked in rounds 1 and 2 is one call; a missing key's error answered from the
+  cache; an opted-out source asked twice; `mutation { a: buy b: buy c: left }` reads 5, 4, 3 — three calls, the
+  cache forgotten between the fields; an async source cached alike. okay-graphql 43 on JVM, 38 on JS and Native.

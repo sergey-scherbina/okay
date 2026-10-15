@@ -80,7 +80,7 @@ object Executor:
         case kind =>
           val run = Run(schema, fragments, vars, limits)
           run.operation(root(kind), operation.selections, serial = kind == OperationKind.Mutation)
-            .foreach { start => start(); run.sync() }
+            .foreach { start => run.forget(); start(); run.sync() }
           run.sync()
           run.response()
 
@@ -93,7 +93,7 @@ object Executor:
           val run = Run(schema, fragments, vars, limits)
           val fields = run.operation(root(kind), operation.selections, serial = kind == OperationKind.Mutation)
           fields.foldLeft[Unit ! (Async +: Pure)](run.asyncRounds()) { (before, start) =>
-            before.flatMap(_ => { start(); run.asyncRounds() })
+            before.flatMap(_ => { run.forget(); start(); run.asyncRounds() })
           }.map(_ => run.response())
 
     /** each value of the subscription's stream executed as its selection set: a response each */
@@ -218,10 +218,21 @@ object Executor:
       case i: Ident => i.ref eq ref
       case _ => false
 
-  /** THE ROUND'S KEYS OF ONE SOURCE, with the tasks waiting on each */
+  /** ONE SOURCE IN ONE EXECUTION: the keys of this round with the tasks waiting on each, and what every earlier
+   * round answered — the execution's cache (a source that opts out, none) */
   private final class Batch[K, V](val source: DataSource[K, V]):
     private val waiting = mutable.ArrayBuffer.empty[(K, V => Unit, Throwable => Unit)]
-    def add(key: K, ok: V => Unit, ko: Throwable => Unit): Unit = waiting += ((key, ok, ko))
+    private val cache = mutable.HashMap.empty[K, Either[Throwable, V]]
+
+    /** a key asked: answered now from the cache, or waiting for the round's call */
+    def add(key: K, ok: V => Unit, ko: Throwable => Unit): Unit = cache.get(key) match
+      case Some(Right(v)) => ok(v)
+      case Some(Left(e)) => ko(e)
+      case None => waiting += ((key, ok, ko))
+
+    def isWaiting: Boolean = waiting.nonEmpty
+    /** the cache forgotten: a mutation's next field sees fresh data */
+    def forget(): Unit = cache.clear()
     private def keys: Seq[K] = waiting.iterator.map(_._1).distinct.toSeq
 
     /** the source called, at once: a plain source; an async one outside `executeAsync` is an error of its fields */
@@ -236,13 +247,15 @@ object Executor:
         Cont.defer(a.fetch(keys)).map[Either[Throwable, Map[K, V]]](Right(_)).recover(e => pure(Left(e)))
       case _: Source[K, V] => pure(call())
 
-    /** the answer given to the tasks waiting: their value, or the error */
-    def deliver(answer: Either[Throwable, Map[K, V]]): Unit = answer match
-      case Left(e) => waiting.foreach(_._3(e))
-      case Right(m) => waiting.foreach { (k, ok, ko) =>
-        m.get(k) match
-          case Some(v) => ok(v)
-          case None => ko(java.util.NoSuchElementException(s"${source.name} has no value for $k"))
+    /** the answer given to the tasks waiting — their value, or the error — and kept for later rounds */
+    def deliver(answer: Either[Throwable, Map[K, V]]): Unit =
+      val now = waiting.toList
+      waiting.clear()
+      now.foreach { (k, ok, ko) =>
+        val one: Either[Throwable, V] = answer.flatMap(m =>
+          m.get(k).toRight(java.util.NoSuchElementException(s"${source.name} has no value for $k")))
+        if source.cached then cache(k) = one
+        one.fold(ko, ok)
       }
 
     /** called and delivered now */
@@ -253,11 +266,11 @@ object Executor:
     var answered: Either[Throwable, Map[K, V]] = Left(IllegalStateException("not called"))
     def deliverAnswered(): Unit = deliver(answered)
 
-  /** ONE EXECUTION: the run queue, the round's batches, the errors */
+  /** ONE EXECUTION: the run queue, its sources' batches and caches, the errors */
   private final class Run(schema: Schema, fragments: Map[String, Definition.Fragment], vars: Map[String, Json],
       limits: Limits):
     private val runnable = mutable.Queue.empty[() => Unit]
-    private var batches = mutable.LinkedHashMap.empty[Ident, Batch[?, ?]]
+    private val batches = mutable.LinkedHashMap.empty[Ident, Batch[?, ?]]
     private val errors = mutable.ArrayBuffer.empty[GraphQLError]
     private val data = Slot(Nil, nullable = true, Pos.None)
 
@@ -282,12 +295,13 @@ object Executor:
       val out = Vector("data" -> render(data).getOrElse(JNull))
       JObj(if errors.isEmpty then out else out :+ ("errors" -> JArr(errors.toVector.map(_.toJson))))
 
-    /** what can run now, run: the round's batches, taken — none, the end */
+    /** what can run now, run: the sources this round asks — none, the end */
     private def round(): List[Batch[?, ?]] =
       while runnable.nonEmpty do runnable.dequeue()()
-      val bs = batches.valuesIterator.toList
-      batches = mutable.LinkedHashMap.empty
-      bs
+      batches.valuesIterator.filter(_.isWaiting).toList
+
+    /** every source's cache forgotten: between a mutation's top-level fields */
+    def forget(): Unit = batches.valuesIterator.foreach(_.forget())
 
     /** rounds until no task is left, each source called at once */
     def sync(): Unit =
@@ -437,9 +451,9 @@ object Executor:
           , e => if !over then { over = true; failed(e) })
         }
 
-    /** the round's batch of `s`. THE ONE CAST: the map holds the batches of many sources, of as many key and value
-     * types, keyed by identity — and a batch is put under its own source only, here, so the one under `s` is a
-     * `Batch[K, V]` */
+    /** the execution's batch of `s`. THE ONE CAST: the map holds the batches of many sources, of as many key and
+     * value types, keyed by identity — and a batch is put under its own source only, here, so the one under `s` is
+     * a `Batch[K, V]` */
     private def batchOf[K, V](s: DataSource[K, V]): Batch[K, V] =
       batches.getOrElseUpdate(Ident(s), Batch[K, V](s)).asInstanceOf[Batch[K, V]]
 

@@ -75,6 +75,17 @@ and a missing one is null at its index, its error at `["byIds", 1]`:
         pure(a(ids).map(id => Fetch.get(s.user, id).map(Some(_))))),
 ```
 
+## A cache per execution
+
+A key fetched once is kept for the rest of the execution, as DataLoader keeps it per request: asked again in a later
+round, it is answered without calling its source — its error too. Between a mutation's top-level fields the cache is
+forgotten, so each field sees what the one before wrote. A source of data that changes while the request runs opts
+out:
+
+```scala
+    val src = Source[String, Int](name, cached) { keys =>
+```
+
 ## Errors, nulls, mutations, bounds
 
 A resolver that fails (a raise, a throw, a key its source left out, an argument that does not decode) is an error
@@ -136,6 +147,6 @@ reads the other's output (`Document.print`):
     given GraphQLParser = GraphQLJava()
 ```
 
-Tests: `TestGraphQL` (the shop), `TestGraphQLNext` (abstract types, introspection, validation, prepared documents,
+Tests: `TestGraphQL` (the shop), `TestGraphQLCache`, `TestGraphQLNext` (abstract types, introspection, validation, prepared documents,
 the cost bound, async sources, subscriptions, the printer), `TestTransportWs`, `TestGraphQLJava` (JVM). Over HTTP
 and WebSocket: [okay-graphql-http](okay-graphql-http.md).
