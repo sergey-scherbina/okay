@@ -89,13 +89,13 @@ object ForeignActivity:
   def call[Out: Schema](address: String)(using Shape): Call[Out] = Call(address)
 
   final class Call[Out: Schema](address: String)(using shape: Shape):
-    def apply[R, F[_]]()(using Wf.Asks[ForeignCall, String, R, F]): Either[Condition, Out] ! Wf.Durable[ForeignCall, String, F] =
+    def apply[R, F[_]]()(using Wf.Asks[ForeignCall, String, R, F], Wf.At): Either[Condition, Out] ! Wf.Durable[ForeignCall, String, F] =
       go(Vector.empty)
-    def apply[A: ToPy, R, F[_]](a: A)(using Wf.Asks[ForeignCall, String, R, F]): Either[Condition, Out] ! Wf.Durable[ForeignCall, String, F] =
+    def apply[A: ToPy, R, F[_]](a: A)(using Wf.Asks[ForeignCall, String, R, F], Wf.At): Either[Condition, Out] ! Wf.Durable[ForeignCall, String, F] =
       go(Vector(ToPy(a)))
     def apply[A: ToPy, B: ToPy, R, F[_]](a: A, b: B)
-                                        (using Wf.Asks[ForeignCall, String, R, F]): Either[Condition, Out] ! Wf.Durable[ForeignCall, String, F] =
+                                        (using Wf.Asks[ForeignCall, String, R, F], Wf.At): Either[Condition, Out] ! Wf.Durable[ForeignCall, String, F] =
       go(Vector(ToPy(a), ToPy(b)))
     private def go[R, F[_]](args: Vector[Value])
-                           (using w: Wf.Asks[ForeignCall, String, R, F]): Either[Condition, Out] ! Wf.Durable[ForeignCall, String, F] =
+                           (using w: Wf.Asks[ForeignCall, String, R, F], at: Wf.At): Either[Condition, Out] ! Wf.Durable[ForeignCall, String, F] =
       w.perform(ForeignCall(address, args)).map(s => answer(s).flatMap(shape.decode[Out]))

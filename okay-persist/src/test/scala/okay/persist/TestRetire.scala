@@ -18,7 +18,7 @@ import scala.language.implicitConversions
  */
 class TestRetire extends FunSuite {
 
-  def three(using w: Dialogue.Asks[String, String, String, Pure]): String ! Wf.Talking[String, String] + Pure = direct:
+  def three(using w: Wf.Dialogue.Asks[String, String, String, Pure]): String ! Wf.Talking[String, String] + Pure = direct:
     val a = !w.pause("1?")
     val b = !w.pause("2?")
     val c = !w.pause("3?")

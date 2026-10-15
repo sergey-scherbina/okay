@@ -19,7 +19,7 @@ import scala.language.implicitConversions
  */
 class TestDiagnosis extends FunSuite {
 
-  def booking(using w: Dialogue.Asks[String, String, String, Pure]): String ! Wf.Talking[String, String] + Pure = direct:
+  def booking(using w: Wf.Dialogue.Asks[String, String, String, Pure]): String ! Wf.Talking[String, String] + Pure = direct:
     val city = !w.pause("city?")
     val nights = !w.pause("nights?")            // THE LINE the second test wants
     s"$city/$nights"

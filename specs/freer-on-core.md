@@ -197,6 +197,10 @@ Recorded as met; behaviour regressions are accepted where the speed is the point
   the guard is put back on each resumption and releases at the end of the FIRST branch; later branches run with the
   resource released (okay-freer shared it and released after the last — logic-cut-releases). `Forked`/`Shared` in
   Choice and Logic are unused now.
+- A multi-prompt abort is ONE word, okay-std's `Escape` (`prompt`, `prompted`, `escape`, `leave`, `run`): okay-ui's
+  `Scope` and okay-llm's `Cut` are thin uses of it (`Scope.Exit` and `Cut.Cutting` are `Escape`; their `Prompt` and
+  `Prompted` are `Escape`'s). A cut naming an outer guard through an inner one is still refused, now as
+  `Escape.NoPrompt` (an `IllegalStateException`, as before) at the inner guard's `run`.
 - `Resource.bracket` acquires when the program runs: a program run twice acquires twice.
 - `Gen`'s `zip` steps both sides when the zipped program runs, not when `zip` is called.
 - `Once.memo` calls its step twice an operation (the kernel's `Stateful` asks `value` and `next` apart): pure, so the
@@ -212,6 +216,14 @@ Recorded as met; behaviour regressions are accepted where the speed is the point
   `A ! ForeignEval`), and callbacks of `pure(x)` alone name their row (`pure[X, Pure]`; okay-freer's union took
   `Nothing + ForeignEval` as `ForeignEval`). `Foreign.releasing` is a kernel `Stateful` handler of `Holding` (was
   `HandleFrames.stateRun`); `Callback`, `Callbacks`, `Jvm.calls` take `F[_]`.
+- A dialogue is okay-workflow's `Wf` alone: the plain door is `Wf.Dialogue.Asks` (`w.pause`), `Wf.Dialogue.pause`,
+  `start`, `replay(body)(journal)`, `drive`; the bare question `Wf.ask(q)` (okay-agent's `Stepper` uses it and
+  `drive`). okay-persist's `Dialogue.Asks`/`pause`/`replay` (its local copy) are gone: a plain durable dialogue's
+  body is `Wf.Dialogue.Asks[Q, A, R, F] ?=> R ! Wf.Talking[Q, A] + F`. The source position is back as okay-freer's
+  `At` was: `Wf.At` (`File.scala:line`, a macro given at the call site) is taken by every door (`pause`, `perform`,
+  `now`, ..., `Proc.program`, okay-foreign-workflow's `Call.apply`), carried by `Talk.Say(q, where)` and
+  `Wf.Dialogue.Ask(q, resume, fail, at)` (a fourth field) and read by `Dialogue#where`, which fills persist's
+  `Diagnosis.where`, `Retire.State.Asking.where` and the worker's `Statuses` row again.
 
 ## Two packages, not a flag
 

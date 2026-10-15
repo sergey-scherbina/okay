@@ -19,7 +19,7 @@ class TestDialogueHardening extends FunSuite {
 
   // ==== A: an answer the program cannot digest ======================
 
-  def strict(using w: Dialogue.Asks[String, String, String, Pure]): String ! Wf.Talking[String, String] + Pure = direct:
+  def strict(using w: Wf.Dialogue.Asks[String, String, String, Pure]): String ! Wf.Talking[String, String] + Pure = direct:
     val n = !w.pause("how many?")
     s"ok ${n.toInt * 2}"
 
@@ -44,12 +44,12 @@ class TestDialogueHardening extends FunSuite {
 
   // ==== B: the program changed under the journal ====================
 
-  def v1(using w: Dialogue.Asks[String, String, String, Pure]): String ! Wf.Talking[String, String] + Pure = direct:
+  def v1(using w: Wf.Dialogue.Asks[String, String, String, Pure]): String ! Wf.Talking[String, String] + Pure = direct:
     val city = !w.pause("city?")
     val nights = !w.pause("nights?")
     s"$city/$nights"
 
-  def v2(using w: Dialogue.Asks[String, String, String, Pure]): String ! Wf.Talking[String, String] + Pure = direct:
+  def v2(using w: Wf.Dialogue.Asks[String, String, String, Pure]): String ! Wf.Talking[String, String] + Pure = direct:
     val promo = !w.pause("promo code?")     // a NEW first question
     val city = !w.pause("city?")
     val nights = !w.pause("nights?")

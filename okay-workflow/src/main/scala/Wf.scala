@@ -119,12 +119,30 @@ object Wf:
 
   // ── the dialogue: a program stopped at its question, the rest a value
 
-  /** THE ONE OPERATION OF A DIALOGUE: a question `Q`, answered by an `A` */
+  /**
+   * WHERE A QUESTION WAS WRITTEN, as a compile-time constant (`File.scala:line`): a resumed rest has no useful JVM
+   * stack trace, so a dialogue carries the source position of the `pause` it stands at (okay-freer's `At`).
+   */
+  final case class At(where: String) extends AnyVal:
+    override def toString: String = where
+
+  object At:
+    /** when no position is known */
+    val unknown: At = At("<unknown>")
+
+    /** the call site's file and line */
+    inline given here: At = ${ okay.macros.AtMacro.here }
+
+  /** THE ONE OPERATION OF A DIALOGUE: a question `Q`, answered by an `A`, asked at `where` */
   enum Talk[Q, A, X]:
-    case Say[Q, A](q: Q) extends Talk[Q, A, A]
+    case Say[Q, A](q: Q, where: String) extends Talk[Q, A, A]
 
   /** the effect of a dialogue asking `Q`, answered `A` */
   type Talking[Q, A] = [X] =>> Talk[Q, A, X]
+
+  /** THE DOOR: ask `q`, written here; the one place a `Talk.Say` is made */
+  def ask[Q, A](q: Q)(using at: At): A ! Talking[Q, A] =
+    effect[Talking[Q, A], A](Talk.Say(q, at.where))
 
   /**
    * WHERE A DIALOGUE STANDS: done, or at a question with THE REST — a value, resumed with an answer any number of
@@ -132,8 +150,10 @@ object Wf:
    * the other effects `F` performed where the walk is).
    */
   enum Dialogue[Q, A, R, F[_]]:
-    /** at `question`; `resume(a)` is where it stands next, `fail(e)` the rest given a failure raised there */
-    case Ask(question: Q, resume: A => Dialogue[Q, A, R, F] ! F, fail: Throwable => Dialogue[Q, A, R, F] ! F)
+    /** at `question`, asked at `at` (`File.scala:line`); `resume(a)` is where it stands next, `fail(e)` the rest
+     * given a failure raised there */
+    case Ask(question: Q, resume: A => Dialogue[Q, A, R, F] ! F, fail: Throwable => Dialogue[Q, A, R, F] ! F,
+             at: String)
     case Done(value: R)
 
     def finished: Option[R] = this match
@@ -141,7 +161,12 @@ object Wf:
       case _ => None
 
     def asking: Option[Q] = this match
-      case Ask(q, _, _) => Some(q)
+      case Ask(q, _, _, _) => Some(q)
+      case _ => None
+
+    /** where it asked: the source position of its `pause` */
+    def where: Option[String] = this match
+      case Ask(_, _, _, at) => Some(at)
       case _ => None
 
   object Dialogue:
@@ -154,7 +179,43 @@ object Wf:
         case Walk.Done(r) => Done(r)
         case o: Walk.Op[Talking[Q, A], x, R, Talking[Q, A] + F] => o.op match
           // the rest walked on when it is resumed: deferred into the program, not a host frame
-          case Talk.Say(q) => Ask(q, a => of(o.resume(a)), e => of(o.fail(e)))
+          case Talk.Say(q, at) => Ask(q, a => of(o.resume(a)), e => of(o.fail(e)), at)
+
+    /**
+     * THE EVIDENCE OF A PLAIN DIALOGUE'S BODY, carrying its door: a body names its four types once, in its own
+     * signature, and `w.pause(q)` writes none (the durable `Wf.Asks` is the same over `Ask[Q]`/`Ans[A]`).
+     */
+    final class Asks[Q, A, R, F[_]] private[okay] ():
+      /** ask the outside world `q`; the answer is the dialogue's next */
+      def pause(q: Q)(using at: At): A ! Talking[Q, A] + F = Dialogue.pause[Q, A, R, F](q)(using this, at)
+
+    /** ask `q` in a body that is a plain dialogue */
+    def pause[Q, A, R, F[_]](q: Q)(using @unused w: Asks[Q, A, R, F], at: At): A ! Talking[Q, A] + F =
+      ask[Q, A](q).at[Talking[Q, A] + F]
+
+    /** `body` walked to its first question, or its end */
+    def start[Q, A, R, F[_]](body: Asks[Q, A, R, F] ?=> R ! Talking[Q, A] + F): Dialogue[Q, A, R, F] ! F =
+      of[Q, A, R, F](body(using Asks()))
+
+    /**
+     * Where a plain dialogue stands, from its journal: `body` re-run and each answer fed back without asking, in
+     * order; a journal longer than the program leaves it done. The rest is resumed in the program's binds, so the
+     * fold is not a host recursion.
+     */
+    def replay[Q, A, R, F[_]](body: Asks[Q, A, R, F] ?=> R ! Talking[Q, A] + F)
+                             (journal: List[A]): Dialogue[Q, A, R, F] ! F =
+      start[Q, A, R, F](body).flatMap(feed(_, journal))
+
+    /** `d` given `journal`'s answers, in order, as far as it asks */
+    def feed[Q, A, R, F[_]](d: Dialogue[Q, A, R, F], journal: List[A]): Dialogue[Q, A, R, F] ! F =
+      (d, journal) match
+        case (Ask(_, resume, _, _), a :: rest) => resume(a).flatMap(feed(_, rest))
+        case _ => pure(d)
+
+    /** answer every question with `answer`, to the end */
+    def drive[Q, A, R, F[_]](d: Dialogue[Q, A, R, F])(answer: Q => A ! F): R ! F = d match
+      case Done(r) => pure(r)
+      case Ask(q, resume, _, _) => answer(q).flatMap(resume).flatMap(drive(_)(answer))
 
   /** the effect of a durable program: its questions, the library's and the author's */
   type Talks[Q, A] = Talking[Ask[Q], Ans[A]]
@@ -207,25 +268,25 @@ object Wf:
   final class Asks[Q, A, R, F[_]] private[okay] ():
 
     /** ask the outside world, through the author's own question type */
-    def pause(q: Q): A ! Durable[Q, A, F] =
-      Wf.pause[Q, A, R, F](q)(using this)
+    def pause(q: Q)(using at: At): A ! Durable[Q, A, F] =
+      Wf.pause[Q, A, R, F](q)(using this, at)
 
     /** the same under the name the literature uses: an "activity" is
      * a command performed outside and a result remembered */
-    def perform(cmd: Q): A ! Durable[Q, A, F] = pause(cmd)
+    def perform(cmd: Q)(using At): A ! Durable[Q, A, F] = pause(cmd)
 
     /** the wall clock, once, remembered */
-    def now: Long ! Durable[Q, A, F] = Wf.now[Q, A, R, F](using this)
+    def now(using at: At): Long ! Durable[Q, A, F] = Wf.now[Q, A, R, F](using this, at)
 
     /** a fresh id, once, remembered */
-    def uuid: String ! Durable[Q, A, F] = Wf.uuid[Q, A, R, F](using this)
+    def uuid(using at: At): String ! Durable[Q, A, F] = Wf.uuid[Q, A, R, F](using this, at)
 
     /** a die, once, remembered */
-    def random: Double ! Durable[Q, A, F] = Wf.random[Q, A, R, F](using this)
+    def random(using at: At): Double ! Durable[Q, A, F] = Wf.random[Q, A, R, F](using this, at)
 
     /** is this branch on for THIS run? */
-    def patch(id: String): Boolean ! Durable[Q, A, F] =
-      Wf.patch[Q, A, R, F](id)(using this)
+    def patch(id: String)(using at: At): Boolean ! Durable[Q, A, F] =
+      Wf.patch[Q, A, R, F](id)(using this, at)
 
     /**
      * HAS SOMEBODY ASKED THIS RUN TO STOP, and why?
@@ -240,8 +301,8 @@ object Wf:
      * is stated in the guide: a run asleep for a year learns it was
      * cancelled when it wakes, not before.
      */
-    def cancelled: Option[String] ! Durable[Q, A, F] =
-      Wf.cancelled[Q, A, R, F](using this)
+    def cancelled(using at: At): Option[String] ! Durable[Q, A, F] =
+      Wf.cancelled[Q, A, R, F](using this, at)
 
     /**
      * SLEEP, DURABLY. The run stops here and the driver returns
@@ -254,16 +315,16 @@ object Wf:
      * replay wakes at the same instant the first run chose, not at
      * one relative to the replay.
      */
-    def sleep(millis: Long): Unit ! Durable[Q, A, F] =
-      now.flatMap(t => Wf.timer[Q, A, R, F](t + millis)(using this))
+    def sleep(millis: Long)(using at: At): Unit ! Durable[Q, A, F] =
+      now.flatMap(t => Wf.timer[Q, A, R, F](t + millis)(using this, at))
 
     /** wait for a named signal from outside; the payload is its value */
-    def awaitSignal(name: String): String ! Durable[Q, A, F] =
-      Wf.signal[Q, A, R, F](name)(using this)
+    def awaitSignal(name: String)(using at: At): String ! Durable[Q, A, F] =
+      Wf.signal[Q, A, R, F](name)(using this, at)
 
     /** wait for a child dialogue to finish, and take its answer */
-    def awaitChild(id: String): String ! Durable[Q, A, F] =
-      Wf.child[Q, A, R, F](id)(using this)
+    def awaitChild(id: String)(using at: At): String ! Durable[Q, A, F] =
+      Wf.child[Q, A, R, F](id)(using this, at)
 
   // ── the author's doors ───────────────────────────────────────────
 
@@ -271,8 +332,8 @@ object Wf:
    * Ask the outside world, through the author's own question type —
    * one question of the dialogue, with the tag put on and taken off.
    */
-  def pause[Q, A, R, F[_]](q: Q)(using @unused w: Asking[Q, A, R, F]): A ! Durable[Q, A, F] =
-    effect[Talks[Q, A], Ans[A]](Talk.Say(Right(q))).map[A]:
+  def pause[Q, A, R, F[_]](q: Q)(using @unused w: Asking[Q, A, R, F], at: At): A ! Durable[Q, A, F] =
+    ask[Ask[Q], Ans[A]](Right(q)).map[A]:
       case Right(a) => a
       case other => throw Mismatched(q, other)
     .at[Durable[Q, A, F]]
@@ -285,21 +346,21 @@ object Wf:
    * listed `perform` as work, and the work turned out to be already
    * done.
    */
-  def perform[Q, A, R, F[_]](cmd: Q)(using @unused w: Asking[Q, A, R, F]): A ! Durable[Q, A, F] =
+  def perform[Q, A, R, F[_]](cmd: Q)(using @unused w: Asking[Q, A, R, F], at: At): A ! Durable[Q, A, F] =
     pause(cmd)
 
   /** the wall clock, once, remembered */
-  def now[Q, A, R, F[_]](using @unused w: Asking[Q, A, R, F]): Long ! Durable[Q, A, F] =
+  def now[Q, A, R, F[_]](using @unused w: Asking[Q, A, R, F], at: At): Long ! Durable[Q, A, F] =
     sys[Q, A, F, Long](Sys.Now):
       case SysA.Millis(v) => v
 
   /** a fresh id, once, remembered */
-  def uuid[Q, A, R, F[_]](using @unused w: Asking[Q, A, R, F]): String ! Durable[Q, A, F] =
+  def uuid[Q, A, R, F[_]](using @unused w: Asking[Q, A, R, F], at: At): String ! Durable[Q, A, F] =
     sys[Q, A, F, String](Sys.Uuid):
       case SysA.Text(v) => v
 
   /** a die, once, remembered */
-  def random[Q, A, R, F[_]](using @unused w: Asking[Q, A, R, F]): Double ! Durable[Q, A, F] =
+  def random[Q, A, R, F[_]](using @unused w: Asking[Q, A, R, F], at: At): Double ! Durable[Q, A, F] =
     sys[Q, A, F, Double](Sys.Random):
       case SysA.Dice(v) => v
 
@@ -310,7 +371,7 @@ object Wf:
    * the journal, so every process agrees.
    */
   def patch[Q, A, R, F[_]](id: String)
-                           (using @unused w: Asking[Q, A, R, F]): Boolean ! Durable[Q, A, F] =
+                           (using @unused w: Asking[Q, A, R, F], at: At): Boolean ! Durable[Q, A, F] =
     sys[Q, A, F, Boolean](Sys.Patch(id)):
       case SysA.Flag(v) => v
 
@@ -320,29 +381,29 @@ object Wf:
   /** the three that suspend; each is an ordinary `Sys` question that
    * the runtime declines to answer in place */
   def timer[Q, A, R, F[_]](untilMillis: Long)
-                           (using @unused w: Asking[Q, A, R, F]): Unit ! Durable[Q, A, F] =
+                           (using @unused w: Asking[Q, A, R, F], at: At): Unit ! Durable[Q, A, F] =
     sys[Q, A, F, Unit](Sys.Timer(untilMillis)):
       case SysA.Elapsed => ()
 
   def signal[Q, A, R, F[_]](name: String)
-                            (using @unused w: Asking[Q, A, R, F]): String ! Durable[Q, A, F] =
+                            (using @unused w: Asking[Q, A, R, F], at: At): String ! Durable[Q, A, F] =
     sys[Q, A, F, String](Sys.Signal(name)):
       case SysA.Got(v) => v
 
   def child[Q, A, R, F[_]](id: String)
-                           (using @unused w: Asking[Q, A, R, F]): String ! Durable[Q, A, F] =
+                           (using @unused w: Asking[Q, A, R, F], at: At): String ! Durable[Q, A, F] =
     sys[Q, A, F, String](Sys.Child(id)):
       case SysA.Got(v) => v
 
-  def cancelled[Q, A, R, F[_]](using @unused w: Asking[Q, A, R, F])
+  def cancelled[Q, A, R, F[_]](using @unused w: Asking[Q, A, R, F], at: At)
                                : Option[String] ! Durable[Q, A, F] =
     sys[Q, A, F, Option[String]](Sys.Cancelled):
       case SysA.Text(why) => Some(why)
       case SysA.Flag(false) => None
 
   /** a library question, seen at the body's effects */
-  private def sys[Q, A, F[_], X](q: Sys)(f: PartialFunction[SysA, X]): X ! Durable[Q, A, F] =
-    effect[Talks[Q, A], Ans[A]](Talk.Say(Left(q))).map[X]:
+  private def sys[Q, A, F[_], X](q: Sys)(f: PartialFunction[SysA, X])(using at: At): X ! Durable[Q, A, F] =
+    ask[Ask[Q], Ans[A]](Left(q)).map[X]:
       case Left(a) if f.isDefinedAt(a) => f(a)
       case other => throw Mismatched(q, other)
     .at[Durable[Q, A, F]]
@@ -479,7 +540,7 @@ object Wf:
                                   : (Step[Q, R], Journal[A]) ! F =
     p match
       case Dialogue.Done(r) => pure((Step.Done(r), acc))
-      case Dialogue.Ask(Left(q), resume, _) =>
+      case Dialogue.Ask(Left(q), resume, _, _) =>
         rt.answer(q) match
           // the runtime declined: the drive is over, and the caller
           // now knows what has to happen before it can go on
@@ -487,7 +548,7 @@ object Wf:
           case Right(sa) =>
             val a: Ans[A] = Left(sa)
             resume(a).flatMap(next => loop(next, acc :+ a)(own))
-      case Dialogue.Ask(Right(q), resume, _) =>
+      case Dialogue.Ask(Right(q), resume, _, _) =>
         own(q) match
           case None => pure((Step.Asking(q), acc))
           case Some(prog) => prog.flatMap: v =>
@@ -528,7 +589,7 @@ object Wf:
     def go(p: Paused[Q, A, R, F], left: Journal[A], seen: List[(Ask[Q], Ans[A])])
           : (Paused[Q, A, R, F], List[(Ask[Q], Ans[A])]) ! F = p match
       case Dialogue.Done(_) => pure((p, seen.reverse))
-      case Dialogue.Ask(q, resume, _) =>
+      case Dialogue.Ask(q, resume, _, _) =>
         (q, left) match
           case (_, Nil) => pure((p, seen.reverse))      // caught up: it is live now
           case (Left(Sys.Patch(_)), (r @ Right(_)) :: _) =>
@@ -656,7 +717,7 @@ object Wf:
      * ARE its leaves.
      */
     def program[Q, A, R, X, Y](p: Wf.Proc[Q, A, X, Y])(x: X)
-                              (using w: Asks[Q, A, R, Pure]): Y ! Durable[Q, A, Pure] =
+                              (using w: Asks[Q, A, R, Pure], at: At): Y ! Durable[Q, A, Pure] =
       p.foldMap[[Z] =>> Z ! Durable[Q, A, Pure]](
         [Z] => (q: Question[Q, A, Z]) => answerOf[Q, A, R, Z](q))(using okay.Programs.monad[Durable[Q, A, Pure]])(x)
 
@@ -674,7 +735,7 @@ object Wf:
      * paid an `up` = `map(v => v)` for exactly this widening.
      */
     private def answerOf[Q, A, R, Z](q: Question[Q, A, Z])
-                                    (using w: Asks[Q, A, R, Pure]): Z ! Durable[Q, A, Pure] =
+                                    (using w: Asks[Q, A, R, Pure], at: At): Z ! Durable[Q, A, Pure] =
       q match
         case Question.Ask(a) => w.pause(a)
         case Question.Now() => w.now

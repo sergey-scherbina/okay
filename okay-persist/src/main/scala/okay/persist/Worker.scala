@@ -227,7 +227,7 @@ final class Worker[Q, A, R, F[_], G[_]](topic: Topic, program: String, timers: T
         // about the wrong door. One rule, one implementation, nothing
         // left to re-derive.
         case _ => placed(dialogue(id)).map:
-          case Right((at, _)) => write(at.asking.map(_.toString), None)
+          case Right((at, _)) => write(at.asking.map(_.toString), at.where)
           case Left(_) => write(None, None)
 
   /**

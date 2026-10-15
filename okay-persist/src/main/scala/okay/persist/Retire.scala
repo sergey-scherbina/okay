@@ -117,7 +117,7 @@ object Retire:
         case id :: rest => open(id).at.flatMap:
           case Left(why) => go(rest, acc + (id -> State.Stopped(why)))
           case Right(p) => go(rest, acc + (id -> (p.asking match
-            case Some(q) => State.Asking(q.toString, None)
+            case Some(q) => State.Asking(q.toString, p.where)
             case None => State.Finished)))
     go(ids, Map.empty)
 

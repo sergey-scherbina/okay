@@ -1,12 +1,11 @@
 package okay.persist
 
-import okay.{!, +, Wf, Within, effect, pure}
+import okay.{!, +, Wf, Within, pure}
 import okay.codec.Schema
-import scala.annotation.unused
 
 /**
  * A PAUSED PROGRAM WHOSE JOURNAL IS A TOPIC (durable-dialogue,
- * 2026-09-17): the glue between `Dialogue.replay` and the durable log.
+ * 2026-09-17): the glue between `Wf.Dialogue.replay` and the durable log.
  *
  * `Wf.Dialogue.of` stops a program in the middle and hands the rest
  * of it back as a value; that value is a closure and does not survive
@@ -106,7 +105,7 @@ final class Dialogue[Q, A, R, F[_]] private (topic: Topic, val id: String,
                                       * thing about this class that the program's
                                       * shape decides (wf-durable-journal,
                                       * 2026-09-17). An ordinary dialogue folds with
-                                      * `Dialogue.replay`; a WORKFLOW folds with
+                                      * `Wf.Dialogue.replay`; a WORKFLOW folds with
                                       * `Wf.replay`, which knows not to feed an
                                       * answer to a `patch` that was not there when
                                       * the journal was written. Everything else —
@@ -237,7 +236,7 @@ final class Dialogue[Q, A, R, F[_]] private (topic: Topic, val id: String,
     r.stopped match
       case None => pure(None)
       case Some(why) => place(r.answers).map: p =>
-        Some(Dialogue.Diagnosis(why, r.answers.size, p.asking.map(_.toString), None))
+        Some(Dialogue.Diagnosis(why, r.answers.size, p.asking.map(_.toString), p.where))
 
   /**
    * WHERE IT STANDS AND HOW MANY RECORDS PUT IT THERE, in ONE fold
@@ -294,7 +293,7 @@ final class Dialogue[Q, A, R, F[_]] private (topic: Topic, val id: String,
                      : Dialogue.Answered[Q, A, R, F] ! F =
     p match
       case Wf.Dialogue.Done(_) => pure(Dialogue.Answered.NotAsking(p))
-      case Wf.Dialogue.Ask(_, resume, _) =>
+      case Wf.Dialogue.Ask(_, resume, _, _) =>
         // the durable journal is the journal: the rest resumed with
         // the answer, nothing kept in memory beside it
         resume(a).flatMap: next =>
@@ -489,7 +488,7 @@ final class Dialogue[Q, A, R, F[_]] private (topic: Topic, val id: String,
           : (Either[S, R], Wf.Dialogue[Q, A, R, F], Int) ! G = p match
       case Wf.Dialogue.Done(r) => pure((Right(r), p, index))
       // the WARM path: the program is in hand, so no step replays
-      case Wf.Dialogue.Ask(q, _, _) =>
+      case Wf.Dialogue.Ask(q, _, _, _) =>
         oracle(q, Dialogue.Attempt(id, index)).flatMap:
           case Left(s) => pure((Left(s), p, index))
           case Right(a) =>
@@ -504,42 +503,17 @@ object Dialogue:
 
   /**
    * AN ORDINARY DURABLE DIALOGUE: the author's questions, answered by
-   * the author's oracle, folded with `Dialogue.replay`.
+   * the author's oracle, folded with `Wf.Dialogue.replay`.
    */
   def apply[Q, A, R, F[_]](topic: Topic, id: String, program: String,
                             snapshots: Option[Snapshots] = None,
                             snapshotEvery: Int = 0,
                             version: Int = 1,
                             upcasts: Map[Int, Typed.Upcast] = Map.empty)
-                           (body: Dialogue.Asks[Q, A, R, F] ?=> R ! Wf.Talking[Q, A] + F)
+                           (body: Wf.Dialogue.Asks[Q, A, R, F] ?=> R ! Wf.Talking[Q, A] + F)
                            (using Schema[A]): Dialogue[Q, A, R, F] =
     new Dialogue(topic, id, program, snapshots, snapshotEvery, version, upcasts,
-      j => replay[Q, A, R, F](body)(j))
-
-  /**
-   * THE EVIDENCE OF A BODY THAT MAY PAUSE: its question and answer
-   * types are on the object, so `w.pause(q)` infers nothing. A
-   * question is one operation of the dialogue's effect
-   * (`Wf.Talking[Q, A]`), walked by `Wf.Dialogue.of`.
-   */
-  final class Asks[Q, A, R, F[_]] private[persist] ():
-    /** ask and wait for the answer */
-    def pause(q: Q): A ! Wf.Talking[Q, A] + F = Dialogue.pause[Q, A, R, F](q)(using this)
-
-  /** ask and wait for the answer, the evidence in context */
-  def pause[Q, A, R, F[_]](q: Q)(using @unused w: Asks[Q, A, R, F]): A ! Wf.Talking[Q, A] + F =
-    effect[Wf.Talking[Q, A], A](Wf.Talk.Say(q)).at[Wf.Talking[Q, A] + F]
-
-  /** where the dialogue stands, from its program and its journal: the
-   * program walked to its first question, then each answer of the
-   * journal given in turn (more answers than questions: the rest are
-   * ignored). Each step is deferred into the program's bind. */
-  def replay[Q, A, R, F[_]](body: Asks[Q, A, R, F] ?=> R ! Wf.Talking[Q, A] + F)
-                           (j: List[A]): Wf.Dialogue[Q, A, R, F] ! F =
-    def go(p: Wf.Dialogue[Q, A, R, F], left: List[A]): Wf.Dialogue[Q, A, R, F] ! F = (p, left) match
-      case (Wf.Dialogue.Ask(_, resume, _), a :: rest) => resume(a).flatMap(go(_, rest))
-      case _ => pure(p)
-    Wf.Dialogue.of[Q, A, R, F](body(using Asks())).flatMap(go(_, j))
+      j => Wf.Dialogue.replay[Q, A, R, F](body)(j))
 
   /**
    * A DURABLE WORKFLOW: the same journal, but it also carries the

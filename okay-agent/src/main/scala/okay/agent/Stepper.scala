@@ -1,7 +1,7 @@
 package okay.agent
 
 
-import okay.{!, +, Async, Wf, effect, pure}
+import okay.{!, +, Async, Wf, pure}
 /**
  * The stepper (specs/llm-agentic.md, "The stepper"): run an agent
  * program under a debugger's hand — it PAUSES at every tool call,
@@ -68,19 +68,13 @@ object Stepper {
     Wf.Dialogue.of[ToolCall, String, A, Rest](
       prog.translate[Tool, Asking]([X] => (t: Tool[X]) => t match
         case Tool.Call(c) =>
-          effect[Asking, String](Wf.Talk.Say(c))
+          Wf.ask[ToolCall, String](c)
             .map(s => s: X)))   // Tool.Call refines X >: String; `!`'s answer is lifted by a map
 
   /** drive a stepping run: `onCall` decides each pause's answer —
    * consult the real tool table, edit its output, or fabricate */
   def drive[A](s: Stepping[A] ! Rest)(onCall: ToolCall => String ! Rest): A ! Rest =
-    s.flatMap(answered(_)(onCall))
-
-  /** a pause answered, and the run on to the next: the recursion is in
-   * the program's binds (each turn a continuation), not on the stack */
-  private def answered[A](d: Stepping[A])(onCall: ToolCall => String ! Rest): A ! Rest = d match
-    case Wf.Dialogue.Done(a) => pure[A, Rest](a)
-    case Wf.Dialogue.Ask(c, resume, _) => onCall(c).flatMap(resume).flatMap(answered(_)(onCall))
+    s.flatMap(Wf.Dialogue.drive(_)(onCall))
 
   /** the transparent driver: every pause performs the real tool —
    * stepping with nobody watching equals not stepping */

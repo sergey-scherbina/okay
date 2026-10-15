@@ -65,7 +65,7 @@ class TestStepper extends munit.FunSuite {
       Agent.complete().flatMap(r => Agent.call(r.calls.head)).map(_.toUpperCase)
 
     val forked = stepped(prog).flatMap {
-      case Wf.Dialogue.Ask(_, resume, _) =>
+      case Wf.Dialogue.Ask(_, resume, _, _) =>
         // the SAME rest, resumed twice with different pasts: the
         // resumption is a program in the stepper's own row
         resume("first world").flatMap { a =>

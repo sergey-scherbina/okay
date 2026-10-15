@@ -42,7 +42,7 @@ class TestBookCheckpoints extends FunSuite {
   /** a counter the PROGRAM touches, so it counts executions, not reads */
   var steps = 0
 
-  def counted(n: Int)(using w: Dialogue.Asks[Int, Int, Int, Pure]): Int ! Wf.Talking[Int, Int] + Pure = direct:
+  def counted(n: Int)(using w: Wf.Dialogue.Asks[Int, Int, Int, Pure]): Int ! Wf.Talking[Int, Int] + Pure = direct:
     if n == 0 then 0
     else
       steps += 1

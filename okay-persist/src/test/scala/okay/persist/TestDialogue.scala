@@ -17,7 +17,7 @@ import scala.language.implicitConversions
 class TestDialogue extends FunSuite {
 
   /** the program: straight-line code that happens to pause */
-  def booking(using w: Dialogue.Asks[String, String, String, Pure]): String ! Wf.Talking[String, String] + Pure = direct:
+  def booking(using w: Wf.Dialogue.Asks[String, String, String, Pure]): String ! Wf.Talking[String, String] + Pure = direct:
     val city = !w.pause("Which city?")
     val nights = !w.pause(s"How many nights in $city?")
     val pay = !w.pause(s"Pay ${nights.toInt * 90} for $city?")
@@ -131,7 +131,7 @@ class TestDialogue extends FunSuite {
     def compact(p: Int): Unit = under.compact(p)
 
   /** a program with as many pauses as you like */
-  def sumUp(n: Int)(using w: Dialogue.Asks[Int, Int, Int, Pure]): Int ! Wf.Talking[Int, Int] + Pure = direct:
+  def sumUp(n: Int)(using w: Wf.Dialogue.Asks[Int, Int, Int, Pure]): Int ! Wf.Talking[Int, Int] + Pure = direct:
     if n == 0 then 0 else (!w.pause(n)) + (!sumUp(n - 1))
 
   val N = 40
@@ -148,7 +148,7 @@ class TestDialogue extends FunSuite {
     val dc = Dialogue[Int, Int, Int, Pure](cold, "c", "sum/1")(sumUp(N))
     def loop(p: Wf.Dialogue[Int, Int, Int, Pure]): Int = p match
       case Wf.Dialogue.Done(r) => r
-      case Wf.Dialogue.Ask(q, _, _) => loop((!.run(dc.answer(q * 2))).now)
+      case Wf.Dialogue.Ask(q, _, _, _) => loop((!.run(dc.answer(q * 2))).now)
     assertEquals(loop(dc.place), (1 to N).sum * 2)
 
     // Both answered the same questions; only one of them re-read the
