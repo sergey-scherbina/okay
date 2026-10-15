@@ -2,8 +2,7 @@ package okay.bayes
 
 import scala.annotation.tailrec
 import scala.util.Random
-import okay.Effect
-import okay.freer.{!, Free, effect}
+import okay.{!, Effect, Handler, Walk, effect}
 /**
  * A BAYESIAN MODEL IS A PROGRAM (specs/okay-bayes.md): it draws named
  * random quantities and weighs its run by what it observed. Inference is
@@ -61,7 +60,7 @@ object Bayes:
   def sampleN[A](name: String, d: Distribution[A], n: Int): Vector[A] ! Model =
     // recursion deferred into the program's flatMap: one step per element, trampolined by the handler loop
     def from(i: Int, acc: Vector[A]): Vector[A] ! Model =
-      if i == n then okay.freer.pure[Model, Vector[A]](acc) else sample(s"$name[$i]", d).flatMap(x => from(i + 1, acc :+ x))
+      if i == n then okay.pure[Vector[A], Model](acc) else sample(s"$name[$i]", d).flatMap(x => from(i + 1, acc :+ x))
     from(0, Vector.empty)
 
   /** weigh the run by e^logWeight */
@@ -94,7 +93,7 @@ object Bayes:
     val v = xs.toVector
     // recursion deferred into the program's flatMap: one step per element, trampolined by the handler loop
     def from(i: Int): Unit ! Model =
-      if i == v.length then okay.freer.pure[Model, Unit](()) else observe(d(v(i)), value(v(i))).flatMap(_ => from(i + 1))
+      if i == v.length then okay.pure[Unit, Model](()) else observe(d(v(i)), value(v(i))).flatMap(_ => from(i + 1))
     from(0)
 
   /** a site's value and its distribution, held at ONE type — so a value is
@@ -119,7 +118,8 @@ object Bayes:
     var trace = Map.empty[String, Site[?]]
     var fresh = Set.empty[String]
     var logLik = 0.0
-    def answer[X](op: Model[X]): X = op match
+    // each operation answered in place (the kernel's Answering): nothing captured, no walk
+    val answers = Handler.answering[Model]([X] => (op: Model[X]) => op match
       case Model.Sample(name, d) =>
         val reused = fixed.get(name).flatMap(d.coerce).filter(v => d.logPdf(v) > Distribution.NegInf)
         val v = reused.getOrElse { fresh += name; d.sample(rng) }
@@ -127,12 +127,8 @@ object Bayes:
         v
       case Model.Factor(w) =>
         logLik += w
-        ()
-    @tailrec def loop(x: A ! Model): A = (x.resume: @unchecked) match
-      case Free.Return(a) => a
-      case Free.Inject(op: Model[A] @unchecked) => answer(op)
-      case Free.Bind(Free.Inject(op: Model[x] @unchecked), k) => loop(k(answer(op)))
-    val a = loop(p)
+        ())
+    val a = p.handle(answers).run
     Pass(a, trace, logLik, fresh)
 
   /** ONE FORWARD DRAW from the prior, weighed by the observations */
@@ -207,24 +203,18 @@ object Bayes:
       val v = reused.getOrElse { fresh += name; d.sample(rng) }
       trace = trace.updated(name, Site(d, v))
       v
-    def last(op: Model[A]): A = op match
-      case Model.Sample(name, d) => sampleSite(name, d)
+    // a WALK (okay.Walk), not a handler: the program is suspended at the goal's factor and its rest kept — resumed
+    // later, by several particles when resampled (the rest is a value, resumed any number of times)
+    def step[X](o: Walk.Op[Model, X, A, Model]): Either[A ! Model, A ! Model] = o.op match
+      case Model.Sample(name, d) => Left(o.resume(sampleSite(name, d)))
       case Model.Factor(w) =>
         logLik += w
         added += w
         factors += 1
-        ()
-    def step[X](op: Model[X], k: X => A ! Model): Either[A ! Model, A ! Model] = op match
-      case Model.Sample(name, d) => Left(k(sampleSite(name, d)))
-      case Model.Factor(w) =>
-        logLik += w
-        added += w
-        factors += 1
-        if factors >= goal then Right(k(())) else Left(k(()))
-    @tailrec def loop(x: A ! Model): Either[A, A ! Model] = (x.resume: @unchecked) match
-      case Free.Return(a) => Left(a)
-      case Free.Inject(op: Model[A] @unchecked) => Left(last(op))
-      case Free.Bind(Free.Inject(op: Model[x] @unchecked), k) => step(op, k) match
+        if factors >= goal then Right(o.resume(())) else Left(o.resume(()))
+    @tailrec def loop(x: A ! Model): Either[A, A ! Model] = Walk.view(x) match
+      case Walk.Done(a) => Left(a)
+      case o: Walk.Op[Model, x, A, Model] => step(o) match
         case Left(more) => loop(more)
         case Right(rest) => Right(rest)
     from.rest match

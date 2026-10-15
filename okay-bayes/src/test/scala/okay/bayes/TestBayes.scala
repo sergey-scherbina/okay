@@ -1,7 +1,7 @@
 package okay.bayes
 
 import scala.util.Random
-import okay.freer.!
+import okay.!
 import okay.testkit.Munit.Diagnosed
 import Bayes.*
 import Distribution.*

@@ -357,6 +357,8 @@ object Answers:
     def handle[A](a: NoEffectsK[A]): A = throw MatchError(a)
   private type NoEffectsK[X] = okay.core.NoEffects[X]
   given none: Answers[okay.core.NoEffects] = NoneA
+  /** a program whose effects were inferred as none at all (`pure(x)` with no expected type: `Es = Nothing`) */
+  given nothing: Answers[Nothing] = NoneA.asInstanceOf[Answers[Nothing]]
   /** a SUM's answers: each side's, kept as the parts — `runWith` makes one place and one handler a part */
   private[okay] final class Sum[F[_], G[_]](val left: Answers[F], val right: Answers[G]) extends Answers[F + G]:
     def handle[A](a: (F + G)[A]): A = throw MatchError(a)

@@ -1,6 +1,7 @@
 package okay.bayes
 
-import okay.freer.{!, Static}
+import okay.{!, effect}
+import okay.freer.Static
 /**
  * A MODEL WHOSE STRUCTURE IS KNOWN BEFORE IT RUNS (specs/okay-bayes.md
  * stage 8). The parameters are a `Static[Model, P]` — the core's free
@@ -60,7 +61,10 @@ object Declared:
   /** the declaration as an ordinary model — the parameters run, then weighed by the likelihood — for every sampler */
   def model[A](params: Params[A])(logLik: A => Double): A ! Model =
     val _ = sites(params)
-    params.toFree.flatMap(a => Bayes.factor(logLik(a)).map(_ => a))
+    // the declaration folded into a program by its own Selective fold (okay-freer's `toFree` builds okay-freer's
+    // tree): each leaf one operation, the program's Monad the Selective
+    val run = params.foldMap[[X] =>> X ! Model]([X] => (op: Model[X]) => effect(op))(using okay.Programs.monad[Model])
+    run.flatMap(a => Bayes.factor(logLik(a)).map(_ => a))
 
   /**
    * NUTS, with the structure checked BEFORE sampling: every site must be

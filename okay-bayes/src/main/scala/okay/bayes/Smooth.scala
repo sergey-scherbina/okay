@@ -1,8 +1,6 @@
 package okay.bayes
 
-import scala.annotation.tailrec
-import okay.Effect
-import okay.freer.{!, Free, effect}
+import okay.{!, Effect, Handler, effect}
 import Real.{exp, log, lgamma, log1p, softplus, sigmoid, square, sum}
 
 /** a density over X whose log is differentiable — in its parameters, and in x when x is a `Real` */
@@ -75,7 +73,7 @@ object Smooth:
   def paramN(name: String, prior: Prior, n: Int): Vector[Real] ! Grad =
     // recursion deferred into the program's flatMap, as Bayes.sampleN
     def from(i: Int, acc: Vector[Real]): Vector[Real] ! Grad =
-      if i == n then okay.freer.pure[Grad, Vector[Real]](acc) else param(s"$name[$i]", prior).flatMap(x => from(i + 1, acc :+ x))
+      if i == n then okay.pure[Vector[Real], Grad](acc) else param(s"$name[$i]", prior).flatMap(x => from(i + 1, acc :+ x))
     from(0, Vector.empty)
   def observe[X](d: Density[X], x: X): Unit ! Grad = score(d.logPdf(x))
   /** every element in one score, each under the density `d` gives it */
@@ -125,7 +123,8 @@ object Smooth:
     var params = Vector.empty[Real]
     var supports = Vector.empty[Support]
     var total = Real.const(0.0)
-    def answer[X](op: Grad[X]): X = op match
+    // each operation answered in place (the kernel's Answering): nothing captured, no walk
+    val answers = Handler.answering[Grad]([X] => (op: Grad[X]) => op match
       case Grad.Param(name, prior) =>
         require(!names.contains(name), s"Smooth: parameter '$name' drawn twice")
         val (x, logJ) = constrain(prior.support, u(names.length))
@@ -136,12 +135,8 @@ object Smooth:
         x
       case Grad.Score(w) =>
         total = total + w
-        ()
-    @tailrec def loop(x: A ! Grad): A = (x.resume: @unchecked) match
-      case Free.Return(a) => a
-      case Free.Inject(op: Grad[A] @unchecked) => answer(op)
-      case Free.Bind(Free.Inject(op: Grad[x] @unchecked), k) => loop(k(answer(op)))
-    val a = loop(p)
+        ())
+    val a = p.handle(answers).run
     Run(a, names, params, total, supports)
 
   /** the program as a `Target` on unconstrained ℝᵈ, its gradient by the tape */

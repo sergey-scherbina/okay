@@ -2,8 +2,7 @@ package okay.bayes
 
 import scala.util.Random
 import okay.{Bulk, Chunks, through}
-import okay.freer.{%}
-import okay.freer.{!}
+import okay.{%, !}
 import okay.std.{Writer}
 import okay.testkit.Munit.Diagnosed
 import Bayes.*
@@ -35,10 +34,10 @@ class TestStreams extends Diagnosed:
     (steps, logZ)
 
   test("an online filter over a stream: the filtering mean at every step, and the log evidence, are the Kalman filter's") {
-    val f = Online.filter[Double, Double](okay.freer.pure[Model, Double](0.0),
+    val f = Online.filter[Double, Double](okay.pure[Double, Model](0.0),
       (x, y) => sample("x", Normal(x, q)).flatMap(x1 => observe(Normal(x1, r), y).map(_ => x1)), particles = 4000)
-    val observations: Unit ! Writer % Double = ys.foldLeft(okay.freer.pure[Writer % Double, Unit](()))((p, y) => p.flatMap(_ => Writer.tell(y)))
-    val posteriors = okay.freer.!.run(Writer.run(through(observations)(f.stage)))._1.toVector
+    val observations: Unit ! Writer % Double = ys.foldLeft(okay.pure[Unit, Writer % Double](()))((p, y) => p.flatMap(_ => Writer.tell(y)))
+    val posteriors = Writer.run(through(observations)(f.stage)).run._1.toVector
     val (exact, logZ) = kalman
     assertEquals(posteriors.length, ys.length)
     val worst = posteriors.indices.map(t => math.abs(posteriors(t).expect(identity) - exact(t)._1) / exact(t)._2).max

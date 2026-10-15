@@ -1,7 +1,6 @@
 package okay.bayes
 
 import scala.util.Random
-import okay.freer.{Free, given}
 import okay.codec.Schema
 import okay.foreign.{ForeignWorker, Py, PyEnv, PyEval}
 
@@ -48,9 +47,9 @@ object PyMC extends Sampler:
       given okay.Answers[PyEval] = w.handler
       // the wire carries finite numbers: a density of zero goes as a log weight no step accepts
       def finite(x: Double): Double = if x.isNaN || x == Double.NegativeInfinity then -1e300 else x
-      val logp = Py.callback[Vector[Double], Double]("logp")(u => Free.pure(finite(target.logp(u.toArray))))
+      val logp = Py.callback[Vector[Double], Double]("logp")(u => okay.pure[Double, okay.Pure](finite(target.logp(u.toArray))))
       val grad = Py.callback[Vector[Double], Vector[Double]]("grad")(u =>
-        Free.pure(target.gradient(u.toArray)._2.toVector.map(g => if g.isNaN || g.isInfinite then 0.0 else g)))
+        okay.pure[Vector[Double], okay.Pure](target.gradient(u.toArray)._2.toVector.map(g => if g.isNaN || g.isInfinite then 0.0 else g)))
       // a start with a finite density, chosen here as ours chooses it
       val rng = new Random(seed)
       var init = target.init(rng)

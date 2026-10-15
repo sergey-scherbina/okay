@@ -2,7 +2,7 @@ package okay.bayes
 
 import scala.util.Random
 import okay.Stage
-import okay.freer.{!}
+import okay.!
 /**
  * AN ONLINE PARTICLE FILTER (specs/okay-bayes.md stage 6; the bootstrap
  * filter of Gordon, Salmond & Smith 1993): particles of a hidden state S,
