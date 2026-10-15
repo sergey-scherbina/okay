@@ -51,18 +51,37 @@ names the one it runs.
 
 ## Behavior
 
-- [ ] `WireLink.accepted`: the far side's hello read within `helloMillis`,
+- [x] `WireLink.accepted`: the far side's hello read within `helloMillis`,
       else refused by name and the socket closed; a network link (`network`
       true), duplex.
-- [ ] `ForeignServer.listen(0)` binds an ephemeral port; `accept()` answers
+- [x] `ForeignServer.listen(0)` binds an ephemeral port; `accept()` answers
       the next connection's engine; `close()` stops listening.
-- [ ] `serve(session)`: each connection on a thread of its own, its engine
+- [x] `serve(session)`: each connection on a thread of its own, its engine
       closed when the session returns or throws.
-- [ ] `WireConformance` — the suite every far side passes — passes over an
+- [x] `WireConformance` — the suite every far side passes — passes over an
       ACCEPTED connection, the far side the TypeScript worker dialling the
-      server (`TestTsServed`).
-- [ ] A far side that connects and says nothing is refused by name after
+      server (`TestTsServed`): the same 6 passed, 7 skipped by capability, as
+      over pipes (`TestTsPipes`).
+- [x] okay-ts, a far side that connects BY ITSELF, passes it too
+      (`TestOkayTsServed`, LIVE, `OKAY_TS` its checkout): multi-shot, Scala
+      callbacks under the caller's Reader, direct style, a failure by name.
+- [x] A TypeScript program's sensitive effect handled and AUDITED here
+      (`TestOkayTsAudited`): each transfer a callback whose program tells the
+      trail, normalizes the account, and refuses over the limit — a condition
+      thrown in TypeScript where the transfer is, caught there.
+- [x] A far side that connects and says nothing is refused by name after
       `helloMillis`, and the server goes on accepting.
+
+## Results
+
+- 2026-10-15: `TestForeignServer` 2/2; `TestTsServed` and `TestTsPipes` 6 passed
+  and 7 skipped each, the same tests (mux, streams and panics are capabilities
+  the TS worker does not claim); `TestOkayTsServed` 4 passed, with tables and
+  held values switched off; `TestOkayTsAudited` 1/1.
+- A refusal reaches the far side as a condition only in the DIRECT dialogue
+  (`Foreign.fn(...).calling`). There each callback's `Left` is a `continue`
+  with a condition. Under `Foreign.program`, a callback's `Left` ends the run
+  on the host. The audit test uses the dialogue for that reason.
 
 ## Decisions
 
