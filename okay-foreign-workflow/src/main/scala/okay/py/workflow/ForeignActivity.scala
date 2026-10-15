@@ -1,9 +1,6 @@
 package okay.foreign.workflow
 
-import okay.{Wf}
-
-import okay.freer.{%, +}
-import okay.freer.{!, At, Shift, effect}
+import okay.{!, Wf, effect, pure}
 import okay.codec.Schema
 import okay.foreign.{Condition, ForeignEval, PyNode, Value, Shape, ToPy, Wire}
 
@@ -69,8 +66,8 @@ object ForeignActivity:
     // must not be left waiting — and the function's own answer is the
     // activity's. DIRECT: a start that died is the retry loop's to redo.
     def settle(run: Long)(node: Either[Condition, PyNode]): Either[Condition, Value] ! ForeignEval = node match
-      case Left(cond) => okay.freer.pure[ForeignEval, Either[Condition, Value]](Left(cond))
-      case Right(PyNode.Done(v)) => okay.freer.pure[ForeignEval, Either[Condition, Value]](Right(v))
+      case Left(cond) => pure[Either[Condition, Value], ForeignEval](Left(cond))
+      case Right(PyNode.Done(v)) => pure[Either[Condition, Value], ForeignEval](Right(v))
       case Right(PyNode.Perform(cb, _, k, _)) =>
         effect[ForeignEval, Either[Condition, PyNode]](ForeignEval.Continue(run, k, Left(Condition("NoCallback",
           s"the activity '${c.address}' called okay_call('$cb'), and an activity offers no callbacks")))).flatMap(settle(run))
@@ -80,7 +77,7 @@ object ForeignActivity:
         .flatMap(settle(run)).flatMap {
           case Left(cond) if transport(cond.kind) =>
             if left > 1 then attempt(left - 1) else throw Unreachable(c.address, cond)
-          case answer => okay.freer.pure[ForeignEval, Either[Condition, Value]](answer)
+          case answer => pure[Either[Condition, Value], ForeignEval](answer)
         }
     attempt(math.max(1, attempts)).map(answer => Wire.written(answer.map(Wire.enc)))
 
@@ -92,13 +89,13 @@ object ForeignActivity:
   def call[Out: Schema](address: String)(using Shape): Call[Out] = Call(address)
 
   final class Call[Out: Schema](address: String)(using shape: Shape):
-    def apply[R, F[+_]]()(using Wf.Asks[ForeignCall, String, R, F], At): Either[Condition, Out] ! Shift % ? + F =
+    def apply[R, F[_]]()(using Wf.Asks[ForeignCall, String, R, F]): Either[Condition, Out] ! Wf.Durable[ForeignCall, String, F] =
       go(Vector.empty)
-    def apply[A: ToPy, R, F[+_]](a: A)(using Wf.Asks[ForeignCall, String, R, F], At): Either[Condition, Out] ! Shift % ? + F =
+    def apply[A: ToPy, R, F[_]](a: A)(using Wf.Asks[ForeignCall, String, R, F]): Either[Condition, Out] ! Wf.Durable[ForeignCall, String, F] =
       go(Vector(ToPy(a)))
-    def apply[A: ToPy, B: ToPy, R, F[+_]](a: A, b: B)
-                                         (using Wf.Asks[ForeignCall, String, R, F], At): Either[Condition, Out] ! Shift % ? + F =
+    def apply[A: ToPy, B: ToPy, R, F[_]](a: A, b: B)
+                                        (using Wf.Asks[ForeignCall, String, R, F]): Either[Condition, Out] ! Wf.Durable[ForeignCall, String, F] =
       go(Vector(ToPy(a), ToPy(b)))
-    private def go[R, F[+_]](args: Vector[Value])
-                            (using w: Wf.Asks[ForeignCall, String, R, F], at: At): Either[Condition, Out] ! Shift % ? + F =
+    private def go[R, F[_]](args: Vector[Value])
+                           (using w: Wf.Asks[ForeignCall, String, R, F]): Either[Condition, Out] ! Wf.Durable[ForeignCall, String, F] =
       w.perform(ForeignCall(address, args)).map(s => answer(s).flatMap(shape.decode[Out]))

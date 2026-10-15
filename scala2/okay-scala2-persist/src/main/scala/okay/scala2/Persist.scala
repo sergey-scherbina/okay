@@ -1,6 +1,7 @@
 package okay.scala2
 
 import okay.codec.Schema
+import okay.{%, +}
 import okay.given
 import okay.persist.{Policy, Record, Store, Streams, Topic, Typed}
 
@@ -45,5 +46,5 @@ object Persist {
     Source.of(unchunk(Streams.tail(topic, partition, from, chunk, pollMillis)))
 
   private def unchunk(s: okay.Source[okay.std.Chunk[Record]]): okay.Source[Record] =
-    okay.std.Writer.expand[okay.std.Chunk[Record], Record, Unit, okay.Async](s)(c => c)
+    okay.std.Writer.expand[okay.std.Chunk[Record], Record, Unit, okay.std.Writer % okay.std.Chunk[Record] + okay.Async](s)(c => c)
 }

@@ -2,8 +2,7 @@ package okay.foreign.workflow
 
 import okay.{Proc, Wf}
 
-import okay.freer.{%, +, Pure}
-import okay.freer.{!, Shift}
+import okay.{!, Pure}
 import okay.Direct.*
 import okay.Optic.arrows.*
 import okay.codec.Schema
@@ -39,7 +38,6 @@ object ShopProc:
  * both spellings, on the same journal as the do-notation workflow */
 class TestForeignProc extends munit.FunSuite:
   import ShopProc.*
-  import okay.freer.given
   override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
   override def munitIgnore: Boolean = TestPy.python.isEmpty
 
@@ -52,7 +50,7 @@ class TestForeignProc extends munit.FunSuite:
   override def afterAll(): Unit = if TestPy.python.nonEmpty then worker.close()
 
   private def wf(topic: okay.persist.Topic, id: String)
-                (body: Wf.Asks[ForeignCall, String, String, Pure] ?=> String ! Shift % ? + Pure) =
+                (body: Wf.Asks[ForeignCall, String, String, Pure] ?=> String ! Wf.Durable[ForeignCall, String, Pure]) =
     Dialogue.workflow[ForeignCall, String, String, Pure](topic, id, "order/1")(body)
 
   test("the far functions a procedure may call are known before it runs: named leaves, and the picture") {
@@ -72,7 +70,7 @@ class TestForeignProc extends munit.FunSuite:
   }
 
   test("ONE TOPIC, THREE FRONT ENDS: do-notation, term and block write the same journal") {
-    def journalOf(body: Wf.Asks[ForeignCall, String, String, Pure] ?=> String ! Shift % ? + Pure) =
+    def journalOf(body: Wf.Asks[ForeignCall, String, String, Pure] ?=> String ! Wf.Durable[ForeignCall, String, Pure]) =
       val t = MemoryStore().topic("j")
       val _ = wf(t, "o")(body).runWorkflowIn(q => ForeignActivity.oracle(q)).runWith
       wf(t, "o")(body).recovered.answers

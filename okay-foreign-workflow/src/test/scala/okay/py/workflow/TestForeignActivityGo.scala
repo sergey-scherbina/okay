@@ -2,8 +2,7 @@ package okay.foreign.workflow
 
 import okay.{Wf}
 
-import okay.freer.{%, +, Pure}
-import okay.freer.{!, Shift}
+import okay.{!, Pure}
 import okay.Direct.*
 import okay.codec.{Schema, WireAuth, WireFormat}
 import okay.persist.{Dialogue, MemoryStore}
@@ -68,7 +67,7 @@ func main() {
       case _ => None
     (bound.getOrElse { p.destroy(); throw IllegalStateException(s"the Go shop did not say where it listens: $first") }, p)
 
-  def order(sku: String)(using w: Wf.Asks[ForeignCall, String, String, Pure]): String ! Shift % ? + Pure = direct:
+  def order(sku: String)(using w: Wf.Asks[ForeignCall, String, String, Pure]): String ! Wf.Durable[ForeignCall, String, Pure] = direct:
     val price = !ForeignActivity.call[Double]("price")(sku)
     price match
       case Left(c) => s"no price: ${c.kind}"
@@ -81,7 +80,6 @@ func main() {
  * activities of a durable workflow */
 class TestForeignActivityGo extends munit.FunSuite:
   import GoShop.*
-  import okay.freer.given
   override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
   override def munitIgnore: Boolean = !GoWorkerBinary.available
 
