@@ -173,9 +173,11 @@ with nothing named (`TestRestRow`). The platform's ≈340 rest-polymorphic signa
 
 Recorded as met; behaviour regressions are accepted where the speed is the point (2026-10-15).
 
-- `Logic.msplit`: a rest handed out is tied to the place where the split ran; run under extra handlers (observe,
-  interleave, fairBind, `runChoice(rest)`) or under fresh handlers of the same shape it works, under a new handler
-  inserted in the middle it throws — the union routed it.
+- `Logic.msplit` steps the search (the kernel's `Step`): its rest is the worklist of the search's `k`s, one value —
+  split again at the same place it goes on from where it was (linear, as LogicT; the first conversion re-ran
+  pending alternatives through a reflection layer per answer: `observe` over a binary tree grew ~8x a level).
+  Run anywhere else its operations are performed at the place of the same effect, read by paths
+  (`Stepping.relocate`); an effect of it missing at the new place throws — the union routed it.
 - `Choose.all`, `msplit`: a forked branch point is abandoned through the kernel's `recover`, which an abort or a
   cancel passes (`Exit`); okay-freer's catch frame abandoned it for those too.
 - `Maybe.option` captures `k` for `Some` (a `Deep`), where okay-freer answered in place: the same result, a capture

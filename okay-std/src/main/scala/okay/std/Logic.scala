@@ -1,9 +1,10 @@
 package okay.std
 
 import okay.{!, Run, Within, defer, effect, pure}
-import okay.core.{+:, Eff, Paths, Req, Row, Split}
+import okay.core.{+:, Eff, Paths, Row, Split}
 import okay.one.Cont
 import okay.one.row.In
+import okay.one.step.Step
 import scala.annotation.tailrec
 
 /**
@@ -28,19 +29,10 @@ object Logic {
   /** all of it at once, on a lazy stream: alternatives explored
    * depth-first, left to right */
   private def alts[A, Es[_]](ps: Seq[A ! Es])(using c: Within[Choose, Es]): A ! Es =
-    new Alts[A, Es](ps, [R <: Row] => (ch: Paths[Es, R]) => c.paths(ch).find(Req.only))
+    effect[Choose, A ! Es](Choose(ps)).at[Es].flatMap(identity)
 
   /** no answer: the branch dies */
   private def none[A, Es[_]](using Within[Choose, Es]): A ! Es = effect[Choose, A](Choose(Seq.empty)).at[Es]
-
-  /**
-   * ALTERNATIVES AS A PROGRAM: a `Choose` of `as` at its place, `choose` finding it, the one chosen run — a class,
-   * so that the branch points the rest of a split holds can be read off it (`sharedIn`).
-   */
-  private final class Alts[A, Es[_]](val as: Seq[A ! Es], choose: [R <: Row] => Paths[Es, R] => In[Choose, R])
-      extends Run[Es, A]:
-    def on[R <: Row](ps: Paths[Es, R]): Eff[R, A] =
-      Cont.perform[Choose, R, A ! Es](Choose(as))(using choose(ps)).flatMap(_.fit(ps))
 
   /**
    * The primitive: the first answer with the rest-of-the-search as a
@@ -50,116 +42,93 @@ object Logic {
    * choice points (Choose over a LazyList of alternatives) stay
    * unforced.
    *
-   * A HANDLER OF `Choose` (the kernel's `Deep`): at a choice its rest
-   * `k` is run at each alternative in turn, the first answer found the
-   * answer, the alternatives not yet run handed out as programs pending
-   * on that `k` — data, resumed when the rest of the search is.
+   * THE SEARCH STEPPED (the kernel's `Step`): the program is run to
+   * its next operation and given back with its rest, `k` as data. A
+   * `Choose` puts its alternatives, each that `k` resumed with one, at
+   * the front of the worklist; another effect's operation is performed
+   * at the place the split runs and its `k` resumed with the answer;
+   * the first value is the answer, and THE WORKLIST LEFT IS THE REST —
+   * one value, the remaining search, resumed where it stopped (`Rest`).
+   * Split again at the same place, the rest is that worklist taken up
+   * again: nothing re-run, no layer of reflection per answer — linear
+   * in the work of the search, as LogicT's msplit.
    *
-   * WHERE A REST RUNS. `k` is the search's rest at the place `msplit`
-   * ran, its other effects' operations going to the handlers there by
-   * their paths. A rest is run where the answer of the split is used —
-   * among the program's alternatives, the same place — or under
-   * handlers put over that place (a split of the rest, `observe`,
-   * `interleave`, `runChoice` of it): there `k` is seen under them,
-   * its operations past them. A rest moved anywhere else — out of the
-   * scope of a handler of one of its effects, or under a new handler
-   * of one of them — is refused loudly (`IllegalStateException`):
-   * where its operations would go is not a place `k` has.
+   * WHERE A REST RUNS. A rest is the search's `k`s at the place
+   * `msplit` ran. Split again at the same paths (`observe`,
+   * `interleave`, `fairBind`) it goes on from where it was; run
+   * anywhere else (`runChoice` of it, among the program's alternatives,
+   * under more handlers) each of its operations is performed at the
+   * place of the same effect there, the two places' paths read side by
+   * side (`Stepping.relocate`). An effect of it not among those of the
+   * place is refused loudly (`IllegalStateException`).
    */
   def msplit[A, Es[_]](m: A ! Es)(using s: Split[Es, Choose]): Option[(A, A ! Es)] ! s.Rest =
     new Run[s.Rest, Option[(A, A ! Es)]]:
       def on[T <: Row](ps: Paths[s.Rest, T]): Eff[T, Option[(A, A ! Es)]] =
-        val at = new Searched[Es, T](s.paths(ps))
-        Cont.handle(m.fit(at.template))(new Splitting[A, Es, T](at))
+        val template = s.paths(ps)
+        Cont.defer(m match
+          // unchecked: a `Rest` that is this `A ! Es` has its `Es` and `A`; its place is the template's, which the
+          // paths compared say
+          case r: Rest[Es, ?, A] @unchecked if Stepping.samePaths(r.template, template) =>
+            new Search[A, Es, T](template).next(r.taken[T], r.held)
+          case _ => new Search[A, Es, T](template).next(LazyList(() => Stepping.start(m, template)), Nil))
 
-  /** the answer of a split: the first answer and the rest, or none */
-  private type Split1[A, Es[_]] = Option[(A, A ! Es)]
-
-  /** the handler of a split at the place `T` */
-  private final class Splitting[A, Es[_], T <: Row](at: Searched[Es, T])
-      extends okay.one.handler.Deep[Choose, T, A, Split1[A, Es]]:
-    type O = Split1[A, Es]
-    def ret(a: A): Eff[T, O] = Cont.pure(Some((a, at.alts(Nil))))
-    def apply[X](op: Choose[X], k: X => Eff[T, O]): Eff[T, O] =
-      // a branch point something is shared through (logic-cut-releases): a throw out of the search abandons it
-      Forked.sharedOf(op.as) match
-        case Nil => first(op.as.to(LazyList), k, Nil)
-        case held => Cont.recover(first(op.as.to(LazyList), k, held))(t => { held.foreach(_.abandon()); throw t })
-    // the next alternative from inside flatMap: on the machine, a step of its loop, not a host frame
-    private def first[X](as: LazyList[X], k: X => Eff[T, O], held: List[Shared]): Eff[T, O] = as match
-      case LazyList() => Cont.pure(None)
-      case b #:: more => k(b).flatMap:
-        case None => first(more, k, held)
-        case Some((a, r)) => Cont.pure(Some((a, restOf(r #:: more.map(c => at.pending(k, c)), sharedIn(r) ::: held))))
-
-    /** a split's rest: the alternatives left, with the branch points they still hold (logic-cut-releases) */
-    private def restOf(rest: Seq[A ! Es], held: List[Shared]): A ! Es =
-      if held.isEmpty then at.alts(rest) else at.alts(Forked(rest, Shared.Group(held)))
+  /** a pending branch of a search: its `k` resumed, stepped to its next operation */
+  private type Branch[T <: Row, A] = () => Step[Choose +: T, A]
 
   /**
-   * THE PLACE A SPLIT RAN AT, `T`, and its programs' places: `template`, the paths of the program's effects under
-   * the split's handler — `Choose` at its head, the rest's as they were at `T`. A program of the split (a rest,
-   * alternatives pending on its `k`) fitted at another place is put there by reading the two side by side: the
-   * place of `Choose`, and how many handlers the rest's effects are under now, past those at `T`.
+   * THE REST OF A SEARCH: the branches not yet run of a split at the place `template` — data, a worklist — and the
+   * branch points they still hold (logic-cut-releases). Split again at the same paths, the worklist is taken up
+   * again (`msplit`); run anywhere else, it is a `Choose` of its branches, each stepped on with its operations
+   * performed at that place (`Stepping.Rest`).
    */
-  private final class Searched[Es[_], T <: Row](val template: Paths[Es, Choose +: T]):
-    /** alternatives of this split, at whatever place they are fitted */
-    def alts[A](as: Seq[A ! Es]): A ! Es = new Alts[A, Es](as, [R <: Row] => (ps: Paths[Es, R]) => place(ps)._1)
+  private final class Rest[Es[_], T <: Row, A](val template: Paths[Es, Choose +: T],
+      branches: LazyList[Branch[T, A]], val held: List[Shared]) extends Run[Es, A]:
+    /** the branches at a place whose paths are the template's. THE CAST, and why it is sound: a branch reads its
+     * row only through its operations' paths, and those are the template's at the new place as well */
+    def taken[T2 <: Row]: LazyList[Branch[T2, A]] = branches.asInstanceOf[LazyList[Branch[T2, A]]]
 
-    /** the alternative `c` pending on `k`: run when the rest of the search gets to it — its split back into a
-     * search, its answer, then the rest */
-    def pending[A, X](k: X => Eff[T, Split1[A, Es]], c: X): A ! Es = new Run[Es, A]:
-      def on[R <: Row](ps: Paths[Es, R]): Eff[R, A] = Cont.defer {
-        val (choose, depth) = place(ps)
-        Searched.under[R, Split1[A, Es]](k(c), depth).flatMap: o =>
-          val next: Seq[A ! Es] = o match
-            case None => Nil
-            case Some((a, r)) => Seq(pure[A, Es](a), r)
-          Cont.perform[Choose, R, A ! Es](Choose(next))(using choose).flatMap(_.fit(ps))
-      }
+    def on[R <: Row](ps: Paths[Es, R]): Eff[R, A] =
+      val as: Seq[A ! Es] = branches.map(b => new Stepping.Rest[Es, Choose, T, A](template, b))
+      val forked = if held.isEmpty then as else Forked(as, Shared.Group(held))
+      Cont.perform[Choose, R, A ! Es](Choose(forked))(using Stepping.relocate(In.Here[Choose, T](), template, ps))
+        .flatMap(_.fit(ps))
 
-    /** at the place `ps`: `Choose`'s place, and how many handlers more than at `T` the other effects are under */
-    def place[R <: Row](ps: Paths[Es, R]): (In[Choose, R], Int) =
-      var choose: In[Choose, R] | Null = null
-      var depth = -1
-      def walk[E1[_], E2[_]](t: Paths[E1, ?], p: Paths[E2, ?]): Unit = (t, p) match
-        case (to: Paths.One[?, ?], po: Paths.One[?, ?]) => (to.head: Any) match
-          case _: In.Here[?, ?] => choose = po.head.asInstanceOf[In[Choose, R]]
-          case th: In.There[?, ?, ?] => Searched.over(th.in, po.head) match
-            case -1 => Searched.moved()
-            case d => if depth == -1 then depth = d else if depth != d then Searched.moved()
-          case at => if at != po.head then Searched.moved()
-        case (tb: Paths.Both[?, ?, ?], pb: Paths.Both[?, ?, ?]) => walk(tb.left, pb.left); walk(tb.right, pb.right)
-        case (_: Paths.None[?], _: Paths.None[?]) => ()
-        case _ => Searched.moved()
-      walk(template, ps)
-      (choose.nn, if depth == -1 then 0 else depth)
+  /** a split at the place `T`: the worklist walked to the first answer */
+  private final class Search[A, Es[_], T <: Row](template: Paths[Es, Choose +: T]):
+    type O = Option[(A, A ! Es)]
 
-  private object Searched:
-    /** how many handlers `now` is under past `was`: `now` is `was` with that many more steps; -1 if it is not */
-    def over[E1[_], E2[_]](was: In[E1, ?], now: In[E2, ?]): Int =
-      @tailrec def go[E3[_]](n: In[E3, ?], d: Int): Int =
-        if n == was then d
-        else n match
-          case th: In.There[?, ?, ?] => go(th.in, d + 1)
-          case _ => -1
-      go(now, 0)
+    /** the next branch, or none: the search is empty */
+    def next(bs: LazyList[Branch[T, A]], held: List[Shared]): Eff[T, O] = bs match
+      case LazyList() => Cont.pure(None)
+      case b #:: more => walk(b(), more, held)
 
-    def moved(): Nothing = throw IllegalStateException(
-      "Logic: the rest of a split run where its effects are not as they were at the split, under more handlers — " +
-        "out of the scope of a handler of one of them, or under a new handler of one of them; run the rest where " +
-        "the split's answer is used")
+    // a forwarded operation resumes the walk from inside flatMap, a call that cannot be a jump; `again` takes it
+    private def again(st: Step[Choose +: T, A], bs: LazyList[Branch[T, A]], held: List[Shared]): Eff[T, O] =
+      walk(st, bs, held)
 
-    /** `p`, a program over the place of a split, under `depth` handlers more: its operations past them. Its row
-     * read only through its operations' paths, which `place` checked */
-    def under[R <: Row, A](p: Eff[?, A], depth: Int): Eff[R, A] =
-      @tailrec def go(q: Eff[Row, A], d: Int): Eff[Row, A] =
-        if d == 0 then q else go(Cont.widen[Choose, Row, A](q).asInstanceOf[Eff[Row, A]], d - 1)
-      go(p.asInstanceOf[Eff[Row, A]], depth).asInstanceOf[Eff[R, A]]
+    @tailrec private def walk(st: Step[Choose +: T, A], bs: LazyList[Branch[T, A]], held: List[Shared]): Eff[T, O] =
+      st match
+        case Step.Done(a) => Cont.pure(Some((a, new Rest[Es, T, A](template, bs, held))))
+        case y: Step.Yield[?, ?, f, x] => Stepping.own(y.in) match
+          case null =>
+            Cont.perform[f, T, x](y.op)(using Stepping.outside(y.in)).flatMap(v => again(y.resume(v), bs, held))
+          case same: In.Same[f, Choose] =>
+            val c = same(y.op)
+            val front = c.as.to(LazyList).map(v => () => y.resume(v))
+            Forked.sharedOf(c.as) match
+              case Nil => front #::: bs match
+                case LazyList() => Cont.pure(None)
+                case b #:: more => walk(b(), more, held)
+              // a branch point something is shared through (logic-cut-releases): a throw out of the search abandons it
+              case shared =>
+                Cont.recover(Cont.defer(next(front #::: bs, shared ::: held)))(t => { shared.foreach(_.abandon()); throw t })
+        case Step.Failed(e) => throw e
+        case Step.Cancelled() => Stepping.cancelled()
 
   /** the branch points a rest `msplit` handed out holds */
   private def sharedIn[A, Es[_]](rest: A ! Es): List[Shared] = rest match
-    case a: Alts[?, ?] => Forked.sharedOf(a.as)
+    case r: Rest[?, ?, ?] => r.held
     case _ => Nil
 
   /**

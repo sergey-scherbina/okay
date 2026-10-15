@@ -16,10 +16,9 @@ import java.util.concurrent.TimeUnit
  * multi-shot `Choose` outside the scope releases at the end of the FIRST branch, where the classic shared the
  * resource and released after the last — the same 100 alternatives run either way.
  *
- * MEASURED ONCE BY HAND (2026-10-15, one call, not JMH): `observe_tree` on this road grows about 8x a level (depth 8:
- * 0.55 s) and at depth 10 runs out of a 1 GB heap — `Logic.msplit`/`observe` on the root's words, not this lane
- * (`runChoice` over the same tree is linear: depth 10 in 3.6 ms). The lane is kept as the classic's, so the table
- * shows it.
+ * MEASURED ONCE BY HAND (2026-10-15, one call, not JMH): `observe_tree` on the first conversion grew about 8x a
+ * level (depth 10 out of a 1 GB heap); `msplit` stepped (a rest the search's worklist) it is linear in the leaves,
+ * depth 10 in ~0.5 ms (`TestLogicScaling`).
  */
 @JmhState(Scope.Thread)
 @BenchmarkMode(Array(Mode.AverageTime))
