@@ -1,10 +1,6 @@
 package okay.persist
 
-import okay.{Wf}
-
-import okay.freer.{%, +}
-import okay.freer.{!, At, Shift, Replayable, Row, pure}
-import okay.freer.Row.up
+import okay.{!, Wf, Within, pure}
 import okay.codec.Schema
 
 /**
@@ -43,7 +39,7 @@ import okay.codec.Schema
  * topic could put an answer into a journal that nobody asked for,
  * which is the one thing the journal must never contain.
  */
-final class Worker[Q, A, R, F[+_], G[+_]](topic: Topic, program: String, timers: Timers,
+final class Worker[Q, A, R, F[_], G[_]](topic: Topic, program: String, timers: Timers,
                                    /**
                                     * THE ORACLE, AND THE KEY IT MAY ASK FOR
                                     * (worker-oracle-attempt, 2026-09-17).
@@ -139,16 +135,15 @@ final class Worker[Q, A, R, F[+_], G[+_]](topic: Topic, program: String, timers:
                                     * Catching it needs the ROW, and `G` is abstract
                                     * here -- so the ability is carried as a
                                     * parameter rather than searched for, which is
-                                    * the same rule `Shift.answer` follows and the
+                                    * the same rule `Wf.Dialogue`'s `resume` follows and the
                                     * one ProbeRowCrash states. `Worker.isolating`
                                     * is the instance for `Async`. Left out, `tick`
                                     * behaves exactly as before.
                                     */
                                    isolate: Option[Worker.Isolate[G]] = None)
-                                  (body: Wf.Asks[Q, A, R, F] ?=> R ! Shift % ? + F)
-                                  (using Schema[Wf.Ans[A]], Replayable[Shift % ? + F],
-                                   Shift.Machine[F], At, Wf.Runtime,
-                                   Row.Sub[F, G]):
+                                  (body: Wf.Asks[Q, A, R, F] ?=> R ! Wf.Durable[Q, A, F])
+                                  (using Schema[Wf.Ans[A]], Wf.Runtime,
+                                   Within[F, G]):
 
   /** the dialogue this worker drives, for an id */
   def dialogue(id: String): Dialogue[Wf.Ask[Q], Wf.Ans[A], R, F] =
@@ -232,7 +227,7 @@ final class Worker[Q, A, R, F[+_], G[+_]](topic: Topic, program: String, timers:
         // about the wrong door. One rule, one implementation, nothing
         // left to re-derive.
         case _ => placed(dialogue(id)).map:
-          case Right((at, _)) => write(at.asking.map(_.toString), at.where)
+          case Right((at, _)) => write(at.asking.map(_.toString), None)
           case Left(_) => write(None, None)
 
   /**
@@ -245,7 +240,7 @@ final class Worker[Q, A, R, F[+_], G[+_]](topic: Topic, program: String, timers:
    */
   private def broken(d: Dialogue[Wf.Ask[Q], Wf.Ans[A], R, F],
                      stopped: Dialogue.Stopped): Worker.Progress[R] ! G =
-    d.diagnosis.up[G].map: found =>
+    d.diagnosis.at[G].map: found =>
       Worker.Progress.Broken(
         found.getOrElse(Dialogue.Diagnosis(stopped, 0, None, None)))
 
@@ -297,12 +292,12 @@ final class Worker[Q, A, R, F[+_], G[+_]](topic: Topic, program: String, timers:
    */
   private def placed(d: Dialogue[Wf.Ask[Q], Wf.Ans[A], R, F])
       : Either[Worker.Progress[R],
-               (Shift.Dialogue[Wf.Ask[Q], Wf.Ans[A], R, F], Int)] ! G =
+               (Wf.Dialogue[Wf.Ask[Q], Wf.Ans[A], R, F], Int)] ! G =
     val look: Either[Throwable, Either[Dialogue.Stopped,
-                (Shift.Dialogue[Wf.Ask[Q], Wf.Ans[A], R, F], Int)]] ! G =
+                (Wf.Dialogue[Wf.Ask[Q], Wf.Ans[A], R, F], Int)]] ! G =
       isolate match
-        case None => d.standing.up[G].map(Right(_))
-        case Some(iso) => iso(d.standing.up[G])
+        case None => d.standing.at[G].map(Right(_))
+        case Some(iso) => iso(d.standing.at[G])
     look.flatMap:
       case Left(e) => pure(Left(Worker.Progress.Incompatible(e.toString)))
       case Right(Left(stopped)) => broken(d, stopped).map(Left(_))
@@ -316,7 +311,7 @@ final class Worker[Q, A, R, F[+_], G[+_]](topic: Topic, program: String, timers:
     // re-fold the journal every time
     val d = from.dialogue
     d.runWorkflowFromIn[G](from.paused, from.at)(oracle)(
-        using runtime(id), summon[Row.Sub[F, G]]).flatMap:
+        using runtime(id), summon[Within[F, G]]).flatMap:
       case (Right(r), _, _) => seedOf(r) match
         case None =>
           timers.disarm(id)
@@ -355,7 +350,7 @@ final class Worker[Q, A, R, F[+_], G[+_]](topic: Topic, program: String, timers:
             // and this is the moment it becomes an answer
             signals.flatMap(_.next(id, name)) match
               case Some((off, payload)) =>
-                d.answer(Left(Wf.SysA.Got(payload))).up[G].flatMap: _ =>
+                d.answer(Left(Wf.SysA.Got(payload))).at[G].flatMap: _ =>
                   // the cursor moves ONLY after the journal took it, so
                   // a crash in between re-delivers and `expect` refuses
                   // the duplicate — a repeated attempt, never a doubled
@@ -374,7 +369,7 @@ final class Worker[Q, A, R, F[+_], G[+_]](topic: Topic, program: String, timers:
             // result does not change, so `expect` is the whole guard.
             children.flatMap(_.resultOf(kid)) match
               case Some(result) =>
-                d.answer(Left(Wf.SysA.Got(result))).up[G].flatMap: _ =>
+                d.answer(Left(Wf.SysA.Got(result))).at[G].flatMap: _ =>
                   resume.foreach(_.drop(id))   // the journal moved
                   step(id)
               case None =>
@@ -424,7 +419,7 @@ final class Worker[Q, A, R, F[+_], G[+_]](topic: Topic, program: String, timers:
         pure(verdict)
       case Right((p, _)) => p.asking match
         case Some(Left(Wf.Sys.Timer(t))) if t <= nowMillis =>
-          d.answer(Left(Wf.SysA.Elapsed)).up[G].flatMap(_ => advance(id))
+          d.answer(Left(Wf.SysA.Elapsed)).at[G].flatMap(_ => advance(id))
         case _ =>
           // the record was stale: this run is not waiting on a timer,
           // or not on one that has passed. Cost: one read.
@@ -440,7 +435,7 @@ object Worker:
    * the repository's: an obligation over a row is a parameter, never
    * a search at an abstract row.
    */
-  trait Isolate[G[+_]]:
+  trait Isolate[G[_]]:
     def apply[X](p: X ! G): Either[Throwable, X] ! G
 
   /** the instance for the row workers are actually built in */

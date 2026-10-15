@@ -2,8 +2,8 @@ package okay.persist
 
 import munit.FunSuite
 import okay.{Async, CanBlock, Wf}
-import okay.freer.{%, +, Pure}
-import okay.freer.{!, Shift}
+import okay.{Pure}
+import okay.{!}
 import okay.given_CanBlock
 import okay.Direct.*
 import okay.codec.Schema
@@ -39,16 +39,16 @@ class TestStatuses extends FunSuite {
    * and is why these tests run through `Async.run` rather than
    * `!.run`.
    */
-  def drive[A](p: A ! Pure + Async)(using CanBlock): A =
-    !.run(Async.run[A, Pure](p))
+  def drive[A](p: A ! Async)(using CanBlock): A =
+    !.run(Async.run(p))
 
 
-  def nap(using w: Wf.Asks[String, String, String, Pure]): String ! Shift % ? + Pure = direct:
+  def nap(using w: Wf.Asks[String, String, String, Pure]): String ! Wf.Durable[String, String, Pure] = direct:
     val who = !w.pause("who?")
     !w.sleep(60_000L)
     s"$who woke"
 
-  def approval(using w: Wf.Asks[String, String, String, Pure]): String ! Shift % ? + Pure =
+  def approval(using w: Wf.Asks[String, String, String, Pure]): String ! Wf.Durable[String, String, Pure] =
     direct:
       val what = !w.pause("what?")
       val by = !w.awaitSignal("approved")

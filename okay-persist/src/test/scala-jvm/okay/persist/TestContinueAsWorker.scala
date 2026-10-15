@@ -2,8 +2,8 @@ package okay.persist
 
 import munit.FunSuite
 import okay.{Async, CanBlock, Wf}
-import okay.freer.{%, +, Pure}
-import okay.freer.{!, Shift}
+import okay.{Pure}
+import okay.{!}
 import okay.given_CanBlock
 import okay.Direct.*
 import okay.codec.Schema
@@ -25,15 +25,15 @@ class TestContinueAsWorker extends FunSuite {
   given Schema[Wf.Ans[String]] = Schema.derived
   given Wf.Runtime = Wf.Runtime.scripted(millis = 1_000L, id = "id", dice = 0.5)
 
-  def drive[A](p: A ! Pure + Async)(using CanBlock): A =
-    !.run(Async.run[A, Pure](p))
+  def drive[A](p: A ! Async)(using CanBlock): A =
+    !.run(Async.run(p))
 
   type Out = Wf.Next[String, String]
 
   /** grows its input a letter at a time, one chapter per letter. The
    * FIRST pause is the input: a fresh run gets the oracle's answer, a
    * continued one gets the seed, and the program cannot tell. */
-  def stage(using w: Wf.Asks[String, String, Out, Pure]): Out ! Shift % ? + Pure =
+  def stage(using w: Wf.Asks[String, String, Out, Pure]): Out ! Wf.Durable[String, String, Pure] =
     direct:
       val input = !w.pause("input")
       if input.length >= 4 then Wf.Next.Done(s"done:$input")
@@ -61,7 +61,7 @@ class TestContinueAsWorker extends FunSuite {
 
   test("a run that only ever continues hands back instead of spinning") {
     val store = MemoryStore()
-    def forever(using w: Wf.Asks[String, String, Out, Pure]): Out ! Shift % ? + Pure =
+    def forever(using w: Wf.Asks[String, String, Out, Pure]): Out ! Wf.Durable[String, String, Pure] =
       direct:
         val input = !w.pause("input")
         Wf.Next.Continue(input + "x")
@@ -79,7 +79,7 @@ class TestContinueAsWorker extends FunSuite {
 
   test("a workflow that never continues is untouched by any of this") {
     val store = MemoryStore()
-    def plain(using w: Wf.Asks[String, String, String, Pure]): String ! Shift % ? + Pure =
+    def plain(using w: Wf.Asks[String, String, String, Pure]): String ! Wf.Durable[String, String, Pure] =
       direct:
         val who = !w.pause("who?")
         s"$who woke"

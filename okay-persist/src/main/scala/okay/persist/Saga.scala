@@ -1,7 +1,7 @@
 package okay.persist
 
 import okay.{Async, Scheduler}
-import okay.freer.{!, pure}
+import okay.{!, pure}
 import okay.codec.{Codecs, Schema}
 
 /**

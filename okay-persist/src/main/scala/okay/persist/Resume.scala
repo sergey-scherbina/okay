@@ -1,6 +1,6 @@
 package okay.persist
 
-import okay.freer.Shift
+import okay.Wf
 
 /**
  * KEEPING THE PROGRAM BETWEEN CALLS (dialogue-resume-cache,
@@ -39,7 +39,7 @@ import okay.freer.Shift
  * only state. Drop it, restart, run two of them — nothing changes but
  * how often a replay happens.
  */
-final class Resume[Q, A, R, F[+_]](val max: Int = 256):
+final class Resume[Q, A, R, F[_]](val max: Int = 256):
 
   // insertion-ordered, and re-inserted on every hit, so the head is
   // the least recently used. Cheaper than a real LRU structure and
@@ -60,7 +60,7 @@ final class Resume[Q, A, R, F[+_]](val max: Int = 256):
 
   /** keep this one, evicting the least recently used if full */
   def put(id: String, dialogue: Dialogue[Q, A, R, F],
-          paused: Shift.Dialogue[Q, A, R, F], at: Int): Unit =
+          paused: Wf.Dialogue[Q, A, R, F], at: Int): Unit =
     val _ = held.remove(id)
     val _ = held.put(id, Resume.Held(dialogue, paused, at))
     while held.size > max do
@@ -84,6 +84,6 @@ object Resume:
 
   /** a program in hand, the dialogue that owns it, and the position
    * the next answer goes to */
-  final case class Held[Q, A, R, F[+_]](dialogue: Dialogue[Q, A, R, F],
-                                        paused: Shift.Dialogue[Q, A, R, F],
+  final case class Held[Q, A, R, F[_]](dialogue: Dialogue[Q, A, R, F],
+                                        paused: Wf.Dialogue[Q, A, R, F],
                                         at: Int)

@@ -1,7 +1,7 @@
 package okay.persist
 
 import okay.{Async, async}
-import okay.freer.{!}
+import okay.{!}
 import okay.codec.Schema
 import java.io.{BufferedInputStream, BufferedOutputStream, DataInputStream, DataOutputStream}
 import java.net.{ServerSocket, Socket}

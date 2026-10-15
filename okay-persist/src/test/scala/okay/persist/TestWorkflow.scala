@@ -2,8 +2,8 @@ package okay.persist
 
 import munit.FunSuite
 import okay.{Wf}
-import okay.freer.{%, +, Pure}
-import okay.freer.{!, Shift}
+import okay.{Pure}
+import okay.{!}
 import okay.Direct.*
 import okay.codec.Schema
 import scala.language.implicitConversions
@@ -27,20 +27,20 @@ class TestWorkflow extends FunSuite {
    * workflow reads as ordinary straight-line code: the types are
    * named once in the signature and no call site repeats them.
    */
-  def v1(using w: Wf.Asks[String, String, String, Pure]): String ! Shift % ? + Pure = direct:
+  def v1(using w: Wf.Asks[String, String, String, Pure]): String ! Wf.Durable[String, String, Pure] = direct:
     val city = !w.pause("city?")
     val n = !w.pause("nights?")
     s"$city/$n"
 
   /** v2: the same, with a branch added BETWEEN the two questions */
-  def v2(using w: Wf.Asks[String, String, String, Pure]): String ! Shift % ? + Pure = direct:
+  def v2(using w: Wf.Asks[String, String, String, Pure]): String ! Wf.Durable[String, String, Pure] = direct:
     val city = !w.pause("city?")
     val on = !w.patch("promo")
     val n = !w.pause("nights?")
     if on then s"$city/$n/promo" else s"$city/$n"
 
   /** a program that stamps itself with the time */
-  def stamped(using w: Wf.Asks[String, String, String, Pure]): String ! Shift % ? + Pure = direct:
+  def stamped(using w: Wf.Asks[String, String, String, Pure]): String ! Wf.Durable[String, String, Pure] = direct:
     val who = !w.pause("who?")
     s"$who@${!w.now}"
 
@@ -52,7 +52,7 @@ class TestWorkflow extends FunSuite {
     case Left(w) => fail(s"expected the workflow to finish, it is waiting on $w")
 
   def wf(t: Topic, id: String, program: String)
-        (body: Wf.Asks[String, String, String, Pure] ?=> String ! Shift % ? + Pure) =
+        (body: Wf.Asks[String, String, String, Pure] ?=> String ! Wf.Durable[String, String, Pure]) =
     Dialogue.workflow[String, String, String, Pure](t, id, program)(body)
 
   test("the clock is read ONCE and the reading outlives the process") {
@@ -64,7 +64,7 @@ class TestWorkflow extends FunSuite {
         Right(Wf.SysA.Millis(4242L))
 
     val first = done(!.run(wf(t, "s-1", "stamp/1")(stamped)
-      .runWorkflow(_ => okay.freer.pure("ada"))))
+      .runWorkflow(_ => okay.pure("ada"))))
     assertEquals(first, "ada@4242")
     assertEquals(reads, 1)
 
@@ -79,7 +79,7 @@ class TestWorkflow extends FunSuite {
     val t = MemoryStore().topic("patched")
     // the old run, finished under v1
     val old = done(!.run(wf(t, "p-1", "booking/1")(v1)
-      .runWorkflow(q => okay.freer.pure(if q == "city?" then "Kyiv" else "3"))))
+      .runWorkflow(q => okay.pure(if q == "city?" then "Kyiv" else "3"))))
     assertEquals(old, "Kyiv/3")
 
     // the deploy: the SAME journal, the new program. The `program`
@@ -94,7 +94,7 @@ class TestWorkflow extends FunSuite {
   test("patch: a dialogue that starts under v2 takes the new branch, durably") {
     val t = MemoryStore().topic("patched2")
     val fresh = done(!.run(wf(t, "p-2", "booking/1")(v2)
-      .runWorkflow(q => okay.freer.pure(if q == "city?" then "Lviv" else "2"))))
+      .runWorkflow(q => okay.pure(if q == "city?" then "Lviv" else "2"))))
     assertEquals(fresh, "Lviv/2/promo")
 
     // the decision is IN the log, so a third process agrees without
@@ -114,7 +114,7 @@ class TestWorkflow extends FunSuite {
 
     // the deploy, then the dialogue is driven to the end under v2
     val end = done(!.run(wf(t, "p-3", "booking/1")(v2)
-      .runWorkflow(_ => okay.freer.pure("4"))))
+      .runWorkflow(_ => okay.pure("4"))))
     assertEquals(end, "Kyiv/4/promo")
     // and the decision was appended, between the two answers
     assertEquals(wf(t, "p-3", "booking/1")(v2).journal,
@@ -124,7 +124,7 @@ class TestWorkflow extends FunSuite {
   // ==== the engine's keystone, through the log =====================
 
   /** answer, then sleep a day, then finish */
-  def overnight(using w: Wf.Asks[String, String, String, Pure]): String ! Shift % ? + Pure = direct:
+  def overnight(using w: Wf.Asks[String, String, String, Pure]): String ! Wf.Durable[String, String, Pure] = direct:
     val who = !w.pause("who?")
     !w.sleep(86_400_000L)
     s"$who slept"
@@ -134,7 +134,7 @@ class TestWorkflow extends FunSuite {
     val first = wf(t, "t-1", "night/1")(overnight)
 
     // the drive answers what it can and stops at the deadline
-    !.run(first.runWorkflow(_ => okay.freer.pure("ada"))) match
+    !.run(first.runWorkflow(_ => okay.pure("ada"))) match
       case Left(Wf.Wait.Until(when)) => assertEquals(when, 1_700_000_000_000L + 86_400_000L)
       case other => fail(s"expected a wait until the deadline, got $other")
 
@@ -154,7 +154,7 @@ class TestWorkflow extends FunSuite {
 
   test("the deadline is in the LOG, so every process computes the same one") {
     val t = MemoryStore().topic("timed2")
-    val _ = !.run(wf(t, "t-2", "night/1")(overnight).runWorkflow(_ => okay.freer.pure("ada")))
+    val _ = !.run(wf(t, "t-2", "night/1")(overnight).runWorkflow(_ => okay.pure("ada")))
 
     // a second process, whose clock reads something else entirely
     val later: Wf.Runtime = Wf.Runtime.scripted(millis = 9_999_999L, id = "x", dice = 0.1)
@@ -175,7 +175,7 @@ class TestWorkflow extends FunSuite {
     val store = MemoryStore()
     val w = Worker[String, String, String, Pure, Pure](
       store.topic("bare"), "nap/1", Timers.over(store),
-      _ => okay.freer.pure("ada"))(overnight)
+      _ => okay.pure("ada"))(overnight)
     assertEquals(!.run(w.start("n-1")),
       Worker.Progress.Sleeping(1_700_000_000_000L + 86_400_000L))
   }

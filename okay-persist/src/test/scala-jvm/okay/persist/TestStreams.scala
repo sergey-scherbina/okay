@@ -2,8 +2,8 @@ package okay.persist
 
 import okay.{Async, Source}
 
-import okay.freer.{+, %}
-import okay.freer.{!}
+import okay.{+, %}
+import okay.{!}
 import okay.std.{Chunk, Stream, Writer}
 import okay.given
 import okay.std.given

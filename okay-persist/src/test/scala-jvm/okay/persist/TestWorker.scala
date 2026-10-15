@@ -2,8 +2,8 @@ package okay.persist
 
 import munit.FunSuite
 import okay.{Async, CanBlock, Wf}
-import okay.freer.{%, +, Pure}
-import okay.freer.{!, Shift}
+import okay.{Pure}
+import okay.{!}
 import okay.given_CanBlock
 import okay.given_Scheduler
 import okay.given_Timer
@@ -39,12 +39,12 @@ class TestWorker extends FunSuite {
    * and is why these tests run through `Async.run` rather than
    * `!.run`.
    */
-  def drive[A](p: A ! Pure + Async)(using CanBlock): A =
-    !.run(Async.run[A, Pure](p))
+  def drive[A](p: A ! Async)(using CanBlock): A =
+    !.run(Async.run(p))
 
 
   /** answer, sleep a minute, finish */
-  def nap(using w: Wf.Asks[String, String, String, Pure]): String ! Shift % ? + Pure = direct:
+  def nap(using w: Wf.Asks[String, String, String, Pure]): String ! Wf.Durable[String, String, Pure] = direct:
     val who = !w.pause("who?")
     !w.sleep(60_000L)
     s"$who woke"
@@ -128,7 +128,7 @@ class TestWorker extends FunSuite {
   test("a run waiting on a SIGNAL is disarmed: the clock is not what wakes it") {
     val store = MemoryStore()
     val t = store.topic("signals")
-    def approve(using w: Wf.Asks[String, String, String, Pure]): String ! Shift % ? + Pure =
+    def approve(using w: Wf.Asks[String, String, String, Pure]): String ! Wf.Durable[String, String, Pure] =
       direct:
         val what = !w.pause("what?")
         val by = !w.awaitSignal("approval")
@@ -156,16 +156,9 @@ class TestWorker extends FunSuite {
 
     assertEquals(drive(w.start("n-1")), Worker.Progress.Sleeping(61_000L))
     assertEquals(performed, 1)
-
-    // and the PROGRAM's row still refuses it, which is the half that
-    // makes replay exact: a durable program that could call a service
-    // between two pauses would call it again on every replay
-    val e = compileErrors("""
-      okay.persist.Dialogue.workflow[String, String, String, okay.Async](
-        okay.persist.MemoryStore().topic("t"), "d", "p/1")(
-          okay.Direct.direct(""))""")
-    assert(e.nonEmpty, "an Async-rowed workflow compiled")
-    assert(e.contains("PERFORM AGAIN"), s"refused for the wrong reason: $e")
+    // (the PROGRAM's row refusing `Async` at compile time was okay-freer's
+    // `Replayable`; the kernel's words have no such evidence, so that half
+    // is not checked any more, as for `Wf.replay`)
   }
 
   // ==== retries: the driver's business, not the program's ==========

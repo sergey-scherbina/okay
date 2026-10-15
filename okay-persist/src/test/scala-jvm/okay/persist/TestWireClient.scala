@@ -1,9 +1,8 @@
 package okay.persist
 
 import okay.Async
-import okay.freer.{!}
+import okay.{!}
 import okay.given
-import okay.freer.given
 import munit.FunSuite
 
 /**
@@ -16,7 +15,7 @@ class TestWireClient extends FunSuite:
 
   private def bytes(s: String): Array[Byte] = s.getBytes("UTF-8")
   private def str(b: Array[Byte]): String = new String(b, "UTF-8")
-  def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](prog))
+  def run[A](prog: A ! Async): A = !.run(Async.run(prog))
 
   def server(store: Store): Wire.Server =
     Wire.Server(store, {

@@ -1,9 +1,8 @@
 package okay.persist
 
 import munit.FunSuite
-import okay.{Wf}
-import okay.freer.{%, +, Pure}
-import okay.freer.{!, Shift}
+import okay.{+, Pure}
+import okay.{!, Wf}
 import okay.Direct.*
 import okay.codec.Schema
 import scala.language.implicitConversions
@@ -19,12 +18,10 @@ import scala.language.implicitConversions
  */
 class TestRetire extends FunSuite {
 
-  type Row = Shift % ? + Pure
-
-  def three(using Shift.Asking[String, String, String, Row]): String ! Row = direct:
-    val a = !Shift.pause("1?")
-    val b = !Shift.pause("2?")
-    val c = !Shift.pause("3?")
+  def three(using w: Dialogue.Asks[String, String, String, Pure]): String ! Wf.Talking[String, String] + Pure = direct:
+    val a = !w.pause("1?")
+    val b = !w.pause("2?")
+    val c = !w.pause("3?")
     s"$a$b$c"
 
   def dialogue(t: Topic, id: String, program: String = "three/1") =
@@ -87,7 +84,7 @@ class TestRetire extends FunSuite {
   given Schema[Wf.SysA] = Schema.derived
   given Wf.Runtime = Wf.Runtime.scripted(millis = 1L, id = "id", dice = 0.5)
 
-  def v2(using w: Wf.Asks[String, String, String, Pure]): String ! Shift % ? + Pure =
+  def v2(using w: Wf.Asks[String, String, String, Pure]): String ! Wf.Durable[String, String, Pure] =
     direct:
       val city = !w.pause("city?")
       val promo = !w.patch("promo")

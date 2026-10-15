@@ -2,8 +2,8 @@ package okay.persist
 
 import munit.FunSuite
 import okay.{Wf}
-import okay.freer.{%, +, Pure}
-import okay.freer.{!, Shift}
+import okay.{Pure}
+import okay.{!}
 import okay.Direct.*
 import okay.codec.Schema
 import scala.language.implicitConversions
@@ -21,7 +21,7 @@ class TestDocExamplesDurableProgram extends FunSuite {
   given Wf.Runtime = Wf.Runtime.scripted(millis = 1_700_000_000_000L,
                                          id = "id-1", dice = 0.25)
 
-  def booking(using w: Wf.Asks[String, String, String, Pure]): String ! Shift % ? + Pure = direct:
+  def booking(using w: Wf.Asks[String, String, String, Pure]): String ! Wf.Durable[String, String, Pure] = direct:
     val city = !w.pause("city?")          // the world answers
     val when = !w.now                     // the RUNTIME answers, once, and it is journalled
     val n    = !w.pause("nights?")
@@ -31,7 +31,7 @@ class TestDocExamplesDurableProgram extends FunSuite {
     val topic = MemoryStore().topic("bookings")
     val id = "booking-1"
     val oracle: String => Dialogue.Attempt ?=> String ! Pure =
-      q => okay.freer.pure(if q == "city?" then "Kyiv" else "3")
+      q => okay.pure(if q == "city?" then "Kyiv" else "3")
     val answer = !.run(
       Dialogue.workflow[String, String, String, Pure](topic, id, "booking/1")(booking)
         .runWorkflow(oracle)

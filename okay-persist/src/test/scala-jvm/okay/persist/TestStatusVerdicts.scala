@@ -2,8 +2,8 @@ package okay.persist
 
 import munit.FunSuite
 import okay.{Async, CanBlock, Wf}
-import okay.freer.{%, +, Pure}
-import okay.freer.{!, Shift}
+import okay.{Pure}
+import okay.{!}
 import okay.given_CanBlock
 import okay.given_Scheduler
 import okay.Direct.*
@@ -28,8 +28,8 @@ class TestStatusVerdicts extends FunSuite {
   given Schema[Wf.Ans[String]] = Schema.derived
   given Wf.Runtime = Wf.Runtime.scripted(millis = 1_000L, id = "id", dice = 0.5)
 
-  def drive[A](p: A ! Pure + Async)(using CanBlock): A =
-    !.run(Async.run[A, Pure](p))
+  def drive[A](p: A ! Async)(using CanBlock): A =
+    !.run(Async.run(p))
 
   test("the index keeps the three apart") {
     val ix = Statuses.over(MemoryStore())
@@ -68,12 +68,12 @@ class TestStatusVerdicts extends FunSuite {
     val t = store.topic("runs")
     val ix = Statuses.over(store)
 
-    def v1(using w: Wf.Asks[String, String, String, Pure]): String ! Shift % ? + Pure =
+    def v1(using w: Wf.Asks[String, String, String, Pure]): String ! Wf.Durable[String, String, Pure] =
       direct:
         val a = !w.pause("1?")
         !w.sleep(60_000L)
         s"ok $a"
-    def v1prime(using w: Wf.Asks[String, String, String, Pure]): String ! Shift % ? + Pure =
+    def v1prime(using w: Wf.Asks[String, String, String, Pure]): String ! Wf.Durable[String, String, Pure] =
       direct:
         val a = !w.pause("1?")
         if a == "old" then throw new IllegalStateException("cannot read v1 data")

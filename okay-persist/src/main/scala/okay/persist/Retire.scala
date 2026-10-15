@@ -1,9 +1,6 @@
 package okay.persist
 
-import okay.{Wf}
-
-import okay.freer.{%, +}
-import okay.freer.{!, At, Shift, Replayable, pure}
+import okay.{!, Wf, pure}
 import okay.codec.Schema
 
 /**
@@ -111,7 +108,7 @@ object Retire:
    * not record that a program finished — the fold IS the program, so
    * "finished" is something you find out by running it.
    */
-  def states[Q, A, R, F[+_]](ids: List[String])
+  def states[Q, A, R, F[_]](ids: List[String])
                             (open: String => Dialogue[Q, A, R, F])
                             : Map[String, State] ! F =
     def go(left: List[String], acc: Map[String, State]): Map[String, State] ! F =
@@ -120,7 +117,7 @@ object Retire:
         case id :: rest => open(id).at.flatMap:
           case Left(why) => go(rest, acc + (id -> State.Stopped(why)))
           case Right(p) => go(rest, acc + (id -> (p.asking match
-            case Some(q) => State.Asking(q.toString, p.where)
+            case Some(q) => State.Asking(q.toString, None)
             case None => State.Finished)))
     go(ids, Map.empty)
 
@@ -131,11 +128,10 @@ object Retire:
    * passing them in rather than reaching into a `Dialogue` keeps this
    * a tool over data instead of a second way to build a dialogue.
    */
-  def patches[Q, A, R, F[+_]](journals: List[(String, Shift.Journal[Wf.Ans[A]])])
-                             (body: Wf.Asks[Q, A, R, F] ?=> R ! Shift % ? + F)
-                             (using Shift.Machine[F], Replayable[Shift % ? + F], At)
+  def patches[Q, A, R, F[_]](journals: List[(String, List[Wf.Ans[A]])])
+                             (body: Wf.Asks[Q, A, R, F] ?=> R ! Wf.Durable[Q, A, F])
                              : Map[String, Branch] ! F =
-    def go(left: List[(String, Shift.Journal[Wf.Ans[A]])],
+    def go(left: List[(String, List[Wf.Ans[A]])],
            acc: Map[String, Branch]): Map[String, Branch] ! F = left match
       case Nil => pure(acc)
       case (id, j) :: rest =>

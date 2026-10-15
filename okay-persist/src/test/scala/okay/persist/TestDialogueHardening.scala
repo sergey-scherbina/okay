@@ -1,8 +1,8 @@
 package okay.persist
 
 import munit.FunSuite
-import okay.freer.{%, +, Pure}
-import okay.freer.{!, Shift}
+import okay.{+, Pure}
+import okay.{!, Wf}
 import okay.Direct.*
 import scala.language.implicitConversions
 
@@ -17,12 +17,10 @@ import scala.language.implicitConversions
  */
 class TestDialogueHardening extends FunSuite {
 
-  type Row = Shift % ? + Pure
-
   // ==== A: an answer the program cannot digest ======================
 
-  def strict(using Shift.Asking[String, String, String, Row]): String ! Row = direct:
-    val n = !Shift.pause("how many?")
+  def strict(using w: Dialogue.Asks[String, String, String, Pure]): String ! Wf.Talking[String, String] + Pure = direct:
+    val n = !w.pause("how many?")
     s"ok ${n.toInt * 2}"
 
   test("A: an answer the program refuses is NOT journalled, and the dialogue lives") {
@@ -46,15 +44,15 @@ class TestDialogueHardening extends FunSuite {
 
   // ==== B: the program changed under the journal ====================
 
-  def v1(using Shift.Asking[String, String, String, Row]): String ! Row = direct:
-    val city = !Shift.pause("city?")
-    val nights = !Shift.pause("nights?")
+  def v1(using w: Dialogue.Asks[String, String, String, Pure]): String ! Wf.Talking[String, String] + Pure = direct:
+    val city = !w.pause("city?")
+    val nights = !w.pause("nights?")
     s"$city/$nights"
 
-  def v2(using Shift.Asking[String, String, String, Row]): String ! Row = direct:
-    val promo = !Shift.pause("promo code?")     // a NEW first question
-    val city = !Shift.pause("city?")
-    val nights = !Shift.pause("nights?")
+  def v2(using w: Dialogue.Asks[String, String, String, Pure]): String ! Wf.Talking[String, String] + Pure = direct:
+    val promo = !w.pause("promo code?")     // a NEW first question
+    val city = !w.pause("city?")
+    val nights = !w.pause("nights?")
     s"$promo/$city/$nights"
 
   test("B: a journal written by another program STOPS the fold instead of mis-mapping") {
@@ -92,7 +90,7 @@ class TestDialogueHardening extends FunSuite {
     def oracle(q: String, a: Dialogue.Attempt): String ! Pure =
       seen = seen :+ ((q, a))
       if q == "nights?" then throw new RuntimeException("the process dies here")
-      okay.freer.pure("Kyiv")
+      okay.pure("Kyiv")
 
     val d = Dialogue[String, String, String, Pure](t, "c-1", "booking/1")(v1)
     val _ = intercept[RuntimeException](!.run(d.run(oracle)))
@@ -107,7 +105,7 @@ class TestDialogueHardening extends FunSuite {
     val d2 = Dialogue[String, String, String, Pure](t, "c-1", "booking/1")(v1)
     def ok(q: String, a: Dialogue.Attempt): String ! Pure =
       seen = seen :+ ((q, a))
-      okay.freer.pure("3")
+      okay.pure("3")
     assertEquals(!.run(d2.run(ok)), "Kyiv/3")
     assertEquals(seen, List(("nights?", Dialogue.Attempt("c-1", 1))))
   }
@@ -179,20 +177,5 @@ class TestDialogueHardening extends FunSuite {
       t, "e-1", "booking/1", None, 0, version = 2,
       upcasts = Map(1 -> ((b: Array[Byte]) => Right(b))))(v1)
     assertEquals(three.journal, List("Kyiv"))
-  }
-
-  // ==== the discipline, where it is relied upon =====================
-
-  test("a durable dialogue whose body reaches outside does not COMPILE") {
-    // the sentence the whole design rests on, checked at the one place
-    // that depends on it (dialogue-replay-discipline). Before this, a
-    // body that called a service between two pauses compiled, and
-    // every replay called the service again.
-    val e = compileErrors("""
-      okay.persist.Dialogue[String, String, String, okay.Async](
-        okay.persist.MemoryStore().topic("t"), "d", "p/1")(
-          okay.Direct.direct(""))""")
-    assert(e.nonEmpty, "an Async-rowed dialogue compiled")
-    assert(e.contains("PERFORM AGAIN"), s"refused for the wrong reason: $e")
   }
 }

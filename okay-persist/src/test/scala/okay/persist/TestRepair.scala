@@ -2,7 +2,7 @@ package okay.persist
 
 import munit.FunSuite
 import okay.Condition
-import okay.freer.{!}
+import okay.{!}
 import okay.Condition.Decision.*
 import okay.codec.Schema
 
@@ -34,7 +34,7 @@ class TestRepair extends FunSuite:
 
   test("patch: the corrected value flows in exactly where the damage sat") {
     val typed = seeded()
-    val out = !.run(Condition.run[Vector[(Long, Ev)], okay.freer.Pure] {
+    val out = !.run(Condition.run[Vector[(Long, Ev)], Condition.Op] {
       case (Repair.Damaged(off, _, raw), menu) =>
         assertEquals(menu, Vector("skip"))
         assertEquals(off, 1L)
@@ -47,7 +47,7 @@ class TestRepair extends FunSuite:
 
   test("skip: the element vanishes, order and offsets of the rest survive") {
     val typed = seeded()
-    val out = !.run(Condition.run[Vector[(Long, Ev)], okay.freer.Pure] {
+    val out = !.run(Condition.run[Vector[(Long, Ev)], Condition.Op] {
       case (_: Repair.Damaged, _) => Invoke("skip", ())
       case _ => Fail
     }(road(typed)))
@@ -57,7 +57,7 @@ class TestRepair extends FunSuite:
   test("fail: the abort names the offset and the error") {
     val typed = seeded()
     val e = intercept[Condition.Unhandled](
-      !.run(Condition.run[Vector[(Long, Ev)], okay.freer.Pure]((_, _) => Fail)(road(typed))))
+      !.run(Condition.run[Vector[(Long, Ev)], Condition.Op]((_, _) => Fail)(road(typed))))
     e.condition match
       case Repair.Damaged(off, err, _) =>
         assertEquals(off, 1L)
@@ -71,7 +71,7 @@ class TestRepair extends FunSuite:
     val typed = Typed[Ev](t, 1, Map.empty)
     typed.append(0, bytes("k"), Ev("a", 1), Ack.Durable): Unit
     var consulted = false
-    val out = !.run(Condition.run[Vector[(Long, Ev)], okay.freer.Pure] { (_, _) =>
+    val out = !.run(Condition.run[Vector[(Long, Ev)], Condition.Op] { (_, _) =>
       consulted = true; Fail
     }(Repair.read(typed, 0, 0L, 10)))
     assertEquals(out.map(_._2), Vector(Ev("a", 1)))

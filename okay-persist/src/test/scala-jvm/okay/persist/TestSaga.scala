@@ -1,9 +1,8 @@
 package okay.persist
 
 import okay.Async
-import okay.freer.{!}
+import okay.{!}
 import okay.given
-import okay.freer.given
 import okay.codec.Schema
 
 /** specs/persist.md "The saga": intent-first steps with compensations
@@ -13,7 +12,7 @@ class TestSaga extends munit.FunSuite {
 
   final case class Order(id: String, total: Int, log: Vector[String]) derives Schema
 
-  def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](prog))
+  def run[A](prog: A ! Async): A = !.run(Async.run(prog))
 
   final class World:
     val facts = scala.collection.mutable.Set.empty[String]

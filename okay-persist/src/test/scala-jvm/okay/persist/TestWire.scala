@@ -1,9 +1,8 @@
 package okay.persist
 
 import okay.Async
-import okay.freer.{!}
+import okay.{!}
 import okay.given
-import okay.freer.given
 import munit.FunSuite
 
 /**
@@ -17,7 +16,7 @@ class TestWire extends FunSuite:
   private def bytes(s: String): Array[Byte] = s.getBytes("UTF-8")
   private def str(b: Array[Byte]): String = new String(b, "UTF-8")
 
-  def run[A](prog: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](prog))
+  def run[A](prog: A ! Async): A = !.run(Async.run(prog))
 
   /** two tokens, two capability sets — the auth function is the plug */
   def server(store: Store): Wire.Server =

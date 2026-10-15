@@ -1,8 +1,8 @@
 package okay.persist
 
 import munit.FunSuite
-import okay.freer.{%, +, Pure}
-import okay.freer.{!, Shift}
+import okay.{+, Pure}
+import okay.{!, Wf}
 import okay.Direct.*
 import scala.language.implicitConversions
 
@@ -21,12 +21,10 @@ import scala.language.implicitConversions
  */
 class TestContinueAs extends FunSuite {
 
-  type Row = Shift % ? + Pure
-
-  def three(using Shift.Asking[String, String, String, Row]): String ! Row = direct:
-    val a = !Shift.pause("1?")
-    val b = !Shift.pause("2?")
-    val c = !Shift.pause("3?")
+  def three(using w: Dialogue.Asks[String, String, String, Pure]): String ! Wf.Talking[String, String] + Pure = direct:
+    val a = !w.pause("1?")
+    val b = !w.pause("2?")
+    val c = !w.pause("3?")
     s"$a$b$c"
 
   /** two answers in, still asking the third */

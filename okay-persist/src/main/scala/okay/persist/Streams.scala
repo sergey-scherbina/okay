@@ -2,8 +2,7 @@ package okay.persist
 
 import okay.{Async, ChunkBuf, Chunks, Source, Timer}
 
-import okay.freer.{+, %}
-import okay.freer.{!, effect}
+import okay.{+, %, effect}
 import okay.std.{Chunk, Writer}
 /**
  * Streaming reads over a topic (specs/persist.md, Interface): a
@@ -39,11 +38,11 @@ object Streams:
              onTooEarly: OnTooEarly = OnTooEarly.Fail)
   : Source[Chunk[Record]] =
     def go(at: Long): Source[Chunk[Record]] =
-      effect[F, Topic.Read](Async.Run(() => t.read(partition, at, chunk))).flatMap {
+      effect[Async, Topic.Read](Async.Run(() => t.read(partition, at, chunk))).at[F].flatMap {
         case Topic.Read.TooEarly(b) => tooEarly(at, b, onTooEarly)(go)
         case Topic.Read.Records(rs) =>
-          if rs.isEmpty then okay.freer.pure(())
-          else effect[F, Unit](Writer(ChunkBuf.of(rs))).flatMap(_ => go(rs.last.offset + 1))
+          if rs.isEmpty then okay.pure(())
+          else Writer.tell(ChunkBuf.of(rs)).at[F].flatMap(_ => go(rs.last.offset + 1))
       }
     go(from)
 
@@ -93,12 +92,12 @@ object Streams:
           (using Timer)
   : Source[Chunk[Record]] =
     def go(at: Long): Source[Chunk[Record]] =
-      effect[F, Topic.Read](Async.Run(() => t.read(partition, at, chunk))).flatMap {
+      effect[Async, Topic.Read](Async.Run(() => t.read(partition, at, chunk))).at[F].flatMap {
         case Topic.Read.TooEarly(b) => tooEarly(at, b, onTooEarly)(go)
         case Topic.Read.Records(rs) =>
           if rs.isEmpty then
-            okay.freer.!.widen[Unit, Async, Writer % Chunk[Record]](Async.sleep(pollMillis)).flatMap(_ => go(at))
-          else effect[F, Unit](Writer(ChunkBuf.of(rs))).flatMap(_ => go(rs.last.offset + 1))
+            Async.sleep(pollMillis).at[F].flatMap(_ => go(at))
+          else Writer.tell(ChunkBuf.of(rs)).at[F].flatMap(_ => go(rs.last.offset + 1))
       }
     go(from)
 
@@ -107,4 +106,4 @@ object Streams:
     on match
       case OnTooEarly.Resume => resume(begin)
       case OnTooEarly.Fail =>
-        effect[F, Unit](Async.Run(() => throw DroppedHistory(asked, begin)))
+        effect[Async, Unit](Async.Run(() => throw DroppedHistory(asked, begin))).at[F]
