@@ -1,7 +1,7 @@
 package okay.llm
 
-import okay.{!, %, +, Async, Condition, Handler, effect, pure}
-import okay.std.Writer
+import okay.{!, %, +, Async, Condition, pure}
+import okay.std.{Escape, Writer}
 
 /**
  * Streaming validation that cuts generation (specs/llm-agentic.md,
@@ -52,48 +52,40 @@ object Cut {
    * was seen — the caller retries, reprompts, or surfaces it */
   final case class Violation(rule: String, at: Int, seen: String)
 
-  /** the name of a guard: a cut names the guard it ends. One is made by
-   * `guarded` alone, so holding one means being handed it by a guard */
-  final class Prompt[A] private[Cut] ()
+  /** the name of a guard: a cut names the guard it ends — okay-std's
+   * `Escape.Prompt`, made by a guard alone, so holding one means being
+   * handed it by a guard */
+  type Prompt[A] = Escape.Prompt[A]
 
   /** the ambient form of a guard's prompt — the evidence of being
    * inside one: its constructor is private, so a `violation` outside
    * any guard does not compile */
-  final class Prompted[A] private[Cut] (val prompt: Prompt[A])
+  type Prompted[A] = Escape.Prompted[A]
 
-  /** THE CUT AS AN OPERATION: the guarded generation ends at the guard
-   * of `prompt` with `v`, its answer never comes. A guard is the
-   * kernel's `Aborting` handler of it: the operation ends the body,
-   * the rest — the stream's further pulls — dropped */
-  final case class Cutting[X](prompt: Prompt[?], v: Violation)
+  /** THE CUT AS AN OPERATION: okay-std's multi-prompt abort — a cut
+   * leaves the guard of its prompt with `Left(v)`, the rest of the
+   * generation (the stream's further pulls) dropped */
+  type Cutting = Escape
 
   /** the streaming row under a cut boundary */
   type Guarded[A] = Writer % String + (Cutting + Async)
 
   private type R = Writer % String + (Cutting + Async)
 
-  /** the guard of `p`: a cut ends the body with `Left`, an answer is
-   * `Right`. A cut is caught by the NEAREST guard; one naming a guard
-   * further out is refused, named (the kernel's handler of an effect
-   * is the innermost one; a cut cannot pass through it) */
-  private def stopAt(p: Prompt[?]): Handler[Cutting, [a] =>> Either[Violation, a]] =
-    Handler.aborting[Cutting, [a] =>> Either[Violation, a]]([a] => (a: a) => Right(a))(
-      [a, x] => (op: Cutting[x]) =>
-        if op.prompt eq p then Left(op.v)
-        else throw IllegalStateException(
-          s"Cut: a cut to an outer guard through an inner one (${op.v}); a cut ends the nearest guard"))
-
   /** install the boundary; the body streams tokens and may abort to
-   * the prompt with a named violation */
+   * the prompt with a named violation. A guard is an `Escape.prompt`
+   * run at once: a cut ends the nearest guard; one naming a guard
+   * further out cannot pass the inner guard's run and is refused,
+   * named (`Escape.NoPrompt`) */
   def guarded[A](gen: Prompt[Either[Violation, A]] => A ! (Writer % String + (Cutting + Async)))
   : Either[Violation, A] ! Writer % String + Async =
-    val p = Prompt[Either[Violation, A]]()
-    gen(p).handle(stopAt(p))
+    Escape.run[Either[Violation, A], R](
+      Escape.prompt[Either[Violation, A], R](p => gen(p).map[Either[Violation, A]](Right(_))))
 
   /** abort the generation with a violation — the non-local exit */
   def cut[A, X](p: Prompt[Either[Violation, A]])(v: Violation)
   : X ! (Writer % String + (Cutting + Async)) =
-    effect[Cutting, X](Cutting[X](p, v)).at[R]
+    Escape.escape[X, Either[Violation, A]](p)(Left(v)).at[R]
 
   /**
    * The recurring shape: pull a token source, CHECK each token, emit
@@ -122,14 +114,15 @@ object Cut {
   /**
    * The boundary with an ambient prompt — and the evidence is
    * `Prompted`, not `Prompt` (delim-doors-are-prompted, 2026-09-18):
-   * `Prompted`'s constructor is private to `Cut`, so holding one
+   * `Prompted`'s constructor is private to `Escape`, so holding one
    * means being inside the guard that installed it — a `violation`
    * outside any guard does not compile. The explicit forms
    * (`guarded`, `cut`, `checked(p, …)`) are unaffected.
    */
   def guard[A](gen: Prompted[Either[Violation, A]] ?=> A ! (Writer % String + (Cutting + Async)))
   : Either[Violation, A] ! Writer % String + Async =
-    guarded[A](p => gen(using Prompted(p)))
+    Escape.run[Either[Violation, A], R](
+      Escape.prompted[Either[Violation, A], R](gen.map[Either[Violation, A]](Right(_))))
 
   /** `checked` against the NEAREST guard — the prompt is ambient
    * (the ctx-prompts door; the explicit form stays) */

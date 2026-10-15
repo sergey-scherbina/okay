@@ -2,6 +2,7 @@ package okay.ui
 
 
 import okay.*
+import okay.std.Escape
 
 /**
  * Shift in Dialog, as an OPTION (specs/ui-toolkit.md, "Dialog
@@ -15,26 +16,23 @@ import okay.*
  * cannot express.
  *
  * On the root's words (freer-on-core) the row is `Scope.Exit +
- * Dialog`: an exit is ONE operation of `Exit`, naming its prompt.
- * Each `push` handles `Exit` with an aborting handler (the rest of
- * the scope is dropped, which is what an exit is): an exit to ITS
- * prompt answers the scope; an exit to another is raised again past
- * the scope's boundary, where an enclosing `push` meets it. So an
- * inner scope aborts across its boundary to an outer one, and ONE
- * `run` at the top erases the row — an exit no scope answered is a
- * `NoPrompt` there.
+ * Dialog`, `Exit` being okay-std's one multi-prompt abort,
+ * `okay.std.Escape`: each `push` is an `Escape.prompt` — an exit to
+ * ITS prompt answers the scope, an exit to another is raised again
+ * past the scope's boundary, where an enclosing `push` meets it —
+ * and ONE `run` at the top erases the row: an exit no scope answered
+ * is a `NoPrompt` there.
  */
 object Scope {
 
   /** a scope's name: made by `push` (or `mark`), one per installed scope */
-  final class Prompt[A] private[Scope] ()
+  type Prompt[A] = Escape.Prompt[A]
 
-  /** THE ONE OPERATION: leave the scope of `prompt` with `value` */
-  enum Exit[X]:
-    case Leave[R](prompt: Prompt[R], value: R) extends Exit[Nothing]
+  /** THE ONE OPERATION: okay-std's multi-prompt abort, `Escape` */
+  type Exit = Escape
 
   /** an exit no enclosing scope answered: its prompt was not pushed around it */
-  final class NoPrompt extends IllegalStateException("Scope: an exit to a scope that is not around it")
+  type NoPrompt = Escape.NoPrompt
 
   /** the row scoped scenarios live in */
   type Row = Exit + Dialog
@@ -42,44 +40,17 @@ object Scope {
   /** an ordinary Dialog step, lifted into the scoped row */
   def lift[A](p: A ! Dialog): A ! Row = p.at[Row]
 
-  /** what a scope's body ended with: its answer, or an exit (to it or past it) */
-  private type Ended[A] = Either[Exit.Leave[?], A]
-
-  /** the body run to its answer or its first exit — the rest of it dropped */
-  private val ending: Handler[Exit, Ended] = Handler.aborting[Exit, Ended]([A] => (a: A) => Right(a))(
-    [A, X] => (op: Exit[X]) => op match
-      case l: Exit.Leave[r] => Left(l))
-
   /** install a cancellable scope: the body answers `A`, and `cancel`
    * against this scope's prompt exits it with the given value */
-  def push[A](body: Prompt[A] => A ! Row): A ! Row =
-    val p = Prompt[A]()
-    body(p).handle(ending).at[Row].flatMap {
-      case Right(a) => pure[A, Row](a)
-      case Left(l) => answer(p, l) match
-        case Some(a) => pure[A, Row](a)
-        // past this scope: raised again outside it, to an enclosing one
-        case None => effect[Exit, Nothing](l).at[Row]
-    }
-
-  /** the exit's value when it is to `p` */
-  private def answer[A](p: Prompt[A], l: Exit.Leave[?]): Option[A] =
-    // THE CAST, and why it is sound: a `Leave` names its prompt with its
-    // value's type (`Leave[R](Prompt[R], R)`), so one whose prompt is `p`
-    // carries an `A`
-    if l.prompt eq p then Some(l.value.asInstanceOf[A]) else None
+  def push[A](body: Prompt[A] => A ! Row): A ! Row = Escape.prompt[A, Row](body)
 
   /** exit the named scope immediately with `value` — no Option
    * threading on the steps in between, however deep */
-  def cancel[A, R](p: Prompt[R])(value: R): A ! Row =
-    effect[Exit, Nothing](Exit.Leave(p, value)).at[Row]
+  def cancel[A, R](p: Prompt[R])(value: R): A ! Row = Escape.escape[A, R](p)(value).at[Row]
 
   /** erase the Exit row: after this it is an ordinary Dialog
    * program, running anywhere Dialog runs */
-  def run[A](prog: A ! Row): A ! Dialog = prog.handle(ending).map {
-    case Right(a) => a
-    case Left(_) => throw NoPrompt()
-  }
+  def run[A](prog: A ! Row): A ! Dialog = Escape.run[A, Row](prog)
 
   /** the common one-scope shape: push + run */
   def scoped[A](body: Prompt[A] => A ! Row): A ! Dialog =
@@ -94,20 +65,18 @@ object Scope {
   // THE AMBIENT EVIDENCE IS `Prompted`, NOT `Prompt`
   // (delim-doors-are-prompted, 2026-09-18). Asking for a bare prompt
   // as a GIVEN would prove nothing were one easy to make; `Prompted`'s
-  // constructor is private to `Scope`, so the only way to hold one is
+  // constructor is private to `Escape`, so the only way to hold one is
   // to be inside the scope that installed it, and an exit with a
   // forged one is a compile error.
 
   /** the evidence of being inside a scope: its prompt */
-  final class Prompted[A] private[Scope] (val prompt: Prompt[A])
+  type Prompted[A] = Escape.Prompted[A]
 
   /** install a scope whose prompt is ambient in the body */
-  def mark[A](body: Prompted[A] ?=> A ! Row): A ! Row =
-    push[A](p => body(using Prompted(p)))
+  def mark[A](body: Prompted[A] ?=> A ! Row): A ! Row = Escape.prompted[A, Row](body)
 
   /** exit the nearest enclosing scope — or a named one, by binding */
-  def exit[A, R](value: R)(using p: Prompted[R]): A ! Row =
-    cancel[A, R](p.prompt)(value)
+  def exit[A, R](value: R)(using p: Prompted[R]): A ! Row = Escape.leave[A, R](value).at[Row]
 
   /** the one-scope capability form: mark + run */
   def bounded[A](body: Prompted[A] ?=> A ! Row): A ! Dialog =
