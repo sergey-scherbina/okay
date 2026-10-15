@@ -1,18 +1,20 @@
 package okay.std
 
-import okay.freer.*
-
-import okay.{TypeableK}
+import okay.{!, +, %}
+import okay.core.{Paths, Row}
+import okay.one.row.In
+import okay.one.step.Step
+import okay.one.step.Step.step
 
 import scala.annotation.tailrec
-import Free.*
 
 /**
  * ARE THESE TWO PROGRAMS THE SAME PROGRAM? An executable answer, for
  * the rewrites this library makes of its own programs (specs/handler-
  * equivalence-oracle.md).
  *
- * A program here is a tree that stops at every operation, so two
+ * A program here is STEPPED (okay-core's `Step`): it stops at every
+ * operation and hands back the rest, `k` as data, so two
  * programs can be compared the way normal-form bisimilarity compares
  * terms (Biernacki, Lenglet & Polesiuk, "A complete normal-form
  * bisimilarity for algebraic effects and handlers", FSCD 2020): walk
@@ -21,8 +23,8 @@ import Free.*
  * agree on every path are indistinguishable by ANY handler, because a
  * handler sees nothing but the operations and chooses nothing but the
  * answers. It is equivalence of interaction trees in the sense of Xia
- * et al. (POPL 2020), without the silent steps: `Free.resume` has
- * already removed them.
+ * et al. (POPL 2020), without the silent steps: `step` has
+ * already run them.
  *
  * WHAT MAKES IT EXECUTABLE is that the answers are a SAMPLE, not a
  * symbol. `Answers[F]` names a finite list of answers per operation,
@@ -41,8 +43,9 @@ import Free.*
  * rewrite that is sound only by an effect's laws, compare the
  * programs AFTER that effect's handler, on the residual row.
  *
- * No cast: the two programs' operations are compared with `==` and
- * then each is answered from ITS OWN call to `Answers`, zipped. That
+ * The two programs' operations are compared with `==`, at the same
+ * place of the row, and then each is answered from ITS OWN call to
+ * `Answers`, zipped. That
  * is sound because `Answers` is a function of the operation, so equal
  * operations get equal lists. When the lists differ anyway, that is
  * reported as a `Differ` naming the answers rather than trusted.
@@ -53,43 +56,74 @@ object Bisim:
    * The answers the walk feeds an operation: a finite sample, and a
    * FUNCTION of the operation. An empty list makes the operation a
    * leaf (`Stop.Now`, a raise): nothing continues after it.
+   *
+   * It also says WHERE the programs are stepped: a row of its effects,
+   * in the order `+` wrote them — each a place, an operation answered
+   * by the member at its place (the path, not a class test).
    */
-  trait Answers[F[+_]]:
-    def apply[X](op: F[X]): List[X]
+  trait Answers[Es[_]]:
+    /** how many effects, the places of the row */
+    private[Bisim] def size: Int
+    /** the paths of `Es` in the row the walk steps at, its effects from place `from` on */
+    private[Bisim] def paths(from: Int): Paths[Es, Row]
+    /** the answers to the operation at place `at` */
+    private[Bisim] def answer(at: Int, op: Any): List[Any]
 
-    /** a row of two: each operation is answered by the member whose
-     * test takes it (`split`, the same test a runner uses) */
-    infix def +[G[+_]](g: Answers[G])(using TypeableK[F]): Answers[F + G] =
+    /** a row of two: each operation answered by the member at its place */
+    infix def +[G[_]](g: Answers[G]): Answers[Es + G] =
       val f = this
-      new Answers[F + G]:
-        def apply[X](op: F[X] | G[X]): List[X] = split[F, G](op)(f(_))(g(_))
+      new Answers[Es + G]:
+        private[Bisim] def size: Int = f.size + g.size
+        private[Bisim] def paths(from: Int): Paths[Es + G, Row] = Paths.Both(f.paths(from), g.paths(from + f.size))
+        private[Bisim] def answer(at: Int, op: Any): List[Any] =
+          if at < f.size then f.answer(at, op) else g.answer(at - f.size, op)
 
   object Answers:
+    /**
+     * The answers to one effect. THE CAST, and why it is sound: the walk
+     * steps at a row it lays out itself, its places in the order of the
+     * members; an operation at this member's place is one of `F`'s.
+     */
+    def of[F[_]](f: [X] => F[X] => List[X]): Answers[F] = new Answers[F]:
+      private[Bisim] def size: Int = 1
+      private[Bisim] def paths(from: Int): Paths[F, Row] = Paths.One(place[F](from))
+      private[Bisim] def answer(at: Int, op: Any): List[Any] = f(op.asInstanceOf[F[Any]])
+
     /** every `get` answered by each sample in turn; an `update` by what its function says of each */
-    def state[S](samples: S*): Answers[State % S] = new Answers[State % S]:
-      def apply[X](op: State[S, X]): List[X] = op match
-        case State.Get() => samples.toList
-        // an update answers what its function says from each sample
-        // a set does not read the state it replaces: one answer, not one per sample
-        case State.Update(State.Put(s)) => List(s)
-        case State.Update(f) => samples.toList.map(s => f(s)._1)
+    def state[S](samples: S*): Answers[State % S] = of[State % S]([X] => (op: State[S, X]) => op match
+      case State.Get() => samples.toList
+      // an update answers what its function says from each sample
+      // a set does not read the state it replaces: one answer, not one per sample
+      case State.Update(State.Put(s)) => List(s)
+      case State.Update(f) => samples.toList.map(s => f(s)._1))
 
     /** every `ask` answered by each sample in turn */
-    def reader[R](samples: R*): Answers[Reader % R] = new Answers[Reader % R]:
-      def apply[X](op: Reader[R, X]): List[X] = op match
-        case Reader.Ask() => samples.toList
-        case Reader.Asks(f) => samples.toList.map(f)
+    def reader[R](samples: R*): Answers[Reader % R] = of[Reader % R]([X] => (op: Reader[R, X]) => op match
+      case Reader.Ask() => samples.toList
+      case Reader.Asks(f) => samples.toList.map(f))
 
     /** a tell has one answer, and the told value is compared as part
      * of the operation */
-    def writer[W]: Answers[Writer % W] = new Answers[Writer % W]:
-      def apply[X](op: Writer[W, X]): List[X] = op match
-        case Writer.Say(_) => List(())
+    def writer[W]: Answers[Writer % W] = of[Writer % W]([X] => (op: Writer[W, X]) => op match
+      case Writer.Say(_) => List(()))
 
     /** `Stop.Now` is a leaf: both programs must stop HERE */
-    val stop: Answers[Stop] = new Answers[Stop]:
-      def apply[X](op: Stop[X]): List[X] = op match
-        case Stop.Now => Nil
+    val stop: Answers[Stop] = of[Stop]([X] => (op: Stop[X]) => op match
+      case Stop.Now => Nil)
+
+  /** the place `at` of the row the walk steps at — `at` handlers out. The row is a list of the members' effects;
+   * its type is not written (`Row`), the places are what the walk reads */
+  private def place[F[_]](at: Int): In[F, Row] =
+    @tailrec def go(n: Int, in: In[F, Row]): In[F, Row] =
+      if n == 0 then in else go(n - 1, In.There[F, F, Row](in).asInstanceOf[In[F, Row]])
+    go(at, In.Here[F, Row]().asInstanceOf[In[F, Row]])
+
+  /** the place of an operation the walk met: how many handlers out */
+  private def placeOf(in: In[?, ?]): Int =
+    @tailrec def go(in: In[?, ?], n: Int): Int = in match
+      case t: In.There[?, ?, ?] => go(t.in, n + 1)
+      case _ => n
+    go(in, 0)
 
   /** what the walk found */
   enum Verdict:
@@ -117,9 +151,11 @@ object Bisim:
    * with an explicit stack, so neither a long path nor a wide tree
    * grows the JVM stack.
    */
-  def check[F[+_], A](p: A ! F, q: A ! F, depth: Int = 32, budget: Int = 100_000)
-                     (using ans: Answers[F]): Verdict =
-    @tailrec def go(todo: List[Frame[F, A]], paths: Int, cut: Int): Verdict = todo match
+  def check[Es[_], A](p: A ! Es, q: A ! Es, depth: Int = 32, budget: Int = 100_000)
+                      (using ans: Answers[Es]): Verdict =
+    val at = ans.paths(0)
+    def start(r: A ! Es): () => Step[Row, A] = () => r.fit(at).step
+    @tailrec def go(todo: List[Frame[A]], paths: Int, cut: Int): Verdict = todo match
       case Nil => Verdict.Same(paths, cut)
       case _ if paths + cut >= budget => Verdict.Same(paths, cut + todo.size)
       case Frame(path, l, r, d) :: rest => (view(l), view(r)) match
@@ -142,23 +178,27 @@ object Bisim:
               val more = nl.lazyZip(nr).map { case ((x, kl), (_, kr)) =>
                 Frame(s"${sl.show} -> $x" :: path, kl, kr, d + 1) }
               go(more ++ rest, paths, cut)
-    go(List(Frame(Nil, p, q, 0)), 0, 0)
+    go(List(Frame(Nil, start(p), start(q), 0)), 0, 0)
 
   /** one pending comparison: the path so far (newest first), the two
-   * programs from there, and how many operations the path has */
-  private final case class Frame[F[+_], A](path: List[String], l: A ! F, r: A ! F, d: Int)
+   * programs from there — stepped when the walk gets to them — and how
+   * many operations the path has */
+  private final case class Frame[A](path: List[String], l: () => Step[Row, A], r: () => Step[Row, A], d: Int)
 
-  /** an operation and its continuation, the answer type kept */
-  private final class Step[F[+_], A, X](op: F[X], k: X => A ! F):
+  /** an operation at its place, and the rest — `k` as data, resumed once an answer (multi-shot) */
+  private final class Met[A, X](op: X, at: Int, k: Step.Resume[?, Row, A]):
     def show: String = String.valueOf(op)
-    def sameOp(that: Step[F, A, ?]): Boolean = that.is(op)
-    private def is(other: Any): Boolean = op == other
+    def sameOp(that: Met[A, ?]): Boolean = that.is(op, at)
+    private def is(other: Any, place: Int): Boolean = op == other && at == place
     /** each sampled answer, rendered, with where it leads */
-    def next(ans: Answers[F]): List[(String, A ! F)] =
-      ans(op).map(x => (String.valueOf(x), k(x)))
+    def next[Es[_]](ans: Answers[Es]): List[(String, () => Step[Row, A])] =
+      ans.answer(at, op).map(x => (String.valueOf(x), () => resume(x)))
+    // THE CAST, and why it is sound: the answers to an operation are its member's, of the operation's answer type
+    private def resume(x: Any): Step[Row, A] = k.asInstanceOf[Step.Resume[Any, Row, A]](x)
 
-  /** the head form `resume` leaves: a value, or an operation to answer */
-  private def view[F[+_], A](p: A ! F): Either[A, Step[F, A, ?]] = (p.resume: @unchecked) match
-    case Return(a) => Left(a)
-    case Inject(e) => Right(Step[F, A, A](e, Return(_)))
-    case Bind(Inject(e), k) => Right(Step(e, k))
+  /** the head form a step leaves: a value, or an operation to answer */
+  private def view[A](st: () => Step[Row, A]): Either[A, Met[A, ?]] = st() match
+    case Step.Done(a) => Left(a)
+    case y: Step.Yield[?, ?, ?, ?] => Right(Met(y.op, placeOf(y.in), y.resume))
+    case Step.Failed(e) => throw e
+    case Step.Cancelled() => throw IllegalStateException("Bisim: a program was cancelled")

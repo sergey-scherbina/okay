@@ -1,8 +1,7 @@
 package okay.std
 
-import okay.freer.*
-
-import okay.{Monad, TailRecM}
+import okay.{!, Monad, TailRecM, pure}
+import okay.freer.Monoid
 
 
 /**
@@ -390,7 +389,7 @@ inline def fresh[A]: New[A] ?=> (A ! Resource) = wire[New[A]]()
 /** an instance per consumer, with nothing to release */
 def prototype[A](make: => A): Module[[X] =>> New[A] ?=> X] =
   Module.value[New[A]](new New[A]:
-    def apply(): A ! Resource = pure[Resource, A](make))
+    def apply(): A ! Resource = pure[A, Resource](make))
 
 /** an instance per consumer, released by the region each one runs in */
 def prototype[A](acquire: => A)(release: A => Unit): Module[[X] =>> New[A] ?=> X] =
@@ -457,7 +456,7 @@ extension [F[_]](m: Module[F])
 object Module:
   /** a module with nothing to build or release — a test double, a config value */
   def ready[F[_]](p: Providing[F]): Module[F] =
-    new Module(pure[Resource, (Providing[F], Facts)]((p, Facts.empty)), Some(p))
+    new Module(pure[(Providing[F], Facts), Resource]((p, Facts.empty)), Some(p))
   /** the same, from the bare value */
   def value[A](a: A): Module[[X] =>> A ?=> X] = ready(providing[A](a))
 

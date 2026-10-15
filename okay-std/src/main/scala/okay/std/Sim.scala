@@ -1,9 +1,10 @@
 package okay.std
 
-import okay.freer.*
-
-
-import okay.freer.!.*
+import okay.{!, effect}
+import okay.core.+:
+import okay.one.row.In
+import okay.one.step.Step
+import okay.one.step.Step.step
 import scala.collection.mutable
 import scala.util.Random
 
@@ -17,9 +18,9 @@ import scala.util.Random
  *
  * The mechanism is delimited control, used as the PRIMARY road (the
  * operator's rule: primary where nothing else serves): a fiber is a
- * freer-tree program and its `k` at every operation IS the captured
- * delimited continuation — the Cps foundation this stack is built
- * on, made scheduler food. Blocking primitives become OPERATIONS
+ * program STEPPED (okay-core's `Step`), and the rest `k` it hands back
+ * at every operation IS the captured delimited continuation, as data
+ * — made scheduler food. Blocking primitives become OPERATIONS
  * (`SimChannel` send/receive suspend to the scheduler, as the real
  * Channel's do to whoever completes them), and the simulated one is
  * chosen where the real one's timing is not the scheduler's to
@@ -35,6 +36,9 @@ import scala.util.Random
  */
 object Sim {
 
+  /** the row a fiber is stepped at: `Op`, and nothing else */
+  private type Fibers = Op +: okay.core.Pure
+
   /** a simulated fiber's handle */
   final class Fiber private[Sim] (val id: Int)
 
@@ -48,8 +52,8 @@ object Sim {
     /** the parked receivers and senders of THIS channel, typed by
      * its element — the queues live on the channel so the scheduler
      * never holds an erased payload */
-    private[Sim] val recvWait = mutable.Queue.empty[(Int, Option[A] => Unit ! Op)]
-    private[Sim] val sendWait = mutable.Queue.empty[(Int, A, Unit => Unit ! Op)]
+    private[Sim] val recvWait = mutable.Queue.empty[(Int, Option[A] => Step[Fibers, Unit])]
+    private[Sim] val sendWait = mutable.Queue.empty[(Int, A, Unit => Step[Fibers, Unit])]
 
   /** the simulation's operations — the scheduling points */
   enum Op[+A]:
@@ -57,11 +61,9 @@ object Sim {
      * does not commute with bind (docs/theory/05, "what the middle
      * constructor decides"). Safe because the payload is CLOSED over
      * this signature: `Unit ! Op` cannot mention an ambient row, so
-     * nothing hides here from a handler relaying the row underneath —
-     * and `!.relay` would not see it, since it walks the spine and
-     * passes a foreign node through without descending. Widening this
-     * to `Unit ! Op + G` is unspeakable at the kind `F[+_]` and
-     * needs higher-order signatures; read the price there first. */
+     * nothing hides here from a handler of the row underneath, which
+     * would not see inside it. Widening this to `Unit ! Op + G` needs
+     * higher-order signatures; read the price there first. */
     case Fork(prog: Unit ! Op) extends Op[Fiber]
     case Sleep(millis: Long) extends Op[Unit]
     case Now() extends Op[Long]
@@ -108,18 +110,22 @@ object Sim {
     var sends = 0L
     val steps = Vector.newBuilder[String]
 
-    // prog is a THUNK: a continuation is applied when its fiber is
+    // next is a THUNK: a continuation is resumed when its fiber is
     // SCHEDULED, never when it is merely enqueued — side effects in
     // a map's closure belong to the step that runs them
-    final case class Task(fiber: Int, prog: () => Unit ! Op)
+    final case class Task(fiber: Int, next: () => Step[Fibers, Unit])
     val runnable = mutable.ArrayBuffer.empty[Task]
     val sleeping = mutable.ArrayBuffer.empty[(Long, Task)]
     val chans = mutable.ArrayBuffer.empty[SimChannel[?]]
 
+    // a fiber's program is stepped at the row of `Op` alone: every
+    // operation comes out, the rest with it
+    val place = okay.core.Paths.One(In.Here[Op, okay.core.Pure]())
+
     def spawn(prog: Unit ! Op): Fiber =
       val f = new Fiber(nextFiber)
       nextFiber += 1
-      runnable += Task(f.id, () => prog)
+      runnable += Task(f.id, () => prog.fit(place).step)
       f
 
     val _ = spawn(main)
@@ -143,18 +149,20 @@ object Sim {
         runnable += Task(fid, () => k(()))
 
     def step(t: Task): Unit =
-      (t.prog().resume: @unchecked) match
-        case Return(_) =>
+      t.next() match
+        case Step.Done(_) =>
           steps += s"${t.fiber}:done"
-        case Inject(e) =>
-          // a terminal operation: perform it, nothing continues
-          perform(t.fiber, e, _ => okay.freer.pure(()))
-        case Bind(Inject(e), k) =>
-          // the freer tree's own k IS the captured delimited
-          // continuation; the Bind node types it by the operation
-          perform(t.fiber, e, k)
+        case y: Step.Yield[?, ?, ?, ?] =>
+          // the step's rest IS the captured delimited continuation, as
+          // data; the operation's place in the row types it — the head
+          Stepping.own(y.in) match
+            case null => In.absurd(Stepping.outside(y.in))
+            case same: In.Same[f, Op] => perform(t.fiber, same(y.op), y.resume(_), y)
+        case Step.Failed(e) => throw e
+        case Step.Cancelled() => Stepping.cancelled()
 
-    def perform[Y](fid: Int, op: Op[Y], k: Y => Unit ! Op): Unit = op match
+    /** `op` performed for fiber `fid`; `k` its rest, `at` the step it came in (to hand back as it was) */
+    def perform[Y](fid: Int, op: Op[Y], k: Y => Step[Fibers, Unit], at: Step[Fibers, Unit]): Unit = op match
       case Op.Fork(prog) =>
         val f = spawn(prog)
         steps += s"$fid:fork(${f.id})"
@@ -175,7 +183,8 @@ object Sim {
         sends += 1
         if plan.delaySendAt.contains(sends) then
           steps += s"$fid:send-delayed(${ch.id})"
-          runnable += Task(fid, () => effect[Op, Unit](Op.Send(ch, a)).flatMap(k))
+          // the same step again: the send performed when the fiber is next scheduled
+          runnable += Task(fid, () => at)
         else if ch.q.size < ch.capacity then
           ch.q.enqueue(a)
           steps += s"$fid:send(${ch.id})"

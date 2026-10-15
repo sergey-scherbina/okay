@@ -192,34 +192,6 @@ object Writer {
     a.translate[Writer % W, Writer % V]([X] => (op: Writer[W, X]) => op match
       case Say(w) => tell(f(w)))
 
-  /**
-   * `map` on okay-freer's road: a CLASSIC tree's told values mapped, walked by okay-freer's frames — kept, as it
-   * was, for `Gen` alone (its walks are the classic's) until it moves; then it goes.
-   */
-  def map[W, V, A, G[+_]](a: okay.freer.![A, okay.freer.+[Writer % W, G]])
-                         (using okay.freer.Distinct[okay.freer.+[Writer % W, G]], TypeableK[Writer % W])(f: W => V)
-  : okay.freer.![A, okay.freer.+[Writer % V, G]] =
-    import okay.freer.{Free, HandleFrames, Shift, split}
-    import okay.freer.Free.{Bind, Inject}
-    type Src = okay.freer.+[Writer % W, G]
-    type Dst = okay.freer.+[Writer % V, G]
-    def frame(x: okay.freer.![A, Src]): Shift.U[Dst, A] =
-      HandleFrames.statefulOver[Writer % W, Unit, A, A, Dst, Src](summon[TypeableK[Writer % W]], (_, a) => okay.freer.pure(a))(
-        (_, op, resume) => Inject[Dst, Unit](Writer(f(Writer.told[W](op)))).flatMap(_ => resume((), ())))((), x)
-    def go(d: Int)(a: okay.freer.![A, Src]): okay.freer.![A, Dst] = (a.resumeRun: @unchecked) match
-      case Free.Return(x) => Free.Return(x)
-      // the handled signature tested first (distinct-on-handlers, 2026-09-24)
-      case Inject(e) => split[Writer % W, G](e)
-        { w0 => (w0: @unchecked) match
-            case Say(w) => Inject(Writer(f(w))): okay.freer.![A, Dst] }
-        (g => Inject(g): okay.freer.![A, Dst])
-      case Bind(Inject(e), k) => split[Writer % W, G](e)
-        { w0 => (w0: @unchecked) match
-            case Say(w) => Inject(Writer(f(w))).flatMap(_ => go(d)(k(()))): okay.freer.![A, Dst] }
-        (g => Inject(g).flatMap(x => go(d)(k(x))))
-      case y => go(d)(HandleFrames.shallow(y, d))
-    HandleFrames.run[A, Dst](d => go(d)(a), frame(a))
-
   /** the values told one by one, from `i` */
   private def tellAll[W](ws: IndexedSeq[W], i: Int): Unit ! Writer % W =
     if i >= ws.length then pure[Unit, Writer % W](()) else tell(ws(i)) >> tellAll(ws, i + 1)

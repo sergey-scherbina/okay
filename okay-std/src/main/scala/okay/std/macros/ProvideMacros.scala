@@ -1,7 +1,7 @@
 package okay.std
 package macros
 
-import okay.freer.*
+import okay.!
 
 
 import scala.annotation.tailrec

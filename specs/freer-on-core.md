@@ -185,6 +185,18 @@ Recorded as met; behaviour regressions are accepted where the speed is the point
   is re-placed by reading paths, an effect missing at the new place throws. The effectful `uncons`, `Pull.toldIn`
   and the stream instances take `Writer % W + G` with `G` one effect.
 - Writer's folds are the kernel's `Stateful` (answered in place); the `Fold.OfLong`/`OfInt` dispatch is gone.
+- `Resource` is a kernel `Deep` handler whose rest runs under a guard (release once: at the end, on an error with
+  a failing release suppressed on it, on an abort or a cancel as the finalizer). TWO REGRESSIONS, open:
+  (1) a handler OUTSIDE the scope that drops `k` as a value — a `Deep` clause not calling it: `Maybe.option`'s
+  `None`, `Chronicle`'s halt, an empty `Choose` — does not release (okay-freer released before forwarding a `Final`
+  operation); aborts through the kernel's `Aborting` (`runEither`, `runOption`) do. The way: those clauses abort
+  through the kernel, or the kernel gets a discontinue that unwinds a dropped `k`'s finalizers (`Step.Resume.cancel`
+  does it for a stepped program). (2) a multi-shot handler outside the scope (`choose` resumed once per alternative):
+  the guard is put back on each resumption and releases at the end of the FIRST branch; later branches run with the
+  resource released (okay-freer shared it and released after the last — logic-cut-releases). `Forked`/`Shared` in
+  Choice and Logic are unused now.
+- `Resource.bracket` acquires when the program runs: a program run twice acquires twice.
+- `Gen`'s `zip` steps both sides when the zipped program runs, not when `zip` is called.
 - `Once.memo` calls its step twice an operation (the kernel's `Stateful` asks `value` and `next` apart): pure, so the
   same.
 
