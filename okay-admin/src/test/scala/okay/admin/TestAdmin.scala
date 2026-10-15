@@ -1,9 +1,8 @@
 package okay.admin
 
 import okay.Async
-import okay.freer.{!}
+import okay.{!}
 import okay.given
-import okay.freer.given
 import okay.http.{Http, Method, Request, Response}
 import okay.security.{Claims, Jwt, Verified}
 import okay.security.given
@@ -15,7 +14,7 @@ import okay.security.given
  */
 class TestAdmin extends munit.FunSuite {
 
-  def run[A](p: A ! Async): A = !.run(Async.run[A, okay.freer.Pure](p))
+  def run[A](p: A ! Async): A = Async.run(p).run
 
   var replayed = 0
   var pinged = 0
