@@ -1,13 +1,17 @@
-package okay.freer
+package okay.std.bench
 
 
 import okay.std.*
 import okay.{Monad, traverse}
+import okay.freer.Semigroup // the classic file found it as a member of its package, okay.freer
 
 import org.openjdk.jmh.annotations.{State, *}
 import java.util.concurrent.TimeUnit
 
 /**
+ * (The classic's lane as it is: no program in it — `Validated` against `Either` under `traverse` — so the same on
+ * both roads, kept for the table to line up.)
+ *
  * What COLLECTING costs on the happy path (specs/validated.md).
  *
  * The prediction, written before measuring: an all-valid `traverse`

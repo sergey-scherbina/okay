@@ -1,15 +1,14 @@
-package okay.freer
+package okay.std.bench
 
+import okay.{!, +, %, pure}
 import okay.std.*
-import okay.std.given
-import okay.given
-import okay.freer.Row.at
-import org.openjdk.jmh.annotations.{State, *}
+import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 
-/** the per-bind cost on the classic road: the same loop as okay-core's ProgValueBenchmark (ask, tell, n times),
- * okay-freer's words, Reader and Writer handled */
-@State(Scope.Thread)
+/** the per-bind cost on the new road: the same loop as okay-core's ProgValueBenchmark (ask, tell, n times), the
+ * root's words (`A ! Es` a value), Reader and Writer handled — `okay.freer.ClassicLoopBenchmark` at the tag
+ * `classic-freer` is the same program on okay-freer's words */
+@JmhState(Scope.Thread)
 @BenchmarkMode(Array(Mode.AverageTime))
 @OutputTimeUnit(TimeUnit.MICROSECONDS)
 @Warmup(iterations = 3, time = 1, timeUnit = TimeUnit.SECONDS)
@@ -23,5 +22,5 @@ class ClassicLoopBenchmark {
     if i == 0 then pure(acc)
     else Reader.ask[Int].at[R].flatMap(x => Writer.tell("x").at[R].flatMap(_ => loop(i - 1, acc + x)))
 
-  @Benchmark def classic(): Any = Writer.run[String, Int, Pure](Reader.run[Int, Int, Writer % String](1)(loop(n, 0))).run
+  @Benchmark def classic(): Any = Writer.run[String, Int, Writer % String](Reader.run[Int, Int, R](1)(loop(n, 0))).run
 }
