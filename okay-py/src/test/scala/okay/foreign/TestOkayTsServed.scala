@@ -3,7 +3,7 @@ package okay.foreign
 import java.nio.file.{Files, Path, Paths}
 
 import okay.codec.Schema
-import okay.freer.{%, +, !, pure, given}
+import okay.freer.{%, !, pure, given}
 import okay.std.Writer
 
 /**

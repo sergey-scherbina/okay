@@ -394,6 +394,7 @@ API reference, gotchas.
 | [`okay-r`](modules/okay-r.md) | R as a handler (typed calls, callbacks, held objects, streams, programs as data), the same model with R's own three-way absence: NULL, a TYPED NA inside a vector, and NaN — kept apart at the type level so a statistical function is not quietly handed the wrong one |
 | [`okay-foreign-workflow`](modules/okay-foreign-workflow.md) | foreign calls as the ACTIVITIES of okay's durable workflows, in do-notation: journalled, crash-resumed, the function's failure remembered and the wire's retried |
 | [`okay-foreign-cluster`](modules/okay-foreign-cluster.md) | the MAP of a cluster job in Python or R: a `Flow` stage whose chunks cross to a pooled interpreter as one Arrow frame each, the reduce staying the JVM `Wire` |
+| [`okay-foreign-ws`](modules/okay-foreign-ws.md) | the okay wire over a WebSocket a server accepts: a far side in a browser (okay-ts) or behind an HTTP-only proxy, driven as every far side is (`ForeignWs.route`, served by okay-jetty) |
 | [`okay-script`](modules/okay-script.md) | markdown files as Scala source: fenced blocks through the real Scala 3 compiler in-process, errors pointing at the original `.md` line |
 | [`okay-langchain4j`](modules/okay-langchain4j.md) | their ChatModel as a `Answers[Model]` — their provider breadth behind our effect |
 | [`okay-langchain4j-embed`](modules/okay-langchain4j-embed.md) | their EmbeddingModel as `String => Embedding` and as okay-rag's `Answers[Embed]` |

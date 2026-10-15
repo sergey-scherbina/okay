@@ -18,12 +18,14 @@ and `forget`, one JSON text frame per message, and the engine is
 
 ```scala
 object ForeignWs:
-  /** a WebSocket route's session and its push: each far side that connects is
-   * given to `session` as an engine, on a thread of its own, and closed after it */
-  def route(session: ForeignWorker => Unit): ForeignWs.Route   // ws, push for Jetty.serve
+  /** every far side connecting on `path`: its engine given to `session` on a
+   * thread of its own, closed after it; a failure told to `failed` */
+  def route(path: String, failed: Throwable => Unit = ...)(session: ForeignWorker => Unit): Route
 
-  /** a Jetty server whose WebSocket path serves far sides */
-  def serve(port: Int, path: String)(session: ForeignWorker => Unit): org.eclipse.jetty.server.Server
+  final class Route(val sessions: PartialFunction[Request, Stage[Frame, Frame, Unit]],
+                    val pushes: PartialFunction[Request, Source[Frame]])
+
+Jetty.serve(port)(routes)(route.sessions, route.pushes)
 ```
 
 ## The bridge
@@ -43,17 +45,27 @@ engine's thread. The two meet like this:
 
 ## Behavior
 
-- [ ] A far side that connects over a WebSocket is driven as over TCP:
+- [x] A far side that connects over a WebSocket is driven as over TCP:
       `program` to `done`, a callback answered under the caller's Reader,
       a rest continued twice (multi-shot). The far side in this test is
       a JDK WebSocket client playing the transcript.
-- [ ] The engine is closed when its session ends. The client sees the
+- [x] The engine is closed when its session ends. The client sees the
       socket close.
-- [ ] A client that closes mid-run ends the engine's wait. The far side is
+- [x] A client that closes mid-run ends the engine's wait. The far side is
       gone, the in-flight call throws, as on every link.
-- [ ] okay-ts over a WebSocket passes `WireConformance`
+- [x] okay-ts over a WebSocket passes `WireConformance`
       (`TestOkayTsWs`, LIVE, `OKAY_TS` its checkout): multi-shot, callbacks
       under the caller's Reader, direct style, a failure by name.
+
+## Results
+
+- 2026-10-15: `TestForeignWs` 2/2 (multi-shot over a real Jetty WebSocket, the
+  socket closed after the session; a far side gone mid-run reported).
+  `TestOkayTsWs` 4 passed, 9 skipped by capability, the same as okay-ts over
+  TCP (`TestOkayTsServed`).
+- The interface as built: `route(path, failed)(session)` takes the PATH it
+  serves, and answers `sessions` and `pushes` for `Jetty.serve`. There is no
+  `serve` of its own: a product's server has its own routes beside it.
 
 ## Decisions
 

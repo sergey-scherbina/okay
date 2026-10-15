@@ -3183,6 +3183,19 @@ lazy val okayForeignWorkflow = (project in file("okay-foreign-workflow"))
 // `Wire`. Its own module so okay-cluster stays free of the engines. Test
 // scopes of okay-py and okay-r for their interpreter finders (TestPy,
 // TestR); okay-cluster's for its Feeds and the in-process workers.
+/**
+ * OKAY-FOREIGN-WS: the okay wire over a WebSocket a Jetty server accepts
+ * (specs/foreign-ws.md) — a far side in a browser (okay-ts) driven as every
+ * far side is. okay-py's engine and okay-jetty's sessions, neither of which
+ * depends on the other (the okay-mcp-http pattern)
+ */
+lazy val okayForeignWs = (project in file("okay-foreign-ws"))
+  .dependsOn(okayPy % "compile->compile;test->test", okayJetty, okayTest.jvm % "test->compile")
+  .settings(
+    name := "okay-foreign-ws",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+  )
+
 lazy val okayForeignCluster = (project in file("okay-foreign-cluster"))
   // okayClojure + okayFrege: their programs through the facade's Programs,
   // walked in this process (foreign-jvm-programs)
@@ -3903,7 +3916,7 @@ lazy val platformMembers: Seq[ProjectReference] = gtkProjects ++ Seq[ProjectRefe
     okayDocs.jvm, okayDocs.js, okayDocs.native,
     okayConf.jvm, okayConf.js, okayConf.native,
     okayObs.jvm, okayObs.js, okayObs.native,
-    okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy, okayArrow.jvm, okayArrow.js, okayArrow.native, okayParquet.jvm, okayParquet.js, okayParquet.native, okayLake, okayCompress.jvm, okayCompress.js, okayCompress.native, okayDiagnose.jvm, okayDiagnose.js, okayDiagnose.native, okayFreer.jvm, okayFreer.js, okayFreer.native, okayStd.jvm, okayStd.js, okayStd.native, okayTest.jvm, okayTest.js, okayTest.native, okayForeignWorkflow, okayR, okayForeignCluster,
+    okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy, okayArrow.jvm, okayArrow.js, okayArrow.native, okayParquet.jvm, okayParquet.js, okayParquet.native, okayLake, okayCompress.jvm, okayCompress.js, okayCompress.native, okayDiagnose.jvm, okayDiagnose.js, okayDiagnose.native, okayFreer.jvm, okayFreer.js, okayFreer.native, okayStd.jvm, okayStd.js, okayStd.native, okayTest.jvm, okayTest.js, okayTest.native, okayForeignWorkflow, okayR, okayForeignCluster, okayForeignWs,
     okayTelegram.jvm, okayTelegram.js,
     okaySecurity.jvm, okaySecurity.js, okaySecurityArgon2, okayRust.jvm,
     okayFrame.jvm, okayFrame.js,
