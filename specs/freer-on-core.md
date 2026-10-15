@@ -141,6 +141,38 @@ row. What the platform's `Distinct` forbade — two members of one signature —
 - okay-bench's `core` lane (223 µs on the mixed program) is the bar the platform's own program should meet on the
   new road; the `kernel` lane (286) its program over the protocol.
 
+## Finding regressions of behaviour
+
+Four layers, cheapest first; a module is switched only when all four hold for it.
+
+1. **Every suite on both roads.** The flag changes what `import okay.freer` means, not a test: the platform's
+   6937 + 184 tests are written against the classic behaviour, so a run on the core road is the search — red on
+   core, green on classic is a regression with a module and a line. Modules switched bottom-up by the dependency
+   graph (`scripts/gate.sh "<module>/test"`), so the first red is in the module just switched.
+2. **Differential testing, where the suites are silent.** A generator of random programs in the platform's words —
+   `effect`, `pure`, `flatMap`, handlers nested in any order, `shift`, aborts, multi-shot `k` — run on both roads,
+   the VALUE and the TRACE compared (the order of observed effects, a writer's log, counts of calls and of
+   resumptions). The kernel has the pattern (`TestReference`: random programs against the meaning; okay-java's
+   `AgreeTest`, 1 000 programs). The classic road is the oracle while it exists: this is why both roads live at
+   once until the last module is over.
+3. **Targeted tests on the known differences of the two semantics**, written BEFORE a switch, red on core first,
+   to pin the present behaviour:
+   - two handlers of one effect: `Distinct` forbade it, the kernel takes the nearest by path — nothing in the
+     platform may have relied on the refusal;
+   - a forwarded operation under an abort: okay-freer commits it (`TestHandleForward`: "a later abort cannot
+     un-perform"); the kernel unwinds through the levels with their finalizers — the same, checked explicitly;
+   - multi-shot `k` over a state: `state` (each path its own) against `cell` — both exist on both roads, the same
+     tests on each;
+   - exceptions: classic lets a JVM exception through its loop; the kernel makes a `Raise`, `run` rethrows it,
+     `Step` gives `Failed` — code catching around `run` must see the same exception;
+   - when a `Delay`/`defer` is forced: the order of side effects in lazy programs (`Static`, generators, `stream`);
+   - depth: 100 000 nested handlers and operations on `-Xss512k`, as the kernel's suites do, in the platform's words;
+   - `Resource`/finalizers under an abort and a cancel (`transact`, `Async`): the platform's own tests
+     (resource-async-failure) are the check.
+4. **The protocol as an outside oracle.** okay-kernel's TCK and integration run programs through `OnCore`; a
+   platform program on the core road is a kernel program, so the TCK applies to it as it is — `Steps`, the
+   reference machine, judges, independent of both roads.
+
 ## Measuring: Freer against Cont
 
 Three levels, the tools in place:
