@@ -69,7 +69,7 @@ object Walk:
   private def viewed[E[_], A](st: Head[E +: okay.core.Pure, A], template: Paths[E, E +: okay.core.Pure]): Step[E, A, E] =
     st match
       case Head.Done(a) => Done(a)
-      case p: Head.Paused[?, ?, f, x, ?, ?, ?, ?, ?] => own(p.in) match
+      case p: Head.Paused[?, ?, ?, x, ?, ?, ?, ?, ?] => own(p.in) match
         case null => In.absurd(outside(p.in))
         case same: In.Same[f, E] => op[E, E, okay.core.Pure, A, x](same(p.op), p, template)
 

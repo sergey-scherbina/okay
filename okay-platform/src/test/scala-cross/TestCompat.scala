@@ -33,3 +33,8 @@ class TestCompat extends munit.FunSuite:
     val p = boom.recover(e => Writer.tell(e.getMessage.length).map(_ => -1)).ensure(defer { fin += 1; pure(()) })
     assertEquals(!.run(Writer.run(p)), Tuple2(Vector(1, 4), -1))
     assertEquals(fin, 1)
+
+  test("a chain of binds nested to the LEFT, 200 000 deep, fitted in constant stack"):
+    val p = (1 to 200000).foldLeft(pure[Int, Writer % Int](0))((acc, i) => acc.flatMap(x => Writer.tell(i).map(_ => x + 1)).map(_ + 0))
+    val (ws, n) = !.run(Writer.run(p))
+    assertEquals((ws.length, n), (200000, 200000))

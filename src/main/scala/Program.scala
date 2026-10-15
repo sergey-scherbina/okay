@@ -21,18 +21,65 @@ abstract class Run[Es[_], +A]:
   /** the program at the paths of a place */
   def on[R <: okay.core.Row](ps: Paths[Es, R]): Eff[R, A]
 
+/** A BIND, kept as one node: fitted at a place it is the kernel's bind; a chain nested to the LEFT (a `foldLeft` of
+ * binds) is fitted by a loop down its left spine (`Run.fitLeft`), not a host frame a bind */
+private[okay] final class Bound[Es[_], Es3[_], A, B, O[_]](val p: A ! Es, val f: A => B ! Es3, val j: Join[Es, Es3])
+    extends Run[O, B]:
+  def on[R <: okay.core.Row](ps: Paths[O, R]): Eff[R, B] = p match
+    case _: (Bound[?, ?, ?, ?, ?] | Mapped[?, ?, ?]) => Run.fitLeft(this, ps)
+    case _ =>
+      // unchecked: `O` is `j.Out`, the type this node was made at
+      val out = ps.asInstanceOf[Paths[j.Out, R]]
+      val rs = j.right(out)
+      p.fit(j.left(out)).flatMap(a => f(a).fit(rs))
+
+/** a map, kept as one node, fitted as `Bound` */
+private[okay] final class Mapped[Es[_], A, B](val p: A ! Es, val f: A => B) extends Run[Es, B]:
+  def on[R <: okay.core.Row](ps: Paths[Es, R]): Eff[R, B] = p match
+    case _: (Bound[?, ?, ?, ?, ?] | Mapped[?, ?, ?]) => Run.fitLeft(this, ps)
+    case _ => p.fit(ps).map(f)
+
 /** the words on a program, found with it (its implicit scope): no import */
 object Run:
+  private type K[x] = Any
+  /** A LEFT-NESTED CHAIN FITTED BY A LOOP: down the left spine of binds and maps, each one's continuation fitted at
+   * its own paths and kept; the leftmost program fitted; then the kept continuations bound back on, innermost first.
+   * THE CASTS, and why they are sound: each node is taken apart at the type it was made at — its `Join`'s paths
+   * applied to the paths the node was fitted at — so the program below and its continuation get their own */
+  private[okay] def fitLeft[R <: okay.core.Row, B](top: Run[?, B], ps: Paths[?, R]): Eff[R, B] =
+    val kept = java.util.ArrayList[AnyRef]()
+    var cur: Run[?, ?] = top
+    var cps: Paths[?, R] = ps
+    var more = true
+    while more do cur match
+      case b: Bound[?, ?, ?, ?, ?] =>
+        val bb = b.asInstanceOf[Bound[K, K, Any, Any, K]]
+        val out = cps.asInstanceOf[Paths[K, R]]
+        val rs = bb.j.right(out.asInstanceOf[Paths[bb.j.Out, R]])
+        val f = bb.f
+        kept.add((a: Any) => f(a).fit(rs))
+        cps = bb.j.left(out.asInstanceOf[Paths[bb.j.Out, R]])
+        cur = bb.p
+      case m: Mapped[?, ?, ?] =>
+        kept.add(MapK(m.asInstanceOf[Mapped[K, Any, Any]].f))
+        cur = m.p
+      case _ => more = false
+    var e: Eff[R, Any] = cur.asInstanceOf[Run[K, Any]].on(cps.asInstanceOf[Paths[K, R]])
+    var i = kept.size - 1
+    while i >= 0 do
+      e = kept.get(i) match
+        case MapK(f) => e.map(f)
+        case k => e.flatMap(k.asInstanceOf[Any => Eff[R, Any]])
+      i -= 1
+    e.asInstanceOf[Eff[R, B]]
+  private final case class MapK(f: Any => Any)
+
   extension [A, Es[_]](p: A ! Es)
     /** fitted to a place: the program at its row */
     inline def fit[R <: okay.core.Row](ps: Paths[Es, R]): Eff[R, A] = p.on(ps)
     /** the bind: the continuation's effects joined to these (`Join`) */
-    def flatMap[B, Es3[_]](f: A => B ! Es3)(using j: Join[Es, Es3]): B ! j.Out = new Run[j.Out, B]:
-      def on[R <: okay.core.Row](ps: Paths[j.Out, R]): Eff[R, B] =
-        val rs = j.right(ps)
-        p.fit(j.left(ps)).flatMap(a => f(a).fit(rs))
-    def map[B](f: A => B): B ! Es = new Run[Es, B]:
-      def on[R <: okay.core.Row](ps: Paths[Es, R]): Eff[R, B] = p.fit(ps).map(f)
+    def flatMap[B, Es3[_]](f: A => B ! Es3)(using j: Join[Es, Es3]): B ! j.Out = Bound[Es, Es3, A, B, j.Out](p, f, j)
+    def map[B](f: A => B): B ! Es = Mapped[Es, A, B](p, f)
     /** `p` then `q`, `p`'s value dropped */
     def >>[B, Es3[_]](q: => B ! Es3)(using j: Join[Es, Es3]): B ! j.Out = p.flatMap(_ => q)
     /** the same program needing more effects: `Es` among `Es2` */
