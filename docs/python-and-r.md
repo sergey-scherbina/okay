@@ -161,13 +161,13 @@ keep `Py`, which is an alias.
 
 A callback's continuation is a Python frame waiting in `okay.call`, so it
 can be resumed once. Some code can do more. A program can be written as
-DATA, a value built from `okay.done` and `okay.freer.perform(...).then(f)`,
+DATA, a value built from `okay.done` and `okay.perform(...).then(f)`,
 where the rest of the program is an ordinary function:
 
 ```python
 def pairs():
-    return okay.freer.perform("choose", [1, 2]).then(lambda x:
-           okay.freer.perform("choose", [10, 20]).then(lambda y:
+    return okay.perform("choose", [1, 2]).then(lambda x:
+           okay.perform("choose", [10, 20]).then(lambda y:
            okay.done(x + y)))
 ```
 
@@ -283,7 +283,7 @@ Put the scope around the consumption, and give the consuming stage the
 source's row:
 
 ```scala
-val out = run(okay.through(Py.source[Long]("sources:rows")(10000L, 3L))(takeFour.plus[ForeignEval + Holding]), h)
+val out = run(okay.through(Py.source[Long]("sources:rows")(10000L, 3L))(takeFour.at[Take % Long + (Writer % Long + (ForeignEval + Holding))]), h)
 ```
 
 Here `run` is `Writer.run(Py.releasing(p))`; four rows are read, and the

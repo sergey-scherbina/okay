@@ -2,7 +2,7 @@ package okay.desktop
 
 
 import okay.{Async}
-import okay.freer.*
+import okay.*
 import okay.http.{Http, Method, Request, Response}
 import java.nio.charset.StandardCharsets.UTF_8
 import java.util.concurrent.atomic.AtomicInteger

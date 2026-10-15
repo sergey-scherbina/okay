@@ -2,8 +2,7 @@ package okay.openapi
 
 import okay.codec.Json
 import okay.codec.Json.*
-import okay.Async
-import okay.freer.{!, pure}
+import okay.pure
 import okay.http.{Method, Response, Route, Router}
 
 /** what a document says about the service, which the router cannot know */

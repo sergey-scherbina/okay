@@ -1,9 +1,9 @@
 package okay.deploy
 
-import okay.Answers
-import okay.freer.{Monoid, Static}
+import okay.{!, Answers, effect}
+import okay.Programs.given
+import okay.freer.Static
 import okay.std.{Fact, Module, moduleAs}
-import okay.freer.given
 import scala.quoted.*
 import scala.annotation.tailrec
 
@@ -78,7 +78,8 @@ object Needs:
    */
   def provisioned[A, R <: A](spine: Static[Provision, R])(release: R => Unit)
                             (using place: Answers[Provision]): Module[[X] =>> A ?=> X] =
-    moduleAs[A, R](spine.toFree.runWith(using place))(release)
+    // the spine folded into a program of the root's (`foldMap`, the interop word) and answered by the place
+    moduleAs[A, R](spine.foldMap[[X] =>> X ! Provision]([X] => (op: Provision[X]) => effect(op)).runWith(using place))(release)
       .needs(spine.leaves.map(_.need)*)
 
   /** the usual declaration: this capability is the place's business */

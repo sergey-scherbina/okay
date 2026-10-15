@@ -3,7 +3,7 @@ package okay.live
 
 import okay.{Async, Channel, Source}
 import java.nio.charset.StandardCharsets.UTF_8
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.codec.Json
 import okay.http.{Http, Method, Query, Request, Response, Route, Router}
@@ -46,10 +46,10 @@ object LiveHttp:
 
   /** the channel's values, as events, until it closes */
   private def pushes(c: Channel[Json]): Source[Chunk[Byte]] =
-    effect[Writer % Chunk[Byte] + Async, Option[Json]](Async.Await[Option[Json]] { k =>
+    effect[Async, Option[Json]](Async.Await[Option[Json]] { k =>
       c.receiveAsync(end => k(end))
       () => ()
-    }).flatMap {
+    }).at[Writer % Chunk[Byte] + Async].flatMap {
       case Some(j) => data(j).flatMap(_ => pushes(c))
       case None => pure(())
     }

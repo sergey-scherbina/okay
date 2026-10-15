@@ -1,10 +1,9 @@
 package okay.live
 
 import java.nio.file.{Files, Path}
-import okay.freer.*
+import okay.*
 import okay.std.*
 import okay.given
-import okay.freer.given
 import okay.codec.{Json, Schema, Stubs}
 import okay.http.{Http, Response, Server}
 
@@ -54,7 +53,7 @@ class TestLiveTs extends munit.FunSuite {
     val dir = project()
     val w = Watched[Board](Json.parse("""{"name":"docs","tasks":[{"title":"write the docs","done":false}]}"""))
     val routes = LiveHttp.routes(w).routes
-    val out = Resource.run[String, Pure](Server.serve(0)(req =>
+    val out = Resource.run(Server.serve(0)(req =>
       routes.applyOrElse(req, _ => pure(Response(404, Nil, Http.one(Array.empty[Byte]))))).map { s =>
       val p = ProcessBuilder("node", "app.ts", s"http://127.0.0.1:${Server.port(s)}")
         .directory(dir.toFile).redirectErrorStream(true).start()

@@ -2,10 +2,8 @@ package okay.desktop
 
 
 import okay.{Async}
-import okay.freer.*
-import okay.std.*
+import okay.*
 import okay.given
-import okay.freer.given
 import okay.http.{Body, Http, Method, Request, Response}
 import java.io.{ByteArrayInputStream, InputStream}
 import java.net.{URL, URLConnection, URLStreamHandler}
@@ -82,8 +80,8 @@ object InProcess:
         if !routes.isDefinedAt(r) then Answer(404, Seq("content-type" -> "text/plain; charset=utf-8"),
           s"nothing answers $path".getBytes(UTF_8), base + path)
         else scala.util.Try {
-          val res = Async.run[Response, Pure](routes(r)).runWith
-          val bytes = Async.run[Chunk[Byte], Pure](Http.bytes(res)).runWith.toArray
+          val res = Async.run(routes(r)).runWith
+          val bytes = Async.run(Http.bytes(res)).runWith.toArray
           Answer(res.status, res.headers, bytes, base + path)
         }.recover { case e => Answer(500, Seq("content-type" -> "text/plain; charset=utf-8"),
           s"the service failed: ${e.getClass.getSimpleName}: ${e.getMessage}".getBytes(UTF_8), base + path) }.get

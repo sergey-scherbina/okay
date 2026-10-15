@@ -308,7 +308,7 @@ function returning it is an okay program a TypeScript caller simply
 `await`s, and its type is again `Stubs.typescript`'s:
 
 ```scala
-val program = okay.freer.pure[Async, Totals](Totals("tea", 12.0, None))
+val program = okay.pure[Totals, Async](Totals("tea", 12.0, None))
 ```
 
 #### A module of functions, with its declaration
@@ -320,8 +320,8 @@ generated from the same Schemas that encode the values:
 ```scala
   val shop = Ts.module("shop")(
     Ts.expose[Order, Totals]("total")(o =>
-      pure[Async, Totals](Totals(o.sku, prices.getOrElse(o.sku, 0.0) * o.qty, None))),
-    Ts.expose[Vector[String], Int]("count")(skus => pure[Async, Int](skus.size)),
+      pure[Totals, Async](Totals(o.sku, prices.getOrElse(o.sku, 0.0) * o.qty, None))),
+    Ts.expose[Vector[String], Int]("count")(skus => pure[Int, Async](skus.size)),
   )
 ```
 

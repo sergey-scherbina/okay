@@ -1,9 +1,9 @@
 package okay.deploy
 
-import okay.freer.*
+import okay.*
+import okay.freer.Static
 
 import okay.std.*
-import okay.freer.given
 import Needs.needs
 
 /**
@@ -29,13 +29,13 @@ class TestDiDocs extends munit.FunSuite:
   test("a module is an installer that has not been built yet") {
     val db = module[Db](Db.open("jdbc:x"))(_.close())
     val conf = Module.value[Conf](Conf("/app/data/board.log"))
-    assertEquals(!.run(Resource.run[String, Pure]((conf and db) { wire[Db].q })), "jdbc:x")
+    assertEquals(!.run(Resource.run((conf and db) { wire[Db].q })), "jdbc:x")
   }
 
   test("what you open is not always what you install") {
     val t = FileThing("/tmp/x")
     val store = moduleAs[Db, FileThing](t)(_.closed = true)
-    assertEquals(!.run(Resource.run[String, Pure](store { wire[Db].q })), "/tmp/x")
+    assertEquals(!.run(Resource.run(store { wire[Db].q })), "/tmp/x")
     assertEquals(t.closed, true)
   }
 
@@ -43,9 +43,9 @@ class TestDiDocs extends munit.FunSuite:
     val db = module[Db](Db.open("real"))(_.close())
     val pool: Db ?=> Module[[X] =>> Pool ?=> X] =
       module[Pool](Pool.over(wire[Db]))(_ => ())
-    assertEquals(!.run(Resource.run[Int, Pure]((db and pool) { wire[Pool].borrow() })), 4)
+    assertEquals(!.run(Resource.run((db and pool) { wire[Pool].borrow() })), 4)
     val fake = Module.value[Db](Db.open("fake"))
-    assertEquals(!.run(Resource.run[String, Pure]((db and fake) { wire[Db].q })), "fake")
+    assertEquals(!.run(Resource.run((db and fake) { wire[Db].q })), "fake")
   }
 
   test("use: a body that is itself a program in the scope") {
@@ -53,7 +53,7 @@ class TestDiDocs extends munit.FunSuite:
     val db = module[Db]({ log ::= "open db"; Db.open("u") })(_ => log ::= "close db")
     val server: Db ?=> (String ! Resource) =
       Resource.acquire({ log ::= "serve"; wire[Db].q })(_ => log ::= "stop")
-    assertEquals(!.run(Resource.run[String, Pure](db.use(server))), "u")
+    assertEquals(!.run(Resource.run(db.use(server))), "u")
     assertEquals(log.reverse, List("open db", "serve", "stop", "close db"))
   }
 
@@ -68,7 +68,7 @@ class TestDiDocs extends munit.FunSuite:
     val prim = Module.value[DocRoles.Primary](DocRoles.primary(Db.open("p")))
     val repl = Module.value[DocRoles.Replica](DocRoles.replica(Db.open("r")))
     import DocRoles.*
-    assertEquals(!.run(Resource.run[String, Pure]((prim and repl) {
+    assertEquals(!.run(Resource.run((prim and repl) {
       wire[DocRoles.Primary].db.q + wire[DocRoles.Replica].rdb.q })), "pr")
     assert(compileErrors("import okay.*; okay.std.Module.value[okay.deploy.DocRoles.Primary](null) { wire[okay.deploy.DocRoles.Replica] }").nonEmpty)
   }
@@ -79,7 +79,7 @@ class TestDiDocs extends munit.FunSuite:
     val conf = Module.value[Conf](Conf("c"))
     assertEquals((conf and db).plan, Vector("Conf", "Db"))
     assertEquals(opened, 0)
-    val xs = !.run(Resource.run[Vector[Installed], Pure]((conf and db).exports))
+    val xs = !.run(Resource.run((conf and db).exports))
     assertEquals(xs.map(_.name), Vector("Conf", "Db"))
     assertEquals(xs.head.cls, classOf[Conf])
   }
@@ -102,7 +102,7 @@ class TestDiDocs extends munit.FunSuite:
         Static.op(Provision.Volume(file.getParent.nn.toString))
           .map(d => FileThing(d.resolve(file.getFileName).toString)))(_.closed = true)
     assertEquals(Needs.declared(conf and store), Vector(Need.Volume("/app/data")))
-    assertEquals(!.run(Resource.run[String, Pure]((conf and store) { wire[Db].q })), "/app/data/board.log")
+    assertEquals(!.run(Resource.run((conf and store) { wire[Db].q })), "/app/data/board.log")
   }
 
   test("what a deployment reads by type: the place's inputs, not the runtime's") {
