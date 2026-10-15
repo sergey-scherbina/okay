@@ -1,11 +1,8 @@
 package okay.kyo
 
-import okay.{Async, async}
-
-import okay.freer.{Pure}
-import okay.freer.{!}
+import okay.{!, Async, Pure, async}
 import okay.given
-import okay.freer.given
+import okay.Walk
 import _root_.kyo.{<, Abort, AllowUnsafe, Duration, Flat, KyoApp}
 
 /**
@@ -20,7 +17,7 @@ import _root_.kyo.{<, Abort, AllowUnsafe, Duration, Flat, KyoApp}
 object KyoInterop {
 
   /** a pure kyo computation as a pure okay program */
-  def fromKyo[A: Flat](k: => A < Any): A ! Pure = okay.freer.pure(k.eval)
+  def fromKyo[A: Flat](k: => A < Any): A ! Pure = okay.pure(k.eval)
 
   /** run a kyo async computation inside one okay Async operation */
   def fromKyoAsync[A: Flat](k: => A < (Abort[Nothing] & _root_.kyo.Async)): A ! Async =
@@ -44,74 +41,69 @@ object KyoInterop {
   // the continuation — repacked as our operation. Env is a
   // ContextEffect (reader-family): outbound walks, inbound asks once
   // and runs theirs with the constant environment — semantically exact.
+  // The outbound walks go by okay's `Walk` (okay-freer's `resume` on the
+  // kernel): each operation handed out with the rest, a program again,
+  // the next step taken inside kyo's own `flatMap`.
 
-  import okay.freer.{%}
-  import okay.freer.{effect}
+  import okay.{%, effect}
   import okay.std.{Reader, Writer, Throws, Choose}
-  import okay.freer.!.*
   import _root_.kyo.{Tag, Frame, Env, Emit, Choice, Abort}
   import _root_.kyo.kernel.ArrowEffect
 
   /** Reader → Env, ask for ask */
-  def toKyoEnv[R, A](p: A ! Reader % R)(using Tag[R], Frame): A < Env[R] =
-    (p.resume: @unchecked) match
-      case Return(a) => a
-      case Inject(Reader.Ask()) => Env.get[R]
-      case Bind(Inject(Reader.Ask()), k) =>
-        Env.get[R].flatMap((r: R) => toKyoEnv(k(r)))
+  def toKyoEnv[R, A](p: A ! Reader % R)(using Tag[R], Frame): A < Env[R] = Walk.view(p) match
+    case Walk.Done(a) => a
+    case o: Walk.Op[Reader % R, x, A, Reader % R] => o.op match
+      case Reader.Ask() => Env.get[R].flatMap((r: R) => toKyoEnv(o.resume(r)))
       // `read`/`lift` are ONE `Asks` since reader-asks-op
-      case Inject(Reader.Asks(f)) => Env.get[R].map((r: R) => f(r))
-      case Bind(Inject(Reader.Asks(f)), k) =>
-        Env.get[R].flatMap((r: R) => toKyoEnv(k(f(r))))
+      case Reader.Asks(f) => Env.get[R].flatMap((r: R) => toKyoEnv(o.resume(f(r))))
 
   /** Env → Reader: one ask, then their computation runs with it */
   def fromKyoEnv[R, A: Flat](v: A < Env[R])(using Tag[R], Frame): A ! Reader % R =
-    effect[Reader % R, R](Reader.Ask()).flatMap(r => okay.freer.pure(Env.run(r)(v).eval))
+    effect[Reader % R, R](Reader.Ask()).map(r => Env.run(r)(v).eval)
 
   /** Writer → Emit, tell for tell */
-  def toKyoEmit[W, A](p: A ! Writer % W)(using Tag[Emit[W]], Frame): A < Emit[W] =
-    (p.resume: @unchecked) match
-      case Return(a) => a
+  def toKyoEmit[W, A](p: A ! Writer % W)(using Tag[Emit[W]], Frame): A < Emit[W] = Walk.view(p) match
+    case Walk.Done(a) => a
+    case o: Walk.Op[Writer % W, x, A, Writer % W] => emitOne[W, x, A](o)
+
+  private def emitOne[W, X, A](o: Walk.Op[Writer % W, X, A, Writer % W])(using Tag[Emit[W]], Frame): A < Emit[W] =
+    (o.op: Writer[W, X]) match
       // matching the constructor gives both halves without a cast: the
       // told value, and the fact that the answer type is Unit
-      case Inject(Writer.Say(w)) => Emit.valueWith(w)(())
-      case Bind(Inject(Writer.Say(w)), k) =>
-        Emit.valueWith(w)(toKyoEmit(k(())))
+      case Writer.Say(w) => Emit.valueWith(w)(toKyoEmit(o.resume(())))
 
   /** Emit → Writer: their continuation, repacked as our operation */
   def fromKyoEmit[W, A: Flat](v: A < Emit[W])(using Tag[W], Tag[Emit[W]], Frame): A ! Writer % W =
     ArrowEffect.handleFirst(Tag[Emit[W]], v)(
       handle = [C] => (w, cont) =>
         effect[Writer % W, Unit](Writer(w)).flatMap(_ => fromKyoEmit(cont(()))),
-      done = a => (okay.freer.pure(a): A ! Writer % W)
+      done = a => (okay.pure(a): A ! Writer % W)
     ).eval
 
   /** Throws → Abort (the continuation after a raise is dead) */
-  def toKyoAbort[E, A](p: A ! Throws % E)(using Tag[Abort[E]], Frame): A < Abort[E] =
-    (p.resume: @unchecked) match
-      case Return(a) => a
-      // the tree types the operation at its E: Throws[E, A], so `e` IS an E
-      case Inject(t) => Abort.fail(t.e)
-      case Bind(Inject(t), _) => Abort.fail(t.e)
+  def toKyoAbort[E, A](p: A ! Throws % E)(using Tag[Abort[E]], Frame): A < Abort[E] = Walk.view(p) match
+    case Walk.Done(a) => a
+    // the walk types the operation at its E: Throws[E, x], so `e` IS an E
+    case o: Walk.Op[Throws % E, ?, A, Throws % E] => Abort.fail(o.op.e)
 
   /** Abort → Throws */
   def fromKyoAbort[E, A: Flat](v: A < Abort[E])(using _root_.kyo.SafeClassTag[E], Tag[E], Frame): A ! Throws % E =
     import _root_.kyo.Result
-    Abort.run[E](v).eval.foldFailureOrThrow(e => okay.std.raise(e))(a => okay.freer.pure(a))
+    Abort.run[E](v).eval.foldFailureOrThrow(e => okay.std.raise[E, A](e))(a => okay.pure(a))
 
   /** Choose → Choice — the same arrow, Seq ~> Id, on both sides */
-  def toKyoChoice[A](p: A ! Choose)(using Frame): A < Choice =
-    (p.resume: @unchecked) match
-      case Return(a) => a
-      case Inject(Choose(as)) => Choice.get(as)
-      case Bind(Inject(Choose(as)), k) =>
-        Choice.get(as).flatMap(x => toKyoChoice(k(x)))
+  def toKyoChoice[A](p: A ! Choose)(using Frame): A < Choice = Walk.view(p) match
+    case Walk.Done(a) => a
+    // multi-shot: kyo resumes the rest once per choice, each a run of its own
+    case o: Walk.Op[Choose, x, A, Choose] => o.op match
+      case Choose(as) => Choice.get(as).flatMap(x => toKyoChoice(o.resume(x)))
 
   /** Choice → Choose: their continuation as our multi-shot operation */
   def fromKyoChoice[A: Flat](v: A < Choice)(using Frame): A ! Choose =
     ArrowEffect.handleFirst(Tag[Choice], v)(
       handle = [C] => (as, cont) =>
         effect[Choose, C](Choose(as)).flatMap(c => fromKyoChoice(cont(c))),
-      done = a => (okay.freer.pure(a): A ! Choose)
+      done = a => (okay.pure(a): A ! Choose)
     ).eval
 }

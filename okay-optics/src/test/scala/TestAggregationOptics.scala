@@ -1,7 +1,8 @@
 package okay
 
+import okay.freer.Aggregator
 
-import okay.freer.*
+
 
 
 /**

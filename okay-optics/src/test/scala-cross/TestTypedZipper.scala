@@ -1,11 +1,9 @@
 package okay
 
 
-import okay.freer.*
 
 
 import okay.std.*
-import okay.freer.given
 /**
  * specs/zipper.md, stage 2 — the typed zipper: frames are optics, the
  * parent's type comes back from `up`, and a program written against
@@ -95,7 +93,7 @@ class TestTypedZipper extends munit.FunSuite {
     // the consumer the entry named: a program written against Customer
     val rename: Int ! State % Customer =
       State.modify[Customer](cu => cu.copy(name = cu.name.capitalize)).map(_.name.length)
-    val (after, n) = !.run(State.handle(c)(State.zoom[C, Customer, Int, Nothing](l)(rename)))
+    val (after, n) = (State.handle(c)(State.zoom[C, Customer, Int, State % Customer](l)(rename))).run
     assertEquals(n, 3)
     assertEquals(after.root, order.copy(customer = order.customer.copy(name = "Ada")))
     assertEquals(after.up.focus.id, 7L)                           // the frames rode along

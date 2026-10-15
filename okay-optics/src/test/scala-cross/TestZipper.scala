@@ -1,11 +1,9 @@
 package okay
 
 
-import okay.freer.*
 
 
 import okay.std.*
-import okay.freer.given
 /**
  * specs/zipper.md — the cursor's laws over a rose tree, the plate
  * built from a traversal against the hand plate, and the seam to the
@@ -115,7 +113,7 @@ class TestZipper extends munit.FunSuite {
   test("State.zoom(Zipper.focus): a program at the focus, the frames untouched") {
     val z = Zipper(tree).at(List(0, 1)).get
     val prog: Int ! State % Rose = State.modify[Rose](r => r.copy(label = r.label + "!")).map(_.kids.length)
-    val (after, n) = !.run(State.handle(z)(State.zoom[Zipper[Rose], Rose, Int, Nothing](Zipper.focus)(prog)))
+    val (after, n) = (State.handle(z)(State.zoom[Zipper[Rose], Rose, Int, State % Rose](Zipper.focus)(prog))).run
     assertEquals(n, 1)
     assertEquals(after.path, z.path)
     assertEquals(after.root, z.modify(r => r.copy(label = r.label + "!")).root)

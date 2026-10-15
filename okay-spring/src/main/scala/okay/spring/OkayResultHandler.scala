@@ -1,8 +1,7 @@
 package okay.spring
 
 
-import okay.{Async}
-import okay.freer.*
+import okay.{Async, Run}
 import org.springframework.core.{MethodParameter, Ordered, ResolvableType}
 import org.springframework.web.reactive.{HandlerResult, HandlerResultHandler}
 import org.springframework.web.reactive.result.method.annotation.ResponseBodyResultHandler
@@ -12,13 +11,13 @@ import reactor.core.publisher.Mono
 /**
  * Why the adapter alone is not enough: WebFlux reads a reactive return
  * type's ELEMENT type from generic index 0, and `A ! Async` is
- * `Freer[Unary[Async], Unit, Unit, A]` — index 0 is the effect's
- * signature, and the value is index 3. Measured: with only the
+ * `Run[Async, A]` — index 0 is the effect's
+ * signature, and the value is index 1. Measured: with only the
  * adapter, a `String ! Async` was written as a server-sent event
  * (`data:hi!`), the element type having resolved to the effect. This
  * handler runs just before `ResponseBodyResultHandler`, turns the
  * program into a `Mono`, and hands it on under a stand-in return type
- * whose index 0 says what index 3 said: `Mono[String]` for a
+ * whose index 0 says what index 1 said: `Mono[String]` for a
  * CharSequence result (text, as Spring writes strings), `Mono[Object]`
  * for anything else (encoded by its runtime class — JSON).
  */
@@ -27,19 +26,18 @@ final class OkayResultHandler(delegate: ResponseBodyResultHandler) extends Handl
   override def getOrder: Int = delegate.getOrder - 1
 
   override def supports(result: HandlerResult): Boolean =
-    classOf[okay.freer.Freer[?, ?, ?, ?]].isAssignableFrom(result.getReturnTypeSource.getParameterType) && delegate.supports(result)
+    classOf[Run[?, ?]].isAssignableFrom(result.getReturnTypeSource.getParameterType) && delegate.supports(result)
 
   override def handleResult(exchange: ServerWebExchange, result: HandlerResult): Mono[Void] =
-    // index 3: `A ! F` is `Freer[Unary[F], Unit, Unit, A]` since
-    // freer-base-step-extractor — the value comes LAST (Free.scala says why)
-    val elem = ResolvableType.forMethodParameter(result.getReturnTypeSource).getGeneric(3).resolve(classOf[AnyRef])
+    // index 1: `A ! F` is `Run[F, A]` (okay's Program.scala) — the value comes last
+    val elem = ResolvableType.forMethodParameter(result.getReturnTypeSource).getGeneric(1).resolve(classOf[AnyRef])
     val stub = if classOf[CharSequence].isAssignableFrom(elem) then OkayResultHandler.string else OkayResultHandler.any
     delegate.handleResult(exchange, HandlerResult(result.getHandler, program(result.getReturnValue), stub, result.getBindingContext))
 
   /** the value arrives as Object, its class checked by `supports` above;
    * the pattern restates that check — an erased type behind a wildcard */
   private def program(value: AnyRef): Mono[?] = value match
-    case p: Free[Async, AnyRef] @unchecked => OkayReactive.mono(p)
+    case p: Run[Async, AnyRef] @unchecked => OkayReactive.mono(p)
     case null => Mono.empty()
     case other => throw IllegalStateException(s"not an okay program: ${other.getClass.getName}")
 

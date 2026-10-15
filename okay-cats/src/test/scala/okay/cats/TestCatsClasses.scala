@@ -6,10 +6,10 @@ import _root_.cats.effect.unsafe.implicits.global
 import _root_.cats.laws.discipline.ApplicativeTests
 import _root_.cats.syntax.all.*
 import okay.{Async, async}
-import okay.freer.{!, Static}
+import okay.!
+import okay.freer.Static
 import okay.std.{Choose, Validated, choose, runChoice}
 import okay.given
-import okay.freer.given
 import okay.==>
 import org.scalacheck.{Arbitrary, Gen}
 import java.util.concurrent.{CountDownLatch, TimeUnit}
@@ -93,16 +93,16 @@ class TestCatsClasses extends munit.ScalaCheckSuite with okay.testkit.Munit.Diag
 
   test("cats' MonoidK over A ! Choose: <+> is choice, empty prunes") {
     val both = choose(1, 2) <+> choose(3)
-    assertEquals(!.run(runChoice(both)), Seq(1, 2, 3))
+    assertEquals((runChoice(both)).run, Seq(1, 2, 3))
     val A = CatsClasses.chooseAlternative
     val pruned = choose(1, 2, 3, 4).flatMap(i => if i % 2 == 0 then A.pure(i) else A.empty[Int])
-    assertEquals(!.run(runChoice(pruned)), Seq(2, 4))
-    assertEquals(!.run(runChoice(A.guard(false).map(_ => 1))), Seq.empty)
+    assertEquals((runChoice(pruned)).run, Seq(2, 4))
+    assertEquals((runChoice(A.guard(false).map(_ => 1))).run, Seq.empty)
   }
 
   test("cats' traverse over A ! Choose still resolves — the MonoidK did not tie with the monad") {
     val p = List(1, 2).traverse(i => choose(i, -i))
-    assertEquals(!.run(runChoice(p)), Seq(List(1, 2), List(1, -2), List(-1, 2), List(-1, -2)))
+    assertEquals((runChoice(p)).run, Seq(List(1, 2), List(1, -2), List(-1, 2), List(-1, -2)))
   }
 
   // ---- okay's classes over cats' types
@@ -146,12 +146,15 @@ class TestCatsClasses extends munit.ScalaCheckSuite with okay.testkit.Munit.Diag
     enum Ask[+A]:
       case Num(k: String) extends Ask[Int]
     val p: Int ! Ask = for
-      a <- okay.freer.effect(Ask.Num("a"))
-      b <- okay.freer.effect(Ask.Num("bb"))
+      a <- okay.effect(Ask.Num("a"))
+      b <- okay.effect(Ask.Num("bb"))
     yield a * 10 + b
     val toIO: Ask ==> IO = [X] => (e: Ask[X]) => e match
       case Ask.Num(k) => IO(k.length)
-    assertEquals(p.foldMap(toIO).unsafeRunSync(), 12)
+    // okay-freer's `p.foldMap(nt)` has no word on the root: the program crosses as cats' free monad and folds there
+    val nt = new _root_.cats.arrow.FunctionK[Ask, IO]:
+      def apply[X](e: Ask[X]): IO[X] = toIO(e)
+    assertEquals(CatsInterop.toCats(p).foldMap(nt).unsafeRunSync(), 12)
   }
 
   test("conversions: okay.std.Validated <-> cats' Validated, both roads") {

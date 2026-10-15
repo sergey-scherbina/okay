@@ -1,12 +1,8 @@
 package okay.cats
 
-import okay.{Async}
-
-import okay.freer.{%, +}
-import okay.freer.{!, Free, effect}
+import okay.{!, %, +, Async, effect}
+import okay.Walk
 import okay.std.{Throws, runEither}
-import okay.freer.!.*
-import okay.freer.given
 import _root_.cats.effect.IO
 import _root_.cats.effect.unsafe.IORuntime
 
@@ -16,32 +12,32 @@ import _root_.cats.effect.unsafe.IORuntime
  */
 
 /** every okay program is a cats Monad (tailRecM builds lazily — the
- * recursion hides in the flatMap closure, run stack-safely by Free) */
-given [F[+_]]: _root_.cats.StackSafeMonad[[A] =>> A ! F] with
-  def pure[A](a: A): A ! F = okay.freer.pure(a)
+ * recursion hides in the flatMap closure, run stack-safely by the machine) */
+given [F[_]](using scala.util.NotGiven[ThrowsFirst[F]]): _root_.cats.StackSafeMonad[[A] =>> A ! F] with
+  def pure[A](a: A): A ! F = okay.pure(a)
   def flatMap[A, B](fa: A ! F)(f: A => B ! F): B ! F = fa.flatMap(f)
 
 /**
  * MonadError over a row containing Throws % E: raiseError is the
  * effect's raise, recovery goes through runEither and re-raising.
  */
-// The TypeableK is never USED in the body, and the compiler says so —
-// but it is load-bearing anyway: it narrows this given so it does not
-// tie with given_StackSafeMonad_! when cats asks for an Invariant.
-// Removing it makes MonadErrorTests fail to resolve. An unused using
-// on a given can be doing work that is not in the body.
-@annotation.nowarn("id=E198")  // the message filter stopped matching; the id does
-given [E, F[+_]](using okay.TypeableK[Throws % E])
-: _root_.cats.MonadError[[A] =>> A ! Throws % E + F, E] =
+/** the effects `Throws % E + F`, which the MonadError below serves: the program monad above steps aside for them,
+ * so a cats `Invariant` (asked by the law suites) has ONE instance — okay-freer narrowed the MonadError by a
+ * `TypeableK` instead, which the kernel has not */
+sealed trait ThrowsFirst[F[_]]
+object ThrowsFirst:
+  given [E, F[_]]: ThrowsFirst[Throws % E + F] = null
+
+given [E, F[_]]: _root_.cats.MonadError[[A] =>> A ! Throws % E + F, E] =
   new _root_.cats.StackSafeMonad[[A] =>> A ! Throws % E + F]
     with _root_.cats.MonadError[[A] =>> A ! Throws % E + F, E]:
-    def pure[A](a: A): A ! Throws % E + F = okay.freer.pure(a)
+    def pure[A](a: A): A ! Throws % E + F = okay.pure(a)
     def flatMap[A, B](fa: A ! Throws % E + F)(f: A => B ! Throws % E + F) = fa.flatMap(f)
-    def raiseError[A](e: E): A ! Throws % E + F = effect(Throws(e))
+    def raiseError[A](e: E): A ! Throws % E + F = okay.std.raise[E, A](e).at[Throws % E + F]
     def handleErrorWith[A](fa: A ! Throws % E + F)(f: E => A ! Throws % E + F) =
-      !.widen[Either[E, A], F, Throws % E](runEither[A, F, E](fa))
+      runEither[A, Throws % E + F, E](fa).at[Throws % E + F]
         .flatMap {
-          case Right(a) => okay.freer.pure(a)
+          case Right(a) => okay.pure(a)
           case Left(e) => f(e)
         }
 
@@ -51,7 +47,7 @@ given [E, F[+_]](using okay.TypeableK[Throws % E])
  * `Async` operation, [[CatsInterop.fromIO]]; needs an `IORuntime` at the mark.
  */
 given ioForeign(using rt: IORuntime): okay.ForeignEffect[IO] with
-  type G[+X] = Async[X]
+  type G[X] = Async[X]
   def lift[A](m: IO[A]): A ! Async = CatsInterop.fromIO(m)
 
 object CatsInterop {
@@ -116,17 +112,15 @@ object CatsInterop {
     case _root_.cats.data.Validated.Valid(a) => okay.std.Validated.Valid(a)
     case _root_.cats.data.Validated.Invalid(e) => okay.std.Validated.Invalid(e)
 
-  /** an okay Free program as a cats free monad, operation for operation */
-  def toCats[F[+_], A](p: A ! F): _root_.cats.free.Free[F, A] =
-    (p.resume: @unchecked) match
-      case Return(a) => _root_.cats.free.Free.pure(a)
-      case Inject(e) => _root_.cats.free.Free.liftF(e)
-      case Bind(Inject(e), k) =>
-        _root_.cats.free.Free.liftF(e).flatMap(x => toCats(k(x)))
+  /** an okay program as a cats free monad, operation for operation: the program walked (`Walk`), each next step
+   * taken inside cats' `flatMap` */
+  def toCats[F[_], A](p: A ! F): _root_.cats.free.Free[F, A] = Walk.view(p) match
+    case Walk.Done(a) => _root_.cats.free.Free.pure(a)
+    case o: Walk.Op[F, x, A, F] => _root_.cats.free.Free.liftF(o.op).flatMap(x => toCats(o.resume(x)))
 
   /** a cats free monad as an okay program, by initiality (foldMap into
    * our Monad instance through the injecting FunctionK) */
-  def fromCats[F[+_], A](c: _root_.cats.free.Free[F, A]): A ! F =
+  def fromCats[F[_], A](c: _root_.cats.free.Free[F, A]): A ! F =
     c.foldMap(new _root_.cats.arrow.FunctionK[F, [X] =>> X ! F]:
       def apply[X](fx: F[X]): X ! F = effect(fx))
 }

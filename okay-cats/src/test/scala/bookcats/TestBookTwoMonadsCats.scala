@@ -1,7 +1,5 @@
 package bookcats
 
-import okay.freer.{+, %, Pure}
-import okay.freer.{!, Shift, pure}
 /**
  * THE BOOK'S CHAPTER 16b, one program three ways
  * (docs/continuations/16b-two-monads-at-once.md): a basket bought in
@@ -113,6 +111,7 @@ object CatsTeams:
 
 /** II. layered monadic reflection: a delimiter ($) per monad, reflect as shift0, no transformer */
 object LayeredBasket:
+  import okay.freer.{!, +, %, Pure, Shift, pure}
   import okay.freer.Layered.{Layer, reify, reflect}
   import Shops.prices
 
@@ -162,36 +161,35 @@ object LayeredBasket:
 /** III. algebraic effects: operations in a row, their meaning given by handlers where the program runs */
 object EffectsBasket:
   import okay.std.{Choose, Throws, Writer, choose, raise, runChoice, runEither}
-  import okay.freer.Row.at
-  import okay.freer.given
+  import okay.{!, +, %, pure}
   import Shops.prices
 
   type Basket = Choose + Writer % String + Throws % String
 
   def price(shop: String, item: String): Int ! Basket =
     prices(shop).get(item) match
-      case Some(p) => pure[Basket, Int](p)
+      case Some(p) => pure[Int, Basket](p)
       case None    => raise[String, Int](s"$shop has no $item").at[Basket]
 
   def basket(items: List[String]): Int ! Basket =
     for
       shop  <- choose("north", "south").at[Basket]
       _     <- Writer.tell(s"shop $shop").at[Basket]
-      ps    <- items.foldLeft(pure[Basket, List[Int]](Nil))((acc, item) => acc.flatMap(xs => price(shop, item).map(xs :+ _)))
+      ps    <- items.foldLeft(pure[List[Int], Basket](Nil))((acc, item) => acc.flatMap(xs => price(shop, item).map(xs :+ _)))
       total  = ps.sum
       _     <- Writer.tell(s"total $total").at[Basket]
     yield total
 
   /** errors handled first, then the log, then the choice: each branch keeps its own log and outcome */
   def run(items: List[String]): List[(Vector[String], Either[String, Int])] =
-    val checked = runEither[Int, Choose + Writer % String, String](basket(items))
-    val logged  = Writer.collect[String, Either[String, Int], Choose](checked)
-    !.run(runChoice[(Vector[String], Either[String, Int]), Pure](logged)).toList
+    val checked = runEither[Int, Basket, String](basket(items))
+    val logged  = Writer.collect(checked)
+    runChoice(logged).run.toList
 
   /** team A's helper: only the effects IT uses */
   def priceOf(shop: String, item: String): Int ! Throws % String =
     prices(shop).get(item) match
-      case Some(p) => pure[Throws % String, Int](p)
+      case Some(p) => pure[Int, Throws % String](p)
       case None    => raise[String, Int](s"$shop has no $item")
 
   /** team B's helper: only the effect IT uses */
@@ -203,7 +201,7 @@ object EffectsBasket:
     for
       shop  <- choose("north", "south").at[Basket]
       _     <- note(s"shop $shop").at[Basket]
-      ps    <- items.foldLeft(pure[Basket, List[Int]](Nil))((acc, item) => acc.flatMap(xs => priceOf(shop, item).at[Basket].map(xs :+ _)))
+      ps    <- items.foldLeft(pure[List[Int], Basket](Nil))((acc, item) => acc.flatMap(xs => priceOf(shop, item).at[Basket].map(xs :+ _)))
       total  = ps.sum
       _     <- note(s"total $total").at[Basket]
     yield total
@@ -224,9 +222,9 @@ object EffectsBasket:
 
   /** the SAME program, errors handled last: one missing price fails the whole basket */
   def failFirst(items: List[String]): Either[String, Seq[(Vector[String], Int)]] =
-    val logged  = Writer.collect[String, Int, Choose + Throws % String](basket(items))
-    val chosen  = runChoice[(Vector[String], Int), Throws % String](logged)
-    !.run(runEither[Seq[(Vector[String], Int)], Pure, String](chosen))
+    val logged  = Writer.collect[String, Int, Basket](basket(items))
+    val chosen  = runChoice(logged)
+    runEither(chosen).run
 
 /**
  * A TWO-LEG TRIP: where monad composition is not optional. The second
@@ -291,6 +289,7 @@ object CatsTrips:
     trip(from).value.run
 
 object LayeredTrips:
+  import okay.freer.{!, +, %, Pure, Shift}
   import okay.freer.Layered.{Layer, Reflect, reify, reflect}
   import Trips.{routes, soldOut}
 
@@ -331,8 +330,7 @@ object LayeredTrips:
 
 object EffectsTrips:
   import okay.std.{Choose, Throws, Writer, choose, raise, runChoice, runEither}
-  import okay.freer.Row.at
-  import okay.freer.given
+  import okay.{!, +, %}
   import Trips.{routes, soldOut}
 
   /** team A's helper: only the effects IT uses */
@@ -358,9 +356,9 @@ object EffectsTrips:
 
   /** errors handled first, then the log, then the choice: each itinerary keeps its own */
   def run(from: String): List[(Vector[String], Either[String, Int])] =
-    val checked = runEither[Int, Choose + Writer % String, String](trip(from))
-    val logged  = Writer.collect[String, Either[String, Int], Choose](checked)
-    !.run(runChoice[(Vector[String], Either[String, Int]), Pure](logged)).toList
+    val checked = runEither[Int, Trip, String](trip(from))
+    val logged  = Writer.collect(checked)
+    runChoice(logged).run.toList
 
 class TestBookTwoMonadsCats extends munit.FunSuite:
 
@@ -422,11 +420,10 @@ class TestBookTwoMonadsCats extends munit.FunSuite:
   }
 
   test("effects: the two teams' helpers, each on its own row, widen into the union row with no conversion") {
-    import okay.std.{Choose, Writer, runChoice, runEither}
-    import okay.freer.given
-    val checked = runEither[Int, Choose + Writer % String, String](EffectsBasket.teams(List("tea", "cake")))
-    val logged  = Writer.collect[String, Either[String, Int], Choose](checked)
-    assertEquals(!.run(runChoice[(Vector[String], Either[String, Int]), Pure](logged)).toList, expected)
+    import okay.std.{Writer, runChoice, runEither}
+    val checked = runEither[Int, EffectsBasket.Basket, String](EffectsBasket.teams(List("tea", "cake")))
+    val logged  = Writer.collect(checked)
+    assertEquals(runChoice(logged).run.toList, expected)
   }
 
   test("STACKS DO NOT COMPOSE: team B's helper (other order) does not type in team A's stack") {
@@ -462,18 +459,17 @@ class TestBookTwoMonadsCats extends munit.FunSuite:
   }
 
   test("effects: the helper written once works in a bigger row and under either handler order") {
-    import okay.std.{Choose, Throws, Writer, runChoice, runEither}
-    import okay.freer.given
-    val withVat = okay.std.Reader.run[Int, Int, EffectsBasket.Basket](20)(EffectsBasket.taxed(List("tea")))
-    val checked = runEither[Int, Choose + Writer % String, String](withVat)
-    val logged  = Writer.collect[String, Either[String, Int], Choose](checked)
-    assertEquals(!.run(runChoice[(Vector[String], Either[String, Int]), Pure](logged)).toList, List(
+    import okay.std.{Writer, runChoice, runEither}
+    val withVat = okay.std.Reader.run(20)(EffectsBasket.taxed(List("tea")))
+    val checked = runEither(withVat)
+    val logged  = Writer.collect(checked)
+    assertEquals(runChoice(logged).run.toList, List(
       (Vector("shop north", "total 300", "vat 20%"), Right(360)),
       (Vector("shop south", "total 250", "vat 20%"), Right(300))))
   }
 
   test("the other order: layered by swapping blocks, effects by swapping handlers — one missing price fails it all") {
-    assertEquals(!.run(Shift.run[Either[String, List[LayeredBasket.Logged[Int]]], Pure](
+    assertEquals(okay.freer.!.run(okay.freer.Shift.run[Either[String, List[LayeredBasket.Logged[Int]]], okay.freer.Pure](
       LayeredBasket.failFirst(List("tea", "cake")))), Left("south has no cake"))
     assertEquals(EffectsBasket.failFirst(List("tea", "cake")), Left("south has no cake"))
     assertEquals(EffectsBasket.failFirst(List("tea")),

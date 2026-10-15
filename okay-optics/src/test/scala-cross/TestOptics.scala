@@ -1,14 +1,15 @@
 package okay
 
+import okay.Programs.given
 
-import okay.freer.*
+import okay.freer.Monoid
+
+
 
 
 import okay.std.*
-import okay.freer.given
 import okay.std.given
 import okay.given
-import okay.freer.given
 import okay.std.given
 import okay.Optic.{Const, First, Star}
 import scala.compiletime.testing.typeCheckErrors
@@ -100,14 +101,14 @@ class TestOptics extends munit.FunSuite {
     // each element is added to the state, and answers the state it saw
     val prog: Vector[Int] ! State % Int =
       each.traverseOf[[X] =>> X ! State % Int]((a: Int) => State.modify[Int](_ + a))(Vector(1, 2, 3))
-    val (finalState, seen) = !.run(State.handle(0)(prog))
+    val (finalState, seen) = (State.handle(0)(prog)).run
     assertEquals(finalState, 6)
     assertEquals(seen, Vector(1, 3, 6))
     // through a composed optic too: every person's zip, in an effect
     val zips = Traversal.each[Person, Person].andThen(address).andThen(Prism.some).andThen(zip)
     val people = Vector(Person("a", 1, Some(Address("x", 10))), Person("b", 2, None), Person("c", 3, Some(Address("y", 20))))
-    val (count, out) = !.run(State.handle(0)(
-      zips.traverseOf[[X] =>> X ! State % Int](z => State.modify[Int](_ + 1).map(_ => z * 2))(people)))
+    val (count, out) = (State.handle(0)(
+      zips.traverseOf[[X] =>> X ! State % Int](z => State.modify[Int](_ + 1).map(_ => z * 2))(people))).run
     assertEquals(count, 2)
     assertEquals(out.map(_.address.map(_.zip)), Vector(Some(20), None, Some(40)))
   }

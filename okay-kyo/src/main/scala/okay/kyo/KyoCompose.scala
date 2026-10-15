@@ -1,7 +1,6 @@
 package okay.kyo
 
-import okay.Async
-import okay.freer.{!}
+import okay.{!, Async}
 import _root_.kyo.{<, Abort, Flat}
 
 /**

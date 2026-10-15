@@ -2,11 +2,10 @@ package okay.cats
 
 import _root_.cats.Eq
 import _root_.cats.laws.discipline.{MonadErrorTests, MonadTests}
-import okay.freer.{%, +, Pure}
-import okay.freer.{!, effect, pure}
+import okay.{%, +, Pure}
+import okay.{!, effect, pure}
 import okay.std.{Throws, runEither}
 import okay.given
-import okay.freer.given
 import org.scalacheck.{Arbitrary, Gen}
 
 /**
@@ -26,7 +25,7 @@ class TestLaws extends munit.ScalaCheckSuite {
 
   type P[A] = A ! Pure
 
-  given [A](using Eq[A]): Eq[P[A]] = Eq.by(p => !.run(p))
+  given [A](using Eq[A]): Eq[P[A]] = Eq.by(p => (p).run)
 
   given [A](using a: Arbitrary[A]): Arbitrary[P[A]] = Arbitrary(Gen.oneOf(
     a.arbitrary.map(x => (pure(x): P[A])),
@@ -41,11 +40,11 @@ class TestLaws extends munit.ScalaCheckSuite {
   type PE[A] = A ! Throws % String + Pure
 
   given [A](using Eq[A]): Eq[PE[A]] =
-    Eq.by(p => !.run(runEither[A, Pure, String](p)))
+    Eq.by(p => (runEither[A, Throws % String + Pure, String](p)).run)
 
   given [A](using a: Arbitrary[A]): Arbitrary[PE[A]] = Arbitrary(Gen.oneOf(
     a.arbitrary.map(x => (pure(x): PE[A])),
-    Gen.alphaStr.map(e => (effect(Throws(e)): PE[A])),
+    Gen.alphaStr.map(e => effect[Throws % String, A](Throws(e)).at[Throws % String + Pure]),
     for x <- a.arbitrary; y <- a.arbitrary
     yield (pure(y): PE[A]).flatMap(_ => pure(x)),
   ))

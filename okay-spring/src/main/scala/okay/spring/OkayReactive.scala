@@ -1,10 +1,8 @@
 package okay.spring
 
 
-import okay.{async, Async}
-import okay.freer.*
+import okay.{!, async, pure, Async, Run}
 import okay.given
-import okay.freer.given
 import org.reactivestreams.Publisher
 import org.springframework.core.{ReactiveAdapterRegistry, ReactiveTypeDescriptor}
 import reactor.core.publisher.Mono
@@ -27,14 +25,14 @@ object OkayReactive:
   def fromPublisher[A](pub: Publisher[A]): A ! Async =
     async(Mono.from(pub).block())
 
-  /** the type Spring sees: `Free`, the class every program is an instance of */
-  val programClass: Class[?] = classOf[okay.freer.Freer[?, ?, ?, ?]]
+  /** the type Spring sees: `Run`, the class every program is an instance of */
+  val programClass: Class[?] = classOf[Run[?, ?]]
 
   /** teach a registry to adapt programs — the shared instance is what WebFlux consults */
   def registerAdapter(registry: ReactiveAdapterRegistry = ReactiveAdapterRegistry.getSharedInstance): Unit =
     if registry.getAdapter(programClass) == null then
       registry.registerReactiveType(
-        ReactiveTypeDescriptor.singleOptionalValue(programClass, (() => pure[Async, Null](null)): Supplier[AnyRef]),
+        ReactiveTypeDescriptor.singleOptionalValue(programClass, (() => pure[Null, Async](null)): Supplier[AnyRef]),
         toPublisher,
         ((pub: Publisher[?]) => fromPublisher(pub)): JFunction[Publisher[?], AnyRef])
 
@@ -43,5 +41,5 @@ object OkayReactive:
    * the compiler — an erased type behind a wildcard, the one cast this
    * module makes */
   private val toPublisher: JFunction[Any, Publisher[?]] =
-    case p: Free[Async, Any] @unchecked => mono(p)
+    case p: Run[Async, Any] @unchecked => mono(p)
     case other => throw IllegalArgumentException(s"not an okay program: ${other.getClass.getName}")

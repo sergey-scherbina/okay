@@ -1,10 +1,6 @@
 package okay.cats
 
-import okay.{Async, ==>}
-
-import okay.freer.{+}
-import okay.freer.{!, effect}
-import okay.freer.!.*
+import okay.{!, +, Async, defer, effect}
 import _root_.cats.~>
 import _root_.cats.effect.{IO, LiftIO}
 import _root_.cats.effect.kernel.{Cont, Deferred, Fiber, MonadCancel, Outcome, Poll, Ref, Sync, Unique}
@@ -77,26 +73,23 @@ object CatsEffect:
    * bind is exactly one `flatMap`. Stack-safe: the recursive call is in
    * the `flatMap`'s continuation, run by IO's own loop.
    */
-  def toIO[A](p: Program[A]): IO[A] = (p.resume: @unchecked) match
-    case Return(a) => IO.pure(a)
-    case Inject(e) => step(e)
-    case Bind(Inject(e), k) => step(e).flatMap(x => toIO(k(x)))
+  def toIO[A](p: Program[A]): IO[A] = Walking.toIO[CatsFx, A](p)([X] => (e: CatsFx[X]) => e.build(interp))
 
   private val interp: Interp = [X] => (p: Program[X]) => IO.defer(toIO(p))
 
-  private val step: (CatsFx + Async) ==> IO = [X] => (e: (CatsFx + Async)[X]) => e match
-    case CatsFx(build) => build(interp)
+  /** okay's `Async` operation as IO's own: a `Run` is `IO.delay`, an `Await` `IO.async` with its canceller */
+  private[cats] def asyncIO[X](e: Async[X]): IO[X] = e match
     case Async.Run(f) => IO.delay(f())
     case Async.Await(register, _) =>
       IO.async[X](cb => IO { val cancel = register(cb); Some(IO(cancel())) })
 
   /** a plain okay `Async` program as one of these — the row only grows */
-  def lift[A](p: A ! Async): Program[A] = !.widen[A, Async, CatsFx](p)
+  def lift[A](p: A ! Async): Program[A] = p.at[CatsFx + Async]
 
   /** an IO as one operation of a program */
   def liftIO[A](io: IO[A]): Program[A] = op(_ => io)
 
-  private def op[A](build: Interp => IO[A]): Program[A] = effect[CatsFx + Async, A](CatsFx(build))
+  private def op[A](build: Interp => IO[A]): Program[A] = effect[CatsFx, A](CatsFx(build)).at[CatsFx + Async]
 
   private val liftK: IO ~> Program = new (IO ~> Program):
     def apply[A](io: IO[A]): Program[A] = liftIO(io)
@@ -106,6 +99,13 @@ object CatsEffect:
       def cancel: Program[Unit] = liftIO(f.cancel)
       def join: Program[Outcome[Program, Throwable, A]] = liftIO(f.join.map(_.mapK(liftK)))
 
+  /** `f` until it answers `Right`: each round a deferred bind, so the machine runs it in constant stack */
+  private def loop[A, B](a: A)(f: A => Program[Either[A, B]]): Program[B] =
+    f(a).flatMap {
+      case Left(a2) => defer(loop(a2)(f))
+      case Right(b) => okay.pure(b)
+    }
+
   /** cats-effect's whole hierarchy — `Async` down to `Functor` — at
    * [[Program]], with `LiftIO`; in the companion of the opaque type, so
    * it needs no import */
@@ -113,10 +113,10 @@ object CatsEffect:
     def liftIO[A](io: IO[A]): Program[A] = CatsEffect.liftIO(io)
 
     // ---- Monad: okay's tree, okay's stack-safe loop
-    def pure[A](a: A): Program[A] = okay.freer.pure(a)
+    def pure[A](a: A): Program[A] = okay.pure(a)
     def flatMap[A, B](fa: Program[A])(f: A => Program[B]): Program[B] = fa.flatMap(f)
     override def map[A, B](fa: Program[A])(f: A => B): Program[B] = fa.map(f)
-    def tailRecM[A, B](a: A)(f: A => Program[Either[A, B]]): Program[B] = !.loop(a)(f)
+    def tailRecM[A, B](a: A)(f: A => Program[Either[A, B]]): Program[B] = loop(a)(f)
 
     // ---- MonadError
     def raiseError[A](e: Throwable): Program[A] = liftIO(IO.raiseError(e))

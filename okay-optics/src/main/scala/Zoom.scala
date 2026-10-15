@@ -1,11 +1,8 @@
 package okay
 
-
-import okay.freer.*
-
-
+import okay.core.Split
+import okay.freer.Cps
 import okay.std.*
-import okay.freer.given
 /**
  * ZOOMING BY AN OPTIC — the half of `State` and `PState` that is
  * about optics, which is why it lives here and not in the core
@@ -24,13 +21,14 @@ import okay.freer.given
 /** the lens spelling of `State.zoomWith`: a program written against a
  * PART of the state, run against the whole, with the lens saying
  * which part and nothing else touched */
-def zoomLens[S, A, X, F[+_]](l: Lens[S, S, A, A])(p: X ! State % A + F): X ! State % S + F =
-  State.zoomWith[S, A, X, F](s => l.get(s), a => s => l.set(a)(s))(p)
+def zoomLens[S, A, X, Es[_]](l: Lens[S, S, A, A])(p: X ! Es)(using sp: Split[Es, State % A])
+: X ! State % S + sp.Rest =
+  State.zoomWith[S, A, X, Es](s => l.get(s), a => s => l.set(a)(s))(p)
 
 extension (st: State.type)
   /** see `zoomLens` — this is the name every caller already writes */
-  def zoom[S, A, X, F[+_]](l: Lens[S, S, A, A])(p: X ! State % A + F): X ! State % S + F =
-    zoomLens[S, A, X, F](l)(p)
+  def zoom[S, A, X, Es[_]](l: Lens[S, S, A, A])(p: X ! Es)(using sp: Split[Es, State % A]): X ! State % S + sp.Rest =
+    zoomLens[S, A, X, Es](l)(p)
 
 extension (t: PState.Threaded.type)
   /**

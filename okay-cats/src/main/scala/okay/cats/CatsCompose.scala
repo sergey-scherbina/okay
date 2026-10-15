@@ -1,7 +1,6 @@
 package okay.cats
 
-import okay.Async
-import okay.freer.{!}
+import okay.{!, Async}
 import _root_.cats.effect.IO
 import _root_.cats.effect.unsafe.IORuntime
 

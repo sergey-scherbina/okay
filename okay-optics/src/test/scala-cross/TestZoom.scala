@@ -1,12 +1,12 @@
 package okay
 
+import okay.freer.Cps
 
-import okay.freer.*
+
 
 
 import okay.std.*
 import okay.given
-import okay.freer.given
 /**
  * specs/optics.md stage 3: a program over a PART of the state runs
  * over the whole, and the four-parameter lens zooms the parameterised
@@ -32,7 +32,7 @@ class TestZoom extends munit.FunSuite {
 
   test("zoom: a program over the part runs over the whole, and touches nothing else") {
     val app = App(Counter(1, "hits"), "ada")
-    val (after, out) = !.run(State.handle(app)(State.zoom[App, Int, Int, Nothing](appN)(tick(41))))
+    val (after, out) = (State.handle(app)(State.zoom[App, Int, Int, State % Int](appN)(tick(41)))).run
     assertEquals(out, 42)
     assertEquals(after, App(Counter(42, "hits"), "ada"))
     // the label and the user are untouched: the lens is the whole story
@@ -43,27 +43,27 @@ class TestZoom extends munit.FunSuite {
   test("zoom composes with the optic, not with itself: one lens, two levels") {
     val app = App(Counter(0, "x"), "bob")
     // the same program, zoomed by a composed lens
-    val prog = State.zoom[App, Int, Int, Nothing](counter.andThen(n))(tick(5))
-    assertEquals(!.run(State.handle(app)(prog))._1, App(Counter(5, "x"), "bob"))
+    val prog = State.zoom[App, Int, Int, State % Int](counter.andThen(n))(tick(5))
+    assertEquals((State.handle(app)(prog)).run._1, App(Counter(5, "x"), "bob"))
     // and zoomed by a lens onto a different part of the same whole
     val label = counter.andThen(Lens[Counter](_.label))
     val rename: String ! State % String = State.set("hits")
-    assertEquals(!.run(State.handle(app)(State.zoom[App, String, String, Nothing](label)(rename)))._1,
+    assertEquals((State.handle(app)(State.zoom[App, String, String, State % String](label)(rename))).run._1,
       App(Counter(0, "hits"), "bob"))
   }
 
   test("zoom leaves the rest of the row alone: a Writer beside the State passes through") {
     val app = App(Counter(0, "x"), "ada")
-    // the row is mixed by hand: `widen` is how a program of one row
-    // joins another, and a for-comprehension cannot infer it
+    // the effects are named by hand: `at` is how a program needing one
+    // effect is seen as needing more
     type Row = [X] =>> (State % Int + Writer % String)[X]
-    def tell(s: String): Unit ! Row = !.widen[Unit, Writer % String, State % Int](Writer.tell[String](s))
+    def tell(s: String): Unit ! Row = Writer.tell[String](s).at[Row]
     val prog: Int ! Row =
       tell("before")
-        .flatMap(_ => !.widen[Int, State % Int, Writer % String](tick(7)))
+        .flatMap(_ => tick(7).at[Row])
         .flatMap(v => tell(s"after $v").map(_ => v))
-    val zoomed: Int ! State % App + Writer % String = State.zoom[App, Int, Int, Writer % String](appN)(prog)
-    val (told, (after, v)) = !.run(Writer.run(State.handle(app)(zoomed)))
+    val zoomed: Int ! State % App + Writer % String = State.zoom[App, Int, Int, Row](appN)(prog)
+    val (told, (after, v)) = (Writer.run(State.handle(app)(zoomed))).run
     assertEquals(v, 7)
     assertEquals(after, App(Counter(7, "x"), "ada"))
     assertEquals(told.toList, List("before", "after 7"))
@@ -71,8 +71,8 @@ class TestZoom extends munit.FunSuite {
 
   test("zoom of a program that does nothing to the state is the identity on it") {
     val app = App(Counter(3, "x"), "ada")
-    val pure: Int ! State % Int = okay.freer.pure(9)
-    val (after, v) = !.run(State.handle(app)(State.zoom[App, Int, Int, Nothing](appN)(pure)))
+    val pure: Int ! State % Int = okay.pure(9)
+    val (after, v) = (State.handle(app)(State.zoom[App, Int, Int, State % Int](appN)(pure))).run
     assertEquals(v, 9)
     assertEquals(after, app)
   }

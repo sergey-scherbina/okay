@@ -3,13 +3,10 @@ package okay.cats
 import _root_.cats.effect.IO
 import _root_.cats.effect.unsafe.implicits.global
 import okay.{Async, asOkay, async, via}
-import okay.freer.{%, +}
-import okay.freer.perform
-import okay.freer.{!, Handler}
+import okay.{%, +}
+import okay.{!, Handler, effect}
 import okay.std.{State}
-import okay.freer.Row.bind
 import okay.given
-import okay.freer.given
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -17,6 +14,8 @@ import java.util.concurrent.atomic.AtomicInteger
  * itself, and the runtime is chosen when the program is handled.
  */
 class TestIOMembers extends munit.FunSuite with okay.testkit.Munit.Diagnosed {
+  // okay-freer's `op.perform`, which the root does not have: the operation as a program needing its effect
+  extension [A](io: IO[A]) private def perform: A ! IO = effect[IO, A](io)
 
   test("an IO kept in the tree: building runs nothing, toIO runs it") {
     val ran = AtomicInteger()
@@ -28,12 +27,12 @@ class TestIOMembers extends munit.FunSuite with okay.testkit.Munit.Diagnosed {
   }
 
   test("toIO: IO and okay's Async in one IO") {
-    val p: Int ! (IO + Async) = IO(1).perform.bind(a => async(a + 1))
+    val p: Int ! (IO + Async) = IO(1).perform.flatMap(a => async(a + 1))
     assertEquals(p.toIO.unsafeRunSync(), 2)
   }
 
   test("via[IO]: each IO lowered to okay's Async, the rest of the row kept") {
-    val p: Int ! (IO + State % Int) = IO(2).perform.bind(a => State.get[Int].map(_ + a))
+    val p: Int ! (IO + State % Int) = IO(2).perform.flatMap(a => State.get[Int].map(_ + a))
     val q: Int ! (Async + State % Int) = p.via[IO]
     assertEquals(State.handle(10)(q).runWith, (10, 12))
   }
@@ -41,7 +40,7 @@ class TestIOMembers extends munit.FunSuite with okay.testkit.Munit.Diagnosed {
   test("a handler of our own answers the IO operations") {
     val p: Int ! IO = IO(1).perform.flatMap(a => IO(a + 1).perform)
     val seen = AtomicInteger()
-    val sync = Handler.answer[IO].poly([X] => (io: IO[X]) => { seen.incrementAndGet(); io.unsafeRunSync() })
+    val sync = Handler.answering[IO]([X] => (io: IO[X]) => { seen.incrementAndGet(); io.unsafeRunSync() })
     assertEquals(p.handle(sync).run, 2)
     assertEquals(seen.get, 2)
   }

@@ -1,7 +1,7 @@
 package okay.cats
 
-import okay.{Async, Par, Scheduler}
-import okay.freer.{!, Static}
+import okay.{!, Async, Par, Scheduler}
+import okay.freer.Static
 import okay.std.{Choose, Validated}
 import okay.std.given
 import _root_.cats.{~>, Eval}
@@ -91,7 +91,7 @@ object CatsClasses:
    * for the reason [[catsChoose]] is only a `MonoidK` */
   val chooseAlternative: _root_.cats.StackSafeMonad[[A] =>> A ! Choose] & _root_.cats.Alternative[[A] =>> A ! Choose] =
     new _root_.cats.StackSafeMonad[[A] =>> A ! Choose] with _root_.cats.Alternative[[A] =>> A ! Choose]:
-      def pure[A](a: A): A ! Choose = okay.freer.pure(a)
+      def pure[A](a: A): A ! Choose = okay.pure(a)
       def flatMap[A, B](fa: A ! Choose)(f: A => B ! Choose): B ! Choose = fa.flatMap(f)
       def empty[A]: A ! Choose = catsChoose.empty
       def combineK[A](x: A ! Choose, y: A ! Choose): A ! Choose = catsChoose.combineK(x, y)

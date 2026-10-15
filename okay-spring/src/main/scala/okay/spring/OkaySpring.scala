@@ -1,7 +1,6 @@
 package okay.spring
 
-import okay.freer.*
-
+import okay.!
 import okay.std.*
 import org.springframework.beans.factory.{BeanFactory, DisposableBean}
 import org.springframework.context.support.GenericApplicationContext

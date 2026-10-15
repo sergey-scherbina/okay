@@ -1,7 +1,8 @@
 package okay
 
+import okay.freer.Semigroup
 
-import okay.freer.*
+
 
 
 import okay.std.*

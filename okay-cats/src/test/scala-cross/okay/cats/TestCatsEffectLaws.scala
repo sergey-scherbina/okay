@@ -10,7 +10,7 @@ import org.scalacheck.{Arbitrary, Cogen, Prop}
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration.*
 import scala.language.implicitConversions
-import okay.freer.!
+import okay.!
 import CatsEffect.{Program, toIO}
 
 /**
@@ -62,7 +62,7 @@ class TestCatsEffectResolution extends munit.FunSuite {
   }
 
   test("a plain program still gets the default monad") {
-    val p: List[Int] ! okay.freer.Pure = List(1, 2).traverse(i => okay.freer.pure[okay.freer.Pure, Int](i * 10))
-    assertEquals(!.run(p), List(10, 20))
+    val p: List[Int] ! okay.Pure = List(1, 2).traverse(i => okay.pure[Int, okay.Pure](i * 10))
+    assertEquals((p).run, List(10, 20))
   }
 }

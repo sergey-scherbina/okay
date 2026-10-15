@@ -2,7 +2,6 @@ package okay.cats
 
 import okay.Async
 import okay.given
-import okay.freer.given
 import CatsInterop.*
 import _root_.cats.effect.IO
 import _root_.cats.effect.unsafe.implicits.global

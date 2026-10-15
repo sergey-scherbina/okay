@@ -1,14 +1,13 @@
 package okay
 
+import okay.freer.Cps
 
-import okay.freer.*
+
 
 
 import okay.std.*
-import okay.freer.given
 import okay.std.given
 import okay.given
-import okay.freer.given
 import okay.std.given
 /**
  * A TYPESTATE PROGRAM IS A SEMIGROUPOID, NOT A CATEGORY — and the

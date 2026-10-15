@@ -1,11 +1,9 @@
 package okay.spring
 
 
-import okay.{Async, async}
-import okay.freer.*
+import okay.{!, Async, async}
 import okay.std.*
 import okay.given
-import okay.freer.given
 import org.springframework.context.support.GenericApplicationContext
 import org.springframework.core.ReactiveAdapterRegistry
 import org.springframework.boot.autoconfigure.AutoConfigurations
@@ -40,7 +38,7 @@ class TestOkaySpring extends munit.FunSuite {
     ctx.registerBean(classOf[Clock], (() => Clock(7L)): java.util.function.Supplier[Clock])
     ctx.refresh()
     val stamp: Clock ?=> Module[[X] =>> String ?=> X] = Module.value[String](s"t@${wire[Clock].now}")
-    val got = !.run(Resource.run[String, okay.freer.Pure]((OkaySpring.bean[Clock](ctx) and stamp) { wire[String] }))
+    val got = Resource.scoped((OkaySpring.bean[Clock](ctx) and stamp) { wire[String] })
     assertEquals(got, "t@7")
     ctx.close()
   }
@@ -54,7 +52,7 @@ class TestOkaySpring extends munit.FunSuite {
     assertEquals(Mono.from(adapter.toPublisher[Int](prog)).block(), 42)
     assertEquals(OkayReactive.fromPublisher(Mono.just("y")).runWith, "y")
     adapter.fromPublisher(Mono.just("x")) match
-      case p: okay.freer.Freer[?, ?, ?, ?] => assertEquals(p.getClass.getSimpleName.isEmpty, false)
+      case p: okay.Run[?, ?] => assert(OkayReactive.programClass.isInstance(p)) // an anonymous `Run`: no simple name to check
       case other => fail(s"not a program: $other")
   }
 
