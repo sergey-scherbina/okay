@@ -21,27 +21,47 @@ abstract class Run[Es[_], +A]:
   /** the program at the paths of a place */
   def on[R <: okay.core.Row](ps: Paths[Es, R]): Eff[R, A]
 
-/** A BIND, kept as one node: fitted at a place it is the kernel's bind; a chain nested to the LEFT (a `foldLeft` of
- * binds) is fitted by a loop down its left spine (`Run.fitLeft`), not a host frame a bind */
+/** A BIND, kept as one node: fitted at a place it is the kernel's bind; a chain nested to the LEFT is fitted by
+ * direct calls down to `Run.LeftDepth` (no object but the kernel's nodes), past it by a loop down its left spine
+ * (`Run.fitLeft`) — a `foldLeft` of 200 000 binds takes no host stack */
 private[okay] final class Bound[Es[_], Es3[_], A, B, O[_]](val p: A ! Es, val f: A => B ! Es3, val j: Join[Es, Es3])
     extends Run[O, B]:
-  def on[R <: okay.core.Row](ps: Paths[O, R]): Eff[R, B] = p match
-    case _: (Bound[?, ?, ?, ?, ?] | Mapped[?, ?, ?]) => Run.fitLeft(this, ps)
-    case _ =>
-      // unchecked: `O` is `j.Out`, the type this node was made at
-      val out = ps.asInstanceOf[Paths[j.Out, R]]
-      val rs = j.right(out)
-      p.fit(j.left(out)).flatMap(a => f(a).fit(rs))
+  def on[R <: okay.core.Row](ps: Paths[O, R]): Eff[R, B] = fitAt(ps, 0)
+  /** BOUNDED: `d` below `Run.LeftDepth`, then the loop */
+  private[okay] def fitAt[R <: okay.core.Row](ps: Paths[O, R], d: Int): Eff[R, B] =
+    // unchecked: `O` is `j.Out`, the type this node was made at
+    val out = ps.asInstanceOf[Paths[j.Out, R]]
+    val rs = j.right(out)
+    val left: Eff[R, A] = p match
+      case b: Bound[?, ?, ?, ?, ?] =>
+        if d < Run.LeftDepth then b.asInstanceOf[Bound[[x] =>> Any, [x] =>> Any, Any, A, Es]].fitAt(j.left(out), d + 1)
+        else return Run.fitLeft(this, ps)
+      case m: Mapped[?, ?, ?] =>
+        if d < Run.LeftDepth then m.asInstanceOf[Mapped[Es, Any, A]].fitAt(j.left(out), d + 1)
+        else return Run.fitLeft(this, ps)
+      case _ => p.fit(j.left(out))
+    left.flatMap(a => f(a).fit(rs))
 
 /** a map, kept as one node, fitted as `Bound` */
 private[okay] final class Mapped[Es[_], A, B](val p: A ! Es, val f: A => B) extends Run[Es, B]:
-  def on[R <: okay.core.Row](ps: Paths[Es, R]): Eff[R, B] = p match
-    case _: (Bound[?, ?, ?, ?, ?] | Mapped[?, ?, ?]) => Run.fitLeft(this, ps)
-    case _ => p.fit(ps).map(f)
+  def on[R <: okay.core.Row](ps: Paths[Es, R]): Eff[R, B] = fitAt(ps, 0)
+  /** BOUNDED: `d` below `Run.LeftDepth`, then the loop */
+  private[okay] def fitAt[R <: okay.core.Row](ps: Paths[Es, R], d: Int): Eff[R, B] =
+    val left: Eff[R, A] = p match
+      case b: Bound[?, ?, ?, ?, ?] =>
+        if d < Run.LeftDepth then b.asInstanceOf[Bound[[x] =>> Any, [x] =>> Any, Any, A, Es]].fitAt(ps, d + 1)
+        else return Run.fitLeft(this, ps)
+      case m: Mapped[?, ?, ?] =>
+        if d < Run.LeftDepth then m.asInstanceOf[Mapped[Es, Any, A]].fitAt(ps, d + 1)
+        else return Run.fitLeft(this, ps)
+      case _ => p.fit(ps)
+    left.map(f)
 
 /** the words on a program, found with it (its implicit scope): no import */
 object Run:
   private type K[x] = Any
+  /** how deep a left-nested chain is fitted by direct calls before the loop takes it: a constant, the bound */
+  private[okay] inline val LeftDepth = 64
   /** A LEFT-NESTED CHAIN FITTED BY A LOOP: down the left spine of binds and maps, each one's continuation fitted at
    * its own paths and kept; the leftmost program fitted; then the kept continuations bound back on, innermost first.
    * THE CASTS, and why they are sound: each node is taken apart at the type it was made at — its `Join`'s paths

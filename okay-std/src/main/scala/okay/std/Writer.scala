@@ -556,6 +556,9 @@ type Feed[W] = Unit ! Writer % W
 given Put[Feed] with
   final override inline def put[W](w: W): Unit />> Feed[W] =
     Cps.shift(k => Writer.tell(w).flatMap(_ => k(())))
+  /** each element told, the next step deferred into the bind */
+  override def unfold[A, B](a: A)(f: A => B)(g: A => A): Feed[B] =
+    Writer.tell(f(a)).flatMap(_ => okay.defer(unfold(g(a))(f)(g)))
 
 /**
  * A writer program is a stream of its told values: the same

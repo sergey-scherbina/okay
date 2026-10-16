@@ -56,6 +56,9 @@ type Source[W] = Unit ! Writer % W + Async
 given Put[Source] with
   final override inline def put[W](w: W): Unit />> Source[W] =
     Cps.shift(k => Writer.tell(w).at[Writer % W + Async].flatMap(_ => k(())))
+  /** each element told, the next step deferred into the bind */
+  override def unfold[A, B](a: A)(f: A => B)(g: A => A): Source[B] =
+    Writer.tell(f(a)).at[Writer % B + Async].flatMap(_ => okay.defer(unfold(g(a))(f)(g)))
 
 object Source {
   /**

@@ -74,14 +74,17 @@ inline def loop[A, R](f: A Loop R): A => R =
  */
 trait Put[S[_]]:
   def put[W](w: W): Unit />> S[W]
+  /** `generate`'s unfold: put `f(a)`, go on from `g(a)` — by default the `Cps` loop over `put` (`take` the seed,
+   * the knot tied by `loop`); an instance whose `S` is a program writes it as one, a step a bind (no `Cps` run an
+   * element: the kernel's `Cps` gives a shift its `k` as a run of its own) */
+  def unfold[A, B](a: A)(f: A => B)(g: A => A): S[B] = a(for x <- take[A, S[B]]; _ <- put(f(x)) yield g(x))
 
 /** put a value through the instance of S */
 inline def put[W, S[_] : Put as S](w: W): Unit />> S[W] = S.put(w)
 
 /** unfold: take the seed, put f(a), continue with the seed g(a) */
-inline def generate[A, B, F[_] : Put](a: A)(f: A => B)
-                                     (g: A => A): F[B] = a:
-  for a <- take[A, F[B]]; _ <- put(f(a)) yield g(a)
+inline def generate[A, B, F[_] : Put as F](a: A)(f: A => B)
+                                          (g: A => A): F[B] = F.unfold(a)(f)(g)
 
 /** generate, materialized by laziness */
 inline def generateLazy[A, B](a: A)(f: A => B)
@@ -92,6 +95,7 @@ inline def generateLazy[A, B](a: A)(f: A => B)
 given Put[LazyList] with
   final override inline def put[W](w: W): Unit />> LazyList[W] =
     Cps.shift(w #:: _(()))
+  override def unfold[A, B](a: A)(f: A => B)(g: A => A): LazyList[B] = LazyList.iterate(a)(g).map(f)
 
 /** the identity signature: an operation is the value it produces */
 type Produce[A] = Id[A]
@@ -150,6 +154,9 @@ def producing[G[+_]](using g: TypeableK[G]): TypeableK[Produce] = new TypeableK[
 given Put[Producer] with
   final override inline def put[W](w: W): Unit />> Producer[W] =
     Cps.shift(k => produce(w).flatMap(_ => k(())))
+  /** each element produced, the next step deferred into the bind: the machine's loop, no host frame */
+  override def unfold[A, B](a: A)(f: A => B)(g: A => A): Producer[B] =
+    produce(f(a)).flatMap(_ => okay.defer(unfold(g(a))(f)(g)))
 
 /** what a stepped production hands over — the value — and what it answers: the same value */
 private[std] final class Producing[W] extends Stepping.Told[Produce, W]:
