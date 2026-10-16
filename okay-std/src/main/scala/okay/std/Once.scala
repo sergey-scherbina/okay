@@ -1,7 +1,7 @@
 package okay.std
 
 import okay.{!, Effect, Handler, Join, Within, defer, effect, pure}
-import okay.core.{Paths, Row, Split}
+import okay.core.{Row, Split}
 import okay.one.handler.{Stateful, Handler as OneHandler}
 
 

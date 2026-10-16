@@ -1,8 +1,6 @@
 package okay.std
 
 import okay.{!, effect}
-import okay.core.+:
-import okay.one.row.In
 import okay.one.machine.Machine
 import okay.one.machine.Machine.Head
 import scala.collection.mutable

@@ -1,8 +1,6 @@
 package okay.scala2
 
 import okay.{Foreign, Run, TypeableK, effect}
-import okay.core.Paths
-import okay.one.row.In
 import scala.reflect.ClassTag
 import Rows.Top
 

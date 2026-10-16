@@ -1,12 +1,12 @@
 package okay.std
 
 import okay.{!, +, Answers, Handler, Id, Pure, Run, TypeableK, effect, pure}
-import okay.core.{+:, Eff, Paths, Row, Split}
+import okay.core.Split
 import okay.{Cps, />>}
 import okay.{Fold, FoldUntil, Foldable}
 import okay.one.Cont
 import okay.one.handler.Stateful
-import okay.one.row.{In, Pure as OnePure}
+import okay.one.row.{Pure as OnePure}
 
 /**
  * Generators from delimited control: take is the input of a loop

@@ -1,7 +1,7 @@
 package okay.std
 
 import okay.{!, +, Effect, Handler, MonadPlus, Pure, Run, TypeableK, effect, typeableK}
-import okay.core.{Eff, Paths, Row, Split}
+import okay.core.Split
 import scala.collection.immutable.ArraySeq
 
 

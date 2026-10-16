@@ -7,7 +7,7 @@ import scala.quoted.*
  * THE PLACE OF AN EFFECT, BY KEY (specs/keyed-root.md): an effect's operations are performed at a place by key — the
  * kernel's `In.At` — and its handler says the key is its own (`Handler.at`), so a program is the kernel's tree with no
  * row to fit and no paths to carry: a bind is one node. The key is the effect's constructor CLASS (`Writer`, `State`,
- * `Async`), found at compile time, one `In.At` a class shared by every program (`ClassValue`); an effect with no class
+ * `Async`), found at compile time, one `In.At` a class shared by every program (`KeyClasses`: a `ClassValue`, a map on Native); an effect with no class
  * of its own (`Produce = Id`) is keyed by its alias's name. Two effects of one constructor in one program — `Writer %
  * Int` beside `Writer % String` — share the key: the nearer handler answers both (okay-freer's union had the same
  * reading, `Distinct` refusing it).
@@ -19,11 +19,9 @@ final class KeyOf[E[_]] private[okay] (val in: In.At[E, OnePure]):
   override def toString: String = s"KeyOf(${in.ref})"
 
 object KeyOf:
-  private object byClass extends ClassValue[KeyOf[?]]:
-    protected def computeValue(c: Class[?]): KeyOf[?] = KeyOf[[x] =>> Any](In.At(c))
   private val byName = java.util.concurrent.ConcurrentHashMap[String, KeyOf[?]]()
   /** the key of the effect whose constructor is the class `c` */
-  def of[E[_]](c: Class[?]): KeyOf[E] = byClass.get(c).asInstanceOf[KeyOf[E]]
+  def of[E[_]](c: Class[?]): KeyOf[E] = KeyClasses.of(c).asInstanceOf[KeyOf[E]]
   /** the key of an effect with no class of its own, by its name */
   def named[E[_]](n: String): KeyOf[E] =
     byName.computeIfAbsent(n, n => KeyOf[[x] =>> Any](In.At(n))).asInstanceOf[KeyOf[E]]

@@ -1,7 +1,7 @@
 package okay
 
 import okay.one.Cont
-import okay.one.row.{Key, Removed, Pure as OnePure}
+import okay.one.row.{Key, Pure as OnePure}
 
 /**
  * LEXICAL HANDLERS (specs/lexical-instances.md; Biernacki et al., "Binders by day, labels by night", POPL 2020): an

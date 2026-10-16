@@ -542,13 +542,17 @@ lazy val okay = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     // okay-freer's comment on why a suite must not share sbt's JVM
     Test / fork := true,
     Test / javaOptions += "-Xmx1g",
+    // the keys of effect classes: a ClassValue on the JVM and JS, a map on Native (it has no ClassValue)
+    Compile / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm-js",
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
     libraryDependencies += "org.scalameta" %% "munit-scalacheck" % "1.1.0" % Test,
   )
   .jsSettings(
+    Compile / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm-js",
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
   )
   .nativeSettings(
+    Compile / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "src" / "main" / "scala-native",
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
   )
 

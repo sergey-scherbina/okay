@@ -1,7 +1,6 @@
 package okay.scala2
 
 import okay.{!, +, %, Answers, Erased, Foreign, Run, effect}
-import okay.core.{Paths, Req}
 import okay.given
 import scala.util.control.NonFatal
 

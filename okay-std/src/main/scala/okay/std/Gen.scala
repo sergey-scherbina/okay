@@ -1,10 +1,7 @@
 package okay.std
 
 import okay.{!, +, %, Effect, Run, defer, effect, pure}
-import okay.core.{+:, Eff, Paths, Req, Row as KRow}
 import okay.FoldUntil
-import okay.one.Cont
-import okay.one.row.In
 import okay.one.machine.Machine
 import okay.one.machine.Machine.Head
 

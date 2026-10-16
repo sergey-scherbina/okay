@@ -1,7 +1,7 @@
 package okay.std
 
 import okay.{!, +, %, Answers, Handler, Pure, Run, TypeableK, effect, pure, typeableK}
-import okay.core.{+:, Eff, Paths, Row, Split}
+import okay.core.{Eff, Row, Split}
 import okay.{Cps, />>}
 import okay.{Fold, FoldUntil}
 import okay.one.Cont
