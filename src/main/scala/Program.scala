@@ -78,6 +78,12 @@ object Run:
     /** RUN with each effect ANSWERED in place by its `Answers` (a sum's assembled from its parts) */
     def runWith(using a: Answers[Es], ks: KeysOf[Es]): A = Program.runAll(p, a, ks)
 
+  /** `p` made when the run gets to it — ONE closure, the thunk itself the kernel's `Defer` (`defer` the inline word
+   * that makes it: not inlined further, so the program's type is this method's, never the kernel's) */
+  def deferred[A, Es[_]](p: () => A ! Es): A ! Es = Cont.Defer[OnePure, Nothing, Nothing, A](p)
+  /** the same by name, as a method: for a tree made by a macro (okay-direct's deferral), which calls no inline word */
+  def defer[A, Es[_]](p: => A ! Es): A ! Es = Cont.Defer[OnePure, Nothing, Nothing, A](() => p)
+
   extension [A, E[_]](p: A ! E)
     /** `h` around a program whose ONE effect is `E`: every operation by key that comes to it answered by `h`
      * (the kernel's `Handler.anyKey`) — no key asked for, so `E` may be abstract */
@@ -188,8 +194,8 @@ def pure[A, Es[_]](a: A): A ! Es = Run.of(Cont.Return[OnePure, Nothing, A](a))
 /** an operation: a program needing its effect, performed at the effect's key */
 def effect[E[_], X](op: E[X])(using k: KeyOf[E]): X ! E = Run.of(Cont.perform[E, OnePure, X](op)(using k.in))
 /** `p` built when the run gets to it: a tail call in constant stack */
-def defer[A, Es[_]](p: => A ! Es): A ! Es = Run.of(Cont.Defer[OnePure, Nothing, Nothing, A](() => Run.kernel(p)))
-def tailcall[A, Es[_]](p: => A ! Es): A ! Es = defer(p)
+inline def defer[A, Es[_]](inline p: A ! Es): A ! Es = Run.deferred[A, Es](() => p)
+inline def tailcall[A, Es[_]](inline p: A ! Es): A ! Es = Run.deferred[A, Es](() => p)
 
 /** A HANDLER AS A VALUE, of `E`, polymorphic in the body's value: its answer `O[A]` — the kernel's form at a row */
 trait Handler[E[_], O[_]]:

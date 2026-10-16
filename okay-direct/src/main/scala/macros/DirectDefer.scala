@@ -100,7 +100,8 @@ private[okay] trait DirectDefer[F[_]] extends DirectMarks[F] with DirectRow[F]:
           else programOf(app.tpe) match
             case Some((r, elem)) if r =:= row => Some(elem)
             case _ => None
-        lazy val deferSym = calleeRoot('{ okay.defer[Int, Pure](okay.pure[Int, Pure](0)) }.asTerm)
+        // the root's by-name deferral as a method (`okay.defer` is inline: a made tree calls the method)
+        lazy val deferSym = calleeRoot('{ okay.Run.defer[Int, Pure](okay.pure[Int, Pure](0)) }.asTerm)
         // the `[F, A]` overload, BY SHAPE: `methodMember` answers every
         // `reflect` (a generator's `[W]` one among them), and `.head` may
         // pick the wrong one; DirectMarks selects the same way
@@ -135,7 +136,8 @@ private[okay] trait DirectDefer[F[_]] extends DirectMarks[F] with DirectRow[F]:
             case TypeApply(f, _) => root(f)
             case other => if other.symbol == Symbol.noSymbol then "" else other.symbol.name
           val n = root(t)
-          n == "delay" || n == "defer" || n == "tailcall"
+          // `defer`/`tailcall` inline: their expansion the root's `deferred`
+          n == "delay" || n == "defer" || n == "tailcall" || n == "deferred"
 
         /** a program-typed call, whoever it calls — the tail rule's test */
         /** a CALL, under whatever the typer wrapped it in — a program

@@ -47,7 +47,9 @@ class TestDirectPhases extends munit.FunSuite {
 
   test("defer: a call already under !.tailcall is wrapped once, not twice") {
     def shape = DirectProbe.deferred[Prog, Long] { !(tailcall(other(1))) }
-    assertEquals(shape.sliding("defer[".length).count(_ == "defer[") + shape.sliding("tailcall[".length).count(_ == "tailcall["), 1, shape)
+    def count(w: String) = shape.sliding(w.length).count(_ == w)
+    // `tailcall` inline: its expansion the root's `deferred`
+    assertEquals(count("defer[") + count("tailcall[") + count("deferred["), 1, shape)
   }
 
   test("defer: a block with no enclosing def is left as written") {
