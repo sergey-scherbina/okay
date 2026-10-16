@@ -36,11 +36,12 @@ object Run:
     inline def fit[R <: okay.core.Row](ps: Paths[Es, R]): Eff[R, A] = p.asInstanceOf[Eff[R, A]]
     /** the bind: one node of the kernel's; the continuation's effects joined to these at compile time (`Join`) */
     inline def flatMap[B, Es3[_]](f: A => B ! Es3)(using j: Join[Es, Es3]): B ! j.Out =
-      Cont.Bind[OnePure, Nothing, Nothing, Nothing, A, B](p, f)
-    inline def map[B](f: A => B): B ! Es = Cont.Map[OnePure, Nothing, Nothing, A, B](p, f)
+      // the kernel's bind: an operation and its rest one node (`Inject`)
+      (p: okay.one.![A, OnePure]).flatMap(f: A => okay.one.![B, OnePure])
+    inline def map[B](f: A => B): B ! Es = (p: okay.one.![A, OnePure]).map(f)
     /** `p` then `q`, `p`'s value dropped */
     inline def >>[B, Es3[_]](q: => B ! Es3)(using j: Join[Es, Es3]): B ! j.Out =
-      Cont.Bind[OnePure, Nothing, Nothing, Nothing, A, B](p, _ => q)
+      (p: okay.one.![A, OnePure]).flatMap((_: A) => (q: okay.one.![B, OnePure]))
     /** the same program needing more effects, `Es` among `Es2`: itself */
     inline def at[Es2[_]](using w: Within[Es, Es2]): A ! Es2 = p
     /** `h`'s effect taken off wherever it is among `Es`: `h` installed at its key, a program needing the rest */

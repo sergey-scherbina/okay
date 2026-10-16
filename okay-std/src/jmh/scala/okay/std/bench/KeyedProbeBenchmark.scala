@@ -89,4 +89,36 @@ class KeyedProbeBenchmark {
     val w = Cont.handle(pOneBind(0, 0))(KWriter[State % Int +: Pure, Int]())
     val s = Cont.handle(w)(KState[Pure, (Seq[String], Int)](0))
     s.run._2._2
+
+  // ---- one effect: stateOneBind's program (a modify a step, one bind), three ways
+  private def rOne(i: Int, acc: Int): okay.![Int, State % Int] =
+    if i >= N then pure(acc) else State.modify[Int](_ + i).flatMap(s => rOne(i + 1, acc + s))
+
+  @Benchmark
+  def stateRoot(): Int = State.handle[Int](0)(rOne(0, 0)).run._2
+
+  private def kOne(i: Int, acc: Int): okay.one.![Int, Pure] =
+    if i >= N then Cont.pure(acc)
+    else Cont.perform[State % Int, Pure, Int](State.Update[Int, Int](State.Modified(_ + i)))(using stateAt)
+      .flatMap(s => kOne(i + 1, acc + s))
+
+  @Benchmark
+  def stateKeyed(): Int =
+    Cont.handle(kOne(0, 0))(KState[Pure, Int](0))(using okay.one.row.Removed.Absent[State % Int, Pure]()).run._2
+
+  /** the key looked up a step (the root's `effect` today: `ClassValue`) */
+  private def cOne(i: Int, acc: Int): okay.one.![Int, Pure] =
+    if i >= N then Cont.pure(acc)
+    else Cont.perform[State % Int, Pure, Int](State.Update[Int, Int](State.Modified(_ + i)))(
+      using okay.KeyOf.of[State % Int](classOf[State[?, ?]]).at[Pure]).flatMap(s => cOne(i + 1, acc + s))
+
+  @Benchmark
+  def stateLookup(): Int =
+    Cont.handle(cOne(0, 0))(KState[Pure, Int](0))(using okay.one.row.Removed.Absent[State % Int, Pure]()).run._2
+
+  /** the root's handler (`State(0)`) over the kernel's tree with the key a val */
+  @Benchmark
+  def stateRootHandler(): Int =
+    Cont.handle(kOne(0, 0))(State[Int](0).kernel[Pure, Int].keyed(stateAt.ref))(
+      using okay.one.row.Removed.Absent[State % Int, Pure]()).run._2
 }
