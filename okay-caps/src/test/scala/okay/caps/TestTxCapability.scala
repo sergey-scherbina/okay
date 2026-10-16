@@ -57,3 +57,27 @@ class TestTxCapability extends okay.testkit.Munit.Diagnosed:
     // a kernel program holding it: okay-core is not capture-checked, its closures carry no capture set
     assertEquals(refused("val p = Tx.transaction(db)(tx => okay.one.Cont.pure[okay.one.row.Pure, Int](1).map(_ => tx.execute(\"a\")))"), Nil)
   }
+
+  test("the guard: a leak the checker misses fails loud — a closure, a LazyList, a kernel program") {
+    val log = Log()
+    // this test file is not capture-checked: every leak below compiles
+    val f = Tx.transaction(log)(tx => () => tx.execute("late"))
+    assertEquals(intercept[Tx.Closed](f()).getMessage,
+      "transaction closed: 'late' after the bracket's commit or rollback — the transaction leaked out of it")
+    val lazily = Tx.transaction(log)(tx => LazyList.from(1).map(_ => tx.execute("lazy")))
+    intercept[Tx.Closed](lazily.head): Unit
+    val program = Tx.transaction(log)(tx => okay.one.Cont.pure[okay.one.row.Pure, Int](1).map(_ => tx.execute("program")))
+    intercept[Tx.Closed](program.run): Unit
+    var kept: Option[Tx] = None
+    intercept[IllegalStateException](Tx.transaction(log) { tx => kept = Some(tx); throw IllegalStateException("fail") }): Unit
+    intercept[Tx.Closed](kept.get.execute("after rollback")): Unit
+    assertEquals(log.said.toList, List("begin", "commit", "begin", "commit", "begin", "commit", "begin", "rollback"))
+  }
+
+  test("the checker module-wide: the compiler option refuses what the import refuses") {
+    val leak = "val f = Tx.transaction(db)(tx => () => tx.execute(\"a\"))"
+    val es = Compile.errors(db + leak, moduleWide = true)
+    note(es.toString)
+    assert(es.exists(_.contains(outlives)), es)
+    assertEquals(Compile.errors(db + "val n = Tx.transaction(db)(tx => tx.execute(\"a\"))", moduleWide = true), Nil)
+  }

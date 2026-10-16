@@ -8,4 +8,5 @@
       lampepfl/atc does — a model's snippet typed by its row of effects
       and capture-checked, no door to the world but its capabilities.
       Also open: LazyList does not track its function's captures (a
-      standard-library gap, not ours).
+      standard-library gap, not ours: report it upstream). Until (1)
+      lands, the guard (okay-caps-guard) makes those leaks fail loud.

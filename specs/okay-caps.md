@@ -66,6 +66,11 @@ What the checker misses must not pass silently. Three parts:
   operation of the bracket's row) cannot leave its bracket — a program performing it outside has the operation in
   its row and no handler for it, a type error; a capability turned into a VALUE needs the checker, or this guard.
 
-- [ ] use after commit, after rollback: `Tx.Closed`, through a closure, a LazyList, a kernel program
-- [ ] the module-wide option refuses as the import does
-- [ ] the rule in docs/modules/okay-caps.md and docs/capabilities.md
+- [x] use after commit, after rollback: `Tx.Closed`, through a closure, a LazyList, a kernel program
+- [x] the module-wide option refuses as the import does
+- [x] the rule in docs/modules/okay-caps.md and docs/capabilities.md
+
+Results: TestTxCapability 6 — the guard catches the closure, the LazyList (at `head`), the kernel program (at
+`run`) and a transaction kept past a rollback; `-language:experimental.captureChecking` refuses the closure leak
+with the same message as the import, and compiles the honest body. The AtomicBoolean of the guard does not
+trouble the checker (a field of a `SharedCapability`).

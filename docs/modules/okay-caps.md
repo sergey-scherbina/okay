@@ -26,3 +26,32 @@ What capture checking refuses, and what it does not, each measured by running th
 The module needs no `-experimental` on 3.9.0, and a dependent compiles as before. The kernel line is the one that
 matters most for okay, whose programs are values run later: the guarantee reaches them only when the kernel's
 types carry capture sets (backlog `okay-caps-next`).
+
+## The guard: what the checker misses fails loud
+
+A transaction is closed when its bracket ends, by commit or by rollback; a statement on it after that throws
+`Tx.Closed`. So the three leaks the checker does not refuse still cannot run a statement outside a transaction —
+they fail at the leak:
+
+```scala
+    val f = Tx.transaction(log)(tx => () => tx.execute("late"))
+    assertEquals(intercept[Tx.Closed](f()).getMessage,
+```
+
+The compiler where it can, the guard always.
+
+## The checker for a whole module
+
+One compiler option instead of an import in every file — measured to refuse what the import refuses:
+
+```
+scalacOptions += "-language:experimental.captureChecking"
+```
+
+## The rule: keep a capability an effect
+
+A capability kept an EFFECT cannot leave its bracket at all. okay-tx's connection is an operation of the bracket's
+row (`Tx.resource`): a program that performs it outside has that operation in its row and no handler for it — a
+type error, with or without the checker. The leak this module measures begins where a capability becomes a VALUE
+held by a closure: there the checker guards it, and where the checker cannot see, the guard. So: an effect where
+you can, a value with the checker where you must.
