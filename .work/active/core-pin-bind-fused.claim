@@ -1,6 +1,0 @@
-feature/core-pin-bind-fused 2026-10-16T22:27:30Z
-agent: claude-code (session 04094c70, thin layer)
-heartbeat: 2026-10-16T22:27:30Z
-status: in-progress
-done-so-far: claim
-next: okay-core pin 645c2e0 -> 15d4386 (bind-fused), gate on three platforms
