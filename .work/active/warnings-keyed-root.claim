@@ -1,6 +1,0 @@
-feature/warnings-keyed-root 2026-10-16T15:53:55Z
-agent: claude-code (session 04094c70, verify pin)
-heartbeat: 2026-10-16T15:53:55Z
-status: in-progress
-done-so-far: claim
-next: the 85 compile warnings of the full build at c13b12605 (keyed-root landing)
