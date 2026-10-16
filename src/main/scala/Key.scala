@@ -21,9 +21,20 @@ final class KeyOf[E[_]] private[okay] (val in: In.At[E, OnePure]):
 object KeyOf:
   private object byClass extends ClassValue[KeyOf[?]]:
     protected def computeValue(c: Class[?]): KeyOf[?] = KeyOf[[x] =>> Any](In.At(c))
+  /** THE KEYS LAST LOOKED UP, by the class's identity hash: an operation's key a field read and a test, `ClassValue`
+   * asked on a miss. A race on a slot harmless: a key is immutable, published through its final field, and either
+   * the slot's or the looked-up one is right */
+  private val recent = new Array[KeyOf[?]](64)
   private val byName = java.util.concurrent.ConcurrentHashMap[String, KeyOf[?]]()
   /** the key of the effect whose constructor is the class `c` */
-  def of[E[_]](c: Class[?]): KeyOf[E] = byClass.get(c).asInstanceOf[KeyOf[E]]
+  def of[E[_]](c: Class[?]): KeyOf[E] =
+    val i = System.identityHashCode(c) & 63
+    val k = recent(i)
+    if (k ne null) && (k.in.ref eq c) then k.asInstanceOf[KeyOf[E]]
+    else
+      val found = byClass.get(c)
+      recent(i) = found
+      found.asInstanceOf[KeyOf[E]]
   /** the key of an effect with no class of its own, by its name */
   def named[E[_]](n: String): KeyOf[E] =
     byName.computeIfAbsent(n, n => KeyOf[[x] =>> Any](In.At(n))).asInstanceOf[KeyOf[E]]
