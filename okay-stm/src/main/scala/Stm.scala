@@ -1,9 +1,8 @@
 package okay
 
-import okay.core.{+:, Paths}
+import okay.core.+:
 import okay.one.machine.Machine
 import okay.one.machine.Machine.Head
-import okay.one.row.In
 import okay.std.{Sim, TMap, TRef}
 import scala.collection.mutable
 

@@ -7,7 +7,7 @@ import scala.quoted.*
  * THE PLACE OF AN EFFECT, BY KEY (specs/keyed-root.md): an effect's operations are performed at a place by key — the
  * kernel's `In.At` — and its handler says the key is its own (`Handler.at`), so a program is the kernel's tree with no
  * row to fit and no paths to carry: a bind is one node. The key is the effect's constructor CLASS (`Writer`, `State`,
- * `Async`), found at compile time, one `In.At` a class shared by every program (`ClassValue`); an effect with no class
+ * `Async`), found at compile time, one `In.At` a class shared by every program (`KeyClasses`: a `ClassValue`, a map on Native); an effect with no class
  * of its own (`Produce = Id`) is keyed by its alias's name. Two effects of one constructor in one program — `Writer %
  * Int` beside `Writer % String` — share the key: the nearer handler answers both (okay-freer's union had the same
  * reading, `Distinct` refusing it).
@@ -19,11 +19,9 @@ final class KeyOf[E[_]] private[okay] (val in: In.At[E, OnePure]):
   override def toString: String = s"KeyOf(${in.ref})"
 
 object KeyOf:
-  private object byClass extends ClassValue[KeyOf[?]]:
-    protected def computeValue(c: Class[?]): KeyOf[?] = KeyOf[[x] =>> Any](In.At(c))
-  /** THE KEYS LAST LOOKED UP, by the class's identity hash: an operation's key a field read and a test, `ClassValue`
-   * asked on a miss. A race on a slot harmless: a key is immutable, published through its final field, and either
-   * the slot's or the looked-up one is right */
+  /** THE KEYS LAST LOOKED UP, by the class's identity hash: an operation's key a field read and a test, the
+   * platform's cache (`KeyClasses`) asked on a miss. A race on a slot harmless: a key is immutable, published through
+   * its final field, and either the slot's or the looked-up one is right */
   private val recent = new Array[KeyOf[?]](64)
   private val byName = java.util.concurrent.ConcurrentHashMap[String, KeyOf[?]]()
   /** the key of the effect whose constructor is the class `c` */
@@ -32,7 +30,7 @@ object KeyOf:
     val k = recent(i)
     if (k ne null) && (k.in.ref eq c) then k.asInstanceOf[KeyOf[E]]
     else
-      val found = byClass.get(c)
+      val found = KeyClasses.of(c)
       recent(i) = found
       found.asInstanceOf[KeyOf[E]]
   /** the key of an effect with no class of its own, by its name */

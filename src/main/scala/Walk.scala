@@ -72,7 +72,8 @@ object Walk:
   /** the place of an operation, at the row of any program: a place by key is in every row */
   def placed[F[_]](in: In[F, OnePure]): In[F, OnePure] = in match
     case at: In.At[F, ?] => at.again[OnePure]
-    case _ => throw IllegalStateException("Walk: an operation at a place not by key")
+    // at no row, a place is only by key: a path into the empty row has no case
+    case null => throw IllegalStateException("Walk: an operation at a place not by key")
 
   private def walk[Es[_], E[_], A](st: Head[OnePure, A], key: AnyRef): okay.one.![Step[E, A, Es], OnePure] =
     st match

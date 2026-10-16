@@ -391,6 +391,5 @@ okay-semantic-ossie/src/main/scala/okay/semantic/ossie/Program.scala	137	atom	di
 okay-semantic-ossie/src/main/scala/okay/semantic/ossie/Program.scala	106	expression	direct		BOUNDED: Parser increments depth on every descent; expression and atom refuse beyond Program.MaxDepth (128), including argument and window paths; TestExpressions pins rejection
 okay-semantic-ossie/src/main/scala/okay/semantic/ossie/Program.scala	184	windowSpec	direct		BOUNDED: Parser increments depth on every descent; expression and atom refuse beyond Program.MaxDepth (128), including argument and window paths; TestExpressions pins rejection
 src/main/scala/Program.scala	160	paths	direct		BOUNDED: per `+` of the sum of effects as written in the program's type (`runAll`'s Answers), a bound of the source text
-src/main/scala/Walk.scala	123	samePaths	direct		BOUNDED: per `+` of the sum of effects as written in the program's type (two Paths of one Es, leaf for leaf), a bound of the source text
-src/main/scala/Walk.scala	138	walk	direct		BOUNDED: `relocate`'s walk, per `+` of the sum of effects as written in the program's type, a bound of the source text
-src/main/scala/Program.scala	49	fitAt	direct		BOUNDED: a left-nested chain of binds and maps fitted by direct calls to Run.LeftDepth (64) levels, past it by the loop of Run.fitLeft
+src/main/scala/Program.scala	137	install	direct		BOUNDED: per `+` of the sum of effects as written in the program's type (`runAll`'s Answers and KeysOf), a bound of the source text
+src/main/scala/Program.scala	155	go	direct		BOUNDED: per `+` of the sum of effects as written in the program's type (`relayed`'s KeysOf), a bound of the source text

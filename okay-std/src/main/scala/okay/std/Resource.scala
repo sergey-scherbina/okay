@@ -1,7 +1,7 @@
 package okay.std
 
 import okay.{!, Answers, Effect, Handler, Run, defer, effect, pure}
-import okay.core.{Eff, Paths, Row, Split}
+import okay.core.{Row, Split}
 import okay.one.Cont
 import okay.one.handler.{Deep, Guard, Recovering, Handler as OneHandler}
 

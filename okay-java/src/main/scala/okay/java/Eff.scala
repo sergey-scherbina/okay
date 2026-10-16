@@ -1,10 +1,8 @@
 package okay.java
 
 import okay.{!, +, %, Answers, Async, Erased, Foreign, Run, effect}
-import okay.core.{Paths, Req}
 import okay.std.{Reader, State, Throws}
 import okay.given
-import okay.one.row.In
 import java.util.function.{BiFunction, Function as JFunction, Supplier, UnaryOperator}
 
 /**

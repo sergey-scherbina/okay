@@ -1,7 +1,7 @@
 package okay.std
 
 import okay.{!, Run, Within, defer, effect, pure}
-import okay.core.{+:, Eff, Paths, Row, Split}
+import okay.core.Split
 import okay.one.Cont
 import okay.one.row.{In, Pure as OnePure}
 import okay.one.machine.Machine

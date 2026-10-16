@@ -1,7 +1,7 @@
 package okay.std
 
 import okay.{!, +, Effect, Handler, Join, Pure, Run, Within, effect, pure}
-import okay.core.{Eff, Paths, Row, Split}
+import okay.core.Split
 
 /**
  * A VALUE THAT MAY NOT BE THERE, as an effect of its own

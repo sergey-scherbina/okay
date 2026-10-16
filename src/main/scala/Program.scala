@@ -5,6 +5,7 @@ import okay.one.Cont
 import okay.one.handler.Handler as OneHandler
 import okay.one.row.{In, Removed, Pure as OnePure}
 import scala.language.implicitConversions
+import scala.annotation.unused
 
 /**
  * THE PLATFORM'S PROGRAM, A VALUE — THE KERNEL'S TREE ITSELF (specs/keyed-root.md): `A ! Es`, a program of `A`
@@ -107,10 +108,11 @@ sealed abstract class KeysOf[Es[_]]
 object KeysOf:
   private[okay] final class One[E[_]](val key: KeyOf[E]) extends KeysOf[E]
   private[okay] final class Two[F[_], G[_]](val left: KeysOf[F], val right: KeysOf[G]) extends KeysOf[okay.core.+[F, G]]
-  private[okay] object NoneK extends KeysOf[Pure]
+  /** no effects: no key (public: the inline givens below reach it where they are expanded) */
+  object NoneK extends KeysOf[Pure]
   /** ONE effect not known here (an abstract `E` alone): its handler answers every operation by key that comes to it
    * (`Handler.anyKey`) — never a part of a sum, where it would answer the others' */
-  private[okay] object AnyK extends KeysOf[[x] =>> Any]
+  object AnyK extends KeysOf[[x] =>> Any]
   import scala.compiletime.summonFrom
   inline given derived[Es[_]]: KeysOf[Es] = summonFrom {
     case _: (Es[Any] =:= NoEffects[Any]) => NoneK.asInstanceOf[KeysOf[Es]]
@@ -230,7 +232,7 @@ object Within:
   def it[Es[_], Es2[_]]: Within[Es, Es2] = It.asInstanceOf[Within[Es, Es2]]
   def same[Es[_]]: Within[Es, Es] = it
   def none[Es2[_]]: Within[Pure, Es2] = it
-  def pair[F[_], G[_], Es2[_]](f: Within[F, Es2], g: Within[G, Es2]): Within[okay.core.+[F, G], Es2] = it
+  def pair[F[_], G[_], Es2[_]](@unused f: Within[F, Es2], @unused g: Within[G, Es2]): Within[okay.core.+[F, G], Es2] = it
   /** proved where it is asked for */
   inline given derived[Es[_], Es2[_]]: Within[Es, Es2] =
     inline if Evidence.among[Es, Es2] then it[Es, Es2]
@@ -247,8 +249,8 @@ object Join extends JoinSum:
     It.asInstanceOf[Join[Es, Es3] { type Out[x] = O[x] }]
   def same[Es[_]]: Join[Es, Es] { type Out[x] = Es[x] } = it[Es, Es, Es]
   def sum[Es[_], Es3[_]]: Join[Es, Es3] { type Out[x] = Both[Es, Es3, x] } = it[Es, Es3, [x] =>> Both[Es, Es3, x]]
-  def within[Es[_], Es3[_]](w: Within[Es, Es3]): Join[Es, Es3] { type Out[x] = Es3[x] } = it[Es, Es3, Es3]
-  def contains[Es[_], Es3[_]](w: Within[Es3, Es]): Join[Es, Es3] { type Out[x] = Es[x] } = it[Es, Es3, Es]
+  def within[Es[_], Es3[_]](@unused w: Within[Es, Es3]): Join[Es, Es3] { type Out[x] = Es3[x] } = it[Es, Es3, Es3]
+  def contains[Es[_], Es3[_]](@unused w: Within[Es3, Es]): Join[Es, Es3] { type Out[x] = Es[x] } = it[Es, Es3, Es]
   /** the same effects */
   given sameGiven[Es[_]]: (Join[Es, Es] { type Out[x] = Es[x] }) = same[Es]
   /** the program's effects among the continuation's */
