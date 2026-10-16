@@ -84,8 +84,8 @@ object Maybe:
   def prune[A, Es[_]](p: A ! Es)(using s: Split[Es, Maybe], j: Join[Choose, s.Rest]): A ! j.Out =
     val q: A ! Choose + s.Rest =
       p.translate[Maybe, Choose]([X] => (m: Maybe[X]) => effect[Choose, X](Choose(m.value.toList)))
-    new Run[j.Out, A]:
-      def on[R <: Row](ps: Paths[j.Out, R]): Eff[R, A] = q.fit(Paths.Both(j.left(ps), j.right(ps)))
+    // the same program: the effects joined are the compiler's
+    Run.of[A, j.Out](Run.kernel(q))
 
   extension [A, Es[_]](p: A ! Es)
     /** where p found nothing, try q — a handler installed over p alone,

@@ -64,5 +64,5 @@ object Pull:
 
   /** the same, the producer performing `G` between tells: `G` is
    * where the reader's steps run */
-  def toldIn[W, G[_], A](a: A ! Writer % W + G): Pull[W, G] =
+  def toldIn[W, G[_], A](a: A ! Writer % W + G)(using okay.KeyOf[G]): Pull[W, G] =
     of[[X] =>> A ! Writer % X + G, W, G](a)(using writerStreamIn[A, G])

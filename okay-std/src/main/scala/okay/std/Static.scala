@@ -260,7 +260,7 @@ object Static:
      * Each node earns its `Delay` (a bare `delay(t)` where there is
      * nothing to do afterwards — defer-with-pure-left-nests).
      */
-    def toProgram: A ! F = s match
+    def toProgram(using okay.KeyOf[F]): A ! F = s match
       case Pure(a) => okay.pure[A, F](a)
       case Op(fa) => effect(fa)
       case Ap(f, a) => Run.flatMap(defer(f.toProgram))(g => Run.map(a.now)(g))(using Join.same[F])
@@ -288,7 +288,7 @@ object Static:
      * right-nested `Ap` pays the fallback, and only for its own
      * depth (TestStatic has the 10 000-deep right-nested spine).
      */
-    private def now: A ! F = s match
+    private def now(using okay.KeyOf[F]): A ! F = s match
       case Pure(a) => okay.pure[A, F](a)
       case Op(fa) => effect(fa)
       case _ => defer(s.toProgram)

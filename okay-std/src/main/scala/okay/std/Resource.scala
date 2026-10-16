@@ -255,15 +255,15 @@ object Resource {
  * give the effect-polymorphic form. It belonged to `bracketNow` until
  * bracket-forwards-no-effects.
  */
-def bracket[R, A, Es[_]](acquire: => R)(release: R => Unit)(use: R => A ! Es): A ! Es = new Run[Es, A]:
+def bracket[R, A, Es[_]](acquire: => R)(release: R => Unit)(use: R => A ! Es): A ! Es =
   // the acquire when the program RUNS, each time it does — a program
   // built once and run twice acquires twice (the test "releases after
   // them"); `use(r)` built inside the guard, so a throw building it
   // releases too
-  def on[T <: Row](ps: Paths[Es, T]): Eff[T, A] = Cont.defer {
+  Run.of(Cont.defer {
     val r = acquire
-    Resource.releasing(Cont.defer(use(r).fit(ps)), () => release(r))
-  }
+    Resource.releasing(Cont.defer(Run.kernel[A, Es, okay.one.row.Pure](use(r))), () => release(r))
+  })
 
 /**
  * Bracket over any Answers-able effect F (Async, Produce, Pure, ...),

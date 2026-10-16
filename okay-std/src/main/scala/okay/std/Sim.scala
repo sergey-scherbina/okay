@@ -37,7 +37,9 @@ import scala.util.Random
 object Sim {
 
   /** the row a fiber is stepped at: `Op`, and nothing else */
-  private type Fibers = Op +: okay.core.Pure
+  private type Fibers = okay.one.row.Pure
+  /** the key of `Op`: its constructor's */
+  private val opKey: AnyRef = summon[okay.KeyOf[Op]].ref
 
   /** a simulated fiber's handle */
   final class Fiber private[Sim] (val id: Int)
@@ -120,12 +122,11 @@ object Sim {
 
     // a fiber's program is stepped at the row of `Op` alone: every
     // operation comes out, the rest with it
-    val place = okay.core.Paths.One(In.Here[Op, okay.core.Pure]())
 
     def spawn(prog: Unit ! Op): Fiber =
       val f = new Fiber(nextFiber)
       nextFiber += 1
-      runnable += Task(f.id, () => Machine.head(prog.fit(place)))
+      runnable += Task(f.id, () => Machine.head(okay.Run.kernel[Unit, Op, Fibers](prog)))
       f
 
     val _ = spawn(main)
@@ -155,9 +156,8 @@ object Sim {
         case p: Head.Paused[?, ?, ?, x, ?, ?, ?, ?, ?] =>
           // the paused program IS the captured delimited continuation, as
           // data; the operation's place in the row types it — the head
-          Stepping.own(p.in) match
-            case null => In.absurd(Stepping.outside(p.in))
-            case same: In.Same[f, Op] => perform[x](t.fiber, same(p.op), p.resume(_), p)
+          if !Stepping.own(p.in, opKey) then throw IllegalStateException(s"Sim: an operation not of a fiber: ${p.op}")
+          else perform[x](t.fiber, p.op.asInstanceOf[Op[x]], p.resume(_), p)
 
     /** `op` performed for fiber `fid`; `k` its rest, `at` the step it came in (to hand back as it was) */
     def perform[Y](fid: Int, op: Op[Y], k: Y => Head[Fibers, Unit], at: Head[Fibers, Unit]): Unit = op match

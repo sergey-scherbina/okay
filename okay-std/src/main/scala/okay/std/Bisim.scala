@@ -1,7 +1,7 @@
 package okay.std
 
 import okay.{!, +, %}
-import okay.core.{Paths, Row}
+type Row = okay.one.row.Pure
 import okay.one.row.In
 import okay.one.machine.Machine
 import okay.one.machine.Machine.Head
@@ -64,8 +64,8 @@ object Bisim:
   trait Answers[Es[_]]:
     /** how many effects, the places of the row */
     private[Bisim] def size: Int
-    /** the paths of `Es` in the row the walk steps at, its effects from place `from` on */
-    private[Bisim] def paths(from: Int): Paths[Es, Row]
+    /** the keys of `Es`'s effects, in the order `+` wrote them: an operation's place its key's index */
+    private[Bisim] def keys: List[AnyRef]
     /** the answers to the operation at place `at` */
     private[Bisim] def answer(at: Int, op: Any): List[Any]
 
@@ -74,7 +74,7 @@ object Bisim:
       val f = this
       new Answers[Es + G]:
         private[Bisim] def size: Int = f.size + g.size
-        private[Bisim] def paths(from: Int): Paths[Es + G, Row] = Paths.Both(f.paths(from), g.paths(from + f.size))
+        private[Bisim] def keys: List[AnyRef] = f.keys ++ g.keys
         private[Bisim] def answer(at: Int, op: Any): List[Any] =
           if at < f.size then f.answer(at, op) else g.answer(at - f.size, op)
 
@@ -84,9 +84,9 @@ object Bisim:
      * steps at a row it lays out itself, its places in the order of the
      * members; an operation at this member's place is one of `F`'s.
      */
-    def of[F[_]](f: [X] => F[X] => List[X]): Answers[F] = new Answers[F]:
+    def of[F[_]](f: [X] => F[X] => List[X])(using k: okay.KeyOf[F]): Answers[F] = new Answers[F]:
       private[Bisim] def size: Int = 1
-      private[Bisim] def paths(from: Int): Paths[F, Row] = Paths.One(place[F](from))
+      private[Bisim] def keys: List[AnyRef] = List(k.ref)
       private[Bisim] def answer(at: Int, op: Any): List[Any] = f(op.asInstanceOf[F[Any]])
 
     /** every `get` answered by each sample in turn; an `update` by what its function says of each */
@@ -111,19 +111,12 @@ object Bisim:
     val stop: Answers[Stop] = of[Stop]([X] => (op: Stop[X]) => op match
       case Stop.Now => Nil)
 
-  /** the place `at` of the row the walk steps at — `at` handlers out. The row is a list of the members' effects;
-   * its type is not written (`Row`), the places are what the walk reads */
-  private def place[F[_]](at: Int): In[F, Row] =
-    @tailrec def go(n: Int, in: In[F, Row]): In[F, Row] =
-      if n == 0 then in else go(n - 1, In.There[F, F, Row](in).asInstanceOf[In[F, Row]])
-    go(at, In.Here[F, Row]().asInstanceOf[In[F, Row]])
-
-  /** the place of an operation the walk met: how many handlers out */
-  private def placeOf(in: In[?, ?]): Int =
-    @tailrec def go(in: In[?, ?], n: Int): Int = in match
-      case t: In.There[?, ?, ?] => go(t.in, n + 1)
-      case _ => n
-    go(in, 0)
+  /** the place of an operation the walk met: its key's index among the members' (the first of the same key) */
+  private def placeOf(in: In[?, ?], keys: List[AnyRef]): Int = in match
+    case at: In.At[?, ?] =>
+      val i = keys.indexWhere(_ eq at.ref)
+      if i < 0 then throw IllegalStateException("Bisim: an operation of an effect no member answers") else i
+    case _ => throw IllegalStateException("Bisim: an operation at a place not by key")
 
   /** what the walk found */
   enum Verdict:
@@ -153,12 +146,12 @@ object Bisim:
    */
   def check[Es[_], A](p: A ! Es, q: A ! Es, depth: Int = 32, budget: Int = 100_000)
                       (using ans: Answers[Es]): Verdict =
-    val at = ans.paths(0)
-    def start(r: A ! Es): () => Head[Row, A] = () => Machine.head(r.fit(at))
+    val keys = ans.keys
+    def start(r: A ! Es): () => Head[Row, A] = () => Machine.head(okay.Run.kernel[A, Es, Row](r))
     @tailrec def go(todo: List[Frame[A]], paths: Int, cut: Int): Verdict = todo match
       case Nil => Verdict.Same(paths, cut)
       case _ if paths + cut >= budget => Verdict.Same(paths, cut + todo.size)
-      case Frame(path, l, r, d) :: rest => (view(l), view(r)) match
+      case Frame(path, l, r, d) :: rest => (view(l, keys), view(r, keys)) match
         case (Left(a), Left(b)) =>
           if a == b then go(rest, paths + 1, cut)
           else Verdict.Differ(path.reverse, s"returned $a", s"returned $b")
@@ -186,7 +179,7 @@ object Bisim:
   private final case class Frame[A](path: List[String], l: () => Head[Row, A], r: () => Head[Row, A], d: Int)
 
   /** an operation at its place, and the rest — `k` as data, resumed once an answer (multi-shot) */
-  private final class Met[A, X](op: X, at: Int, k: Stepping.Paused[Row, A]):
+  private final class Met[A, X](op: X, at: Int, k: Stepping.Paused[A]):
     def show: String = String.valueOf(op)
     def sameOp(that: Met[A, ?]): Boolean = that.is(op, at)
     private def is(other: Any, place: Int): Boolean = op == other && at == place
@@ -197,6 +190,6 @@ object Bisim:
     private def resume(x: Any): Head[Row, A] = Stepping.resume(k, x)
 
   /** the head form a step leaves: a value, or an operation to answer */
-  private def view[A](st: () => Head[Row, A]): Either[A, Met[A, ?]] = st() match
+  private def view[A](st: () => Head[Row, A], keys: List[AnyRef]): Either[A, Met[A, ?]] = st() match
     case Head.Done(a) => Left(a)
-    case p: Head.Paused[?, ?, ?, ?, ?, ?, ?, ?, ?] => Right(Met(p.op, placeOf(p.in), p))
+    case p: Head.Paused[?, ?, ?, ?, ?, ?, ?, ?, ?] => Right(Met(p.op, placeOf(p.in, keys), p))

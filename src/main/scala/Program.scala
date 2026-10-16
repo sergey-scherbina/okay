@@ -18,13 +18,18 @@ import scala.language.implicitConversions
  */
 object Run:
   /** the kernel's program at no row: its operations at places by key — `Es` the compiler's, phantom */
-  opaque type Prog[+A, Es[_]] <: AnyRef = okay.one.![A, OnePure]
+  opaque type Prog[Es[_], +A] <: AnyRef = okay.one.![A, OnePure]
 
   /** the kernel's program behind it, at any row: a place by key is in every row */
   inline def kernel[A, Es[_], R <: okay.core.Row](p: A ! Es): Eff[R, A] = p.asInstanceOf[Eff[R, A]]
   /** a kernel program over no row as a program needing `Es`: its operations at places by key (THE TRUSTED STEP:
    * the caller says they are of `Es`) */
   inline def of[A, Es[_]](e: okay.one.![A, OnePure]): A ! Es = e
+
+  /** a handler of the kernel's, `h`, installed at `E`'s key around `p`: what a runner written with the kernel's
+   * forms (a `Stateful` of its own) does — the effects of the answer the caller's (`Out`, its `Split`'s rest) */
+  inline def install[E[_], A, B, Es[_], Out[_]](p: A ! Es)(h: OneHandler[E, OnePure, A, B])(using k: KeyOf[E]): B ! Out =
+    Cont.handle(p)(h.keyed(k.ref))(using Removed.Absent[E, OnePure]())
 
   extension [A, Es[_]](p: A ! Es)
     /** the program at the row of a place: itself — its places are by key (kept for code that fitted paths) */
@@ -63,6 +68,12 @@ object Run:
     /** RUN with each effect ANSWERED in place by its `Answers` (a sum's assembled from its parts) */
     inline def runWith(using a: Answers[Es], ks: KeysOf[Es]): A = Program.runAll(p, a, ks)
 
+  extension [A, E[_]](p: A ! E)
+    /** `h` around a program whose ONE effect is `E`: every operation by key that comes to it answered by `h`
+     * (the kernel's `Handler.anyKey`) — no key asked for, so `E` may be abstract */
+    def handleAll[O[_]](h: Handler[E, O]): O[A] ! Pure =
+      Cont.handle(p)(h.kernel[OnePure, A].keyed(okay.one.handler.Handler.anyKey))(using Removed.Absent[E, OnePure]())
+
   extension [A](p: A ! Pure)
     /** a program needing nothing: its value */
     def run: A = Cont.run(p)
@@ -74,7 +85,7 @@ object Run:
       def apply[X](op: E[X]): okay.one.![X, OnePure] = f(op)
 
 /** `A ! Es`: a program of `A` needing `Es` — a value, the kernel's tree */
-infix type ![+A, Es[_]] = Run.Prog[A, Es]
+infix type ![+A, Es[_]] = Run.Prog[Es, A]
 
 /** `A !! Es`: the facade's program, a context function of the place */
 infix type !![+A, Es[_]] = okay.core.![A, Es]

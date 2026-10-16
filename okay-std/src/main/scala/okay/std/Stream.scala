@@ -117,7 +117,7 @@ extension [S[_], F[_], A](s: S[A])(using St: Stream[S, F], H: Answers[F])
 object Stream:
   /** a program of the one effect `F`, each operation answered by the `Answers` (the kernel's `Answering`): its value */
   def runWith[X, F[_]](p: X ! F)(using H: Answers[F]): X =
-    p.handle(Handler.answering[F]([Y] => (op: F[Y]) => H.handle(op))).run
+    p.handleAll(Handler.answering[F]([Y] => (op: F[Y]) => H.handle(op))).run
 
   /** transform each element (the monad owns the postfix .map) */
   def map[S[_], F[_], A, B](s: S[A])(f: A => B)(using Stream[S, F], Answers[F]): LazyList[B] =

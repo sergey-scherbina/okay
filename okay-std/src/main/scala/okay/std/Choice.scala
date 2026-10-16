@@ -137,7 +137,7 @@ def runChoice[A, Es[_]](a: A ! Es)(using s: Split[Es, Choose]): Seq[A] ! s.Rest 
  * means whatever the reader guesses — but seeing that the two are the
  * same handler is the point.
  */
-def runSeq[S[+X] <: Seq[X], A, Es[_]](p: A ! Es)(using sp: Split[Es, S]): Seq[A] ! sp.Rest =
+def runSeq[S[+X] <: Seq[X], A, Es[_]](p: A ! Es)(using sp: Split[Es, S], k: okay.KeyOf[S]): Seq[A] ! sp.Rest =
   p.handle(Handler.deep[S, Seq]([A] => (a: A) => Seq(a))(
     [A, X] => (s: S[X], k: X => Seq[A] ! Pure) =>
       foldM[X, Seq[A], Pure](s)(Seq.empty[A])((prev, x) => k(x).map(prev ++ _))))
@@ -155,9 +155,8 @@ private[std] def foldM[X, B, Es[_]](xs: Iterable[X])(z: B)(f: (B, X) => B ! Es):
   okay.defer(go(0, z))
 
 /** `x` with `onUnwind` called when an error thrown in it leaves it — rethrown (the kernel's `recover`) */
-private[std] def unwinding[A, Es[_]](onUnwind: () => Unit)(x: A ! Es): A ! Es = new Run[Es, A]:
-  def on[R <: Row](ps: Paths[Es, R]): Eff[R, A] =
-    okay.one.Cont.recover(x.fit(ps))(t => { onUnwind(); throw t })
+private[std] def unwinding[A, Es[_]](onUnwind: () => Unit)(x: A ! Es): A ! Es =
+  Run.of(okay.one.Cont.recover(Run.kernel[A, Es, okay.one.row.Pure](x))(t => { onUnwind(); throw t }))
 
 /** the class IS the identity for a collection: the element type is
  * erased, so the test is total for exactly the reason `Choose`'s is —

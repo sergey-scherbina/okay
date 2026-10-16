@@ -78,11 +78,9 @@ object Once:
    * `Once` already, else `Once` added (`Join`).
    */
   def once[A, Es[_]](p: => A ! Es)(using j: Join[Once, Es]): A ! j.Out =
-    // `Once` and p's effects among the joined ones: each by its side of the join
-    given Within[Once, j.Out] = new Within[Once, j.Out]:
-      def paths[R <: Row](ps: Paths[j.Out, R]): Paths[Once, R] = j.left(ps)
-    val inP: Within[Es, j.Out] = new Within[Es, j.Out]:
-      def paths[R <: Row](ps: Paths[j.Out, R]): Paths[Es, R] = j.right(ps)
+    // `Once` and p's effects among the joined ones (the join proved it)
+    given Within[Once, j.Out] = Within.it
+    val inP: Within[Es, j.Out] = Within.it
     at[A, j.Out](new Handle[A])(h => effect[Once, Option[A]](Force(h)).at[j.Out])(
       (h, a) => effect[Once, A](Store(h, a)).at[j.Out])(() => p.at[j.Out](using inP))
 

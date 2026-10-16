@@ -6,7 +6,7 @@ import okay.{Cps, />>}
 import okay.{Fold, FoldUntil}
 import okay.one.Cont
 import okay.one.handler.{Stateful, Handler as OneHandler}
-import okay.one.row.In
+import okay.one.row.{In, Pure as OnePure}
 import okay.one.machine.Machine.Head
 import scala.annotation.tailrec
 
@@ -61,7 +61,7 @@ object Writer {
    * Re-emitting `e` does not loop: each operation is TRANSLATED (the kernel's `Translating`), its program run
    * outside the translating handler, where `F` is the handler of `F` around.
    */
-  def tracing[A, F[_], W, Es[_]](prog: A ! Es)(show: [X] => F[X] => W)(using s: Split[Es, F])
+  def tracing[A, F[_], W, Es[_]](prog: A ! Es)(show: [X] => F[X] => W)(using s: Split[Es, F], k: okay.KeyOf[F])
   : A ! Writer % W + F + s.Rest =
     prog.translate[F, Writer % W + F]([X] => (e: F[X]) => tell(show(e)) >> effect[F, X](e))
 
@@ -121,13 +121,11 @@ object Writer {
    */
   def loopWith[W, S, A, R, Es[_]](a: A ! Es)(z: S)(step: (S, W) => S)(finish: (S, A) => R)
                                  (using s: Split[Es, Writer % W]): R ! s.Rest =
-    new Run[s.Rest, R]:
-      def on[T <: Row](ps: Paths[s.Rest, T]): Eff[T, R] =
-        Cont.handle(a.fit(s.paths(ps)))(new Stateful[Writer % W, T, S, A, R]:
-          def initial: S = z
-          def ret(st: S, x: A): Eff[T, R] = Cont.pure(finish(st, x))
-          def value[X](st: S, op: Writer[W, X]): X = op match { case Say(_) => () }
-          def next[X](st: S, op: Writer[W, X]): S = op match { case Say(w) => step(st, w) })
+    Run.install[Writer % W, A, R, Es, s.Rest](a)(new Stateful[Writer % W, OnePure, S, A, R]:
+      def initial: S = z
+      def ret(st: S, x: A) = Cont.pure(finish(st, x))
+      def value[X](st: S, op: Writer[W, X]): X = op match { case Say(_) => () }
+      def next[X](st: S, op: Writer[W, X]): S = op match { case Say(w) => step(st, w) })
 
   /**
    * A fold that STOPS (specs/fold-until.md): the program STEPPED (the
@@ -141,10 +139,8 @@ object Writer {
    * promising it would have to invent one.
    */
   def foldUntil[W, S, A, R, Es[_]](a: A ! Es)(using s: Split[Es, Writer % W], K: FoldUntil[W, S, R]): R ! s.Rest =
-    new Run[s.Rest, R]:
-      def on[T <: Row](ps: Paths[s.Rest, T]): Eff[T, R] =
-        if K.done(K.init) then Cont.pure(K.end(K.init))
-        else Cont.defer(Stepping.until(Stepping.start(a, s.paths(ps)), K.init, Telling[W](), K))
+    if K.done(K.init) then pure(K.end(K.init))
+    else Run.of(Cont.defer(Stepping.until(Stepping.start(a), Telling.key, K.init, Telling[W](), K)))
 
   /** the handler as a value: `p.handle(Writer.log)` answers what was told, in order, and `A` — the kernel's
    * `Stateful`, a cons a tell, reversed once at the end */
@@ -341,8 +337,7 @@ object Writer {
    * past a value is computed before it is asked for.
    */
   def uncons[W, A](a: A ! Writer % W): Either[A, (W, A ! Writer % W)] =
-    val template = Paths.One(In.Here[Writer % W, okay.core.Pure]())
-    Stepping.nextPure(Stepping.start(a, template), template, Telling[W]())
+    Stepping.nextPure(Stepping.start(a), Telling.key, Telling[W]())
 
   /**
    * The same observation for a writer program performing ARBITRARY
@@ -362,10 +357,7 @@ object Writer {
    * (`IllegalStateException`) — as `Logic.msplit`'s rest.
    */
   def uncons[W, A, G[_]](a: A ! Writer % W + G): Either[A, (W, A ! Writer % W + G)] ! G =
-    new Run[G, Either[A, (W, A ! Writer % W + G)]]:
-      def on[T <: Row](ps: Paths[G, T]): Eff[T, Either[A, (W, A ! Writer % W + G)]] =
-        val template = Paths.Both(Paths.One(In.Here[Writer % W, T]()), ps.under[Writer % W])
-        Cont.defer(Stepping.next(Stepping.start(a, template), template, Telling[W]()))
+    Run.of(Cont.defer(Stepping.next(Stepping.start(a), Telling.key, Telling[W]())))
 
   /**
    * `TypeableK` by the CLASS of `Say` alone — evidence for code that
@@ -395,6 +387,9 @@ object Writer {
 }
 
 /** what a stepped `Writer % W` operation hands over — its told value — and what it answers: nothing */
+private[std] object Telling:
+  /** the key of every `Writer % W`: its constructor's */
+  val key: AnyRef = summon[okay.KeyOf[Writer % Any]].ref
 private[std] final class Telling[W] extends Stepping.Told[Writer % W, W]:
   def element[X](op: Writer[W, X]): W = op match { case Writer.Say(w) => w }
   def answer[X](op: Writer[W, X]): X = op match { case Writer.Say(_) => () }
@@ -410,62 +405,61 @@ private[std] final class Telling[W] extends Stepping.Told[Writer % W, W]:
  */
 private[std] object Stepping:
   /** the walking machinery is the root's (`okay.Walk`): one for every walk of the platform */
-  type Paused[R <: Row, A] = okay.Walk.Paused[R, A]
-  type Rest[Es[_], E[_], T <: Row, A] = okay.Walk.Rest[Es, E, T, A]
-  def Rest[Es[_], E[_], T <: Row, A](template: Paths[Es, E +: T], next: () => Head[E +: T, A]): Rest[Es, E, T, A] =
-    okay.Walk.Rest[Es, E, T, A](template, next)
-  export okay.Walk.{own, outside, moved, samePaths, relocate, start}
-  def resume[R <: Row, A](at: Paused[R, A], v: Any): Head[R, A] = okay.Walk.resumeAt(at, v)
+  type Paused[A] = okay.Walk.Paused[A]
+  export okay.Walk.{own, placed, start}
+  def Rest[Es[_], A](next: () => Head[OnePure, A]): A ! Es = okay.Walk.rest[Es, A](next)
+  def resume[A](at: Paused[A], v: Any): Head[OnePure, A] = okay.Walk.resumeAt(at, v)
 
   /** what an operation of the viewed effect hands over, and what it answers */
   abstract class Told[E[_], W]:
     def element[X](op: E[X]): W
     def answer[X](op: E[X]): X
 
-  /** an operation of the row outside the viewed effect, answered here */
-  abstract class Other[T <: Row]:
-    def apply[F[_], X](op: F[X], in: In[F, T]): X
+  /** an operation of an effect outside the viewed one, answered here */
+  abstract class Other:
+    def apply[F[_], X](op: F[X], in: In[F, OnePure]): X
 
   object Other:
-    /** no row outside: none there */
-    def none: Other[okay.core.Pure] = new Other[okay.core.Pure]:
-      def apply[F[_], X](op: F[X], in: In[F, okay.core.Pure]): X = In.absurd(in)
+    /** no effect outside: none there */
+    def none: Other = new Other:
+      def apply[F[_], X](op: F[X], in: In[F, OnePure]): X =
+        throw IllegalStateException(s"an operation of no effect of the program: $op")
     /** `G` outside, each operation answered by `H` — a single operation's interpretation, no program built */
-    def answers[G[_]](H: Answers[G]): Other[G +: okay.core.Pure] = new Other[G +: okay.core.Pure]:
-      def apply[F[_], X](op: F[X], in: In[F, G +: okay.core.Pure]): X = In.same(in, In.Here[G, okay.core.Pure]()) match
-        case null => In.absurd(outside(in))
-        case same: In.Same[F, G] => H.handle(same(op))
+    def answers[G[_]](H: Answers[G])(using k: okay.KeyOf[G]): Other = new Other:
+      def apply[F[_], X](op: F[X], in: In[F, OnePure]): X =
+        if own(in, k.ref) then H.handle(op.asInstanceOf[G[X]]) else none(op, in)
 
   /** the next element and the rest, of a program with no other effect */
-  def nextPure[Es[_], E[_], A, W](st: Head[E +: okay.core.Pure, A], template: Paths[Es, E +: okay.core.Pure],
-      told: Told[E, W]): Either[A, (W, A ! Es)] = st match
-    case Head.Done(a) => Left(a)
-    case p: Head.Paused[?, ?, ?, ?, ?, ?, ?, ?, ?] => own(p.in) match
-      case null => In.absurd(outside(p.in))
-      case same: In.Same[f, E] =>
-        val op = same(p.op)
-        Right((told.element(op), Rest[Es, E, okay.core.Pure, A](template, () => resume(p, told.answer(op)))))
+  def nextPure[Es[_], E[_], A, W](st: Head[OnePure, A], key: AnyRef, told: Told[E, W]): Either[A, (W, A ! Es)] =
+    st match
+      case Head.Done(a) => Left(a)
+      case p: Head.Paused[?, ?, ?, ?, ?, ?, ?, ?, ?] =>
+        if !own(p.in, key) then throw IllegalStateException(s"an operation of no effect of the program: ${p.op}")
+        else
+          val op = p.op.asInstanceOf[E[Any]]
+          Right((told.element(op), Rest[Es, A](() => resume(p, told.answer(op)))))
 
-  /** the next element and the rest, the other effects' operations met on the way performed at `T` */
-  def next[Es[_], E[_], T <: Row, A, W](st: Head[E +: T, A], template: Paths[Es, E +: T], told: Told[E, W])
-  : Eff[T, Either[A, (W, A ! Es)]] = st match
+  /** the next element and the rest, the other effects' operations met on the way performed where the view runs */
+  def next[Es[_], E[_], A, W](st: Head[OnePure, A], key: AnyRef, told: Told[E, W])
+  : okay.one.![Either[A, (W, A ! Es)], OnePure] = st match
     case Head.Done(a) => Cont.pure(Left(a))
-    case p: Head.Paused[?, ?, f, x, ?, ?, ?, ?, ?] => own(p.in) match
-      case null => Cont.perform[f, T, x](p.op)(using outside(p.in)).flatMap(v => next(p.resume(v), template, told))
-      case same: In.Same[f, E] =>
-        val op = same(p.op)
-        Cont.pure(Right((told.element(op), Rest[Es, E, T, A](template, () => resume(p, told.answer(op))))))
+    case p: Head.Paused[?, ?, f, x, ?, ?, ?, ?, ?] =>
+      if !own(p.in, key) then Cont.perform[f, OnePure, x](p.op)(using placed(p.in)).flatMap(v => next(p.resume(v), key, told))
+      else
+        val op = p.op.asInstanceOf[E[Any]]
+        Cont.pure(Right((told.element(op), Rest[Es, A](() => resume(p, told.answer(op))))))
 
   /** a fold that stops: each element added, the paused program dropped once the state is done; the other
-   * effects' operations performed at `T` */
-  def until[E[_], T <: Row, A, W, S, R](st0: Head[E +: T, A], s0: S, told: Told[E, W], K: FoldUntil[W, S, R]): Eff[T, R] =
-    def again(st: Head[E +: T, A], s: S): Eff[T, R] = loop(st, s)
-    @tailrec def loop(st: Head[E +: T, A], s: S): Eff[T, R] = st match
+   * effects' operations performed where the fold runs */
+  def until[E[_], A, W, S, R](st0: Head[OnePure, A], key: AnyRef, s0: S, told: Told[E, W], K: FoldUntil[W, S, R])
+  : okay.one.![R, OnePure] =
+    def again(st: Head[OnePure, A], s: S): okay.one.![R, OnePure] = loop(st, s)
+    @tailrec def loop(st: Head[OnePure, A], s: S): okay.one.![R, OnePure] = st match
       case Head.Done(_) => Cont.pure(K.end(s))
-      case p: Head.Paused[?, ?, f, x, ?, ?, ?, ?, ?] => own(p.in) match
-        case null => Cont.perform[f, T, x](p.op)(using outside(p.in)).flatMap(v => again(p.resume(v), s))
-        case same: In.Same[f, E] =>
-          val op = same(p.op)
+      case p: Head.Paused[?, ?, f, x, ?, ?, ?, ?, ?] =>
+        if !own(p.in, key) then Cont.perform[f, OnePure, x](p.op)(using placed(p.in)).flatMap(v => again(p.resume(v), s))
+        else
+          val op = p.op.asInstanceOf[E[Any]]
           val s2 = K.add(s, told.element(op))
           if K.done(s2) then Cont.pure(K.end(s2)) else loop(resume(p, told.answer(op)), s2)
     loop(st0, s0)
@@ -476,21 +470,21 @@ private[std] object Stepping:
    * The paused program after an element is resumed when the next one is asked for. A throw — the program's, or
    * `other`'s — ends the iterator.
    */
-  final class Iter[E[_], W, T <: Row, A](first: () => Head[E +: T, A], told: Told[E, W], other: Other[T])
+  final class Iter[E[_], W, A](first: () => Head[OnePure, A], key: AnyRef, told: Told[E, W], other: Other)
       extends Iterator[W]:
     // the element last handed over, paused, and its answer: resumed for the next; `null` before the first
-    private var at: Paused[E +: T, A] | Null = null
+    private var at: Paused[A] | Null = null
     private var answer: Any = null
     private var ready = false
     private var ended = false
     private var elem: W = scala.compiletime.uninitialized
 
-    @tailrec private def advance(st: Head[E +: T, A]): Unit = st match
+    @tailrec private def advance(st: Head[OnePure, A]): Unit = st match
       case Head.Done(_) => ended = true; at = null
-      case p: Head.Paused[?, ?, ?, ?, ?, ?, ?, ?, ?] => own(p.in) match
-        case null => advance(resume(p, other(p.op, outside(p.in))))
-        case same: In.Same[f, E] =>
-          val op = same(p.op)
+      case p: Head.Paused[?, ?, ?, ?, ?, ?, ?, ?, ?] =>
+        if !own(p.in, key) then advance(resume(p, other(p.op, p.in)))
+        else
+          val op = p.op.asInstanceOf[E[Any]]
           elem = told.element(op)
           ready = true
           at = p
@@ -582,8 +576,7 @@ given feedStream[A]: Stream[[W] =>> A ! Writer % W, Pure] = new:
    * (producer-to-writer-carrier, `## Results`).
    */
   override def iterator[W](s: A ! Writer % W)(using Answers[Pure]): Iterator[W] =
-    val template = Paths.One(In.Here[Writer % W, okay.core.Pure]())
-    Stepping.Iter[Writer % W, W, okay.core.Pure, A](() => Stepping.start(s, template), Telling[W](), Stepping.Other.none)
+    Stepping.Iter[Writer % W, W, A](() => Stepping.start(s), Telling.key, Telling[W](), Stepping.Other.none)
 
 /**
  * And a writer program performing ARBITRARY effects G is a stream in
@@ -594,7 +587,7 @@ given feedStream[A]: Stream[[W] =>> A ! Writer % W, Pure] = new:
  * `G` is ONE effect here (a place of the row): the `Answers[G]` the
  * consumers run it by answers one.
  */
-given writerStreamIn[A, G[_]]: Stream[[W] =>> A ! Writer % W + G, G] = new:
+given writerStreamIn[A, G[_]](using okay.KeyOf[G]): Stream[[W] =>> A ! Writer % W + G, G] = new:
   def uncons[W](s: A ! Writer % W + G): Option[(W, A ! Writer % W + G)] ! G =
     Writer.uncons[W, A, G](s).map(_.toOption)
 
@@ -607,7 +600,5 @@ given writerStreamIn[A, G[_]]: Stream[[W] =>> A ! Writer % W + G, G] = new:
    * `foldWriter` doc and [[escape-analysis-box-elimination-boundary]]).
    */
   override def iterator[W](s: A ! Writer % W + G)(using H: Answers[G]): Iterator[W] =
-    val template = Paths.Both(Paths.One(In.Here[Writer % W, G +: okay.core.Pure]()),
-      Paths.One(In.There[G, Writer % W, G +: okay.core.Pure](In.Here[G, okay.core.Pure]())))
-    Stepping.Iter[Writer % W, W, G +: okay.core.Pure, A](() => Stepping.start(s, template), Telling[W](),
+    Stepping.Iter[Writer % W, W, A](() => Stepping.start(s), Telling.key, Telling[W](),
       Stepping.Other.answers(H))

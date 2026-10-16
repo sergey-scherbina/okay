@@ -6,7 +6,7 @@ import okay.{Cps, />>}
 import okay.{Fold, FoldUntil, Foldable}
 import okay.one.Cont
 import okay.one.handler.Stateful
-import okay.one.row.In
+import okay.one.row.{In, Pure as OnePure}
 
 /**
  * Generators from delimited control: take is the input of a loop
@@ -159,6 +159,9 @@ given Put[Producer] with
     produce(f(a)).flatMap(_ => okay.defer(unfold(g(a))(f)(g)))
 
 /** what a stepped production hands over — the value — and what it answers: the same value */
+private[std] object Producing:
+  /** the key of `Produce`: its name's (an identity effect has no constructor) */
+  val key: AnyRef = summon[okay.KeyOf[Produce]].ref
 private[std] final class Producing[W] extends Stepping.Told[Produce, W]:
   def element[X](op: Produce[X]): W = produced[W](op)
   def answer[X](op: Produce[X]): X = op
@@ -187,13 +190,11 @@ object Producer {
    * held until the end.
    */
   def fold[W, S, A, Es[_]](p: A ! Es)(z: S)(f: (S, W) => S)(using s: Split[Es, Produce]): (S, A) ! s.Rest =
-    new Run[s.Rest, (S, A)]:
-      def on[T <: Row](ps: Paths[s.Rest, T]): Eff[T, (S, A)] =
-        Cont.handle(p.fit(s.paths(ps)))(new Stateful[Produce, T, S, A, (S, A)]:
-          def initial: S = z
-          def ret(st: S, a: A): Eff[T, (S, A)] = Cont.pure((st, a))
-          def value[X](st: S, op: Produce[X]): X = op
-          def next[X](st: S, op: Produce[X]): S = f(st, produced[W](op)))
+    Run.install[Produce, A, (S, A), Es, s.Rest](p)(new Stateful[Produce, OnePure, S, A, (S, A)]:
+      def initial: S = z
+      def ret(st: S, a: A) = Cont.pure((st, a))
+      def value[X](st: S, op: Produce[X]): X = op
+      def next[X](st: S, op: Produce[X]): S = f(st, produced[W](op)))
 
   /**
    * `fold` with a stop (specs/fold-until.md): the program STEPPED (the
@@ -204,10 +205,8 @@ object Producer {
    * (`Writer.foldUntil` makes the same choice for the same reason).
    */
   def foldUntil[W, S, R, A, Es[_]](p: A ! Es)(using s: Split[Es, Produce], K: FoldUntil[W, S, R]): R ! s.Rest =
-    new Run[s.Rest, R]:
-      def on[T <: Row](ps: Paths[s.Rest, T]): Eff[T, R] =
-        if K.done(K.init) then Cont.pure(K.end(K.init))
-        else Cont.defer(Stepping.until(Stepping.start(p, s.paths(ps)), K.init, Producing[W](), K))
+    if K.done(K.init) then pure(K.end(K.init))
+    else Run.of(Cont.defer(Stepping.until(Stepping.start(p), Producing.key, K.init, Producing[W](), K)))
 
   /**
    * A producer of CHUNKS as one Vector of their elements — the drain
@@ -247,16 +246,14 @@ object Producer {
  */
 given Stream[Producer, Pure] with
   def uncons[A](p: Producer[A]): Option[(A, Producer[A])] ! Pure =
-    val template = Paths.One(In.Here[Produce, okay.core.Pure]())
-    pure(Stepping.nextPure(Stepping.start(p, template), template, Producing[A]()).toOption)
+    pure(Stepping.nextPure(Stepping.start(p), Producing.key, Producing[A]()).toOption)
 
   /** the specialized linear view: the program stepped production by
    * production — no Option, no tuple per element (measured; the
    * generic default pays both). What remains per element is the
    * stepping itself. */
   override def iterator[A](p: Producer[A])(using Answers[Pure]): Iterator[A] =
-    val template = Paths.One(In.Here[Produce, okay.core.Pure]())
-    Stepping.Iter[Produce, A, okay.core.Pure, A](() => Stepping.start(p, template), Producing[A](), Stepping.Other.none)
+    Stepping.Iter[Produce, A, A](() => Stepping.start(p), Producing.key, Producing[A](), Stepping.Other.none)
 
 /** a producer folds as a stream without a result (push consumption) */
 given Foldable[Producer] with
@@ -275,11 +272,9 @@ given Foldable[Producer] with
  * from the element values any more. `G` is ONE effect (a place of the
  * row), as the `Answers[G]` its consumers run it by.
  */
-given [G[_]]: Stream[[A] =>> A ! Produce + G, G] with
-  def uncons[A](p: A ! Produce + G): Option[(A, A ! Produce + G)] ! G = new Run[G, Option[(A, A ! Produce + G)]]:
-    def on[T <: Row](ps: Paths[G, T]): Eff[T, Option[(A, A ! Produce + G)]] =
-      val template = Paths.Both(Paths.One(In.Here[Produce, T]()), ps.under[Produce])
-      Cont.defer(Stepping.next(Stepping.start(p, template), template, Producing[A]())).map(_.toOption)
+given [G[_]](using okay.KeyOf[G]): Stream[[A] =>> A ! Produce + G, G] with
+  def uncons[A](p: A ! Produce + G): Option[(A, A ! Produce + G)] ! G =
+    Run.of[Either[A, (A, A ! Produce + G)], G](Cont.defer(Stepping.next[Produce + G, Produce, A, A](Stepping.start(p), Producing.key, Producing[A]()))).map(_.toOption)
 
   /**
    * The specialized linear view, mirroring `writerStreamIn`'s own
@@ -292,9 +287,7 @@ given [G[_]]: Stream[[A] =>> A ! Produce + G, G] with
    * chunks for the same move).
    */
   override def iterator[A](p: A ! Produce + G)(using H: Answers[G]): Iterator[A] =
-    val template = Paths.Both(Paths.One(In.Here[Produce, G +: okay.core.Pure]()),
-      Paths.One(In.There[G, Produce, G +: okay.core.Pure](In.Here[G, okay.core.Pure]())))
-    Stepping.Iter[Produce, A, G +: okay.core.Pure, A](() => Stepping.start(p, template), Producing[A](),
+    Stepping.Iter[Produce, A, A](() => Stepping.start(p), Producing.key, Producing[A](),
       Stepping.Other.answers(H))
 
 import scala.math.Numeric.Implicits.given
