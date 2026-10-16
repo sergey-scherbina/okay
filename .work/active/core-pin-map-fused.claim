@@ -1,6 +1,0 @@
-feature/core-pin-map-fused 2026-10-16T19:58:46Z
-agent: claude-code (session 04094c70, thin layer)
-heartbeat: 2026-10-16T19:58:46Z
-status: in-progress
-done-so-far: claim
-next: okay-core pin da567f0 -> 645c2e0 (map-fused), gate on three platforms
