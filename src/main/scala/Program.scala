@@ -29,7 +29,7 @@ object Run:
   /** a handler of the kernel's, `h`, installed at `E`'s key around `p`: what a runner written with the kernel's
    * forms (a `Stateful` of its own) does — the effects of the answer the caller's (`Out`, its `Split`'s rest) */
   def install[E[_], A, B, Es[_], Out[_]](p: A ! Es)(h: OneHandler[E, OnePure, A, B])(using k: KeyOf[E]): B ! Out =
-    Cont.handle(p)(h.keyed(k.ref))(using Removed.Absent[E, OnePure]())
+    Cont.handle(p)(h.keyed(k.ref))(using okay.one.row.Removed.byKey[E])
 
   extension [A, Es[_]](p: A ! Es)
     /** THE PROGRAM AT A ROW OF THE KERNEL, its effects at the paths `ps` (a border to code over rows): each effect's
@@ -54,18 +54,18 @@ object Run:
     def at[Es2[_]](using w: Within[Es, Es2]): A ! Es2 = p
     /** `h`'s effect taken off wherever it is among `Es`: `h` installed at its key, a program needing the rest */
     def handle[E[_], O[_]](h: Handler[E, O])(using s: Split[Es, E], k: KeyOf[E]): O[A] ! s.Rest =
-      Cont.handle(p)(h.kernel[OnePure, A].keyed(k.ref))(using Removed.Absent[E, OnePure]())
+      Cont.handle(p)(h.kernel[OnePure, A].keyed(k.ref))(using okay.one.row.Removed.byKey[E])
     /** `h` INTERCEPTING `E` for this program, `E` kept: `h` answers the program's operations of `E`; its own
      * clauses' go to the handler of `E` outside (a translating clause runs outside it) */
     def intercept[E[_]](h: Handler[E, [x] =>> x])(using w: Within[E, Es], k: KeyOf[E]): A ! Es =
-      Cont.handle(p)(h.kernel[OnePure, A].keyed(k.ref))(using Removed.Absent[E, OnePure]())
+      Cont.handle(p)(h.kernel[OnePure, A].keyed(k.ref))(using okay.one.row.Removed.byKey[E])
     /** `E` TRANSLATED: each operation of `E` a program needing `F`, run where it is performed (outside the
      * translating handler), the rest resumed with its value */
     def translate[E[_], F[_]](f: [X] => E[X] => X ! F)(using s: Split[Es, E], k: KeyOf[E]): A ! okay.core.+[F, s.Rest] =
-      Cont.handle(p)(Run.translating[E, F, A](f).keyed(k.ref))(using Removed.Absent[E, OnePure]())
+      Cont.handle(p)(Run.translating[E, F, A](f).keyed(k.ref))(using okay.one.row.Removed.byKey[E])
     /** `E` TRANSLATED INTO `F`, an effect the program needs already */
     def translateInto[E[_], F[_]](f: [X] => E[X] => X ! F)(using s: Split[Es, E], w: Within[F, s.Rest], k: KeyOf[E]): A ! s.Rest =
-      Cont.handle(p)(Run.translating[E, F, A](f).keyed(k.ref))(using Removed.Absent[E, OnePure]())
+      Cont.handle(p)(Run.translating[E, F, A](f).keyed(k.ref))(using okay.one.row.Removed.byKey[E])
     /** an error thrown in `p` given to `f`: its program in `p`'s place (the kernel's guard) */
     def recover[B >: A](f: Throwable => B ! Es): B ! Es = Cont.recover(p: okay.one.![B, OnePure])(f)
     /** `fin` after `p`, whatever way it is left */
@@ -81,7 +81,7 @@ object Run:
     /** `h` around a program whose ONE effect is `E`: every operation by key that comes to it answered by `h`
      * (the kernel's `Handler.anyKey`) — no key asked for, so `E` may be abstract */
     def handleAll[O[_]](h: Handler[E, O]): O[A] ! Pure =
-      Cont.handle(p)(h.kernel[OnePure, A].keyed(okay.one.handler.Handler.anyKey))(using Removed.Absent[E, OnePure]())
+      Cont.handle(p)(h.kernel[OnePure, A].keyed(okay.one.handler.Handler.anyKey))(using okay.one.row.Removed.byKey[E])
 
   extension [A](p: A ! Pure)
     /** a program needing nothing: its value */
@@ -144,7 +144,7 @@ object Program:
     Cont.handle(e)(new okay.one.handler.Answering[E, OnePure, A, A]:
       def ret(x: A) = Cont.pure(x)
       def value[X](op: E[X]): X = a.handle(op)
-    .keyed(key))(using Removed.Absent[E, OnePure]())
+    .keyed(key))(using okay.one.row.Removed.byKey[E])
   /** each effect of `ks` RELAYED: its operations, by its key, performed again at `place(i)` — `i` its index among
    * the keys, the left first (a translating handler a key, innermost the left) */
   def relayed[A](e: okay.one.![A, OnePure], ks: KeysOf[?], place: Int => okay.core.In[?, ?]): okay.one.![A, OnePure] =
@@ -163,7 +163,7 @@ object Program:
       def ret(a: A) = Cont.pure(a)
       def apply[X](op: F[X]): okay.one.![X, OnePure] =
         Cont.perform[F, OnePure, X](op)(using in.asInstanceOf[okay.core.In[F, OnePure]])
-    .keyed(key))(using Removed.Absent[F, OnePure]())
+    .keyed(key))(using okay.one.row.Removed.byKey[F])
 
   /** A PROGRAM OF THE KERNEL at the row `E` alone as the root's value needing `E`: each operation, at the head of
    * that row, performed again at `E`'s key */

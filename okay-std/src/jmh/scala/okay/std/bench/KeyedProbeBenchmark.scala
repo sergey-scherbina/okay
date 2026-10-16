@@ -68,8 +68,8 @@ class KeyedProbeBenchmark {
 
   @Benchmark
   def keyed(): Int =
-    val w = Cont.handle(kOneBind(0, 0))(KWriter[Pure, Int]())(using okay.one.row.Removed.Absent[Writer % String, Pure]())
-    val s = Cont.handle(w)(KState[Pure, (Seq[String], Int)](0))(using okay.one.row.Removed.Absent[State % Int, Pure]())
+    val w = Cont.handle(kOneBind(0, 0))(KWriter[Pure, Int]())(using okay.one.row.Removed.byKey[Writer % String])
+    val s = Cont.handle(w)(KState[Pure, (Seq[String], Int)](0))(using okay.one.row.Removed.byKey[State % Int])
     s.run._2._2
 
   // ---- pathed: the kernel's tree at the row named
@@ -104,7 +104,7 @@ class KeyedProbeBenchmark {
 
   @Benchmark
   def stateKeyed(): Int =
-    Cont.handle(kOne(0, 0))(KState[Pure, Int](0))(using okay.one.row.Removed.Absent[State % Int, Pure]()).run._2
+    Cont.handle(kOne(0, 0))(KState[Pure, Int](0))(using okay.one.row.Removed.byKey[State % Int]).run._2
 
   /** the key looked up a step (the root's `effect` today: `ClassValue`) */
   private def cOne(i: Int, acc: Int): okay.one.![Int, Pure] =
@@ -114,11 +114,11 @@ class KeyedProbeBenchmark {
 
   @Benchmark
   def stateLookup(): Int =
-    Cont.handle(cOne(0, 0))(KState[Pure, Int](0))(using okay.one.row.Removed.Absent[State % Int, Pure]()).run._2
+    Cont.handle(cOne(0, 0))(KState[Pure, Int](0))(using okay.one.row.Removed.byKey[State % Int]).run._2
 
   /** the root's handler (`State(0)`) over the kernel's tree with the key a val */
   @Benchmark
   def stateRootHandler(): Int =
     Cont.handle(kOne(0, 0))(State[Int](0).kernel[Pure, Int].keyed(stateAt.ref))(
-      using okay.one.row.Removed.Absent[State % Int, Pure]()).run._2
+      using okay.one.row.Removed.byKey[State % Int]).run._2
 }

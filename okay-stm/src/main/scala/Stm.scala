@@ -195,7 +195,7 @@ object Stm {
     okay.one.Cont.handle(tx)(new okay.one.handler.Answering[Tx, TxRow, A, A]:
       def ret(a: A) = okay.one.Cont.pure(a)
       def value[X](op: Tx[X]): X = perform(op, log)
-    .keyed(txKey))(using okay.one.row.Removed.Absent[Tx, TxRow]()).run
+    .keyed(txKey))(using okay.one.row.Removed.byKey[Tx]).run
 
   /** a cell a commit has taken, with the value to install into it:
    * release it, or install */

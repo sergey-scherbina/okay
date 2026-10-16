@@ -29,4 +29,4 @@ object Lexical:
     val key = Key.fresh[E]()
     // the handler's effect in no place of the row (`Absent`): it is found by its key alone
     Cont.handle(Run.kernel[A, Es, OnePure](body(Inst(key))))(h.kernel[OnePure, A].keyed(key.ref))(
-      using Removed.Absent[E, OnePure]()))
+      using okay.one.row.Removed.byKey[E]))
