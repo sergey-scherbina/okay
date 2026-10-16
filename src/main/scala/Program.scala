@@ -67,7 +67,9 @@ object Run:
    * THE CASTS, and why they are sound: each node is taken apart at the type it was made at — its `Join`'s paths
    * applied to the paths the node was fitted at — so the program below and its continuation get their own */
   private[okay] def fitLeft[R <: okay.core.Row, B](top: Run[?, B], ps: Paths[?, R]): Eff[R, B] =
-    val kept = java.util.ArrayList[AnyRef]()
+    // the kept continuations, innermost first: each one a node of the chain itself (`in` the one outside it) — no
+    // list, no array grown and copied on the way down (fit-left-linked)
+    var kept: Kept | Null = null
     var cur: Run[?, ?] = top
     var cps: Paths[?, R] = ps
     var more = true
@@ -75,24 +77,30 @@ object Run:
       case b: Bound[?, ?, ?, ?, ?] =>
         val bb = b.asInstanceOf[Bound[K, K, Any, Any, K]]
         val out = cps.asInstanceOf[Paths[K, R]]
-        val rs = bb.j.right(out.asInstanceOf[Paths[bb.j.Out, R]])
-        val f = bb.f
-        kept.add((a: Any) => f(a).fit(rs))
+        kept = KeptBind[R](bb.f, bb.j.right(out.asInstanceOf[Paths[bb.j.Out, R]]), kept)
         cps = bb.j.left(out.asInstanceOf[Paths[bb.j.Out, R]])
         cur = bb.p
       case m: Mapped[?, ?, ?] =>
-        kept.add(MapK(m.asInstanceOf[Mapped[K, Any, Any]].f))
+        kept = KeptMap(m.asInstanceOf[Mapped[K, Any, Any]].f, kept)
         cur = m.p
       case _ => more = false
     var e: Eff[R, Any] = cur.asInstanceOf[Run[K, Any]].on(cps.asInstanceOf[Paths[K, R]])
-    var i = kept.size - 1
-    while i >= 0 do
-      e = kept.get(i) match
-        case MapK(f) => e.map(f)
-        case k => e.flatMap(k.asInstanceOf[Any => Eff[R, Any]])
-      i -= 1
+    var c = kept
+    while c != null do
+      e = c match
+        case m: KeptMap => e.map(m.f)
+        case b: KeptBind[?] => e.flatMap(b.asInstanceOf[KeptBind[R]])
+      c = c.in
     e.asInstanceOf[Eff[R, B]]
-  private final case class MapK(f: Any => Any)
+
+  /** a continuation kept on a left spine, `in` the one kept before it — outside it in the chain */
+  private sealed abstract class Kept(val in: Kept | Null)
+  /** a bind's: its function's program fitted at its own paths — itself the kernel bind's continuation */
+  private final class KeptBind[R <: okay.core.Row](f: Any => Any ! K, rs: Paths[K, R], in: Kept | Null)
+      extends Kept(in), (Any => Eff[R, Any]):
+    def apply(a: Any): Eff[R, Any] = f(a).fit(rs)
+  /** a map's function */
+  private final class KeptMap(val f: Any => Any, in: Kept | Null) extends Kept(in)
 
   extension [A, Es[_]](p: A ! Es)
     /** fitted to a place: the program at its row */
