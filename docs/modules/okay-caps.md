@@ -57,3 +57,8 @@ instance of type Path[Reader % Conn, T]"; a program performing it carried out an
 the one outside). The leak this module measures begins where a capability becomes a VALUE
 held by a closure: there the checker guards it, and where the checker cannot see, the guard. So: an effect where
 you can, a value with the checker where you must.
+
+## Where transactions are used
+
+okay-tx's `Sessions` brings the guard to the JDBC bracket: its resource a `Session`, closed when the bracket ends —
+see [okay-tx](okay-tx.md). The module here stays the measuring bench; the guard lives where the connections are.

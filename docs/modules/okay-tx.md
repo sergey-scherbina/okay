@@ -35,8 +35,15 @@ The JVM's own: `Jdbc[T](connect, isolation, readOnly, retries)` — a connection
 off at the isolation asked, the driver's commit and rollback, the connection closed after either; SQLSTATE 40001
 and 40P01 run the bracket again on a fresh connection. `Jdbc.execute`, `Jdbc.queryInt` on the bracket's connection.
 
+`Sessions[T](connect, …)` is the same transactor with the connection guarded: the bracket's resource is a `Session`
+(`execute`, `queryInt`, `withConnection`), closed when the bracket commits or rolls back, before the connection is.
+A session kept past its bracket — a closure over it, a reference stashed — throws `Session.Closed` naming the
+statement, instead of running it on a connection already closed or given back to its pool. `Sessions.execute`,
+`Sessions.queryInt` on the bracket's session; `Session` is a `caps.SharedCapability` for capture-checked callers
+([okay-caps](okay-caps.md)).
+
 Tests: `TestTx` (brackets inside brackets, a rollback in the inner one, a failure, an abort crossing, the owner's
-retry, a recover around the bracket, a rollback with none open), `TestTxWords`, `TestJdbc` on H2.
+retry, a recover around the bracket, a rollback with none open), `TestTxWords`, `TestJdbc` and `TestSessions` on H2, `TestTxEscape`.
 
 Where it stands to `okay-sql`'s `Typed.transact`: that region is on okay-freer's words and refuses a nested begin at
 run time; this one is on the kernel's words and nests by construction. The owner for the `Sql` seam comes with the

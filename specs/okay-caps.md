@@ -117,6 +117,11 @@ another bracket's hands. `Sessions` beside it: the same transactor, the resource
 `caps.SharedCapability` wrapping the connection, `execute`/`queryInt` its words — closed when the bracket commits
 or rolls back, before the connection is: a statement after it is `Session.Closed`, naming the leak.
 
-- [ ] a session's statements in its bracket commit; a session kept past the commit, past a rollback: `Session.Closed`
-- [ ] nested brackets one session; a retry a fresh one
-- [ ] `Jdbc` unchanged
+- [x] a session's statements in its bracket commit; a session kept past the commit, past a rollback: `Session.Closed`
+- [x] nested brackets one session; a retry a fresh one
+- [x] `Jdbc` unchanged
+
+Results: TestSessions 4 on H2; okay-tx's 19 green. Measured on the way: a file using the kernel's programs with a
+capability in their types does not compile under the checker — `Session ! T` through `map` and the inline `flatMap`
+("Capability `fresh` outlives its scope", "`Cont_this*` cannot flow into capture set {}"), the kernel not being
+capture-checked. So `Session` alone is in a capture-checked file; `Sessions`, which builds programs, is not.
