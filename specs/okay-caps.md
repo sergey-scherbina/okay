@@ -23,14 +23,32 @@ the transaction does not compile.
 
 ## Behavior
 
-- [ ] a body using the transaction compiles and commits; a failure rolls back
-- [ ] refused: the transaction returned, a closure holding it, a field or var keeping it, a list of closures, an
+- [x] a body using the transaction compiles and commits; a failure rolls back
+- [x] refused: the transaction returned, a closure holding it, a field or var keeping it, a list of closures, an
       iterator over it
-- [ ] the holes, pinned as compiling (a test that flips when a compiler closes one): a caller without capture
+- [x] the holes, pinned as compiling (a test that flips when a compiler closes one): a caller without capture
       checking, a `LazyList`, a kernel program
-- [ ] the context-function form: `Tx(db) { Tx.execute("...") }`
+- [x] the context-function form: `Tx(db) { Tx.execute("...") }`
 
 ## Decisions
 
 - An optional module, JVM only: its tests run the compiler. The module's own code needs no `-experimental`
   (measured): a dependent compiles as before.
+
+## Results (Scala 3.9.0)
+
+1. Flags: none beyond the import in the files that use it; no `-experimental`.
+2. Infection: none — a snippet compiled WITHOUT capture checking against the module's classes compiles, and leaks
+   freely: the guarantee is the caller's to switch on, file by file.
+3. Refused, "Capability `tx` outlives its scope: it leaks into outer capture set … owned by value …": the
+   transaction returned; a closure over it (plain and context-function forms); a list of closures; an
+   `Iterator.map` over it. A `var` keeping it: refused ("a field `keep` with `any` in its type need to be put in an
+   object that extends Capability"). The standard library's List and Iterator track captures.
+4. Not refused: `LazyList.from(1).map(_ => tx...)` — LazyList does not track its function's captures; a kernel
+   program, `Cont.pure(1).map(_ => tx.execute(...))`, returned from the bracket — okay-core is compiled without
+   capture checking, so `Cont`'s closures carry no capture set and the program looks pure. For okay this is the
+   line that decides: programs are values run later, exactly the case the checker must see.
+
+Next (backlog `okay-caps-next`): capture sets on the kernel's types, a probe in okay-core first; a handler
+providing a capability in direct style; an agent sandbox (okay-agent) — a snippet typed by its row of effects,
+capture-checked.

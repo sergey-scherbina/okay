@@ -956,6 +956,22 @@ lazy val okayGraphqlHttp = crossProject(JVMPlatform, JSPlatform)
     Test / fork := true,
   )
 
+/** TRACKED CAPABILITIES (specs/okay-caps.md): Scala 3's capture checking, an experiment in its own module —
+ * a transaction a capability that cannot outlive its bracket */
+lazy val okayCaps = project
+  .in(file("okay-caps"))
+  // test: the kernel (a program holding the transaction, a hole measured), the testkit
+  .dependsOn(okay.jvm % "test->compile", okayTest.jvm % "test->compile")
+  .settings(
+    name := "okay-caps",
+    libraryDependencies ++= Seq(
+      "org.scalameta" %% "munit" % "1.1.1" % Test,
+      // the tests run the compiler on snippets: capture checking's errors come after the typer
+      "org.scala-lang" %% "scala3-compiler" % scalaVersion.value % Test,
+    ),
+    Test / fork := true,
+  )
+
 lazy val okayStm = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-stm"))
@@ -3968,7 +3984,7 @@ lazy val platformMembers: Seq[ProjectReference] = gtkProjects ++ Seq[ProjectRefe
     okayMcp.jvm, okayMcp.js, okayMcpHttp.jvm, okayMcpHttp.js,
     okayKernel.jvm, okayKernel.js, okayKernel.native, okayUi.jvm, okayUi.js, okayUi.native,
     okayDesktop,
-    okayHttp.jvm, okayHttp.js, okayJetty, okayNetty,
+    okayHttp.jvm, okayHttp.js, okayJetty, okayNetty, okayCaps,
     okayResilience.jvm, okayResilience.js,
     okayOutbox.jvm, okayOutbox.js, okayOutbox.native,
     okayCluster.jvm, okayCluster.js, okayPool,

@@ -355,6 +355,7 @@ API reference, gotchas.
 | [`okay-graphql`](modules/okay-graphql.md) | GraphQL on the kernel: resolvers as programs of `Fetch`, an executor in rounds — each source called once per round with all its keys (no N+1, no DataLoader); interfaces and unions, introspection, validation with locations, async sources, subscriptions; our parser or graphql-java's |
 | [`okay-graphql-http`](modules/okay-graphql-http.md) | GraphQL over HTTP (POST, GET, both media types) and subscriptions over a WebSocket (graphql-transport-ws), on okay-http's seams |
 | [`okay-jetty`](modules/okay-jetty.md) | Jetty behind the same two seams — and the WebSocket SERVER okay-http could not serve |
+| [`okay-caps`](modules/okay-caps.md) | tracked capabilities (Scala 3 capture checking), measured: a transaction that cannot outlive its bracket; what the checker refuses and what it does not yet |
 | [`okay-kernel`](modules/okay-kernel.md) | a microkernel: versioned contracts (`Port`), plugins that need and provide them, a plan that names every problem before anything runs, a start that releases in reverse; ServiceLoader and a plugins directory on the JVM |
 | [`okay-staging`](modules/okay-staging.md) | the staged codec for a schema that exists only at run time — JVM only, optional by construction, switchable off at launch |
 | [`okay-netty`](modules/okay-netty.md) | Netty behind the same two seams, plus the cross-backend matrix that proves the seam |
