@@ -21,7 +21,7 @@ that the answers come from a finite **sample** you give per operation,
 instead of from every possible value, a function of the operation:
 
 ```scala
-def of[F[_]](f: [X] => F[X] => List[X]): Answers[F] = new Answers[F]:
+def of[F[_]](f: [X] => F[X] => List[X])(using k: okay.KeyOf[F]): Answers[F] = new Answers[F]:
 ```
 
 ## A difference is found, with its path

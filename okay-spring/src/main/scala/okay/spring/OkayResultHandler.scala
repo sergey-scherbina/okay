@@ -29,8 +29,9 @@ final class OkayResultHandler(delegate: ResponseBodyResultHandler) extends Handl
     classOf[okay.one.Cont[?, ?, ?, ?]].isAssignableFrom(result.getReturnTypeSource.getParameterType) && delegate.supports(result)
 
   override def handleResult(exchange: ServerWebExchange, result: HandlerResult): Mono[Void] =
-    // index 1: `A ! F` is `Run[F, A]` (okay's Program.scala) — the value comes last
-    val elem = ResolvableType.forMethodParameter(result.getReturnTypeSource).getGeneric(1).resolve(classOf[AnyRef])
+    // index 3: `A ! F` is the kernel's `Cont[Pure, Nothing, Nothing, A]` to the JVM (okay's Program.scala) — the
+    // value comes last
+    val elem = ResolvableType.forMethodParameter(result.getReturnTypeSource).getGeneric(3).resolve(classOf[AnyRef])
     val stub = if classOf[CharSequence].isAssignableFrom(elem) then OkayResultHandler.string else OkayResultHandler.any
     delegate.handleResult(exchange, HandlerResult(result.getHandler, program(result.getReturnValue), stub, result.getBindingContext))
 

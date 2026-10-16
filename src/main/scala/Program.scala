@@ -32,8 +32,16 @@ object Run:
     Cont.handle(p)(h.keyed(k.ref))(using Removed.Absent[E, OnePure]())
 
   extension [A, Es[_]](p: A ! Es)
-    /** the program at the row of a place: itself — its places are by key (kept for code that fitted paths) */
-    def fit[R <: okay.core.Row](ps: Paths[Es, R]): Eff[R, A] = p.asInstanceOf[Eff[R, A]]
+    /** THE PROGRAM AT A ROW OF THE KERNEL, its effects at the paths `ps` (a border to code over rows): each effect's
+     * operations, by its key, performed again at its path */
+    def fit[R <: okay.core.Row](ps: Paths[Es, R])(using ks: KeysOf[Es]): Eff[R, A] =
+      val leaves = scala.collection.mutable.ArrayBuffer.empty[AnyRef]
+      def go(t: Paths[?, ?]): Unit = t match
+        case o: Paths.One[?, ?] => leaves += o.head
+        case b: Paths.Both[?, ?, ?] => go(b.left); go(b.right)
+        case _ => ()
+      go(ps)
+      Program.relayed(p, ks, i => leaves(i).asInstanceOf[okay.core.In[?, ?]]).asInstanceOf[Eff[R, A]]
     /** the bind: one node of the kernel's; the continuation's effects joined to these at compile time (`Join`) */
     def flatMap[B, Es3[_]](f: A => B ! Es3)(using j: Join[Es, Es3]): B ! j.Out =
       // the kernel's bind: an operation and its rest one node (`Inject`)
@@ -125,7 +133,7 @@ object Program:
     var e: okay.one.![A, OnePure] = Run.kernel(p)
     // BOUNDED by the sum as written in the program's type: one call a `+`
     def install(x: Answers[?], k: KeysOf[?]): Unit = (x, k) match
-      case (Answers.NoneA, _) => ()
+      case (Answers.NoneA, _) | (_, KeysOf.NoneK) => ()
       case (s: Answers.Sum[?, ?], t: KeysOf.Two[?, ?]) => install(s.left, t.left); install(s.right, t.right)
       case (l, o: KeysOf.One[?]) => e = answered(e, l.asInstanceOf[Answers[[x] =>> Any]], o.key.ref)
       case (l, KeysOf.AnyK) => e = answered(e, l.asInstanceOf[Answers[[x] =>> Any]], okay.one.handler.Handler.anyKey)
