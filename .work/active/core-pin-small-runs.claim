@@ -1,0 +1,6 @@
+feature/core-pin-small-runs 2026-10-16T09:14:40Z
+agent: claude-code (session 04094c70, small runs)
+heartbeat: 2026-10-16T09:14:40Z
+status: in-progress
+done-so-far: worktree
+next: gate the pin move (affected master staged)
