@@ -74,3 +74,30 @@ Results: TestTxCapability 6 — the guard catches the closure, the LazyList (at 
 `run`) and a transaction kept past a rollback; `-language:experimental.captureChecking` refuses the closure leak
 with the same message as the import, and compiles the honest body. The AtomicBoolean of the guard does not
 trouble the checker (a field of a `SharedCapability`).
+
+## The kernel (okay-caps-core): okay-core's Cont capture-checked, measured
+
+A probe on okay-core's branch `capture-checking` (fb69ca6; not merged): `import language.experimental.captureChecking`
+in `Cont.scala` alone. What it took, and what it gives:
+
+- Thirteen errors at first, each the checker seeing what the kernel hid: `Bind^{f}` — a node holds its function.
+  Closed by a capturing self type (`this: Cont[R, I, O, A]^`), node parameters `Cont^` (`Bind`, `Map`, `Defer`,
+  `Inject`, `Lift`, `Dollar`, `Lower`), results `^{this, f}` on `map`, `bound`, `down`, `defer`, `shift0`, `dollar`,
+  and two lambdas' result ascribed. Nothing else in okay-core needs the checker.
+- The bytecode: the same, instruction for instruction, in all 430 classes (`javap -c -p`); only the debug line
+  numbers moved, by the import's lines. The machine is untouched; no benchmark can move.
+- okay-core's suites all green (core 251, words 45, async 19, the Scala 2 module 6 — it reads the annotated TASTy —,
+  cats 2, tofu 9).
+- From okay-caps against it: a kernel program holding the transaction, carried out of the bracket by `map` or
+  `defer`, is REFUSED ("Capability `tx` outlives its scope"). By `flatMap` — and so by a `for` — NOT: `flatMap` is
+  `inline`, and a capture set in an inline method's signature is inlined into every caller as `@retains`, an
+  experimental annotation — every user of the kernel would need `-experimental` (measured: okay-core's own
+  `Control.scala` stops compiling). `transparent inline`, which would carry the body's type instead, breaks the
+  `inline match` on `Lifts` and the private `down` it calls: a redesign of the kernel's most delicate method.
+- A capture-checked caller pays: `.run` and an ascription `Int ! Pure` want a pure program, so an honest
+  `p.map(_ => tx.execute(...)).run` is refused until `run` takes `(A ! Pure)^` and the caller writes `(Int ! Pure)^`.
+
+Verdict: the kernel CAN be capture-checked at no run-time cost, but the guarantee stops at `flatMap`, the word
+programs are written with — partial, and a partial static guarantee is not one to sell. Not merged. The guard
+(`Tx.Closed`) stays the answer for kernel programs; the probe is kept on its branch, to be taken up when `@retains`
+is no longer experimental (then `flatMap`'s signature carries `^{this, f}` directly) — backlog `okay-caps-next`.
