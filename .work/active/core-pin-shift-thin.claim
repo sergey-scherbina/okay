@@ -1,6 +1,0 @@
-feature/core-pin-shift-thin 2026-10-16T11:57:33Z
-agent: claude-code (session 04094c70, thin layer)
-heartbeat: 2026-10-16T11:57:33Z
-status: in-progress
-done-so-far: claim
-next: okay-core pin 21a4447 -> 0c31bb0 (shift-thin, effects-control), gate
