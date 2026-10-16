@@ -96,11 +96,11 @@ object Run:
   /** a continuation kept on a left spine, `in` the one kept before it — outside it in the chain */
   private sealed abstract class Kept(val in: Kept | Null)
   /** a bind's: its function's program fitted at its own paths — itself the kernel bind's continuation */
-  private final class KeptBind[R <: okay.core.Row](f: Any => Any ! K, rs: Paths[K, R], in: Kept | Null)
-      extends Kept(in), (Any => Eff[R, Any]):
+  private final class KeptBind[R <: okay.core.Row](f: Any => Any ! K, rs: Paths[K, R], outer: Kept | Null)
+      extends Kept(outer), (Any => Eff[R, Any]):
     def apply(a: Any): Eff[R, Any] = f(a).fit(rs)
   /** a map's function */
-  private final class KeptMap(val f: Any => Any, in: Kept | Null) extends Kept(in)
+  private final class KeptMap(val f: Any => Any, outer: Kept | Null) extends Kept(outer)
 
   extension [A, Es[_]](p: A ! Es)
     /** fitted to a place: the program at its row */
