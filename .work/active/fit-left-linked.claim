@@ -1,6 +1,0 @@
-feature/fit-left-linked 2026-10-16T09:23:23Z
-agent: claude-code (session 04094c70, small runs)
-heartbeat: 2026-10-16T09:23:23Z
-status: in-progress
-done-so-far: worktree
-next: fitLeft kept continuations as a linked chain
