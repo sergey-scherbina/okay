@@ -108,3 +108,15 @@ okay-tx's `TestTxEscape`: the bracket's resource performed outside any bracket d
 reader of it in the row outside); a program performing it, carried out of the bracket and bound there, does not
 compile (its row is the bracket's); the resource read into a value and closed over leaves — the closure answers
 the connection after its commit — the boundary the checker or the guard covers.
+
+## In okay-tx (okay-tx-session)
+
+The guard where transactions are used: okay-tx's JDBC bracket. `Jdbc` hands the bracket's `Connection` out raw; a
+closure keeping it runs after the commit on a connection closed — or, from a pool, given back to it and maybe in
+another bracket's hands. `Sessions` beside it: the same transactor, the resource a `Session` — a
+`caps.SharedCapability` wrapping the connection, `execute`/`queryInt` its words — closed when the bracket commits
+or rolls back, before the connection is: a statement after it is `Session.Closed`, naming the leak.
+
+- [ ] a session's statements in its bracket commit; a session kept past the commit, past a rollback: `Session.Closed`
+- [ ] nested brackets one session; a retry a fresh one
+- [ ] `Jdbc` unchanged
