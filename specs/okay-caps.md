@@ -52,3 +52,20 @@ the transaction does not compile.
 Next (backlog `okay-caps-next`): capture sets on the kernel's types, a probe in okay-core first; a handler
 providing a capability in direct style; an agent sandbox (okay-agent) — a snippet typed by its row of effects,
 capture-checked.
+
+## The guard (okay-caps-guard)
+
+What the checker misses must not pass silently. Three parts:
+
+- A transaction is CLOSED when its bracket ends — commit or rollback — and every use after that throws
+  `Tx.Closed` ("transaction closed"): the leaks measured above (a LazyList, a kernel program, a caller without the
+  checker) fail loud at the leak, not as a statement run outside any transaction.
+- The checker for a whole module: `scalacOptions += "-language:experimental.captureChecking"` instead of the import
+  in every file — measured to refuse what the import refuses.
+- The rule, written where capabilities are explained: a capability kept an EFFECT (okay-tx's `Tx.resource`, an
+  operation of the bracket's row) cannot leave its bracket — a program performing it outside has the operation in
+  its row and no handler for it, a type error; a capability turned into a VALUE needs the checker, or this guard.
+
+- [ ] use after commit, after rollback: `Tx.Closed`, through a closure, a LazyList, a kernel program
+- [ ] the module-wide option refuses as the import does
+- [ ] the rule in docs/modules/okay-caps.md and docs/capabilities.md
