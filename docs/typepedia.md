@@ -1251,7 +1251,8 @@ given TxDone = commit()       // sees TxOpen
 
 No nesting; the compiler orders the protocol. Honest hole: STALE
 phases stay in scope (use-after-commit compiles) — discipline, not
-types, until capture checking.
+types, until capture checking. (Measured since: [okay-caps](modules/okay-caps.md) — a transaction as a
+tracked capability cannot leave its bracket in a capture-checked caller.)
 
 **The import-thread (E6/E7)** — SAME-typed context evolving
 linearly, via a holder whose given member has a FIXED name:

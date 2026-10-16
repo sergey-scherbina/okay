@@ -388,3 +388,12 @@ reflection — the monad is there, but the compiler is running it.
 - `TestProvide` / `TestProviding` / `TestWire` / `TestCtxMonad` /
   `TestApOp` (core), `TestShowcase` (okay-obs) — every claim on this
   page, running.
+
+## A capability that must not escape: effect, or tracked value
+
+A context function hands a capability around as a VALUE, and a value can be kept past its scope — a closure over
+a connection, called after the commit. Two ways out, measured in [okay-caps](modules/okay-caps.md): keep the
+capability an EFFECT (okay-tx's connection is an operation of its bracket's row; performed outside, it is a type
+error), or track the value with Scala 3's capture checking, which refuses a capability that outlives its scope —
+and, for what the checker cannot see yet (a kernel program, a `LazyList`), a transaction closed at its bracket's
+end, failing loud.
