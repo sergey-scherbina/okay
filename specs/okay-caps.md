@@ -101,3 +101,10 @@ Verdict: the kernel CAN be capture-checked at no run-time cost, but the guarante
 programs are written with — partial, and a partial static guarantee is not one to sell. Not merged. The guard
 (`Tx.Closed`) stays the answer for kernel programs; the probe is kept on its branch, to be taken up when `@retains`
 is no longer experimental (then `flatMap`'s signature carries `^{this, f}` directly) — backlog `okay-caps-next`.
+
+## The rule, tested (okay-caps-rule)
+
+okay-tx's `TestTxEscape`: the bracket's resource performed outside any bracket does not compile (no `Path` to a
+reader of it in the row outside); a program performing it, carried out of the bracket and bound there, does not
+compile (its row is the bracket's); the resource read into a value and closed over leaves — the closure answers
+the connection after its commit — the boundary the checker or the guard covers.

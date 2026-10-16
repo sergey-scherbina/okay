@@ -52,6 +52,8 @@ scalacOptions += "-language:experimental.captureChecking"
 
 A capability kept an EFFECT cannot leave its bracket at all. okay-tx's connection is an operation of the bracket's
 row (`Tx.resource`): a program that performs it outside has that operation in its row and no handler for it — a
-type error, with or without the checker. The leak this module measures begins where a capability becomes a VALUE
+type error, with or without the checker (okay-tx's `TestTxEscape`: the resource read outside a bracket — "No given
+instance of type Path[Reader % Conn, T]"; a program performing it carried out and run — its row the bracket's, not
+the one outside). The leak this module measures begins where a capability becomes a VALUE
 held by a closure: there the checker guards it, and where the checker cannot see, the guard. So: an effect where
 you can, a value with the checker where you must.
