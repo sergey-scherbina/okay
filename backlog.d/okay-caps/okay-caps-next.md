@@ -12,7 +12,12 @@
       but flatMap (inline) cannot carry a capture set without making
       every caller -experimental — wait for @retains to leave
       experimental, then annotate flatMap; the probe is okay-core's
-      branch capture-checking (fb69ca6).
+      branch capture-checking (fb69ca6). Taken to the end in
+      okay-caps-kernel: without -experimental, inline results (flatMap,
+      handle) cannot be annotated, and honest capture-checked code using
+      .handle stops compiling — not merged; with -experimental the Scala 2
+      module cannot read the kernel. Branches capture-checking and
+      capture-checking-experimental kept.
       Also open: LazyList does not track its function's captures (a
       standard-library gap, not ours: report it upstream). Until (1)
       lands, the guard (okay-caps-guard) makes those leaks fail loud.

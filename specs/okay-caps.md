@@ -125,3 +125,29 @@ Results: TestSessions 4 on H2; okay-tx's 19 green. Measured on the way: a file u
 capability in their types does not compile under the checker — `Session ! T` through `map` and the inline `flatMap`
 ("Capability `fresh` outlives its scope", "`Cont_this*` cannot flow into capture set {}"), the kernel not being
 capture-checked. So `Session` alone is in a capture-checked file; `Sessions`, which builds programs, is not.
+
+## The kernel without -experimental, to the end (okay-caps-kernel)
+
+The question left: annotate everything that is not inline, leave `flatMap` unannotated (its comment says why), and
+merge — if honest capture-checked code still compiles. okay-core's branch `capture-checking` (3dfddaf and after;
+not merged), measured from okay-caps:
+
+- What can be annotated without `-experimental`: every non-inline signature (`map`, `defer`, `recover`, `cont`,
+  `run`, `shift0`, `dollar`, the nodes, `handle`'s helpers) and an inline method's PARAMETERS — its receiver
+  included (`handle`, `guard`, `ensure`, `uncancelable`): a parameter's capture set does not reach the callers. An
+  inline method's RESULT cannot: it is inlined into every caller as `@retains` (measured: okay-core's own
+  `Control.scala` then needs `-experimental`).
+- Refused with it: a transaction carried out of its bracket by `map`, `defer`, `recover`. Not: by `flatMap` (a
+  `for`).
+- And the price that decides: HONEST capture-checked code stops compiling — `p.map(_ => tx.execute(...))` handled by
+  `.handle(Reader(1))` inside the bracket: `handle` is inline, its result unannotated, so the program it returns must
+  be pure, and one holding `tx` is not ("capability `p$proxy1` cannot flow into capture set {}"). On okay-core as it
+  is, that code compiles. `map`+`run`, a `for`+`run`, `recover` stay fine.
+
+Verdict: not merged — it would turn honest code red to refuse two of the three ways out, `for` still open. With
+`-experimental` everywhere (okay-core's branch `capture-checking-experimental`): okay-core compiles and its 251
+tests pass with `flatMap` annotated, but every definition becomes `@experimental` and the Scala 2 module cannot
+read the kernel at all ("trait Row … is marked @experimental and therefore its enclosing scope must be
+experimental"), and every user of the published kernel would need the flag. Both branches kept. The guards stay
+the answer until `@retains` is no longer experimental; then `flatMap`'s and `handle`'s results are annotated and the
+branch is taken up again.
