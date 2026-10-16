@@ -57,3 +57,13 @@ class TestEffectsRows extends munit.FunSuite:
       else E.perform[Ask, Ask +: okay.core.Pure, Int](Ask.Number).flatMap(x => E.tailcall(loop[F](n - 1, acc + x)))
     val E = Effects[Eff]
     assertEquals(E.run(E.handleAt(reader[Int](1))(loop[Eff](100000, 0))), 100000)
+
+  /** delimited control in the interface, beside pure, perform, flatMap: `reset`, `shift` — written once over it */
+  def twice[F[_ <: Row, _]](using E: Effects[F]): F[Ask +: okay.core.Pure, Int] =
+    type T = Ask +: okay.core.Pure
+    E.reset[Int, T](E.shift[Int, T, Int](k => k(1).flatMap(a => k(a * 10).map(b => a + b)))
+      .flatMap(x => E.perform[Ask, okay.core.Shifts[Int, T] +: T, Int](Ask.Number).map(n => x + n)))
+
+  test("reset and shift in the interface: k twice, the reader outside each time — the kernel's own delimiter"):
+    val E = Effects[Eff]
+    assertEquals(E.run(E.handleAt(reader[Int](41))(twice[Eff])), 42 + 461)
