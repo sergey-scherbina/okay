@@ -70,22 +70,13 @@ extension [E[_], X](op: E[X])
   /** an operation as a program, `op.perform` or `perform(op)`: `effect(op)` */
   def perform(using KeyOf[E]): X ! E = effect(op)
 
-/** THE PATHS OF `F` ERASED TO ONE PLACE: every effect of `F` at the place of one effect `T` that takes any operation
- * (a foreign facade's `Top`: okay-java, okay-scala2) — a sum's by its sides, found at compile time from the shape of
- * `F` as written in its type. An abstract `F` is taken as one effect */
-trait Erased[F[_]]:
-  def paths[T[_], R <: okay.core.Row](in: okay.core.In[T, R]): okay.core.Paths[F, R]
+/** THE EFFECTS OF `F` ERASED INTO ONE, `T`, that takes any operation (a foreign facade's `Top`: okay-java,
+ * okay-scala2): each of `F`'s operations performed again at `T`'s key — the keys of `F` found at compile time from
+ * the shape of `F` as written in its type (an abstract `F` alone: every operation by key that comes) */
+final class Erased[F[_]](val keys: KeysOf[F])
 
-object Erased extends ErasedOne:
-  given sum[F[_], G[_]](using f: Erased[F], g: Erased[G]): Erased[F + G] = new Erased[F + G]:
-    def paths[T[_], R <: okay.core.Row](in: okay.core.In[T, R]): okay.core.Paths[F + G, R] =
-      okay.core.Paths.Both(f.paths(in), g.paths(in))
-  given pure: Erased[Pure] = new Erased[Pure]:
-    def paths[T[_], R <: okay.core.Row](in: okay.core.In[T, R]): okay.core.Paths[Pure, R] = okay.core.Paths.none
-
-trait ErasedOne:
-  given one[F[_]]: Erased[F] = new Erased[F]:
-    /** THE CAST, and why it is sound: `T` takes any operation, so an operation of `F` performed at its place is one
-     * of `T`'s — the facade answers it after a test of its class */
-    def paths[T[_], R <: okay.core.Row](in: okay.core.In[T, R]): okay.core.Paths[F, R] =
-      okay.core.Paths.One(in.asInstanceOf[okay.core.In[F, R]])
+object Erased:
+  inline given derived[F[_]]: Erased[F] = Erased(KeysOf.derived[F])
+  /** `p`'s effects erased into `T` */
+  def erase[A, F[_], T[_]](p: A ! F)(using e: Erased[F], t: KeyOf[T]): A ! T =
+    Run.of(Program.relayed(Run.kernel[A, F, okay.one.row.Pure](p), e.keys, _ => t.in.asInstanceOf[okay.core.In[?, ?]]))

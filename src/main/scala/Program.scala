@@ -21,42 +21,42 @@ object Run:
   opaque type Prog[Es[_], +A] <: AnyRef = okay.one.![A, OnePure]
 
   /** the kernel's program behind it, at any row: a place by key is in every row */
-  inline def kernel[A, Es[_], R <: okay.core.Row](p: A ! Es): Eff[R, A] = p.asInstanceOf[Eff[R, A]]
+  def kernel[A, Es[_], R <: okay.core.Row](p: A ! Es): Eff[R, A] = p.asInstanceOf[Eff[R, A]]
   /** a kernel program over no row as a program needing `Es`: its operations at places by key (THE TRUSTED STEP:
    * the caller says they are of `Es`) */
-  inline def of[A, Es[_]](e: okay.one.![A, OnePure]): A ! Es = e
+  def of[A, Es[_]](e: okay.one.![A, OnePure]): A ! Es = e
 
   /** a handler of the kernel's, `h`, installed at `E`'s key around `p`: what a runner written with the kernel's
    * forms (a `Stateful` of its own) does — the effects of the answer the caller's (`Out`, its `Split`'s rest) */
-  inline def install[E[_], A, B, Es[_], Out[_]](p: A ! Es)(h: OneHandler[E, OnePure, A, B])(using k: KeyOf[E]): B ! Out =
+  def install[E[_], A, B, Es[_], Out[_]](p: A ! Es)(h: OneHandler[E, OnePure, A, B])(using k: KeyOf[E]): B ! Out =
     Cont.handle(p)(h.keyed(k.ref))(using Removed.Absent[E, OnePure]())
 
   extension [A, Es[_]](p: A ! Es)
     /** the program at the row of a place: itself — its places are by key (kept for code that fitted paths) */
-    inline def fit[R <: okay.core.Row](ps: Paths[Es, R]): Eff[R, A] = p.asInstanceOf[Eff[R, A]]
+    def fit[R <: okay.core.Row](ps: Paths[Es, R]): Eff[R, A] = p.asInstanceOf[Eff[R, A]]
     /** the bind: one node of the kernel's; the continuation's effects joined to these at compile time (`Join`) */
-    inline def flatMap[B, Es3[_]](f: A => B ! Es3)(using j: Join[Es, Es3]): B ! j.Out =
+    def flatMap[B, Es3[_]](f: A => B ! Es3)(using j: Join[Es, Es3]): B ! j.Out =
       // the kernel's bind: an operation and its rest one node (`Inject`)
       (p: okay.one.![A, OnePure]).flatMap(f: A => okay.one.![B, OnePure])
-    inline def map[B](f: A => B): B ! Es = (p: okay.one.![A, OnePure]).map(f)
+    def map[B](f: A => B): B ! Es = (p: okay.one.![A, OnePure]).map(f)
     /** `p` then `q`, `p`'s value dropped */
-    inline def >>[B, Es3[_]](q: => B ! Es3)(using j: Join[Es, Es3]): B ! j.Out =
+    def >>[B, Es3[_]](q: => B ! Es3)(using j: Join[Es, Es3]): B ! j.Out =
       (p: okay.one.![A, OnePure]).flatMap((_: A) => (q: okay.one.![B, OnePure]))
     /** the same program needing more effects, `Es` among `Es2`: itself */
-    inline def at[Es2[_]](using w: Within[Es, Es2]): A ! Es2 = p
+    def at[Es2[_]](using w: Within[Es, Es2]): A ! Es2 = p
     /** `h`'s effect taken off wherever it is among `Es`: `h` installed at its key, a program needing the rest */
-    inline def handle[E[_], O[_]](h: Handler[E, O])(using s: Split[Es, E], k: KeyOf[E]): O[A] ! s.Rest =
+    def handle[E[_], O[_]](h: Handler[E, O])(using s: Split[Es, E], k: KeyOf[E]): O[A] ! s.Rest =
       Cont.handle(p)(h.kernel[OnePure, A].keyed(k.ref))(using Removed.Absent[E, OnePure]())
     /** `h` INTERCEPTING `E` for this program, `E` kept: `h` answers the program's operations of `E`; its own
      * clauses' go to the handler of `E` outside (a translating clause runs outside it) */
-    inline def intercept[E[_]](h: Handler[E, [x] =>> x])(using w: Within[E, Es], k: KeyOf[E]): A ! Es =
+    def intercept[E[_]](h: Handler[E, [x] =>> x])(using w: Within[E, Es], k: KeyOf[E]): A ! Es =
       Cont.handle(p)(h.kernel[OnePure, A].keyed(k.ref))(using Removed.Absent[E, OnePure]())
     /** `E` TRANSLATED: each operation of `E` a program needing `F`, run where it is performed (outside the
      * translating handler), the rest resumed with its value */
-    inline def translate[E[_], F[_]](f: [X] => E[X] => X ! F)(using s: Split[Es, E], k: KeyOf[E]): A ! okay.core.+[F, s.Rest] =
+    def translate[E[_], F[_]](f: [X] => E[X] => X ! F)(using s: Split[Es, E], k: KeyOf[E]): A ! okay.core.+[F, s.Rest] =
       Cont.handle(p)(Run.translating[E, F, A](f).keyed(k.ref))(using Removed.Absent[E, OnePure]())
     /** `E` TRANSLATED INTO `F`, an effect the program needs already */
-    inline def translateInto[E[_], F[_]](f: [X] => E[X] => X ! F)(using s: Split[Es, E], w: Within[F, s.Rest], k: KeyOf[E]): A ! s.Rest =
+    def translateInto[E[_], F[_]](f: [X] => E[X] => X ! F)(using s: Split[Es, E], w: Within[F, s.Rest], k: KeyOf[E]): A ! s.Rest =
       Cont.handle(p)(Run.translating[E, F, A](f).keyed(k.ref))(using Removed.Absent[E, OnePure]())
     /** an error thrown in `p` given to `f`: its program in `p`'s place (the kernel's guard) */
     def recover[B >: A](f: Throwable => B ! Es): B ! Es = Cont.recover(p: okay.one.![B, OnePure])(f)
@@ -67,7 +67,7 @@ object Run:
     /** the facade's form of the same program: at the place's row, itself */
     def ctx: A !! Es = (c: Needs[Es]) ?=> p.asInstanceOf[Eff[c.R, A]]
     /** RUN with each effect ANSWERED in place by its `Answers` (a sum's assembled from its parts) */
-    inline def runWith(using a: Answers[Es], ks: KeysOf[Es]): A = Program.runAll(p, a, ks)
+    def runWith(using a: Answers[Es], ks: KeysOf[Es]): A = Program.runAll(p, a, ks)
 
   extension [A, E[_]](p: A ! E)
     /** `h` around a program whose ONE effect is `E`: every operation by key that comes to it answered by `h`
@@ -100,16 +100,26 @@ object KeysOf:
   private[okay] final class One[E[_]](val key: KeyOf[E]) extends KeysOf[E]
   private[okay] final class Two[F[_], G[_]](val left: KeysOf[F], val right: KeysOf[G]) extends KeysOf[okay.core.+[F, G]]
   private[okay] object NoneK extends KeysOf[Pure]
+  /** ONE effect not known here (an abstract `E` alone): its handler answers every operation by key that comes to it
+   * (`Handler.anyKey`) — never a part of a sum, where it would answer the others' */
+  private[okay] object AnyK extends KeysOf[[x] =>> Any]
   import scala.compiletime.summonFrom
   inline given derived[Es[_]]: KeysOf[Es] = summonFrom {
     case _: (Es[Any] =:= NoEffects[Any]) => NoneK.asInstanceOf[KeysOf[Es]]
-    case s: Evidence.Sum[Es] => Two[s.L, s.R](derived[s.L], derived[s.R]).asInstanceOf[KeysOf[Es]]
+    case s: Evidence.Sum[Es] => Two[s.L, s.R](part[s.L], part[s.R]).asInstanceOf[KeysOf[Es]]
+    case k: KeyOf[Es] => One(k)
+    case _ => AnyK.asInstanceOf[KeysOf[Es]]
+  }
+  /** a part of a sum: its key, known */
+  inline def part[Es[_]]: KeysOf[Es] = summonFrom {
+    case _: (Es[Any] =:= NoEffects[Any]) => NoneK.asInstanceOf[KeysOf[Es]]
+    case s: Evidence.Sum[Es] => Two[s.L, s.R](part[s.L], part[s.R]).asInstanceOf[KeysOf[Es]]
     case k: KeyOf[Es] => One(k)
   }
 
 object Program:
   /** a program of the kernel over no row (a `k`'s answer inside a clause) as one needing nothing more */
-  private[okay] inline def lift[A, T <: okay.core.Row](e: Eff[T, A]): A ! Pure = Run.of(e.asInstanceOf[okay.one.![A, OnePure]])
+  private[okay] def lift[A, T <: okay.core.Row](e: Eff[T, A]): A ! Pure = Run.of(e.asInstanceOf[okay.one.![A, OnePure]])
   /** `p` run, each effect answered by its part of `a` at its key */
   def runAll[A, Es[_]](p: A ! Es, a: Answers[Es], ks: KeysOf[Es]): A =
     var e: okay.one.![A, OnePure] = Run.kernel(p)
@@ -118,6 +128,7 @@ object Program:
       case (Answers.NoneA, _) => ()
       case (s: Answers.Sum[?, ?], t: KeysOf.Two[?, ?]) => install(s.left, t.left); install(s.right, t.right)
       case (l, o: KeysOf.One[?]) => e = answered(e, l.asInstanceOf[Answers[[x] =>> Any]], o.key.ref)
+      case (l, KeysOf.AnyK) => e = answered(e, l.asInstanceOf[Answers[[x] =>> Any]], okay.one.handler.Handler.anyKey)
       case _ => throw IllegalStateException(s"runWith: the answers and the keys of $x do not meet")
     install(a, ks)
     Cont.run(e)
@@ -126,6 +137,26 @@ object Program:
       def ret(x: A) = Cont.pure(x)
       def value[X](op: E[X]): X = a.handle(op)
     .keyed(key))(using Removed.Absent[E, OnePure]())
+  /** each effect of `ks` RELAYED: its operations, by its key, performed again at `place(i)` — `i` its index among
+   * the keys, the left first (a translating handler a key, innermost the left) */
+  def relayed[A](e: okay.one.![A, OnePure], ks: KeysOf[?], place: Int => okay.core.In[?, ?]): okay.one.![A, OnePure] =
+    var out = e
+    var i = 0
+    def go(k: KeysOf[?]): Unit = k match
+      case KeysOf.NoneK => ()
+      case t: KeysOf.Two[?, ?] => go(t.left); go(t.right)
+      case o: KeysOf.One[?] => out = relay(out, o.key.ref, place(i)); i += 1
+      case KeysOf.AnyK => out = relay(out, okay.one.handler.Handler.anyKey, place(i)); i += 1
+    go(ks)
+    out
+  private def relay[A](e: okay.one.![A, OnePure], key: AnyRef, in: okay.core.In[?, ?]): okay.one.![A, OnePure] =
+    type F[x] = Any
+    Cont.handle(e)(new okay.one.handler.Translating[F, OnePure, A, A]:
+      def ret(a: A) = Cont.pure(a)
+      def apply[X](op: F[X]): okay.one.![X, OnePure] =
+        Cont.perform[F, OnePure, X](op)(using in.asInstanceOf[okay.core.In[F, OnePure]])
+    .keyed(key))(using Removed.Absent[F, OnePure]())
+
   /** A PROGRAM OF THE KERNEL at the row `E` alone as the root's value needing `E`: each operation, at the head of
    * that row, performed again at `E`'s key */
   def fromKernel[E[_], A](e: Eff[E +: okay.core.Pure, A])(using k: KeyOf[E]): A ! E =
@@ -137,16 +168,18 @@ object Program:
     Run.of(q(using Needs.of(paths[Es](ks))).asInstanceOf[okay.one.![A, OnePure]])
   private def paths[Es[_]](ks: KeysOf[?]): Paths[Es, okay.core.Row] = (ks match
     case KeysOf.NoneK => Paths.none
+    // one effect not known: at the place of any key, answered by the one handler around (`runWith`'s)
+    case KeysOf.AnyK => Paths.One(okay.one.row.In.At[[x] =>> Any, okay.core.Row](okay.one.handler.Handler.anyKey))
     case t: KeysOf.Two[?, ?] => Paths.Both(paths(t.left), paths(t.right))
     case o: KeysOf.One[?] => Paths.One(o.key.at[okay.core.Row])).asInstanceOf[Paths[Es, okay.core.Row]]
 
 /** a value, needing nothing — at any effects */
-inline def pure[A, Es[_]](a: A): A ! Es = Run.of(Cont.Return[OnePure, Nothing, A](a))
+def pure[A, Es[_]](a: A): A ! Es = Run.of(Cont.Return[OnePure, Nothing, A](a))
 /** an operation: a program needing its effect, performed at the effect's key */
-inline def effect[E[_], X](op: E[X])(using k: KeyOf[E]): X ! E = Run.of(Cont.perform[E, OnePure, X](op)(using k.in))
+def effect[E[_], X](op: E[X])(using k: KeyOf[E]): X ! E = Run.of(Cont.perform[E, OnePure, X](op)(using k.in))
 /** `p` built when the run gets to it: a tail call in constant stack */
-inline def defer[A, Es[_]](p: => A ! Es): A ! Es = Run.of(Cont.Defer[OnePure, Nothing, Nothing, A](() => Run.kernel(p)))
-inline def tailcall[A, Es[_]](p: => A ! Es): A ! Es = defer(p)
+def defer[A, Es[_]](p: => A ! Es): A ! Es = Run.of(Cont.Defer[OnePure, Nothing, Nothing, A](() => Run.kernel(p)))
+def tailcall[A, Es[_]](p: => A ! Es): A ! Es = defer(p)
 
 /** A HANDLER AS A VALUE, of `E`, polymorphic in the body's value: its answer `O[A]` — the kernel's form at a row */
 trait Handler[E[_], O[_]]:

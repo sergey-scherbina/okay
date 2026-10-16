@@ -282,19 +282,7 @@ object StreamCont:
         tells(ws.iterator)
     }
 
-  /** a program of the kernel at `R` as the platform's program needing `Async`: stepped (the machine's head), each
-   * of its operations performed at the place's `Async` */
-  def lifted[A](e: Eff[R, A]): A ! Async = new Run[Async, A]:
-    def on[T <: okay.core.Row](ps: okay.core.Paths[Async, T]): Eff[T, A] =
-      val at = ps.find(okay.core.Req.only)
-      okay.one.Cont.defer(replay(okay.one.machine.Machine.head(e), at))
+  /** a program of the kernel at `R` as the platform's program needing `Async`: each operation, at the head of that
+   * row, performed again at `Async`'s key */
+  def lifted[A](e: Eff[R, A]): A ! Async = okay.Program.fromKernel[Async, A](e)
 
-  private def replay[T <: okay.core.Row, A](h: okay.one.machine.Machine.Head[R, A], at: okay.core.In[Async, T]): Eff[T, A] =
-    import okay.one.machine.Machine.Head
-    import okay.one.row.In
-    h match
-      case Head.Done(a) => pure(a)
-      case p: Head.Paused[?, ?, ?, ?, ?, ?, ?, ?, ?] => In.same(p.in, In.Here[Async, okay.core.Pure]()) match
-        case same: In.Same[f, Async] =>
-          okay.one.Cont.perform(same(p.op))(using at).flatMap(v => replay(p.resume(v), at))
-        case null => throw IllegalStateException("StreamCont: an operation of no effect of the row")

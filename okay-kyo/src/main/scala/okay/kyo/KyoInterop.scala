@@ -17,6 +17,10 @@ import _root_.kyo.{<, Abort, AllowUnsafe, Duration, Flat, KyoApp}
 object KyoInterop {
 
   /** a pure kyo computation as a pure okay program */
+  /** an okay program is a value to kyo, never a pending kyo computation: opaque over the kernel's tree, so kyo's
+   * macro cannot see it is not nested — said here */
+  given programFlat[A, Es[_]]: Flat[A ! Es] = Flat.unsafe.bypass[A ! Es]
+
   def fromKyo[A: Flat](k: => A < Any): A ! Pure = okay.pure(k.eval)
 
   /** run a kyo async computation inside one okay Async operation */

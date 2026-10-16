@@ -376,7 +376,7 @@ object Proc:
      * `Static.toProgram`'s counterpart, and the bridge every runtime in
      * this library already knows how to drive.
      */
-    def toProgram(x: X): Y ! F = p.foldMap[[Z] =>> Z ! F]([Z] => (fz: F[Z]) => effect(fz))(using Programs.monad[F])(x)
+    def toProgram(x: X)(using okay.KeyOf[F]): Y ! F = p.foldMap[[Z] =>> Z ! F]([Z] => (fz: F[Z]) => effect(fz))(using Programs.monad[F])(x)
 
     /**
      * THE TERM, DRAWN, with a position optionally marked.

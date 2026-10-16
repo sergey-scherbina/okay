@@ -45,20 +45,17 @@ abstract class Effect[F[_]](implicit tag: ClassTag[F[Any]]) { self =>
   private def narrow[X](op: Op[X]): F[X] = op.asInstanceOf[F[X]]
 
   /** perform one operation */
-  def send[A](op: F[A] & Op[A]): Eff[Effect[F], A] = Eff.of(effect[Top, A](op))
+  def send[A](op: F[A] & Op[A]): Eff[Effect[F], A] = Eff.of(effect[Top, A](Rows.top[A](op)))
 
   /** handle this effect: `ret` for the answer, `h` for each operation — the kernel's `Deep` written out, this
    * effect's operations moved to `Op` beside `Top` (`Rows.moved`), the clauses' programs at `Top`'s place outside */
   def handle[R, A, B](e: Eff[Effect[F] & R, A])(ret: A => Eff[R, B])(h: Handler[F, R, B]): Eff[R, B] =
     val p = Rows.moved[Op, A](e.program)(using Foreign.Member.of[Op](using test))
     val answer = ret
-    Eff.of(new Run[Top, B]:
-      def on[T <: okay.core.Row](ps: Paths[Top, T]): okay.core.Eff[T, B] =
-        val here = Paths.Both(Paths.One(In.Here[Op, T]()), ps.under[Op])
-        okay.one.Cont.handle(p.fit(here))(new okay.one.handler.Deep[Op, T, A, B]:
-          def ret(a: A) = answer(a).program.fit(ps)
-          def apply[X](op: Op[X], k: X => okay.one.![B, T]) =
-            h(narrow(op), (x: X) => Eff.of[R, B](okay.Program.lift(k(x)).at[Top])).program.fit(ps)))
+    Eff.of(Run.install[Op, A, B, okay.+[Op, Top], Top](p)(new okay.one.handler.Deep[Op, okay.one.row.Pure, A, B]:
+      def ret(a: A) = Run.kernel(answer(a).program)
+      def apply[X](op: Op[X], k: X => okay.one.![B, okay.one.row.Pure]) =
+        Run.kernel(h(narrow(op), (x: X) => Eff.of[R, B](okay.Program.lift(k(x)).at[Top])).program)))
 
   /**
    * handle the LAST effect and answer. Not a convenience: `handle` at the

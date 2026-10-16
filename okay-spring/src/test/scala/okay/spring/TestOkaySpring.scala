@@ -52,7 +52,7 @@ class TestOkaySpring extends munit.FunSuite {
     assertEquals(Mono.from(adapter.toPublisher[Int](prog)).block(), 42)
     assertEquals(OkayReactive.fromPublisher(Mono.just("y")).runWith, "y")
     adapter.fromPublisher(Mono.just("x")) match
-      case p: okay.Run[?, ?] => assert(OkayReactive.programClass.isInstance(p)) // an anonymous `Run`: no simple name to check
+      case p: okay.one.Cont[?, ?, ?, ?] => assert(OkayReactive.programClass.isInstance(p)) // an anonymous `Run`: no simple name to check
       case other => fail(s"not a program: $other")
   }
 

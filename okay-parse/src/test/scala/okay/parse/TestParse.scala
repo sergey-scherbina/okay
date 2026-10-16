@@ -18,7 +18,7 @@ class TestParse extends munit.FunSuite {
     else Writer.tell(s.charAt(i)).flatMap(_ => chars(s, i + 1))
 
   /** the whole pipeline: chars -> scanner stage -> parser stage -> CST */
-  def parse(s: String, d: Parse.Driver[K, ?] = JsonParse.driver): Cst[K] =
+  def parse(s: String, d: Parse.Driver[K, Any] = JsonParse.driver): Cst[K] =
     Parse.toCst(through(through(chars(s))(Scan.stage(JsonLex.scan)))(d).toLazyList)
 
   val sample = "{\"a\": [1, 2.5e3, true],\n \"b\": null}"

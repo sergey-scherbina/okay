@@ -120,7 +120,7 @@ object CatsInterop {
 
   /** a cats free monad as an okay program, by initiality (foldMap into
    * our Monad instance through the injecting FunctionK) */
-  def fromCats[F[_], A](c: _root_.cats.free.Free[F, A]): A ! F =
+  def fromCats[F[_], A](c: _root_.cats.free.Free[F, A])(using okay.KeyOf[F]): A ! F =
     c.foldMap(new _root_.cats.arrow.FunctionK[F, [X] =>> X ! F]:
       def apply[X](fx: F[X]): X ! F = effect(fx))
 }

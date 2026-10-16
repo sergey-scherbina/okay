@@ -46,8 +46,12 @@ object KeyOf:
       '{ KeyOf.of[E](${ cls.asExprOf[Class[?]] }) }
     else
       // an effect with no class of its own (`Produce = Id`): the name of the first alias its type goes through
+      def opaque(s: Symbol): Boolean = s.flags.is(Flags.Opaque) && !s.flags.is(Flags.Param)
       def aliasOf(t: TypeRepr): Option[String] = t match
         case l: TypeLambda => aliasOf(l.resType)
+        // an opaque type (kyo's `<`): its own name, its body not seen from outside
+        case AppliedType(tc: TypeRef, _) if opaque(tc.typeSymbol) => Some(tc.typeSymbol.fullName)
+        case tr: TypeRef if opaque(tr.typeSymbol) => Some(tr.typeSymbol.fullName)
         case AppliedType(tc: TypeRef, _) if tc.typeSymbol.isAliasType => Some(tc.typeSymbol.fullName)
         case tr: TypeRef if tr.typeSymbol.isAliasType && !tr.typeSymbol.flags.is(Flags.Param) => Some(tr.typeSymbol.fullName)
         case _ => None

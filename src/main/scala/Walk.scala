@@ -40,15 +40,16 @@ object Walk:
   def next[E[_], A, Es[_]](p: A ! Es)(using s: okay.core.Split[Es, E], k: KeyOf[E]): Step[E, A, Es] ! s.Rest =
     Run.of(Cont.defer(walk[Es, E, A](start(p), k.ref)))
 
-  /** `p`, needing `E` alone, at its next operation: no effect of its own */
-  def view[E[_], A](p: A ! E)(using k: KeyOf[E]): Step[E, A, E] = viewed[E, A](start(p), k.ref)
+  /** `p`, needing `E` alone, at its next operation: no effect of its own — every operation it performs is `E`'s, so
+   * no key is asked for (`E` may be abstract) */
+  def view[E[_], A](p: A ! E): Step[E, A, E] = viewed[E, A](start(p))
 
   /**
    * `p` INTO ANOTHER MONAD, each operation by `nt` (okay-freer's `foldMap`): the one interop word — a program of `E`
    * as a cats `IO`, a ZIO, a kyo computation, a `Future`. A loop in `G`'s `tailRecM` (okay-freer's foldMap took it
    * too): stack-safe for any `G` that has one, a strict `Option` as a lazy `IO` (`TailRecM.deferring` for those).
    */
-  def foldMap[E[_], A, G[_]](p: A ! E)(nt: [X] => E[X] => G[X])(using G: Monad[G], R: TailRecM[G], k: KeyOf[E]): G[A] =
+  def foldMap[E[_], A, G[_]](p: A ! E)(nt: [X] => E[X] => G[X])(using G: Monad[G], R: TailRecM[G]): G[A] =
     R.tailRecM[A ! E, A](p)(q => view(q) match
       case Done(a) => G.pure(Right(a))
       case o: Op[E, x, A, E] => G.fmap(nt(o.op), (y: x) => Left(o.resume(y))))
@@ -81,11 +82,9 @@ object Walk:
         // another effect's: performed here, the walk on with its answer — a step of the machine, not a host frame
         else Cont.perform[f, OnePure, x](p.op)(using placed(p.in)).flatMap(v => walk(p.resume(v), key))
 
-  private def viewed[E[_], A](st: Head[OnePure, A], key: AnyRef): Step[E, A, E] = st match
+  private def viewed[E[_], A](st: Head[OnePure, A]): Step[E, A, E] = st match
     case Head.Done(a) => Done(a)
-    case p: Head.Paused[?, ?, ?, x, ?, ?, ?, ?, ?] =>
-      if own(p.in, key) then op[E, E, A, x](p.op.asInstanceOf[E[x]], p)
-      else throw IllegalStateException(s"Walk.view: an operation of another effect than the walked one: ${p.op}")
+    case p: Head.Paused[?, ?, ?, x, ?, ?, ?, ?, ?] => op[E, E, A, x](p.op.asInstanceOf[E[x]], p)
 
   private def op[Es[_], E[_], A, X](o: E[X], p: Paused[A]): Op[E, X, A, Es] =
     Op[E, X, A, Es](o, x => rest[Es, A](() => resumeAt(p, x)), e => rest[Es, A](() => p.fail(e)))

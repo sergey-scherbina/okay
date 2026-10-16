@@ -65,5 +65,5 @@ object ZioEffect:
       using zioMonad[Env, E], zioTailRecM[Env, E])
 
   /** each step rebuilt by `f`, in place: the operation translated where it is performed */
-  private[zio] def mapSteps[A, Env, E, G[_]](p: A ! Z[Env, E])(f: [X] => ZIO[Env, E, X] => G[X]): A ! G =
+  private[zio] def mapSteps[A, Env, E, G[_]](p: A ! Z[Env, E])(f: [X] => ZIO[Env, E, X] => G[X])(using okay.KeyOf[G]): A ! G =
     p.translate[Z[Env, E], G]([X] => (z: ZIO[Env, E, X]) => effect[G, X](f(z))).at[G]

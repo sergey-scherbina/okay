@@ -41,9 +41,9 @@ object Tx:
    * `retries` more times */
   final class Transactor[T <: Rows](db: Sql, isolation: Isolation = Isolation.ReadCommitted, readOnly: Boolean = false,
       retries: Int = 0)(using a: In[Async, T]) extends okay.tx.Tx.Transactor[Conn, T]:
-    def begin: Eff[T, Conn] = db.begin(isolation, readOnly).on(Paths.One(a)).map(g => Conn(db, g))
-    def commit(c: Conn): Eff[T, Unit] = c.db.commit().on(Paths.One(a))
-    def rollback(c: Conn): Eff[T, Unit] = c.db.rollback().on(Paths.One(a))
+    def begin: Eff[T, Conn] = db.begin(isolation, readOnly).fit(Paths.One(a)).map(g => Conn(db, g))
+    def commit(c: Conn): Eff[T, Unit] = c.db.commit().fit(Paths.One(a))
+    def rollback(c: Conn): Eff[T, Unit] = c.db.rollback().fit(Paths.One(a))
     override def retry(e: Throwable, attempt: Int): Boolean =
       attempt <= retries && db.sqlState(e).exists(Sql.retryable)
 
@@ -66,7 +66,7 @@ object Tx:
   def describe[R <: Rows](sql: String)(using In[Reader % Conn, R], In[Async, R]): Eff[R, Vector[Col]] =
     conn[R].flatMap(c => async[Vector[Col], R](c.db.describe(sql)))
   /** any `Async` program where `Async` is in the row: a transaction body is not the protocol alone */
-  def async[A, R <: Rows](p: okay.![A, Async])(using a: In[Async, R]): Eff[R, A] = p.on(Paths.One(a))
+  def async[A, R <: Rows](p: okay.![A, Async])(using a: In[Async, R]): Eff[R, A] = p.fit(Paths.One(a))
 
   /** THE BRACKETS RUN against the driver: `p`'s transactions begun, committed and rolled back by `Transactor` */
   def interpret[A, T <: Rows](db: Sql, isolation: Isolation = Isolation.ReadCommitted, readOnly: Boolean = false,

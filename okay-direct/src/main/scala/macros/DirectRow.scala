@@ -17,18 +17,22 @@ import scala.quoted.*
 private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
   import q.reflect.*
 
-  /** the program's class: the root's `Run`, `A ! Es` being `Run[Es, A]` */
-  lazy val freeClass = Symbol.requiredClass("okay.Run")
+  /** the program's type: the root's `Run.Prog`, `A ! Es` being `Run.Prog[Es, A]` — opaque, so it is matched by its
+   * symbol and never dealiased past */
+  lazy val progType: Symbol = Symbol.requiredModule("okay.Run").typeMember("Prog")
 
-  /**
-   * A PROGRAM TYPE, TAKEN APART: `(effects, elem)` of an `A ! Es` — the
-   * base type at `Run`, so a program built as `new Run[Es, A]` is one
-   * too — or None.
-   */
+  /** A PROGRAM TYPE, TAKEN APART: `(effects, elem)` of an `A ! Es`, or None */
   def programOf(tpe: TypeRepr): Option[(TypeRepr, TypeRepr)] =
-    tpe.widen.dealias.baseType(freeClass) match
-      case AppliedType(_, List(row, elem)) => Some((row, elem))
+    def go(t: TypeRepr): Option[(TypeRepr, TypeRepr)] = t match
+      case AppliedType(f, List(row, elem)) if f.typeSymbol == progType => Some((row, elem))
+      case t: TypeRef if t.typeSymbol.isAliasType => go(t.dealias)
+      case AppliedType(f, _) if f.typeSymbol.isAliasType => go(t.dealias)
+      case AndType(l, r) => go(l).orElse(go(r))
       case _ => None
+    go(tpe.widen)
+
+  /** is this the type of a program */
+  def isProgram(tpe: TypeRepr): Boolean = programOf(tpe).isDefined
 
   /** the block's effects, if its F is the program monad `A ! Es` */
   lazy val rowOf: Option[TypeRepr] =
@@ -280,6 +284,9 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
     def walk(t: Term): Option[Term] =
       val (bs, core) = unwrap(t)
       core match
+        // `effect[E, X](op)(using key)`: the operation, its key the effect's
+        case Apply(Apply(TypeApply(f, targs), List(op)), _) if f.symbol == effectSym =>
+          opLeaf(bs, op, targs.last.tpe.widen)
         case Apply(TypeApply(f, targs), List(op)) if f.symbol == effectSym =>
           opLeaf(bs, op, targs.last.tpe.widen)
         case ref: Ref if sharedNodes.contains(sharedKey(ref.symbol)) =>
@@ -345,7 +352,7 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
       // its binds; what cannot be walked is a program built at run
       // time, and a staged block's cost is one arm per operation with
       // no interpreter inside, so it is refused, naming the shape
-      case Some(row) if stage.isDefined && m.tpe.widen.dealias.derivesFrom(freeClass) =>
+      case Some(row) if stage.isDefined && isProgram(m.tpe) =>
         stageProgram(m, row).getOrElse(
           report.errorAndAbort(
             s"a staged block stages programs it can READ: the marked value ${m.tpe.show} is built at " +
@@ -380,7 +387,7 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
    */
   def foreignTerm(m: Term): Option[Term] =
     val mt = m.tpe.widen.dealias
-    if mt.derivesFrom(freeClass) then None
+    if isProgram(mt) then None
     else
       val candidates = mt.baseClasses.iterator.flatMap(c => mt.baseType(c) match
         case AppliedType(g, args) if args.nonEmpty =>
@@ -409,7 +416,7 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
     def refuse: Nothing = report.errorAndAbort(
       s"the marked value has type ${m.tpe.show} — neither this block's " +
         s"${TypeRepr.of[F].appliedTo(elem.widen).show} nor an operation of its row ${row.show}", at)
-    // the element by SUBTYPING, not equality: `Run[Es, +A]`, so a
+    // the element by SUBTYPING, not equality: `Run.Prog[Es, +A]`, so a
     // `Nothing ! r` IS a `Unit ! r`
     programOf(m.tpe) match
       case Some((r, e)) if e.widen <:< elem.widen =>
@@ -423,7 +430,7 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
   /** is this a monadic/marked value a statement would silently drop? */
   def discardedMonadic(tpe: TypeRepr): Boolean =
     val w = tpe.widen.dealias
-    if w.derivesFrom(freeClass) then true
+    if isProgram(w) then true
     else w match
       case AppliedType(g, args) if args.nonEmpty =>
         // the candidate constructor is g with all but the LAST

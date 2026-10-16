@@ -44,5 +44,5 @@ object ForeignEffect:
  * with one unknown at a time (`handle`'s shape): two unknown rows solved together is row-membership-crash.
  */
 extension [A, R[_]](p: A ! R)
-  def via[M[_]](using fe: ForeignEffect[M])(using s: Split[R, M]): A ! fe.G + s.Rest =
+  def via[M[_]](using fe: ForeignEffect[M])(using s: Split[R, M], k: okay.KeyOf[M]): A ! fe.G + s.Rest =
     p.translate[M, fe.G]([X] => (m: M[X]) => fe.lift(m))

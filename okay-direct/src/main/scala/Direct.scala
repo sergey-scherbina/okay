@@ -54,20 +54,19 @@ object Direct:
 
   /** an operation of `E` as a program needing `Es`, `E` among them: one node, its path found where it is fitted
    * (the macro's lift of an operation marked in a block) */
-  inline def effectIn[E[_], Es[_], X](op: E[X]): X ! Es = effectAt[E, Es, X](op, scala.compiletime.summonInline[Within[E, Es]])
-  def effectAt[E[_], Es[_], X](op: E[X], w: Within[E, Es]): X ! Es = new Run[Es, X]:
-    def on[R <: okay.core.Row](ps: okay.core.Paths[Es, R]): okay.core.Eff[R, X] =
-      okay.one.Cont.perform[E, R, X](op)(using w.paths(ps).find(okay.core.Req.only))
+  inline def effectIn[E[_], Es[_], X](op: E[X]): X ! Es =
+    effectAt[E, Es, X](op, scala.compiletime.summonInline[Within[E, Es]])(using scala.compiletime.summonInline[okay.KeyOf[E]])
+  def effectAt[E[_], Es[_], X](op: E[X], w: Within[E, Es])(using k: okay.KeyOf[E]): X ! Es =
+    okay.effect[E, X](op).at[Es](using w)
 
   /** a program needing fewer effects, at the block's (the macro's lift of a narrower program) */
   inline def lifted[A, E[_], Es[_]](p: A ! E): A ! Es = p.at[Es](using scala.compiletime.summonInline[Within[E, Es]])
 
   /** `try fa catch h` around a program: a throw while it is built, and one raised in any of its steps, given to
    * `h` (the kernel's `recover`) — what a `try` in a block over programs is */
-  def tryProgram[A, Es[_]](fa: => A ! Es)(h: Throwable => A ! Es): A ! Es = new Run[Es, A]:
-    def on[R <: okay.core.Row](ps: okay.core.Paths[Es, R]): okay.core.Eff[R, A] =
-      val built = try fa.fit(ps) catch case e: Throwable => h(e).fit(ps)
-      okay.one.Cont.recover(built)(e => h(e).fit(ps))
+  def tryProgram[A, Es[_]](fa: => A ! Es)(h: Throwable => A ! Es): A ! Es = okay.defer:
+    val built = try fa catch case e: Throwable => h(e)
+    built.recover(h)
 
   /** a program of the block read as its value (auto-colouring): a phantom, the macro rewrites every use. An
    * `implicit def`, so `import Direct.*` brings it — the colouring okay-freer's tree had in its own companion */

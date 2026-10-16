@@ -144,8 +144,7 @@ object Eff {
   def defer[A](next: Supplier[Eff[A]]): Eff[A] = new Eff(okay.defer(next.get().program))
 
   /** a Scala program, for Java: its operations are handled by Java's handlers or by `run`'s refusal */
-  def from[A, F[_]](p: A ! F)(using e: Erased[F]): Eff[A] = new Eff(new Run[Top, A]:
-    def on[R <: okay.core.Row](ps: Paths[Top, R]): okay.core.Eff[R, A] = p.fit(e.paths(ps.find(Req.only))))
+  def from[A, F[_]](p: A ! F)(using e: Erased[F]): Eff[A] = new Eff(Erased.erase[A, F, Top](p))
 
   // ------------------------------------------------- the core effects
 
@@ -262,13 +261,10 @@ trait Clause[O, B] {
 final class Control[A, B] private[java] (test: Any => Boolean, ret: JFunction[? >: A, Eff[B]], clause: Clause[Any, B]) {
   private[java] def run(e: Eff[A]): Eff[B] =
     val p = Moves.own(e.program, test)
-    new Eff(new Run[Top, B]:
-      def on[R <: okay.core.Row](ps: Paths[Top, R]): okay.core.Eff[R, B] =
-        val here = Paths.Both(Paths.One(In.Here[Own, R]()), ps.under[Own])
-        okay.one.Cont.handle(p.fit(here))(new okay.one.handler.Deep[Own, R, A, B]:
-          def ret(a: A) = Control.this.ret.apply(a).program.fit(ps)
-          def apply[X](op: Own[X], k: X => okay.one.![B, R]) =
-            clause(rawOwn(op), x => new Eff(okay.Program.lift(k(answered[X](x))).at[Top])).program.fit(ps)))
+    new Eff(Run.install[Own, A, B, Own + Top, Top](p)(new okay.one.handler.Deep[Own, okay.one.row.Pure, A, B]:
+      def ret(a: A) = Run.kernel(Control.this.ret.apply(a).program)
+      def apply[X](op: Own[X], k: X => okay.one.![B, okay.one.row.Pure]) =
+        Run.kernel(clause(rawOwn(op), x => new Eff(okay.Program.lift(k(answered[X](x))).at[Top])).program)))
 }
 
 object Control {

@@ -155,14 +155,14 @@ object Foreign {
           if f.test(x) then f.perform(x).at[F + G] else g.perform(x).at[F + G]
 
   object Member:
-    given one[F[_]](using t: TypeableK[F]): Member[F] = new Member[F]:
+    given one[F[_]](using t: TypeableK[F], k: okay.KeyOf[F]): Member[F] = new Member[F]:
       def test(x: Any): Boolean = t.test(x)
       def perform(x: AnyRef): AnyRef ! F = effect[F, Any](asOperation[F](x)).map(obj)
     /** no effects: nothing is an operation of them */
     given pure: Member[Pure] = new Member[Pure]:
       def test(x: Any): Boolean = false
       def perform(x: AnyRef): AnyRef ! Pure = throw IllegalArgumentException(s"not an operation: $x")
-    def of[F[_]](using t: TypeableK[F]): Member[F] = one[F]
+    def of[F[_]](using t: TypeableK[F], k: okay.KeyOf[F]): Member[F] = one[F]
 
   /** THE ONE CAST of the interop bridges: a value the signature's `TypeableK` said is an operation of F is an
    * `F[X]` for the X the other side will receive as an `Object`, so `F[Any]` (its answer goes back erased) */

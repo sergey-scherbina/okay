@@ -12,10 +12,11 @@ import _root_.cats.effect.IO
  * okay-freer's walk ended on the operation itself.
  */
 private[cats] object Walking:
-  def toIO[E[_], A](p: A ! E + Async)(step: [X] => E[X] => IO[X]): IO[A] =
+  def toIO[E[_], A](p: A ! E + Async)(step: [X] => E[X] => IO[X])(using okay.KeyOf[E]): IO[A] =
     outer(Walk.view(Walk.next[E, A, E + Async](p)), step)
 
-  private def outer[E[_], A](s: Walk.Step[Async, Walk.Step[E, A, E + Async], Async], step: [X] => E[X] => IO[X]): IO[A] =
+  private def outer[E[_], A](s: Walk.Step[Async, Walk.Step[E, A, E + Async], Async], step: [X] => E[X] => IO[X])
+      (using okay.KeyOf[E]): IO[A] =
     s match
       case Walk.Done(st) => st match
         case Walk.Done(a) => IO.pure(a)

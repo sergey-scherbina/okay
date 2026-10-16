@@ -50,13 +50,17 @@ private[scala2] final class EffBody[+A](val p: A ! Rows.Top) extends AnyVal
  */
 private[scala2] object Rows {
 
-  /** the one effect every `Eff` needs: its operations are any values */
-  type Top[X] = Any
+  /** the one effect every `Eff` needs: its operations are any values — opaque, so it is a name of its own (its key,
+   * `KeyOf`'s by name) and not the `Any` an alias would be read as */
+  opaque type Top[X] = Any
+  /** a value performed as an operation of `Top`, answering `X` */
+  def top[X](op: Any): Top[X] = op
+  /** `Top`'s key, one: inside this object `Top` is `Any`, and has no name a derived key could read */
+  given topKey: okay.KeyOf[Top] = okay.KeyOf.named[Top]("okay.scala2.Rows.Top")
 
 
   /** a core program of the row `F`, its effects at `Top`'s place */
-  def erase[A, F[_]](p: A ! F)(using e: Erased[F]): A ! Top = new Run[Top, A]:
-    def on[R <: okay.core.Row](ps: Paths[Top, R]): okay.core.Eff[R, A] = p.fit(e.paths(ps.find(Req.only)))
+  def erase[A, F[_]](p: A ! F)(using e: Erased[F]): A ! Top = Erased.erase[A, F, Top](p)
 
   /** `E`'s operations moved to it beside `Top` (its `Member` says which); the others stay at `Top` */
   def moved[E[_], A](p: A ! Top)(using m: Foreign.Member[E]): A ! E + Top =

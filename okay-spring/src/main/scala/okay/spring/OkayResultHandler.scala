@@ -1,7 +1,7 @@
 package okay.spring
 
 
-import okay.{Async, Run}
+import okay.{!, Async}
 import org.springframework.core.{MethodParameter, Ordered, ResolvableType}
 import org.springframework.web.reactive.{HandlerResult, HandlerResultHandler}
 import org.springframework.web.reactive.result.method.annotation.ResponseBodyResultHandler
@@ -26,7 +26,7 @@ final class OkayResultHandler(delegate: ResponseBodyResultHandler) extends Handl
   override def getOrder: Int = delegate.getOrder - 1
 
   override def supports(result: HandlerResult): Boolean =
-    classOf[Run[?, ?]].isAssignableFrom(result.getReturnTypeSource.getParameterType) && delegate.supports(result)
+    classOf[okay.one.Cont[?, ?, ?, ?]].isAssignableFrom(result.getReturnTypeSource.getParameterType) && delegate.supports(result)
 
   override def handleResult(exchange: ServerWebExchange, result: HandlerResult): Mono[Void] =
     // index 1: `A ! F` is `Run[F, A]` (okay's Program.scala) — the value comes last
@@ -37,7 +37,7 @@ final class OkayResultHandler(delegate: ResponseBodyResultHandler) extends Handl
   /** the value arrives as Object, its class checked by `supports` above;
    * the pattern restates that check — an erased type behind a wildcard */
   private def program(value: AnyRef): Mono[?] = value match
-    case p: Run[Async, AnyRef] @unchecked => OkayReactive.mono(p)
+    case p: okay.one.Cont[?, ?, ?, ?] => OkayReactive.mono(p.asInstanceOf[AnyRef ! Async])
     case null => Mono.empty()
     case other => throw IllegalStateException(s"not an okay program: ${other.getClass.getName}")
 
