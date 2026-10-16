@@ -1,8 +1,7 @@
 package okay
 
-import okay.core.{+:, Eff, Paths, Row, Split}
 import okay.one.Cont
-import okay.one.row.In
+import okay.one.row.{In, Pure as OnePure}
 import okay.one.machine.Machine
 import okay.one.machine.Machine.Head
 
@@ -21,8 +20,8 @@ import okay.one.machine.Machine.Head
  * of the place), as okay-freer's `relay` forwarded them. `view` walks a program needing `E` alone, with no effect
  * of its own. Underneath, the program is run by the machine to its next operation, handed out as ONE object
  * (`Machine.head`); the rest resumes it — any number of times, from any thread — and walked again at the same
- * place it goes on from where it was, nothing re-fitted; run anywhere else, its operations are re-placed by
- * reading the paths of the two places side by side.
+ * place it goes on from where it was; run anywhere else, its operations are performed again at their places —
+ * by key, the same in every program.
  */
 object Walk:
   /** the program at its next operation of `E` */
@@ -38,117 +37,75 @@ object Walk:
     override def toString: String = s"Walk.Op($op)"
 
   /** `p` to its next operation of `E`, wherever `E` is among its effects; the others' operations performed here */
-  def next[E[_], A, Es[_]](p: A ! Es)(using s: Split[Es, E]): Step[E, A, Es] ! s.Rest = new Run[s.Rest, Step[E, A, Es]]:
-    def on[T <: Row](ps: Paths[s.Rest, T]): Eff[T, Step[E, A, Es]] =
-      val template = s.paths(ps)
-      Cont.defer(walk(start(p, template), template))
+  def next[E[_], A, Es[_]](p: A ! Es)(using s: okay.core.Split[Es, E], k: KeyOf[E]): Step[E, A, Es] ! s.Rest =
+    Run.of(Cont.defer(walk[Es, E, A](start(p), k.ref)))
 
   /** `p`, needing `E` alone, at its next operation: no effect of its own */
-  def view[E[_], A](p: A ! E): Step[E, A, E] =
-    val template = Paths.One(In.Here[E, okay.core.Pure]())
-    viewed(start(p, template), template)
+  def view[E[_], A](p: A ! E)(using k: KeyOf[E]): Step[E, A, E] = viewed[E, A](start(p), k.ref)
 
   /**
    * `p` INTO ANOTHER MONAD, each operation by `nt` (okay-freer's `foldMap`): the one interop word — a program of `E`
    * as a cats `IO`, a ZIO, a kyo computation, a `Future`. A loop in `G`'s `tailRecM` (okay-freer's foldMap took it
    * too): stack-safe for any `G` that has one, a strict `Option` as a lazy `IO` (`TailRecM.deferring` for those).
    */
-  def foldMap[E[_], A, G[_]](p: A ! E)(nt: [X] => E[X] => G[X])(using G: Monad[G], R: TailRecM[G]): G[A] =
+  def foldMap[E[_], A, G[_]](p: A ! E)(nt: [X] => E[X] => G[X])(using G: Monad[G], R: TailRecM[G], k: KeyOf[E]): G[A] =
     R.tailRecM[A ! E, A](p)(q => view(q) match
       case Done(a) => G.pure(Right(a))
       case o: Op[E, x, A, E] => G.fmap(nt(o.op), (y: x) => Left(o.resume(y))))
 
   // ---- the machinery (okay-std's Writer streams walk by it too)
 
-  /** a program paused at an operation of `R`, its machine-side types unnamed */
-  type Paused[R <: Row, A] = Head.Paused[R, A, ?, ?, ?, ?, ?, ?, ?]
+  /** a program paused at an operation, its machine-side types unnamed */
+  type Paused[A] = Head.Paused[OnePure, A, ?, ?, ?, ?, ?, ?, ?]
 
   /** `at` resumed with `v`. THE CAST, and why it is sound: `v` is the paused operation's answer, of its type — the
    * caller read the operation and answered it */
-  def resumeAt[R <: Row, A](at: Paused[R, A], v: Any): Head[R, A] =
-    at.asInstanceOf[Head.Paused[R, A, [X] =>> Any, Any, Any, Any, Any, Any, Any]].resume(v)
+  def resumeAt[A](at: Paused[A], v: Any): Head[OnePure, A] =
+    at.asInstanceOf[Head.Paused[OnePure, A, [X] =>> Any, Any, Any, Any, Any, Any, Any]].resume(v)
 
-  private def walk[Es[_], E[_], T <: Row, A](st: Head[E +: T, A], template: Paths[Es, E +: T]): Eff[T, Step[E, A, Es]] =
+  /** the operation at `in` the walked effect's — its key `key` — or not */
+  inline def own(in: In[?, ?], key: AnyRef): Boolean = in match
+    case at: In.At[?, ?] => at.ref eq key
+    case _ => false
+
+  /** the place of an operation, at the row of any program: a place by key is in every row */
+  def placed[F[_]](in: In[F, OnePure]): In[F, OnePure] = in match
+    case at: In.At[F, ?] => at.again[OnePure]
+    case _ => throw IllegalStateException("Walk: an operation at a place not by key")
+
+  private def walk[Es[_], E[_], A](st: Head[OnePure, A], key: AnyRef): okay.one.![Step[E, A, Es], OnePure] =
     st match
       case Head.Done(a) => Cont.pure(Done(a))
-      case p: Head.Paused[?, ?, f, x, ?, ?, ?, ?, ?] => own(p.in) match
-        // another effect's: performed here, the walk on with its answer — a step of the machine, not a host frame
-        case null => Cont.perform[f, T, x](p.op)(using outside(p.in)).flatMap(v => walk(p.resume(v), template))
-        case same: In.Same[f, E] => Cont.pure(op[Es, E, T, A, x](same(p.op), p, template))
-
-  private def viewed[E[_], A](st: Head[E +: okay.core.Pure, A], template: Paths[E, E +: okay.core.Pure]): Step[E, A, E] =
-    st match
-      case Head.Done(a) => Done(a)
-      case p: Head.Paused[?, ?, ?, x, ?, ?, ?, ?, ?] => own(p.in) match
-        case null => In.absurd(outside(p.in))
-        case same: In.Same[f, E] => op[E, E, okay.core.Pure, A, x](same(p.op), p, template)
-
-  private def op[Es[_], E[_], T <: Row, A, X](o: E[X], p: Paused[E +: T, A], template: Paths[Es, E +: T]): Op[E, X, A, Es] =
-    Op[E, X, A, Es](o, x => Rest[Es, E, T, A](template, () => resumeAt(p, x)),
-      e => Rest[Es, E, T, A](template, () => p.fail(e)))
-
-  /** the operation at `in` the walked effect's own — its place the head — or `null` */
-  def own[F[_], E[_], T <: Row](in: In[F, E +: T]): In.Same[F, E] | Null = In.same(in, In.Here[E, T]())
-
-  /** a place past the head, in the row outside it */
-  def outside[F[_], E[_], T <: Row](in: In[F, E +: T]): In[F, T] = in match
-    case In.There(in2) => in2
-    case at: In.At[f, ?] => at.again[T]
-    case _ => throw IllegalStateException("Walk: an operation of the walked effect where another was expected")
-
-  def moved(): Nothing = throw IllegalStateException(
-    "Walk: the rest of a walked program run where its effects are not as they were where it was walked — " +
-      "an effect of it not among those of the place; run the rest where the walk's answer is used")
-
-  /**
-   * THE REST of a program walked at the place `template`, past an operation it handed over: a program again —
-   * `next` the paused program resumed, run when the rest is (as often as it is). Walked again at the same paths
-   * (`start`), it goes on from where it was; run anywhere else, its operations are performed at the place's paths,
-   * each re-placed by reading the two side by side (`relocate`).
-   */
-  final class Rest[Es[_], E[_], T <: Row, A](val template: Paths[Es, E +: T], next: () => Head[E +: T, A])
-      extends Run[Es, A]:
-    /** the rest stepped on at a place whose paths are the template's. THE CAST, and why it is sound: the program
-     * reads its row only through its operations' paths, and those are the template's at the new place as well */
-    def resumed[T2 <: Row]: Head[E +: T2, A] = next().asInstanceOf[Head[E +: T2, A]]
-
-    def on[R <: Row](ps: Paths[Es, R]): Eff[R, A] = Cont.defer(replay(next(), ps))
-
-    private def replay[R <: Row](st: Head[E +: T, A], ps: Paths[Es, R]): Eff[R, A] = st match
-      case Head.Done(a) => Cont.pure(a)
       case p: Head.Paused[?, ?, f, x, ?, ?, ?, ?, ?] =>
-        Cont.perform[f, R, x](p.op)(using relocate(p.in, template, ps)).flatMap(v => replay(p.resume(v), ps))
+        if own(p.in, key) then Cont.pure(op[Es, E, A, x](p.op.asInstanceOf[E[x]], p))
+        // another effect's: performed here, the walk on with its answer — a step of the machine, not a host frame
+        else Cont.perform[f, OnePure, x](p.op)(using placed(p.in)).flatMap(v => walk(p.resume(v), key))
 
-  /** the same paths, leaf for leaf: a walk as deep as the sum of effects written in the program's type, a bound of
-   * the source text */
-  def samePaths(a: Paths[?, ?], b: Paths[?, ?]): Boolean = (a eq b) || ((a, b) match
-    case (x: Paths.One[?, ?], y: Paths.One[?, ?]) => x.head == y.head
-    case (x: Paths.Both[?, ?, ?], y: Paths.Both[?, ?, ?]) => samePaths(x.left, y.left) && samePaths(x.right, y.right)
-    case (_: Paths.None[?], _: Paths.None[?]) => true
-    case _ => false)
+  private def viewed[E[_], A](st: Head[OnePure, A], key: AnyRef): Step[E, A, E] = st match
+    case Head.Done(a) => Done(a)
+    case p: Head.Paused[?, ?, ?, x, ?, ?, ?, ?, ?] =>
+      if own(p.in, key) then op[E, E, A, x](p.op.asInstanceOf[E[x]], p)
+      else throw IllegalStateException(s"Walk.view: an operation of another effect than the walked one: ${p.op}")
+
+  private def op[Es[_], E[_], A, X](o: E[X], p: Paused[A]): Op[E, X, A, Es] =
+    Op[E, X, A, Es](o, x => rest[Es, A](() => resumeAt(p, x)), e => rest[Es, A](() => p.fail(e)))
 
   /**
-   * The place in `now` of the operation at `in` under `template`: the leaf of `template` whose path is `in`, read
-   * at the same leaf of `now`. THE CAST, and why it is sound: the two are the paths of one `Es`, leaf for leaf, so
-   * that leaf of `now` is the place of the same effect, `F`. The walk is as deep as the sum of effects written in
-   * the program's type, a bound of the source text.
+   * THE REST of a walked program, past an operation it handed over: a program again — `next` the paused program
+   * resumed, run when the rest is (as often as it is). Walked again (`start`), it goes on from where it was; run
+   * anywhere else, its operations are performed again at their places, by key.
    */
-  def relocate[F[_], Es[_], E[_], T <: Row, R <: Row](in: In[F, E +: T], template: Paths[Es, E +: T],
-      now: Paths[Es, R]): In[F, R] =
-    var found: In[?, ?] | Null = null
-    def walk(t: Paths[?, ?], n: Paths[?, ?]): Unit = (t, n) match
-      case (to: Paths.One[?, ?], no: Paths.One[?, ?]) => if found == null && to.head == in then found = no.head
-      case (tb: Paths.Both[?, ?, ?], nb: Paths.Both[?, ?, ?]) => walk(tb.left, nb.left); walk(tb.right, nb.right)
-      case _ => ()
-    walk(template, now)
-    found match
-      case null => moved()
-      case f => f.asInstanceOf[In[F, R]]
+  final class Rest[A](val next: () => Head[OnePure, A]) extends (() => okay.one.![A, OnePure]):
+    def apply(): okay.one.![A, OnePure] = replay(next())
 
-  /** `p` at its head at the place `template`: a rest walked at the same paths before, on from where it was; any
-   * other program from its start */
-  def start[Es[_], E[_], T <: Row, A](p: A ! Es, template: Paths[Es, E +: T]): Head[E +: T, A] = p match
-    // unchecked: a `Rest` that is this `A ! Es` has its `Es` and `A`; its `E` is the template's head, which the
-    // paths compared say
-    case r: Rest[Es, E, ?, A] @unchecked if samePaths(r.template, template) => r.resumed[T]
-    case _ => Machine.head(p.fit(template))
+  def rest[Es[_], A](next: () => Head[OnePure, A]): A ! Es = Run.of(Cont.Defer(Rest(next)))
+
+  private def replay[A](st: Head[OnePure, A]): okay.one.![A, OnePure] = st match
+    case Head.Done(a) => Cont.pure(a)
+    case p: Head.Paused[?, ?, f, x, ?, ?, ?, ?, ?] =>
+      Cont.perform[f, OnePure, x](p.op)(using placed(p.in)).flatMap(v => replay(p.resume(v)))
+
+  /** `p` at its head: a rest walked before, on from where it was; any other program from its start */
+  def start[A, Es[_]](p: A ! Es): Head[OnePure, A] = Run.kernel[A, Es, OnePure](p) match
+    case Cont.Defer(r: Rest[A] @unchecked) => r.next()
+    case e => Machine.head(e)

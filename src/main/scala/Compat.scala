@@ -33,9 +33,9 @@ object `!`:
   /** `f` on each element, in order, for its effects */
   def each[X, Es[_]](xs: Iterable[X])(f: X => Unit ! Es): Unit ! Es = foldM[X, Unit, Es](xs)(())((_, x) => f(x))
   /** `F` translated into the rest `G` (`p.translateInto`) */
-  def translate[A, F[_], G[_]](p: A ! F + G)(h: [X] => F[X] => X ! G): A ! G = p.translateInto[F, G](h)
+  def translate[A, F[_], G[_]](p: A ! F + G)(h: [X] => F[X] => X ! G)(using KeyOf[F]): A ! G = p.translateInto[F, G](h)
   /** `F` translated into `G` beside the rest `H` */
-  def interpret[A, F[_], G[_], H[_]](p: A ! F + H)(h: [X] => F[X] => X ! G + H): A ! G + H =
+  def interpret[A, F[_], G[_], H[_]](p: A ! F + H)(h: [X] => F[X] => X ! G + H)(using KeyOf[F]): A ! G + H =
     p.translate[F, G + H](h).at[G + H]
 
 /** okay-freer's `Row` words: widening by membership, a sum's answers from its parts */
@@ -68,7 +68,7 @@ object Distinct:
 
 extension [E[_], X](op: E[X])
   /** an operation as a program, `op.perform` or `perform(op)`: `effect(op)` */
-  def perform: X ! E = effect(op)
+  def perform(using KeyOf[E]): X ! E = effect(op)
 
 /** THE PATHS OF `F` ERASED TO ONE PLACE: every effect of `F` at the place of one effect `T` that takes any operation
  * (a foreign facade's `Top`: okay-java, okay-scala2) — a sum's by its sides, found at compile time from the shape of
