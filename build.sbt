@@ -904,7 +904,7 @@ lazy val okayOptics = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 lazy val okayTx = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-tx"))
-  .dependsOn(okay)
+  .dependsOn(okay, okayTest % "test->compile")
   .settings(
     name := "okay-tx",
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,

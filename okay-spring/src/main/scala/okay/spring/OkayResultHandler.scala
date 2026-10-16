@@ -11,8 +11,8 @@ import reactor.core.publisher.Mono
 /**
  * Why the adapter alone is not enough: WebFlux reads a reactive return
  * type's ELEMENT type from generic index 0, and `A ! Async` is
- * `Run[Async, A]` — index 0 is the effect's
- * signature, and the value is index 1. Measured: with only the
+ * the kernel's `Cont[Pure, Nothing, Nothing, A]` to the JVM: the value
+ * is index 3. Measured: with only the
  * adapter, a `String ! Async` was written as a server-sent event
  * (`data:hi!`), the element type having resolved to the effect. This
  * handler runs just before `ResponseBodyResultHandler`, turns the

@@ -74,3 +74,80 @@ Results: TestTxCapability 6 — the guard catches the closure, the LazyList (at 
 `run`) and a transaction kept past a rollback; `-language:experimental.captureChecking` refuses the closure leak
 with the same message as the import, and compiles the honest body. The AtomicBoolean of the guard does not
 trouble the checker (a field of a `SharedCapability`).
+
+## The kernel (okay-caps-core): okay-core's Cont capture-checked, measured
+
+A probe on okay-core's branch `capture-checking` (fb69ca6; not merged): `import language.experimental.captureChecking`
+in `Cont.scala` alone. What it took, and what it gives:
+
+- Thirteen errors at first, each the checker seeing what the kernel hid: `Bind^{f}` — a node holds its function.
+  Closed by a capturing self type (`this: Cont[R, I, O, A]^`), node parameters `Cont^` (`Bind`, `Map`, `Defer`,
+  `Inject`, `Lift`, `Dollar`, `Lower`), results `^{this, f}` on `map`, `bound`, `down`, `defer`, `shift0`, `dollar`,
+  and two lambdas' result ascribed. Nothing else in okay-core needs the checker.
+- The bytecode: the same, instruction for instruction, in all 430 classes (`javap -c -p`); only the debug line
+  numbers moved, by the import's lines. The machine is untouched; no benchmark can move.
+- okay-core's suites all green (core 251, words 45, async 19, the Scala 2 module 6 — it reads the annotated TASTy —,
+  cats 2, tofu 9).
+- From okay-caps against it: a kernel program holding the transaction, carried out of the bracket by `map` or
+  `defer`, is REFUSED ("Capability `tx` outlives its scope"). By `flatMap` — and so by a `for` — NOT: `flatMap` is
+  `inline`, and a capture set in an inline method's signature is inlined into every caller as `@retains`, an
+  experimental annotation — every user of the kernel would need `-experimental` (measured: okay-core's own
+  `Control.scala` stops compiling). `transparent inline`, which would carry the body's type instead, breaks the
+  `inline match` on `Lifts` and the private `down` it calls: a redesign of the kernel's most delicate method.
+- A capture-checked caller pays: `.run` and an ascription `Int ! Pure` want a pure program, so an honest
+  `p.map(_ => tx.execute(...)).run` is refused until `run` takes `(A ! Pure)^` and the caller writes `(Int ! Pure)^`.
+
+Verdict: the kernel CAN be capture-checked at no run-time cost, but the guarantee stops at `flatMap`, the word
+programs are written with — partial, and a partial static guarantee is not one to sell. Not merged. The guard
+(`Tx.Closed`) stays the answer for kernel programs; the probe is kept on its branch, to be taken up when `@retains`
+is no longer experimental (then `flatMap`'s signature carries `^{this, f}` directly) — backlog `okay-caps-next`.
+
+## The rule, tested (okay-caps-rule)
+
+okay-tx's `TestTxEscape`: the bracket's resource performed outside any bracket does not compile (no `Path` to a
+reader of it in the row outside); a program performing it, carried out of the bracket and bound there, does not
+compile (its row is the bracket's); the resource read into a value and closed over leaves — the closure answers
+the connection after its commit — the boundary the checker or the guard covers.
+
+## In okay-tx (okay-tx-session)
+
+The guard where transactions are used: okay-tx's JDBC bracket. `Jdbc` hands the bracket's `Connection` out raw; a
+closure keeping it runs after the commit on a connection closed — or, from a pool, given back to it and maybe in
+another bracket's hands. `Sessions` beside it: the same transactor, the resource a `Session` — a
+`caps.SharedCapability` wrapping the connection, `execute`/`queryInt` its words — closed when the bracket commits
+or rolls back, before the connection is: a statement after it is `Session.Closed`, naming the leak.
+
+- [x] a session's statements in its bracket commit; a session kept past the commit, past a rollback: `Session.Closed`
+- [x] nested brackets one session; a retry a fresh one
+- [x] `Jdbc` unchanged
+
+Results: TestSessions 4 on H2; okay-tx's 19 green. Measured on the way: a file using the kernel's programs with a
+capability in their types does not compile under the checker — `Session ! T` through `map` and the inline `flatMap`
+("Capability `fresh` outlives its scope", "`Cont_this*` cannot flow into capture set {}"), the kernel not being
+capture-checked. So `Session` alone is in a capture-checked file; `Sessions`, which builds programs, is not.
+
+## The kernel without -experimental, to the end (okay-caps-kernel)
+
+The question left: annotate everything that is not inline, leave `flatMap` unannotated (its comment says why), and
+merge — if honest capture-checked code still compiles. okay-core's branch `capture-checking` (3dfddaf and after;
+not merged), measured from okay-caps:
+
+- What can be annotated without `-experimental`: every non-inline signature (`map`, `defer`, `recover`, `cont`,
+  `run`, `shift0`, `dollar`, the nodes, `handle`'s helpers) and an inline method's PARAMETERS — its receiver
+  included (`handle`, `guard`, `ensure`, `uncancelable`): a parameter's capture set does not reach the callers. An
+  inline method's RESULT cannot: it is inlined into every caller as `@retains` (measured: okay-core's own
+  `Control.scala` then needs `-experimental`).
+- Refused with it: a transaction carried out of its bracket by `map`, `defer`, `recover`. Not: by `flatMap` (a
+  `for`).
+- And the price that decides: HONEST capture-checked code stops compiling — `p.map(_ => tx.execute(...))` handled by
+  `.handle(Reader(1))` inside the bracket: `handle` is inline, its result unannotated, so the program it returns must
+  be pure, and one holding `tx` is not ("capability `p$proxy1` cannot flow into capture set {}"). On okay-core as it
+  is, that code compiles. `map`+`run`, a `for`+`run`, `recover` stay fine.
+
+Verdict: not merged — it would turn honest code red to refuse two of the three ways out, `for` still open. With
+`-experimental` everywhere (okay-core's branch `capture-checking-experimental`): okay-core compiles and its 251
+tests pass with `flatMap` annotated, but every definition becomes `@experimental` and the Scala 2 module cannot
+read the kernel at all ("trait Row … is marked @experimental and therefore its enclosing scope must be
+experimental"), and every user of the published kernel would need the flag. Both branches kept. The guards stay
+the answer until `@retains` is no longer experimental; then `flatMap`'s and `handle`'s results are annotated and the
+branch is taken up again.
