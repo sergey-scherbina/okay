@@ -1,0 +1,6 @@
+feature/core-pin-native-thin 2026-10-17T09:17:25Z
+agent: claude-code (session 04094c70, thin layer)
+heartbeat: 2026-10-17T09:17:25Z
+status: in-progress
+done-so-far: claim
+next: okay-core pin c1f75fc -> f62b79d (native-thin), okay-std lanes before/after, gate on three platforms
