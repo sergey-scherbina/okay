@@ -78,6 +78,12 @@ object Run:
     /** RUN with each effect ANSWERED in place by its `Answers` (a sum's assembled from its parts) */
     def runWith(using a: Answers[Es], ks: KeysOf[Es]): A = Program.runAll(p, a, ks)
 
+  /** `p` made when the run gets to it — ONE closure, the thunk itself the kernel's `Defer` (`defer` the inline word
+   * that makes it: not inlined further, so the program's type is this method's, never the kernel's) */
+  def deferred[A, Es[_]](p: () => A ! Es): A ! Es = Cont.Defer[OnePure, Nothing, Nothing, A](p)
+  /** the same by name, as a method: for a tree made by a macro (okay-direct's deferral), which calls no inline word */
+  def defer[A, Es[_]](p: => A ! Es): A ! Es = Cont.Defer[OnePure, Nothing, Nothing, A](() => p)
+
   extension [A, E[_]](p: A ! E)
     /** `h` around a program whose ONE effect is `E`: every operation by key that comes to it answered by `h`
      * (the kernel's `Handler.anyKey`) — no key asked for, so `E` may be abstract */
@@ -188,8 +194,8 @@ def pure[A, Es[_]](a: A): A ! Es = Run.of(Cont.Return[OnePure, Nothing, A](a))
 /** an operation: a program needing its effect, performed at the effect's key */
 def effect[E[_], X](op: E[X])(using k: KeyOf[E]): X ! E = Run.of(Cont.perform[E, OnePure, X](op)(using k.in))
 /** `p` built when the run gets to it: a tail call in constant stack */
-def defer[A, Es[_]](p: => A ! Es): A ! Es = Run.of(Cont.Defer[OnePure, Nothing, Nothing, A](() => Run.kernel(p)))
-def tailcall[A, Es[_]](p: => A ! Es): A ! Es = defer(p)
+inline def defer[A, Es[_]](inline p: A ! Es): A ! Es = Run.deferred[A, Es](() => p)
+inline def tailcall[A, Es[_]](inline p: A ! Es): A ! Es = Run.deferred[A, Es](() => p)
 
 /** A HANDLER AS A VALUE, of `E`, polymorphic in the body's value: its answer `O[A]` — the kernel's form at a row */
 trait Handler[E[_], O[_]]:
@@ -204,19 +210,13 @@ object Handler:
   /** a STATE from `s0`: each operation its value and the next state (the kernel's `Stateful`) */
   def state[E[_], S](s0: S)(step: [X] => (S, E[X]) => (S, X)): Handler[E, [A] =>> (S, A)] = new Handler[E, [A] =>> (S, A)]:
     def kernel[T <: okay.core.Row, A]: OneHandler[E, T, A, (S, A)] = new okay.one.handler.Stateful[E, T, S, A, (S, A)]:
-      // the machine asks `value`, then `next`, of one operation: the step once, kept between the two
-      private var lastOp: AnyRef | Null = null
-      private var lastStep: (S, Any) | Null = null
-      private def stepped[X](s: S, op: E[X]): (S, X) =
-        val l = lastStep
-        if (lastOp eq op.asInstanceOf[AnyRef]) && l != null then
-          lastOp = null; lastStep = null; l.asInstanceOf[(S, X)]
-        else
-          val r = step(s, op); lastOp = op.asInstanceOf[AnyRef]; lastStep = r; r
+      // the machine asks `value`, then at once `next`, of one operation (the kernel's `Stateful` contract, okay-std's
+      // `State.Cell` the same): the step once, at `value`, its next state kept for `next`
+      private var nextS: S = s0
       def initial = s0
       def ret(s: S, a: A) = Cont.pure((s, a))
-      def value[X](s: S, op: E[X]): X = stepped(s, op)._2
-      def next[X](s: S, op: E[X]): S = stepped(s, op)._1
+      def value[X](s: S, op: E[X]): X = { val r = step(s, op); nextS = r._1; r._2 }
+      def next[X](s: S, op: E[X]): S = nextS
   /** a clause given `k`, the rest under the handler — dropped, resumed, resumed again (the kernel's `Deep`) */
   def deep[E[_], O[_]](ret0: [A] => A => O[A])(clause: [A, X] => (E[X], X => O[A] ! Pure) => O[A] ! Pure): Handler[E, O] =
     new Handler[E, O]:
